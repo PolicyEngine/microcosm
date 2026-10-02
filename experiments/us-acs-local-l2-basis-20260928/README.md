@@ -1,0 +1,250 @@
+# ACS local release: effective sample size versus fit under a design-weight penalty
+
+Full-scale evidence for the chi-square L2 basis (`l2_basis="chi_square"`) and
+the softmax mass parametrization added in this branch; the algebra and the
+small-problem evidence are in [docs/calibration-l2-basis.md](../../docs/calibration-l2-basis.md).
+Everything here recalibrates the published ACS local release,
+`populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z` (1,588,854
+households, 4,459 targets), from its own calibration checkpoint, on Modal. It is
+research evidence: nothing was published, and no default changed.
+
+## The question
+
+On 2026-09-28 David Trimmer measured the release's weights in #microcosm:
+national Kish ESS of about 14k of 1.59M, Massachusetts 477 with half its weight
+on 152 records (over 36,491 Massachusetts records in the files he read), and
+district ESS of 41-64. On this checkpoint's 36,578 Massachusetts households the
+published weights give 446 with 149 records holding half, and the reproduction
+below gives 448; the published national figure is 13,631 and the reproduction's
+13,646 (`results/published_weights.json`; the record counts were not
+reconciled with his). Threshold statistics (a 1.9 pp drop
+in Massachusetts child poverty) rested on a few dozen households. He asked
+whether to anchor calibration to the design weights. This experiment measures
+what that anchor buys, what it costs, and what limits it.
+
+## Findings
+
+1. **Most of the concentration is in the starting weights, not the solve.**
+   - The staging's `--acs-share 0.5` gives the 57,240 donor (ASEC-by-PUF) rows half the mass.
+   - Those rows are the national release's records at half weight, with a within-spine ESS of 9,174.
+   - So the design weights start at a national ESS of 36,288, a Massachusetts ESS of 1,020 and a median district ESS of 80, before any calibration.
+   - The 1,531,614 ACS rows alone have an ESS of 812,434.
+   - Calibration then moves the donor share of mass from 50% to 68% and cuts ESS to 13,646.
+   - Receipts: `results/seeding_options.{json,md}`, and the national and per-spine blocks of every run.
+2. **The anchor works, and at the current seeding it costs no measurable out-of-sample fit.**
+   - The chi-square penalty pulls toward the design weights themselves. The old record-weighted L2 penalty pulls toward their square: at λ = 0.1 it *lowers* ESS to 8,689.
+   - With the chi-square basis, ESS rises smoothly with λ.
+   - On held-out targets, projection at λ = 0.03 is ahead of the release on both measures and both folds (see the table): 3.6-3.8% lower capped error and 0.9-1.2 points more targets within 10%. Each fold has its own solves for both configurations, and all four comparisons agree in sign. But held-out run-to-run variation was not measured, and λ was picked on those two folds, so treat the gain as optimistic.
+3. **The seeding sets the limit.** As λ grows the solve returns to the starting weights. On every tested path the national ESS stays below the prior's (at share 0.5, λ = 3 reaches 35,386 against the prior's 36,288), though the penalty is a distance, not an ESS bound, and single districts can exceed their prior's ESS (at λ = 1 some do).
+   - A larger ACS share raises that limit several-fold. At share 0.9 without a penalty: ESS 93,524, Massachusetts 2,704, no district below 50, and 95.8% of targets within 10%.
+   - It also worsens held-out fit, mainly on SOI targets (held-out SOI within 10% falls from 64% to 54% at share 0.9), while held-out district populations improve.
+   - That is consistent with how the staging builds the rows: the ACS rows' tax variables are transferred from the donor rows by QRF (the tool's `donor_sparse_selection_training_set` limitation), so the donor rows carry tax detail the ACS rows only approximate.
+4. **The softmax parametrization is not needed at this scale for λ ≤ 0.03.**
+   - The per-record gradients here are near Adam's `eps`, with mixed signs (`results/gradient_scale.json`). The same-sign stall that the small-problem evidence shows does not occur.
+   - The two parametrizations trace the same training frontier for λ ≤ 0.03. At λ = 0 softmax reaches 18% more ESS (16,132 against 13,646) at a 3% higher loss (0.0160 against 0.0155), a loss gap about the size of the unpenalized solve's run-to-run variation (2.7%; see "How it was run"). At λ ≥ 0.1 projection falls inside softmax's training frontier. At λ = 0.1 projection reaches ESS 22,739 at loss 0.0228, where softmax's path (interpolated between its λ = 0.03 and 0.1 solves) gives about 0.021. At λ = 1 projection reaches 30,582 at 0.0785, against about 0.055 on softmax's path (between λ = 0.3 and 1). Equal λ is not an equal-ESS comparison.
+   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6, bc763cb4 and d82ff85b), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on the full surface (the `dup_` rerun) and on fold 0, and every share-0.9 run. Those epochs optimize total·softmax(log_w) past the 5x cap, by an amount these runs did not record; only the closing projection makes the returned weights exact. The loop has since been replaced by an exact projection, and the overshoot measured: it was float32-sized, 1 + 1.2e-5 at most, against 1 + 9.0e-6 for the projection, so the grid's softmax results stand (see "The softmax cap step, re-measured" below). Projection is the recommended parametrization.
+
+## The softmax cap step, re-measured
+
+Softmax's per-step cap loop (finding 4) was replaced by an exact projection
+onto the capped simplex (docs/calibration-l2-basis.md). `exact_cap_modal.py`
+reran two configurations whose grid runs ran out of rounds, under the new
+step and under the old loop, at kernel head 4bddde64. It recorded the largest
+in-loop weight over its cap at every forward pass, the cap step's rounds and
+its time (`results/exact_cap.md`, `results/exact_cap/`):
+
+| Configuration | Cap step | Largest in-loop weight over its cap | Steps out of rounds | Cap step | Final loss | National ESS |
+|---|---|---:|---:|---:|---:|---:|
+| Share 0.5, softmax, chi-square λ 0.03 | exact projection | 1 + 9.0e-6 | 0 of 800 | 12.7 ms | 0.018991 | 21,834 |
+| Share 0.5, softmax, chi-square λ 0.03 | 32-round loop | 1 + 1.2e-5 | 713 of 800 | 53.8 ms | 0.019169 | 21,835 |
+| Share 0.9, softmax, no penalty | exact projection | 1 + 9.0e-6 | 0 of 800 | 22.5 ms | 0.031293 | 93,609 |
+| Share 0.9, softmax, no penalty | 32-round loop | 1 + 8.7e-6 | 705 of 800 | 48.7 ms | 0.031365 | 93,598 |
+
+- The loop's overshoot was float32-sized, about the same as the projection's.
+  Both are set by the solve's float32 softmax, whose normalizer missed the
+  total by up to 8.2e-6. With a float64 normalizer the projected vectors sit
+  within 1 + 4.9e-7 of their caps (`exact_cap_float32.py`,
+  `results/exact_cap_float32.json`).
+- The loop ran out because of float32 too. Its shift was `log(total)` in
+  float64 minus a float32 `logsumexp`, which bottoms out at the float32
+  rounding residual of `log(total)` (7.8e-8) and lifts a few capped records
+  over their caps every round. On vectors the projection had already made
+  exact it still ran out in 10 of 12 trials.
+- The projection settled in one to three active-set rounds on every step.
+- The loop run at share 0.5 reproduced the grid's `soft_chi_s050_0.03`
+  (0.019169, ESS 21,835); the `dup_` rerun gave 0.019104. The projection's
+  0.018991 is 0.6-0.9% below those three, from one run. ESS agreed within
+  0.1% at both configurations.
+
+## Key configurations
+
+"Held-out error" is the mean capped scaled error, and "held-out within 10%"
+the share of targets within 10%, on a rotated 20% of targets
+(`microcosm.build.holdout.rotated_folds(4459, n_folds=5, seed=20260529)`)
+never seen by that solve. MA is Massachusetts. Each configuration's training fit
+and concentration come from its full-surface run; "–" marks a fold not run.
+
+<!-- key-configs:start (written by analyze.py) -->
+| Configuration | National ESS | Top-1% share | State ESS min | CD ESS median / min | CDs < 50 | MA ESS | Train within 10% | Held-out error, fold 0 / 1 | Held-out within 10%, fold 0 / 1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Release (reproduced): share 0.5, projection, λ 0 | 13,646 | 69.3% | 195 | 33 / 12 | 352 | 448 | 97.6% | 0.1296 / 0.1236 | 63.3% / 65.8% |
+| Share 0.5, projection, chi-square λ 0.03 | 20,690 | 63.7% | 204 | 46 / 22 | 278 | 589 | 97.3% | 0.1247 / 0.1191 | 64.2% / 67.0% |
+| Share 0.5, softmax, chi-square λ 0.03 | 21,835 | 61.6% | 213 | 49 / 23 | 239 | 620 | 97.1% | 0.1242 / 0.1166 | 63.1% / 66.3% |
+| Share 0.5, projection, chi-square λ 0.1 | 22,739 | 62.0% | 207 | 51 / 27 | 208 | 616 | 95.9% | 0.1285 / – | 61.7% / – |
+| Share 0.5, softmax, chi-square λ 0.1 | 24,895 | 59.2% | 222 | 55 / 29 | 132 | 664 | 95.5% | 0.1263 / 0.1210 | 61.5% / 63.8% |
+| Share 0.5, softmax, chi-square λ 1 | 33,418 | 53.3% | 269 | 73 / 47 | 4 | 907 | 75.7% | 0.1505 / – | 50.1% / – |
+| Share 0.7, softmax, chi-square λ 0.01 | 34,280 | 46.9% | 319 | 81 / 24 | 30 | 992 | 97.1% | 0.1466 / 0.1416 | 60.4% / 60.5% |
+| Share 0.9, softmax, no penalty | 93,524 | 27.8% | 599 | 227 / 64 | 0 | 2,704 | 95.8% | 0.1765 / 0.1767 | 56.1% / 56.7% |
+| Share 0.9, softmax, chi-square λ 0.01 | 130,608 | 24.2% | 612 | 317 / 85 | 0 | 3,285 | 95.1% | 0.1785 / – | 54.9% / – |
+| Share 0.964, softmax, no penalty | 244,979 | 17.9% | 594 | 578 / 265 | 0 | 6,591 | 94.9% | 0.1952 / 0.1984 | 51.6% / 52.4% |
+<!-- key-configs:end -->
+
+The full grid, the per-family fit, the holdout detail and candidate floors are
+in `results/frontier.md`, `results/floors.md` and `results/frontier.csv`:
+
+![ESS vs training fit by prior and λ](results/frontier.png)
+
+## Recommendation
+
+Two decisions, kept separate because they trade different things.
+
+**1. Calibration: adopt the chi-square penalty at the current seeding.**
+On today's loss, use `--l2-basis chi_square --l2-lambda 0.03` with the
+default `--mass-parametrization projection`.
+- Against the release it improves every concentration measure:
+  - national ESS from 13,646 to 20,690;
+  - Massachusetts from 448 to 589;
+  - districts below ESS 50 from 352 to 278;
+  - the smallest district from 12 to 22.
+- Out of sample it is ahead on both measures and both folds: held-out error 0.1247 and 0.1191 against 0.1296 and 0.1236, and held-out within 10% 64.2% and 67.0% against 63.3% and 65.8%. Held-out run-to-run variation was not measured and λ was picked on these folds, so treat that as "no worse, probably slightly better".
+- In sample it costs a little: training loss rises from 0.0155 to 0.0181, and training targets within 10% fall from 97.6% to 97.3%.
+- Softmax at λ = 0.03 gives a little more ESS (21,835). Against projection, its held-out fit is a toss-up (lower capped error, fewer targets within 10%, both by small margins). What separates them is training fit: loss 0.0192 against 0.0181, 6% higher, against 0.3% run-to-run variation at this λ (0.0190 and 5% higher with the exact cap projection, from one run). Projection is the default and the better-supported choice.
+- λ = 0.1 (softmax) buys more ESS (24,895; 132 districts below 50) and lower held-out error than the release, but lower held-out within 10% on both folds (61.5% and 63.8%), and 2 pp of training fit.
+- **λ is in units of the loss.** The ACS local build weights every target equally today (`calibrate` gets no `target_loss_weights`), and IRS SOI cells are 3,819 of the 4,459 targets. A change to weight them as the national release does is planned. Re-pick λ on that loss by rerunning this harness with its target weights before shipping a default.
+
+**2. Construction: the ACS share of the mass is the bigger lever, and it costs out-of-sample fit.**
+
+| ACS share | National ESS | MA ESS | Districts below 50 | Held-out error, fold 0 / 1 |
+|---|---:|---:|---:|---:|
+| 0.5, no penalty (release reproduced, projection) | 13,646 | 448 | 352 | 0.1296 / 0.1236 |
+| 0.7, λ 0.01 (softmax) | 34,280 | 992 | 30 | 0.1466 / 0.1416 |
+| 0.9, no penalty (softmax) | 93,524 | 2,704 | 0 | 0.1765 / 0.1767 |
+
+The share-0.7 and share-0.9 rows are softmax solves (at share 0.5, softmax
+alone gave 18% more ESS than projection at λ = 0); a projection solve at those
+shares was not run.
+
+That is a methodology call: more stable local estimates against worse
+aggregate SOI fit. It also overlaps the support-mix bake-off (#1067, decision
+d701), which recommends ACS rows plus CPS, seeded in proportion to their
+counts, for the local file.
+
+**ESS floor as a release gate.** At the current seeding, no tested
+configuration gets every district to ESS 50: even λ = 1 (76% within 10%)
+leaves 4 districts below it, and λ = 3 leaves 1. So the gate should catch
+calibration-induced collapse now and rise with the seeding. Across each
+configuration's three solves (full surface, fold 0, fold 1):
+
+| Configuration | Districts below 25% of their starting ESS | Smallest district ESS | Smallest state ESS |
+|---|---|---|---|
+| Release reproduced (projection, λ 0) | 15 / 22 / 24 | 11.7 / 10.7 / 7.8 | 195 / 203 / 177 |
+| Softmax, λ 0 | 8 / 5 / – | 13.1 / 14.8 / – | 201 / 210 / – |
+| Projection, λ 0.03 | 0 / 0 / 0 | 22.4 / 22.9 / 24.2 | 204 / 205 / 193 |
+| Softmax, λ 0.03 | 0 / 0 / 0 | 23.0 / 23.0 / 24.1 | 213 / 216 / 203 |
+
+- **The gate to adopt now:** no district below a quarter of its starting ESS.
+  It separates cleanly at share 0.5: every penalized solve there has 0, and
+  the release has 15-24. It measures collapse relative to the seeding, so it
+  binds harder as the seeding improves: at share 0.9 the unpenalized solves
+  leave 261-328 districts below a quarter of their (much higher) starting ESS,
+  λ = 0.01 leaves 72-121, λ = 0.03 leaves 33, and λ = 0.1 leaves 0. A
+  share-0.9 release would pass it only with a penalty around 0.1.
+- **An absolute district floor of 15:** it also separates (release at most 11.7, λ = 0.03 at least 22.4), with some margin.
+- **No state floor:** a state floor near 200 sits inside the solves' spread (177-216), so it would flap.
+- **With an ACS share of 0.9 or more:** raise the floors to every district at least 50 and every state at least 500. Across every solve at shares 0.9 and 0.964 (full surface and folds, every λ), the smallest district is at least 63.7 and the smallest state at least 549, so the state floor's margin is about 10%. At share 0.964 the relative gate leaves 13-30 districts unpenalized and 0 from λ = 0.01.
+
+Main's tool already records ESS by state and district in the calibration
+summary, so the gate is a finalize-stage check on data it already has.
+
+## How it was run
+
+- **Inputs.** The release's calibration checkpoint was a 28.7 GB dense
+  float32 frame. The sparse copy used here (`target_matrix.npz`, 4,459 ×
+  1,588,854, 24,773,532 nonzeros) was checked value for value against 3,000
+  sampled dense rows (`results/csr_verification.json`). Design weights and
+  target values equal the release's.
+- **Harness.** `sweep.py` calls `microcosm.calibrate.calibrate` with the
+  tool's settings: Adam, lr 0.02, `mass="conserve"`, `max_weight_ratio=5`,
+  `target_loss_cap=1`, seed 0, 800 epochs as two warm-started batches of 400.
+  Each run adds its own `l2_lambda`, `l2_basis`, `mass_parametrization` and
+  prior (`acs_share`).
+  - The prior rescales each spine to its share of the unchanged total, keeping
+    proportions within a spine. That matches `--acs-share` in the staging.
+  - The prior is the frame's weights, so it is also the chi-square anchor and
+    the base of the 5x cap.
+- **Compute.** `modal_sweep.py` ran each configuration in its own 8-CPU
+  container from the committed kernel, gated on a reproduction of the release.
+  - The reproduction matched the release: loss 0.015485 against 0.015491,
+    within-10% 97.58% against 97.58%, ESS 13,646 against 13,631, and
+    chi-square distance 0.7269 against 0.7270. A second run of the same
+    configuration gave loss 0.015069 and ESS 13,635, so the loss match is
+    closer than the solve's run-to-run variation.
+  - Every run's metrics are in `results/runs/`. Weights stay in
+    `_build_artifacts/acs-local-l2-basis-20260928/runs/` and the Modal volume
+    `microcosm-acs-l2-basis-sweep`.
+- **Analysis.** `analyze.py` builds the frontier, the floors, the key table
+  and the chart from those metrics. `seeding_options.py` measures starting
+  ESS under other shares and under donor location clones.
+  `gradient_scale.py` measures the gradient scale, and `published_weights.py`
+  the published weights' own concentration. `optimizer_reference.py`
+  and `path_reference.py` compare the kernel with CLARABEL's exact
+  optimum on small problems.
+- **Kernel heads.** The grid ran on three heads: 35ad6657 (the full-surface
+  grid, `release_repro`, the first holdout runs), 9ef71ed6 (the second-pass
+  holdout runs) and bc763cb4 (projection at λ = 0.03 and every fold-1 run).
+  Each run records its head in `provenance` (and `kernel_head` in
+  `results/frontier.csv`). Between 35ad6657 and bc763cb4 (and this branch's
+  head), `git diff -- packages/microcosm-calibrate/src` changes `solve.py`
+  only in docstrings and comments, the softmax cap-exhaustion counter (a
+  receipt field), an `assert` on an unreachable branch, a guard that only
+  raises, and an `L0RefitResult` property; the other changed calibrate
+  modules came from main and are not on `calibrate`'s path.
+- **Run-to-run variation.** Two first-head runs (`release_repro` and softmax
+  λ = 0.03) were repeated at d82ff85b as `dup_*`
+  (`results/rerun_variation.json`). Neither pair is byte-identical. The trajectories already differ at epoch 0 for
+  softmax (the loss at the starting weights, 1.2e-6 relative) and at epoch 1
+  for the release (7e-8 relative), which no code change between the heads
+  touches. Over 800 epochs that grows to:
+  - final loss: −2.7% for the release, −0.3% at λ = 0.03;
+  - per-record weights: median 0.3-0.6% and 99th percentile 4-9% apart;
+  - every concentration measure in the key table within 1%, training within 10% within 0.05 points;
+  - districts below a quarter of their starting ESS: 15 and 16 for the release, 0 and 0 at λ = 0.03.
+
+  No same-head pair was run, so a head change and the container are
+  confounded. But the receipts' kernel-module hashes show `solve.py` changed
+  once (35ad6657 to 9ef71ed6, then identical at bc763cb4 and d82ff85b), and
+  `matrix`, `target` and the frame modules are identical at every head. The
+  cause (thread scheduling, CPU type or library code path) was not isolated.
+  The penalized solve varies much less than the unpenalized one. Only training
+  metrics were rerun; held-out variation was not measured.
+
+## Limits
+
+- **Holdout is interpolation.** The holdout draws random targets, most of
+  them SOI state cells whose neighbours stay in training. It measures
+  aggregate generalization, not the variance of threshold statistics. ESS is
+  the variance side of that trade, measured here for every state and district.
+- **Folds.** Folds 0 and 1 cover the configurations the recommendation
+  compares; λ = 1 and share 0.9 with λ = 0.01 have fold 0 only. λ was chosen
+  on the same folds it is reported on, so the held-out gains are optimistic by
+  that selection. Fold-to-fold noise is visible in the table.
+- **Clones.** Donor location clones were measured only for their starting
+  ESS. A solve on cloned rows needs a rebuilt target matrix. The support-mix
+  bake-off (#1067) compares clones and ACS rows in the solve.
+- **Epochs.** 800 epochs, like the release; longer solves were not run.
+- **One run per configuration.** Apart from the two reruns, each configuration
+  was solved once, so differences smaller than the run-to-run variation above
+  (notably the held-out margins and the softmax-versus-projection comparison
+  at λ = 0.03) are not resolved.
+- **Not measured.** Poverty and program estimates were not recomputed, since
+  the engine was not run. ESS is the proxy for their precision.
