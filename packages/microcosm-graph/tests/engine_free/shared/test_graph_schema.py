@@ -1,0 +1,204 @@
+"""Canonical compiler metadata for portable graph presentation."""
+
+from __future__ import annotations
+
+import copy
+
+import pytest
+
+from microcosm.graph.schema import graph_schema, validate_graph_schema
+from test_support.microcosm_graph.schema import (
+    compiled_default_population_graph,
+    compiled_graph,
+)
+
+
+def _field(schema, population, column):
+    return next(
+        field
+        for field in schema["fields"]
+        if field["population"] == population and field["column"] == column
+    )
+
+
+def test_schema_is_derived_from_the_compiled_graph():
+    compiled = compiled_graph()
+    schema = graph_schema(compiled)
+
+    assert set(schema) == {
+        "protocol",
+        "country",
+        "graph_sha256",
+        "graph",
+        "compiled",
+        "fields",
+        "input_bindings",
+        "extensions",
+    }
+    assert schema["protocol"] == "microcosm.graph.schema.v1"
+    assert schema["country"] == "invented"
+    assert schema["compiled"] == {
+        "order": list(compiled.order),
+        "versions": dict(sorted(compiled.versions.items())),
+        "predecessors": {
+            node_id: list(compiled.predecessors[node_id])
+            for node_id in sorted(compiled.predecessors)
+        },
+        "owners": [
+            [*coordinate, owner]
+            for coordinate, owner in sorted(compiled.owners.items())
+        ],
+    }
+    assert validate_graph_schema(schema) == schema
+
+
+def test_fields_record_carriage_rewrites_and_nearest_declaration():
+    schema = graph_schema(compiled_graph())
+
+    assert _field(schema, "base", "age") == {
+        "population": "base",
+        "entity": "person",
+        "column": "age",
+        "dtype": "int64",
+        "provider": "base",
+        "declared_in": "base",
+        "rows": "all",
+        "ownership": "produced",
+        "rewrite": False,
+    }
+    assert _field(schema, "filtered", "age") == {
+        "population": "filtered",
+        "entity": "person",
+        "column": "age",
+        "dtype": "int64",
+        "provider": "rewrite",
+        "declared_in": "rewrite",
+        "rows": "keep",
+        "ownership": "produced",
+        "rewrite": True,
+    }
+    assert _field(schema, "filtered", "keep")["provider"] == "filtered"
+    assert _field(schema, "filtered", "keep")["declared_in"] == "base"
+    assert _field(schema, "expanded", "age")["provider"] == "expanded"
+    assert _field(schema, "expanded", "age")["declared_in"] == "rewrite"
+    assert _field(schema, "reweighted", "age")["provider"] == "reweighted"
+    assert len(schema["fields"]) == 8
+
+
+def test_input_bindings_preserve_each_declared_read_role():
+    bindings = graph_schema(compiled_graph())["input_bindings"]
+    rewrite = [binding for binding in bindings if binding["node"] == "rewrite"]
+
+    assert rewrite == [
+        {
+            "node": "rewrite",
+            "population": "filtered",
+            "entity": "person",
+            "column": "age",
+            "provider": "filtered",
+            "declared_in": "base",
+            "kind": "slice",
+            "rows": "keep",
+        },
+        {
+            "node": "rewrite",
+            "population": "filtered",
+            "entity": "person",
+            "column": "keep",
+            "provider": "filtered",
+            "declared_in": "base",
+            "kind": "slice",
+            "rows": "keep",
+        },
+        {
+            "node": "rewrite",
+            "population": "filtered",
+            "entity": "person",
+            "column": "keep",
+            "provider": "filtered",
+            "declared_in": "base",
+            "kind": "slice_mask",
+            "rows": "all",
+        },
+        {
+            "node": "rewrite",
+            "population": "filtered",
+            "entity": "person",
+            "column": "age",
+            "provider": "filtered",
+            "declared_in": "base",
+            "kind": "rewrite_incumbent",
+            "rows": "keep",
+        },
+        {
+            "node": "rewrite",
+            "population": "filtered",
+            "entity": "person",
+            "column": "keep",
+            "provider": "filtered",
+            "declared_in": "base",
+            "kind": "output_mask",
+            "rows": "all",
+        },
+    ]
+    assert (
+        next(binding for binding in bindings if binding["node"] == "expanded")[
+            "provider"
+        ]
+        == "rewrite"
+    )
+
+
+def test_omitted_population_uses_the_compiler_resolved_version():
+    compiled = compiled_default_population_graph()
+    schema = graph_schema(compiled)
+
+    assert schema["graph"]["nodes"][1]["population"] is None
+    assert schema["compiled"]["versions"]["consumer"] == "base"
+    assert schema["input_bindings"] == [
+        {
+            "node": "consumer",
+            "population": "base",
+            "entity": "person",
+            "column": "age",
+            "provider": "base",
+            "declared_in": "base",
+            "kind": "slice",
+            "rows": "all",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda value: value.update(extra=True),
+        lambda value: value["compiled"]["order"].reverse(),
+        lambda value: value["compiled"]["versions"].update(rewrite="base"),
+        lambda value: value["compiled"]["predecessors"]["rewrite"].clear(),
+        lambda value: value["compiled"]["owners"].clear(),
+        lambda value: value["fields"][0].update(provider="rewrite"),
+        lambda value: value["input_bindings"][0].update(provider="rewrite"),
+    ],
+)
+def test_validation_recompiles_and_refuses_core_metadata_changes(mutation):
+    schema = graph_schema(compiled_graph())
+    mutation(schema)
+    with pytest.raises(ValueError):
+        validate_graph_schema(schema)
+
+
+def test_extensions_are_detached_bounded_json():
+    extension = {"producer": {"labels": ["one", 2**80]}}
+    schema = graph_schema(compiled_graph(), extensions=extension)
+    extension["producer"]["labels"].append("changed")
+    assert schema["extensions"] == {"producer": {"labels": ["one", 2**80]}}
+
+    copied = validate_graph_schema(schema)
+    copied["extensions"]["producer"]["labels"].append("output change")
+    assert schema["extensions"] == {"producer": {"labels": ["one", 2**80]}}
+
+    invalid = copy.deepcopy(schema)
+    invalid["extensions"] = {"bad": float("nan")}
+    with pytest.raises(ValueError, match="finite"):
+        validate_graph_schema(invalid)
