@@ -762,7 +762,7 @@ def classify_probe(
     drawn_effect_households: int | None,
     effective_households: float | None,
     census: bool,
-    noncarrier_effect: float | None = None,
+    noncarrier_effect_households: int | None = None,
     se_multiplier: float = DEFAULT_SE_MULTIPLIER,
     min_effective_households: float = DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS,
 ) -> tuple[str, str]:
@@ -773,10 +773,10 @@ def classify_probe(
     1. A census (no sample) is authoritative.
     2. No finite standard error is informational.
     3. A take-all probe (every pool carrier kept at its source weight) none
-       of whose drawn households carries an effect, and whose households
-       without its binding inputs carry none either (``noncarrier_effect ==
-       0``), is authoritative: its effect is the certainty households'
-       exactly. With a non-carrier effect, rules 4 and 5 decide.
+       of whose drawn households carries an effect, and none of whose
+       sampled households without its binding inputs carries one either
+       (``noncarrier_effect_households == 0``), is authoritative: its effect
+       is the certainty households' exactly. Otherwise rules 4 and 5 decide.
     4. A variance estimate resting on fewer than ``min_effective_households``
        effective households (:func:`effective_variance_households`) is
        informational. ``S^2`` is estimated from the drawn households, so a
@@ -796,7 +796,7 @@ def classify_probe(
             "no design-based standard error for this probe, so a full-scale "
             "verdict cannot be bounded",
         )
-    if take_all and not drawn_effect_households and noncarrier_effect == 0.0:
+    if take_all and not drawn_effect_households and noncarrier_effect_households == 0:
         return (
             AUTHORITATIVE,
             "take-all probe: every pool carrier is a certainty household at its "
@@ -1362,6 +1362,11 @@ class ExportProbe:
         self.export_path = Path(export_path).resolve()
         self.out_dir = Path(out_dir).resolve()
         self.receipt = sample_receipt
+        if sample_receipt is not None and census:
+            raise ValueError(
+                "census=True (--census) contradicts the sample receipt given or "
+                "found beside the export: a subsample is not a full population."
+            )
         if sample_receipt is None and not census:
             raise ValueError(
                 "No sample receipt: the probe cannot tell a subsample from a "
@@ -1530,8 +1535,15 @@ class ExportProbe:
     def run(self) -> dict[str, Any]:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.passes_path.write_text("")
-        load = self._stage("load", self._load, "probe integrity")
-        if load["status"] == "completed":
+        ready = all(
+            self._stage(name, step, consequence)["status"] == "completed"
+            for name, step, consequence in (
+                ("identify", self._identify, "probe integrity"),
+                ("load", self._load, "raises"),
+                ("design", self._design, "probe integrity"),
+            )
+        )
+        if ready:
             if "stored_inputs" in self.stages:
                 self._stage("stored_inputs", self._stored_inputs, "raises")
             if "qrf_tail_concentration" in self.stages:
@@ -1621,17 +1633,31 @@ class ExportProbe:
 
     # ---- load ---------------------------------------------------------------
 
-    def _load(self) -> dict[str, Any]:
-        sampler = self.sampler
-        self.sha256 = sampler.sha256_file(self.export_path)
+    def _identify(self) -> dict[str, Any]:
+        """The scored bytes are the receipt's subsample (a probe input check)."""
+        self.sha256 = self.sampler.sha256_file(self.export_path)
         if self.receipt is not None and self.receipt["output"]["sha256"] != self.sha256:
             raise ValueError(
                 f"{self.export_path} (SHA-256 {self.sha256}) is not the subsample "
                 f"the receipt describes ({self.receipt['output']['sha256']})."
             )
+        return {"sha256": self.sha256}
+
+    def _load(self) -> dict[str, Any]:
+        """The release's own loader reads the export (a failure here is one
+        the release's post-export scorer would hit too)."""
         load = self.load_frame or self.builder._load_frame
-        frame = load(self.export_path, expected_sha256=self.sha256)
-        self.frame = frame
+        self.frame = load(self.export_path, expected_sha256=self.sha256)
+        frame = self.frame
+        return {
+            "sha256": self.sha256,
+            "rows": {entity: int(frame.n(entity)) for entity in frame.entities},
+        }
+
+    def _design(self) -> dict[str, Any]:
+        """Rebuild the sample design, bind the source, size the batches."""
+        sampler = self.sampler
+        frame = self.frame
         self.design = design_from_sample(
             frame.table("household"),
             frame.table("person"),
@@ -1644,7 +1670,7 @@ class ExportProbe:
             self.census = True
         if not self.census:
             self._add(
-                "load",
+                "design",
                 "the sample design rebuilt from the subsample verifies against "
                 "its receipt",
                 "fail" if self.design_problems else "pass",
@@ -1662,17 +1688,13 @@ class ExportProbe:
                 frame, probe.binding_inputs, sampler=sampler
             )
         return {
-            "sha256": self.sha256,
-            "rows": {entity: int(frame.n(entity)) for entity in frame.entities},
             "household_weight_total": float(self.design.adjusted_weights.sum()),
             "batch_size": self.batch_size,
             "n_batches": batch_count(n, self.batch_size),
-            "design": {
-                "census": self.census,
-                "strata": len(self.design.strata),
-                "verified_against_receipt": not self.design_problems,
-                "problems": self.design_problems,
-            },
+            "census": self.census,
+            "strata": len(self.design.strata),
+            "verified_against_receipt": not self.design_problems,
+            "problems": self.design_problems,
         }
 
     def _verify_source(self) -> None:
@@ -1686,7 +1708,7 @@ class ExportProbe:
         if observed == expected:
             return
         self._add(
-            "load",
+            "design",
             "the source export is the receipt's source",
             "fail",
             AUTHORITATIVE,
@@ -2012,31 +2034,64 @@ class ExportProbe:
                 "post_export_scoring": scoring_record,
             },
         )
+        # Everything below is the probe's own analysis of the gate's result.
+        # The gate's per-probe pass/fail is recorded for every probe whatever
+        # happens here; a failure only costs that probe its standard error.
+        setup_error = None
+        row_map = None
         if len(recorder.reforms) != len(probes):
-            raise RuntimeError(
-                f"The smoke built {len(recorder.reforms)} reform simulations for "
-                f"{len(probes)} probes."
+            setup_error = (
+                f"the smoke built {len(recorder.reforms)} reform simulations for "
+                f"{len(probes)} probes"
             )
-        row_map = HouseholdRowMap(self.scorer._batches(), sampler=self.sampler)
+        else:
+            try:
+                row_map = HouseholdRowMap(self.scorer._batches(), sampler=self.sampler)
+            except Exception as error:
+                setup_error = f"{type(error).__name__}: {error}"
         reference_results = (
             {}
             if self.reference_smoke is None
             else dict(
-                self.reference_smoke["reform_coverage_smoke"]["details"]["results"]
+                (self.reference_smoke.get("reform_coverage_smoke") or {})
+                .get("details", {})
+                .get("results", {})
             )
         )
+        results = gate.details.get("results", {})
         rows = []
-        for probe, reform_results in zip(probes, recorder.reforms, strict=True):
-            row = self._smoke_row(
-                probe,
-                gate.details["results"][str(probe.id)],
-                recorder.baseline,
-                reform_results,
-                row_map,
-            )
+        for index, probe in enumerate(probes):
+            result = results.get(str(probe.id))
+            if result is None:
+                self._add(
+                    "reform_coverage_smoke",
+                    f"probe {probe.id}",
+                    "error",
+                    AUTHORITATIVE,
+                    "the gate recorded no result for this probe",
+                    "probe integrity",
+                )
+                continue
+            if setup_error is None:
+                row = self._smoke_row(
+                    probe,
+                    result,
+                    recorder.baseline,
+                    recorder.reforms[index],
+                    row_map,
+                )
+            else:
+                row = self._smoke_row(probe, result, None, None, None)
+                row["decomposition"] = f"analysis not run: {setup_error}"
             reference = reference_results.get(str(probe.id))
             if reference is not None:
-                row["reference"] = reference_comparison(row, reference, probe=probe)
+                try:
+                    row["reference"] = reference_comparison(row, reference, probe=probe)
+                except Exception as error:
+                    row["reference"] = {
+                        "error": f"{type(error).__name__}: {error} (the reference "
+                        "row lacks a field the comparison reads)"
+                    }
             rows.append(row)
             self._add(
                 "reform_coverage_smoke",
@@ -2049,6 +2104,7 @@ class ExportProbe:
         return {
             "passed": gate.passed,
             "failures": list(gate.failures),
+            "analysis_setup_error": setup_error,
             "baseline_keys": len(plan),
             "reform_passes": scoring_record["reform_passes"],
             "reform_systems": scoring_record["reform_systems"],
@@ -2077,6 +2133,7 @@ class ExportProbe:
             "effective_variance_households": None,
             "certainty_effect_households": None,
             "noncarrier_effect": None,
+            "noncarrier_effect_households": None,
         }
         try:
             analysis.update(
@@ -2096,7 +2153,7 @@ class ExportProbe:
             take_all=take_all,
             drawn_effect_households=analysis["drawn_effect_households"],
             effective_households=analysis["effective_variance_households"],
-            noncarrier_effect=analysis["noncarrier_effect"],
+            noncarrier_effect_households=analysis["noncarrier_effect_households"],
             census=self.census,
             se_multiplier=self.se_multiplier,
             min_effective_households=self.min_effective_households,
@@ -2169,6 +2226,12 @@ class ExportProbe:
             certainty_effect_households=int((bearing & self.design.certainty).sum()),
             noncarrier_effect=direction
             * float(effects.weighted[~effects.weighted.index.isin(carriers)].sum()),
+            noncarrier_effect_households=int(
+                (
+                    (effects.unweighted != 0.0)
+                    & ~effects.unweighted.index.isin(carriers)
+                ).sum()
+            ),
         )
         return out
 
@@ -2539,7 +2602,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         default=None,
         help="the sampler's receipt (default: sample_receipt.json beside "
-        "--export; without one the export is scored as a full population)",
+        "--export; without one the probe refuses unless --census is given)",
     )
     parser.add_argument(
         "--source-export",

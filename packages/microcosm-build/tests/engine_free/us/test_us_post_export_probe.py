@@ -60,8 +60,8 @@ def test_probe_runs_every_stage_on_a_subsample(
         if record["status"] != "completed"
     }
     assert not errors, errors
-    assert report["stages"]["load"]["n_batches"] >= probe_tool.MINIMUM_BATCHES
-    assert report["stages"]["load"]["design"]["verified_against_receipt"]
+    assert report["stages"]["design"]["n_batches"] >= probe_tool.MINIMUM_BATCHES
+    assert report["stages"]["design"]["verified_against_receipt"]
     assert report["stages"]["open_scorer"]["n_batches"] >= probe_tool.MINIMUM_BATCHES
     assert report["source_export"] == str(source.resolve())
     for filename in (
@@ -375,7 +375,7 @@ def test_a_source_export_with_other_bytes_settles_nothing(
         stages=("take_up_participation",),
     )
     check = verdicts_by_check(report)[
-        ("load", "the source export is the receipt's source")
+        ("design", "the source export is the receipt's source")
     ]
     assert (check["verdict"], check["authority"]) == ("fail", "authoritative")
     assert "source" not in report["stages"]["take_up_participation"]
@@ -409,7 +409,7 @@ def test_a_full_fraction_subsample_is_a_census(
         receipt=receipt,
         stages=("reform_coverage_smoke",),
     )
-    assert report["stages"]["load"]["design"]["census"] is True
+    assert report["stages"]["design"]["census"] is True
     rows = report["stages"]["reform_coverage_smoke"]["probes"]
     assert rows and all(row["authority"] == "authoritative" for row in rows)
 
@@ -433,6 +433,7 @@ def test_an_unreceipted_stratum_is_reported_not_fatal(
         stages=("reform_coverage_smoke", "demographics"),
     )
     assert report["stages"]["load"]["status"] == "completed"
+    assert report["stages"]["design"]["status"] == "completed"
     assert report["stages"]["demographics"]["status"] == "completed"
     design = verdicts_by_check(report)[
         (
@@ -506,3 +507,67 @@ def test_an_older_reference_manifest_is_compared_not_fatal(probe_tool) -> None:
         "reform_coverage_smoke: the reference recorded no reform_systems",
         "demographics: the reference release recorded no plan",
     ]
+
+
+def test_census_with_a_receipt_is_refused(
+    probe_tool, builder, fake_reforms, chain, tmp_path
+) -> None:
+    _, path, receipt, _ = chain
+    with pytest.raises(ValueError, match="contradicts the sample receipt"):
+        run_fixture_probe(
+            probe_tool, builder, path, tmp_path / "probe", receipt=receipt, census=True
+        )
+
+
+def test_a_release_loader_failure_is_the_releases_failure(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The release's own loader failing on the export is a failure the
+    release would hit too; the receipt and design checks are the probe's."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+
+    def unreadable(path, *, expected_sha256=None):
+        raise OSError("the loader cannot read this export")
+
+    report = probe_tool.probe_export(
+        path,
+        tmp_path / "probe",
+        sample_receipt=receipt,
+        probes=fixture_engine_probes(),
+        builder=builder,
+        load_frame=unreadable,
+        stages=("stored_inputs",),
+    )
+    assert report["stages"]["identify"]["status"] == "completed"
+    assert report["stages"]["load"]["status"] == "error"
+    assert "design" not in report["stages"]
+    (error,) = report["summary"]["authoritative_failures"]
+    assert error["stage"] == "load" and error["release_consequence"] == "raises"
+    assert not report["summary"]["probe_failures"]
+
+
+def test_a_reference_row_missing_fields_costs_only_its_comparison(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    reference = {
+        "reform_coverage_smoke": {
+            "details": {"results": {probe.id: {} for probe in fixture_engine_probes()}}
+        }
+    }
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        reference_smoke=reference,
+        stages=("reform_coverage_smoke",),
+    )
+    rows = report["stages"]["reform_coverage_smoke"]["probes"]
+    assert len(rows) == len(fixture_engine_probes())
+    for row in rows:
+        assert "error" in row["reference"]
+        assert row["decomposition"] == "decomposed"

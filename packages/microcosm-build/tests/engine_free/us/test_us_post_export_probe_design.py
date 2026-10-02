@@ -353,9 +353,7 @@ def test_batch_size_refuses_too_few_households(probe_tool) -> None:
     take_all=st.booleans(),
     drawn=st.one_of(st.none(), st.integers(min_value=0, max_value=10_000)),
     effective=st.one_of(st.none(), st.floats(min_value=0.0, max_value=10_000.0)),
-    noncarrier=st.one_of(
-        st.none(), st.just(0.0), st.floats(min_value=-1e6, max_value=1e6)
-    ),
+    noncarrier=st.one_of(st.none(), st.integers(min_value=0, max_value=50)),
     census=st.booleans(),
     k=st.floats(min_value=0.5, max_value=8.0),
 )
@@ -378,7 +376,7 @@ def test_classify_probe_rules(
         take_all=take_all,
         drawn_effect_households=drawn,
         effective_households=effective,
-        noncarrier_effect=noncarrier,
+        noncarrier_effect_households=noncarrier,
         census=census,
         se_multiplier=k,
         min_effective_households=100.0,
@@ -389,7 +387,7 @@ def test_classify_probe_rules(
         assert authority == probe_tool.AUTHORITATIVE
     elif standard_error is None or not math.isfinite(standard_error):
         assert authority == probe_tool.INFORMATIONAL
-    elif take_all and not drawn and noncarrier == 0.0:
+    elif take_all and not drawn and noncarrier == 0:
         # Every pool carrier is certain and no other household carries an
         # effect: the effect is the certainty households' exactly.
         assert authority == probe_tool.AUTHORITATIVE
