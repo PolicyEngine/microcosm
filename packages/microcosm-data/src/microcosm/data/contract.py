@@ -467,6 +467,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_local_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
@@ -578,6 +579,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "spine_agreement",
         "terminal",
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_local_area_support": ("area_support", "terminal"),
     "uk_local_target_fit": ("target_fit", "terminal"),
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
@@ -737,6 +739,7 @@ _UK_DENSE_REQUIRED_RELEASE_FILES = (
 _UK_DENSE_GATE_ENTRY_IDS = frozenset(
     {
         "uk_local_area_support",
+        "uk_local_brma_enum_domain",
         "uk_local_geography_ladder_post_calibration",
         "uk_local_per_family_fit",
         "uk_local_target_fit",
@@ -747,9 +750,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "3f0d6cf8ad29f960d3bb1006528a288a360747d203e7ca090a36dbabd781d301",
-    "policy_sha256": "ad63a0aa05ac127d45a42d82c5a0e376f23cf0f708c7b6d25958479b3483bbeb",
-    "spec_fingerprint": "c722d3741e806269d70003fb536947950dabf44bf5b5b1c27e835bdc6d8cdb00",
+    "gates_manifest_sha256": "aaab15a7e2d0d8b9ba6873fe1a8a41910902cb02bbc4d028a9016d717ad2c527",
+    "policy_sha256": "b3601174408fd9035f3415c85f688e40d14ef8be37b5e1d6f95e224787bf056a",
+    "spec_fingerprint": "337f37f42dbf54c212fd4f170dd61db71f61b9568fe92b18ded650b75044be5f",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -794,6 +797,7 @@ _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",
