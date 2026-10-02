@@ -95,6 +95,26 @@ The arms, in order:
   1,920 rows where 480 stood and every stage drawn after them that is not identity-keyed reads its
   rows in a new order. The cell joins the measure exclusions beside its sibling (approved 2026-10-02,
   expiring 2026-11-26 with the class, for her signature).
+- Stack 2 (558325016, after review round 1): the spine passes; dense loss 0.00769; the battery blocked
+  on two further cells. `dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000`
+  has two supporting households on every main-based spine (design weights 1,025 and 1,999 against
+  2,761) and both awards moved out of the band when the stages drawn after the reworked WAS chain read
+  their rows in a new order; it joins the uk-data#452 measure exclusions. `hmrc.spi_region.
+  income_tax_by_region_12570_15000@E12000008@2025` (South East) sits on its target at design weights
+  is 11% short at design weights (69.6m against 78.3m; 62.4m on main, 58.3m on stack 1) and the
+  solver pulls it to +32.0%. The pull comes from the national employment-income bands: at design
+  weights the £12,570–15,000 and £15,000–20,000 employment-income bands are 20% and 31% short (the
+  earners gap the 2026-09-30 build found), the solver fills them by raising the weights of low-paid
+  employees everywhere (three-fold on the 200 households that carry most of this cell's gain), and
+  the South East income-tax cell, carried by the same households, overshoots while its total-income
+  sibling lands at +11.2% (main pulls the same cell from −20% to +22.6%). The cell is deferred four
+  weeks in the target-fit register (it was deferred on 2026-09-18 and retired on microcosm#1012 at
+  +24.5%); the fix is on the employment-income side, not on the draws. Separately, every regional
+  £12,570–15,000 income-tax cell moves 10–30% at design weights between spines that share the same
+  incomes (North West 63.0m, 44.5m, 52.0m; East 41.3m, 53.5m, 53.2m) because the salary-sacrifice and
+  pension draws after the SPI chain are positional; identity-keying those draws would make the
+  design values stable between spines but would not move where the solver lands.
+- Final build (747313ae7): running at the time of writing; the readings follow.
 
 Child Benefit children in payment (review item 5): the trial's 11.1m is at design weights on the
 1 October spine, where the eligible-child base is 14.04m; the claim rate (86.7%) and the opted-out
