@@ -1973,10 +1973,11 @@ def do_calibrate(args) -> None:
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
         "chi_square_distance": round(result.chi_square_distance, 6),
-        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
-        "softmax_cap_rounds_exhausted_epochs": (
+        # Softmax only: the largest in-loop weight over its cap, before the
+        # closing projection (the last epoch batch).
+        "softmax_in_loop_max_cap_ratio": (
             result.options.get("iterate_selection_receipt") or {}
-        ).get("softmax_cap_rounds_exhausted_epochs"),
+        ).get("softmax_in_loop_max_cap_ratio"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -3189,7 +3190,7 @@ def do_package(args) -> dict:
                 "effective_sample_size",
                 "ess_fraction",
                 "chi_square_distance",
-                "softmax_cap_rounds_exhausted_epochs",
+                "softmax_in_loop_max_cap_ratio",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -3471,10 +3472,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How the mass-conserving Adam solve holds the total "
             "(microcosm.calibrate mass_parametrization). 'projection' "
             "(default) is the historical per-step uniform shift; 'softmax' "
-            "optimizes total * softmax(log_w). At the ACS release's scale "
-            "softmax's per-step cap rounds run out on most epochs, so it "
-            "optimizes past the cap until the closing projection; the summary "
-            "records the count (docs/calibration-l2-basis.md)."
+            "optimizes total * softmax(log_w), projecting exactly onto the "
+            "capped simplex after every step; the summary records the largest "
+            "in-loop weight over its cap (docs/calibration-l2-basis.md)."
         ),
     )
     parser.add_argument("--seed", type=int, default=0)

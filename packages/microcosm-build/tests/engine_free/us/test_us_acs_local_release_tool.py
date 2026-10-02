@@ -1845,8 +1845,8 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     assert summary["l2_basis"] == "chi_square"
     assert summary["mass_parametrization"] == "softmax"
     assert summary["chi_square_distance"] >= 0.0
-    exhausted = summary["softmax_cap_rounds_exhausted_epochs"]
-    assert isinstance(exhausted, int) and 0 <= exhausted <= 2
+    in_loop = summary["softmax_in_loop_max_cap_ratio"]
+    assert 0.0 < in_loop <= 1.0 + 1e-5
     assert summary["solver_settings"]["l2_basis"] == "chi_square"
     assert summary["solver_settings"]["mass_parametrization"] == "softmax"
     saved = np.load(args.checkpoint_dir / "weights_latest.npz")
@@ -1983,7 +1983,7 @@ def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
     assert manifest["calibration"]["l2_basis"] == "record"
     assert manifest["calibration"]["mass_parametrization"] == "projection"
     assert manifest["calibration"]["chi_square_distance"] is None
-    assert manifest["calibration"]["softmax_cap_rounds_exhausted_epochs"] is None
+    assert manifest["calibration"]["softmax_in_loop_max_cap_ratio"] is None
 
 
 def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:

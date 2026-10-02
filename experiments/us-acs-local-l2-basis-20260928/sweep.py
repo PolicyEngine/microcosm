@@ -887,6 +887,9 @@ def run_calibration(
             "effective_sample_size": float(result.effective_sample_size),
             "chi_square_distance": float(result.chi_square_distance),
             "realized_max_weight_ratio": float(result.realized_max_weight_ratio),
+            "iterate_selection_receipt": jsonable(
+                dict(result.options.get("iterate_selection_receipt") or {})
+            ),
             "peak_rss_gb": peak_rss_gb(),
         }
         batches.append(batch)
