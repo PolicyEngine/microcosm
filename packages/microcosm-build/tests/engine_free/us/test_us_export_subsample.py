@@ -93,10 +93,12 @@ def test_draw_conserves_stratum_weights_and_keeps_certainty(sampler, population)
     assert (draw.certainty == np.isin(draw.selected_ids, certain)).all()
     assert (label_of.reindex(draw.selected_ids).to_numpy() == draw.labels).all()
     assert np.all(np.diff(draw.selected_ids) > 0)
-    for label, record in draw.strata.items():
+    for record in draw.strata.values():
         eligible = record["eligible_noncertainty_households"]
         expected_n = (
-            0 if eligible == 0 else min(eligible, max(1, math.floor(fraction * eligible)))
+            0
+            if eligible == 0
+            else min(eligible, max(1, math.floor(fraction * eligible)))
         )
         assert record["drawn_noncertainty_households"] == expected_n
 
@@ -128,7 +130,9 @@ def test_draw_is_deterministic_and_row_order_invariant(sampler, population, rng)
 @given(household_populations())
 def test_full_fraction_is_a_census(sampler, population):
     ids, weights, labels, certain, _, seed = population
-    draw = sampler.draw_households(ids, weights, labels, certain, fraction=1.0, seed=seed)
+    draw = sampler.draw_households(
+        ids, weights, labels, certain, fraction=1.0, seed=seed
+    )
     assert np.array_equal(draw.selected_ids, np.sort(ids))
     assert np.array_equal(
         draw.adjusted_weights, pd.Series(weights, index=ids).sort_index().to_numpy()
@@ -199,9 +203,7 @@ def test_entity_masks_keep_whole_households(sampler, frame, fraction, seed):
     selected = set(draw.selected_ids.tolist())
     kept_people = person[masks["person"]]
     assert set(kept_people["person_household_id"]) == selected
-    assert (
-        person.loc[~masks["person"], "person_household_id"].isin(selected).sum() == 0
-    )
+    assert person.loc[~masks["person"], "person_household_id"].isin(selected).sum() == 0
     for entity in sampler.US_GROUP_ENTITIES:
         kept_units = set(group_ids[entity][masks[entity]].tolist())
         referenced = set(kept_people[f"person_{entity}_id"].tolist())
@@ -303,7 +305,9 @@ def test_sample_export_writes_a_verified_subsample(sampler, tmp_path) -> None:
         "source_year",
     ]
     labels, _ = sampler.household_stratum_labels(
-        frame.table("household"), frame.table("person"), ("household_support_channel", "source_year")
+        frame.table("household"),
+        frame.table("person"),
+        ("household_support_channel", "source_year"),
     )
     source_labels = pd.Series(labels, index=source_weights.index)
     for label, record in receipt["strata"].items():
@@ -383,7 +387,7 @@ def test_h5_sample_is_invariant_to_source_row_order(sampler, tmp_path) -> None:
         seed=5,
         probes=fixture_sampler_probes(),
         write_dataset=write_table_h5,
-        chunk_bytes=4096,
+        chunk_rows=5,
         refuse_denied=False,
     )
     assert (
@@ -406,7 +410,9 @@ def test_h5_sample_is_invariant_to_source_row_order(sampler, tmp_path) -> None:
     )
 
 
-def test_sample_export_refuses_split_units_and_self_overwrite(sampler, tmp_path) -> None:
+def test_sample_export_refuses_split_units_and_self_overwrite(
+    sampler, tmp_path
+) -> None:
     frame = synthetic_export_frame(10, seed=1)
     source = tmp_path / "src" / "populace_us_2024.h5"
     source.parent.mkdir()
@@ -585,3 +591,75 @@ def test_the_cli_default_crosses_the_deny_list_boundary(
         "US export household subsampler (tools/sample_us_export_households.py)"
     }
     assert receipt["source"]["sha256"] == digest
+
+
+# ---------------------------------------------------------------------------
+# The chunked reader
+# ---------------------------------------------------------------------------
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    st.integers(min_value=0, max_value=10_000),
+    st.integers(min_value=1, max_value=60),
+    st.sampled_from(["none", "some", "all", "empty"]),
+    st.booleans(),
+)
+def test_chunked_reads_equal_a_whole_table_read(
+    sampler, tmp_path_factory, seed, chunk_rows, mask_kind, subset
+) -> None:
+    """For any chunk size, mask and column subset, ``read_table_rows`` equals
+    one whole-table ``HDFStore.select`` with the same rows and columns."""
+    frame = synthetic_export_frame(25, seed=seed)
+    path = tmp_path_factory.mktemp("chunks") / "export.h5"
+    write_table_h5(frame, path)
+    rng = np.random.default_rng(seed)
+    with pd.HDFStore(str(path), mode="r") as store:
+        whole = store.select("person")
+        n = len(whole)
+        mask = {
+            "none": None,
+            "some": rng.random(n) < 0.3,
+            "all": np.ones(n, dtype=bool),
+            "empty": np.zeros(n, dtype=bool),
+        }[mask_kind]
+        columns = (
+            ["person_household_id", "age", "keogh_distributions"] if subset else None
+        )
+        read = sampler.read_table_rows(
+            store, "person", columns=columns, row_mask=mask, chunk_rows=chunk_rows
+        )
+    expected = whole if columns is None else whole[columns]
+    if mask is not None:
+        expected = expected[mask]
+    pd.testing.assert_frame_equal(read, expected.reset_index(drop=True))
+
+
+def test_column_subset_reads_do_not_pin_whole_chunks(sampler, tmp_path) -> None:
+    """A two-column read of a wide table holds about one chunk plus the kept
+    columns, not every chunk's full record buffer (each kept part is copied
+    out of its chunk)."""
+    import tracemalloc
+
+    rows, width = 40_000, 60
+    table = pd.DataFrame(
+        np.random.default_rng(0).random((rows, width)),
+        columns=[f"c{index}" for index in range(width)],
+    )
+    path = tmp_path / "wide.h5"
+    with pd.HDFStore(str(path)) as store:
+        store.put("person", table, format="table", data_columns=True)
+    table_bytes = rows * width * 8
+    with pd.HDFStore(str(path), mode="r") as store:
+        tracemalloc.start()
+        try:
+            read = sampler.read_table_rows(
+                store, "person", columns=["c0", "c1"], chunk_rows=2_000
+            )
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+    assert read.shape == (rows, 2)
+    # One 2,000-row chunk is 1/20 of the table; pinning every chunk would
+    # trace the whole table (and more).
+    assert peak < 0.35 * table_bytes, peak / table_bytes

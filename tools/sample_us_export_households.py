@@ -89,6 +89,8 @@ DEFAULT_STRATUM_COLUMNS = ("household_support_channel", "source_year")
 DEFAULT_CERTAINTY_THRESHOLD = 5.0
 #: Rows per chunked read are sized to about this many stored bytes.
 DEFAULT_CHUNK_BYTES = 128 * 2**20
+#: Fewest rows per chunked read when the size comes from ``chunk_bytes``.
+MINIMUM_CHUNK_ROWS = 1024
 RECEIPT_FILENAME = "sample_receipt.json"
 
 #: The per-stratum draw rule, declared in every receipt.
@@ -633,18 +635,28 @@ def read_table_rows(
     columns: Sequence[str] | None = None,
     row_mask: np.ndarray | None = None,
     chunk_bytes: int = DEFAULT_CHUNK_BYTES,
+    chunk_rows: int | None = None,
 ) -> pd.DataFrame:
     """Read ``key`` in row chunks, keeping ``columns`` and the masked rows.
 
     Each chunk is read with ``HDFStore.select(start=, stop=)``, the reader
     ``USSingleYearDataset`` uses, so values and dtypes are what the release
-    loader sees. Peak memory is one chunk plus the rows kept.
+    loader sees. A chunk holds ``chunk_rows`` rows, or by default about
+    ``chunk_bytes`` stored bytes (at least :data:`MINIMUM_CHUNK_ROWS` rows).
+    Peak memory is one chunk plus the rows kept: every kept part is copied
+    out of its chunk, because the columns pandas returns from a
+    ``format="table"`` select are views into the chunk's whole record buffer,
+    and a kept view would pin every column of every chunk until the concat.
     """
     _refuse_frame_table_codec(store, key)
     storer = _storer(store, key)
     nrows = int(storer.nrows)
-    rowsize = int(getattr(getattr(storer, "table", None), "rowsize", 0) or 1024)
-    chunk_rows = max(1024, int(chunk_bytes) // max(1, rowsize))
+    if chunk_rows is None:
+        rowsize = int(getattr(getattr(storer, "table", None), "rowsize", 0) or 1024)
+        chunk_rows = max(MINIMUM_CHUNK_ROWS, int(chunk_bytes) // max(1, rowsize))
+    chunk_rows = int(chunk_rows)
+    if chunk_rows < 1:
+        raise ValueError(f"chunk_rows must be positive; got {chunk_rows}.")
     if row_mask is not None:
         row_mask = np.asarray(row_mask, dtype=bool)
         if row_mask.shape != (nrows,):
@@ -663,7 +675,10 @@ def read_table_rows(
         if wanted is not None:
             part = part[wanted]
         if local is not None:
+            # A positional take copies just the kept rows.
             part = part.iloc[np.flatnonzero(local)]
+        elif wanted is not None:
+            part = part.copy()
         parts.append(part)
     if not parts:
         empty = store.select(key, start=0, stop=0)
@@ -763,6 +778,7 @@ def sample_export(
     probes: Iterable[Any] | None = None,
     write_dataset: Callable[[Any, Path, int], None] | None = None,
     chunk_bytes: int = DEFAULT_CHUNK_BYTES,
+    chunk_rows: int | None = None,
     dataset_filename: str | None = None,
     refuse_denied: bool = True,
 ) -> dict[str, object]:
@@ -807,7 +823,9 @@ def sample_export(
             time_period = int(store[TIME_PERIOD_KEY].iloc[0])
             columns = {entity: table_columns(store, entity) for entity in US_ENTITIES}
             nrows = {entity: table_nrows(store, entity) for entity in US_ENTITIES}
-            household = read_table_rows(store, "household", chunk_bytes=chunk_bytes)
+            household = read_table_rows(
+                store, "household", chunk_bytes=chunk_bytes, chunk_rows=chunk_rows
+            )
             person_columns = [
                 *PERSON_MEMBERSHIP_COLUMNS,
                 *[
@@ -823,6 +841,7 @@ def sample_export(
                 US_PERSON_ENTITY,
                 columns=list(dict.fromkeys(person_columns)),
                 chunk_bytes=chunk_bytes,
+                chunk_rows=chunk_rows,
             )
             groups: dict[str, pd.DataFrame] = {"household": household}
             for entity in US_GROUP_ENTITIES[1:]:
@@ -830,7 +849,11 @@ def sample_export(
                     leaf for leaf in binding_inputs if leaf in columns[entity]
                 ]
                 groups[entity] = read_table_rows(
-                    store, entity, columns=wanted, chunk_bytes=chunk_bytes
+                    store,
+                    entity,
+                    columns=wanted,
+                    chunk_bytes=chunk_bytes,
+                    chunk_rows=chunk_rows,
                 )
         return time_period, columns, nrows, person, groups
 
@@ -889,7 +912,11 @@ def sample_export(
         with pd.HDFStore(str(export_path), mode="r") as store:
             return {
                 entity: read_table_rows(
-                    store, entity, row_mask=masks[entity], chunk_bytes=chunk_bytes
+                    store,
+                    entity,
+                    row_mask=masks[entity],
+                    chunk_bytes=chunk_bytes,
+                    chunk_rows=chunk_rows,
                 )
                 for entity in US_ENTITIES
             }
@@ -933,6 +960,7 @@ def sample_export(
             expected_rows=written_rows,
             source_path=export_path,
             chunk_bytes=chunk_bytes,
+            chunk_rows=chunk_rows,
         ),
     )
     output_sha256 = sha256_file(out_path)
@@ -1015,6 +1043,7 @@ def _verify_written_subsample(
     expected_rows: Mapping[str, int],
     source_path: Path,
     chunk_bytes: int,
+    chunk_rows: int | None = None,
 ) -> dict[str, object]:
     """Re-read the written subsample and check it against the selection."""
     from microcosm.data.stored_inputs import h5_stored_tables
@@ -1025,12 +1054,14 @@ def _verify_written_subsample(
             "household",
             columns=[id_column("household"), HOUSEHOLD_WEIGHT_COLUMN],
             chunk_bytes=chunk_bytes,
+            chunk_rows=chunk_rows,
         )
         person = read_table_rows(
             store,
             US_PERSON_ENTITY,
             columns=list(PERSON_MEMBERSHIP_COLUMNS),
             chunk_bytes=chunk_bytes,
+            chunk_rows=chunk_rows,
         )
         rows = {entity: table_nrows(store, entity) for entity in US_ENTITIES}
     failures: list[str] = []
@@ -1130,6 +1161,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--chunk-mib", type=int, default=DEFAULT_CHUNK_BYTES // 2**20)
     parser.add_argument(
+        "--chunk-rows",
+        type=int,
+        default=None,
+        help="rows per chunked read (default: sized from --chunk-mib)",
+    )
+    parser.add_argument(
         "--dataset-filename",
         default=None,
         help="output H5 name (default: the source's file name)",
@@ -1145,6 +1182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             column.strip() for column in args.strata.split(",") if column.strip()
         ),
         chunk_bytes=int(args.chunk_mib) * 2**20,
+        chunk_rows=args.chunk_rows,
         dataset_filename=args.dataset_filename,
     )
     selection = receipt["selection"]

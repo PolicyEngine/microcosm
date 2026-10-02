@@ -184,9 +184,7 @@ def synthetic_export_frame(
     )
 
 
-def write_tables_h5(
-    tables, household_weights, path: Path, period: int = 2024
-) -> None:
+def write_tables_h5(tables, household_weights, path: Path, period: int = 2024) -> None:
     """Write entity tables (any row order) as ``USSingleYearDataset.save`` does."""
     path = Path(path)
     path.unlink(missing_ok=True)
@@ -247,10 +245,13 @@ def sample_synthetic(
     fraction: float,
     seed: int = 0,
     probes=None,
-    chunk_bytes: int = 4096,
+    chunk_rows: int | None = 7,
     name: str = "export",
 ) -> tuple[Path, dict]:
     """Write ``frame`` as an export, sample it; return (subsample path, receipt).
+
+    ``chunk_rows`` defaults to 7 so every table is read in many chunks (the
+    tool's byte-sized default floors a chunk at 1,024 rows).
 
     The deny-list boundary (``refuse_denied=True``, the CLI default) lives in
     ``microcosm.build.us_runtime.h5_io``; this engine-free path skips it, and
@@ -266,7 +267,7 @@ def sample_synthetic(
         seed=seed,
         probes=fixture_sampler_probes() if probes is None else probes,
         write_dataset=lambda sample, path, period: write_table_h5(sample, path, period),
-        chunk_bytes=chunk_bytes,
+        chunk_rows=chunk_rows,
         refuse_denied=False,
     )
     return Path(receipt["output"]["path"]), receipt

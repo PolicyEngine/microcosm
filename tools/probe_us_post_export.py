@@ -39,7 +39,7 @@ verdict in the report carries an ``authority``:
   its floor by at least ``--se-multiplier`` design-based standard errors), or
   it was computed on the source export itself (``settled_on_source``).
 - ``informational``: scale-dependent. A smoke probe with fewer than
-  ``--min-sampled-carriers`` sampled carrier households (unless every pool
+  ``--min-effect-households`` sampled carrier households (unless every pool
   carrier was kept at its source weight), a probe within ``k`` standard
   errors of its floor, unweighted record counts (demographics' ``n_under_50``
   and ``n_under_100``, a state with no sampled record), a take-up column that
@@ -109,10 +109,15 @@ PASSES_FILENAME = "passes.jsonl"
 DEFAULT_BATCH_SIZE = 2_000
 MINIMUM_BATCHES = 3
 DEFAULT_SE_MULTIPLIER = 3.0
-DEFAULT_MIN_SAMPLED_CARRIERS = 5
+#: Drawn households with a nonzero effect needed for a reliable standard error.
+DEFAULT_MIN_EFFECT_HOUSEHOLDS = 5
 #: Tolerance of the per-household effect decomposition check, relative to
-#: the sum of the probe's two weighted totals.
+#: ``sum |w r| + sum |w b|`` (the same arrays summed in another order).
 DECOMPOSITION_RTOL = 1e-9
+#: Largest relative spread of the engine's row weights around one factor of
+#: the household weights: float32 storage and a float32 uprating step each
+#: round by at most 2^-24 (6e-8).
+ROW_WEIGHT_SCALE_RTOL = 1e-6
 STAGES = (
     "stored_inputs",
     "reform_coverage_smoke",
@@ -258,6 +263,23 @@ class SampleDesign:
                 f"{len(unknown)} household id(s) are not in the sample design."
             )
         return series.reindex(self.household_ids).fillna(0.0).to_numpy()
+
+    def per_unit(self, weighted: pd.Series) -> pd.Series:
+        """``weighted[h] / W_h`` per sampled household: the ``y_h`` whose
+        estimator ``sum_h W_h y_h`` is ``weighted.sum()``.
+
+        A household weighing 0 has ``y = 0``; refused if it carries a nonzero
+        weighted value (no weight can produce one).
+        """
+        aligned = self.aligned(weighted)
+        zero = self.adjusted_weights == 0.0
+        if np.any(aligned[zero] != 0.0):
+            raise ValueError(
+                "A zero-weight household carries a nonzero weighted effect."
+            )
+        out = np.zeros_like(aligned)
+        out[~zero] = aligned[~zero] / self.adjusted_weights[~zero]
+        return pd.Series(out, index=self.household_ids)
 
     def total(self, values: pd.Series) -> float:
         """The estimator ``sum_h W_h y_h`` over the sample (adjusted weights)."""
@@ -452,8 +474,8 @@ class HouseholdRowMap:
     The scorer concatenates each batch engine's values in batch order; within
     a batch the engine keeps the dataset's table order, which is the batch
     frame's. ``households(entity)`` is that household id per row, and
-    ``weights(entity)`` the household weight each row should carry; a
-    captured result is decomposed only if its weights equal these exactly.
+    ``weights(entity)`` the batch frame's household weight of each row's
+    household (float64, at the dataset's period).
     """
 
     def __init__(self, batch_frames: Sequence[Any], *, sampler) -> None:
@@ -494,6 +516,61 @@ class HouseholdRowMap:
         return int(sum(batch.n(entity) for batch in self._batches))
 
 
+def row_weight_scale(engine_weights, household_weights) -> float | None:
+    """The one positive factor taking household weights to the engine's row
+    weights, or ``None`` if no single factor does.
+
+    policyengine-core stores ``household_weight`` as float32 and projects it to
+    every row of every entity (``Microsimulation.get_weights``); at a period
+    after the dataset's it uprates the weight by the population ratio
+    (``household_weight``'s ``uprating``: 1.0165 from 2024 to 2026). So the
+    engine's row weights equal the household weights up to one per-period
+    factor and float32 rounding (relative 2^-24 per step). A row whose
+    household weighs 0 must weigh 0.
+    """
+    engine = np.asarray(engine_weights, dtype=np.float64)
+    household = np.asarray(household_weights, dtype=np.float64)
+    if engine.shape != household.shape or not np.isfinite(engine).all():
+        return None
+    zero = household == 0.0
+    if np.any(engine[zero] != 0.0):
+        return None
+    if zero.all():
+        return 1.0
+    ratios = engine[~zero] / household[~zero]
+    scale = float(np.median(ratios))
+    if not (math.isfinite(scale) and scale > 0.0):
+        return None
+    if float(np.max(np.abs(ratios / scale - 1.0))) > ROW_WEIGHT_SCALE_RTOL:
+        return None
+    return scale
+
+
+class HouseholdEffects:
+    """One probe's weighted effect per household and how it was mapped.
+
+    ``weighted[h]`` is ``sum over household h's rows of w_row * (reform -
+    baseline)`` with the engine's own row weights, so ``weighted.sum()`` is
+    the gate's ``reform_total - baseline_total`` up to summation order. The
+    design's estimator of that total is ``sum_h W_h y_h`` with ``W_h`` the
+    subsample's household weight and ``y_h = weighted[h] / W_h``.
+    """
+
+    def __init__(
+        self,
+        weighted: pd.Series,
+        *,
+        entity: str,
+        weight_scale: float,
+        magnitude: float,
+    ) -> None:
+        self.weighted = weighted
+        self.entity = entity
+        self.weight_scale = weight_scale
+        #: ``sum |w r| + sum |w b|``: the scale of the summation-order error.
+        self.magnitude = magnitude
+
+
 def household_effects(
     baseline,
     reform,
@@ -501,13 +578,15 @@ def household_effects(
     entity: str | None,
     row_map: HouseholdRowMap,
     entities: Iterable[str],
-) -> tuple[pd.Series | None, str | None, str]:
-    """Per-household unweighted effect ``t_h`` of one probe, or why not.
+) -> tuple[HouseholdEffects | None, str | None, str]:
+    """One probe's per-household weighted effects, or why they are refused.
 
-    Returns ``(t, entity, reason)``. ``t`` sums ``reform - baseline`` over the
-    household's rows of the measure's entity, with a missing value counted as
-    0 as ``MicroSeries.sum`` skips it. When ``entity`` is unknown it is
-    inferred from the row count and the weights, and refused if ambiguous.
+    Returns ``(effects, entity, reason)``. The measure's rows are mapped to
+    households through the scorer's batch frames: the measure's entity (from
+    the engine's variable metadata, or else every entity whose row count
+    matches) must have one weight factor per row against its household's
+    weight (:func:`row_weight_scale`), and an inferred entity must be
+    unambiguous. A missing value counts as 0, as ``MicroSeries.sum`` skips it.
     """
     base_weights = np.asarray(getattr(baseline, "weights", None), dtype=np.float64)
     reform_weights = np.asarray(getattr(reform, "weights", None), dtype=np.float64)
@@ -517,30 +596,36 @@ def household_effects(
         return None, entity, "baseline and reform rows carry different weights"
     n = len(base_weights)
     candidates = [entity] if entity is not None else list(entities)
-    matches = [
-        candidate
-        for candidate in candidates
-        if row_map.n_rows(candidate) == n
-        and np.array_equal(row_map.weights(candidate), base_weights)
-    ]
+    matches: list[tuple[str, float]] = []
+    for candidate in candidates:
+        if row_map.n_rows(candidate) != n:
+            continue
+        scale = row_weight_scale(base_weights, row_map.weights(candidate))
+        if scale is not None:
+            matches.append((candidate, scale))
     if not matches:
         return (
             None,
             entity,
-            "no entity's batch-frame household mapping reproduces the engine's "
-            "row weights",
+            "no entity's batch-frame households reproduce the engine's row "
+            "weights up to one factor",
         )
-    households = row_map.households(matches[0])
+    households = row_map.households(matches[0][0])
     if any(
         not np.array_equal(row_map.households(other), households)
-        for other in matches[1:]
+        for other, _ in matches[1:]
     ):
-        return None, entity, f"row entity is ambiguous among {matches}"
-    difference = np.nan_to_num(_as_float(reform), nan=0.0) - np.nan_to_num(
-        _as_float(baseline), nan=0.0
+        return None, entity, f"row entity is ambiguous among {[m for m, _ in matches]}"
+    base = np.nan_to_num(_as_float(baseline), nan=0.0) * base_weights
+    reformed = np.nan_to_num(_as_float(reform), nan=0.0) * base_weights
+    weighted = pd.Series(reformed - base).groupby(households).sum()
+    effects = HouseholdEffects(
+        weighted,
+        entity=matches[0][0],
+        weight_scale=matches[0][1],
+        magnitude=float(np.abs(reformed).sum() + np.abs(base).sum()),
     )
-    effects = pd.Series(difference).groupby(households).sum()
-    return effects, matches[0], "decomposed"
+    return effects, effects.entity, "decomposed"
 
 
 # ---------------------------------------------------------------------------
@@ -554,19 +639,26 @@ def classify_probe(
     floor: float,
     standard_error: float | None,
     take_all: bool,
-    pool_carriers: int | None,
-    sampled_carriers: int | None,
+    drawn_effect_households: int | None,
     census: bool,
     se_multiplier: float = DEFAULT_SE_MULTIPLIER,
-    min_sampled_carriers: int = DEFAULT_MIN_SAMPLED_CARRIERS,
+    min_effect_households: int = DEFAULT_MIN_EFFECT_HOUSEHOLDS,
 ) -> tuple[str, str]:
     """``(authority, reason)`` for one smoke probe's verdict at this sample.
 
-    Rules, in order: a census (no sample) is authoritative; no standard error
-    is informational; a sampled (not take-all) probe with pool carriers but
-    fewer than ``min_sampled_carriers`` sampled carriers is informational; a
-    margin to the floor of at least ``se_multiplier`` standard errors is
-    authoritative; anything nearer is informational.
+    Rules, in order:
+
+    1. A census (no sample) is authoritative.
+    2. No finite standard error is informational.
+    3. Fewer than ``min_effect_households`` drawn (non-certainty) households
+       with a nonzero effect is informational: ``S^2`` is estimated from the
+       drawn households, so a sample in which none or few of them carry the
+       effect estimates a variance near 0 whatever the population's is. The
+       exception is a take-all probe (every pool carrier kept at its source
+       weight) whose drawn households carry no effect at all: its effect is
+       the certainty households' exactly, so its variance is 0.
+    4. A margin to the floor of at least ``se_multiplier`` standard errors is
+       authoritative; anything nearer is informational.
     """
     if census:
         return AUTHORITATIVE, "scored on the full export (no sample)"
@@ -576,30 +668,30 @@ def classify_probe(
             "no design-based standard error for this probe, so a full-scale "
             "verdict cannot be bounded",
         )
-    if (
-        not take_all
-        and pool_carriers
-        and sampled_carriers is not None
-        and sampled_carriers < min_sampled_carriers
-    ):
+    drawn = 0 if drawn_effect_households is None else int(drawn_effect_households)
+    exact_take_all = take_all and drawn == 0
+    if drawn < min_effect_households and not exact_take_all:
         return (
             INFORMATIONAL,
-            f"only {sampled_carriers} carrier household(s) sampled (fewer than "
-            f"{min_sampled_carriers}); the standard error is not reliable",
+            f"only {drawn} drawn household(s) carry an effect (fewer than "
+            f"{min_effect_households}); the standard error is not reliable",
         )
     margin = float(signed_magnitude) - float(floor)
+    if exact_take_all:
+        return (
+            AUTHORITATIVE,
+            "take-all probe: every pool carrier is a certainty household at its "
+            "source weight and no drawn household carries an effect, so the "
+            "effect has zero design variance",
+        )
     if abs(margin) >= se_multiplier * standard_error:
-        if standard_error == 0.0:
-            return (
-                AUTHORITATIVE,
-                "zero design variance: every household the effect reaches is a "
-                "certainty household (or the stratum was taken whole)",
-            )
         return (
             AUTHORITATIVE,
             f"the effect is {abs(margin) / standard_error:.1f} standard errors "
             f"{'above' if margin >= 0 else 'below'} the floor "
-            f"(threshold {se_multiplier:g})",
+            f"(threshold {se_multiplier:g})"
+            if standard_error > 0
+            else "zero estimated design variance",
         )
     return (
         INFORMATIONAL,
@@ -617,14 +709,159 @@ def signed_magnitude(effect: float, expected_sign: str) -> float:
     return float(effect) if expected_sign == "positive" else -float(effect)
 
 
-def probe_definition_digests(payload: Mapping[str, Any]) -> dict[str, str]:
-    """SHA-256 of each probe's canonical JSON in a coverage manifest payload."""
-    return {
-        str(entry["id"]): hashlib.sha256(
-            json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        for entry in payload.get("reform_coverage_probes", ())
+#: Reference-smoke fields that define a probe; a change in any of them since
+#: the reference run makes its effect a different quantity.
+PROBE_DEFINITION_FIELDS = (
+    "budget_measure",
+    "binding_inputs",
+    "min_abs_effect",
+    "expected_sign",
+    "period",
+)
+
+
+def reference_comparison(
+    row: Mapping[str, Any], reference: Mapping[str, Any], *, probe
+) -> dict[str, Any]:
+    """One probe's subsample effect against a full-size run's.
+
+    ``same_definition`` compares the fields the reference recorded with the
+    probe's current definition; ``z`` is the difference in standard errors
+    (``None`` without one).
+    """
+    current = {
+        "budget_measure": str(probe.budget_measure),
+        "binding_inputs": [str(leaf) for leaf in probe.binding_inputs],
+        "min_abs_effect": float(probe.min_abs_effect),
+        "expected_sign": str(probe.expected_sign),
+        "period": int(row["period"]),
     }
+    recorded = {
+        "budget_measure": str(reference.get("budget_measure")),
+        "binding_inputs": [str(leaf) for leaf in reference.get("binding_inputs", ())],
+        "min_abs_effect": float(reference.get("min_abs_effect", math.nan)),
+        "expected_sign": str(reference.get("expected_sign")),
+        "period": int(reference.get("period", -1)),
+    }
+    changed = [
+        field for field in PROBE_DEFINITION_FIELDS if current[field] != recorded[field]
+    ]
+    effect = float(row["effect"])
+    reference_effect = float(reference["effect"])
+    standard_error = row.get("standard_error")
+    return {
+        "effect": reference_effect,
+        "passed": bool(reference["passed"]),
+        "same_definition": not changed,
+        "changed_fields": changed,
+        "difference": effect - reference_effect,
+        "relative_difference": None
+        if reference_effect == 0.0
+        else (effect - reference_effect) / abs(reference_effect),
+        "z": None
+        if not standard_error
+        else (effect - reference_effect) / float(standard_error),
+        "verdict_agrees": bool(row["passed"]) == bool(reference["passed"]),
+    }
+
+
+def calibration_result_from_diagnostics(payload: Mapping[str, Any]) -> SimpleNamespace:
+    """The calibration result the release's in-sample rows read, rebuilt from
+    a build's ``calibration_diagnostics.json``.
+
+    ``_in_sample_estimates`` and ``_in_sample_targets`` read each target's
+    ``name`` and its diagnostic's ``final_estimate`` and ``target``; the
+    diagnostics file records them as ``target_name``, ``final_estimate`` and
+    ``target`` (``microcosm.calibrate.diagnostics._target_row``).
+    """
+    rows = list(payload["targets"])
+    return SimpleNamespace(
+        diagnostics=[
+            SimpleNamespace(
+                final_estimate=row.get("final_estimate"), target=row.get("target")
+            )
+            for row in rows
+        ],
+        problem=SimpleNamespace(
+            targets=[SimpleNamespace(name=str(row["target_name"])) for row in rows]
+        ),
+    )
+
+
+def _plan_digest(plan: Sequence[Any]) -> str:
+    return hashlib.sha256(
+        json.dumps([list(map(str, key)) for key in plan], sort_keys=True).encode()
+    ).hexdigest()
+
+
+def compare_reform_validation(
+    payload: Mapping[str, Any], reference: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Subsample budget effects against a full-size run's, row by row."""
+
+    def effects(document) -> dict[str, float | None]:
+        return {
+            str(row["id"]): (row.get("microcosm") or {}).get("budget_effect")
+            for row in document.get("reforms", ())
+        }
+
+    mine = effects(payload)
+    theirs = effects(reference)
+    relative: dict[str, float] = {}
+    for reform_id in sorted(set(mine) & set(theirs)):
+        left, right = mine[reform_id], theirs[reform_id]
+        if left is None or right is None or float(right) == 0.0:
+            continue
+        relative[reform_id] = (float(left) - float(right)) / abs(float(right))
+    magnitudes = sorted(abs(value) for value in relative.values())
+    return {
+        "rows_compared": len(relative),
+        "only_in_probe": sorted(set(mine) - set(theirs)),
+        "only_in_reference": sorted(set(theirs) - set(mine)),
+        "median_abs_relative_difference": None
+        if not magnitudes
+        else magnitudes[len(magnitudes) // 2],
+        "max_abs_relative_difference": None if not magnitudes else magnitudes[-1],
+        "relative_difference": relative,
+        "authority": INFORMATIONAL,
+    }
+
+
+def compare_post_export_plans(
+    records: Mapping[str, Mapping[str, Any]],
+    reference_manifest: Mapping[str, Any],
+) -> list[str]:
+    """Differences between the probe's scoring records and the plans a
+    release's ``build_manifest.json`` recorded (``post_export_scoring``)."""
+    reference = (reference_manifest.get("post_export_scoring") or {}).get(
+        "consumers", {}
+    )
+    problems: list[str] = []
+    for name, record in records.items():
+        recorded = reference.get(name)
+        if recorded is None:
+            problems.append(f"{name}: the reference release recorded no plan")
+            continue
+        if record["baseline_plan"] != recorded["baseline_plan"]:
+            mine = {
+                json.dumps(key, sort_keys=True)
+                for key in record["baseline_plan"]["keys"]
+            }
+            theirs = {
+                json.dumps(key, sort_keys=True)
+                for key in recorded["baseline_plan"]["keys"]
+            }
+            problems.append(
+                f"{name}: baseline plan differs ({len(mine - theirs)} key(s) only "
+                f"in the probe, {len(theirs - mine)} only in the reference)"
+            )
+        for field in ("reform_passes", "reform_systems"):
+            if int(record[field]) != int(recorded[field]):
+                problems.append(
+                    f"{name}: {field} {record[field]} vs the reference's "
+                    f"{recorded[field]}"
+                )
+    return problems
 
 
 # ---------------------------------------------------------------------------
@@ -633,16 +870,28 @@ def probe_definition_digests(payload: Mapping[str, Any]) -> dict[str, str]:
 
 
 class RssSampler:
-    """Peak resident memory of this process since the last reset."""
+    """Peak resident memory of this process since the last reset.
+
+    Samples ``psutil``'s current RSS every ``interval`` seconds. Without
+    psutil (it comes with policyengine-core, so an engine-free environment
+    lacks it) the peak is the process's lifetime ``ru_maxrss``, which cannot
+    be reset; ``source`` says which one a report holds.
+    """
 
     def __init__(self, interval: float = 0.5) -> None:
-        import psutil
-
-        self._process = psutil.Process()
+        try:
+            import psutil
+        except ImportError:
+            self._process = None
+            self.source = "ru_maxrss (process lifetime peak; psutil absent)"
+        else:
+            self._process = psutil.Process()
+            self.source = "psutil rss sampled every 0.5 s"
         self._interval = interval
         self._peak = 0
         self._lock = threading.Lock()
-        threading.Thread(target=self._run, daemon=True).start()
+        if self._process is not None:
+            threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self) -> None:
         while True:
@@ -652,6 +901,8 @@ class RssSampler:
             time.sleep(self._interval)
 
     def current(self) -> int:
+        if self._process is None:
+            return _lifetime_peak_rss()
         return int(self._process.memory_info().rss)
 
     def reset(self) -> int:
@@ -662,6 +913,14 @@ class RssSampler:
     def peak(self) -> int:
         with self._lock:
             return max(self._peak, self.current())
+
+
+def _lifetime_peak_rss() -> int:
+    import resource
+
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # ru_maxrss is bytes on macOS and kilobytes on Linux.
+    return int(peak if sys.platform == "darwin" else peak * 1024)
 
 
 def _gib(value: float) -> float:
@@ -900,9 +1159,12 @@ class ExportProbe:
         target_surface: str = "full",
         dropped_congressional_district_targets: int | None = None,
         reference_smoke: Mapping[str, Any] | None = None,
-        reference_manifest: Mapping[str, Any] | None = None,
+        reference_build_manifest: Mapping[str, Any] | None = None,
+        reference_validation: Mapping[str, Any] | None = None,
+        calibration_diagnostics: Mapping[str, Any] | None = None,
+        reference_paths: Mapping[str, str | None] | None = None,
         se_multiplier: float = DEFAULT_SE_MULTIPLIER,
-        min_sampled_carriers: int = DEFAULT_MIN_SAMPLED_CARRIERS,
+        min_effect_households: int = DEFAULT_MIN_EFFECT_HOUSEHOLDS,
         release_id: str | None = None,
         probes: Sequence[Any] | None = None,
         builder=None,
@@ -941,10 +1203,14 @@ class ExportProbe:
         self.target_surface = target_surface
         self.dropped_cd_targets = dropped_congressional_district_targets
         self.reference_smoke = reference_smoke
-        self.reference_manifest = reference_manifest
+        self.reference_build_manifest = reference_build_manifest
+        self.reference_validation = reference_validation
+        self.calibration_diagnostics = calibration_diagnostics
+        self.reference_paths = dict(reference_paths or {})
         self.se_multiplier = float(se_multiplier)
-        self.min_sampled_carriers = int(min_sampled_carriers)
+        self.min_effect_households = int(min_effect_households)
         self.release_id = release_id
+        self.custom_probes = probes is not None
         if probes is None:
             from microcosm.build.us_runtime.release_input_coverage import (
                 us_release_reform_coverage_probes,
@@ -987,7 +1253,7 @@ class ExportProbe:
             "stages_requested": list(self.stages),
             "rules": {
                 "se_multiplier": self.se_multiplier,
-                "min_sampled_carriers": self.min_sampled_carriers,
+                "min_effect_households": self.min_effect_households,
                 "authoritative": (
                     "does not depend on the population's size, clears or misses "
                     "its floor by at least se_multiplier design-based standard "
@@ -1016,6 +1282,13 @@ class ExportProbe:
             "source_export": None
             if self.source_export is None
             else str(self.source_export),
+            "references": {
+                "paths": self.reference_paths,
+                "smoke": self.reference_smoke is not None,
+                "validation": self.reference_validation is not None,
+                "build_manifest": self.reference_build_manifest is not None,
+                "calibration_diagnostics": self.calibration_diagnostics is not None,
+            },
             "stages": {},
             "verdicts": self.verdicts,
         }
@@ -1088,12 +1361,51 @@ class ExportProbe:
                         builder._close_post_export_scorer(self.scorer)
                     )
                     self.scorer = None
+                self._compare_plans()
             if "source_coverage" in self.stages:
                 self._stage("source_coverage", self._source_coverage, "recorded")
         self.report["summary"] = _summary(self.report, self.receipt)
-        self.report["process_peak_rss_gib"] = _gib(self.sampler._rss_peak_bytes())
+        self.report["process_peak_rss_gib"] = _gib(_lifetime_peak_rss())
+        self.report["rss_source"] = (
+            None if self.clock.sampler is None else self.clock.sampler.source
+        )
         self._write_report()
         return self.report
+
+    def _compare_plans(self) -> None:
+        """Did the probe score the plans the reference release recorded?
+
+        A consumer's baseline plan and its reform pass and system counts do
+        not depend on the data, so a difference means the probe's code or
+        inputs (probes, specs, calibration result) differ from the build's.
+        """
+        reference = self.reference_build_manifest
+        scoring = self.report.get("post_export_scoring")
+        if reference is None or scoring is None:
+            return
+        records = {
+            name: record
+            for name, record in scoring["consumers"].items()
+            if not (
+                name == "reform_validation" and self.calibration_diagnostics is None
+            )
+        }
+        problems = compare_post_export_plans(records, reference)
+        self.report["reference_plan_comparison"] = {
+            "consumers": sorted(records),
+            "problems": problems,
+        }
+        self._add(
+            "post_export_scoring",
+            "baseline plans and reform passes match the reference release's "
+            "build manifest",
+            "fail" if problems else "pass",
+            AUTHORITATIVE,
+            "; ".join(problems)
+            or f"identical for {', '.join(sorted(records))} (plans do not "
+            "depend on the data)",
+            "fidelity of this probe to the release",
+        )
 
     # ---- load ---------------------------------------------------------------
 
@@ -1143,46 +1455,32 @@ class ExportProbe:
         failures, details = builder._stored_input_gate_failures(
             self.frame, stage="export frame"
         )
-        written = builder._written_stored_input_verdict_mismatch(
-            self.export_path, details
-        )
         self._add(
             "stored_inputs",
-            "pre-export stored-input gate",
+            "stored-input gate (#1031): stored columns the installed engine "
+            "does not define",
             "fail" if failures else "pass",
             AUTHORITATIVE,
-            "column names do not depend on the sample: "
+            "column names do not depend on the sample, and the sampler verified "
+            "that the subsample stores exactly the source's tables and columns: "
             + ("; ".join(failures) or "no refused stored column"),
             "raises",
         )
+        # The release's written-H5 premise compares the writer's model of the
+        # in-memory export frame with the bytes the writer produced. Here the
+        # frame is loaded from the bytes being graded, so that comparison
+        # holds by construction and proves nothing; it is recorded, not run.
         self._add(
             "stored_inputs",
-            "written-H5 stored-input premise (scored file)",
-            "fail" if written else "pass",
-            AUTHORITATIVE,
-            written or "the written file refuses exactly what the gate refused",
+            "written-H5 stored-input premise (#1031)",
+            "not_run",
+            INFORMATIONAL,
+            "not reproducible standalone: it compares the pre-write export "
+            "frame's modeled stored tables with the written bytes, and the "
+            "probe has only the written bytes",
             "raises",
         )
-        source = None
-        if self.source_export is not None:
-            source = builder._written_stored_input_verdict_mismatch(
-                self.source_export, details
-            )
-            self._add(
-                "stored_inputs",
-                "written-H5 stored-input premise (source export)",
-                "fail" if source else "pass",
-                AUTHORITATIVE,
-                "settled on the source export's own metadata: "
-                + (source or "the same verdict as the gate"),
-                "raises",
-            )
-        return {
-            "gate_failures": failures,
-            "gate_details": details,
-            "written_mismatch": written,
-            "source_mismatch": source,
-        }
+        return {"gate_failures": failures, "gate_details": details}
 
     # ---- take-up participation ------------------------------------------------
 
@@ -1350,10 +1648,16 @@ class ExportProbe:
         builder = self.builder
         probes = self.probes
 
-        def gate_for(simulate):
-            return builder.us_reform_coverage_smoke_gate(
-                simulate=simulate, probes=probes, period=builder.PERIOD
-            )
+        if self.custom_probes:
+
+            def gate_for(simulate):
+                return builder.us_reform_coverage_smoke_gate(
+                    simulate=simulate, probes=probes, period=builder.PERIOD
+                )
+
+        else:
+            # The release's own consumer: the shipped probes, in its order.
+            gate_for = builder._reform_coverage_smoke_consumer
 
         plan = builder._record_post_export_baseline_plan(gate_for)
         scoring = self.scorer.open_consumer("reform_coverage_smoke", plan)
@@ -1379,12 +1683,6 @@ class ExportProbe:
                 f"{len(probes)} probes."
             )
         row_map = HouseholdRowMap(self.scorer._batches(), sampler=self.sampler)
-        current = probe_definition_digests(json.loads(release_input_coverage_text()))
-        reference_digests = (
-            None
-            if self.reference_manifest is None
-            else probe_definition_digests(self.reference_manifest)
-        )
         reference_results = (
             {}
             if self.reference_smoke is None
@@ -1401,26 +1699,9 @@ class ExportProbe:
                 reform_results,
                 row_map,
             )
-            row["definition_sha256"] = current.get(str(probe.id))
             reference = reference_results.get(str(probe.id))
             if reference is not None:
-                effect = float(row["effect"])
-                reference_effect = float(reference["effect"])
-                row["reference"] = {
-                    "effect": reference_effect,
-                    "passed": bool(reference["passed"]),
-                    "same_definition": None
-                    if reference_digests is None
-                    else reference_digests.get(str(probe.id))
-                    == current.get(str(probe.id)),
-                    "difference": effect - reference_effect,
-                    "relative_difference": None
-                    if reference_effect == 0.0
-                    else (effect - reference_effect) / abs(reference_effect),
-                    "z": None
-                    if not row["standard_error"]
-                    else (effect - reference_effect) / row["standard_error"],
-                }
+                row["reference"] = reference_comparison(row, reference, probe=probe)
             rows.append(row)
             self._add(
                 "reform_coverage_smoke",
@@ -1453,32 +1734,35 @@ class ExportProbe:
         carriers = self.carriers_by_probe[str(probe.id)]
         standard_error = None
         noncarrier = None
+        drawn_effect = None
+        certainty_effect = None
+        weight_scale = None
         if effects is not None and self.design_problems:
             decomposition = "the sample design did not verify against its receipt"
         elif effects is not None:
-            reconstructed = self.design.total(effects)
-            # The gate's effect is a difference of two weighted totals, so its
-            # rounding scales with the totals.
-            scale = abs(float(result["baseline_total"])) + abs(
-                float(result["reform_total"])
-            )
+            weight_scale = effects.weight_scale
+            reconstructed = direction * float(effects.weighted.sum())
             if not math.isclose(
-                direction * reconstructed,
+                reconstructed,
                 float(result["effect"]),
                 rel_tol=0.0,
-                abs_tol=DECOMPOSITION_RTOL * scale + 1e-6,
+                abs_tol=DECOMPOSITION_RTOL * effects.magnitude + 1e-6,
             ):
                 decomposition = (
-                    f"per-household effects total {direction * reconstructed!r}; "
-                    f"the gate scored {result['effect']!r}"
+                    f"per-household effects total {reconstructed!r}; the gate "
+                    f"scored {result['effect']!r}"
                 )
             else:
-                variance = self.design.variance(effects)
+                per_unit = self.design.per_unit(effects.weighted)
+                variance = self.design.variance(per_unit)
                 standard_error = (
                     math.sqrt(variance) if math.isfinite(variance) else None
                 )
-                noncarrier = direction * self.design.total(
-                    effects[~effects.index.isin(carriers)]
+                bearing = self.design.aligned(effects.weighted) != 0.0
+                drawn_effect = int((bearing & ~self.design.certainty).sum())
+                certainty_effect = int((bearing & self.design.certainty).sum())
+                noncarrier = direction * float(
+                    effects.weighted[~effects.weighted.index.isin(carriers)].sum()
                 )
         pool = (
             None
@@ -1492,11 +1776,10 @@ class ExportProbe:
             floor=float(probe.min_abs_effect),
             standard_error=standard_error,
             take_all=take_all,
-            pool_carriers=None if pool is None else int(pool["carrier_households"]),
-            sampled_carriers=int(len(carriers)),
+            drawn_effect_households=drawn_effect,
             census=self.census,
             se_multiplier=self.se_multiplier,
-            min_sampled_carriers=self.min_sampled_carriers,
+            min_effect_households=self.min_effect_households,
         )
         return {
             "probe": str(probe.id),
@@ -1513,6 +1796,9 @@ class ExportProbe:
             "passed": bool(result["passed"]),
             "standard_error": standard_error,
             "decomposition": decomposition,
+            "engine_weight_scale": weight_scale,
+            "drawn_effect_households": drawn_effect,
+            "certainty_effect_households": certainty_effect,
             "noncarrier_effect": noncarrier,
             "pool_carrier_households": None
             if pool is None
@@ -1530,9 +1816,24 @@ class ExportProbe:
 
     def _validation(self) -> dict[str, Any]:
         builder = self.builder
+        if self.calibration_diagnostics is None:
+            result = SimpleNamespace(
+                diagnostics=[], problem=SimpleNamespace(targets=[])
+            )
+            in_sample = (
+                "simulated on the subsample: no --calibration-diagnostics, so "
+                "the release's in-sample rows (taken from its calibration fit, "
+                "never simulated) cost one extra reform pass each here"
+            )
+        else:
+            result = calibration_result_from_diagnostics(self.calibration_diagnostics)
+            in_sample = (
+                "taken from the build's calibration fit (--calibration-"
+                "diagnostics), as the release does; full-scale values, not "
+                "subsample estimates"
+            )
         payload_for = builder._reform_validation_consumer(
-            result=SimpleNamespace(diagnostics=[], problem=SimpleNamespace(targets=[])),
-            release_id=self._release_id(),
+            result=result, release_id=self._release_id()
         )
         plan = builder._record_post_export_baseline_plan(payload_for)
         scoring = self.scorer.open_consumer("reform_validation", plan)
@@ -1549,21 +1850,28 @@ class ExportProbe:
         ]
         self._add(
             "reform_validation",
-            "every out-of-sample reform scores",
+            "every reform scores through the batched scorer",
             "pass",
             AUTHORITATIVE,
-            "the stage ran every reform through the batched scorer; its budget "
-            "effects are weighted estimates (informational)",
+            "the stage ran to completion; whether a reform raises does not "
+            "depend on the sample, but its budget effects are weighted "
+            "estimates (informational)",
             "raises",
         )
-        return {
+        record: dict[str, Any] = {
             "baseline_keys": len(plan),
+            "baseline_plan_sha256": _plan_digest(plan),
             "reform_passes": scoring_record["reform_passes"],
             "reform_systems": scoring_record["reform_systems"],
             "rows": len(rows),
             "rows_with_budget_effect": len(scored),
-            "in_sample_rows": "null budget effect: no calibration fit outside a build",
+            "in_sample_rows": in_sample,
         }
+        if self.reference_validation is not None:
+            record["reference"] = compare_reform_validation(
+                payload, self.reference_validation
+            )
+        return record
 
     # ---- 4. demographics ------------------------------------------------------
 
@@ -1735,15 +2043,6 @@ def probe_export(export_path, out_dir, **options) -> dict[str, Any]:
     return ExportProbe(export_path, out_dir, **options).run()
 
 
-def release_input_coverage_text() -> str:
-    """The packaged US coverage manifest's text (the probes' definitions)."""
-    from microcosm.build.us_runtime import release_input_coverage
-
-    return release_input_coverage._resource_text(
-        release_input_coverage.US_RELEASE_INPUT_COVERAGE_RESOURCE
-    )
-
-
 def _take_up_shares(payload: Mapping[str, Any]) -> dict[str, float]:
     return {
         str(row["variable"]): float(row["take_up_share"])
@@ -1798,6 +2097,33 @@ def _summary(report: Mapping[str, Any], receipt) -> dict[str, Any]:
     return summary
 
 
+#: Files of a release directory (``releases/<release id>/``) the probe reads.
+REFERENCE_FILES = {
+    "smoke": "reform_coverage_smoke.json",
+    "validation": "reform_validation.json",
+    "build_manifest": "build_manifest.json",
+    "calibration_diagnostics": "calibration_diagnostics.json",
+}
+
+
+def reference_paths(
+    release_dir: Path | None, **explicit: Path | None
+) -> dict[str, Path | None]:
+    """Each reference file: the explicit path, else the release directory's."""
+    paths: dict[str, Path | None] = {}
+    for key, filename in REFERENCE_FILES.items():
+        path = explicit.get(key)
+        if path is None and release_dir is not None:
+            candidate = Path(release_dir) / filename
+            path = candidate if candidate.exists() else None
+        paths[key] = path
+    return paths
+
+
+def _read_json(path: Path | None):
+    return None if path is None else json.loads(Path(path).read_text())
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--export", type=Path, required=True, help="H5 to score")
@@ -1829,20 +2155,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--dropped-congressional-district-targets", type=int, default=None
     )
     parser.add_argument(
+        "--reference-release-dir",
+        type=Path,
+        default=None,
+        help="a full-size build's release directory (releases/<release id>/): "
+        "defaults --reference-smoke, --reference-validation, "
+        "--reference-build-manifest and --calibration-diagnostics to its files",
+    )
+    parser.add_argument(
         "--reference-smoke",
         type=Path,
         default=None,
         help="a full-size run's reform_coverage_smoke.json to compare against",
     )
     parser.add_argument(
-        "--reference-manifest",
+        "--reference-validation",
         type=Path,
         default=None,
-        help="the release input coverage manifest that reference run used",
+        help="a full-size run's reform_validation.json to compare against",
+    )
+    parser.add_argument(
+        "--reference-build-manifest",
+        type=Path,
+        default=None,
+        help="a full-size run's build_manifest.json, whose post_export_scoring "
+        "plans the probe's must match",
+    )
+    parser.add_argument(
+        "--calibration-diagnostics",
+        type=Path,
+        default=None,
+        help="the build's calibration_diagnostics.json: reform validation then "
+        "takes its in-sample rows from the fit, as the release does",
     )
     parser.add_argument("--se-multiplier", type=float, default=DEFAULT_SE_MULTIPLIER)
     parser.add_argument(
-        "--min-sampled-carriers", type=int, default=DEFAULT_MIN_SAMPLED_CARRIERS
+        "--min-effect-households", type=int, default=DEFAULT_MIN_EFFECT_HOUSEHOLDS
     )
     parser.add_argument("--release-id", default=None)
     args = parser.parse_args(argv)
@@ -1852,6 +2200,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         candidate = args.export.resolve().parent / "sample_receipt.json"
         receipt_path = candidate if candidate.exists() else None
     receipt = None if receipt_path is None else json.loads(receipt_path.read_text())
+    references = reference_paths(
+        args.reference_release_dir,
+        smoke=args.reference_smoke,
+        validation=args.reference_validation,
+        build_manifest=args.reference_build_manifest,
+        calibration_diagnostics=args.calibration_diagnostics,
+    )
     report = probe_export(
         args.export,
         args.out,
@@ -1865,14 +2220,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         dropped_congressional_district_targets=(
             args.dropped_congressional_district_targets
         ),
-        reference_smoke=None
-        if args.reference_smoke is None
-        else json.loads(args.reference_smoke.read_text()),
-        reference_manifest=None
-        if args.reference_manifest is None
-        else json.loads(args.reference_manifest.read_text()),
+        reference_smoke=_read_json(references["smoke"]),
+        reference_validation=_read_json(references["validation"]),
+        reference_build_manifest=_read_json(references["build_manifest"]),
+        calibration_diagnostics=_read_json(references["calibration_diagnostics"]),
+        reference_paths={
+            key: None if path is None else str(path) for key, path in references.items()
+        },
         se_multiplier=args.se_multiplier,
-        min_sampled_carriers=args.min_sampled_carriers,
+        min_effect_households=args.min_effect_households,
         release_id=args.release_id,
     )
     summary = report["summary"]

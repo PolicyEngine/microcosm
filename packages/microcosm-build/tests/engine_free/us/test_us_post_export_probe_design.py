@@ -116,10 +116,7 @@ def test_variance_is_the_exact_design_variance_with_equal_weights(
     estimates = []
     variances = []
     for chosen in itertools.product(
-        *(
-            itertools.combinations(range(size), drawn)
-            for size, drawn, _, _ in strata
-        )
+        *(itertools.combinations(range(size), drawn) for size, drawn, _, _ in strata)
     ):
         values, weights, adjusted, labels, is_certain, records = _sample_arrays(
             strata, certainty, chosen
@@ -136,7 +133,9 @@ def test_variance_is_the_exact_design_variance_with_equal_weights(
         )
     estimates = np.asarray(estimates)
     scale = 1.0 + abs(population_total) + float(np.abs(estimates).max())
-    assert estimates.mean() == pytest.approx(population_total, rel=1e-9, abs=1e-9 * scale)
+    assert estimates.mean() == pytest.approx(
+        population_total, rel=1e-9, abs=1e-9 * scale
+    )
     design_variance = float(np.mean((estimates - population_total) ** 2))
     assert float(np.mean(variances)) == pytest.approx(
         design_variance, rel=1e-7, abs=1e-9 * scale**2
@@ -188,7 +187,8 @@ def test_variance_structure(probe_tool, sample, scale) -> None:
 
     base = variance(values)
     single = any(
-        1 == record["drawn_noncertainty_households"]
+        1
+        == record["drawn_noncertainty_households"]
         < record["eligible_noncertainty_households"]
         for record in records.values()
     )
@@ -200,9 +200,10 @@ def test_variance_structure(probe_tool, sample, scale) -> None:
         scale**2 * base, rel=1e-9, abs=1e-12 * (1.0 + base)
     )
     census = {
-        label: {**record, "eligible_noncertainty_households": record[
-            "drawn_noncertainty_households"
-        ]}
+        label: {
+            **record,
+            "eligible_noncertainty_households": record["drawn_noncertainty_households"],
+        }
         for label, record in records.items()
     }
     assert variance(values, strata=census) == 0.0
@@ -338,7 +339,7 @@ def test_batch_size_refuses_too_few_households(probe_tool) -> None:
         probe_tool.choose_batch_size(10, 0)
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=400, deadline=None)
 @given(
     magnitude=st.floats(min_value=0.0, max_value=1e9),
     floor=st.floats(min_value=0.0, max_value=1e9),
@@ -346,39 +347,62 @@ def test_batch_size_refuses_too_few_households(probe_tool) -> None:
         st.none(),
         st.just(math.nan),
         st.just(math.inf),
+        st.just(0.0),
         st.floats(min_value=0.0, max_value=1e8),
     ),
     take_all=st.booleans(),
-    pool=st.one_of(st.none(), st.integers(min_value=0, max_value=10_000)),
-    sampled=st.integers(min_value=0, max_value=10_000),
+    drawn=st.one_of(st.none(), st.integers(min_value=0, max_value=10_000)),
     census=st.booleans(),
     k=st.floats(min_value=0.5, max_value=5.0),
 )
 def test_classify_probe_rules(
-    probe_tool, magnitude, floor, standard_error, take_all, pool, sampled, census, k
+    probe_tool, magnitude, floor, standard_error, take_all, drawn, census, k
 ) -> None:
     authority, reason = probe_tool.classify_probe(
         signed_magnitude=magnitude,
         floor=floor,
         standard_error=standard_error,
         take_all=take_all,
-        pool_carriers=pool,
-        sampled_carriers=sampled,
+        drawn_effect_households=drawn,
         census=census,
         se_multiplier=k,
-        min_sampled_carriers=5,
+        min_effect_households=5,
     )
     assert authority in (probe_tool.AUTHORITATIVE, probe_tool.INFORMATIONAL)
     assert reason
+    drawn = drawn or 0
     if census:
         assert authority == probe_tool.AUTHORITATIVE
     elif standard_error is None or not math.isfinite(standard_error):
         assert authority == probe_tool.INFORMATIONAL
-    elif not take_all and pool and sampled < 5:
+    elif take_all and drawn == 0:
+        # Every pool carrier is certain and no drawn household carries an
+        # effect: the effect is the certainty households' exactly.
+        assert authority == probe_tool.AUTHORITATIVE
+    elif drawn < 5:
+        # A variance estimated from too few effect-bearing draws (zero
+        # included) bounds nothing, whatever it came out as.
         assert authority == probe_tool.INFORMATIONAL
     else:
         expected = abs(magnitude - floor) >= k * standard_error
         assert (authority == probe_tool.AUTHORITATIVE) == expected
+
+
+def test_a_sample_without_effect_bearing_draws_is_not_authoritative(
+    probe_tool,
+) -> None:
+    """The false-authoritative case: a rare effect none of whose households
+    was drawn estimates SE 0 and an effect of 0 (far below the floor)."""
+    authority, reason = probe_tool.classify_probe(
+        signed_magnitude=0.0,
+        floor=1e6,
+        standard_error=0.0,
+        take_all=False,
+        drawn_effect_households=0,
+        census=False,
+    )
+    assert authority == probe_tool.INFORMATIONAL
+    assert "0 drawn household" in reason
 
 
 @pytest.mark.parametrize(
@@ -408,12 +432,21 @@ def test_take_up_failure_split_and_stale_check(probe_tool) -> None:
     assert len(missing) == len(constant) == len(band) == 1
     payload = {
         "programs": [
-            {"variable": "a", "populace_treatment": "count_calibrated",
-             "ships_at_engine_default": True},
-            {"variable": "b", "populace_treatment": "count_calibrated",
-             "ships_at_engine_default": False},
-            {"variable": "c", "populace_treatment": "seeded",
-             "ships_at_engine_default": True},
+            {
+                "variable": "a",
+                "populace_treatment": "count_calibrated",
+                "ships_at_engine_default": True,
+            },
+            {
+                "variable": "b",
+                "populace_treatment": "count_calibrated",
+                "ships_at_engine_default": False,
+            },
+            {
+                "variable": "c",
+                "populace_treatment": "seeded",
+                "ships_at_engine_default": True,
+            },
         ]
     }
     assert probe_tool.stale_count_calibrated(payload) == ["a"]
