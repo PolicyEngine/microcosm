@@ -3,8 +3,8 @@
 Each grid point is one ``sweep.py`` calibration of the 2026-09-23 release's
 4,459-target surface (1,588,854 households; ~8 GB peak) in its own container.
 The kernel packages are installed from this worktree's committed tree; the
-launch refuses a tree whose kernel sources differ from HEAD, and every run
-records that HEAD.
+launch refuses a tree whose kernel sources (or ``sweep.py``) differ from HEAD,
+and every run records that HEAD.
 
     modal run --detach experiments/us-acs-local-l2-basis-20260928/modal_sweep.py::launch
     modal run experiments/us-acs-local-l2-basis-20260928/modal_sweep.py::collect
@@ -14,6 +14,14 @@ container against ``MANIFEST.json``), runs ``release_repro`` first and stops
 unless it reproduces the published release, then fans out the rest.
 ``collect`` copies every finished run's ``metrics.json`` into
 ``results/runs/`` and its ``weights.npz`` into the local artifacts directory.
+
+``--grid weighted`` runs the weighted-loss grid instead (``weighted_grid``;
+run ids ``w_*``): every point passes the shared module's target weights. It
+also uploads ``registry.py``'s ``target_registry.json`` and receipt. Its first
+point, ``w_release_repro``, has no published result to match, so it gates on
+the harness instead: the solve's epoch-0 loss must equal the weighted loss of
+the starting weights recomputed outside the solver, and its final loss the
+weighted loss of its returned weights.
 """
 
 from __future__ import annotations
@@ -43,12 +51,16 @@ UPLOAD = (
     "targets_meta.parquet",
     "holdout_folds.npz",
 )
+#: The weighted grid also needs the rebuilt registry (``registry.py``).
+UPLOAD_WEIGHTED = ("target_registry.json", "target_registry.receipt.json")
 KERNEL = (
     "microcosm-frame",
     "microcosm-graph",
     "microcosm-diagnostics",
     "microcosm-calibrate",
 )
+#: Workspace packages the shared target-loss weighting imports beyond KERNEL.
+SHARED_WEIGHTS_PACKAGES: tuple[str, ...] = ()
 VOLUME_ROOT = "/sweep"
 CPUS = 8
 
@@ -65,7 +77,8 @@ def _head() -> str:
 def _kernel_clean() -> bool:
     status = subprocess.run(
         ["git", "-C", str(REPO), "status", "--porcelain", "--"]
-        + [f"packages/{name}/src" for name in KERNEL],
+        + [f"packages/{name}/src" for name in (*KERNEL, *SHARED_WEIGHTS_PACKAGES)]
+        + [str(HERE / "sweep.py")],
         capture_output=True,
         text=True,
         check=True,
@@ -99,13 +112,15 @@ image = (
     )
 )
 if REPO is not None:
-    for name in KERNEL:
+    for name in (*KERNEL, *SHARED_WEIGHTS_PACKAGES):
         image = image.add_local_dir(
             str(REPO / "packages" / name), f"/opt/kernel/{name}", copy=True
         )
     image = image.run_commands(
         "python -m pip install --no-deps "
-        + " ".join(f"/opt/kernel/{name}" for name in KERNEL)
+        + " ".join(
+            f"/opt/kernel/{name}" for name in (*KERNEL, *SHARED_WEIGHTS_PACKAGES)
+        )
     ).add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
 
 app = modal.App("microcosm-acs-l2-basis-sweep", image=image)
@@ -261,6 +276,72 @@ def grid() -> list[dict]:
     return specs
 
 
+def weighted_grid() -> list[dict]:
+    """The weighted-loss grid; ``w_release_repro`` must come first.
+
+    Every point passes the shared module's target weights. Full surface: the
+    release's settings, softmax chi-square at share 0.5 over the λ path and at
+    share 0.9, and projection chi-square around the equal-weight pick (d797
+    proposes projection). Rotated holdout folds 0 and 1 for the configurations
+    the λ re-pick compares. Two ``w_dup_`` reruns of fold-0 points measure the
+    held-out run-to-run variation the equal-weight grid left unmeasured.
+    """
+
+    def point(run_id: str, **fields) -> dict:
+        return {"run_id": f"w_{run_id}", "target_weighting": "shared", **fields}
+
+    def softmax(lam: float, share: float | None = None, **fields) -> dict:
+        tag = "s050" if share is None else f"s{round(share * 1000):03d}"
+        return point(
+            f"soft_chi_{tag}_{lam:g}",
+            l2_lambda=lam,
+            l2_basis="chi_square",
+            mass_parametrization="softmax",
+            acs_share=share,
+            **fields,
+        )
+
+    def projection(lam: float, **fields) -> dict:
+        if lam == 0:
+            return point("proj_s050_0", mass_parametrization="projection", **fields)
+        return point(
+            f"proj_chi_s050_{lam:g}",
+            l2_lambda=lam,
+            l2_basis="chi_square",
+            mass_parametrization="projection",
+            **fields,
+        )
+
+    def held(spec: dict, fold: int, prefix: str = "") -> dict:
+        tag = "hold" if fold == 0 else f"hold{fold}"
+        return {
+            **spec,
+            "run_id": "w_" + prefix + tag + "_" + spec["run_id"].removeprefix("w_"),
+            "holdout_fold": fold,
+        }
+
+    specs = [point("release_repro", mass_parametrization="projection")]
+    specs += [softmax(lam) for lam in (0.0, 0.01, 0.03, 0.1, 0.3, 1.0)]
+    specs += [softmax(lam, 0.9) for lam in (0.0, 0.01)]
+    specs += [projection(lam) for lam in (0.01, 0.03, 0.1)]
+    compared = [
+        projection(0.0),
+        softmax(0.0),
+        softmax(0.03),
+        softmax(0.1),
+        softmax(0.0, 0.9),
+        projection(0.03),
+        projection(0.1),
+    ]
+    for fold in (0, 1):
+        specs += [held(spec, fold) for spec in compared]
+    specs += [held(projection(0.0), 0, "dup_"), held(softmax(0.03), 0, "dup_")]
+    return specs
+
+
+GRIDS = {"equal": grid, "weighted": weighted_grid}
+
+
 @app.function(
     cpu=CPUS,
     memory=24576,
@@ -294,32 +375,73 @@ def run_point(spec: dict) -> dict:
     )
     volume.commit()
     national = payload["metrics"]["concentration"]["national"]
+    consistency = payload["consistency"]
+    final_loss = payload["result"]["final_loss"]
     return {
         "run_id": spec["run_id"],
-        "final_loss": payload["result"]["final_loss"],
+        "final_loss": final_loss,
         "fraction_within_10pct": payload["metrics"]["fit_train"]["overall"][
             "fraction_within_10pct"
         ],
         "kish_ess": national["kish_ess"],
         "chi_square_distance": national["chi_square_distance"],
         "wall_seconds": payload["timing"]["total_wall_seconds"],
+        "weighted": payload["target_loss_weights"]["target_weighting"] != "equal",
+        "epoch0_vs_recomputed": consistency.get(
+            "recomputed_design_loss_relative_to_epoch0"
+        ),
+        "final_vs_recomputed": (
+            consistency["recomputed_minus_result_final_loss"] / final_loss
+            if final_loss
+            else None
+        ),
     }
 
 
-def _upload_checkpoint() -> None:
+def _upload_checkpoint(weighted: bool = False) -> None:
+    names = UPLOAD + (UPLOAD_WEIGHTED if weighted else ())
     with volume.batch_upload(force=True) as batch:
-        for name in UPLOAD:
+        for name in names:
             batch.put_file(str(CHECKPOINT / name), f"/checkpoint/{name}")
 
 
+#: The weighted harness gate: the solve's epoch-0 loss against the weighted
+#: loss of the starting weights recomputed in float64 outside the solver
+#: (the solver's float32 path differs at ~1e-6), and its final loss against
+#: the weighted loss of its returned weights.
+WEIGHTED_GATE_RTOL = 1e-4
+
+
+def _weighted_gate(repro: dict) -> None:
+    for key in ("epoch0_vs_recomputed", "final_vs_recomputed"):
+        value = repro.get(key)
+        if value is None or abs(value) > WEIGHTED_GATE_RTOL:
+            raise SystemExit(
+                f"w_release_repro {key}={value} exceeds {WEIGHTED_GATE_RTOL}; "
+                "the solve did not optimize the weighted loss the harness "
+                "recomputes; not launching the grid"
+            )
+    if not repro.get("weighted"):
+        raise SystemExit("w_release_repro did not record target-loss weights")
+
+
 @app.local_entrypoint()
-def launch(skip_repro: bool = False) -> None:
+def launch(skip_repro: bool = False, grid: str = "equal") -> None:
+    if grid not in GRIDS:
+        raise SystemExit(f"unknown grid {grid!r}; choose one of {sorted(GRIDS)}")
     if not _kernel_clean():
-        raise SystemExit("kernel sources differ from HEAD; commit before launching")
-    print(f"kernel HEAD {GIT_SHA}")
-    _upload_checkpoint()
-    specs = grid()
-    if not skip_repro:
+        raise SystemExit(
+            "kernel sources or sweep.py differ from HEAD; commit before launching"
+        )
+    print(f"kernel HEAD {GIT_SHA}, grid {grid}")
+    _upload_checkpoint(weighted=grid == "weighted")
+    specs = GRIDS[grid]()
+    if not skip_repro and grid == "weighted":
+        repro = run_point.remote(specs[0])
+        print(f"{specs[0]['run_id']}:", json.dumps(repro))
+        if not repro.get("cached"):
+            _weighted_gate(repro)
+    elif not skip_repro:
         repro = run_point.remote(specs[0])
         print("release_repro:", json.dumps(repro))
         if not repro.get("cached"):
@@ -339,11 +461,14 @@ def launch(skip_repro: bool = False) -> None:
 
 
 @app.local_entrypoint()
-def collect() -> None:
+def collect(grid: str = "equal") -> None:
+    if grid not in GRIDS:
+        raise SystemExit(f"unknown grid {grid!r}; choose one of {sorted(GRIDS)}")
     results = HERE / "results" / "runs"
     results.mkdir(parents=True, exist_ok=True)
     collected = 0
-    for spec in grid():
+    specs = GRIDS[grid]()
+    for spec in specs:
         run_id = spec["run_id"]
         local = LOCAL_RUNS / run_id
         local.mkdir(parents=True, exist_ok=True)
@@ -358,4 +483,4 @@ def collect() -> None:
             for chunk in volume.read_file(f"/runs/{run_id}/weights.npz"):
                 handle.write(chunk)
         collected += 1
-    print(f"collected {collected} of {len(grid())} runs")
+    print(f"collected {collected} of {len(specs)} runs")
