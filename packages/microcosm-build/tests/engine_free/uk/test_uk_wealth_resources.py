@@ -137,6 +137,7 @@ def test_support_bounds_tool_rounds_synthetic_donor_outward(tmp_path: Path) -> N
         "Ten1R8": [2, 4],
         "DVhvalueR8": [100000, 0],
         "DVHseValR8_sum": [1000, 2000],
+        "DVBltValR8_sum": [0, 300],
         "DVBlDValR8_sum": [3000, 4000],
         "DVTotinc_bhcR8": [50000, 60000],
         "DVSaValR8_aggr": [500, 600],

@@ -279,7 +279,11 @@ _RAW_TO_CLEAN = {
     "OthMortR8_sum": "other_property_mortgage",
     "Ten1R8": "tenure_code",
     "DVhvalueR8": "main_residence_value",
-    "DVHseValR8_sum": "other_residential_property_value",
+    # Houses other than the main residence and buy-to-let property together
+    # are the engine's other residential property; the buy-to-let value sat
+    # in the undrawn other-property remainder (uk-data#501, microcosm#1095).
+    "DVHseValR8_sum": "other_houses_value",
+    "DVBltValR8_sum": "buy_to_let_property_value",
     "DVBlDValR8_sum": "non_residential_property_value",
     "DVTotinc_bhcR8": "household_net_income",
     "DVSaValR8_aggr": "savings",
@@ -453,6 +457,9 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     for column in _SENTINEL_RECODE_COLUMNS:
         values = cleaned[column]
         cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
+    cleaned["other_residential_property_value"] = (
+        cleaned["other_houses_value"] + cleaned["buy_to_let_property_value"]
+    )
     # Private renting households, the flag the Lifetime ISA stage reads on
     # both sides (``was_lisa``); this stage's own tenure predictors are the
     # four-way flags below.

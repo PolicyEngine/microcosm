@@ -2075,7 +2075,6 @@ stages:
       tenure_code: Ten1R8
       private_rent_code: DVPriRntR8
       main_residence_value: DVhvalueR8
-      other_residential_property_value: DVHseValR8_sum
       non_residential_property_value: DVBlDValR8_sum
       savings: DVSaValR8_aggr
       num_vehicles: vcarnr8
@@ -2092,7 +2091,8 @@ stages:
       student_loan_balance: Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr
       consumer_debt: max(HFINWR8_SUM - HFINWNTR8_exSLC_Sum, 0)
       tenure_category: 'Ten1R8 1 owned_outright; 2 or 3 owned_with_mortgage; 4 or 5 private_rent when DVPriRntR8 == 1, otherwise social_rent; any other code private_rent, counted in the receipt'
-      other_property_value: DVPropertyR8 - (DVhvalueR8 + DVHseValR8_sum + DVBlDValR8_sum + DVLUKValR8_sum), refused when negative
+      other_residential_property_value: DVHseValR8_sum + DVBltValR8_sum (houses other than the main residence plus buy-to-let property)
+      other_property_value: DVPropertyR8 - (DVhvalueR8 + DVHseValR8_sum + DVBltValR8_sum + DVBlDValR8_sum + DVLUKValR8_sum), refused when negative
       other_financial_assets: HFINWR8_SUM - (DVSaValR8_aggr + DVCISAVR8_aggr + corporate_wealth), refused when negative
       is_renting: DVPriRntR8 == 1
       region: GORR8 via incumbent REGIONS map

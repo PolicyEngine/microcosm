@@ -145,6 +145,7 @@ def _raw_was() -> pd.DataFrame:
             "Ten1R8": [2, 4],
             "DVhvalueR8": [100_000.0, 0.0],
             "DVHseValR8_sum": [1000.0, 2000.0],
+            "DVBltValR8_sum": [0.0, 300.0],
             "DVBlDValR8_sum": [3000.0, 4000.0],
             "DVTotinc_bhcR8": [50000.0, 60000.0],
             "DVSaValR8_aggr": [500.0, 600.0],
@@ -228,7 +229,10 @@ def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> N
     assert donor["tenure_social_rent"].tolist() == [False, True]
     assert donor["tenure_private_rent"].tolist() == [False, False]
     # The remainders that make each total the sum of its drawn components.
-    assert donor["other_property_value"].tolist() == [90.0, 400.0]
+    # Buy-to-let joins the other houses in other residential property, so
+    # the undrawn remainder shrinks by it (microcosm#1095).
+    assert donor["other_residential_property_value"].tolist() == [1000.0, 2300.0]
+    assert donor["other_property_value"].tolist() == [90.0, 100.0]
     assert donor["other_financial_assets"].tolist() == [5.0, 14.0]
     assert donor["main_residence_mortgage"].tolist() == [1000.0, 0.0]
     assert donor["other_mortgage"].tolist() == [0.0, 0.0]
