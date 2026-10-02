@@ -69,3 +69,25 @@ with 0, adult records by `adult.tab` membership), over all 34,966 people.
   as it was. No CI job reads a released uk-data artifact. Until uk-data ships
   #526, microcosm's code-11 adults and ESA proxies differ from the pinned
   incumbent, and no committed instrument measures that difference.
+
+## Mutation check
+
+`mutation_check.py` applies each mutation to a temporary copy of
+microcosm-build's sources, placed first on `PYTHONPATH`, and runs the three
+test files (engine-free employment and legacy-proxy tests, and the engine-uk
+enum test). Every mutation must fail them:
+
+```
+baseline (unmutated copy): rc=0
+killed: 11 back to LONG_TERM_DISABLED (rc=1)
+killed: unknown adult codes default to LONG_TERM_DISABLED (rc=1)
+killed: every row treated as an adult (rc=1)
+killed: adult records by code presence, not adult.tab membership (rc=1)
+killed: 9 and 10 swapped (rc=1)
+killed: small counts printed (rc=1)
+killed: children get a non-CHILD status (rc=1)
+killed: code 0 accepted for adults (rc=1)
+killed: non-integer codes truncated (rc=1)
+killed: OTHER_INACTIVE added to the ESA health statuses (rc=1)
+10/10 mutations killed
+```
