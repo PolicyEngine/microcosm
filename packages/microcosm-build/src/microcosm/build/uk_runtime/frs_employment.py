@@ -25,9 +25,9 @@ from microcosm.frame import Frame
 
 # Adult-table EMPSTATI ("Adult - Employment Status - ILO definition") value
 # labels from the UKDS FRS 2024-25 data dictionary (SN 9563), mapped to
-# policyengine-uk EmploymentStatus names. Matches policyengine-uk-data's
-# FRS_EMPSTATI_EMPLOYMENT_STATUS (policyengine-uk-data#526). Child-table
-# people have no EMPSTATI and are CHILD.
+# policyengine-uk EmploymentStatus names. Matches the incumbent's
+# FRS_EMPSTATI_EMPLOYMENT_STATUS (uk-data#526). Child-table people have no
+# EMPSTATI and are CHILD.
 FRS_EMPSTATI_EMPLOYMENT_STATUS = MappingProxyType(
     {
         1: "FT_EMPLOYED",  # Full-time employee
