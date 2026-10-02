@@ -559,7 +559,7 @@
         "nhs_admitted_patient_spending",
         "nhs_outpatient_spending"
       ],
-      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the",
+      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the #890 rake to the published net support retired on Mar\u00eda's ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing's boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
       "operations": [
         {
           "annualization_weeks": 52,
@@ -597,12 +597,12 @@
           "derived_predictors": {
             "count_further_education": "current_education in (UPPER_SECONDARY, TERTIARY)",
             "count_primary_education": "current_education == PRIMARY",
-            "count_secondary_education": "current_education == LOWER_SECONDARY"
+            "count_secondary_education": "current_education == LOWER_SECONDARY",
+            "is_adult": "count of household members with is_uc_claimant (FRS claimants and partners)",
+            "is_child": "count of household members without is_uc_claimant (dependent children)"
           },
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
-            "is_adult",
-            "is_child",
             "is_SP_age",
             "dla",
             "pip",
@@ -936,7 +936,7 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth.",
+      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
       "operations": [
         {
           "annualization_weeks": 52,
@@ -947,10 +947,12 @@
           "year": 2023
         },
         {
+          "derived_predictors": {
+            "is_adult": "count of household members with is_uc_claimant (FRS claimants and partners)",
+            "is_child": "count of household members without is_uc_claimant (dependent children)"
+          },
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
-            "is_adult",
-            "is_child",
             "is_SP_age",
             "household_net_income"
           ]

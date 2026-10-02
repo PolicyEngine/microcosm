@@ -727,7 +727,11 @@ class TestE3ManifestLockstep:
         from microcosm.build.uk_runtime.etb_services import (
             UK_ETB_SERVICES_OUTPUT_COLUMNS,
         )
-        from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
+        from microcosm.build.uk_runtime.etb_vat import (
+            UK_ETB_FAMILY_ROLE_COUNTS,
+            UK_ETB_VAT_ENGINE_PREDICTORS,
+            UK_ETB_VAT_PREDICTORS,
+        )
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
         from microcosm.build.uk_runtime.frs_education_grants import (
             DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES,
@@ -820,6 +824,10 @@ class TestE3ManifestLockstep:
         )
         assert (
             tuple(stages["etb_vat"].operations[1].parameters["predictors"])
+            == UK_ETB_VAT_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[2].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
         from microcosm.build.uk_runtime.etb_services import (
@@ -833,7 +841,7 @@ class TestE3ManifestLockstep:
         )
         assert set(
             stages["etb_services"].operations[2].parameters["derived_predictors"]
-        ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
+        ) == {*UK_ETB_SERVICES_EDUCATION_COUNTS, *UK_ETB_FAMILY_ROLE_COUNTS}
         assert (
             tuple(stages["etb_services"].operations[3].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
