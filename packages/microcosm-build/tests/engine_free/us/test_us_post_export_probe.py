@@ -280,3 +280,90 @@ def test_probe_report_rss_falls_back_without_psutil(probe_tool, monkeypatch) -> 
     sampler = probe_tool.RssSampler()
     assert sampler.source.startswith("ru_maxrss")
     assert sampler.peak() >= sampler.reset() > 0
+
+
+def test_an_engine_failure_is_an_authoritative_error_and_later_stages_run(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """A stage that raises is a finding, not the end of the probe: the
+    failure does not depend on the sample, so it is authoritative, and the
+    stages after it still run."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        fail_on="snap",
+        stages=("reform_coverage_smoke", "demographics", "source_coverage"),
+    )
+    assert report["stages"]["reform_coverage_smoke"]["status"] == "error"
+    assert (
+        "fixture engine refuses snap"
+        in report["stages"]["reform_coverage_smoke"]["error"]
+    )
+    assert report["stages"]["demographics"]["status"] == "completed"
+    assert report["stages"]["source_coverage"]["status"] == "completed"
+    errors = [
+        row
+        for row in report["summary"]["authoritative_failures"]
+        if row["stage"] == "reform_coverage_smoke"
+    ]
+    assert len(errors) == 1 and errors[0]["verdict"] == "error"
+
+
+def test_a_receipt_that_does_not_match_the_subsample_fails_visibly(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """A receipt whose strata disagree with the subsample is an authoritative
+    failure, and no smoke probe reports a standard error from that design."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    tampered = json.loads(json.dumps(receipt))
+    label = sorted(tampered["strata"])[0]
+    tampered["strata"][label]["drawn_noncertainty_households"] += 1
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=tampered,
+        stages=("reform_coverage_smoke",),
+    )
+    checks = verdicts_by_check(report)
+    design = checks[
+        (
+            "load",
+            "the sample design rebuilt from the subsample verifies against its receipt",
+        )
+    ]
+    assert (design["verdict"], design["authority"]) == ("fail", "authoritative")
+    assert label in design["reason"]
+    for row in report["stages"]["reform_coverage_smoke"]["probes"]:
+        assert row["standard_error"] is None
+        assert row["authority"] == "informational"
+
+
+def test_a_source_export_with_other_bytes_settles_nothing(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    frame, path, receipt, source = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    other = tmp_path / "other.h5"
+    write_table_h5(synthetic_export_frame(10, seed=99), other)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        source_export=other,
+        stages=("take_up_participation",),
+    )
+    check = verdicts_by_check(report)[
+        ("load", "the source export is the receipt's source")
+    ]
+    assert (check["verdict"], check["authority"]) == ("fail", "authoritative")
+    assert "source" not in report["stages"]["take_up_participation"]

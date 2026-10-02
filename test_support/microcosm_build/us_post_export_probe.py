@@ -121,10 +121,15 @@ def run_fixture_probe(
     receipt=None,
     probes=None,
     batch_size: int | None = None,
+    fail_on: str | None = None,
     **options,
 ):
-    """Run the probe with the float32 fake engine; return (report, log)."""
+    """Run the probe with the float32 fake engine; return (report, log).
+
+    ``fail_on`` names a variable the fake engine refuses to compute.
+    """
     log = _EngineLog()
+    log.fail_on = fail_on
     report = probe_tool.probe_export(
         export_path,
         out_dir,

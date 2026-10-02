@@ -93,3 +93,43 @@ def test_probe_decomposes_policyengine_us_effects(
         uprating, rel=1e-5
     )
     assert rows["wages_income_tax_2024"]["measure_entity"] == "tax_unit"
+
+
+@pytest.mark.slow
+def test_sampler_defaults_write_a_verified_engine_subsample(
+    builder, sampler, probe_tool, tmp_path
+) -> None:
+    """The sampler's defaults (the shipped probes, the release writer and the
+    deny-list boundary) on an engine-written export: the written file
+    verifies, every shipped probe is receipted, the certainty set is exactly
+    the carriers of the thin probes, and the design the probe rebuilds from
+    the engine's own loader verifies against the receipt."""
+    source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
+    receipt = sampler.sample_export(source, tmp_path / "sample", fraction=0.5, seed=1)
+    assert receipt["verification"]["passed"]
+    assert receipt["timing"]["import_release_modules"]["wall_seconds"] >= 0.0
+    from microcosm.build.us_runtime.release_input_coverage import (
+        us_release_reform_coverage_probes,
+    )
+
+    assert [row["probe"] for row in receipt["probes"]] == [
+        str(probe.id) for probe in us_release_reform_coverage_probes()
+    ]
+    wages = [
+        row
+        for row in receipt["probes"]
+        if "employment_income_before_lsr" in row["binding_inputs"]
+    ]
+    assert wages and all(row["carrier_households"] > 0 for row in wages)
+    thin = {row["probe"] for row in receipt["probes"] if row["certainty"]}
+    assert set(receipt["certainty"]["probes_with_certainty"]) == thin
+    path = Path(receipt["output"]["path"])
+    frame = builder._load_frame(path, expected_sha256=receipt["output"]["sha256"])
+    design = probe_tool.design_from_sample(
+        frame.table("household"),
+        frame.table("person"),
+        frame.weights_for("household").values,
+        receipt,
+        sampler=sampler,
+    )
+    assert design.verify() == []
