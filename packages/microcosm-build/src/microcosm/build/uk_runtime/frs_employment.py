@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
@@ -21,20 +23,27 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.frame import Frame
 
-EMPLOYMENT_STATUS_MAP = {
-    0: "CHILD",
-    1: "FT_EMPLOYED",
-    2: "PT_EMPLOYED",
-    3: "FT_SELF_EMPLOYED",
-    4: "PT_SELF_EMPLOYED",
-    5: "UNEMPLOYED",
-    6: "RETIRED",
-    7: "STUDENT",
-    8: "CARER",
-    9: "LONG_TERM_DISABLED",
-    10: "SHORT_TERM_DISABLED",
-    11: "LONG_TERM_DISABLED",
-}
+# Adult-table EMPSTATI ("Adult - Employment Status - ILO definition") value
+# labels from the UKDS FRS 2024-25 data dictionary (SN 9563), mapped to
+# policyengine-uk EmploymentStatus names. Matches policyengine-uk-data's
+# FRS_EMPSTATI_EMPLOYMENT_STATUS (policyengine-uk-data#526). Child-table
+# people have no EMPSTATI and are CHILD.
+FRS_EMPSTATI_EMPLOYMENT_STATUS = MappingProxyType(
+    {
+        1: "FT_EMPLOYED",  # Full-time employee
+        2: "PT_EMPLOYED",  # Part-time employee
+        3: "FT_SELF_EMPLOYED",  # Full-time self-employed
+        4: "PT_SELF_EMPLOYED",  # Part-time self-employed
+        5: "UNEMPLOYED",  # Unemployed
+        6: "RETIRED",  # Retired
+        7: "STUDENT",  # Student
+        8: "CARER",  # Looking after family/home
+        9: "LONG_TERM_DISABLED",  # Permanently sick/disabled
+        10: "SHORT_TERM_DISABLED",  # Temporarily sick/injured
+        11: "OTHER_INACTIVE",  # Other inactive
+    }
+)
+CHILD_EMPLOYMENT_STATUS = "CHILD"
 EMPLOYMENT_SECTOR_MAP = {
     0: "NOT_EMPLOYED",
     1: "PRIVATE",
@@ -69,7 +78,9 @@ def add_frs_employment(
 
     artifacts = _artifact_by_table(stage)
     adult = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"]
+        )
     )
     derived = derive_frs_employment(frame.table("person"), adult)
     person = frame.table("person").copy()
@@ -93,29 +104,67 @@ def derive_frs_employment(person: pd.DataFrame, adult: pd.DataFrame) -> pd.DataF
 
     ``empstati``, ``mjobsect``, and ``sic`` are intentionally direct-indexed
     so missing source columns fail loudly, matching the incumbent FRS port.
+    A person is an adult record when their ``person_id`` is in ``adult.tab``;
+    everyone else is CHILD.
     """
 
     raw = adult.set_index("person_id")
     aligned = raw.reindex(person["person_id"])
     values = pd.DataFrame(index=person.index)
-    empstati = pd.to_numeric(aligned["empstati"], errors="coerce").fillna(0)
-    # Unmapped codes above the declared domain follow the incumbent's
-    # post-map fillna to LONG_TERM_DISABLED; 0/NaN rows land on CHILD via
-    # the explicit map entry.
-    values["employment_status"] = (
-        empstati.astype(int)
-        .map(EMPLOYMENT_STATUS_MAP)
-        .fillna("LONG_TERM_DISABLED")
-        .to_numpy()
+    values["employment_status"] = derive_employment_status_from_frs(
+        aligned["empstati"], person["person_id"].isin(adult["person_id"])
     )
     sector = pd.to_numeric(aligned["mjobsect"], errors="coerce").fillna(0)
     values["employment_sector"] = (
         sector.astype(int).map(EMPLOYMENT_SECTOR_MAP).fillna("NOT_EMPLOYED").to_numpy()
     )
     values["sic_industry_division"] = (
-        pd.to_numeric(aligned["sic"], errors="coerce").fillna(0).clip(lower=0).astype(int).to_numpy()
+        pd.to_numeric(aligned["sic"], errors="coerce")
+        .fillna(0)
+        .clip(lower=0)
+        .astype(int)
+        .to_numpy()
     )
     return values
+
+
+def derive_employment_status_from_frs(empstati, is_adult_record) -> np.ndarray:
+    """Map FRS EMPSTATI codes to ``employment_status``.
+
+    People who are not adult records (child-table people) are CHILD whatever
+    their code. Every adult must carry a code in
+    ``FRS_EMPSTATI_EMPLOYMENT_STATUS``: a missing or unknown adult code refuses
+    the build rather than falling back to a guessed status, as the old fallback
+    silently made code 11 (Other inactive) LONG_TERM_DISABLED.
+    """
+
+    codes = pd.Series(
+        np.asarray(pd.to_numeric(empstati, errors="coerce"), dtype="float64")
+    )
+    adult = np.asarray(is_adult_record, dtype=bool)
+    if adult.shape != codes.shape:
+        raise ValueError(
+            "FRS EMPSTATI codes and adult-record flags must have the same length."
+        )
+    adult_status = codes.map(FRS_EMPSTATI_EMPLOYMENT_STATUS).to_numpy(dtype=object)
+    unknown = adult & pd.isna(adult_status)
+    if unknown.any():
+        bad = codes[unknown]
+        labels = [_code_label(code) for code in sorted(bad.dropna().unique())]
+        if bad.isna().any():
+            labels.append("blank or non-numeric")
+        count = int(unknown.sum())
+        adults = str(count) if count >= 10 else "fewer than 10"
+        raise ValueError(
+            f"FRS adult.tab carries {adults} adults with EMPSTATI code(s) "
+            f"{labels} outside FRS_EMPSTATI_EMPLOYMENT_STATUS; map them from the "
+            "release's data dictionary."
+        )
+    return np.where(adult, adult_status, CHILD_EMPLOYMENT_STATUS).astype(object)
+
+
+def _code_label(code: float) -> str:
+    return str(int(code)) if float(code).is_integer() else str(code)
 
 
 def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:
