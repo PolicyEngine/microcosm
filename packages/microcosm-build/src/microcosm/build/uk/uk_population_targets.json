@@ -2672,7 +2672,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/pip",
-          "value_variable": "pip",
+          "value_expression": "pip + dla",
           "from_entity": "person",
           "map_to": "household",
           "household_conditions": [
@@ -2688,7 +2688,7 @@
               "map_to": "person"
             }
           ],
-          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in microcosm#622. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "The EFO line is \"Disability living allowance and personal independence payments\", so the row binds the engine's pip + dla (María's ruling of 2026-10-02, microcosm#1095); uk-data binds pip alone and microcosm#622 closed without adjudicating it. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to England and Wales (microcosm#1095, uk-data#490): DWP reports this benefit for England and Wales only since executive competence moved to the Scottish Government (Disability Living Allowance and Personal Independence Payment from 1 April 2020; DWP benefit expenditure and caseload tables, Spring 2026, Notes), and OBR table 4.9 carries DWP's line. Scotland's Adult and Child Disability Payments are Scottish Government spending, so the model column sums English and Welsh households only. The Chronicle fact still carries the UK code K02000001."
         },
         "axiom": {
           "metric_name": "obr/pip",
