@@ -1,1 +1,1 @@
-Add a Microcosm schema adapter and `python -m microcosm.graph.explorer` CLI for the Orrery shared viewer, preserving field identities and exact large integers while refusing invalid or oversized input and existing output files.
+Add a compiler-derived graph schema, direct Orrery export APIs, and an explicit `python -m microcosm.graph.orrery` command for graph declarations or saved schemas. Recompile imported metadata, retain field providers and declared input roles, preserve exact large numbers, and verify generated documents with Orrery 0.6.0 in CI.

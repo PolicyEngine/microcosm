@@ -23,7 +23,7 @@ uv run ruff check .      # lint
 ```
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs.
+`engine-uk`, `integration-uk`, `wheels`, and `orrery-contract` jobs.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -62,6 +62,11 @@ its 25 slowest tests.
 Every automated test must run from `.github/workflows/test.yml`. Add a new test
 group to `TEST_GROUPS` before adding its executor to that workflow; do not create
 a separate selection system or test workflow.
+
+The `orrery-contract` job is not a pytest group. It installs the exact public
+Orrery version and locked Node dependency set under `tools/orrery-contract/`,
+generates an Orrery document through Microcosm's public Python API, and requires
+Orrery's public parser to accept it. It performs no browser rendering.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
