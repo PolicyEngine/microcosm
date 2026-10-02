@@ -6,76 +6,98 @@ after a full build: Route A's attempt on build 310842b98 ran 49,304 s before
 its reform-coverage smoke failed on four stale probe definitions (#1046), and
 nothing after the smoke had ever run on a Route A export. This tool runs those
 stages on a subsample written by ``tools/sample_us_export_households.py`` (or
-on any written US release H5), through the release tool's own functions and
-in the order ``_main`` runs them after the export write:
+on any written US release H5) through the release tool's own functions,
+consumers, writers and file names:
 
-1. ``stored_inputs``: the #1031 stored-input contract. The pre-export gate
-   (``_stored_input_gate_failures``) grades the loaded frame, the written-H5
-   check (``_written_stored_input_verdict_mismatch``) grades the scored file,
-   and the same check grades the source export's own metadata.
-2. ``reform_coverage_smoke``: the smoke gate on the household-batched scorer
-   (``_HouseholdBatchedPostExportScorer``), from the baseline plan the
-   engine-free dry run records.
-3. ``reform_validation``: ``_reform_validation_consumer`` with an empty
-   calibration result (no in-sample fit exists outside a build; its JCT
-   in-sample rows publish null), then the out-of-sample reforms.
-4. ``demographics``: the age distribution and the geography coverage.
-5. ``source_coverage``: ``us_source_coverage_diagnostics`` for the declared
-   ``--target-surface``.
-6. ``take_up_participation``: ``us_take_up_participation_diagnostics`` and the
+1. ``stored_inputs``: the #1031 stored-input gate (``_stored_input_gate_failures``)
+   on the loaded frame. The release's written-H5 premise compares the
+   pre-write export frame with the written bytes, so it is recorded as not
+   reproducible rather than run against itself.
+2. ``qrf_tail_concentration``: the terminal QRF tail gate and register
+   (``_qrf_tail_concentration_gate``, ``_qrf_tail_gate_lines``), which the
+   release runs on the export frame just before the write.
+3. ``take_up_participation``: ``us_take_up_participation_diagnostics`` and the
    stale count-calibrated check ``_main`` raises on.
+4. ``reform_coverage_smoke``: the release's smoke consumer on the
+   household-batched scorer (``_HouseholdBatchedPostExportScorer``), from the
+   baseline plan the engine-free dry run records.
+5. ``reform_validation``: ``_reform_validation_consumer``. With the build's
+   ``calibration_diagnostics.json`` its in-sample JCT rows come from the fit,
+   as in the release; without it they are simulated (one extra reform pass
+   each, recorded).
+6. ``demographics``: the age distribution and the geography coverage.
+7. ``source_coverage``: ``us_source_coverage_diagnostics`` for the build's
+   target surface (the reference release manifest's, unless
+   ``--target-surface`` says otherwise).
 
-A stage that raises is recorded with its traceback and the next stage still
-runs, so one probe names every failure the build would have reached one at a
-time. The batch size must give at least three batches, so the multi-batch
-path (and its population-aggregate refusals) runs.
+The engine stages run in ``_main``'s order (smoke, validation, demographics on
+one scorer, then source coverage). The frame-based stages (1-3) run first,
+while the loaded frame is held, instead of after the scorer as in ``_main``:
+they read only the frame, so the order changes no verdict. Unlike the
+release, a stage that raises is recorded with its traceback and the next
+stage still runs, so one probe names every failure the build would have
+reached one at a time; each verdict's ``release_consequence`` says what the
+release would do. The batch size gives at least three batches, so the
+multi-batch path (and its population-aggregate refusals) runs. The report's
+``not_reproduced`` block lists the release steps that need build state the
+export does not carry.
 
 **Which verdicts transfer to full scale.** A subsample is a stratified,
 ratio-adjusted Horvitz-Thompson sample (see the sampler's docstring). Every
-verdict in the report carries an ``authority``:
+verdict carries an ``authority``:
 
 - ``authoritative``: the verdict does not depend on the population's size (a
-  stage that raised, a stored column, a probe whose effect clears or misses
-  its floor by at least ``--se-multiplier`` design-based standard errors), or
-  it was computed on the source export itself (``settled_on_source``).
-- ``informational``: scale-dependent. A smoke probe with fewer than
-  ``--min-effect-households`` sampled carrier households (unless every pool
-  carrier was kept at its source weight), a probe within ``k`` standard
-  errors of its floor, unweighted record counts (demographics' ``n_under_50``
-  and ``n_under_100``, a state with no sampled record), a take-up column that
-  is constant on the subsample, and every weighted estimate (reform
-  validation's budget effects, the age bands, take-up shares).
+  stage that raised, a stored column name, a baseline plan), it was settled on
+  the source export itself, or it is a smoke probe whose effect clears or
+  misses its floor by at least ``--se-multiplier`` design-based standard
+  errors with at least ``--min-effect-households`` drawn households carrying
+  the effect.
+- ``informational``: scale-dependent. A smoke probe with too few
+  effect-bearing draws or within ``k`` standard errors of its floor, the QRF
+  tail on the subsample (its top-k and minimum-carrier rules count records),
+  unweighted record counts (demographics' ``n_under_50`` and ``n_under_100``,
+  a state with no sampled record), a take-up column constant on the
+  subsample, and every weighted estimate (validation budget effects, age
+  bands, take-up shares).
 
 The smoke's standard errors come from the gate's own arrays: each probe's
-baseline and reform values are captured through the ``simulate`` seam, mapped
-to households through the scorer's batch frames (the mapping must reproduce
-the engine's entity weights exactly, and the per-household effects must sum
-to the gate's effect, or no standard error is reported), and fed to the
-linearized variance of the sampler's estimator: zero for a certainty
-household, and ``N_h^2 (1 - n_h / N_h) / n_h * S^2(w (t - R_h))`` per stratum
-for the drawn ones (the ratio estimator's Taylor linearization). A
-``--reference-smoke`` from a full-size run adds each probe's full-scale
-effect and its z-score, with ``--reference-manifest`` marking the probes
-whose definition changed since.
+baseline and reform values are captured through the ``simulate`` seam and
+summed per household with the engine's own row weights (policyengine-core
+stores weights as float32 and uprates them to later periods, so the mapping
+of rows to households is checked against one weight factor per key, not
+equality). The per-household effects must add up to the gate's effect, or
+no standard error is reported. They feed the linearized variance of the
+sampler's estimator: zero for a certainty household, and
+``N_h^2 (1 - n_h / N_h) / n_h * S^2(w (y - R_h))`` per stratum for the drawn
+ones (the ratio estimator's Taylor linearization; exact when weights are equal
+within a stratum).
 
-With ``--source-export`` (the receipt's source by default) the tool also
-settles the engine-free scale-dependent verdicts exactly on the source:
-geography record counts and the take-up diagnostics, read column by column.
+``--reference-release-dir`` (a full-size build's ``releases/<id>/``) adds each
+smoke probe's full-scale effect and z-score, a row-by-row validation
+comparison, the build's target surface, its QRF register and its in-sample
+fit, and two fidelity checks: the probe's baseline plans and reform pass
+counts must equal the build manifest's, and the source export's QRF tail
+result must equal the release's ``qrf_tail_concentration.json``. With
+``--source-export`` (the receipt's source by default) the tool settles the
+engine-free scale-dependent verdicts exactly on the source: QRF tail,
+take-up diagnostics and geography record counts, read column by column.
 
 Every stage records wall time, CPU time and peak resident memory (sampled
-every 0.5 s); every batch-outer scoring pass is one line of ``passes.jsonl``.
+every 0.5 s with psutil, else the process peak); every batch-outer scoring
+pass is one line of ``passes.jsonl``.
 
 Usage::
 
     .venv/bin/python tools/probe_us_post_export.py \\
         --export <subsample dir>/populace_us_2024.h5 --out <dir> \\
         [--sample-receipt <subsample dir>/sample_receipt.json] \\
-        [--target-surface national_state] [--reference-smoke <json>]
+        [--reference-release-dir <release dir>/releases/<release id>]
 
 writes ``<dir>/probe_report.json``, ``<dir>/passes.jsonl`` and each stage's
 artifact under the release tool's file name (``reform_coverage_smoke.json``,
 ``reform_validation.json``, ``demographics.json``, ``us_source_coverage.json``,
-``us_take_up_participation.json``). None of them certifies anything.
+``us_take_up_participation.json``, ``qrf_tail_concentration.json``). None of
+them certifies anything.
 """
 
 from __future__ import annotations
@@ -120,11 +142,45 @@ DECOMPOSITION_RTOL = 1e-9
 ROW_WEIGHT_SCALE_RTOL = 1e-6
 STAGES = (
     "stored_inputs",
+    "qrf_tail_concentration",
+    "take_up_participation",
     "reform_coverage_smoke",
     "reform_validation",
     "demographics",
     "source_coverage",
-    "take_up_participation",
+)
+#: Release steps after (or around) the export write the probe cannot run
+#: standalone, and why; recorded in every report.
+NOT_REPRODUCED = (
+    {
+        "step": "written-H5 stored-input premise (#1031)",
+        "why": "compares the pre-write export frame's modeled stored tables with "
+        "the written bytes; the probe has only the written bytes",
+    },
+    {
+        "step": "calibration NPZ (_write_npz)",
+        "why": "needs the calibration result and target registry",
+    },
+    {
+        "step": "us_medicaid_take_up.json, us_snap_state_take_up.json, "
+        "us_ssi_take_up.json",
+        "why": "computed by pre-export stages from target specs, seeds and "
+        "priors; the export does not carry their inputs",
+    },
+    {
+        "step": "source coverage fiscal_target_sources, CD vintage crosswalk, "
+        "fiscal-target exclusion receipt",
+        "why": "need the compiled target specs and build metadata",
+    },
+    {
+        "step": "release and build manifests (_build_manifests), publisher preflight",
+        "why": "bind the build's gate evidence, calibration and artifacts",
+    },
+    {
+        "step": "--audit-export-targets",
+        "why": "needs the calibration result and target specs (and was off in "
+        "the published Route A build)",
+    },
 )
 AUTHORITATIVE = "authoritative"
 INFORMATIONAL = "informational"
@@ -827,6 +883,38 @@ def compare_reform_validation(
     }
 
 
+def compare_qrf_tail(
+    result: Mapping[str, Any], reference: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The probe's source-export QRF tail result against a release's
+    ``qrf_tail_concentration.json`` (same frame columns and weights, so the
+    shares must agree to rounding)."""
+    differences: list[str] = []
+    tail = reference["tail_concentration"]
+    if bool(tail["passed"]) != bool(result["passed"]):
+        differences.append(
+            f"verdict {result['passed']} vs the release's {tail['passed']}"
+        )
+    mine = result["surface"].get("checked_sparse_columns", [])
+    theirs = reference["surface"].get("checked_sparse_columns", [])
+    if sorted(mine) != sorted(theirs):
+        differences.append(
+            f"checked columns differ: only probe {sorted(set(mine) - set(theirs))}, "
+            f"only release {sorted(set(theirs) - set(mine))}"
+        )
+    shares = result["details"].get("top_share", {}) or {}
+    reference_shares = tail["details"].get("top_share", {}) or {}
+    for column in sorted(set(shares) & set(reference_shares)):
+        left, right = shares[column], reference_shares[column]
+        if left is None or right is None:
+            if left != right:
+                differences.append(f"{column}: top share {left} vs {right}")
+            continue
+        if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
+            differences.append(f"{column}: top share {left!r} vs {right!r}")
+    return {"differences": differences, "columns_compared": len(shares)}
+
+
 def compare_post_export_plans(
     records: Mapping[str, Mapping[str, Any]],
     reference_manifest: Mapping[str, Any],
@@ -998,19 +1086,27 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
 # ---------------------------------------------------------------------------
 
 
-def source_take_up_frame(source_path: Path, programs, *, sampler, chunk_bytes: int):
-    """The source export restricted to ids, memberships and take-up flags.
+def source_columns_frame(
+    source_path: Path,
+    columns: Iterable[str],
+    *,
+    sampler,
+    chunk_bytes: int,
+    chunk_rows: int | None = None,
+):
+    """The source export restricted to ids, memberships, household weights and
+    ``columns`` (each read from whichever entity table stores it).
 
-    ``us_take_up_participation_diagnostics`` reads only the take-up flag
-    columns and the household weights, so this frame gives the source's exact
-    full-scale diagnostics without loading its 900k-row person table whole.
+    The take-up diagnostics and the QRF tail gate read only their own columns
+    and the household weights (resolved to each entity), so this frame gives
+    their exact full-scale results without loading the source's 900k-row
+    person table whole. Columns no table stores are simply absent, as they
+    are from the source.
     """
     from microcosm.frame import Frame, WeightKind, Weights
     from microcosm.frame.units import US_SCHEMA
 
-    wanted: dict[str, list[str]] = {entity: [] for entity in sampler.US_ENTITIES}
-    for program in programs:
-        wanted.setdefault(program.entity, []).append(program.variable)
+    wanted = set(columns)
     tables: dict[str, pd.DataFrame] = {}
     with pd.HDFStore(str(source_path), mode="r") as store:
         for entity in sampler.US_ENTITIES:
@@ -1022,15 +1118,13 @@ def source_take_up_frame(source_path: Path, programs, *, sampler, chunk_bytes: i
             )
             if entity == "household":
                 structural.append(sampler.HOUSEHOLD_WEIGHT_COLUMN)
-            columns = [
-                *structural,
-                *[column for column in wanted.get(entity, ()) if column in stored],
-            ]
+            selected = [*structural, *[column for column in stored if column in wanted]]
             tables[entity] = sampler.read_table_rows(
                 store,
                 entity,
-                columns=list(dict.fromkeys(columns)),
+                columns=list(dict.fromkeys(selected)),
                 chunk_bytes=chunk_bytes,
+                chunk_rows=chunk_rows,
             )
     weights = tables["household"].pop(sampler.HOUSEHOLD_WEIGHT_COLUMN)
     return Frame(
@@ -1157,11 +1251,14 @@ class ExportProbe:
         stages: Sequence[str] = STAGES,
         batch_size: int | None = DEFAULT_BATCH_SIZE,
         target_surface: str = "full",
+        target_surface_source: str = "default",
         dropped_congressional_district_targets: int | None = None,
         reference_smoke: Mapping[str, Any] | None = None,
         reference_build_manifest: Mapping[str, Any] | None = None,
         reference_validation: Mapping[str, Any] | None = None,
         calibration_diagnostics: Mapping[str, Any] | None = None,
+        reference_qrf_tail: Mapping[str, Any] | None = None,
+        qrf_tail_register: Mapping[str, str] | None = None,
         reference_paths: Mapping[str, str | None] | None = None,
         se_multiplier: float = DEFAULT_SE_MULTIPLIER,
         min_effect_households: int = DEFAULT_MIN_EFFECT_HOUSEHOLDS,
@@ -1174,6 +1271,7 @@ class ExportProbe:
         measure_entity: Callable[[str], str | None] | None = None,
         sample_rss: bool = True,
         chunk_bytes: int | None = None,
+        chunk_rows: int | None = None,
     ) -> None:
         self.builder = builder or load_builder()
         self.sampler = sampler or load_sampler()
@@ -1201,11 +1299,18 @@ class ExportProbe:
         self.stages = tuple(stages)
         self.batch_size_requested = batch_size
         self.target_surface = target_surface
+        self.target_surface_source = target_surface_source
         self.dropped_cd_targets = dropped_congressional_district_targets
         self.reference_smoke = reference_smoke
         self.reference_build_manifest = reference_build_manifest
         self.reference_validation = reference_validation
         self.calibration_diagnostics = calibration_diagnostics
+        self.reference_qrf_tail = reference_qrf_tail
+        if qrf_tail_register is None and reference_qrf_tail is not None:
+            qrf_tail_register = reference_qrf_tail["surface"]["reviewed_exclusions"]
+        self.qrf_tail_register = (
+            None if qrf_tail_register is None else dict(qrf_tail_register)
+        )
         self.reference_paths = dict(reference_paths or {})
         self.se_multiplier = float(se_multiplier)
         self.min_effect_households = int(min_effect_households)
@@ -1222,6 +1327,7 @@ class ExportProbe:
         self.load_frame = load_frame
         self.measure_entity = measure_entity
         self.chunk_bytes = int(chunk_bytes or self.sampler.DEFAULT_CHUNK_BYTES)
+        self.chunk_rows = chunk_rows
         self.clock = StageClock(RssSampler() if sample_rss else None)
         self.passes_path = self.out_dir / PASSES_FILENAME
         self.frame = None
@@ -1282,12 +1388,19 @@ class ExportProbe:
             "source_export": None
             if self.source_export is None
             else str(self.source_export),
+            "target_surface": {
+                "mode": self.target_surface,
+                "dropped_congressional_district_targets": self.dropped_cd_targets,
+                "source": self.target_surface_source,
+            },
+            "not_reproduced": [dict(step) for step in NOT_REPRODUCED],
             "references": {
                 "paths": self.reference_paths,
                 "smoke": self.reference_smoke is not None,
                 "validation": self.reference_validation is not None,
                 "build_manifest": self.reference_build_manifest is not None,
                 "calibration_diagnostics": self.calibration_diagnostics is not None,
+                "qrf_tail": self.reference_qrf_tail is not None,
             },
             "stages": {},
             "verdicts": self.verdicts,
@@ -1329,6 +1442,8 @@ class ExportProbe:
         if load["status"] == "completed":
             if "stored_inputs" in self.stages:
                 self._stage("stored_inputs", self._stored_inputs, "raises")
+            if "qrf_tail_concentration" in self.stages:
+                self._stage("qrf_tail_concentration", self._qrf_tail, "raises")
             if "take_up_participation" in self.stages:
                 self._stage("take_up_participation", self._take_up, "raises")
             # Free the loaded frame before the scorer loads its own copy.
@@ -1482,6 +1597,92 @@ class ExportProbe:
         )
         return {"gate_failures": failures, "gate_details": details}
 
+    # ---- QRF tail concentration (pre-export terminal gate) ---------------------
+
+    def _qrf_tail(self) -> dict[str, Any]:
+        builder = self.builder
+        register = dict(self.qrf_tail_register or {})
+        register_source = (
+            "none: every concentrated column fails"
+            if self.qrf_tail_register is None
+            else f"{len(register)} reviewed exclusion(s)"
+        )
+
+        def evaluate(frame) -> dict[str, Any]:
+            gate, surface = builder._qrf_tail_concentration_gate(
+                frame, reviewed_exclusions=register
+            )
+            mismatch = builder._qrf_tail_register_mismatch(register, gate)
+            # The release's own terminal lines (no --allow-qrf-tail-concentration).
+            gate_lines, register_lines = builder._qrf_tail_gate_lines(
+                gate, mismatch, allow_concentration=False
+            )
+            failures = [*gate_lines, *register_lines]
+            return {
+                "passed": not failures,
+                "failures": failures,
+                "register_mismatch": mismatch,
+                "details": dict(gate.details),
+                "surface": surface,
+            }
+
+        subsample = evaluate(self.frame)
+        record: dict[str, Any] = {"register": register_source, "subsample": subsample}
+        self._add(
+            "qrf_tail_concentration",
+            "QRF tail gate and register (subsample)",
+            "pass" if subsample["passed"] else "fail",
+            AUTHORITATIVE if self.census else INFORMATIONAL,
+            "top_k = 100 and min_nonzero_records = 500 are record counts, so "
+            "the subsample checks different columns and tails than the pool: "
+            + ("; ".join(subsample["failures"]) or "passed"),
+            "raises (pre-export terminal gate)",
+        )
+        if self.source_export is not None:
+            qrf_columns = sorted(builder._qrf_imputed_source_outputs())
+            source_frame = source_columns_frame(
+                self.source_export,
+                qrf_columns,
+                sampler=self.sampler,
+                chunk_bytes=self.chunk_bytes,
+                chunk_rows=self.chunk_rows,
+            )
+            source = evaluate(source_frame)
+            del source_frame
+            record["source"] = source
+            self._add(
+                "qrf_tail_concentration",
+                "QRF tail gate and register (source export)",
+                "pass" if source["passed"] else "fail",
+                AUTHORITATIVE,
+                "settled on the source export's QRF columns at its weights: "
+                + ("; ".join(source["failures"]) or "passed"),
+                "raises (pre-export terminal gate)",
+            )
+            if self.reference_qrf_tail is not None:
+                comparison = compare_qrf_tail(source, self.reference_qrf_tail)
+                record["reference"] = comparison
+                self._add(
+                    "qrf_tail_concentration",
+                    "source-export QRF tail result equals the release's "
+                    "qrf_tail_concentration.json",
+                    "pass" if not comparison["differences"] else "fail",
+                    AUTHORITATIVE,
+                    "; ".join(comparison["differences"])
+                    or "same verdict, columns and top-k shares",
+                    "fidelity of this probe to the release",
+                )
+        _write_json(self.out_dir / "qrf_tail_concentration.json", record)
+        return {
+            key: value
+            for key, value in record.items()
+            if key in ("register", "reference")
+        } | {
+            name: {"passed": result["passed"], "failures": result["failures"]}
+            for name, result in record.items()
+            if name in ("subsample", "source")
+        }
+
     # ---- take-up participation ------------------------------------------------
 
     def _take_up(self) -> dict[str, Any]:
@@ -1566,11 +1767,12 @@ class ExportProbe:
             "raises",
         )
         if self.source_export is not None:
-            source_frame = source_take_up_frame(
+            source_frame = source_columns_frame(
                 self.source_export,
-                programs,
+                [program.variable for program in programs],
                 sampler=self.sampler,
                 chunk_bytes=self.chunk_bytes,
+                chunk_rows=self.chunk_rows,
             )
             source_payload = builder.us_take_up_participation_diagnostics(source_frame)
             del source_frame
@@ -2102,8 +2304,45 @@ REFERENCE_FILES = {
     "smoke": "reform_coverage_smoke.json",
     "validation": "reform_validation.json",
     "build_manifest": "build_manifest.json",
+    "release_manifest": "release_manifest.json",
     "calibration_diagnostics": "calibration_diagnostics.json",
+    "qrf_tail": "qrf_tail_concentration.json",
 }
+
+
+def resolve_target_surface(
+    flag: str | None,
+    dropped: int | None,
+    release_manifest: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The build's target surface: the flag, else the release manifest's
+    ``build.target_surface_selection``, else ``full``."""
+    selection = (
+        None
+        if release_manifest is None
+        else (release_manifest.get("build") or {}).get("target_surface_selection")
+    )
+    if flag is not None:
+        return {
+            "mode": flag,
+            "dropped_congressional_district_targets": dropped,
+            "source": "--target-surface",
+        }
+    if selection:
+        return {
+            "mode": str(selection["mode"]),
+            "dropped_congressional_district_targets": (
+                dropped
+                if dropped is not None
+                else selection.get("dropped_congressional_district_targets")
+            ),
+            "source": "reference release_manifest.json build.target_surface_selection",
+        }
+    return {
+        "mode": "full",
+        "dropped_congressional_district_targets": dropped,
+        "source": "default (no flag and no reference release manifest)",
+    }
 
 
 def reference_paths(
@@ -2149,7 +2388,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--stages", default=",".join(STAGES))
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument(
-        "--target-surface", default="full", help="the build's --target-surface"
+        "--target-surface",
+        default=None,
+        help="the build's --target-surface (default: the reference release "
+        "manifest's, else full)",
     )
     parser.add_argument(
         "--dropped-congressional-district-targets", type=int, default=None
@@ -2192,7 +2434,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--min-effect-households", type=int, default=DEFAULT_MIN_EFFECT_HOUSEHOLDS
     )
+    parser.add_argument(
+        "--qrf-tail-register",
+        type=Path,
+        default=None,
+        help="the build's --qrf-tail-concentration-exclusions JSON (default: "
+        "the reference qrf_tail_concentration.json's reviewed exclusions)",
+    )
     parser.add_argument("--release-id", default=None)
+    parser.add_argument(
+        "--chunk-rows",
+        type=int,
+        default=None,
+        help="rows per chunked source read (default: sized from 128 MiB)",
+    )
     args = parser.parse_args(argv)
 
     receipt_path = args.sample_receipt
@@ -2207,6 +2462,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         build_manifest=args.reference_build_manifest,
         calibration_diagnostics=args.calibration_diagnostics,
     )
+    surface = resolve_target_surface(
+        args.target_surface,
+        args.dropped_congressional_district_targets,
+        _read_json(references["release_manifest"]),
+    )
+    register = None
+    if args.qrf_tail_register is not None:
+        register = load_builder()._load_qrf_tail_concentration_exclusions(
+            args.qrf_tail_register
+        )
     report = probe_export(
         args.export,
         args.out,
@@ -2216,14 +2481,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         source_settlement=not args.no_source_settlement,
         stages=tuple(stage.strip() for stage in args.stages.split(",") if stage),
         batch_size=args.batch_size,
-        target_surface=args.target_surface,
-        dropped_congressional_district_targets=(
-            args.dropped_congressional_district_targets
-        ),
+        target_surface=surface["mode"],
+        target_surface_source=surface["source"],
+        dropped_congressional_district_targets=surface[
+            "dropped_congressional_district_targets"
+        ],
         reference_smoke=_read_json(references["smoke"]),
         reference_validation=_read_json(references["validation"]),
         reference_build_manifest=_read_json(references["build_manifest"]),
         calibration_diagnostics=_read_json(references["calibration_diagnostics"]),
+        reference_qrf_tail=_read_json(references["qrf_tail"]),
+        qrf_tail_register=register,
+        chunk_rows=args.chunk_rows,
         reference_paths={
             key: None if path is None else str(path) for key, path in references.items()
         },
