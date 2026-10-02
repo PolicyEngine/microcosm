@@ -63,12 +63,7 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         lambda year: (factors, {"from_period": 2022, "to_period": year}),
         raising=False,
     )
-    options = dict(
-        seed=9,
-        n_estimators=3,
-        donor_sample_size=None,
-        stage1_base_redraw_columns=("dividend_income",),
-    )
+    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
     reference = impute_uk_spi_income_support(support, donor_path, **options)
     result = impute_uk_spi_income_support(
         support,
@@ -85,21 +80,27 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     # Only taxable SPI interest is rebased; the FRS fill's £5 tax-free draw
     # is already in the build-year basis and must not be doubled.
     assert result.person.loc[spi, "savings_interest_income"].eq(205).all()
-    assert (
-        result.person.loc[base_child, "dividend_income"]
-        == person.loc[base_child, "dividend_income"]
-    )
-    base_adult = person[channel].eq("frs") & person.age.ge(16)
+    # FRS rows keep their own reported dividends, children and adults alike:
+    # the SPI forest never redraws them (uk-data#498, microcosm#1095).
+    base = person[channel].eq("frs")
     np.testing.assert_array_equal(
-        result.person.loc[base_adult, "dividend_income"],
-        2 * reference.person.loc[base_adult, "dividend_income"],
+        result.person.loc[base, "dividend_income"],
+        person.loc[base, "dividend_income"],
     )
     assert result.income_uprating == {"from_period": 2022, "to_period": 2024}
 
 
-def test_child_exclusion_keeps_the_base_dividend_random_stream(
+def test_child_exclusion_keeps_the_other_recipients_draws(
     monkeypatch, tmp_path
 ) -> None:
+    """Dropping a recipient leaves every other SPI row's stage-1 draw unchanged.
+
+    The forest is queried with the legacy shape (every SPI-channel person) and
+    the rows outside the recipient domain are discarded afterwards, so the
+    draw stream each recipient consumes does not depend on who else is in it.
+    FRS rows are never redrawn.
+    """
+
     support = _dead_support()
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
@@ -116,24 +117,25 @@ def test_child_exclusion_keeps_the_base_dividend_random_stream(
     monkeypatch.setattr(_FakeFittedQRF, "predict", predict)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     _bypass_reviewed_donor_identity(monkeypatch)
-    options = dict(
-        seed=9,
-        n_estimators=3,
-        donor_sample_size=None,
-        stage1_base_redraw_columns=("dividend_income",),
-    )
+    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
     reference = impute_uk_spi_income_support(support, donor_path, **options)
     person = support.person.copy()
     channel = support_channel_column("person")
-    child = person.index[person[channel].eq("spi")][0]
+    spi_rows = person.index[person[channel].eq("spi")]
+    child = spi_rows[0]
     person.loc[child, "age"] = 15
     candidate = impute_uk_spi_income_support(
         replace(support, person=person), donor_path, **options
     )
+    others = spi_rows.drop(child)
+    np.testing.assert_array_equal(
+        reference.person.loc[others, "dividend_income"],
+        candidate.person.loc[others, "dividend_income"],
+    )
     base = person[channel].eq("frs")
     np.testing.assert_array_equal(
-        reference.person.loc[base, "dividend_income"],
         candidate.person.loc[base, "dividend_income"],
+        support.person.loc[base, "dividend_income"],
     )
 
 
@@ -430,7 +432,7 @@ def test_the_spi_channel_ships_no_structural_nan_on_the_frs_channel(
 
 @pytest.mark.parametrize("age", [15, 16])
 @pytest.mark.parametrize("channel", ["frs", "spi"])
-def test_spi_donor_age_boundary_applies_to_both_recipient_channels(
+def test_spi_donor_age_boundary_and_frs_rows_keep_their_reports(
     monkeypatch, tmp_path, age, channel
 ) -> None:
     support = _dead_support()
@@ -451,18 +453,14 @@ def test_spi_donor_age_boundary_applies_to_both_recipient_channels(
         seed=9,
         n_estimators=3,
         donor_sample_size=None,
-        stage1_base_redraw_columns=("dividend_income",),
     )
 
-    if age == 15:
+    if age == 15 or channel == "frs":
         assert result.person.loc[recipient, "dividend_income"] == 987.0
         assert result.person.loc[recipient, "universal_credit_reported"] == 1234.0
     else:
         assert result.person.loc[recipient, "dividend_income"] == 3.0
-        if channel == "spi":
-            assert result.person.loc[recipient, "universal_credit_reported"] != 1234.0
-        else:
-            assert result.person.loc[recipient, "universal_credit_reported"] == 1234.0
+        assert result.person.loc[recipient, "universal_credit_reported"] != 1234.0
 
 
 def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts() -> (

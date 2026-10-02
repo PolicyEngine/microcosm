@@ -651,7 +651,6 @@ class TestE3ManifestLockstep:
             "resample_band_donor_leaves",
             "fit_weighted_qrf_stage2",
             "zero_pension_age_reports_below_state_pension_age",
-            "redraw_columns_from_fitted_qrf",
             "materialize_hmrc_income_bands_fail_closed",
             "classify_hmrc_income_facts_with_reviewed_fences",
             "gate_distributional_effective_mass",

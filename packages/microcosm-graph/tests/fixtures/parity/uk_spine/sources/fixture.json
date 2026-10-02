@@ -2671,7 +2671,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.",
+      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path.",
       "operations": [
         {
           "artifact_roles": [
@@ -3027,14 +3027,6 @@
           ],
           "spi_state_pension_leaf": "hmrc_spi_state_pension_income",
           "state_pension_age": "policyengine-uk gov.dwp.state_pension.age at the build instant"
-        },
-        {
-          "columns": [
-            "dividend_income"
-          ],
-          "fit": "stage1",
-          "kind": "redraw_columns_from_fitted_qrf",
-          "rows": "base_support_channel"
         },
         {
           "amount_unit_multiplier": 1000000,
