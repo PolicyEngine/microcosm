@@ -114,7 +114,29 @@ The arms, in order:
   incomes (North West 63.0m, 44.5m, 52.0m; East 41.3m, 53.5m, 53.2m) because the salary-sacrifice and
   pension draws after the SPI chain are positional; identity-keying those draws would make the
   design values stable between spines but would not move where the solver lands.
-- Final build (747313ae7): running at the time of writing; the readings follow.
+- Stack 3 (2fe7d8bbb, the Table 3.6 amounts projected by HMRC's band growth): all 7 seam gates pass
+  and the H5 is written; dense loss 0.00713 (main 0.00836). The three lowest employment rows fit at
+  −3.9%, −11.9% and −10.0% (stack 2: −8.9%, −23.1%, −18.9%; main −9.9%, −23.2%, −19.6%). The South
+  East £12,570–15,000 income-tax cell lands at +30.3% under its deferral; the North West twin at
+  +14.4%. Folded weights: max-to-median 1,028 (main 609, stack 1 710, stack 2 1,116; bound 1,151),
+  ESS 4,953 (main 5,191, stack 1 5,222), median positive weight 40.0 (main 55.8), heaviest household
+  41,085 (an East Midlands household in its thirties carrying 10–12% of that region's 30–39
+  population, £20–30k taxpayers and band-B council tax rows; on stack 1 the heaviest was an 85–89
+  Pension Credit unit at 29,690). The rise in the fold between stack 1 and stack 2 came with the WAS
+  mortgage rework and the first thin-cell exclusion; the margin to the bound is now thin and belongs
+  in the review.
+- Final build (2fe7d8bbb): running at the time of writing; the readings follow.
+
+The South East cell, with the count side read: the frame has 0.278m South East taxpayers with total
+income in £12,570–15,000 at design weights against HMRC's projected 0.364m (nationally 2.31m against
+2.97m; North West 0.240m against 0.333m, London 0.235m against 0.340m, East 0.256m against 0.273m),
+and the ones it has pay £250 of income tax each against HMRC's £215. The bound count rows make the
+solver scale these households up by a third to hit the count (final error 0.000), the total-income
+sibling overshoots to +11% and the tax cell to +30%. So root 2 is a deficit of taxpayers just above
+the frozen allowance, concentrated in the South East, London and the North West, not an employment
+problem: the fix is the lowest band's support in the frame (the SPI support channel's coverage of
+that band, which the pension-age prior share of 0.2 reduced, and the FRS's small incomes around the
+allowance), a spine change for the follow-up.
 
 Child Benefit children in payment (review item 5): the trial's 11.1m is at design weights on the
 1 October spine, where the eligible-child base is 14.04m; the claim rate (86.7%) and the opted-out
