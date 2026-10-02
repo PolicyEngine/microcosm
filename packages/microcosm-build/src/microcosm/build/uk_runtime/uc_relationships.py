@@ -81,3 +81,42 @@ def frs_uc_couple_mask(person: pd.DataFrame, benunit: pd.DataFrame) -> np.ndarra
         .reindex(benunit["benunit_id"])
     )
     return counts.eq(2).to_numpy(dtype=bool)
+
+
+#: Benefit-unit financial investment income: interest (tax-free included),
+#: dividends and other investment income. TOTCAPB4 counts accounts and assets
+#: and has no property code (SN 9563), so let-property income is not part of
+#: the capital it predicts (microcosm#1095).
+UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS = (
+    "savings_interest_income",
+    "dividend_income",
+    "other_investment_income",
+)
+
+
+def benunit_financial_investment_income(
+    person: pd.DataFrame, benunit: pd.DataFrame
+) -> np.ndarray:
+    """Sum each member's financial investment income in benefit-unit row order."""
+
+    missing = sorted(
+        {"person_benunit_id", *UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS} - set(person)
+    )
+    if missing:
+        raise KeyError(f"benefit-unit investment income inputs missing: {missing}")
+    values = (
+        person[list(UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS)]
+        .apply(pd.to_numeric, errors="coerce")
+        .sum(axis=1, min_count=len(UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS))
+    )
+    if not np.isfinite(values.to_numpy(dtype=float, na_value=np.nan)).all():
+        raise ValueError("benefit-unit investment income inputs must be finite.")
+    if (values < 0.0).any():
+        raise ValueError("benefit-unit investment income inputs must be nonnegative.")
+    totals = values.groupby(person["person_benunit_id"].to_numpy(), sort=False).sum()
+    return (
+        totals.reindex(benunit["benunit_id"].to_numpy())
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+

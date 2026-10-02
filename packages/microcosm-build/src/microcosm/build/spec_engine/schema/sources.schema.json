@@ -7996,6 +7996,11 @@
       "output",
       "rows",
       "donor_rows",
+      "reporter_status",
+      "investment_income",
+      "investment_income_band_edges",
+      "minimum_cell_donors",
+      "coarsening",
       "dependent_children_bands",
       "couple_status",
       "weight_mapping",
@@ -8016,6 +8021,30 @@
       },
       "donor_rows": {
        "type": "string"
+      },
+      "reporter_status": {
+       "type": "string"
+      },
+      "investment_income": {
+       "type": "string"
+      },
+      "investment_income_band_edges": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "number"
+       }
+      },
+      "minimum_cell_donors": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "coarsening": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
       },
       "dependent_children_bands": {
        "type": "array",

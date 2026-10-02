@@ -4950,7 +4950,7 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [],
-      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh.",
+      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh.",
       "operations": [
         {
           "aggregates": {
@@ -4961,6 +4961,12 @@
           "method": "any_positive"
         },
         {
+          "coarsening": [
+            "merge dependent-children bands",
+            "drop couple status",
+            "merge adjacent investment-income bands",
+            "reporter status only"
+          ],
           "couple_status": "is_uc_couple",
           "dependent_children_bands": [
             "0",
@@ -4968,12 +4974,22 @@
             "2",
             "3+"
           ],
-          "donor_rows": "base_frs_reporters_with_available_capital",
+          "donor_rows": "base_frs_with_available_capital",
           "draw": "weighted_empirical",
           "identity": "benunit_id",
+          "investment_income": "savings_interest_income + dividend_income + other_investment_income, summed over benefit-unit members",
+          "investment_income_band_edges": [
+            0,
+            240,
+            640,
+            2000,
+            8000
+          ],
           "kind": "redraw_spi_reporter_capital",
+          "minimum_cell_donors": 20,
           "output": "frs_benunit_capital",
-          "rows": "spi_channel_post_fill_reporters",
+          "reporter_status": "universal_credit_reported_anchor",
+          "rows": "spi_channel",
           "salt": "frs_benunit_capital",
           "seed": 0,
           "weight_mapping": "household_to_benunit"
