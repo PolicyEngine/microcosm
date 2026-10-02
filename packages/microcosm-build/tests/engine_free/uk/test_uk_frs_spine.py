@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
+    _add_benefits,
     build_uk_frs_spine_frame,
     scottish_water_and_sewerage_weekly,
     uk_frs_spine_seed_frame,
@@ -1143,6 +1144,38 @@ def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
     assert adult["esa_contrib_reported"] == pytest.approx(4 * WEEKS_IN_YEAR)
     assert adult["esa_income_reported"] == pytest.approx(5 * WEEKS_IN_YEAR)
     assert adult["bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+
+
+def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
+    """ADP and CDP rows map to the columns of the benefits they replace (uk-data#500).
+
+    Adult Disability Payment (117 daily living, 118 mobility) mirrors PIP and Child
+    Disability Payment (121 care, 122 mobility) mirrors DLA; the benefit recovery
+    codes 69 and 70 are deductions and reach no reported amount.
+    """
+
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003]})
+    pe_person = pd.DataFrame(index=person.index)
+    benefits = pd.DataFrame(
+        {
+            "person_id": [1001, 1001, 1002, 1002, 1003, 1003, 1001, 1002],
+            "benefit": [117, 118, 121, 122, 96, 1, 69, 70],
+            "var2": [0] * 8,
+            "benamt": [110.40, 28.70, 72.65, 28.70, 73.90, 29.20, 9.0, 11.0],
+        }
+    )
+
+    _add_benefits(pe_person, person, benefits)
+
+    weekly = pe_person.div(WEEKS_IN_YEAR)
+    assert weekly["pip_dl_reported"].tolist() == pytest.approx([110.40, 0.0, 73.90])
+    assert weekly["pip_m_reported"].tolist() == pytest.approx([28.70, 0.0, 0.0])
+    assert weekly["dla_sc_reported"].tolist() == pytest.approx([0.0, 72.65, 29.20])
+    assert weekly["dla_m_reported"].tolist() == pytest.approx([0.0, 28.70, 0.0])
+    reported = pe_person.drop(columns="winter_fuel_allowance_reported")
+    assert reported.to_numpy().sum() == pytest.approx(
+        (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
+    )
 
 
 def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None:

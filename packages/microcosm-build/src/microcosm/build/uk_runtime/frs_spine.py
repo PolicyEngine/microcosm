@@ -128,27 +128,33 @@ MARITAL_MAP = {
     6: "DIVORCED",
 }
 
+# FRS BENEFITS codes summed into each reported amount. Scotland's Adult
+# Disability Payment (117 daily living, 118 mobility) mirrors PIP's components
+# and rates, and Child Disability Payment (121 care, 122 mobility) mirrors DLA's,
+# so each lands in the column of the benefit it replaces (FRS 2024-25 variable
+# listing, UKDS SN 9563; uk-data#500, microcosm#1095). Codes 69 and 70 are
+# benefit recoveries, not income, and stay unmapped.
 BENEFIT_CODES = {
-    "child_benefit": 3,
-    "income_support": 19,
-    "housing_benefit": 94,
-    "attendance_allowance": 12,
-    "dla_sc": 1,
-    "dla_m": 2,
-    "iidb": 15,
-    "carers_allowance": 13,
-    "sda": 10,
-    "afcs": 8,
-    "ssmg": 22,
-    "pension_credit": 4,
-    "child_tax_credit": 91,
-    "working_tax_credit": 90,
-    "state_pension": 5,
-    "winter_fuel_allowance": 62,
-    "incapacity_benefit": 17,
-    "universal_credit": 95,
-    "pip_m": 97,
-    "pip_dl": 96,
+    "child_benefit": (3,),
+    "income_support": (19,),
+    "housing_benefit": (94,),
+    "attendance_allowance": (12,),
+    "dla_sc": (1, 121),
+    "dla_m": (2, 122),
+    "iidb": (15,),
+    "carers_allowance": (13,),
+    "sda": (10,),
+    "afcs": (8,),
+    "ssmg": (22,),
+    "pension_credit": (4,),
+    "child_tax_credit": (91,),
+    "working_tax_credit": (90,),
+    "state_pension": (5,),
+    "winter_fuel_allowance": (62,),
+    "incapacity_benefit": (17,),
+    "universal_credit": (95,),
+    "pip_m": (97, 118),
+    "pip_dl": (96, 117),
 }
 
 # FRS adult HOURTOT: total hours of care provided per week, a banded derived
@@ -649,9 +655,9 @@ def _add_benefits(
     var2 = _number(benefits, "var2")
     amount = _number(benefits, "benamt")
     person_id = benefits.get("person_id", pd.Series(dtype="float64"))
-    for name, code in BENEFIT_CODES.items():
+    for name, codes in BENEFIT_CODES.items():
         pe_person[f"{name}_reported"] = (
-            _sum_to_entity(amount * (benefit == code), person_id, person["person_id"])
+            _sum_to_entity(amount * benefit.isin(codes), person_id, person["person_id"])
             * WEEKS_IN_YEAR
         )
     pe_person["jsa_contrib_reported"] = (
