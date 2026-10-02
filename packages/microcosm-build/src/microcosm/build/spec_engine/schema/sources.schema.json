@@ -6586,6 +6586,9 @@
       "population": {
        "type": "string"
       },
+      "rows": {
+       "type": "string"
+      },
       "seed": {
        "type": "integer"
       }
@@ -9016,6 +9019,66 @@
       },
       "age_pool_minimum": {
        "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "rows",
+      "columns",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "zero_spi_channel_reports"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "rows",
+      "columns",
+      "linkage",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "restore_spi_channel_reports_from_source"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "linkage": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
       }
      }
     },

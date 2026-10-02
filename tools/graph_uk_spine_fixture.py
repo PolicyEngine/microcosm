@@ -118,6 +118,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
 )
+from microcosm.build.uk_runtime.spi_benefit_coherence import (
+    UKSPIBenefitCoherenceStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -160,11 +163,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 38
+UK_FIXTURE_STAGE_COUNT = 39
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 38-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 39-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1649,6 +1652,9 @@ def _build_implementations(
         "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
             stage=stages["uc_reporter_redraw"], engine=engine
         ),
+        "spi_benefit_coherence": UKSPIBenefitCoherenceStageTransform(
+            stage=stages["spi_benefit_coherence"], contract=contract
+        ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
@@ -1703,7 +1709,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 38-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 39-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")

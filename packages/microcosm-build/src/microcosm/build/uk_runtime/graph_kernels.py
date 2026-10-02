@@ -47,7 +47,11 @@ from microcosm.graph.population import dtype_for_token
 from .. import stage_evidence
 from . import (
     bus_use_incidence,
+    frs_disability,
+    frs_education,
     frs_hmrc_source,
+    frs_take_up,
+    spi_support,
     uc_capital_coherence,
     uc_relationships,
     was_wealth,
@@ -95,6 +99,7 @@ _STAGE_MODULES = {
     "hmrc_spi_income_spine": "spi_spine",
     "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
+    "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
     "pension_credit_take_up": "pension_credit_take_up",
     "child_benefit_take_up": "child_benefit_take_up",
@@ -127,6 +132,17 @@ _STAGE_HELPER_MODULES = {
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
+    # The SPI benefit pass restores from the FRS twin through the support
+    # channel's lineage, re-derives the disability flags and the own-right
+    # rule, draws over the take-up population and maps household weights to
+    # benefit units as the UC capital stage does (microcosm#1095).
+    "spi_benefit_coherence": (
+        spi_support,
+        frs_disability,
+        frs_education,
+        frs_take_up,
+        uc_capital_coherence,
+    ),
     "uc_capital_coherence": (uc_relationships,),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization.
@@ -404,7 +420,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 38-stage spine "
+            "UK parity fixture must describe the current 39-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -444,6 +460,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
+    from .spi_benefit_coherence import UKSPIBenefitCoherenceStageTransform
     from .spi_housing_shell import UKSPIHousingShellStageTransform
     from .spi_spine import (
         UKFRSHMRCSpineLeavesStageTransform,
@@ -618,6 +635,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
                 stage=stages["uc_reporter_redraw"], engine=engine
+            ),
+            "spi_benefit_coherence": UKSPIBenefitCoherenceStageTransform(
+                stage=stages["spi_benefit_coherence"], contract=contract
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]

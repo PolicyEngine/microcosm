@@ -63,6 +63,9 @@ HOUSING_SHELL_STAGE_NAMES = [
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
 ]
+SPI_BENEFIT_COHERENCE_STAGE_NAMES = [
+    "spi_benefit_coherence",
+]
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
@@ -99,6 +102,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
+    *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -169,6 +173,7 @@ class TestUKSourceStagesManifest:
             *E5_STAGE_NAMES,
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
+            *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -242,6 +247,7 @@ class TestUKSourceStagesManifest:
                     "hmrc_spi_income_spine": _identity,
                     "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
+                    "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
                     "pension_credit_take_up": _identity,
                     "child_benefit_take_up": _identity,

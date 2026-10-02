@@ -148,13 +148,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "82a92dfa7ba4e4ce81cfd44d7b89737cf3cce50d69fd2d6bbeeae0ca15a0f8d5"
+    "d685ebc526c3e235bfef5d56885a17cfb7a4fd687a6996640cb56265c29f6077"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c117864fac6df5bb7f37f466c068b8dd9dd032b694cf3d521c51b5dca71b5865"
+    "b074f2dc1532bdd61a75e77b51b596ec4ebf513850ab30d8198ad21edba9d4ae"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7ff71ed911b840c01a1b6395de37a04fdf95498444bd692b32d89f3b1767a128"
+    "8543f0c46086d157f25e4bc9aaa087c8d537a174c5312cbb7582ca2b38c79732"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -211,6 +211,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
@@ -1268,6 +1269,7 @@ def _gate_battery_payload(
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "spi_benefit_coherence",
         "uc_capital_coherence",
         "pension_credit_take_up",
         "child_benefit_take_up",
@@ -1296,6 +1298,7 @@ def _gate_battery_payload(
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
