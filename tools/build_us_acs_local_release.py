@@ -37,7 +37,9 @@ package; each is separately resumable):
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
-                gate, spine-composition evidence) + the reviewed-limitations
+                gate, district ESS collapse gate -- report-only unless
+                ``--district-ess-gate-blocking`` --, spine-composition
+                evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -2458,6 +2460,247 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
     ]
 
 
+#: Finalize's district ESS gate. A congressional district collapses when
+#: calibration leaves its Kish ESS below this share of its Kish ESS at the
+#: design weights. At the release's ACS share (0.5), microcosm#1078's solves
+#: (full surface and two holdout folds) leave 15-24 districts below a quarter
+#: unpenalized, and none with the chi-square design-weight penalty.
+DISTRICT_ESS_RELATIVE_FLOOR = 0.25
+#: The absolute floor on a district's calibrated Kish ESS (0 turns it off).
+#: Those solves' smallest district ESS is 7.8-11.7 unpenalized and at least
+#: 18.6 penalized.
+DISTRICT_ESS_FLOOR = 15.0
+DISTRICT_ESS_GATE = "district_ess_collapse"
+
+
+def _district_ess(weight_summary) -> dict[str, float] | None:
+    """A weight summary's per-district Kish ESS as finite, nonnegative floats.
+
+    None when the summary records none, or any value is not such a number.
+    """
+
+    by_district = (
+        weight_summary.get("effective_sample_size_by_district")
+        if isinstance(weight_summary, dict)
+        else None
+    )
+    if not isinstance(by_district, dict) or not by_district:
+        return None
+    values = {}
+    for district, ess in by_district.items():
+        if isinstance(ess, bool) or not isinstance(ess, (int, float)):
+            return None
+        if not np.isfinite(ess) or ess < 0:
+            return None
+        values[str(district)] = float(ess)
+    return values
+
+
+def district_ess_collapse_gate(
+    weight_origin: dict | None,
+    *,
+    relative_floor: float = DISTRICT_ESS_RELATIVE_FLOOR,
+    absolute_floor: float = DISTRICT_ESS_FLOOR,
+    blocking: bool = False,
+) -> dict:
+    """The district ESS gate entry, from the calibration summary's weight origin.
+
+    Reads ``effective_sample_size_by_district`` at the design and the
+    calibrated weights. A district collapses when its calibrated Kish ESS is
+    below ``relative_floor`` times its design-weight Kish ESS, and is below
+    the floor when its calibrated Kish ESS is below ``absolute_floor``; a
+    floor of 0 turns its check off. ``criteria_met`` says whether no district
+    does either (None when the evidence is missing or malformed).
+
+    The release contract publishes only gates that pass, so a report-only
+    entry passes whatever it measured. Under ``blocking`` the entry passes
+    only when the criteria are met.
+    """
+
+    if not 0.0 <= relative_floor <= 1.0:
+        raise ValueError(f"relative_floor must be in [0, 1], got {relative_floor!r}.")
+    if not (np.isfinite(absolute_floor) and absolute_floor >= 0.0):
+        raise ValueError(
+            f"absolute_floor must be finite and >= 0, got {absolute_floor!r}."
+        )
+    origin = weight_origin if isinstance(weight_origin, dict) else {}
+    design = _district_ess(origin.get("design"))
+    calibrated = _district_ess(origin.get("calibrated"))
+    gate = {
+        "blocking": bool(blocking),
+        "report_only": not blocking,
+        "relative_floor": float(relative_floor),
+        "absolute_floor": float(absolute_floor),
+        "note": (
+            "A congressional district collapses when its calibrated Kish ESS "
+            "is below relative_floor x its design-weight Kish ESS, and is "
+            "below the floor when its calibrated Kish ESS is below "
+            "absolute_floor (0 turns a check off); from "
+            "calibration_summary.json weight_origin."
+        ),
+    }
+    failures = []
+    if design is None or calibrated is None:
+        failures.append(
+            "calibration_summary.json weight_origin records no finite, "
+            "nonnegative effective_sample_size_by_district at both the design "
+            "and the calibrated weights"
+        )
+    elif set(design) != set(calibrated):
+        failures.append(
+            "the design and calibrated per-district ESS cover different districts"
+        )
+    if failures:
+        return {
+            **gate,
+            "passed": not blocking,
+            "criteria_met": None,
+            "failures": failures,
+        }
+
+    rows = [
+        {
+            "district": district,
+            "calibrated_ess": calibrated[district],
+            "design_ess": design[district],
+            "ratio": (
+                calibrated[district] / design[district]
+                if design[district] > 0
+                else None
+            ),
+        }
+        for district in sorted(design)
+    ]
+    collapsed = sorted(
+        (
+            row
+            for row in rows
+            if row["calibrated_ess"] < relative_floor * row["design_ess"]
+        ),
+        key=lambda row: (row["ratio"], row["district"]),
+    )
+    below_floor = sorted(
+        (row for row in rows if row["calibrated_ess"] < absolute_floor),
+        key=lambda row: (row["calibrated_ess"], row["district"]),
+    )
+    smallest = min(rows, key=lambda row: (row["calibrated_ess"], row["district"]))
+    rated = [row for row in rows if row["ratio"] is not None]
+    lowest = (
+        min(rated, key=lambda row: (row["ratio"], row["district"])) if rated else None
+    )
+    criteria_met = not collapsed and not below_floor
+    return {
+        **gate,
+        "passed": criteria_met or not blocking,
+        "criteria_met": criteria_met,
+        "failures": [],
+        "n_districts": len(rows),
+        "n_collapsed": len(collapsed),
+        "n_below_floor": len(below_floor),
+        "min_calibrated_ess": smallest["calibrated_ess"],
+        "min_calibrated_ess_district": smallest["district"],
+        "min_ess_ratio": lowest["ratio"] if lowest else None,
+        "min_ess_ratio_district": lowest["district"] if lowest else None,
+        "collapsed": collapsed,
+        "below_floor": below_floor,
+    }
+
+
+def district_ess_collapse_limitation(gate: dict) -> dict:
+    """The reviewed-limitations entry stating the district ESS gate's result."""
+
+    if gate["criteria_met"] is None:
+        measured = (
+            "The district ESS gate could not be evaluated: "
+            + "; ".join(gate["failures"])
+            + "."
+        )
+    else:
+        n = gate["n_districts"]
+        checks = []
+        if gate["relative_floor"] > 0:
+            checks.append(
+                f"below {gate['relative_floor']:g} x their design-weight Kish "
+                f"ESS: {gate['n_collapsed']} of {n}"
+            )
+        if gate["absolute_floor"] > 0:
+            checks.append(
+                f"below {gate['absolute_floor']:g}: {gate['n_below_floor']} of {n}"
+            )
+        ratio = gate["min_ess_ratio"]
+        measured = (
+            (
+                "Congressional districts with a calibrated Kish ESS "
+                + "; ".join(checks)
+                + "."
+                if checks
+                else f"No district ESS check is on for the {n} districts."
+            )
+            + f" Smallest calibrated district ESS: "
+            f"{gate['min_calibrated_ess']:.1f} "
+            f"({gate['min_calibrated_ess_district']})"
+            + (
+                f"; smallest ratio to design ESS: {ratio:.3f} "
+                f"({gate['min_ess_ratio_district']})."
+                if ratio is not None
+                else "."
+            )
+        )
+    if not gate["blocking"]:
+        mode = (
+            " The gate is report-only for this build; "
+            "--district-ess-gate-blocking makes it a hard failure."
+        )
+    elif gate["passed"]:
+        mode = " The gate is blocking for this build and passed."
+    else:
+        mode = (
+            " The gate is blocking for this build and fails, so the build is "
+            "not simulation-ready."
+        )
+    return {
+        "id": "district_effective_sample_size_gate",
+        "status": "recorded_concentration",
+        "reason": measured + mode,
+        "gate": DISTRICT_ESS_GATE,
+        "criteria_met": gate["criteria_met"],
+        "n_collapsed": gate.get("n_collapsed"),
+        "n_below_floor": gate.get("n_below_floor"),
+        "relative_floor": gate["relative_floor"],
+        "absolute_floor": gate["absolute_floor"],
+        "blocking": gate["blocking"],
+        "calibration_blocker": not gate["passed"],
+    }
+
+
+def _require_blocking_district_ess_gate(gate_report: dict, args) -> None:
+    """Under ``--district-ess-gate-blocking``, refuse a report finalize did not block on.
+
+    A finalize run without the flag (or at other floors, or from before the
+    gate existed) records a gate that passes whatever it measured, so
+    packaging its report under the flag would ship what the flag refuses.
+    """
+
+    if not args.district_ess_gate_blocking:
+        return
+    gates = gate_report.get("gates")
+    gate = gates.get(DISTRICT_ESS_GATE) if isinstance(gates, dict) else None
+    if not (
+        isinstance(gate, dict)
+        and gate.get("blocking") is True
+        and gate.get("passed") is True
+        and gate.get("relative_floor") == args.district_ess_relative_floor
+        and gate.get("absolute_floor") == args.district_ess_floor
+    ):
+        raise SystemExit(
+            f"--district-ess-gate-blocking: the finalize gate report carries no "
+            f"passing blocking {DISTRICT_ESS_GATE} gate at relative floor "
+            f"{args.district_ess_relative_floor:g} and floor "
+            f"{args.district_ess_floor:g}; re-run --stage finalize with the "
+            "same flags."
+        )
+
+
 def _local_hours_gate(frame, staging_summary: dict):
     audit = staging_summary.get("reviewed_engine_input_nulls")
     if not isinstance(audit, list) or not all(isinstance(item, dict) for item in audit):
@@ -2707,8 +2950,16 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
+    gates[DISTRICT_ESS_GATE] = district_ess_collapse_gate(
+        diagnostics.get("weight_origin"),
+        relative_floor=args.district_ess_relative_floor,
+        absolute_floor=args.district_ess_floor,
+        blocking=args.district_ess_gate_blocking,
+    )
+
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
     limitations += state_cd_reviewed_limitations(materialize_rss)
+    limitations.append(district_ess_collapse_limitation(gates[DISTRICT_ESS_GATE]))
     hard_failures = [
         name
         for name in (
@@ -2720,6 +2971,9 @@ def do_finalize(args) -> None:
         )
         if not gates[name]["passed"]
     ]
+    # Report-only unless --district-ess-gate-blocking, so it passes otherwise.
+    if not gates[DISTRICT_ESS_GATE]["passed"]:
+        hard_failures.append(DISTRICT_ESS_GATE)
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -2897,6 +3151,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
@@ -3382,6 +3637,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "build: materialize hard-fails on dropped cells without this."
         ),
     )
+    parser.add_argument(
+        "--district-ess-relative-floor",
+        type=float,
+        default=DISTRICT_ESS_RELATIVE_FLOOR,
+        help=(
+            "Finalize's district ESS gate: a congressional district collapses "
+            "when its calibrated Kish ESS is below this share of its "
+            "design-weight Kish ESS (0 to 1; 0 turns the check off)."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-floor",
+        type=float,
+        default=DISTRICT_ESS_FLOOR,
+        help=(
+            "Finalize's district ESS gate: the floor on every congressional "
+            "district's calibrated Kish ESS (0 turns the check off)."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-gate-blocking",
+        action="store_true",
+        help=(
+            "Make the district ESS gate a hard failure at finalize, and make "
+            "package refuse a gate report finalize did not block on. Off by "
+            "default: the gate is recorded in gate_summary.json, the build "
+            "manifest and the reviewed limitations, and passes."
+        ),
+    )
     args = parser.parse_args(argv)
 
     stages = (
@@ -3412,6 +3696,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--cd-holdout-fraction must be in "
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
         )
+    if not 0.0 <= args.district_ess_relative_floor <= 1.0:
+        parser.error("--district-ess-relative-floor must be in [0, 1].")
+    if not (np.isfinite(args.district_ess_floor) and args.district_ess_floor >= 0.0):
+        parser.error("--district-ess-floor must be finite and >= 0.")
     args.stages = stages
 
     return args
