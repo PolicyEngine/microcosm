@@ -1414,6 +1414,7 @@ class TestUKGatesManifest:
             "uk_input_mass_parity",
             "uk_qrf_tail_concentration",
             "uk_local_geography_ladder_post_calibration",
+            "uk_local_brma_enum_domain",
             "uk_local_area_support",
             "uk_local_target_fit",
             "uk_local_per_family_fit",
@@ -1431,6 +1432,18 @@ class TestUKGatesManifest:
             for gate in manifest.gates
             if gate.id not in diagnostic
         )
+
+    def test_brma_domain_is_checked_on_the_spine_and_local_candidate(
+        self, manifest
+    ) -> None:
+        entries = {gate.id: gate for gate in manifest.gates}
+        assembled = entries["uk_brma_enum_domain"]
+        local = entries["uk_local_brma_enum_domain"]
+        assert assembled.phase == "assembled"
+        assert local.phase == "terminal"
+        assert assembled.gate == local.gate == "enum_domain"
+        assert assembled.parameters == local.parameters == {"columns": ("brma",)}
+        assert local.evidence_absent_blocks is True
 
     def test_ledger_compile_parity_gates_pin_their_fixture_periods(
         self, manifest

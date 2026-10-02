@@ -293,7 +293,8 @@ def classify_full_gate_outcomes(
 
     The combined driver exports a diagnostic candidate after failures of its
     five local fit/support/weight checks, but stops on a non-passing geography
-    ladder. Below f100 those five checks are recorded without enforcement.
+    ladder or local BRMA domain check. Below f100 those five statistical checks
+    are recorded without enforcement.
     All newly included national/source checks keep the shared battery's own
     BLOCKS_ARTIFACT policy, including its declared missing-evidence rules.
     """
@@ -304,8 +305,11 @@ def classify_full_gate_outcomes(
         raise TypeError("Classify a validated GatePhaseReport, not unbound JSON.")
     if not 0.0 < sample_fraction <= 1.0:
         raise ValueError("sample_fraction must be in (0, 1].")
-    geography = "uk_local_geography_ladder_post_calibration"
-    local_export_exception = set(UK_LOCAL_GATE_SCOPE) - {geography}
+    structural_local = {
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
+    }
+    local_export_exception = set(UK_LOCAL_GATE_SCOPE) - structural_local
     blocking = {
         outcome.entry.id
         for outcome in report.blocking_outcomes(release_candidate=release_candidate)
@@ -313,7 +317,7 @@ def classify_full_gate_outcomes(
     stop, exported_failures, unenforced, diagnostic = [], [], [], []
     for outcome in report.outcomes:
         gate_id = outcome.entry.id
-        if gate_id == geography and outcome.status is not GateStatus.PASSED:
+        if gate_id in structural_local and outcome.status is not GateStatus.PASSED:
             stop.append(gate_id)
             continue
         if outcome.status not in {GateStatus.FAILED, GateStatus.EVIDENCE_ABSENT}:

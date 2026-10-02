@@ -7,6 +7,7 @@ The legacy numerical functions remain the only implementations of the draws.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from collections.abc import Mapping
@@ -15,7 +16,9 @@ from dataclasses import asdict, replace
 import numpy as np
 import pandas as pd
 
+from microcosm.build import stochastic_assignment
 from microcosm.frame import Frame, Weights
+from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -45,6 +48,8 @@ from microcosm.graph.weight_update import weight_update_receipt
 from . import (
     atomic_area_support,
     atomic_household_identity,
+    brma_spread,
+    frs_brma,
     geography_ladder,
     local_authority_input,
     national_sampling,
@@ -68,6 +73,7 @@ from .rowwise_dataset import expand_uk_geographic_pool, ladder_clone_index_colum
 
 POPULATION_RECEIPT_TYPE = ArtifactType("microcosm.uk.population-receipt", 1)
 LOCATION_DRAW_TYPE = ArtifactType("microcosm.uk.ladder-location-draw", 1)
+BRMA_TABLE_TYPE = ArtifactType("microcosm.uk.brma-spread-table", 1)
 GEOGRAPHY_GATE_TYPE = ArtifactType("microcosm.uk.geography-gate", 1)
 GEOGRAPHY_ASSIGNMENTS = ("atomic", "legacy")
 #: Lineage columns the post-clone household identity is keyed on. The support
@@ -307,6 +313,88 @@ class UKGeographicExpansionKernel(_PopulationKernel):
         )
 
 
+class UKBRMATableKernel(_PopulationKernel):
+    """Compute rate-ordered household mixtures once, before K-way expansion."""
+
+    ref = "uk.full.brma_table@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        dependencies=("policyengine-uk",),
+        seed_source=SeedSource.PARAM,
+    )
+
+    def __init__(self, *, engine=None, count_resource=None):
+        self.engine = engine
+        self.count_resource = count_resource
+
+    def implementation_hash(self) -> str:
+        implementation = source_hash(
+            type(self),
+            brma_spread,
+            frs_brma,
+            stochastic_assignment,
+            uk_engine_adapter,
+            atomic_household_identity,
+            dependencies=self.capabilities.dependencies,
+        )
+        resource = self.count_resource
+        if resource is None:
+            resource = frs_brma.load_brma_count_resource()
+        return hashlib.sha256(
+            canonical_json(
+                {"implementation": implementation, "count_resource": resource}
+            )
+        ).hexdigest()
+
+    def run(self, context: KernelContext) -> KernelResult:
+        frame = context_frame(context)
+        keys = household_lineage_keys(
+            frame.table("household"),
+            source=str(context.params["source"]),
+            source_vintage=str(context.params["source_vintage"]),
+            geographic=False,
+        )
+        payload = brma_spread.prepare_brma_spread(
+            frame,
+            engine=self.engine
+            if self.engine is not None
+            else uk_engine_adapter.PolicyEngineUKEngine(),
+            lineage_keys=keys,
+            count_resource=self.count_resource,
+        )
+        return KernelResult(artifacts={"brma_table": canonical_json(payload)})
+
+
+class UKBRMACloneSpreadKernel(_PopulationKernel):
+    """Rewrite only household BRMA at the clone's evenly spaced quantile."""
+
+    ref = "uk.full.brma@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), brma_spread)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        payload = json.loads(context.artifacts["brma_table"].payload)
+        expansion = json.loads(context.artifacts["expansion"].payload)
+        household = context.tables["household"]
+        names = brma_spread.assign_clone_brmas(
+            household,
+            payload,
+            n_clones=int(expansion["n_clones"]),
+            id_multiplier=int(expansion["id_multiplier"]),
+            clone_index_column=ladder_clone_index_column("household"),
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        return KernelResult(
+            columns={
+                ("household", "brma"): pd.Series(
+                    names, index=index, name="brma", dtype=dtype_for_token("string")
+                )
+            }
+        )
+
+
 class UKLocationDrawKernel(_PopulationKernel):
     ref = "uk.full.locations@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC, seed_source=SeedSource.PARAM)
@@ -363,6 +451,97 @@ class UKGeographyMappingKernel(_PopulationKernel):
         )
 
 
+def household_lineage_keys(
+    household: pd.DataFrame, *, source: str, source_vintage: str, geographic: bool
+) -> list[str]:
+    """Project spine ancestry, optionally including the geographic clone step.
+
+    The BRMA offset uses the same source/SPI/CGT path as geography, before
+    geographic support is appended. It never depends on remapped IDs or K.
+    """
+
+    inputs = (
+        UK_GEOGRAPHY_IDENTITY_INPUTS
+        if geographic
+        else UK_GEOGRAPHY_IDENTITY_INPUTS[:-1]
+    )
+    missing = [c for c in inputs if c not in household]
+    if missing:
+        raise ValueError(f"Geography identity lacks lineage column(s) {missing}.")
+    lineage = household.loc[:, list(inputs)]
+    if lineage.isna().any().any():
+        raise ValueError("Geography identity refuses null lineage values.")
+    if lineage["source_household_id"].dtype != np.dtype("int64"):
+        raise ValueError("Geography identity requires int64 source household ids.")
+    if lineage["cgt_support_copy_index"].dtype != np.dtype("int64"):
+        raise ValueError("Geography identity requires an int64 support copy index.")
+    for column in (
+        "household_is_cgt_support_copy",
+        "household_is_capital_gains_clone",
+    ):
+        dtype = lineage[column].dtype
+        if dtype != np.dtype("bool") and not isinstance(dtype, pd.BooleanDtype):
+            raise ValueError(f"Geography identity requires a boolean {column}.")
+    keys = []
+    for (
+        source_id,
+        channel,
+        support_index,
+        support_copy,
+        copy_index,
+        cgt,
+        clone_index,
+    ) in zip(
+        lineage["source_household_id"].to_numpy(),
+        lineage["household_support_channel"].to_numpy(),
+        lineage["household_support_clone_index"].to_numpy(),
+        lineage["household_is_cgt_support_copy"].to_numpy(),
+        lineage["cgt_support_copy_index"].to_numpy(),
+        lineage["household_is_capital_gains_clone"].to_numpy(),
+        (
+            lineage[ladder_clone_index_column("household")].to_numpy()
+            if geographic
+            else np.zeros(len(lineage), dtype=np.int64)
+        ),
+        strict=True,
+    ):
+        channel = str(channel)
+        support_index, clone_index = int(support_index), int(clone_index)
+        copy_index = int(copy_index)
+        if channel not in {_BASE_SUPPORT_CHANNEL, _SPI_SUPPORT_CHANNEL}:
+            raise ValueError(f"Unknown household support channel {channel!r}.")
+        if support_index < 0 or clone_index < 0 or copy_index < 0:
+            raise ValueError("Geography identity refuses negative clone indices.")
+        if (channel == _SPI_SUPPORT_CHANNEL) != (support_index != 0):
+            raise ValueError(
+                "Household support channel and support clone index disagree."
+            )
+        if bool(support_copy) != (copy_index != 0):
+            raise ValueError(
+                "Household support-copy flag and support copy index disagree."
+            )
+        path = []
+        if support_index:
+            path.append(("spi_support_channel", support_index))
+        if copy_index:
+            path.append(("cgt_support_split", copy_index))
+        if bool(cgt):
+            path.append(("cgt_incidence_clone", 1))
+        if clone_index:
+            path.append(("geographic_support", clone_index))
+        keys.append(
+            atomic_household_identity.household_draw_key(
+                source=source,
+                source_vintage=source_vintage,
+                source_household_id=int(source_id),
+                clone_path=tuple(path),
+            )
+        )
+    if len(set(keys)) != len(keys):
+        raise ValueError("Geography identity keys are not unique.")
+    return keys
+
+
 class UKGeographyIdentityKernel(_PopulationKernel):
     """Key every post-clone household by its source id and ordered clone path.
 
@@ -387,76 +566,9 @@ class UKGeographyIdentityKernel(_PopulationKernel):
         household = context.tables["household"]
         source = str(context.params["source"])
         vintage = str(context.params["source_vintage"])
-        missing = [c for c in UK_GEOGRAPHY_IDENTITY_INPUTS if c not in household]
-        if missing:
-            raise ValueError(f"Geography identity lacks lineage column(s) {missing}.")
-        lineage = household.loc[:, list(UK_GEOGRAPHY_IDENTITY_INPUTS)]
-        if lineage.isna().any().any():
-            raise ValueError("Geography identity refuses null lineage values.")
-        if lineage["source_household_id"].dtype != np.dtype("int64"):
-            raise ValueError("Geography identity requires int64 source household ids.")
-        if lineage["cgt_support_copy_index"].dtype != np.dtype("int64"):
-            raise ValueError("Geography identity requires an int64 support copy index.")
-        for column in (
-            "household_is_cgt_support_copy",
-            "household_is_capital_gains_clone",
-        ):
-            dtype = lineage[column].dtype
-            if dtype != np.dtype("bool") and not isinstance(dtype, pd.BooleanDtype):
-                raise ValueError(f"Geography identity requires a boolean {column}.")
-        keys = []
-        for (
-            source_id,
-            channel,
-            support_index,
-            support_copy,
-            copy_index,
-            cgt,
-            clone_index,
-        ) in zip(
-            lineage["source_household_id"].to_numpy(),
-            lineage["household_support_channel"].to_numpy(),
-            lineage["household_support_clone_index"].to_numpy(),
-            lineage["household_is_cgt_support_copy"].to_numpy(),
-            lineage["cgt_support_copy_index"].to_numpy(),
-            lineage["household_is_capital_gains_clone"].to_numpy(),
-            lineage[ladder_clone_index_column("household")].to_numpy(),
-            strict=True,
-        ):
-            channel = str(channel)
-            support_index, clone_index = int(support_index), int(clone_index)
-            copy_index = int(copy_index)
-            if channel not in {_BASE_SUPPORT_CHANNEL, _SPI_SUPPORT_CHANNEL}:
-                raise ValueError(f"Unknown household support channel {channel!r}.")
-            if support_index < 0 or clone_index < 0 or copy_index < 0:
-                raise ValueError("Geography identity refuses negative clone indices.")
-            if (channel == _SPI_SUPPORT_CHANNEL) != (support_index != 0):
-                raise ValueError(
-                    "Household support channel and support clone index disagree."
-                )
-            if bool(support_copy) != (copy_index != 0):
-                raise ValueError(
-                    "Household support-copy flag and support copy index disagree."
-                )
-            path = []
-            if support_index:
-                path.append(("spi_support_channel", support_index))
-            if copy_index:
-                path.append(("cgt_support_split", copy_index))
-            if bool(cgt):
-                path.append(("cgt_incidence_clone", 1))
-            if clone_index:
-                path.append(("geographic_support", clone_index))
-            keys.append(
-                atomic_household_identity.household_draw_key(
-                    source=source,
-                    source_vintage=vintage,
-                    source_household_id=int(source_id),
-                    clone_path=tuple(path),
-                )
-            )
-        if len(set(keys)) != len(keys):
-            raise ValueError("Geography identity keys are not unique.")
+        keys = household_lineage_keys(
+            household, source=source, source_vintage=vintage, geographic=True
+        )
         index = pd.Index(household["household_id"], name="household_id")
         column = atomic_area_support.IDENTITY_COLUMN
         return KernelResult(
@@ -692,6 +804,23 @@ def append_uk_population_nodes(
             description="Install normalized weights without changing their kind.",
         )
     )
+    nodes.append(
+        Node(
+            id="uk.full.brma_table",
+            kernel=UKBRMATableKernel.ref,
+            population="uk.full.normalize",
+            inputs=population_slices(cells),
+            params={
+                **common,
+                "source": identity_source,
+                "source_vintage": source_vintage or str(source_year),
+                "seed": 0,
+                "salt": "brma:clone_spread",
+            },
+            artifact_outputs=(ArtifactOutput("brma_table", BRMA_TABLE_TYPE),),
+            description="Compute household BRMA mixtures and LHA-rate order on normalized spine rows.",
+        )
+    )
     expansion_cells = {
         ("household", "source_household_id"): "int64",
         ("household", "source_year"): "int64",
@@ -748,6 +877,29 @@ def append_uk_population_nodes(
                 )
             },
             description="Declare the lineage and replicate columns materialized by expansion.",
+        )
+    )
+    nodes.append(
+        Node(
+            id="uk.full.brma",
+            kernel=UKBRMACloneSpreadKernel.ref,
+            population="uk.full.expand",
+            inputs=(
+                Slice(
+                    "household",
+                    ("household_id", ladder_clone_index_column("household")),
+                ),
+            ),
+            outputs=(Owned("household", "brma", "string", rewrite=True),),
+            artifact_inputs=(
+                ArtifactInput(
+                    "brma_table", "uk.full.brma_table", "brma_table", BRMA_TABLE_TYPE
+                ),
+                ArtifactInput(
+                    "expansion", "uk.full.expand", "expansion", POPULATION_RECEIPT_TYPE
+                ),
+            ),
+            description="Spread each household's K BRMA draws at (u + c/K) mod 1 in LHA-rate order.",
         )
     )
     cells.update(expansion_cells)
@@ -912,7 +1064,12 @@ def _atomic_geography_nodes(
     return (identity, *shared[:-1], local_authority, shared[-1], gate), sources
 
 
-def register_uk_population_kernels(registry: KernelRegistry) -> None:
+def register_uk_population_kernels(
+    registry: KernelRegistry,
+    *,
+    engine=None,
+    brma_count_resource=None,
+) -> None:
     from microcosm.build.graph_atomic_geography import (
         register_atomic_geography_kernels,
     )
@@ -921,6 +1078,8 @@ def register_uk_population_kernels(registry: KernelRegistry) -> None:
         UKFamilySampleKernel(),
         UKSampleNormalizationKernel(),
         UKGeographicExpansionKernel(),
+        UKBRMATableKernel(engine=engine, count_resource=brma_count_resource),
+        UKBRMACloneSpreadKernel(),
         UKGeographyIdentityKernel(),
         UKLocalAuthorityResolveKernel(),
         UKLocationDrawKernel(),

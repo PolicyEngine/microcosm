@@ -1023,6 +1023,19 @@
       "notes": "The existing UK geography-ladder evaluator is rerun on the locally calibrated candidate weights and adapted through UKGateBinding; no second ladder verdict implementation is introduced."
     },
     {
+      "id": "uk_local_brma_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "columns": [
+          "brma"
+        ]
+      },
+      "notes": "The local clone-spread node rewrites household brma after the spine's assembled enum check. Recheck the actual local candidate against the PolicyEngine-UK brma enum domain before export; an invalid value or missing domain evidence is structural and stops even a development build. The separate local entry preserves the assembled spine gate declaration and its checkpoint identity."
+    },
+    {
       "id": "uk_local_area_support",
       "gate": "area_support",
       "phase": "terminal",

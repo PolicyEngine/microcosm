@@ -14,7 +14,7 @@ only, the calibration-seam doctrine (:mod:`national_doctrine`) and its six
 in-process gates; the seam-shaped build record it emits is what
 ``tools/certify_uk_release_cut.py`` certifies. ``dense`` is the K-clone joint
 national + local surface under the local doctrine (:mod:`local_doctrine`)
-and the six local gates; its dense pool is the intermediate the exact-K
+and the local gate battery; its dense pool is the intermediate the exact-K
 local-area cuts are drawn from.
 
 Every value here is a reviewed constant. Changing one is a doctrine change:

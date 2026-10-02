@@ -3,8 +3,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from microcosm.build.gate_battery import EvidenceContext
+from microcosm.build.gate_battery import (
+    EvidenceContext,
+    GateStatus,
+    evaluate_phase,
+)
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+from microcosm.build.uk_runtime.calibration_run import uk_scoped_gate_manifest
 from microcosm.build.uk_runtime.frs_brma import FRS_BRMA_OUTPUT_COLUMNS
 from microcosm.build.uk_runtime.frs_household_draws import (
     FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS,
@@ -128,6 +133,32 @@ def test_brma_enum_domain_binding_fails_off_domain() -> None:
 
     assert result.passed is False
     assert "OFF_DOMAIN" in result.failures[0]
+
+
+def test_local_phase_rechecks_brma_after_a_passing_assembled_check() -> None:
+    gates = uk_scoped_gate_manifest(
+        ("uk_brma_enum_domain", "uk_local_brma_enum_domain"),
+        phases=("assembled", "terminal"),
+        policy_suffix="brma_rewrite_test",
+    )
+    frame = _frame()
+    context = EvidenceContext(
+        frame=frame,
+        artifacts={"brma_enum_domain": ("LONDON_A", "LONDON_B")},
+    )
+    assembled = evaluate_phase(
+        gates, "assembled", context, registry=UK_GATE_REGISTRY
+    )
+    assert len(assembled.outcomes) == 1
+    assert assembled.outcomes[0].entry.id == "uk_brma_enum_domain"
+    assert assembled.outcomes[0].status is GateStatus.PASSED
+
+    frame.table("household").loc[0, "brma"] = "OFF_DOMAIN"
+    local = evaluate_phase(gates, "terminal", context, registry=UK_GATE_REGISTRY)
+    assert len(local.outcomes) == 1
+    assert local.outcomes[0].entry.id == "uk_local_brma_enum_domain"
+    assert local.outcomes[0].status is GateStatus.FAILED
+    assert "OFF_DOMAIN" in local.outcomes[0].result.failures[0]
 
 
 def test_student_loan_enum_domain_binding_resolves_person_column() -> None:

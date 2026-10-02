@@ -80,6 +80,7 @@ UK_CALIBRATION_GATE_SCOPE = (
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
+    "uk_local_brma_enum_domain",
     "uk_local_area_support",
     "uk_local_target_fit",
     "uk_local_per_family_fit",
@@ -120,7 +121,8 @@ UK_SPINE_GATE_SCOPE = (
     # declared by the stage module (microcosm#725).
     "uk_capital_gains_asset_type_enum_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
-    # spine checks it at the assembled boundary instead of the release end.
+    # spine checks it at the assembled boundary. Local cloning owns a separate
+    # enum check after its BRMA rewrite; the spine declaration stays unchanged.
     "uk_brma_enum_domain",
 )
 

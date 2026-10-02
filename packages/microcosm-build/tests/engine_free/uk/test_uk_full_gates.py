@@ -50,6 +50,7 @@ def test_country_filter_retains_integrity_and_registry_checks_without_local_fit_
     }
     assert {
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_weight_ess",
         "uk_release_family_build_stages",
         "uk_ledger_compile_parity_local_incumbent_2025",
@@ -279,6 +280,7 @@ def test_existing_local_statistical_failure_can_export_but_blocks_full_release()
     "gate_id",
     [
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_nonnegative_columns",
         "uk_input_mass_parity",
         "uk_target_fit",
@@ -292,6 +294,20 @@ def test_geography_and_migrated_national_gates_keep_artifact_enforcement(gate_id
         )
         assert result["artifact_permitted"] is False
         assert result["structural_failures"] == [gate_id]
+
+
+@pytest.mark.parametrize("fraction", [0.1, 1.0])
+@pytest.mark.parametrize("release_candidate", [False, True])
+def test_local_brma_missing_domain_evidence_stops_export(
+    fraction, release_candidate
+):
+    result = runtime.classify_full_gate_outcomes(
+        _phase_failure("uk_local_brma_enum_domain", absent=True),
+        sample_fraction=fraction,
+        release_candidate=release_candidate,
+    )
+    assert result["artifact_permitted"] is False
+    assert result["structural_failures"] == ["uk_local_brma_enum_domain"]
 
 
 def test_missing_evidence_uses_declared_development_policy():

@@ -27,6 +27,7 @@ from test_support.microcosm_build.uk_atomic_support_fixtures import (
 )
 from test_support.microcosm_build.uk_full_population_graph import (
     SOURCE_VINTAGE,
+    expected_clone_brmas,
     graph_and_registry,
     source_frame,
 )
@@ -51,6 +52,7 @@ def test_legacy_population_graph_preserves_rows_weights_geography_and_replays(
     graph, registry = graph_and_registry(k, geography_assignment="legacy")
     store = ContentStore(tmp_path / "store")
     compiled = compile_graph(graph)
+    _assert_brma_nodes(graph, compiled)
     assert "uk.full.locations" in compiled.predecessors["uk.full.geography_mapping"]
     assert "uk.full.identity" not in compiled.order
     first = run_graph(
@@ -61,11 +63,18 @@ def test_legacy_population_graph_preserves_rows_weights_geography_and_replays(
     )
     actual = first.population("uk.full.expand")
     for entity in expected.entities:
+        columns = expected.table(entity).columns
+        if entity == "household":
+            columns = columns.drop("brma")
         pd.testing.assert_frame_equal(
-            actual.table(entity)[expected.table(entity).columns],
-            expected.table(entity),
+            actual.table(entity)[columns],
+            expected.table(entity)[columns],
             check_dtype=False,
         )
+    np.testing.assert_array_equal(
+        actual.table("household")["brma"],
+        expected_clone_brmas(actual.table("household"), k),
+    )
     np.testing.assert_array_equal(
         actual.weights_for("household").values, expected.weights_for("household").values
     )
@@ -80,6 +89,23 @@ def test_legacy_population_graph_preserves_rows_weights_geography_and_replays(
         resume="require",
     )
     assert replay.population("uk.full.expand").mass_log == actual.mass_log
+    assert all(receipt.hit for receipt in replay.nodes.values())
+    pd.testing.assert_frame_equal(
+        replay.population("uk.full.expand").table("household"),
+        actual.table("household"),
+    )
+
+
+def _assert_brma_nodes(graph, compiled):
+    table = graph.node("uk.full.brma_table")
+    rewrite = graph.node("uk.full.brma")
+    assert table.population == "uk.full.normalize"
+    assert "uk.full.normalize" in compiled.predecessors[table.id]
+    assert rewrite.population == "uk.full.expand"
+    assert {table.id, "uk.full.expand"} <= set(compiled.predecessors[rewrite.id])
+    assert [(o.entity, o.column, o.rewrite) for o in rewrite.outputs] == [
+        ("household", "brma", True)
+    ]
 
 
 def test_k_changes_expansion_but_never_sampling():
@@ -87,16 +113,16 @@ def test_k_changes_expansion_but_never_sampling():
     second, _ = graph_and_registry(3)
     assert first.node("uk.full.sample") == second.node("uk.full.sample")
     assert first.node("uk.full.normalize") == second.node("uk.full.normalize")
+    assert first.node("uk.full.brma_table") == second.node("uk.full.brma_table")
     assert first.node("uk.full.expand").params["n_clones"] == 1
     assert second.node("uk.full.expand").params["n_clones"] == 3
 
 
-def _atomic_oracle(k, payloads, definition):
-    """The same pool, keyed and assigned in process through the shared operators."""
+def _expanded_oracle(k):
     frame = source_frame()
     household = frame.table("household").copy()
     household["household_weight"] = frame.weights_for("household").values
-    pool = expand_uk_geographic_pool(
+    return expand_uk_geographic_pool(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
         household=household,
@@ -105,7 +131,12 @@ def _atomic_oracle(k, payloads, definition):
         time_period="2023",
         household_weight_kind=frame.weights_for("household").kind,
         mass_log=frame.mass_log,
-    ).frame.table("household")
+    ).frame
+
+
+def _atomic_oracle(k, payloads, definition):
+    """The same pool, keyed and assigned in process through the shared operators."""
+    pool = _expanded_oracle(k).table("household")
     clone = ladder_clone_index_column("household")
     keys = [
         household_draw_key(
@@ -143,6 +174,7 @@ def test_atomic_population_graph_keys_assigns_derives_gates_and_replays(
         k, geography_assignment="atomic", definition=definition
     )
     compiled = compile_graph(graph)
+    _assert_brma_nodes(graph, compiled)
     for absent in ("uk.full.locations", "uk.full.geography_mapping"):
         assert absent not in compiled.order
     gate = compiled.predecessors["uk.full.geography_gate"]
@@ -164,9 +196,26 @@ def test_atomic_population_graph_keys_assigns_derives_gates_and_replays(
     }
     store = ContentStore(tmp_path / "store")
     first = run_graph(compiled, sources=sources, store=store, kernels=registry)
-    household = first.population("uk.full.expand").table("household")
+    frame = first.population("uk.full.expand")
+    household = frame.table("household")
     expected = _atomic_oracle(k, payloads, definition)
     assert len(household) == 4 * k
+    expanded = _expanded_oracle(k)
+    for entity in expanded.entities:
+        columns = expanded.table(entity).columns
+        if entity == "household":
+            columns = columns.drop("brma")
+        pd.testing.assert_frame_equal(
+            frame.table(entity)[columns],
+            expanded.table(entity)[columns],
+            check_dtype=False,
+        )
+    np.testing.assert_array_equal(
+        frame.weights_for("household").values,
+        expanded.weights_for("household").values,
+    )
+    assert frame.mass_log == expanded.mass_log
+    np.testing.assert_array_equal(household["brma"], expected_clone_brmas(household, k))
     actual = household.set_index("household_id")
     for column in (
         IDENTITY_COLUMN,
@@ -201,6 +250,9 @@ def test_atomic_population_graph_keys_assigns_derives_gates_and_replays(
         compiled, sources=sources, store=store, kernels=fresh, resume="require"
     )
     assert all(receipt.hit for receipt in replay.nodes.values())
+    pd.testing.assert_frame_equal(
+        replay.population("uk.full.expand").table("household"), household
+    )
 
 
 def test_atomic_keys_and_draws_are_stable_when_k_grows(toy_ladder, tmp_path):

@@ -32,9 +32,11 @@ from microcosm.build.uk_runtime.graph_kernels import UKClaimKernel
 from microcosm.build.uk_runtime.graph_population import (
     UK_GEOGRAPHY_IDENTITY_INPUTS,
     append_uk_population_nodes,
-    register_uk_population_kernels,
 )
-from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
+from microcosm.build.uk_runtime.rowwise_dataset import (
+    expand_uk_geographic_pool,
+    ladder_clone_index_column,
+)
 from microcosm.frame import MassChangeRecord, WeightKind
 from microcosm.graph import (
     ContentStore,
@@ -53,6 +55,9 @@ from test_support.microcosm_build.uk_atomic_support_fixtures import (
 from test_support.microcosm_build.uk_full_population_graph import (
     SOURCE_VINTAGE,
     Source,
+    expected_clone_brmas,
+    pregeographic_key,
+    register_toy_population_kernels,
     source_node,
 )
 
@@ -78,6 +83,7 @@ def lineage_frame(rows=LINEAGE):
             "household_id": ids,
             "household_weight": np.ones(len(rows)),
             "region": pd.array([r[6] for r in rows], dtype="string"),
+            "brma": pd.array([f"{r[6]}_A" for r in rows], dtype="string"),
             "source_household_id": np.asarray([r[1] for r in rows], dtype=np.int64),
             "household_support_channel": pd.array([r[2] for r in rows], dtype="string"),
             "household_support_clone_index": np.asarray(
@@ -139,7 +145,7 @@ def graph_for(frame, *, k, definition, seed=7):
     registry = KernelRegistry()
     registry.register(LineageSource(frame))
     registry.register(UKClaimKernel())
-    register_uk_population_kernels(registry)
+    register_toy_population_kernels(registry)
     return graph, registry
 
 
@@ -238,6 +244,76 @@ def test_identity_node_matches_the_receipt_based_projector(tmp_path):
     )
     assert actual[IDENTITY_COLUMN].is_unique
     assert len(actual) == 3 * len(LINEAGE)
+
+
+@pytest.mark.parametrize("k", [1, 3, 15])
+def test_brma_spread_uses_spine_lineage_and_preserves_expanded_population(tmp_path, k):
+    source = lineage_frame()
+    manifest, graph = run_identity(source, tmp_path, k=k, endpoint="uk.full.brma")
+    compiled = compile_graph(graph)
+    table_node = graph.node("uk.full.brma_table")
+    rewrite_node = graph.node("uk.full.brma")
+    assert table_node.population == "uk.full.normalize"
+    assert {table_node.id, "uk.full.expand"} <= set(
+        compiled.predecessors[rewrite_node.id]
+    )
+    assert [
+        (output.entity, output.column, output.rewrite)
+        for output in rewrite_node.outputs
+    ] == [("household", "brma", True)]
+    actual = manifest.population("uk.full.expand")
+    household = source.table("household").copy()
+    household["household_weight"] = source.weights_for("household").values
+    expected = expand_uk_geographic_pool(
+        person=source.table("person"),
+        benunit=source.table("benunit"),
+        household=household,
+        n_clones=k,
+        source_year=2023,
+        time_period="2023",
+        household_weight_kind=source.weights_for("household").kind,
+        mass_log=source.mass_log,
+    ).frame
+    for entity in expected.entities:
+        columns = expected.table(entity).columns
+        if entity == "household":
+            columns = columns.drop("brma")
+        pd.testing.assert_frame_equal(
+            actual.table(entity)[columns],
+            expected.table(entity)[columns],
+            check_dtype=False,
+        )
+    np.testing.assert_array_equal(
+        actual.weights_for("household").values,
+        expected.weights_for("household").values,
+    )
+    assert actual.mass_log == expected.mass_log
+    expanded = actual.table("household")
+    np.testing.assert_array_equal(expanded["brma"], expected_clone_brmas(expanded, k))
+    # Each SPI or CGT branch gets its own offset before geographic replication.
+    keys = [pregeographic_key(row) for row in source.table("household").itertuples()]
+    assert len(set(keys)) == len(LINEAGE)
+    assert all(
+        row.brma.startswith(f"{row.region}_")
+        for row in expanded.itertuples(index=False)
+    )
+
+
+@pytest.mark.parametrize("k", [1, 3, 15])
+def test_brma_lineage_draws_do_not_depend_on_population_row_order(tmp_path, k):
+    by_lineage = []
+    for name, rows in (("forward", LINEAGE), ("reverse", list(reversed(LINEAGE)))):
+        manifest, _ = run_identity(
+            lineage_frame(rows), tmp_path / name, k=k, endpoint="uk.full.brma"
+        )
+        household = manifest.population("uk.full.expand").table("household")
+        by_lineage.append(
+            {
+                (pregeographic_key(row), getattr(row, CLONE)): row.brma
+                for row in household.itertuples(index=False)
+            }
+        )
+    assert by_lineage[0] == by_lineage[1]
 
 
 @pytest.mark.parametrize("k", [1, 2])
