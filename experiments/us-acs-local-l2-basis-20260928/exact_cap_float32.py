@@ -123,7 +123,7 @@ def measure(checkpoint: Path = CHECKPOINT, run_weights: Path = RUN_WEIGHTS) -> d
         "log_weight_step_sd": STEP,
         "trials": len(trials),
         "seed": SEED,
-        "torch": torch.__version__,
+        "torch": str(torch.__version__),
         "torch_num_threads": torch.get_num_threads(),
         "float32_softmax": {
             key: spread("float32_softmax", key)

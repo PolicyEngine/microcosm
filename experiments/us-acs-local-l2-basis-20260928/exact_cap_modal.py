@@ -257,7 +257,7 @@ def launch() -> None:
 
 
 @app.function(cpu=CPUS, memory=8192, timeout=1800, volumes={VOLUME_ROOT: volume})
-def measure_float32() -> dict:
+def measure_float32() -> str:
     import sys
 
     import torch
@@ -266,25 +266,23 @@ def measure_float32() -> dict:
     sys.path.insert(0, "/opt/sweep")
     import exact_cap_float32
 
-    return exact_cap_float32.measure(
+    out = exact_cap_float32.measure(
         Path(VOLUME_ROOT) / "checkpoint",
         Path(VOLUME_ROOT) / "runs" / "dup_soft_chi_s050_0.03" / "weights.npz",
     )
+    # JSON text: the local client has no torch to unpickle torch-typed values.
+    return json.dumps(out)
 
 
 @app.local_entrypoint()
 def float32() -> None:
-    import sys
-
     kernel = [f"packages/{name}/src" for name in KERNEL]
     if _git("status", "--porcelain", "--", *kernel):
         raise SystemExit("kernel sources differ from HEAD; commit before launching")
-    out = measure_float32.remote()
-    out["kernel_head"] = GIT_SHA
-    sys.path.insert(0, str(HERE))
-    import exact_cap_float32
-
-    exact_cap_float32.write(out)
+    out = {"kernel_head": GIT_SHA, **json.loads(measure_float32.remote())}
+    path = HERE / "results" / "exact_cap_float32.json"
+    path.write_text(json.dumps(out, indent=1) + "\n")
+    print(json.dumps({k: v for k, v in out.items() if k != "by_trial"}, indent=1))
 
 
 def _read(path: str) -> bytes | None:
