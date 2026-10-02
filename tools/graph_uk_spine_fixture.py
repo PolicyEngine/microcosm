@@ -697,6 +697,7 @@ def _was_donor() -> pd.DataFrame:
     # wealth covers the listed assets, and net is gross less the liabilities.
     main_residence = np.where(owner, 100_000.0 + rows * 2_000.0, 0.0)
     other_houses = np.where(position % 3 == 0, 1_000.0 + rows * 50.0, 0.0)
+    buy_to_let = np.where(position % 6 == 1, 40_000.0 + rows * 500.0, 0.0)
     buildings = np.where(position % 4 == 0, 3_000.0 + rows * 60.0, 0.0)
     land = np.where(position % 5 == 0, 10.0 + rows, 0.0)
     other_property = np.where(position % 7 == 0, 500.0 + rows * 5.0, 0.0)
@@ -732,6 +733,7 @@ def _was_donor() -> pd.DataFrame:
             "DVLUKValR8_sum": land,
             "DVPropertyR8": main_residence
             + other_houses
+            + buy_to_let
             + buildings
             + land
             + other_property,
@@ -754,7 +756,7 @@ def _was_donor() -> pd.DataFrame:
             "DVCTaxAmtAnnualR8": 900.0 + rows * 10.0,
             # Net rent where the household holds property beyond its home.
             "DVNetRentAmtAnnualR8_aggr": np.where(
-                other_houses > 0.0, 2_000.0 + rows * 40.0, 0.0
+                (other_houses > 0.0) | (buy_to_let > 0.0), 2_000.0 + rows * 40.0, 0.0
             ),
             "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
             "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
@@ -765,6 +767,7 @@ def _was_donor() -> pd.DataFrame:
             "HFINWR8_SUM": gross_financial,
             "DVhvalueR8": main_residence,
             "DVHseValR8_sum": other_houses,
+            "DVBltValR8_sum": buy_to_let,
             "DVBlDValR8_sum": buildings,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
             "DVSaValR8_aggr": savings,
