@@ -16,12 +16,15 @@ forward pass, the cap step's rounds and its wall time.
 
     modal run --detach experiments/us-acs-local-l2-basis-20260928/exact_cap_modal.py::launch
     modal run experiments/us-acs-local-l2-basis-20260928/exact_cap_modal.py::collect
+    modal run experiments/us-acs-local-l2-basis-20260928/exact_cap_modal.py::float32
 
 ``launch`` reads the checkpoint the sweep already uploaded to the volume
 (``sweep.py`` checks every file against ``MANIFEST.json``) and uploads
 nothing. ``collect`` copies each finished run's metrics into
 ``results/exact_cap/`` and writes ``results/exact_cap.md``. Weights stay on
-the volume under ``/exact_cap``.
+the volume under ``/exact_cap``. ``float32`` runs ``exact_cap_float32.py``
+against the volume's checkpoint and the sweep's ``dup_soft_chi_s050_0.03``
+weights and writes ``results/exact_cap_float32.json``.
 """
 
 from __future__ import annotations
@@ -99,10 +102,16 @@ if REPO is not None:
         image = image.add_local_dir(
             str(REPO / "packages" / name), f"/opt/kernel/{name}", copy=True
         )
-    image = image.run_commands(
-        "python -m pip install --no-deps "
-        + " ".join(f"/opt/kernel/{name}" for name in KERNEL)
-    ).add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
+    image = (
+        image.run_commands(
+            "python -m pip install --no-deps "
+            + " ".join(f"/opt/kernel/{name}" for name in KERNEL)
+        )
+        .add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
+        .add_local_file(
+            str(HERE / "exact_cap_float32.py"), "/opt/sweep/exact_cap_float32.py"
+        )
+    )
 
 app = modal.App("microcosm-acs-exact-cap", image=image)
 volume = modal.Volume.from_name("microcosm-acs-l2-basis-sweep")
@@ -245,6 +254,37 @@ def launch() -> None:
     # The runs outlive this process under --detach; waiting only prints them.
     for call in calls:
         print(json.dumps(call.get()), flush=True)
+
+
+@app.function(cpu=CPUS, memory=8192, timeout=1800, volumes={VOLUME_ROOT: volume})
+def measure_float32() -> dict:
+    import sys
+
+    import torch
+
+    torch.set_num_threads(CPUS)
+    sys.path.insert(0, "/opt/sweep")
+    import exact_cap_float32
+
+    return exact_cap_float32.measure(
+        Path(VOLUME_ROOT) / "checkpoint",
+        Path(VOLUME_ROOT) / "runs" / "dup_soft_chi_s050_0.03" / "weights.npz",
+    )
+
+
+@app.local_entrypoint()
+def float32() -> None:
+    import sys
+
+    kernel = [f"packages/{name}/src" for name in KERNEL]
+    if _git("status", "--porcelain", "--", *kernel):
+        raise SystemExit("kernel sources differ from HEAD; commit before launching")
+    out = measure_float32.remote()
+    out["kernel_head"] = GIT_SHA
+    sys.path.insert(0, str(HERE))
+    import exact_cap_float32
+
+    exact_cap_float32.write(out)
 
 
 def _read(path: str) -> bytes | None:

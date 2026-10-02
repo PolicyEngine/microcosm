@@ -183,8 +183,9 @@ MASS_PARAMETRIZATIONS = frozenset(
 #: a sort. Each round is one pass over the records and only ever adds records
 #: to the capped set, so the rounds alone are exact and finite, but an
 #: adversarial input can need one per record. The sort bounds that worst case
-#: at ``O(n log n)``. On the ACS local release (1.59M records, a 5x cap) the
-#: rounds settle in one or two.
+#: at ``O(n log n)``. On the ACS local release (1.59M records, a 5x cap) every
+#: step of two full-scale solves settled in one to three rounds
+#: (experiments/us-acs-local-l2-basis-20260928/results/exact_cap.md).
 _SOFTMAX_CAP_ACTIVE_SET_ROUNDS = 8
 
 #: Threshold below which a weight counts as pruned (a "zero") when reporting the
