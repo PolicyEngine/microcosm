@@ -340,6 +340,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BEDROOM6": 1 + household_id % 4,
                 "CTANNUAL": 900.0 + household_id * 10.0,
                 "CTBAND": 1 + household_id % 7,
+                "CTDISC": 1 if household_id % 3 == 0 else 2,
+                "CT25D50D": (
+                    (2 if household_id % 9 == 0 else 1) if household_id % 3 == 0 else ""
+                ),
                 "CTREB": 1 if household_id % 3 or household_id % 7 == 0 else 2,
                 "CTREBAMT": float(household_id % 3),
                 "ADULTH": 1,

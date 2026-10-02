@@ -1040,8 +1040,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "998c656c82d01c302c57412633f9efc0fe8183bebe123cabc3038b11d2bfe0ee",
-          "size_bytes": 15449,
+          "sha256": "d6c1b0f31e20980c3effb033fba5ba76527788c750e0051b0176e3bcb29bc89d",
+          "size_bytes": 15915,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -1630,8 +1630,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "998c656c82d01c302c57412633f9efc0fe8183bebe123cabc3038b11d2bfe0ee",
-          "size_bytes": 15449,
+          "sha256": "d6c1b0f31e20980c3effb033fba5ba76527788c750e0051b0176e3bcb29bc89d",
+          "size_bytes": 15915,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -1899,8 +1899,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "998c656c82d01c302c57412633f9efc0fe8183bebe123cabc3038b11d2bfe0ee",
-          "size_bytes": 15449,
+          "sha256": "d6c1b0f31e20980c3effb033fba5ba76527788c750e0051b0176e3bcb29bc89d",
+          "size_bytes": 15915,
           "table": "househol",
           "vintage": "synthetic-h2"
         },
@@ -2022,7 +2022,7 @@
         },
         {
           "kind": "map_columns",
-          "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)"
+          "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, at 0.65 where CTREB is 1, and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095)"
         },
         {
           "kind": "map_coded_amounts",

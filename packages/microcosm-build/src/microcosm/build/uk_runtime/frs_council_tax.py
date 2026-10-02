@@ -11,6 +11,7 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.frs_spine import (
+    SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
     WEEKS_IN_YEAR,
     normalize_ids,
     read_pinned_tab,
@@ -42,8 +43,9 @@ FRS_COUNCIL_TAX_RAW_COLUMNS = (
 #: charges brings Scottish recipients' bills to the non-recipient cells (ratio
 #: 1.00 overall, 0.98-1.01 in bands A-F; uk-data#499), the Water Charges
 #: Reduction Scheme's 35% maximum; non-recipients carry the gross charges in
-#: full, status discount or not (the discount applies to council tax only).
-SCOTTISH_CHARGES_IN_RECIPIENT_BILL = 0.65
+#: full, status discount or not: netted that way, discounted bills sit at
+#: 0.75 to 0.76 of undiscounted ones in the same band, the 25% discount.
+SCOTTISH_CHARGES_IN_RECIPIENT_BILL = SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE
 FRS_COUNCIL_TAX_STAGE_NAME = "frs_council_tax"
 FRS_COUNCIL_TAX_IMPUTATION_KIND = "impute_cell_means"
 
