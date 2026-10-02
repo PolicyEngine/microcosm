@@ -1502,7 +1502,7 @@
      "count_rule": "max(minimum_donors_per_band, ceil(published band taxpayers / maximum_donor_weight))",
      "weight_rule": "published band taxpayers / band donor count, equal within a band",
      "expected_band_count": 4,
-     "candidate_population": "raw FRS base channel adults aged 16 and over",
+     "candidate_population": "raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over",
      "candidate_order": "person_id ascending breaks equal draw keys",
      "draw": "weighted_without_replacement_identity_keyed: Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first",
      "propensity": "SPI 2022-23 FACT-weighted band share by region, sex and age band",
@@ -1666,6 +1666,7 @@
      "kind": "fit_weighted_qrf_stage1",
      "training_artifact_role": "qrf_donor",
      "recipient_minimum_age": 16,
+     "recipient_role_column": "is_uc_claimant",
      "rebase_income_to_build_period": true,
      "donor_income_period": 2022,
      "income_uprating_variables": {
@@ -1865,7 +1866,7 @@
     {
      "kind": "fit_weighted_qrf_stage2",
      "training_population": "uk_frs_raw_spine_base_support_channel",
-     "target_population": "spi_synthetic_support_channel",
+     "target_population": "spi_synthetic_support_channel claimants and partners (is_uc_claimant) aged 16 and over",
      "predictors": [
       "age",
       "gender",
@@ -2294,7 +2295,7 @@
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income"
    ],
-   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path."
+   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
    "stage": "spi_housing_shell",

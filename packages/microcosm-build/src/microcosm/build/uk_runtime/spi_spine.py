@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
     SPI_INCOME_UPRATING_VARIABLES,
     SPI_MINIMUM_RECIPIENT_AGE,
+    SPI_RECIPIENT_ROLE_COLUMN,
     SPI_SOURCE_TI_FORMULA,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
@@ -247,6 +248,12 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
     and column
     not in (FRS_HMRC_PAY_COLUMN, FRS_HMRC_UBISJA_COLUMN, FRS_HMRC_INCPBEN_COLUMN)
 )
+#: Both forests are queried over every SPI-channel person aged 16 and over,
+#: and the dependants' rows are discarded (uk-data#504, microcosm#1095).
+SPI_SPINE_STAGE2_TARGET_POPULATION = (
+    "spi_synthetic_support_channel claimants and partners (is_uc_claimant) "
+    "aged 16 and over"
+)
 SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
     "gift_aid": 0.0,
     "charitable_investment_gifts": 0.0,
@@ -313,6 +320,8 @@ class UKSPIIncomeSpineResult:
                 self.imputation.reviewed_absent_stage2_outputs
             ),
             "recipient_minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
+            "recipient_role_column": SPI_RECIPIENT_ROLE_COLUMN,
+            "recipient_domain": self.imputation.recipient_domain,
             "pension_receipt_bridge": self.imputation.pension_receipt_bridge,
             "income_uprating": self.imputation.income_uprating,
             "band_donor_resample": self.imputation.band_donor_resample,
@@ -1097,6 +1106,11 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income stage-1 predictors drifted.")
     if stage1.parameters.get("recipient_minimum_age") != SPI_MINIMUM_RECIPIENT_AGE:
         raise ValueError("SPI income recipient age domain drifted.")
+    if stage1.parameters.get("recipient_role_column") != SPI_RECIPIENT_ROLE_COLUMN:
+        raise ValueError(
+            "SPI income recipient role drifted: the tape's draws go to FRS "
+            "claimants and partners only (uk-data#504, microcosm#1095)."
+        )
     if stage1.parameters.get("rebase_income_to_build_period") is not True:
         raise ValueError("SPI income build-year rebasing drifted.")
     if stage1.parameters.get("donor_income_period") != SPI_DONOR_INCOME_YEAR:
@@ -1113,6 +1127,8 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income FRS-channel initialization map drifted.")
     if tuple(stage2.parameters.get("predictors", ())) != SPI_SPINE_STAGE2_PREDICTORS:
         raise ValueError("SPI income stage-2 predictors drifted.")
+    if stage2.parameters.get("target_population") != SPI_SPINE_STAGE2_TARGET_POPULATION:
+        raise ValueError("SPI income stage-2 target population drifted.")
     if tuple(stage2.parameters.get("outputs", ())) != SPI_SPINE_STAGE2_OUTPUT_COLUMNS:
         raise ValueError("SPI income stage-2 outputs drifted.")
     reviewed_absent = stage2.parameters.get("reviewed_absent_outputs", {})

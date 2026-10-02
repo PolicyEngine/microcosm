@@ -139,6 +139,88 @@ def test_child_exclusion_keeps_the_other_recipients_draws(
     )
 
 
+def test_dependants_keep_their_twin_values_and_recipients_their_draws(
+    monkeypatch, tmp_path
+) -> None:
+    """A dependant aged 16 to 19 is not a taxpayer the tape samples.
+
+    Neither forest draws for it, so it keeps every value of its FRS twin, and
+    both forests are still queried over the age domain, so every other
+    recipient keeps the stage-1 and stage-2 draws it had (uk-data#504,
+    microcosm#1095).
+    """
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    original_predict = _FakeFittedQRF.predict
+
+    def predict(self, predictors):
+        result = original_predict(self, predictors)
+        for target in ("dividend_income", "universal_credit_reported"):
+            if target in result:
+                consumed = getattr(self, "consumed", 0)
+                result[target] = consumed + np.arange(len(result), dtype=float)
+                self.consumed = consumed + len(result)
+        return result
+
+    monkeypatch.setattr(_FakeFittedQRF, "predict", predict)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
+    reference = impute_uk_spi_income_support(support, donor_path, **options)
+    person = support.person.copy()
+    channel = support_channel_column("person")
+    spi_rows = person.index[person[channel].eq("spi")]
+    dependant = spi_rows[0]
+    person.loc[dependant, "age"] = 17
+    person.loc[dependant, "is_uc_claimant"] = False
+    candidate = impute_uk_spi_income_support(
+        replace(support, person=person), donor_path, **options
+    )
+
+    others = spi_rows.drop(dependant)
+    for column in ("dividend_income", "universal_credit_reported"):
+        np.testing.assert_array_equal(
+            reference.person.loc[others, column], candidate.person.loc[others, column]
+        )
+    twin_columns = [
+        column
+        for column in (
+            *SPI_INCOME_QRF_OUTPUT_COLUMNS,
+            *FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
+            "employment_income",
+        )
+        if column in person.columns
+    ]
+    assert twin_columns
+    pd.testing.assert_series_equal(
+        candidate.person.loc[dependant, twin_columns],
+        person.loc[dependant, twin_columns],
+        check_names=False,
+    )
+    assert candidate.person.loc[dependant, HMRC_SPI_ASSESSABLE_INCOME_COLUMN] == 0.0
+    assert candidate.recipient_domain["dependant_rows_kept_on_twin_values"] == 1
+    assert candidate.spi_prediction_rows == reference.spi_prediction_rows - 1
+
+
+def test_spi_income_refuses_a_frame_without_the_claimant_role(
+    monkeypatch, tmp_path
+) -> None:
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    options = dict(seed=9, n_estimators=3, donor_sample_size=None)
+    missing = replace(support, person=support.person.drop(columns="is_uc_claimant"))
+    with pytest.raises(ValueError, match="is_uc_claimant"):
+        impute_uk_spi_income_support(missing, donor_path, **options)
+    coded = replace(support, person=support.person.assign(is_uc_claimant=1.0))
+    with pytest.raises(ValueError, match="must be boolean"):
+        impute_uk_spi_income_support(coded, donor_path, **options)
+
+
 def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
     monkeypatch, tmp_path
 ) -> None:

@@ -7665,6 +7665,9 @@
        "type": "integer",
        "minimum": 0
       },
+      "recipient_role_column": {
+       "type": "string"
+      },
       "rebase_income_to_build_period": {
        "type": "boolean"
       },
