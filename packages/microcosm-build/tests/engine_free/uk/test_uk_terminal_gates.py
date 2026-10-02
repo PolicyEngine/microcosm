@@ -460,9 +460,19 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # fits at +24.5 %, back inside the bound. The state-pension 50-70k
     # deferral (ruling D6) is retired in turn (microcosm#1069): with the SPI
     # channel's State Pension at 66 repaired the row fits at +23.0 % to +24.0 %
-    # across the c5-fix and c6 arms, back inside the bound. The register is
-    # empty.
-    assert set(register) == set()
+    # across the c5-fix and c6 arms, back inside the bound. The SE
+    # 12,570-15,000 cell is deferred again on the microcosm#1063 stack
+    # (2026-10-02, four weeks): its design-weight value sits on the target and
+    # the solver's pull, the same as main's, crosses the bound at +32.0 %.
+    assert set(register) == {
+        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025"
+    }
+    deferral = register[
+        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025"
+    ]
+    assert deferral.approved_on == "2026-10-02"
+    assert deferral.expires_on == "2026-11-02"
+    assert "microcosm#1063" in deferral.adjudication
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -487,7 +497,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **empty_tail,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 23),
+        now=date(2026, 10, 2),
     )
 
     assert not fit.passed
@@ -509,7 +519,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     fit = uk_target_fit_gate(
         {name: relative_error},
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 23),
+        now=date(2026, 10, 2),
     )
 
     assert fit.passed is passes
@@ -524,7 +534,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
         reviewed_exclusions=register,
-        now=date(2026, 9, 23),
+        now=date(2026, 10, 2),
     )
     assert not fit.passed
     assert fit.details["failing_targets"] == {"hmrc.cgt.liability_total@2025": 0.30}

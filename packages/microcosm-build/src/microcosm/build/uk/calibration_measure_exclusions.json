@@ -164,6 +164,15 @@
       "expires_on": "2026-11-26"
     },
     {
+      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
+      "reason": "Two-household support: two FRS households (design weights 1,025 and 1,999 against the published 2,761, with their incidence clones) are the only rows whose UC award falls in this band on every main-based spine. On the #1063 stack both awards moved out of the band when the stages drawn after the WAS wealth chain read their rows in a new order, and the cell sits at -100% with final estimate 0.0; the same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1063 (the stack arm of 2026-10-02 on the review of #1089; same class as the 2026-08-26 microcosm#757 dispositions)",
+      "approved_on": "2026-10-02",
+      "expires_on": "2026-11-26"
+    },
+    {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
       "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
       "tracking": "uk-data#452",

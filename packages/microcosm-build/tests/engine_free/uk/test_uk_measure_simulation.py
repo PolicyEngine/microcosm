@@ -576,7 +576,7 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "hmrc.salary_sacrifice.": 3,
     "_1_000_000_to_inf": 10,
     "slc.": 5,
-    "dwp/uc_payment_dist/": 18,
+    "dwp/uc_payment_dist/": 19,
     "obr.universal_credit_": 2,
     # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
     # is signed out of the reference surface (target_reference_signed_
@@ -635,7 +635,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 61
+    assert len(names) == len(set(names)) == 62
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -701,15 +701,21 @@ def test_packaged_exclusions_load():
     today = [e for e in exclusions if e["approved_on"] == "2026-10-02"]
     # The single-row UC payment cell joined the uk-data#452 class on the
     # #1063 stack arm (one supporting household, lost to a draw reshuffle).
-    single_row = next(
+    thin = [
         e
         for e in today
-        if e["name"] == "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000"
-    )
-    assert single_row["tracking"] == "uk-data#452"
-    assert single_row["expires_on"] == "2026-11-26"
-    assert "Single-row support" in single_row["reason"]
-    renewed = [e for e in today if e is not single_row]
+        if e["name"]
+        in (
+            "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
+            "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
+        )
+    ]
+    assert len(thin) == 2
+    for entry in thin:
+        assert entry["tracking"] == "uk-data#452"
+        assert entry["expires_on"] == "2026-11-26"
+        assert "support" in entry["reason"]
+    renewed = [e for e in today if e not in thin]
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]
