@@ -159,6 +159,13 @@ def test_conversion_moves_full_pension_zeros_source_and_records_cap(
     assert result.moved_amount == pytest.approx(
         person.loc[converted, SALSAC_OUTPUT].sum()
     )
+    # Sacrificed pay leaves employment_income (microcosm#1069 c9); records the
+    # stage does not convert keep their reported pay.
+    np.testing.assert_allclose(
+        person.loc[converted, "employment_income"],
+        30_000.0 - person.loc[converted, SALSAC_OUTPUT],
+    )
+    assert (person.loc[~converted, "employment_income"] == 30_000.0).all()
     evidence = result.evidence()["headcount_receipt"]
     assert evidence["target"] == SALSAC_STAGE_TARGET
     assert evidence["converted_rows"] == result.converted_rows

@@ -3,47 +3,29 @@
   "exclusions": [
     {
       "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
-      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
-      "tracking": "microcosm#623",
+      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
+      "tracking": "microcosm#1069",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the #743-audit adjudication, issue comment 5413502559)",
-      "approved_on": "2026-08-25",
+      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
+      "approved_on": "2026-09-30",
       "expires_on": "2026-11-25"
     },
     {
       "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
-      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
-      "tracking": "microcosm#623",
+      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
+      "tracking": "microcosm#1069",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the #743-audit adjudication, issue comment 5413502559)",
-      "approved_on": "2026-08-25",
+      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
+      "approved_on": "2026-09-30",
       "expires_on": "2026-11-25"
     },
     {
       "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
-      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
-      "tracking": "microcosm#623",
+      "reason": "Deferred inside microcosm#1069 c11 (R7): the counterfactual route now resolves the salary-sacrifice relief, but the rate-band test compares adjusted net income with the after-allowance thresholds (0 / 37,700 / 125,140) and ignores the Scottish bands, so the three bands wait for a band-test fix; the all-rates total binds.",
+      "tracking": "microcosm#1069",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the #743-audit adjudication, issue comment 5413502559)",
-      "approved_on": "2026-08-25",
-      "expires_on": "2026-11-25"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.nics_relief_employee",
-      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
-      "tracking": "microcosm#623",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the #743-audit adjudication, issue comment 5413502559)",
-      "approved_on": "2026-08-25",
-      "expires_on": "2026-11-25"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.nics_relief_employer",
-      "reason": "The frame adapter reads only a precomputed slash-named delta column; no artifact ships a live counterfactual route.",
-      "tracking": "microcosm#623",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#757 (the #743-audit adjudication, issue comment 5413502559)",
-      "approved_on": "2026-08-25",
+      "adjudication": "microcosm#1069 plan R7, approved 2026-09-30: the relief rows bind through the counterfactual route, the rate bands after the band-test fix",
+      "approved_on": "2026-09-30",
       "expires_on": "2026-11-25"
     },
     {

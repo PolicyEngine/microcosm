@@ -1089,6 +1089,35 @@ stages:
     tax_year_start: 2024
     ukds_study_number: 9563
     doi: 10.5255/UKDA-SN-9563-1
+  - role: frs_table
+    table: job
+    kind: licensed_microdata
+    format: tab
+    vintage: '2024_25'
+    locator: job.tab
+    sha256: eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2
+    size_bytes: 10518760
+    runtime_sha256_required: true
+    tax_year_start: 2024
+    ukds_study_number: 9563
+    doi: 10.5255/UKDA-SN-9563-1
+  - role: frs_table
+    table: penprov
+    kind: licensed_microdata
+    format: tab
+    vintage: '2024_25'
+    locator: penprov.tab
+    sha256: 9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1
+    size_bytes: 513614
+    runtime_sha256_required: true
+    tax_year_start: 2024
+    ukds_study_number: 9563
+    doi: 10.5255/UKDA-SN-9563-1
+  - role: employer_rate_bands
+    kind: public_aggregate_reference
+    resource: ashe_employer_pension_contribution_rates.json
+    format: json
+    runtime_sha256_required: true
   operations:
   - kind: retain_adjudicated_frs_hmrc_leaves
     population: uk_frs_raw_spine
@@ -1150,10 +1179,19 @@ stages:
     - miscellaneous_income
     fail_on_missing_retained_constituent: true
     fail_on_full_concept_alias: true
-  - kind: derive
+  - kind: draw_employer_pension_contributions_from_rate_bands
     output: employer_pension_contributions
-    formula: 3 * employee_pension_contributions
-    source: incumbent enhanced-FRS frs.py employer-pension contribution estimate
+    artifact_role: employer_rate_bands
+    resource: ashe_employer_pension_contribution_rates.json
+    scheme_source: PENPROV.STEMPPEN 1 to 4 (employer schemes; occupational before group personal, group stakeholder, other)
+    sector_source: JOB.JOBSECT (first job with a stated sector)
+    occupational_split: defined benefit or defined contribution by ASHE Table P2 job counts in the sector
+    rate_basis: full pay (employment_income)
+    top_band_ceiling: 0.3
+    seed: 0
+    salts:
+    - employer_pension_occupational_type
+    - employer_pension_contribution_rate
   outputs:
   - hmrc_spi_pay
   - hmrc_spi_unemployment_benefit_income
@@ -1168,7 +1206,7 @@ stages:
   - ossben_identifiable_subset
   - srp_regular_code5
   - employer_pension_contributions
-  notes: Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then ports the incumbent employer-pension-contributions estimate.
+  notes: 'Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then draws employer pension contributions: each member of an employer scheme (PENPROV.STEMPPEN 1 to 4) with earnings takes an ASHE 2024 employer contribution rate for their scheme type and sector (Table P10 band shares, full pay, all industries; occupational schemes split into defined benefit and defined contribution by the sector''s Table P2 job counts), uniform within the band (top band 20% to 30%), times pay. It replaces the incumbent''s three times the employee contribution (microcosm#1069 c9, R6).'
 - stage: spi_support_channel
   survey: Family Resources Survey 2024-25
   source: Synthetic SPI support channel sampled uniformly without replacement from the raw FRS spine before cloning.
@@ -1195,6 +1233,8 @@ stages:
     share: 0.5
     strata:
     - region
+    pension_age_share: 0.2
+    pension_age_stratum: any_member_at_or_over_state_pension_age
     weight_kind_out: importance
     conservation: exact_total
   outputs:
@@ -1220,7 +1260,7 @@ stages:
   - household_source_id
   - source_household_id
   - source_year
-  notes: Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates 50 percent of each region stratum prior mass to the SPI channel with exact national conservation.
+  notes: "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates prior mass with exact national conservation within each region, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
 - stage: spi_income_band_donors
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5
   source: Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).
@@ -1327,6 +1367,11 @@ stages:
     mapped_build_period: 2024
     period_mapping: latest_published_tax_year
     runtime_sha256_required: true
+  - role: donor_age_populations
+    kind: public_aggregate_reference
+    resource: ons_single_year_age_populations.json
+    format: json
+    runtime_sha256_required: true
   operations:
   - kind: verify_pinned_hmrc_source_pair
     artifact_roles:
@@ -1373,6 +1418,12 @@ stages:
     fail_on_missing_columns: true
     fail_on_invalid_weight: true
     seed: 42
+  - kind: draw_spi_donor_ages_by_population
+    artifact_role: qrf_donor
+    resource: ons_single_year_age_populations.json
+    population_period: 2023
+    method: whole-year age drawn within the AGERANGE band in proportion to the ONS single-year population of the donor's sex, then a uniform fraction of a year; State Pension recipients (SRP > 0) are drawn at or above State Pension age, and the band's below-State-Pension-age population share is drawn from its non-recipients
+    state_pension_age: policyengine-uk gov.dwp.state_pension.age at the build instant
   - kind: fit_weighted_qrf_stage1
     training_artifact_role: qrf_donor
     recipient_minimum_age: 16
@@ -1524,8 +1575,9 @@ stages:
     - 500000
     - 1000000
     - 2000000
-    pool: full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's region where that pool holds the minimum
+    pool: full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's SPI age band where that pool holds the age minimum (composites never age-match), then to the carrier's region where that pool holds the regional minimum
     regional_pool_minimum: 20
+    age_pool_minimum: 20
     weighting: FACT
     with_replacement: true
     outputs: stage-1 outputs, uprated as the stage-1 draws
@@ -1602,6 +1654,16 @@ stages:
     require_all_outputs: false
     n_estimators: 100
     seed: 43
+  - kind: zero_pension_age_reports_below_state_pension_age
+    spi_state_pension_leaf: hmrc_spi_state_pension_income
+    spi_channel_columns:
+    - state_pension_reported
+    - pension_credit_reported
+    - winter_fuel_allowance_reported
+    base_channel_columns:
+    - state_pension_reported
+    state_pension_age: policyengine-uk gov.dwp.state_pension.age at the build instant
+    receipt: rows, weighted people and amounts removed per column and step
   - kind: redraw_columns_from_fitted_qrf
     fit: stage1
     columns:
@@ -3540,6 +3602,41 @@ stages:
   - frs_benunit_capital
   - would_claim_uc
   notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh.
+- stage: pension_credit_take_up
+  survey: Family Resources Survey 2024-25
+  source: 'DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.'
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - guarantee_credit
+    - savings_credit
+    - is_pension_credit_eligible
+    consumed_only: true
+  - kind: aggregate_person_to_benunit
+    method: any_positive
+    consumed_only: true
+    aggregates:
+      pension_credit_reported_anchor: pension_credit_reported
+  - kind: assign_component_take_up_residual
+    output: would_claim_pc
+    draw: would_claim_pc
+    seed: 0
+    anchor: pension_credit_reported_anchor
+    bands:
+    - name: guarantee_credit
+      rule: is_pension_credit_eligible AND guarantee_credit > 0
+      rate_key: pension_credit_guarantee_credit
+    - name: savings_credit_only
+      rule: is_pension_credit_eligible AND guarantee_credit <= 0 AND savings_credit > 0
+      rate_key: pension_credit_savings_credit_only
+    weight_mapping: household_to_benunit
+    residual_rate: (rate * entitled - reporters) / (entitled - reporters), weighted, clipped to [0, 1]
+  outputs: []
+  rewrites:
+  - would_claim_pc
+  notes: Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible.
 - stage: uc_deduction_attributes
   survey: DWP Universal Credit deductions statistics, March 2025 to February 2026
   source: Department for Work and Pensions supplementary Tables 2, 5 and 6, sha-pinned by Chronicle package dwp-uc-deductions-march-2025-february-2026.
@@ -4121,22 +4218,24 @@ stages:
     target: 5400000
     donor_pool: employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0
     rate_cap: 0.5
-    move: full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed
+    move: full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed
     seed: 2024
     salt: salary_sacrifice_conversion
     receipt: weighted_headcount
-    reason: Salary-sacrifice support stage rewrites pension columns only; household
-      rows and typed household weights pass through and total household mass is conserved.
+    reason: Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved.
   outputs:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
+  - employment_income
   nonnegative_outputs:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
+  - employment_income
   rewrites:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
-  notes: The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts.
+  - employment_income
+  notes: The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.
 - stage: student_loans
   survey: Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England
   source: Explore Education Statistics Table 6a, Higher education total

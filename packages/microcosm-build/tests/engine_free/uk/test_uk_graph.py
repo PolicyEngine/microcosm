@@ -44,10 +44,11 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
     # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
     # (PolicyEngine/chronicle#280) spi_income_band_donors stages, the #1012
-    # spi_housing_shell and the #1003 was_lisa; the frs_hmrc_retained_leaves /
-    # hmrc_spi_income certified-pair alternatives are retired (#901), so the
-    # manifest roster is the graph roster.
-    assert len(expected) == 35
+    # spi_housing_shell, the #1003 was_lisa and the microcosm#1069
+    # pension_credit_take_up; the frs_hmrc_retained_leaves / hmrc_spi_income
+    # certified-pair alternatives are retired (#901), so the manifest roster is
+    # the graph roster.
+    assert len(expected) == 36
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

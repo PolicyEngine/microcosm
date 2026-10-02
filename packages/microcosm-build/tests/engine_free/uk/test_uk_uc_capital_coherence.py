@@ -55,7 +55,14 @@ def test_stage_orders_after_every_universal_credit_report_writer() -> None:
 
     assert reporter_writers
     assert all(index < coherence_index for index, _ in reporter_writers)
-    assert stages[coherence_index + 1].stage == "uc_deduction_attributes"
+    # The Pension Credit take-up redraw sits between the coherence stage and the
+    # deduction attributes (microcosm#1069 c7); it writes no UC report.
+    assert [
+        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 3]
+    ] == [
+        "pension_credit_take_up",
+        "uc_deduction_attributes",
+    ]
 
 
 def test_or_refresh_truth_table_and_same_capital_source() -> None:

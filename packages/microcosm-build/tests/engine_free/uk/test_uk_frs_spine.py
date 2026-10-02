@@ -1073,8 +1073,10 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["council_tax_benefit_reported"] == pytest.approx(WEEKS_IN_YEAR)
     assert adult["maintenance_expenses"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["childcare_expenses"] == pytest.approx(5 * WEEKS_IN_YEAR)
+    # Reported personal and stakeholder amounts, no longer clipped at the 95th
+    # percentile of every PENPROV amount (microcosm#1069 c8).
     assert adult["personal_pension_contributions"] == pytest.approx(
-        95.2 * WEEKS_IN_YEAR
+        104.0 * WEEKS_IN_YEAR
     )
     assert adult["employee_pension_contributions"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["pension_contributions_via_salary_sacrifice"] == pytest.approx(

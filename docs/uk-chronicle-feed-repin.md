@@ -44,6 +44,12 @@ Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
 fragment.
 
+A re-pin also moves the charter-H2 parity fixture: every stage that declares a
+vendored resource as an artifact binds that resource's digest into its
+`stage_contract_sha256`, and the vendored headers restate the feed identity.
+Regenerate it with `tools/graph_uk_spine_fixture.py` and check that only those
+contract hashes move.
+
 Two-level (country + region) contract targets fan out over the region tier
 (`UK_REGION_TIER` in `microcosm.calibrate.geography_constants`), one reference per area
 (microcosm#905); their cells resolve Chronicle's region- and country-stamped
@@ -97,3 +103,21 @@ claimants, qualifying gains and tax by band of qualifying gain, individuals, tru
 taxpayers, 2021-22 to 2024-25; 287,150 rows). The addition is purely additive: the national and
 local reference files are byte-identical, the vendored resources carry the same rows under the new
 feed identity, and the three compile-parity receipts are unchanged.
+The `825406f` re-pin (microcosm#1069, PolicyEngine/chronicle#302 via #305, on top of `505e0e7`) brought
+the UK pension facts: Stat-Xplore State Pension and Pension Credit caseloads and amounts from
+February 2023 to March 2026 (by type, age, gender, region, partner and amount band), Northern
+Ireland State Pension and Pension Credit (DfC, May 2026), the DWP Spring 2026 State Pension and
+Pension Credit forecast lines, Attendance Allowance, Winter Fuel Payment recipients and statistics
+for winters 2023-24 to 2025-26 and the HMRC charge, the DWP workplace pension savings trends, ONS
+ASHE pension membership and contribution-rate bands, HMRC pension contribution relief (2023-24) and
+salary sacrifice relief (2024-25), and the OBR salary-sacrifice costing (344,402 rows). It also
+carries chronicle #246, #278, #292 and #304. No compiled value moved on either surface: the
+national and local reference files are byte-identical and the vendored resources carry the same
+rows under the new feed identity. The artifact carries every `505e0e7` value but is not a strict
+row superset: #305 rebuilt the DWP Spring 2026 package's record sets, so 44 incapacity-benefit
+forecast rows come back under new keys with the same forecast line and value, and 192 rows change
+only their layout fields; no UK target binds them. The five salary-sacrifice relief targets now
+match two facts each (the new 2023-24 Table 6.2 rows beside the bound 2024-25 ones) and still
+resolve to the 2024-25 fact. For the same reason the 2023 production compile-parity receipt gains
+five ledger-only rows (the relief targets now compile at that comparison period from the 2023-24
+facts); the two 2025 incumbent receipts are unchanged.

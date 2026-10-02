@@ -6439,6 +6439,66 @@
       "kind",
       "output",
       "draw",
+      "seed",
+      "anchor",
+      "bands",
+      "weight_mapping",
+      "residual_rate"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_component_take_up_residual"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "rule",
+         "rate_key"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "rule": {
+          "type": "string"
+         },
+         "rate_key": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "residual_rate": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
       "anchor",
       "rate_key",
       "seed"
@@ -7329,6 +7389,12 @@
        "const": "allocate_zero_weight_prior_mass"
       },
       "conservation": {
+       "type": "string"
+      },
+      "pension_age_share": {
+       "type": "number"
+      },
+      "pension_age_stratum": {
        "type": "string"
       },
       "share": {
@@ -8577,6 +8643,70 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "artifact_role",
+      "resource",
+      "scheme_source",
+      "sector_source",
+      "occupational_split",
+      "rate_basis",
+      "top_band_ceiling",
+      "seed",
+      "salts"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_employer_pension_contributions_from_rate_bands"
+      },
+      "output": {"type": "string"},
+      "artifact_role": {"type": "string"},
+      "resource": {"type": "string"},
+      "scheme_source": {"type": "string"},
+      "sector_source": {"type": "string"},
+      "occupational_split": {"type": "string"},
+      "rate_basis": {"type": "string"},
+      "top_band_ceiling": {"type": "number"},
+      "seed": {"type": "integer"},
+      "salts": {"type": "array", "items": {"type": "string"}}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "artifact_role",
+      "resource",
+      "population_period",
+      "method",
+      "state_pension_age"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_spi_donor_ages_by_population"
+      },
+      "artifact_role": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "population_period": {
+       "type": "integer"
+      },
+      "method": {
+       "type": "string"
+      },
+      "state_pension_age": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "carrier_column",
       "band_column",
       "band_lower_bounds",
@@ -8621,6 +8751,48 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "age_pool_minimum": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "spi_state_pension_leaf",
+      "spi_channel_columns",
+      "base_channel_columns",
+      "state_pension_age",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "zero_pension_age_reports_below_state_pension_age"
+      },
+      "spi_state_pension_leaf": {
+       "type": "string"
+      },
+      "spi_channel_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "base_channel_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "state_pension_age": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
       }
      }
     },

@@ -8,6 +8,7 @@ from microcosm.build.target_materialization import (
     BandEdgeCoverageError,
     MeasureResolutionError,
     assert_calibration_input_finite,
+    counterfactual_column,
     materialize_target_bindings,
     resolve_target_measures,
 )
@@ -1319,3 +1320,84 @@ def test_filter_aware_provider_without_filters_is_unchanged():
     np.testing.assert_array_equal(
         adapter.tables["person"]["cgt_taxpayer_measure"], [0.0, 0.0, 1.0]
     )
+
+
+# microcosm#1069 c11: counterfactual measures resolve through the provider.
+class CounterfactualAdapter(ResolutionAdapter):
+    def counterfactual_delta(self, binding, period):
+        column = counterfactual_column(binding)
+        if column in self.tables["person"]:
+            return np.asarray(self.tables["person"][column])
+        raise ValueError(
+            "frame does not carry precomputed counterfactual delta "
+            f"{binding['metric_name']!r}"
+        )
+
+
+_RELIEF_BINDING = {
+    "metric_name": "hmrc/relief",
+    "kind": "input_substitution_counterfactual",
+    "zeroed_input": "salary_sacrifice",
+    "folded_into": "pay",
+    "output_variable": "tax",
+    "output_delta": "counterfactual_minus_baseline",
+    "from_entity": "person",
+}
+
+
+class CounterfactualProvider:
+    contract_targets = {"relief": {"bindings": {"policyengine": _RELIEF_BINDING}}}
+
+    def __init__(self):
+        self.calls = []
+
+    def knows(self, entity, variable):
+        return False
+
+    def compute(self, entity, variable):
+        raise AssertionError("a counterfactual measure is not a column compute")
+
+    def counterfactual_delta(self, binding, period):
+        self.calls.append((binding["metric_name"], period))
+        return np.array([0.0, 30.0, 60.0]), "stub counterfactual"
+
+
+def test_counterfactual_column_is_slash_free():
+    assert (
+        counterfactual_column(
+            {"metric_name": "hmrc/salary_sacrifice_employer_nics_relief"}
+        )
+        == "counterfactual_delta__hmrc_salary_sacrifice_employer_nics_relief"
+    )
+
+
+def test_resolve_target_measures_routes_counterfactual_deltas_through_the_provider():
+    provider = CounterfactualProvider()
+
+    resolution = resolve_target_measures(
+        lambda: CounterfactualAdapter(_resolution_source()),
+        _resolution_registry("relief"),
+        provider,
+        period=2025,
+    )
+
+    key = ("person", "counterfactual_delta__hmrc_relief")
+    assert set(resolution.measure_inputs) == {key}
+    np.testing.assert_array_equal(resolution.measure_inputs[key], [0.0, 30.0, 60.0])
+    assert provider.calls == [("hmrc/relief", 2025)]
+    assert resolution.receipt["attached"] == {
+        "person.counterfactual_delta__hmrc_relief": "stub counterfactual"
+    }
+
+
+def test_counterfactual_skips_refuse_without_a_provider_route():
+    class NoRouteProvider(StubMeasureProvider):
+        contract_targets = CounterfactualProvider.contract_targets
+
+    with pytest.raises(MeasureResolutionError, match="counterfactual target measure"):
+        resolve_target_measures(
+            lambda: CounterfactualAdapter(_resolution_source()),
+            _resolution_registry("relief"),
+            NoRouteProvider(),
+            period=2025,
+        )

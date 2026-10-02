@@ -66,6 +66,9 @@ UC_REPORTER_REDRAW_STAGE_NAMES = [
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
+PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
+    "pension_credit_take_up",
+]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -91,6 +94,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -159,6 +163,7 @@ class TestUKSourceStagesManifest:
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -230,6 +235,7 @@ class TestUKSourceStagesManifest:
                     "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
+                    "pension_credit_take_up": _identity,
                     "uc_deduction_attributes": _identity,
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,
@@ -462,6 +468,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stages["salary_sacrifice"].outputs == (
             SALSAC_OUTPUT,
             "employee_pension_contributions",
+            "employment_income",
         )
         assert stages["student_loans"].outputs == ("student_loan_plan",)
 
@@ -615,7 +622,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
-            "derive",
+            "draw_employer_pension_contributions_from_rate_bands",
         ]
         assert [op.kind for op in stages["spi_support_channel"].operations] == [
             "stack_zero_weight_donors",
@@ -625,9 +632,11 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["hmrc_spi_income_spine"].operations] == [
             "verify_pinned_hmrc_source_pair",
             "strict_read_private_table",
+            "draw_spi_donor_ages_by_population",
             "fit_weighted_qrf_stage1",
             "resample_band_donor_leaves",
             "fit_weighted_qrf_stage2",
+            "zero_pension_age_reports_below_state_pension_age",
             "redraw_columns_from_fitted_qrf",
             "materialize_hmrc_income_bands_fail_closed",
             "classify_hmrc_income_facts_with_reviewed_fences",
@@ -912,10 +921,15 @@ class TestE3ManifestLockstep:
         stages = {stage.stage: stage for stage in spec.sources.stages}
 
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
-        assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
+        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 42
         # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
-        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 44
-        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 43
+        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 44
+        assert stages["hmrc_spi_income_spine"].operations[5].parameters["seed"] == 43
+        # The donor age draw and the State Pension age guard take no seed of
+        # their own: ages draw on the stage-1 seed, the guard is deterministic
+        # (microcosm#1069).
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[2].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[6].parameters
         assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
         assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0

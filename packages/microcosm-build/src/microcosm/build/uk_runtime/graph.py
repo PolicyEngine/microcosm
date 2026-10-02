@@ -102,6 +102,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         "spi_housing_shell",
         "uc_reporter_redraw",
         "uc_capital_coherence",
+        # The Pension Credit redraw rewrites ``frs_take_up``'s would_claim_pc,
+        # which the open-surface readers before it bind (microcosm#1069).
+        "pension_credit_take_up",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
         # reader already bound to.  In the root version that rewrite opened a
@@ -235,7 +238,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "lcfs_consumption": None,
     "etb_vat": None,
     "etb_services": None,
-    "frs_hmrc_spine_leaves": frozenset({("person", "employee_pension_contributions")}),
+    # The employer pension draw applies an ASHE rate to pay (microcosm#1069).
+    "frs_hmrc_spine_leaves": frozenset({("person", "employment_income")}),
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
@@ -262,6 +266,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
+    # One temporary engine materialization of Pension Credit entitlement over
+    # the whole frame: an open surface, like the UC award screen.
+    "pension_credit_take_up": None,
     "uc_capital_coherence": frozenset(
         {
             ("person", "is_benunit_head"),
@@ -759,6 +766,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
+    "pension_credit_take_up": (_Cell("benunit", "would_claim_pc", "bool"),),
     "uc_deduction_attributes": (
         _Cell("benunit", "uc_deduction_random_draw", "float64"),
         _Cell("benunit", "uc_deduction_type_random_draw", "float64"),
@@ -789,6 +797,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         (
             "pension_contributions_via_salary_sacrifice",
             "employee_pension_contributions",
+            # Converted records' pay drops by the sacrificed amount (microcosm#1069).
+            "employment_income",
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),

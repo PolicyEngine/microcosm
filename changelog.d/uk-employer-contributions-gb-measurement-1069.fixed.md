@@ -1,0 +1,1 @@
+Declare Great Britain on the measurement of DWP's employer pension contributions target (#1069). DWP's figure covers England, Scotland and Wales; the engine binding already measured GB households only, and the contract's measurement block now says so too.

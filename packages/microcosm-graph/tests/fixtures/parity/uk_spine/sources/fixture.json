@@ -1140,6 +1140,35 @@
           "size_bytes": 14946,
           "table": "benefits",
           "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "job.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "0f787336f16448b3b9ec0b7ca46ca50da12b4fa90892161c0054fa89282189d7",
+          "size_bytes": 2643,
+          "table": "job",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
+          "locator": "penprov.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "573c972543165c2f3d3780661877352ae7d4cf9520936e2edf59f19ed53ba706",
+          "size_bytes": 2705,
+          "table": "penprov",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "ashe_employer_pension_contribution_rates.json",
+          "role": "employer_rate_bands",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "person",
@@ -1151,7 +1180,7 @@
         "srp_regular_code5",
         "employer_pension_contributions"
       ],
-      "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then ports the incumbent employer-pension-contributions estimate.",
+      "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then draws employer pension contributions: each member of an employer scheme (PENPROV.STEMPPEN 1 to 4) with earnings takes an ASHE 2024 employer contribution rate for their scheme type and sector (Table P10 band shares, full pay, all industries; occupational schemes split into defined benefit and defined contribution by the sector's Table P2 job counts), uniform within the band (top band 20% to 30%), times pay. It replaces the incumbent's three times the employee contribution (microcosm#1069 c9, R6).",
       "operations": [
         {
           "annualization": "weekly raw FRS amounts * (365.25 / 7)",
@@ -1231,10 +1260,20 @@
           "status": "adjudicated_partial_replay"
         },
         {
-          "formula": "3 * employee_pension_contributions",
-          "kind": "derive",
+          "artifact_role": "employer_rate_bands",
+          "kind": "draw_employer_pension_contributions_from_rate_bands",
+          "occupational_split": "defined benefit or defined contribution by ASHE Table P2 job counts in the sector",
           "output": "employer_pension_contributions",
-          "source": "incumbent enhanced-FRS frs.py employer-pension contribution estimate"
+          "rate_basis": "full pay (employment_income)",
+          "resource": "ashe_employer_pension_contribution_rates.json",
+          "salts": [
+            "employer_pension_occupational_type",
+            "employer_pension_contribution_rate"
+          ],
+          "scheme_source": "PENPROV.STEMPPEN 1 to 4 (employer schemes; occupational before group personal, group stakeholder, other)",
+          "sector_source": "JOB.JOBSECT (first job with a stated sector)",
+          "seed": 0,
+          "top_band_ceiling": 0.3
         }
       ],
       "outputs": [
@@ -1717,8 +1756,8 @@
           "locator": "job.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "c382b8db75d9a3d6d2ab2c7ccb8c45b72e6c6fc2473255530f5103c478f47985",
-          "size_bytes": 2365,
+          "sha256": "0f787336f16448b3b9ec0b7ca46ca50da12b4fa90892161c0054fa89282189d7",
+          "size_bytes": 2643,
           "table": "job",
           "vintage": "synthetic-h2"
         },
@@ -1761,8 +1800,8 @@
           "locator": "penprov.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "6110ac0e369795baf6d3ffd221fd6ac4d6fe7731da22d535f5ad144d2b031830",
-          "size_bytes": 1820,
+          "sha256": "573c972543165c2f3d3780661877352ae7d4cf9520936e2edf59f19ed53ba706",
+          "size_bytes": 2705,
           "table": "penprov",
           "vintage": "synthetic-h2"
         },
@@ -2470,6 +2509,13 @@
           "survey": "HMRC Personal Incomes Tables 3.6 and 3.7",
           "tax_year_start": 2023,
           "vintage": "2023-24"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "ons_single_year_age_populations.json",
+          "role": "donor_age_populations",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "person",
@@ -2540,6 +2586,14 @@
           "runtime_sha256_required": true,
           "seed": 42,
           "weight": "FACT"
+        },
+        {
+          "artifact_role": "qrf_donor",
+          "kind": "draw_spi_donor_ages_by_population",
+          "method": "whole-year age drawn within the AGERANGE band in proportion to the ONS single-year population of the donor's sex, then a uniform fraction of a year; State Pension recipients (SRP > 0) are drawn at or above State Pension age, and the band's below-State-Pension-age population share is drawn from its non-recipients",
+          "population_period": 2023,
+          "resource": "ons_single_year_age_populations.json",
+          "state_pension_age": "policyengine-uk gov.dwp.state_pension.age at the build instant"
         },
         {
           "assessable_income_source_semantics": "QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly",
@@ -2721,6 +2775,7 @@
           "training_artifact_role": "qrf_donor"
         },
         {
+          "age_pool_minimum": 20,
           "band_column": "spi_income_band_donor_lower_bound",
           "band_lower_bounds": [
             200000,
@@ -2731,7 +2786,7 @@
           "carrier_column": "person_is_spi_income_band_carrier",
           "kind": "resample_band_donor_leaves",
           "outputs": "stage-1 outputs, uprated as the stage-1 draws",
-          "pool": "full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's region where that pool holds the minimum",
+          "pool": "full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's SPI age band where that pool holds the age minimum (composites never age-match), then to the carrier's region where that pool holds the regional minimum",
           "regional_pool_minimum": 20,
           "seed": 44,
           "weighting": "FACT",
@@ -2818,6 +2873,20 @@
           "training_population": "uk_frs_raw_spine_base_support_channel",
           "weight": "household_weight",
           "weight_mapping": "household_to_person"
+        },
+        {
+          "base_channel_columns": [
+            "state_pension_reported"
+          ],
+          "kind": "zero_pension_age_reports_below_state_pension_age",
+          "receipt": "rows, weighted people and amounts removed per column and step",
+          "spi_channel_columns": [
+            "state_pension_reported",
+            "pension_credit_reported",
+            "winter_fuel_allowance_reported"
+          ],
+          "spi_state_pension_leaf": "hmrc_spi_state_pension_income",
+          "state_pension_age": "policyengine-uk gov.dwp.state_pension.age at the build instant"
         },
         {
           "columns": [
@@ -4144,6 +4213,59 @@
       "stage": "nts_bus_travel",
       "survey": "National Travel Survey 2002-2024"
     },
+    "pension_credit_take_up": {
+      "artifacts": [],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible.",
+      "operations": [
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "guarantee_credit",
+            "savings_credit",
+            "is_pension_credit_eligible"
+          ]
+        },
+        {
+          "aggregates": {
+            "pension_credit_reported_anchor": "pension_credit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_positive"
+        },
+        {
+          "anchor": "pension_credit_reported_anchor",
+          "bands": [
+            {
+              "name": "guarantee_credit",
+              "rate_key": "pension_credit_guarantee_credit",
+              "rule": "is_pension_credit_eligible AND guarantee_credit > 0"
+            },
+            {
+              "name": "savings_credit_only",
+              "rate_key": "pension_credit_savings_credit_only",
+              "rule": "is_pension_credit_eligible AND guarantee_credit <= 0 AND savings_credit > 0"
+            }
+          ],
+          "draw": "would_claim_pc",
+          "kind": "assign_component_take_up_residual",
+          "output": "would_claim_pc",
+          "residual_rate": "(rate * entitled - reporters) / (entitled - reporters), weighted, clipped to [0, 1]",
+          "seed": 0,
+          "weight_mapping": "household_to_benunit"
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "would_claim_pc"
+      ],
+      "source": "DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.",
+      "stage": "pension_credit_take_up",
+      "survey": "Family Resources Survey 2024-25"
+    },
     "regional_property_uprating": {
       "artifacts": [
         {
@@ -4194,9 +4316,10 @@
       "grain": "person",
       "nonnegative_outputs": [
         "pension_contributions_via_salary_sacrifice",
-        "employee_pension_contributions"
+        "employee_pension_contributions",
+        "employment_income"
       ],
-      "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts.",
+      "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.",
       "operations": [
         {
           "cache": false,
@@ -4220,9 +4343,9 @@
         {
           "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
           "kind": "convert_donors_to_target_stock",
-          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed",
+          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed",
           "rate_cap": 0.5,
-          "reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved.",
+          "reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved.",
           "receipt": "weighted_headcount",
           "resource": "salary_sacrifice_anchor.json",
           "salt": "salary_sacrifice_conversion",
@@ -4232,11 +4355,13 @@
       ],
       "outputs": [
         "pension_contributions_via_salary_sacrifice",
-        "employee_pension_contributions"
+        "employee_pension_contributions",
+        "employment_income"
       ],
       "rewrites": [
         "pension_contributions_via_salary_sacrifice",
-        "employee_pension_contributions"
+        "employee_pension_contributions",
+        "employment_income"
       ],
       "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
       "stage": "salary_sacrifice",
@@ -4430,7 +4555,7 @@
         "source_household_id",
         "source_year"
       ],
-      "notes": "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates 50 percent of each region stratum prior mass to the SPI channel with exact national conservation.",
+      "notes": "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates prior mass with exact national conservation within each region, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069).",
       "operations": [
         {
           "channels": {
@@ -4460,6 +4585,8 @@
         {
           "conservation": "exact_total",
           "kind": "allocate_zero_weight_prior_mass",
+          "pension_age_share": 0.2,
+          "pension_age_stratum": "any_member_at_or_over_state_pension_age",
           "share": 0.5,
           "strata": [
             "region"

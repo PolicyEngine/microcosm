@@ -1,11 +1,11 @@
 {
- "compiled_count": 1152,
+ "compiled_count": 1230,
  "counts_by_kind": {
-  "calibration_drift": 555,
-  "fixture_only": 53,
-  "ledger_only": 568
+  "calibration_drift": 553,
+  "fixture_only": 55,
+  "ledger_only": 648
  },
- "difference_count": 1176,
+ "difference_count": 1256,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -53,6 +53,13 @@
    "fixture_value": 3518.0,
    "kind": "fixture_only",
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_nan_to_nan",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7884800.0,
+   "kind": "fixture_only",
+   "name": "hmrc.salary_sacrifice.users_total",
    "period": 2025,
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
@@ -239,6 +246,13 @@
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
   {
+   "fixture_value": 146185954351.57382,
+   "kind": "fixture_only",
+   "name": "obr.state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
+  },
+  {
    "fixture_value": 82000.0,
    "kind": "fixture_only",
    "name": "ons.population.scotland_households_3plus_children",
@@ -380,6 +394,27 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 60195.0,
+   "name": "dfc_ni.pension_credit.benefit_units",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3710881810.1898503,
+   "name": "dfc_ni.state_pension.amount",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 330147.5,
+   "name": "dfc_ni.state_pension.recipients",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 95031.0,
    "name": "dfe.funded_childcare.early_learning_2_year_olds",
    "period": 2025,
@@ -431,6 +466,20 @@
    "kind": "ledger_only",
    "ledger_value": 1130214000.0,
    "name": "dft.bus_net_support.london",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1597003.0,
+   "name": "dwp.attendance_allowance.recipients_england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 124117.75,
+   "name": "dwp.attendance_allowance.recipients_wales",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -541,6 +590,27 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1107464.1666666667,
+   "name": "dwp.hb.households_pension_age",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 216778.66666666666,
+   "name": "dwp.hb.households_pension_age_private_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 890663.5833333334,
+   "name": "dwp.hb.households_pension_age_social_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 304422.6666666667,
    "name": "dwp.hb.households_private_rented",
    "period": 2025,
@@ -552,6 +622,496 @@
    "name": "dwp.hb.households_social_rented",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1390586.25,
+   "name": "dwp.pension_credit.benefit_units",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 179022.25,
+   "name": "dwp.pension_credit.benefit_units_65_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 282852.75,
+   "name": "dwp.pension_credit.benefit_units_70_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 367571.25,
+   "name": "dwp.pension_credit.benefit_units_75_79",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 261310.0,
+   "name": "dwp.pension_credit.benefit_units_80_84",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 177613.5,
+   "name": "dwp.pension_credit.benefit_units_85_89",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 122210.75,
+   "name": "dwp.pension_credit.benefit_units_90_plus",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47246.25,
+   "name": "dwp.pension_credit.benefit_units_both_couple",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 366055.25,
+   "name": "dwp.pension_credit.benefit_units_both_single",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 96794.25,
+   "name": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 715624.75,
+   "name": "dwp.pension_credit.benefit_units_guarantee_only_single",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22458.0,
+   "name": "dwp.pension_credit.benefit_units_savings_only_couple",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 142408.25,
+   "name": "dwp.pension_credit.benefit_units_savings_only_single",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 138623908111.01526,
+   "name": "dwp.state_pension.amount",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12052874.0,
+   "name": "dwp.state_pension.recipients",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1388613.5,
+   "name": "dwp.state_pension.recipients_female_66_69_new",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 717078.5,
+   "name": "dwp.state_pension.recipients_female_70_74_new",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 822163.0,
+   "name": "dwp.state_pension.recipients_female_70_74_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1502398.25,
+   "name": "dwp.state_pension.recipients_female_75_79_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1016169.75,
+   "name": "dwp.state_pension.recipients_female_80_84_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 644697.25,
+   "name": "dwp.state_pension.recipients_female_85_89_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 404408.75,
+   "name": "dwp.state_pension.recipients_female_90_plus_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1323018.25,
+   "name": "dwp.state_pension.recipients_male_66_69_new",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1222116.75,
+   "name": "dwp.state_pension.recipients_male_70_74_new",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 194617.75,
+   "name": "dwp.state_pension.recipients_male_70_74_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1333148.5,
+   "name": "dwp.state_pension.recipients_male_75_79_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 823789.0,
+   "name": "dwp.state_pension.recipients_male_80_84_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 452540.25,
+   "name": "dwp.state_pension.recipients_male_85_89_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207357.5,
+   "name": "dwp.state_pension.recipients_male_90_plus_pre_2016",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 221933.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000001",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 542356.0,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000002",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 406034.0,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000003",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 363537.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000004",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 416229.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000005",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 457239.25,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000006",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 421776.5,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000007",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 658266.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000008",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 464841.0,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000009",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 124804.0,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.100_00_to_under_150_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 661720.6666666666,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.150_00_to_under_200_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3390794.6666666665,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.200_00_to_under_250_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2481.3333333333335,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.20_00_to_under_40_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 433550.3333333333,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.250_00_to_under_300_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 64770.0,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.300_00_and_over__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24329.333333333332,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 31134.333333333332,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.80_00_to_under_100_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2401.3333333333335,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.under_20_00__new_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 445194.0,
+   "name": "dwp.state_pension.recipients_new_scotland",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 253534.75,
+   "name": "dwp.state_pension.recipients_new_wales",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 324237.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000001",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 835347.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000002",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 631830.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000003",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 586131.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000004",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 682017.5,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000005",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 782615.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000006",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 593093.25,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000007",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1134987.25,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000008",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 806881.5,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000009",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 880177.3333333334,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.100_00_to_under_150_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1589409.6666666667,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.150_00_to_under_200_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2730401.3333333335,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.200_00_to_under_250_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8063.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.20_00_to_under_40_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1338030.3333333333,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.250_00_to_under_300_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 737995.6666666666,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.300_00_and_over__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12135.666666666666,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.40_00_to_under_60_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17155.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.60_00_to_under_80_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23048.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.80_00_to_under_100_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12621.333333333334,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.under_20_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 621000.25,
+   "name": "dwp.state_pension.recipients_pre_2016_scotland",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 403793.0,
+   "name": "dwp.state_pension.recipients_pre_2016_wales",
+   "period": 2025,
+   "reason": "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great Britain) and DfC (Northern Ireland) on the four quarterly points inside calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by sex by type, area by type and weekly amount band by type. The frozen fixture has no State Pension caseload or resident-level row."
   },
   {
    "kind": "ledger_only",
@@ -704,6 +1264,13 @@
    "kind": "ledger_only",
    "ledger_value": 129630.0,
    "name": "dwp.uc.two_child_limit.households_disabled_child_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 104200000000.0,
+   "name": "dwp.workplace_pension.employer_contributions",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -1509,6 +2076,13 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8800000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_total",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5293,7 +5867,7 @@
   {
    "fixture_value": 2987000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3400000000.0,
+   "ledger_value": 3695652173.9130435,
    "name": "hmrc.salary_sacrifice.nics_relief_employer",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -5311,14 +5885,6 @@
    "kind": "calibration_drift",
    "ledger_value": 4300000.0,
    "name": "hmrc.salary_sacrifice.users_below_cap",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 7884800.0,
-   "kind": "calibration_drift",
-   "ledger_value": 7700000.0,
-   "name": "hmrc.salary_sacrifice.users_total",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
@@ -6509,7 +7075,7 @@
   {
    "fixture_value": 847000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 956692420.897719,
+   "ledger_value": 1190417391.6067786,
    "name": "hmrc/state_pension_income_band_100_000_to_150_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6517,7 +7083,7 @@
   {
    "fixture_value": 11800000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 13328182487.122885,
+   "ledger_value": 13901060506.30619,
    "name": "hmrc/state_pension_income_band_12_570_to_15_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6525,7 +7091,7 @@
   {
    "fixture_value": 265000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 299319352.46504784,
+   "ledger_value": 348951387.9503221,
    "name": "hmrc/state_pension_income_band_150_000_to_200_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6533,7 +7099,7 @@
   {
    "fixture_value": 22200000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 25075055187.63797,
+   "ledger_value": 24542266944.500935,
    "name": "hmrc/state_pension_income_band_15_000_to_20_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6541,7 +7107,7 @@
   {
    "fixture_value": 20000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 22590139.808682855,
+   "ledger_value": 26355163.11013001,
    "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6549,7 +7115,7 @@
   {
    "fixture_value": 179000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 202181751.28771156,
+   "ledger_value": 242163030.07933253,
    "name": "hmrc/state_pension_income_band_200_000_to_300_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6557,7 +7123,7 @@
   {
    "fixture_value": 24900000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 28124724061.810158,
+   "ledger_value": 28193657209.02049,
    "name": "hmrc/state_pension_income_band_20_000_to_30_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6565,7 +7131,7 @@
   {
    "fixture_value": 96000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 108432671.0816777,
+   "ledger_value": 129875144.62355264,
    "name": "hmrc/state_pension_income_band_300_000_to_500_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6573,7 +7139,7 @@
   {
    "fixture_value": 12300000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 13892935982.339956,
+   "ledger_value": 15597393406.099285,
    "name": "hmrc/state_pension_income_band_30_000_to_40_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6581,7 +7147,7 @@
   {
    "fixture_value": 6020000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 6799632082.41354,
+   "ledger_value": 7633846203.635585,
    "name": "hmrc/state_pension_income_band_40_000_to_50_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6589,7 +7155,7 @@
   {
    "fixture_value": 43000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 48568800.58866814,
+   "ledger_value": 58912156.269587904,
    "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6597,7 +7163,7 @@
   {
    "fixture_value": 4660000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 5263502575.423105,
+   "ledger_value": 6406539912.292578,
    "name": "hmrc/state_pension_income_band_50_000_to_70_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -6605,7 +7171,7 @@
   {
    "fixture_value": 1890000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 2134768211.9205298,
+   "ledger_value": 2598360608.2045007,
    "name": "hmrc/state_pension_income_band_70_000_to_100_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7383,14 +7949,6 @@
    "kind": "calibration_drift",
    "ledger_value": 15026137524.089184,
    "name": "obr.sdlt",
-   "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
-  },
-  {
-   "fixture_value": 146185954351.57382,
-   "kind": "calibration_drift",
-   "ledger_value": 144133374882.29138,
-   "name": "obr.state_pension",
    "period": 2025,
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
   },

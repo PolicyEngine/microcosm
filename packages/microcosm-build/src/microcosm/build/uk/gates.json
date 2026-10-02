@@ -418,11 +418,12 @@
         "stage": "spi_support_channel",
         "check": "spi_support_channel",
         "spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.2,
         "absolute_tolerance": 0.0,
         "household_weight_kind": "importance",
         "minimum_spi_households": 1
       },
-      "notes": "Stage-time mass gate over the SPI support-channel receipt."
+      "notes": "Stage-time mass gate over the SPI support-channel receipt: the channel's prior share of households without a member at or over State Pension age, and its share of those with one (microcosm#1069)."
     },
     {
       "id": "uk_stage_hmrc_spi_income_spine_identity",
@@ -439,6 +440,21 @@
         "minimum_target_count": 1
       },
       "notes": "Stage-time SPI redraw identity gate over the HMRC SPI income spine receipt."
+    },
+    {
+      "id": "uk_stage_pension_credit_take_up",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "pension_credit_take_up",
+        "check": "pension_credit_take_up",
+        "maximum_take_up_deviation": 0.05,
+        "minimum_entitled_units": 1
+      },
+      "notes": "Stage-time gate over the Pension Credit take-up receipt (microcosm#1069 R9): each component band (Guarantee Credit, Savings Credit only) realizes its DWP FYE 2024 caseload take-up within 0.05 at the stage's weights, or at least the rate where its reporters alone exceed it. The terminal take-up signal gate no longer measures would_claim_pc, whose rate is a share of the entitled units the engine finds, not of every benefit unit."
     },
     {
       "id": "uk_stage_cgt_incidence_clone_mass",
@@ -851,7 +867,7 @@
       "parameters": {
         "maximum_share_deviation": 0.05
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9)."
     },
     {
       "id": "uk_brma_enum_domain",

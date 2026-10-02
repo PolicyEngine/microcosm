@@ -117,13 +117,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7365ded0928aa124ff8fe3e9ca87cc5b55c8f61ad7fc6c910fa5b17b5cd60e29"
+    "e6ad5f71e55a9c639026eb3794753ad9da0f2d1633949166956fc2f13be4d5c2"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "dcc233997328072dbb94b823c93b4e3db33e7410ed94533530f0a6fe31f0d4c9"
+    "9ade6a80be484b410c47bf93191bd17cce01542d3d9032ba672d38bd23cdb98c"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "13ba3e6141315da40c2db07ec6a3be3ec6607be3c47645220b399c02e8e6f626"
+    "7830c47cab40144f503e2e377391fe2a0f008b0dd20b88a584f750acdb8127ae"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -179,6 +179,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
@@ -1230,6 +1231,7 @@ def _gate_battery_payload(
         "spi_support_channel",
         "hmrc_spi_income_spine",
         "uc_capital_coherence",
+        "pension_credit_take_up",
         "uc_deduction_attributes",
         "cgt_support_split",
         "cgt_incidence_clone",
@@ -1253,6 +1255,7 @@ def _gate_battery_payload(
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",

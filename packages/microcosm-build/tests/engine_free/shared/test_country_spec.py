@@ -943,6 +943,8 @@ class TestUKCountryPackage:
             "dwp_uc_deduction_distributions.json",
             "nhs_consumption_by_age_gender.json",
             "ons_age_tail_band_populations.json",
+            "ashe_employer_pension_contribution_rates.json",
+            "ons_single_year_age_populations.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -1007,9 +1009,10 @@ class TestUKCountryPackage:
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
         # spi_income_band_donors (PolicyEngine/chronicle#280 lane), the SPI
-        # housing shell (#1012) and was_lisa (#1003) as the newest); the
-        # frs_hmrc_retained_leaves / hmrc_spi_income pair is retired (#901).
-        assert len(spec.sources.stages) == 35
+        # housing shell (#1012), was_lisa (#1003) and pension_credit_take_up
+        # (microcosm#1069) as the newest); the frs_hmrc_retained_leaves /
+        # hmrc_spi_income pair is retired (#901).
+        assert len(spec.sources.stages) == 36
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1062,6 +1065,8 @@ class TestExistingPackagesGeneralize:
             "dwp_uc_deduction_distributions.json",
             "nhs_consumption_by_age_gender.json",
             "ons_age_tail_band_populations.json",
+            "ashe_employer_pension_contribution_rates.json",
+            "ons_single_year_age_populations.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -1123,7 +1128,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1152
+            len(references) == 1230
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1133,7 +1138,15 @@ class TestExistingPackagesGeneralize:
         # cells and Wales gains ten country rows (bands A-I + total);
         # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
         # 24 size-of-gain rows; microcosm#1014: 16 Table 4.1 BADR/IR band rows
-        # and 12 Table 3 taxable-income margin rows
+        # and 12 Table 3 taxable-income margin rows; microcosm#1069: 60 State
+        # Pension rows (4 levels, 14 age-by-sex cells, 22 area cells, 20 bands)
+        # less the OBR State Pension line, now a diagnostic, and the signed-out
+        # empty new State Pension £40-£60 band; 14 Pension Credit caseload rows
+        # (Great Britain total, six type-by-partner cells, six age bands, NI);
+        # the DWP employer contribution total, less the salary-sacrifice users
+        # total (the Table 3.8 rows and the DWP employee total left the fit); two
+        # Attendance Allowance and three pension-age Housing Benefit rows; the
+        # income-tax relief total on salary sacrifice in place of the amount row
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1380,6 +1393,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_pension_credit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
@@ -1482,6 +1496,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_pension_credit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
