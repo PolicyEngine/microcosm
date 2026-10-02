@@ -485,3 +485,32 @@ def test_take_up_failure_split_and_stale_check(probe_tool) -> None:
         ]
     }
     assert probe_tool.stale_count_calibrated(payload) == ["a"]
+
+
+def test_a_constant_effect_has_exactly_zero_variance(sampler, probe_tool) -> None:
+    """A value that is the same for every household has a total equal to the
+    (conserved) weight total times it: zero error, and so exactly zero
+    variance and no effective households. Rounding-level residuals once
+    passed for a tiny variance spread over thousands of households, which
+    made a conserved total look like a confident miss."""
+    rng = np.random.default_rng(5)
+    n = 4_000
+    ids = np.arange(1, n + 1, dtype=np.int64)
+    weights = rng.lognormal(mean=5.0, sigma=1.5, size=n)
+    labels = np.where(ids % 3 == 0, "a", "b").astype(object)
+    for seed in range(20):
+        draw = sampler.draw_households(
+            ids, weights, labels, [], fraction=0.05, seed=seed
+        )
+        terms = probe_tool.stratified_variance_terms(
+            np.ones(len(draw.selected_ids)),
+            source_weights=draw.source_weights,
+            labels=draw.labels,
+            certainty=draw.certainty,
+            strata=draw.strata,
+        )
+        assert float(terms.sum()) == 0.0
+        assert probe_tool.effective_variance_households(terms) == 0.0
+        assert float(draw.adjusted_weights.sum()) == pytest.approx(
+            float(weights.sum()), rel=1e-12
+        )

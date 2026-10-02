@@ -143,6 +143,9 @@ DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS = 30.0
 #: Tolerance of the per-household effect decomposition check, relative to
 #: ``sum |w r| + sum |w b|`` (the same arrays summed in another order).
 DECOMPOSITION_RTOL = 1e-9
+#: Residuals this small relative to the stratum's largest ``w * y`` are
+#: rounding, not variation.
+VARIANCE_RESIDUAL_RTOL = 1e-12
 #: Largest relative spread of the engine's row weights around one factor of
 #: the household weights: float32 storage and a float32 uprating step each
 #: round by at most 2^-24 (6e-8).
@@ -441,6 +444,11 @@ def stratified_variance_terms(
         ratio = float(np.dot(weights, y)) / mass
         residual = weights * (y - ratio)
         residual = residual - residual.mean()  # 0 up to rounding
+        # A y that is constant over the stratum has residuals of exactly 0;
+        # floating point leaves them at rounding level (ratio = c (1 +- eps)),
+        # which would pass for a tiny variance spread over many households.
+        scale = float(np.abs(weights * y).max())
+        residual[np.abs(residual) <= VARIANCE_RESIDUAL_RTOL * scale] = 0.0
         terms[drawn] = eligible**2 * (1.0 - n / eligible) / (n * (n - 1)) * residual**2
     return terms
 
