@@ -1,7 +1,7 @@
 # Graph explorer
 
-For declaration and schema inspection with the shared viewer, see the
-[shared graph explorer adapter](shared-graph-explorer-adapter.md). The run
+For declaration and schema inspection with Orrery, see the
+[Orrery adapter](orrery-adapter.md). The run
 renderer described below remains unchanged, including its separate cache and
 gate statuses.
 
