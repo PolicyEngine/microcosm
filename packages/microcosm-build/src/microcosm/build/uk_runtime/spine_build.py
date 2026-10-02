@@ -57,6 +57,10 @@ from microcosm.build.staging_v2 import (
     StagingTelemetryV2,
     disabled_staging_delivery,
 )
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
@@ -162,6 +166,7 @@ from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import ContentStore, compile_graph, run_graph
 
 _PIPELINE = "uk-frs-spine"
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 _REPOSITORY = next(
     (
         parent
@@ -1026,6 +1031,49 @@ def _staging_stage_observer(telemetry: StagingTelemetryV2) -> StageObserver:
     return observe
 
 
+def _emitter_stage_observer(emitter: LocalTelemetryEmitter) -> StageObserver:
+    """Report graph stage observations when file staging is disabled."""
+
+    def observe(observation: StageObservation) -> None:
+        emitter.stage(
+            observation.stage_id,
+            status=observation.status,
+            elapsed_seconds=observation.elapsed_seconds,
+            entity_row_counts=dict(observation.entity_row_counts),
+            produced_column_count=observation.produced_column_count,
+        )
+
+    return observe
+
+
+def _graph_progress_observer(emitter: LocalTelemetryEmitter | None, *, total: int):
+    """Report graph-node completion without copying the observed population."""
+
+    completed = 0
+    previous = time.monotonic()
+
+    def observe(node_id, _population) -> None:
+        nonlocal completed, previous
+        if emitter is None:
+            return
+        now = time.monotonic()
+        completed += 1
+        emitter.emit(
+            event_type="progress",
+            stage_id=node_id,
+            status="completed",
+            details={
+                "done": completed,
+                "total": total,
+                "unit": "graph_nodes",
+                "elapsed_seconds": now - previous,
+            },
+        )
+        previous = now
+
+    return observe
+
+
 class _GraphSourceTransform:
     """Build a file-reading stage from only the node's declared source paths."""
 
@@ -1205,12 +1253,21 @@ def _exception_chain_contains(error: BaseException, text: str) -> bool:
 def _create_staging_telemetry(
     args: argparse.Namespace, *, state: AttemptState
 ) -> StagingTelemetryV2 | None:
+    global _ACTIVE_EMITTER
+    run_id = args.staging_run_id or state.build_id
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=_PIPELINE,
+        candidate_id=args.staging_candidate_id or state.build_id,
+        run_kind="smoke" if args.smoke else "spine",
+    )
     if args.no_staging:
         return None
     local_dir = args.staging_dir or args.spine_h5.parent / "staging"
     local_only = args.staging_local_only
     return StagingTelemetryV2(
-        run_id=args.staging_run_id or state.build_id,
+        run_id=run_id,
         country_code="GB",
         operation_id="uk_frs_spine",
         pipeline_id=_PIPELINE,
@@ -1221,6 +1278,7 @@ def _create_staging_telemetry(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        emitter=_ACTIVE_EMITTER,
     )
 
 
@@ -1718,7 +1776,11 @@ def main(argv: list[str] | None = None) -> int:
         prepared = prepare_uk_spine_execution(
             args,
             observer=(
-                _staging_stage_observer(telemetry) if telemetry is not None else None
+                _staging_stage_observer(telemetry)
+                if telemetry is not None
+                else _emitter_stage_observer(_ACTIVE_EMITTER)
+                if _ACTIVE_EMITTER is not None
+                else None
             ),
         )
         spec = prepared.spec
@@ -1786,6 +1848,10 @@ def main(argv: list[str] | None = None) -> int:
             kernels=prepared.kernels,
             resume="auto",
             decisions=(),
+            _population_observer=_graph_progress_observer(
+                _ACTIVE_EMITTER, total=len(compiled_graph.order)
+            ),
+            _population_observer_detach=False,
         )
         graph_manifest.save(checkpoint_root / "spine.graph.json")
         final_version = compiled_graph.versions[stage_names[-1]]
@@ -1947,6 +2013,8 @@ def main(argv: list[str] | None = None) -> int:
             telemetry.validate_local_bundle()
             sidecar["staging_delivery"] = telemetry.delivery_summary
             atomic_write_json(sidecar_path, sidecar)
+        elif _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.complete()
         state.artifact_location = local_artifact_reference(
             output,
             repository_hint=_REPOSITORY,
@@ -1999,6 +2067,8 @@ def main(argv: list[str] | None = None) -> int:
                 telemetry.validate_local_bundle()
             except Exception:
                 pass
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
         if _is_sampled(args) and _exception_chain_contains(
             error, _RUNG_NAMED_EDGE_SIGNATURE
         ):

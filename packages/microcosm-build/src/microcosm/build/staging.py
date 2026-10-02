@@ -24,6 +24,7 @@ from microcosm.build.staging_storage import (
     BestEffortUploadSession,
     HuggingFaceDatasetStorage,
 )
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 
 STAGING_SCHEMA_VERSION = 1
 LATEST_STAGING_POINTER = "latest_staging.json"
@@ -81,6 +82,7 @@ class StagingTelemetry:
     api: Any = None
     upload_interval_seconds: float = 30.0
     started_at: str = field(default_factory=_now)
+    emitter: LocalTelemetryEmitter | None = None
 
     def __post_init__(self) -> None:
         self.run_dir = Path(self.run_dir)
@@ -313,6 +315,13 @@ class StagingTelemetry:
                 "details": details,
             }
         )
+        if self.emitter is not None:
+            self.emitter.transition_stage(
+                stage,
+                status=status,
+                message=message,
+                **details,
+            )
         self._maybe_upload(force=force_upload)
 
     def calibration_progress(self, event: dict[str, object]) -> None:
@@ -339,6 +348,8 @@ class StagingTelemetry:
         )
         self._write_progress()
         self._write_calibration_progress()
+        if self.emitter is not None:
+            self.emitter.transition_calibration_progress(event)
         self._maybe_upload()
 
     def attach_artifact(
@@ -363,6 +374,7 @@ class StagingTelemetry:
         self._maybe_upload(force=force_upload)
 
     def fail(self, error: BaseException) -> None:
+        failed_during = str(self._progress.get("stage") or "unknown")
         self.stage(
             "failed",
             status="failed",
@@ -371,6 +383,8 @@ class StagingTelemetry:
             error_type=type(error).__name__,
             traceback=traceback.format_exc(),
         )
+        if self.emitter is not None:
+            self.emitter.fail(error, failed_during=failed_during)
 
     def complete(self) -> None:
         self.stage(
@@ -379,3 +393,5 @@ class StagingTelemetry:
             message="Staging run completed.",
             force_upload=True,
         )
+        if self.emitter is not None:
+            self.emitter.complete()
