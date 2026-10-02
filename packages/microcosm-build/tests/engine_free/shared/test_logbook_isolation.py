@@ -14,11 +14,14 @@ what makes it total: nothing has to remember to ask for it.
 from __future__ import annotations
 
 import os
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from microcosm.build import logbook
 from microcosm.build.logbook_env import LOGBOOK_ENV_LEGACY_NAMES, logbook_env
+from test_support.microcosm_build.logbook_isolation import logbook_urlopen_holders
 
 _ALL_LOGBOOK_ENV_NAMES = tuple(
     sorted(
@@ -31,6 +34,28 @@ _ALL_LOGBOOK_ENV_NAMES = tuple(
         | {"POPULACE_LOGBOOK_PREV_ROW_DIGEST"}
     )
 )
+
+
+def test_alias_discovery_reads_only_module_globals(monkeypatch) -> None:
+    """Find imported aliases without invoking native modules' lazy hooks."""
+    real_urlopen = object()
+    lazy = ModuleType("test_logbook_lazy_module")
+    lookups = []
+
+    def lazy_getattr(name):
+        lookups.append(name)
+        raise AssertionError(f"Unexpected lazy module lookup: {name}")
+
+    lazy.__getattr__ = lazy_getattr
+    alias = ModuleType("test_logbook_alias_module")
+    alias.urlopen = real_urlopen
+    foreign = SimpleNamespace(urlopen=real_urlopen)
+    monkeypatch.setitem(sys.modules, lazy.__name__, lazy)
+    monkeypatch.setitem(sys.modules, alias.__name__, alias)
+    monkeypatch.setitem(sys.modules, "test_logbook_foreign_holder", foreign)
+
+    assert logbook_urlopen_holders(real_urlopen) == [alias]
+    assert lookups == []
 
 
 @pytest.mark.parametrize("name", _ALL_LOGBOOK_ENV_NAMES)

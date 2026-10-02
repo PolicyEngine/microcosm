@@ -1,7 +1,6 @@
 """Shared fixtures: a small person+household frame, an ODS writer, and the
 autouse guard that keeps every test in this shard away from a live Logbook."""
 
-import sys
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
@@ -10,6 +9,9 @@ import pandas as pd
 import pytest
 
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.microcosm_build.logbook_isolation import (
+    logbook_urlopen_holders as _logbook_urlopen_holders,
+)
 
 
 @pytest.fixture
@@ -160,22 +162,6 @@ def _refuse_logbook_network(*_args: object, **_kwargs: object) -> None:
         "request the 'allow_logbook_network' fixture if the network is "
         "genuinely the thing under test."
     )
-
-
-def _logbook_urlopen_holders(real_urlopen: object) -> list[object]:
-    """Every imported module whose ``urlopen`` is the Logbook one.
-
-    ``tools/logbook.py`` binds the function at import
-    (``from microcosm.build.logbook import urlopen``), so patching the
-    defining module alone leaves the CLI's copy live. Rather than name the
-    importers — the next one would be missed — this finds every module
-    currently holding the same object.
-    """
-    return [
-        module
-        for module in list(sys.modules.values())
-        if getattr(module, "urlopen", None) is real_urlopen
-    ]
 
 
 @pytest.fixture(autouse=True)
