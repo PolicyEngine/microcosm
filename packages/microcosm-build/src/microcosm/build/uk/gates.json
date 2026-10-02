@@ -418,7 +418,7 @@
         "stage": "spi_support_channel",
         "check": "spi_support_channel",
         "spi_prior_mass_share": 0.5,
-        "pension_age_spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.2,
         "absolute_tolerance": 0.0,
         "household_weight_kind": "importance",
         "minimum_spi_households": 1

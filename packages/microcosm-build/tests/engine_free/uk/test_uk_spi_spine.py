@@ -825,7 +825,7 @@ def test_readers_of_the_support_record_take_the_declared_allocation_reason() -> 
     reason = uk_spi_support_mass_change_reason(stage)
 
     # The record the support stage writes for the declared shares.
-    assert reason == _spi_prior_mass_change_reason(0.5, pension_age_share=0.5)
+    assert reason == _spi_prior_mass_change_reason(0.5, pension_age_share=0.2)
     assert reason != SPI_PRIOR_MASS_CHANGE_REASON
     # The release-cut coverage gate requires that record on the final dataset.
     manifest = load_uk_release_input_coverage_manifest()

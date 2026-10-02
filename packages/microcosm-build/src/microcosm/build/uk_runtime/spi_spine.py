@@ -253,8 +253,9 @@ SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
 #: (microcosm#1069 c6). The channel's households are drawn unweighted with one
 #: weight per region, so a region-only allocation gave the channel more
 #: pension-age mass than the FRS design gives pension-age households, every
-#: adult of it on a taxpayer's income.
-SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE = 0.5
+#: adult of it on a taxpayer's income. 0.2 (ruled 2026-10-02 over the measured
+#: 0.5) keeps the low-income pensioners the benefit caseloads need in the prior.
+SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE = 0.2
 SPI_SPINE_PENSION_AGE_STRATUM = "any_member_at_or_over_state_pension_age"
 SPI_SPINE_EFFECTIVE_MASS_COLUMNS = ("gift_aid", "charitable_investment_gifts")
 

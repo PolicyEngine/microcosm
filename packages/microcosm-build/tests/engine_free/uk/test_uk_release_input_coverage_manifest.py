@@ -164,7 +164,7 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
     # since microcosm#1069 c6.
     assert family["required_mass_change_reason"] == (
         "Allocate 0.5 of certified UK national household prior mass in "
-        "households without, and 0.5 in households with, a member at or over "
+        "households without, and 0.2 in households with, a member at or over "
         "State Pension age to the rebuilt 2022-23 SPI support channel; total "
         "national mass is conserved."
     )

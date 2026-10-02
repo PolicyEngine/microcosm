@@ -4585,7 +4585,7 @@
         {
           "conservation": "exact_total",
           "kind": "allocate_zero_weight_prior_mass",
-          "pension_age_share": 0.5,
+          "pension_age_share": 0.2,
           "pension_age_stratum": "any_member_at_or_over_state_pension_age",
           "share": 0.5,
           "strata": [

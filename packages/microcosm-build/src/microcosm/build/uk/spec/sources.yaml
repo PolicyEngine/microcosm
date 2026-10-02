@@ -1233,7 +1233,7 @@ stages:
     share: 0.5
     strata:
     - region
-    pension_age_share: 0.5
+    pension_age_share: 0.2
     pension_age_stratum: any_member_at_or_over_state_pension_age
     weight_kind_out: importance
     conservation: exact_total
