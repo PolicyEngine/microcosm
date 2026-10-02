@@ -697,6 +697,90 @@ def test_cgt_summary_minimum_rows_parameter_is_live() -> None:
     ).passed
 
 
+def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
+    """microcosm#1063 c9: where the gate declares a donor floor, the receipt
+    must show it applied, no negative donor row left and no clip range below it."""
+
+    def evidence(**floor_changes):
+        return {
+            "stage": "lcfs_consumption",
+            "support_clip": {
+                "columns": {
+                    "housing_water_and_electricity_consumption": {
+                        "donor_min": 0.0,
+                        "donor_max": 9_000.0,
+                        "clipped_low_rows": 0,
+                        "clipped_high_rows": 0,
+                        "rows_considered": 2,
+                    }
+                }
+            },
+            "donor_floor": {
+                "floor": 0.0,
+                "rows_raised": 250,
+                "remaining_negative_rows": 0,
+                "columns": {
+                    "housing_water_and_electricity_consumption": {
+                        "rows_raised": 250,
+                        "negative_mass": -1.0e6,
+                        "minimum_before": -14_165.0,
+                    }
+                },
+                **floor_changes,
+            },
+        }
+
+    parameters = {
+        "stage": "lcfs_consumption",
+        "check": "support_clip",
+        "columns": ["housing_water_and_electricity_consumption"],
+        "max_clipped_low_rows_by_column": {
+            "housing_water_and_electricity_consumption": 0
+        },
+        "max_clipped_high_rows_by_column": {
+            "housing_water_and_electricity_consumption": 0
+        },
+        "donor_floor": 0.0,
+    }
+
+    def gate(evidence_payload, **parameter_changes):
+        return uk_stage_health_gate(
+            evidence=evidence_payload,
+            stage="lcfs_consumption",
+            check="support_clip",
+            parameters={**parameters, **parameter_changes},
+        )
+
+    passed = gate(evidence())
+    assert _passed(passed)
+    assert passed.details["donor_floor_rows_raised"] == 250
+    assert any(
+        "donor_floor receipt" in f
+        for f in gate({**evidence(), "donor_floor": None}).failures
+    )
+    assert any(
+        "negative consumption row" in f
+        for f in gate(evidence(remaining_negative_rows=3)).failures
+    )
+    assert any("not the declared" in f for f in gate(evidence(floor=-1.0)).failures)
+    below = evidence()
+    below["support_clip"]["columns"]["housing_water_and_electricity_consumption"][
+        "donor_min"
+    ] = -14_165.0
+    assert any("below the donor floor" in f for f in gate(below).failures)
+    # Without a declared floor (the WAS clip gate) the receipt is not required.
+    undeclared = {**parameters}
+    del undeclared["donor_floor"]
+    assert _passed(
+        uk_stage_health_gate(
+            evidence={**evidence(), "donor_floor": None},
+            stage="lcfs_consumption",
+            check="support_clip",
+            parameters=undeclared,
+        )
+    )
+
+
 def test_support_clip_gate_fails_closed_on_a_missing_allowance() -> None:
     """An undeclared allowance skipped the comparison entirely, so a stage
     clipping every row passed a release-blocking gate — the green-by-absence

@@ -282,6 +282,61 @@ def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> No
     assert any("unreviewed_extra" in failure for failure in unrelated.failures)
 
 
+def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
+    """microcosm#1063 c9: the certifier rehearsal listed every id column as an
+    unreviewed extra and the frame's weights as a missing reference column."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_REVIEWED_EXPORT_EXCLUSIONS,
+        uk_export_candidate_columns,
+    )
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+                "incapacity_benefit_reported": [0.0, 0.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame({"household_id": [1, 2], "region": ["LONDON"] * 2}),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    assert uk_export_candidate_columns(frame) == {
+        "person.age",
+        "person.incapacity_benefit_reported",
+        "household.region",
+        "household.household_weight",
+    }
+    exported = uk_release_export_frame(frame)
+    assert uk_export_candidate_columns(exported) == {
+        "person.age",
+        "household.region",
+        "household.household_weight",
+    }
+    assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
+    assert exported.mass_log == frame.mass_log
+    # The boundary drops exactly the reviewed export exclusions.
+    assert {
+        f"{entity}.{column}"
+        for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
+        for column in columns
+    } == set(UK_REVIEWED_EXPORT_EXCLUSIONS)
+    # A frame without the column passes through untouched.
+    assert uk_release_export_frame(exported) is exported
+
+
 def _target_fit_exclusion(
     *,
     approved_on: str = "2026-08-30",

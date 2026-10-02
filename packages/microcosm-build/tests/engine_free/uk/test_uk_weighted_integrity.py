@@ -659,11 +659,23 @@ def test_committed_exclusion_registers_load() -> None:
     )
 
     assert set(input_mass) == {"efrs-post-calibration"}
-    # Both former entries retired 2026-09-21: the first national candidate
-    # measured charitable_investment_gifts and owned_land inside the fence,
-    # and the gate fails a stale exclusion by design.
-    assert input_mass["efrs-post-calibration"] == {}
-    assert qrf_tail == {}
+    # The 2026-09-21 retirements (charitable_investment_gifts and owned_land
+    # measured inside the fence on the first national candidate) stand; the
+    # certifier rehearsal on the 2026-09-30 build earned three entries
+    # (microcosm#1063 c9): the two FRS education inputs the enhanced-FRS
+    # reference barely carries, and the sparse charity-gifts leaf back at
+    # the concentration threshold. The gate fails any of them as stale the
+    # day a build brings the column inside the fence.
+    assert set(input_mass["efrs-post-calibration"]) == {
+        "adult_ema",
+        "dfe_education_spending",
+    }
+    assert set(qrf_tail) == {"charitable_investment_gifts"}
+    for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
+        assert record.approved_by == "juaristi22"
+        assert record.approved_on == "2026-10-02"
+        assert record.expires_on == "2027-04-02"
+        assert "microcosm#1063" in record.adjudication
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
     )

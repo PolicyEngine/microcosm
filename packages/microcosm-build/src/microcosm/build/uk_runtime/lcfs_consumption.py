@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -256,6 +257,7 @@ class UKLCFSConsumptionResult:
     energy_pricing: Mapping[str, Any] | None = None
     energy_rake: Mapping[str, Any] | None = None
     fuel_litres_audit: Mapping[str, Any] | None = None
+    donor_floor: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -274,6 +276,8 @@ class UKLCFSConsumptionResult:
             evidence["energy_rake"] = dict(self.energy_rake)
         if self.fuel_litres_audit is not None:
             evidence["fuel_litres_audit"] = dict(self.fuel_litres_audit)
+        if self.donor_floor is not None:
+            evidence["donor_floor"] = dict(self.donor_floor)
         return evidence
 
 
@@ -332,6 +336,9 @@ class UKLCFSConsumptionStageTransform:
             uprating=uprating_factors,
             energy=energy,
             donor_rake_iterations=_donor_energy_rake_iterations(self.stage),
+        )
+        donor, donor_floor_receipt = floor_negative_donor_consumption(
+            donor, floor=_donor_consumption_floor(self.stage)
         )
         ice_share, ice_share_receipt = lcfs_ice_share(self.stage)
         recipient = recipient_predictors(frame, self.engine)
@@ -415,6 +422,7 @@ class UKLCFSConsumptionStageTransform:
             energy_pricing=None if energy is None else energy.receipt,
             energy_rake=energy_rake_receipt,
             fuel_litres_audit=litres_audit,
+            donor_floor=donor_floor_receipt,
         )
         return result
 
@@ -1046,6 +1054,69 @@ def clean_lcfs_consumption_table(
             "household_weight",
         ]
     ].dropna()
+
+
+def _donor_consumption_floor(stage: SourceStageSpec) -> float:
+    """The declared floor of the donor's diary consumption columns."""
+
+    parameters = _operation_parameters(stage, "derive")
+    floor = parameters.get("floor")
+    if floor is None:
+        raise ValueError(
+            f"{stage.stage}: the derive operation must declare 'floor', the "
+            "value negative diary consumption is raised to on the donor."
+        )
+    value = float(floor)
+    if not math.isfinite(value) or value != 0.0:
+        raise ValueError(
+            f"{stage.stage}: the declared donor consumption floor must be 0, "
+            f"got {floor!r}."
+        )
+    return value
+
+
+def floor_negative_donor_consumption(
+    donor: pd.DataFrame, *, floor: float = 0.0
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Raise negative diary consumption on the donor to ``floor`` (microcosm#1063 c9).
+
+    An LCFS diary spend nets refunds against purchases, so a handful of donor
+    rows carry a negative annual total (250 release rows inherited a minimum
+    of -14,165 in ``housing_water_and_electricity_consumption`` on the
+    2026-09-30 build, because the support clip takes its floor from the
+    donor's realised range). The release surface declares these columns
+    non-negative, so the donor is floored before the imputation, the clip
+    ranges and the rake see it. The receipt records, per consumption column,
+    the rows raised and the (negative) mass they carried; columns without a
+    negative row are listed with zeros so the receipt names the whole surface.
+    """
+
+    floored = donor.copy()
+    columns: dict[str, dict[str, float | int]] = {}
+    for column in CONSUMPTION_VARIABLE_RENAMES.values():
+        if column not in floored.columns:
+            raise ValueError(f"LCFS donor is missing consumption column {column!r}.")
+        values = _numeric(floored[column]).to_numpy(dtype=float)
+        negative = np.isfinite(values) & (values < floor)
+        columns[column] = {
+            "rows_raised": int(negative.sum()),
+            "negative_mass": float(values[negative].sum()),
+            "minimum_before": float(np.nanmin(values)) if values.size else 0.0,
+        }
+        if negative.any():
+            floored[column] = np.where(negative, floor, values)
+    receipt = {
+        "floor": float(floor),
+        "columns": columns,
+        "rows_raised": int(sum(entry["rows_raised"] for entry in columns.values())),
+        "remaining_negative_rows": int(
+            sum(
+                int((_numeric(floored[column]).to_numpy(dtype=float) < floor).sum())
+                for column in columns
+            )
+        ),
+    }
+    return floored, receipt
 
 
 def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:

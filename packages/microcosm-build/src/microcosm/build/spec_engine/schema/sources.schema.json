@@ -7003,6 +7003,9 @@
         "type": "string"
        }
       },
+      "floor": {
+       "type": "number"
+      },
       "logged_dropna_row_count": {
        "type": "boolean"
       },

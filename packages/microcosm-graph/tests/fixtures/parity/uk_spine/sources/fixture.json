@@ -3473,6 +3473,7 @@
             ]
           },
           "donor_weight": "weighta * 1000",
+          "floor": 0,
           "kind": "derive",
           "logged_dropna_row_count": true,
           "lossy_mappings": [

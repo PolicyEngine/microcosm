@@ -1657,6 +1657,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # identities' tolerance and the arm-count ceiling.
                 "maximum_identity_relative_error",
                 "maximum_liable_gainers_per_household",
+                # #1063 c9 lcfs support_clip check: the declared donor floor.
+                "donor_floor",
                 # spi_income_band_donor_support check (PolicyEngine/chronicle#280
                 # lane; mass-conserving since #1063): the reserved bands, the
                 # seating rule's constants and the funding floor.

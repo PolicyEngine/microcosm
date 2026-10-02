@@ -1,5 +1,13 @@
 {
  "schema_version": 2,
  "description": "Reviewed QRF tail-concentration exclusions for the UK terminal battery (#609). Each entry maps a declared fit_weighted_qrf_stage* output column to a non-empty reason naming the tracked defect or the genuinely concentrated instrument. The shared gate reports dormant entries (columns absent from the declared surface) and FAILS stale ones (columns now below the concentration threshold), so this register cannot rot. Empty until an incident or adjudication earns an entry.",
- "exclusions": {}
+ "exclusions": {
+  "charitable_investment_gifts": {
+   "reason": "A genuinely concentrated instrument: the SPI stage-1 QRF leaf for gifts of investments to charity has 168 weighted carriers on the 2026-09-30 national build, so its top 100 weighted records carry the whole mass by construction (the published SPI population itself is a few thousand donors of listed shares and property). Not the microcosm#462 broadcast signature: the carriers are SPI-channel rows drawn from the tape's own sparse leaf, not a point mass copied across a donor tail. An earlier entry for this column was retired on 2026-09-21 when the first national candidate measured it inside the fence; the 2026-09-30 build measures it at the threshold again, and the gate fails this entry as stale the day a build brings it back inside.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
+   "approved_on": "2026-10-02",
+   "expires_on": "2027-04-02"
+  }
+ }
 }

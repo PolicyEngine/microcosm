@@ -143,6 +143,47 @@ def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() 
     assert second.tolist() == first.tolist()
 
 
+def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
+    """microcosm#1063 c9: a diary spend netting refunds below zero is raised to
+    the declared floor before the clip ranges and the imputation see it."""
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        CONSUMPTION_VARIABLE_RENAMES,
+        floor_negative_donor_consumption,
+    )
+
+    columns = list(CONSUMPTION_VARIABLE_RENAMES.values())
+    donor = pd.DataFrame({column: [10.0, 20.0, 30.0] for column in columns})
+    donor.loc[1, "housing_water_and_electricity_consumption"] = -14_165.0
+    donor.loc[2, "housing_water_and_electricity_consumption"] = -1.0
+
+    floored, receipt = floor_negative_donor_consumption(donor)
+
+    assert floored["housing_water_and_electricity_consumption"].tolist() == [
+        10.0,
+        0.0,
+        0.0,
+    ]
+    for column in columns:
+        if column != "housing_water_and_electricity_consumption":
+            assert floored[column].tolist() == [10.0, 20.0, 30.0]
+    assert receipt["floor"] == 0.0
+    assert receipt["rows_raised"] == 2
+    assert receipt["remaining_negative_rows"] == 0
+    housing = receipt["columns"]["housing_water_and_electricity_consumption"]
+    assert housing == {
+        "rows_raised": 2,
+        "negative_mass": -14_166.0,
+        "minimum_before": -14_165.0,
+    }
+    assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
+        "rows_raised": 0,
+        "negative_mass": 0.0,
+        "minimum_before": 10.0,
+    }
+    with pytest.raises(ValueError, match="missing consumption column"):
+        floor_negative_donor_consumption(donor.drop(columns=[columns[0]]))
+
+
 def test_support_clip_exempts_raked_energy_columns() -> None:
     donor = pd.DataFrame(
         {column: [1.0, 5.0] for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS}

@@ -3402,7 +3402,8 @@
       "LCFS tenure 4 and 8 -> RENT_PRIVATELY",
       "LCFS accommodation 4 and 5 -> FLAT"
      ],
-     "logged_dropna_row_count": true
+     "logged_dropna_row_count": true,
+     "floor": 0.0
     },
     {
      "kind": "uprate_donor_columns",

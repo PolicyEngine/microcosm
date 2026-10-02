@@ -117,13 +117,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12f2ab9cda63111ab6c24b02c4075395ba42836762cc7b1e02b56ce51201f0a6"
+    "af76a2dacac04e77a222771be17048abbe76fc78ec2db2eeb4d11664d353cecf"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "adf36be97e522dfbdc3b322df8a70755582e981ab3f31b52c233ebead7bbde88"
+    "a063c356fe5e17b2b54a2e39f9a9997d957097c31eba1b202faf38cd3d718589"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "004163d0b2411362fa353576afbe674f12e5e8919607bf97a5bc4313cf5ea139"
+    "51f6bd1cd35624840dd056307e03fa675ffd743b5ace2de304837ae9a738d742"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -151,6 +151,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
         "stage_health",
         "transferred",
@@ -182,6 +183,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_residential_split_mass": (
         "stage_health",
         "transferred",
         None,
@@ -1238,6 +1244,7 @@ def _gate_battery_payload(
         "cgt_support_split",
         "cgt_incidence_clone",
         "hmrc_cgt_gains_spine",
+        "cgt_residential_split",
         "salary_sacrifice",
         "student_loans",
         "age_tail",
@@ -1245,6 +1252,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
@@ -1260,6 +1268,7 @@ def _gate_battery_payload(
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
+        "uk_stage_cgt_residential_split_mass": "cgt_residential_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",

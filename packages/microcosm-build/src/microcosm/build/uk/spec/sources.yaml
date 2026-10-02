@@ -2813,6 +2813,7 @@ stages:
     - LCFS tenure 4 and 8 -> RENT_PRIVATELY
     - LCFS accommodation 4 and 5 -> FLAT
     logged_dropna_row_count: true
+    floor: 0.0
   - kind: uprate_donor_columns
     from_period: 2023
     to_period: 2024

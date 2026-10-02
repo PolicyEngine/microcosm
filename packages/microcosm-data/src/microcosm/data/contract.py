@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "12f2ab9cda63111ab6c24b02c4075395ba42836762cc7b1e02b56ce51201f0a6"
+    "af76a2dacac04e77a222771be17048abbe76fc78ec2db2eeb4d11664d353cecf"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "adf36be97e522dfbdc3b322df8a70755582e981ab3f31b52c233ebead7bbde88"
+    "a063c356fe5e17b2b54a2e39f9a9997d957097c31eba1b202faf38cd3d718589"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "004163d0b2411362fa353576afbe674f12e5e8919607bf97a5bc4313cf5ea139"
+    "51f6bd1cd35624840dd056307e03fa675ffd743b5ace2de304837ae9a738d742"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -468,6 +468,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_was_lisa_support": ("stage_health", "transferred"),
+    "uk_stage_was_wealth_coherence": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred"),
     "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
@@ -490,6 +491,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_support_split_mass": ("stage_health", "transferred"),
+    "uk_stage_cgt_residential_split_mass": ("stage_health", "transferred"),
     "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
     "uk_stage_hmrc_cgt_gains_spine_summary": (
         "stage_health",
@@ -570,6 +572,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
         "uk_stage_was_lisa_support",
+        "uk_stage_was_wealth_coherence",
         "uk_stage_nts_bus_travel_support",
         "uk_stage_nts_bus_travel_facts",
         "uk_stage_uc_deduction_attributes",
@@ -586,6 +589,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
         "uk_stage_cgt_support_split_mass",
+        "uk_stage_cgt_residential_split_mass",
         "uk_stage_spi_income_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
         "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -777,6 +781,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_support_split_mass",
+            "uk_stage_cgt_residential_split_mass",
             "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_child_benefit_take_up",
             "uk_stage_spi_income_band_donors_support",
@@ -800,6 +805,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_was_lisa_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_wealth_support",
         }
     ),
@@ -842,10 +848,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "467d043980af8a644dcc05f8deda3444dfc7d7dcabe62194e2eeaafead435917"
+            "33af3422058c1e3be797984dbbb859f3ca2488c3204a9cdbf11a2458754893a2"
         ),
         "policy_sha256": (
-            "b654cde9d662f20c09ca353144bf82b1d41cb621ed1750c9b0a6669e273e585e"
+            "b22f79584c16ab81fbfa131c19c16f5bc5c1e484003c73a695abf3446ff6175b"
         ),
     },
     "calibration_seam": {
@@ -858,10 +864,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "b7a237c5bc75dfc5c1311e41a0a46aee8f38960802298815a769923717a698cb"
+            "d7d0c406ca061e6ea66804fc43a21ae24dfb9482744b58fc71a0383440acc127"
         ),
         "policy_sha256": (
-            "bb0fa7841d681d7fd02acc9ca5bff51882bef7cf1ec9c195e67b8e2ea767c000"
+            "977c8ec6c623f5cf406b8439ed90b151c11a2977c2a6c6582364351683edf879"
         ),
     },
 }

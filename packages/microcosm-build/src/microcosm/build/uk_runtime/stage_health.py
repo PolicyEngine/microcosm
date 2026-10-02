@@ -191,6 +191,40 @@ def _support_clip_gate(
         "columns_checked": len(expected_columns) - len(exempt_columns),
         "exempt_columns": sorted(exempt_columns),
     }
+    # The donor floor (microcosm#1063 c9): negative diary consumption is raised
+    # to the declared floor before the clip ranges are read, so no clip range
+    # may start below it and no negative donor row may remain.
+    declared_floor = parameters.get("donor_floor")
+    floor = evidence.get("donor_floor")
+    if declared_floor is None:
+        pass
+    elif floor is None:
+        failures.append(f"{stage}: missing the donor_floor receipt.")
+    else:
+        floor = _mapping(floor, label=f"{stage}.donor_floor")
+        level = _finite_number(floor.get("floor"), label=f"{stage}.donor_floor.floor")
+        if level != float(declared_floor):
+            failures.append(
+                f"{stage}: the donor floor {level} is not the declared {declared_floor}."
+            )
+        remaining = int(floor.get("remaining_negative_rows", -1))
+        if remaining != 0:
+            failures.append(
+                f"{stage}: the donor floor left {remaining} negative consumption row(s)."
+            )
+        for column, receipt in columns.items():
+            if isinstance(receipt, Mapping) and "donor_min" in receipt:
+                lower = _finite_number(
+                    receipt["donor_min"], label=f"{column}.donor_min"
+                )
+                if column in _mapping(floor.get("columns", {}), label="floor") and (
+                    lower < level
+                ):
+                    failures.append(
+                        f"{stage}: {column!r} clip range starts at {lower}, below "
+                        f"the donor floor {level}."
+                    )
+        details["donor_floor_rows_raised"] = int(floor.get("rows_raised", 0))
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -1972,7 +2006,10 @@ def _cgt_incidence_anchor_gate(
         failures.append(
             f"{stage}: liable clone mass moved from {liable_before} to {liable_after}."
         )
-    if not np.isclose(removed, transferred, rtol=1e-9, atol=0.0):
+    # Both masses are sums of the same weights; a build whose removed group is
+    # empty can still carry float-epsilon residue, so the comparison allows
+    # the absolute rounding tolerance the other mass identities use.
+    if not np.isclose(removed, transferred, rtol=1e-9, atol=1e-6):
         failures.append(
             f"{stage}: removed group mass {removed} disagrees with the transferred "
             f"mass {transferred}."

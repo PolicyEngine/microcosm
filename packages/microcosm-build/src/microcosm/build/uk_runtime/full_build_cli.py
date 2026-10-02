@@ -146,7 +146,11 @@ from .graph_terminal import (
     rowwise_candidate_manifest_from_graph,
 )
 from .national_doctrine import uk_doctrine_with_overrides
-from .national_frame import load_uk_national_frame, write_uk_national_frame
+from .national_frame import (
+    load_uk_national_frame,
+    uk_release_export_frame,
+    write_uk_national_frame,
+)
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
 from .rowwise_cli import (
     MANIFEST_FILENAME,
@@ -2091,7 +2095,9 @@ def _execute_national_build(
     )
     # 7. The H5, then the graph's readback of it.
     stage(telemetry, "candidate_h5_creation", "started")
-    write_uk_national_frame(frame, paths["dataset"])
+    # The release boundary (microcosm#1063 c9): the reviewed export exclusions
+    # leave the candidate here, and the graph readback expects the same.
+    write_uk_national_frame(uk_release_export_frame(frame), paths["dataset"])
     if state is not None:
         append_phase(state, "staging_h5_written")
     stage(
