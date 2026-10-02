@@ -57,9 +57,25 @@ The arms, in order:
   (10.7% before). The calibration stopped before an H5 on
   `hmrc/state_pension_income_band_50_000_to_70_000@2025`, a target-fit exclusion inside its bound on
   this spine, which the pensions branch retired at b19f14d98; dense loss at epoch 1,500: 0.0087.
-- C2 (0ce1a5235, the residential split): queued behind the strict quiet gate at the time of writing;
-  its readings (the identities by band, the arm-weight distribution, the weight-ratio and ESS folds,
-  the projection fence after calibration) belong here when it lands.
+- C2 (0ce1a5235, the residential split, on the arm C spine): all 28 spine gates pass. 2,276
+  households carry a liable gainer, none more than one, so 2,276 residential arms; the residential
+  count and gains are identities on Table 8a in every band (solve error 1e-16 on the count, 7e-10 on
+  the gains, identity error 0); 106 arms weigh less than one household (smallest 0.14, largest
+  1,263); the ten largest residential arms carry 9.4% of residential gains (18.5% on the walk, 22.7%
+  on the 2026-09-30 build); the largest residential arm stake is £176m (£557m flagged on the walk);
+  the largest liable stake in the pool stays £10.9bn, 89% of the target. Calibration: dense loss
+  0.00909 (C 0.00853, main 0.00836); on the family fold the max-to-median weight is 610 (C 618, main
+  609) and the ESS 5,207 (C 5,209, main 5,191), with 7,028 rows folded (4,752 support copies and the
+  2,276 arms); the unfolded ESS fraction falls from 0.0895 to 0.0862 because the arms are extra rows.
+  The seam battery blocked the H5 on `uk_target_fit`: the North West £12,570–15,000 income-tax cell
+  (`hmrc.spi_region.income_tax_by_region_12570_15000@E12000002@2025`) at +25.3% against the 25% bound
+  (23.2% on main, 22.6% on C; its South East twin 22.6% and 23.3%: the regional band cells hover just
+  under the bound on every arm and the solver moves a point among them), and the stale
+  `hmrc/state_pension_income_band_50_000_to_70_000@2025` exclusion back inside the bound (24.9%; the
+  pensions branch retired it at b19f14d98, so the stack does not carry it).
+- Stack (ebff84125, the final-build candidate): the spine passed its gates in six minutes; the first
+  calibration refused the Chronicle artifact 505e0e7 because the stack pins the pensions feed
+  (facts 28b7105…, artifact 825406f), and was re-run against it; readings below when they land.
 
 Child Benefit (c8, trial on the 1 October spine at design weights): 86.7% of eligible children claimed
 for (HMRC 86.6%; the frame's age mix implies 87.1%), 9.0% of claiming families opted out, all from
