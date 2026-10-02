@@ -478,6 +478,30 @@ def test_reviewed_null_fill_refuses_to_default_fill_immigration(tmp_path) -> Non
     assert person["years_since_us_entry"].isna().sum() == 1
 
 
+def _residual_controls(**worker_overrides) -> dict:
+    """A donor-residual controls block (microcosm#1052 review)."""
+
+    def status(control: float, donor: float, assigned: float) -> dict:
+        return {
+            "control": control,
+            "donor_delivered": donor,
+            "residual": max(0.0, control - donor),
+            "acs_assigned": assigned,
+            "pooled_total": donor + assigned,
+        }
+
+    return {
+        "method": "national_control_minus_donor_pooled_delivered",
+        "statuses": {
+            "undocumented_workers": {
+                **status(8.3e6, 3.0e6, 5.3e6),
+                **worker_overrides,
+            },
+            "undocumented_students": status(4.08e5, 1.0e5, 3.08e5),
+        },
+    }
+
+
 def _staging_immigration_summary(**overrides) -> dict:
     """The two entries a current staging run records (microcosm#1020)."""
 
@@ -486,6 +510,7 @@ def _staging_immigration_summary(**overrides) -> dict:
             "issue": "microcosm#1020",
             "seed": 0,
             "assigned_sha256": "b" * 64,
+            "controls": _residual_controls(),
         },
         "acs_local_immigration_gate": {
             "name": "acs_local_immigration_signal",
@@ -511,6 +536,19 @@ def _staging_immigration_summary(**overrides) -> dict:
             acs_local_immigration={"issue": "microcosm#1019", "assigned_sha256": "b"}
         ),
         _staging_immigration_summary(acs_local_immigration={"issue": "microcosm#1020"}),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+            }
+        ),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+                "controls": _residual_controls(residual=8.3e6 * 2 / 3),
+            }
+        ),
     ],
     ids=[
         "pre-1020-staging",
@@ -520,6 +558,8 @@ def _staging_immigration_summary(**overrides) -> dict:
         "gate-truthy-not-true",
         "wrong-issue",
         "no-digest",
+        "pre-1052-review-share-scaled",
+        "targets-not-the-donor-residual",
     ],
 )
 def test_immigration_consumers_refuse_a_staging_run_without_the_stage(summary):

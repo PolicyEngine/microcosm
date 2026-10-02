@@ -74,6 +74,7 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     ACS_LOCAL_IMMIGRATION_COLUMNS,
     ACS_LOCAL_IMMIGRATION_GATE_NAME,
     ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_receipt_failures,
     acs_local_immigration_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_take_up import (
@@ -1664,16 +1665,25 @@ def finalize_reviewed_limitations(
                 "housing-subsidy indicators have no ACS field, so the ACS "
                 "residual (likely undocumented) pool can only be as large or "
                 "larger than the ASEC method would find for the same people. "
-                "The Pew worker and Higher Ed student controls are scaled by "
-                "the ACS rows' share of staging person weight. "
-                "years_since_us_entry is years since entry (age for the "
-                "US-born), not years in qualified status, which neither "
-                "survey measures (policyengine-us#9658)."
+                "The ACS rows target the Pew worker and Higher Ed student "
+                "controls less the donor rows' pooled delivered counts, "
+                "floored at zero, so the pooled file meets each control "
+                "whenever the ACS rows have the capacity. "
+                "years_since_us_entry is an arrival-based status-duration "
+                "proxy: the period minus the measured arrival year (age for "
+                "the US-born). 8 U.S.C. 1613(a) starts the five-year clock at "
+                "entry with qualified status, which neither survey measures, "
+                "so for people who obtained qualified status after arriving "
+                "the proxy runs long and can clear the five-year bar early "
+                "(policyengine-us#9658)."
             ),
             "treatment": (
                 "Gated by acs_local_immigration_signal; the staging summary's "
                 "acs_local_immigration receipt records the mapping, the "
-                "scaled controls and an assignment digest."
+                "per-status control, donor delivered, residual, ACS assigned "
+                "and pooled counts, the adjustment-lag sensitivity of the "
+                "entry clock, and an assignment digest. Packaging refuses a "
+                "receipt whose targets are not the donor residual."
             ),
             "calibration_blocker": False,
         },
@@ -1759,7 +1769,10 @@ def _require_local_immigration(staging_summary: dict) -> dict:
     Staging runs the ACS local immigration stage and its gate before writing
     the H5. A summary without both is a pre-#1020 staging run, whose ACS
     persons would all be default-filled citizens with a valid SSN and whose
-    entry clocks would all be the engine default of 5 years.
+    entry clocks would all be the engine default of 5 years. A receipt whose
+    worker and student targets are not the donor residual
+    (:func:`acs_local_immigration_receipt_failures`) predates the #1052
+    review and is refused too.
     """
 
     receipt = staging_summary.get("acs_local_immigration")
@@ -1777,6 +1790,15 @@ def _require_local_immigration(staging_summary: dict) -> dict:
             "engine as a citizen with a valid SSN and every years_since_us_entry "
             "as the engine default. Re-run staging "
             "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    failures = acs_local_immigration_receipt_failures(receipt)
+    if failures:
+        raise SystemExit(
+            "The staging summary's ACS local immigration receipt does not "
+            "target the donor residual (microcosm#1052 review): "
+            + "; ".join(failures)
+            + ". Re-run staging (tools/build_us_acs_multispine_base.py) with "
+            "the current builder."
         )
     return receipt
 
