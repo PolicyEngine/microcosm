@@ -338,6 +338,10 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: immigration_status
+- site: immigration_arrival_year_draw
+  owners:
+  - kind: source_stage
+    id: immigration_status
 - site: ssi_take_up_assignment
   owners:
   - kind: source_stage

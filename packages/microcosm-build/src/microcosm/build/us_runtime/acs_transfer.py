@@ -135,6 +135,10 @@ _DISCRETE_NUMERIC_TARGETS = frozenset(
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
         "weeks_unemployed",
+        # Whole years since entry (microcosm#776): every engine consumer
+        # compares it with a whole number of years, so a transferred value
+        # must stay on the donors' integer support.
+        "years_since_us_entry",
     }
 )
 

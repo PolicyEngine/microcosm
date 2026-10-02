@@ -6,13 +6,19 @@ and every SSN- or immigration-conditioned policy becomes a no-op — the
 failure mode of microcosm issue #225 (OBBBA's CTC SSN tightening scored ≈ $0
 against PolicyEngine's official +$3.3B).
 
-The stage writes two PolicyEngine-US person input columns:
+The stage writes three PolicyEngine-US person input columns:
 
 - ``ssn_card_type``: ``CITIZEN`` / ``NON_CITIZEN_VALID_EAD`` /
   ``OTHER_NON_CITIZEN`` / ``NONE`` (likely undocumented, i.e. ITIN-filer
   territory for tax purposes).
 - ``immigration_status_str``: ``CITIZEN`` / ``LEGAL_PERMANENT_RESIDENT`` /
   ``CUBAN_HAITIAN_ENTRANT`` / ``DACA`` / ``UNDOCUMENTED``.
+- ``years_since_us_entry`` (microcosm#776): the clock the engine's five-year
+  bar (8 USC 1613), the Missouri SSP waiting period and the Washington
+  TANF/RCA windows read. For the foreign-born (``PRCITSHP`` 4/5) it is the
+  time period minus an arrival year drawn inside the person's ``PEINUSYR``
+  band, clipped at zero; for the US-born (``PRCITSHP`` 1-3) it is their age.
+  See :func:`_asec_years_since_us_entry` for the band rule.
 
 Method — survey measurement first, published residual method second, and one
 narrowly-scoped control where the survey carries no signal at all:
@@ -55,7 +61,8 @@ narrowly-scoped control where the survey carries no signal at all:
 Selection draws are seeded blake2b hashes keyed by the person's stable source
 identity (``source_year``/``source_person_id`` when present), so
 support-channel clones of one source person always receive the same status
-and reruns are bit-reproducible without global RNG state.
+and entry year, and reruns are bit-reproducible without global RNG state. The
+entry-year draw has its own salt, so it never moves a status label.
 
 Control totals and the gate anchor are data, not code: they live in the
 ``immigration_status`` stage of ``microcosm/build/us/source_stages.json`` with
@@ -69,6 +76,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.resources import files
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -93,8 +101,10 @@ __all__ = [
     "SSN_CARD_TYPE_VALUES",
     "US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS",
     "US_IMMIGRATION_OUTPUT_COLUMNS",
+    "US_IMMIGRATION_OWNED_PERSON_COLUMNS",
     "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS",
     "US_IMMIGRATION_STAGE_NAME",
+    "US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN",
     "UndocumentedControls",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
@@ -105,10 +115,20 @@ __all__ = [
 
 US_IMMIGRATION_STAGE_NAME = "immigration_status"
 
-#: The PolicyEngine-US person input columns this stage owns.
+#: The two categorical PolicyEngine-US person labels this stage owns. They are
+#: always written, transferred and gated together.
 US_IMMIGRATION_OUTPUT_COLUMNS: tuple[str, ...] = (
     "ssn_card_type",
     "immigration_status_str",
+)
+
+#: The numeric entry clock this stage also owns (microcosm#776).
+US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN = "years_since_us_entry"
+
+#: Every PolicyEngine-US person input column this stage writes.
+US_IMMIGRATION_OWNED_PERSON_COLUMNS: tuple[str, ...] = (
+    *US_IMMIGRATION_OUTPUT_COLUMNS,
+    US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN,
 )
 
 #: Release gates require these person columns to carry signal (≥2 values).
@@ -215,6 +235,87 @@ _ARRIVAL_YEAR_MIDPOINTS: Mapping[int, int] = {
     29: 2024,
 }
 
+#: PEINUSYR code -> (first, last) arrival year, for the codes whose interval
+#: is identical in every reviewed ASEC data dictionary (survey years 2023-2026:
+#: ``cpsmar23.pdf`` .. ``cpsmar26.pdf`` under
+#: https://www2.census.gov/programs-surveys/cps/techdocs/). Code 1 ("Before
+#: 1950") has no first year; the entry clock bounds it below by birth year.
+_PEINUSYR_FIXED_INTERVALS: Mapping[int, tuple[int | None, int]] = MappingProxyType(
+    {
+        1: (None, 1949),
+        2: (1950, 1959),
+        3: (1960, 1964),
+        4: (1965, 1969),
+        5: (1970, 1974),
+        6: (1975, 1979),
+        7: (1980, 1981),
+        8: (1982, 1983),
+        9: (1984, 1985),
+        10: (1986, 1987),
+        11: (1988, 1989),
+        12: (1990, 1991),
+        13: (1992, 1993),
+        14: (1994, 1995),
+        15: (1996, 1997),
+        16: (1998, 1999),
+        17: (2000, 2001),
+        18: (2002, 2003),
+        19: (2004, 2005),
+        20: (2006, 2007),
+        21: (2008, 2009),
+        22: (2010, 2011),
+        23: (2012, 2013),
+        24: (2014, 2015),
+        25: (2016, 2017),
+        26: (2018, 2019),
+    }
+)
+
+#: ASEC survey (interview) year -> its re-binned PEINUSYR top codes, read from
+#: that year's data dictionary. Census widens the last code every year and
+#: appends a new one in even survey years, so the same code means a different
+#: interval in each vintage (code 28 is 2022-2024, 2022-2025 and 2022-2023 in
+#: ASEC 2024, 2025 and 2026). A survey year missing here has no reviewed
+#: codebook and the entry clock refuses its foreign-born rows.
+_PEINUSYR_TOP_CODE_INTERVALS: Mapping[int, Mapping[int, tuple[int, int]]] = (
+    MappingProxyType(
+        {
+            2023: MappingProxyType({27: (2020, 2023)}),
+            2024: MappingProxyType({27: (2020, 2021), 28: (2022, 2024)}),
+            2025: MappingProxyType({27: (2020, 2021), 28: (2022, 2025)}),
+            2026: MappingProxyType(
+                {27: (2020, 2021), 28: (2022, 2023), 29: (2024, 2026)}
+            ),
+        }
+    )
+)
+
+#: PRCITSHP codes of the foreign-born: 4 naturalized, 5 not a citizen. Codes
+#: 1-3 (born in the US, in Puerto Rico or the territories, or abroad to a US
+#: parent) are citizens at birth, whose entry clock is their age.
+_FOREIGN_BORN_CITIZENSHIP_CODES = (4, 5)
+
+#: Salt of the entry-year draw; distinct from the EAD-spill salts, so the
+#: draw never moves a status label.
+_ARRIVAL_YEAR_DRAW_SALT = "immigration:arrival_year"
+
+#: The engine's own ``years_since_us_entry`` default, a PolicyEngine modelling
+#: convention, not a statute value. A clock at this value for every
+#: non-citizen is the default-filled signature, not a derived surface.
+_ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY = 5.0
+
+#: The federal five-year bar (8 USC 1613(a)); the summary reports the
+#: weighted share of each status under it.
+_FIVE_YEAR_BAR = 5.0
+
+#: Entry-clock summary bands, in whole years since entry.
+_ENTRY_CLOCK_SUMMARY_BANDS: tuple[tuple[str, float, float], ...] = (
+    ("0-4", 0.0, 5.0),
+    ("5-9", 5.0, 10.0),
+    ("10-19", 10.0, 20.0),
+    ("20+", 20.0, np.inf),
+)
+
 #: PENATVTY codes for Cuba and Haiti; the Cuban/Haitian entrant class exists
 #: for arrivals after the Refugee Education Assistance Act of 1980.
 _CUBAN_HAITIAN_BIRTH_CODES = (327, 332)
@@ -292,11 +393,12 @@ def derive_us_immigration_status_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext,
 ) -> pd.DataFrame:
-    """Assign ``ssn_card_type`` and ``immigration_status_str`` to persons.
+    """Assign ``ssn_card_type``, ``immigration_status_str`` and the entry clock.
 
     The current frame must be the raw-column person table (from the stage's
     ``read_table`` operation) carrying a ``person_weight`` column materialized
-    from the bundle's household weights.
+    from the bundle's household weights. ``years_since_us_entry`` is computed
+    after, and independently of, the two labels.
     """
 
     if operation.kind != "derive_immigration_status":
@@ -365,6 +467,12 @@ def derive_us_immigration_status_from_manifest(
     }
     result["ssn_card_type"] = pd.Series(ssn_codes, index=result.index).map(code_to_name)
     result["immigration_status_str"] = status
+
+    result[US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN] = _asec_years_since_us_entry(
+        result,
+        seed=int(context.config.seed),
+        time_period=int(context.config.target_year),
+    )
     return result
 
 
@@ -643,6 +751,127 @@ def _derive_immigration_status(
     return status
 
 
+def _asec_survey_years(person: pd.DataFrame, *, time_period: int) -> np.ndarray:
+    """ASEC survey (interview) year per row: the income ``source_year`` + 1.
+
+    Pooled ASEC rows carry their income year as ``source_year``
+    (``census_cps_2024.h5`` is the ASEC 2025 file). A frame without it is read
+    as one file of the period's income year.
+    """
+
+    if "source_year" not in person.columns:
+        return np.full(len(person), int(time_period) + 1, dtype=np.int64)
+    income_year = pd.to_numeric(person["source_year"], errors="coerce")
+    if income_year.isna().any():
+        raise SourceRuntimeError(
+            f"{int(income_year.isna().sum())} foreign-born person(s) have no "
+            "source_year, so their PEINUSYR codebook vintage is unknown."
+        )
+    return income_year.to_numpy(dtype=np.int64) + 1
+
+
+def _peinusyr_arrival_intervals(
+    code: np.ndarray, survey_year: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """First and last arrival year of each row's band in its own codebook.
+
+    Code 1's open lower edge is ``-inf``. A row whose survey year has no
+    reviewed codebook, or whose code is outside that codebook (including the
+    NIU code 0), is refused: the stage never invents an entry year.
+    """
+
+    first = np.full(len(code), np.nan)
+    last = np.full(len(code), np.nan)
+    for year in np.unique(survey_year).tolist():
+        top_codes = _PEINUSYR_TOP_CODE_INTERVALS.get(int(year))
+        if top_codes is None:
+            continue
+        in_year = survey_year == year
+        for band_code, (low, high) in (
+            *_PEINUSYR_FIXED_INTERVALS.items(),
+            *top_codes.items(),
+        ):
+            hit = in_year & (code == band_code)
+            first[hit] = -np.inf if low is None else float(low)
+            last[hit] = float(high)
+    unknown = np.isnan(last)
+    if unknown.any():
+        pairs = sorted(
+            set(
+                zip(
+                    survey_year[unknown].tolist(),
+                    code[unknown].tolist(),
+                    strict=True,
+                )
+            )
+        )[:5]
+        raise SourceRuntimeError(
+            f"{int(unknown.sum())} foreign-born person(s) (PRCITSHP 4/5) carry "
+            "a PEINUSYR code with no reviewed codebook interval for their ASEC "
+            f"survey year; (survey year, code): {pairs}. Reviewed survey years: "
+            f"{sorted(_PEINUSYR_TOP_CODE_INTERVALS)}. The stage never invents "
+            "an entry year."
+        )
+    return first, last
+
+
+def _asec_years_since_us_entry(
+    person: pd.DataFrame,
+    *,
+    seed: int,
+    time_period: int,
+) -> np.ndarray:
+    """``years_since_us_entry`` per person from ASEC citizenship and entry year.
+
+    - **US-born** (``PRCITSHP`` 1-3): age (``A_AGE``), years in the US since
+      birth, the same convention as microcosm#1052's ACS local lane.
+    - **Foreign-born** (``PRCITSHP`` 4/5): ``time_period`` minus an arrival
+      year, clipped at zero. The arrival year is drawn uniformly over the
+      calendar years of the person's ``PEINUSYR`` band, read in the codebook
+      of the person's own ASEC vintage (:data:`_PEINUSYR_TOP_CODE_INTERVALS`).
+      Every consumer compares the clock with a whole number of years (``>= 5``
+      for the federal bar), so a band midpoint would put a band that straddles
+      the threshold wholly on one side of it. With a 2024 period no two-year
+      band straddles five (2018-2019 gives 5-6 years, 2020-2021 gives 3-4), but
+      every two-year band straddles in an odd period, and the wide top codes
+      straddle the one-year ORR window. The draw keeps the rule exact in
+      expectation for any period and threshold.
+    - The band is first intersected with the years the person can have
+      arrived in: no earlier than the year before ``survey year - A_AGE``.
+      That also gives the open "Before 1950" band its lower edge. If the age
+      contradicts the band, the band wins and its last year is used.
+    - The draw is the stage's seeded blake2b draw with its own salt, keyed on
+      ``source_year:source_person_id``, so support clones share an entry year.
+
+    The clock starts at physical entry. The bar runs from the grant of
+    qualified status, so for people who adjusted status after arriving it runs
+    long and under-applies the bar (the conservative direction).
+    """
+
+    citizenship = _integer_column(person, "PRCITSHP")
+    age = _float_column(person, "A_AGE")
+    years = age.copy()
+    foreign_born = np.isin(citizenship, _FOREIGN_BORN_CITIZENSHIP_CODES)
+    if not foreign_born.any():
+        return years
+    rows = np.flatnonzero(foreign_born)
+    subset = person.iloc[rows]
+    survey_year = _asec_survey_years(subset, time_period=time_period)
+    first, last = _peinusyr_arrival_intervals(
+        _integer_column(subset, "PEINUSYR"), survey_year
+    )
+    birth_floor = (survey_year - np.floor(age[rows]) - 1).astype(np.float64)
+    lower = np.maximum(first, birth_floor)
+    lower = np.where(lower > last, last, lower)
+    span = last - lower + 1.0
+    draws = _stable_person_draws(subset, seed=seed, salt=_ARRIVAL_YEAR_DRAW_SALT)
+    # A 64-bit draw can round up to exactly 1.0 in float64; keep it in band.
+    offset = np.minimum(np.floor(draws * span), span - 1.0)
+    arrival_year = lower + offset
+    years[rows] = np.maximum(float(time_period) - arrival_year, 0.0)
+    return years
+
+
 def with_us_immigration_inputs(
     frame: Frame,
     *,
@@ -653,6 +882,10 @@ def with_us_immigration_inputs(
 
     Existing output columns are preserved, making the transform idempotent —
     a base H5 built with this stage passes through untouched at release time.
+    A base labelled before microcosm#776 carries both labels but no
+    ``years_since_us_entry``; it also passes through unchanged (the engine
+    default still applies to it), because rederiving only the clock would
+    silently change an existing lane's output.
 
     Args:
         frame: A US-schema frame whose person table still carries the raw
@@ -661,23 +894,27 @@ def with_us_immigration_inputs(
         time_period: The dataset's time period (arrival-year arithmetic).
 
     Returns:
-        A new frame whose person table carries ``ssn_card_type`` and
-        ``immigration_status_str``.
+        A new frame whose person table carries ``ssn_card_type``,
+        ``immigration_status_str`` and ``years_since_us_entry``.
 
     Raises:
-        ValueError: If the frame is not US-schema, one output column exists
-            without the other, or the stage output does not cover every
-            person.
-        SourceRuntimeError: If required raw ASEC columns are missing.
+        ValueError: If the frame is not US-schema, one label exists without
+            the other, the clock exists without the labels, or the stage
+            output does not cover every person.
+        SourceRuntimeError: If required raw ASEC columns are missing, or a
+            foreign-born person's entry year has no reviewed codebook band.
     """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US immigration inputs require the US schema.")
     person = frame.table("person")
     present = [
-        column for column in US_IMMIGRATION_OUTPUT_COLUMNS if column in person.columns
+        column
+        for column in US_IMMIGRATION_OWNED_PERSON_COLUMNS
+        if column in person.columns
     ]
-    if len(present) == len(US_IMMIGRATION_OUTPUT_COLUMNS):
+    labels_present = set(US_IMMIGRATION_OUTPUT_COLUMNS) <= set(present)
+    if labels_present:
         return frame
     if present:
         missing = sorted(set(US_IMMIGRATION_OUTPUT_COLUMNS) - set(present))
@@ -697,7 +934,7 @@ def with_us_immigration_inputs(
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
-    for column in US_IMMIGRATION_OUTPUT_COLUMNS:
+    for column in US_IMMIGRATION_OWNED_PERSON_COLUMNS:
         if aligned[column].isna().any():
             raise ValueError(
                 f"US immigration stage output does not cover every person for "
@@ -705,7 +942,7 @@ def with_us_immigration_inputs(
             )
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    for column in US_IMMIGRATION_OUTPUT_COLUMNS:
+    for column in US_IMMIGRATION_OWNED_PERSON_COLUMNS:
         tables["person"][column] = aligned[column].to_numpy()
     return Frame(
         tables,
@@ -740,7 +977,91 @@ def us_immigration_composition_summary(frame: Frame) -> dict[str, object]:
                 for value, population in populations.items()
             },
         }
+    summary[US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN] = _entry_clock_summary(
+        person, weights
+    )
     return summary
+
+
+def _entry_clock_summary(
+    person: pd.DataFrame, weights: np.ndarray
+) -> dict[str, object] | None:
+    """Weighted entry-clock distribution of each non-citizen status.
+
+    Reports, per ``immigration_status_str`` value other than ``CITIZEN`` and
+    for all non-citizens together, the weighted population, the population and
+    share under the five-year bar, and the weighted population per band of
+    years since entry. ``None`` when the clock or the labels are absent.
+    """
+
+    if US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN not in person.columns or not set(
+        US_IMMIGRATION_OUTPUT_COLUMNS
+    ) <= set(person.columns):
+        return None
+    years = pd.to_numeric(
+        person[US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    status = person["immigration_status_str"].astype(str).to_numpy()
+    non_citizen = (person["ssn_card_type"].astype(str) != "CITIZEN").to_numpy()
+
+    def describe(mask: np.ndarray) -> dict[str, object]:
+        population = float(weights[mask].sum())
+        under_bar = float(weights[mask & (years < _FIVE_YEAR_BAR)].sum())
+        return {
+            "population": population,
+            "under_5_years_population": under_bar,
+            "under_5_years_share": (under_bar / population if population else None),
+            "bands": {
+                label: float(weights[mask & (years >= low) & (years < high)].sum())
+                for label, low, high in _ENTRY_CLOCK_SUMMARY_BANDS
+            },
+        }
+
+    by_status = {
+        str(value): describe(status == value)
+        for value in sorted(set(status[non_citizen].tolist()))
+        if value != "CITIZEN"
+    }
+    return {
+        "bar_years": _FIVE_YEAR_BAR,
+        "non_citizen": describe(non_citizen),
+        "by_status": by_status,
+    }
+
+
+def _entry_clock_failures(
+    person: pd.DataFrame, *, non_citizen: np.ndarray
+) -> list[str]:
+    """Missing, negative or default-filled ``years_since_us_entry`` values.
+
+    A frame labelled before microcosm#776 has no clock; that is not a
+    failure, since the engine default then applies as it always has. A stored
+    clock must be complete, non-negative and, among non-citizens, not the
+    engine default on every row.
+    """
+
+    column = US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN
+    if column not in person.columns:
+        return []
+    years = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
+    failures: list[str] = []
+    missing = ~np.isfinite(years)
+    if missing.any():
+        failures.append(
+            f"{column}: {int(missing.sum())} person(s) have no finite value."
+        )
+    negative = np.isfinite(years) & (years < 0)
+    if negative.any():
+        failures.append(f"{column}: {int(negative.sum())} negative value(s).")
+    if non_citizen.any() and bool(
+        (years[non_citizen] == _ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY).all()
+    ):
+        failures.append(
+            f"{column}: every non-citizen carries the engine default "
+            f"{_ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY:g}, the default-filled "
+            "signature rather than a derived clock."
+        )
+    return failures
 
 
 def us_immigration_composition_gate(
@@ -754,8 +1075,11 @@ def us_immigration_composition_gate(
     mode: everyone a citizen with a valid SSN), when a value falls outside
     the engine enum domain, when the two columns disagree about citizenship
     or undocumented status, when the weighted non-citizen share leaves its
-    plausibility band, or when the emergent undocumented population strays
-    outside a coarse band around its cited published anchor.
+    plausibility band, when the emergent undocumented population strays
+    outside a coarse band around its cited published anchor, or when a stored
+    ``years_since_us_entry`` is incomplete, negative or the engine default for
+    every non-citizen. The entry-clock distribution (including the weighted
+    LPR share under the five-year bar) is reported in ``details["summary"]``.
     """
 
     if controls is None:
@@ -859,6 +1183,8 @@ def us_immigration_composition_gate(
             f"{controls.population_anchor:,.0f} (band [{rel_low}, {rel_high}], "
             f"{controls.sources[_ANCHOR_KEY]})."
         )
+
+    failures.extend(_entry_clock_failures(person, non_citizen=~ssn_citizen))
 
     return GateResult(
         name="immigration_composition",

@@ -409,6 +409,7 @@ transfer_execution:
   - first_home_mortgage_origination_year
   - second_home_mortgage_origination_year
   - weeks_unemployed
+  - years_since_us_entry
   structural_target_policies:
     is_pregnant:
       enabled: false
@@ -2442,6 +2443,13 @@ families:
     entity: person
     value_kind: category
     dtype: str
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: years_since_us_entry
+    entity: person
+    value_kind: amount
+    dtype: float
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
@@ -9900,6 +9908,11 @@ producer_graph:
       temporary: false
       validation_only: false
     - column: ssn_card_type
+      coverage_scope: asec_source
+      entity: person
+      temporary: false
+      validation_only: false
+    - column: years_since_us_entry
       coverage_scope: asec_source
       entity: person
       temporary: false
@@ -25410,6 +25423,15 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: years_since_us_entry
+          entity: person
+          value_kind: finite_numeric
+      column: years_since_us_entry
+      entity: person
+      producing_stage: source:with_us_immigration_inputs
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: spm_unit_id
           entity: spm_unit
           value_kind: finite_numeric
@@ -25543,6 +25565,7 @@ producer_graph:
             ordered_targets:
             - ssn_card_type
             - immigration_status_str
+            - years_since_us_entry
   - id: transfer:person/source_operator_medicare_take_up
     name: transfer:person/source_operator_medicare_take_up
     kind: late_transfer

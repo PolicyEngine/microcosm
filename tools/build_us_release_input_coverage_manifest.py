@@ -94,6 +94,8 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "receives_wic",
     "receives_snap",
     "receives_tanf",
+    # PolicyEngine/microcosm#776: the immigration stage's entry clock.
+    "years_since_us_entry",
 )
 
 # Shared tail of the three #978 reported-receipt notes: why each is a hard
@@ -191,6 +193,17 @@ POST_REFERENCE_COLUMN_NOTES = {
         "1 or 3, per SPM unit), carried by "
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
         "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+    ),
+    "years_since_us_entry": (
+        "Entry clock of the immigration stage (PolicyEngine/microcosm#776): "
+        "the time period minus an arrival year drawn within the CPS PEINUSYR "
+        "band for the foreign-born, age for the US-born. The engine's federal "
+        "five-year bar (8 USC 1613), the Missouri SSP waiting period and the "
+        "Washington TANF and RCA windows read it; without it every person gets "
+        "the PolicyEngine-US default of 5, past the bar, and "
+        "PolicyEngine/policyengine-us#9732 removes that default. Required with "
+        "NO reviewed exclusion; artifacts labelled before #776 do not persist "
+        "it — the intended red gate until a national build carries it."
     ),
 }
 

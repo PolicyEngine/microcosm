@@ -54,7 +54,9 @@ from microcosm.build.us_runtime.housing_inputs import (
     US_HOUSING_PERSON_OUTPUT_COLUMNS,
     US_HOUSING_SPM_UNIT_OUTPUT_COLUMNS,
 )
-from microcosm.build.us_runtime.immigration import US_IMMIGRATION_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_OWNED_PERSON_COLUMNS,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
 )
@@ -321,7 +323,7 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
         "person": frozenset(US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS),
     },
     "immigration": {
-        "person": frozenset(US_IMMIGRATION_OUTPUT_COLUMNS),
+        "person": frozenset(US_IMMIGRATION_OWNED_PERSON_COLUMNS),
     },
     "primary_puf_qrf": {
         "person": frozenset(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
