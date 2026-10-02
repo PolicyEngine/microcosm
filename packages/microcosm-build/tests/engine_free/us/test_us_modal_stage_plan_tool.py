@@ -764,6 +764,123 @@ def test_branch_is_verified_against_the_remote(
         assert result["branch_tip"] == remote["c3"]
 
 
+@pytest.fixture
+def bystander(tmp_path: Path) -> dict[str, Path]:
+    """An unrelated repository with a linked worktree.
+
+    It stands in for the developer's clone: git exports an absolute
+    ``GIT_DIR`` (the linked worktree's git directory) to the hooks,
+    ``rebase --exec`` commands and shell aliases it runs in a linked worktree.
+    """
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    repo = tmp_path / "bystander"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "bystander")
+    linked = tmp_path / "bystander-linked"
+    _git(repo, "worktree", "add", "-q", str(linked), "-b", "side")
+    return {
+        "work_tree": repo,
+        "git_dir": repo / ".git",
+        "linked_git_dir": Path(_git(linked, "rev-parse", "--absolute-git-dir")),
+    }
+
+
+def _git_dir_bytes(git_dir: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(git_dir)): path.read_bytes()
+        for path in sorted(git_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _changed(before: dict[str, bytes], after: dict[str, bytes]) -> list[str]:
+    return sorted(
+        path
+        for path in before.keys() | after.keys()
+        if before.get(path) != after.get(path)
+    )
+
+
+_INHERITED_GIT_ENVS = {
+    "git_dir": lambda b: {"GIT_DIR": str(b["git_dir"])},
+    "linked_worktree_hook": lambda b: {
+        "GIT_DIR": str(b["linked_git_dir"]),
+        "GIT_INDEX_FILE": str(b["linked_git_dir"] / "index"),
+    },
+    "common_dir": lambda b: {"GIT_COMMON_DIR": str(b["git_dir"])},
+    "object_directory": lambda b: {
+        "GIT_OBJECT_DIRECTORY": str(b["git_dir"] / "objects")
+    },
+    "work_tree": lambda b: {"GIT_WORK_TREE": str(b["work_tree"])},
+    "git_dir_and_work_tree": lambda b: {
+        "GIT_DIR": str(b["git_dir"]),
+        "GIT_WORK_TREE": str(b["work_tree"]),
+    },
+}
+
+
+@pytest.mark.parametrize("inherited", sorted(_INHERITED_GIT_ENVS))
+def test_an_inherited_git_repository_never_receives_the_branch_check(
+    app, remote, bystander, monkeypatch, inherited
+) -> None:
+    # Before the runner dropped these variables, the commits-only fetch went
+    # to the repository they name: a promisor remote and filter in its
+    # config, refs/branch-check/tip and promisor packs; GIT_WORK_TREE made
+    # the scratch init fail, so a good branch went unverified.
+    for key, value in {**_GIT_ENV, **_INHERITED_GIT_ENVS[inherited](bystander)}.items():
+        monkeypatch.setenv(key, value)
+    before = _git_dir_bytes(bystander["git_dir"])
+    plan = dataclasses.replace(
+        plan_lib.parse_plan(_plan_data()),
+        repo_url=remote["url"],
+        branch="feature/x",
+        commit=remote["c3"],
+    )
+    result = app._verify_branch(plan)
+    assert _changed(before, _git_dir_bytes(bystander["git_dir"])) == []
+    assert result == {
+        "branch_verified": True,
+        "branch_tip": remote["c3"],
+        "branch_check": "commit is the branch tip",
+    }
+
+
+def test_the_clone_s_git_state_is_read_from_the_clone_alone(
+    app, bystander, tmp_path: Path, monkeypatch
+) -> None:
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    _git(clone, "init", "-q", "-b", "us-modal-stage-runner")
+    _git(clone, "commit", "-q", "--allow-empty", "-m", "pinned")
+    head = _git(clone, "rev-parse", "HEAD")
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(clone))
+    for key, value in {
+        **_GIT_ENV,
+        **_INHERITED_GIT_ENVS["linked_worktree_hook"](bystander),
+    }.items():
+        monkeypatch.setenv(key, value)
+    before = _git_dir_bytes(bystander["git_dir"])
+    assert app._git("rev-parse", "HEAD") == head
+    assert app._git("status", "--porcelain") == ""
+    assert app._git("branch", "--show-current") == "us-modal-stage-runner"
+    assert _changed(before, _git_dir_bytes(bystander["git_dir"])) == []
+
+
+def test_every_repository_variable_git_names_is_withheld(tmp_path: Path) -> None:
+    # Differential: the installed git's own list of variables that pick the
+    # repository, less the ``git -c`` carriers it keeps across repositories.
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    names = set(_git(tmp_path, "rev-parse", "--local-env-vars").split())
+    carriers = {"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
+    assert {"GIT_DIR", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"} <= names
+    assert names - carriers <= plan_lib.GIT_REPOSITORY_ENV
+    assert not carriers & plan_lib.GIT_REPOSITORY_ENV
+
+
 def test_branch_check_argvs_never_touch_the_pinned_clone() -> None:
     argvs = plan_lib.branch_check_argvs(
         plan_lib.DEFAULT_REPO_URL, "us-modal-stage-runner", COMMIT, "/tmp/check.git"
@@ -864,6 +981,58 @@ def test_tool_environment_strips_credentials_and_stays_offline() -> None:
 def test_tool_environment_refuses_an_unvalidated_plan_env(key: str) -> None:
     with pytest.raises(plan_lib.PlanError, match="may not be passed"):
         plan_lib.tool_environment({}, {key: "x"})
+
+
+def test_tool_environment_withholds_git_repository_variables() -> None:
+    # The tool records the clone's commit with git; an inherited GIT_DIR
+    # would make it record another repository's.
+    base = {
+        "PATH": "/usr/bin",
+        "GIT_DIR": "/elsewhere/.git/worktrees/x",
+        "GIT_INDEX_FILE": "/elsewhere/.git/worktrees/x/index",
+        "GIT_CONFIG_PARAMETERS": "'core.quotepath'='false'",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    env, removed = plan_lib.tool_environment(base, {})
+    assert removed == ["GIT_DIR", "GIT_INDEX_FILE"]
+    assert env == {
+        "PATH": "/usr/bin",
+        "GIT_CONFIG_PARAMETERS": "'core.quotepath'='false'",
+        "GIT_TERMINAL_PROMPT": "0",
+        "HF_HUB_OFFLINE": "1",
+    }
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    base=st.dictionaries(
+        st.sampled_from(
+            sorted(
+                plan_lib.GIT_REPOSITORY_ENV
+                | {"PATH", "GIT_CONFIG_PARAMETERS", "GIT_TERMINAL_PROMPT", "HF_TOKEN"}
+            )
+        ),
+        st.text(max_size=6),
+        max_size=8,
+    )
+)
+def test_no_git_repository_variable_reaches_git_or_the_tool(base) -> None:
+    # For any inherited environment: the runner's git commands and the tool
+    # get none of the repository variables and every other value unchanged
+    # (the tool also loses credentials), and the receipt names each one
+    # withheld.
+    keep = {
+        key: value
+        for key, value in base.items()
+        if key not in plan_lib.GIT_REPOSITORY_ENV
+    }
+    assert plan_lib.git_environment(base) == keep
+    env, removed = plan_lib.tool_environment(base, {})
+    assert not plan_lib.GIT_REPOSITORY_ENV & set(env)
+    assert plan_lib.GIT_REPOSITORY_ENV & set(base) <= set(removed)
+    assert {key: env[key] for key in keep if key != "HF_TOKEN"} == {
+        key: value for key, value in keep.items() if key != "HF_TOKEN"
+    }
 
 
 # A probe value: any hash seed other than the local run's "0".
