@@ -4383,7 +4383,7 @@ stages:
     target: 5400000
     donor_pool: employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0
     rate_cap: 0.5
-    move: full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed
+    move: full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)
     seed: 2024
     salt: salary_sacrifice_conversion
     receipt: weighted_headcount
@@ -4392,10 +4392,12 @@ stages:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
   - employment_income
+  - salary_sacrifice_pre_conversion_pay
   nonnegative_outputs:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
   - employment_income
+  - salary_sacrifice_pre_conversion_pay
   rewrites:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions

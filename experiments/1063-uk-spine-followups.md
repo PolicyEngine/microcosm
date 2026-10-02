@@ -227,9 +227,41 @@ arm at 0.04 households beside a non-residential arm at 20.76. Family folds, the 
 kernel, the export surface, national sampling, the student-loans receipt and the E8 identity receipt
 carry the new layer.
 
+## Final build (2fe7d8bbb on main fe4e38dfa, 2026-10-02)
+
+Spine `spine-1063-2fe7d8bbb.h5` (sha256 ccda40bd…), national candidate `runs/uk-national-1063-2fe7d8bbb/
+microcosm_uk_2024_25.h5` (sha256 df3ca7cc…, staged), 7/7 seam gates, loss 0.00713 (1,090 targets; the
+South East £12,570–15,000 income-tax cell +30.3% under its reviewed deferral). Evaluation against the
+2026-09-30 incumbent PASSED: loss 0.00817 vs 0.327, 1,020 wins vs 30, 118 pruned. The release-cut
+certifier stopped at its first part, `uk_ledger_compile_parity_incumbent_2025`: the signed receipt still
+pinned the 39 Table 3.6 amount references at their flat-index values; re-signed against the pinned
+ledger (2af5ad3e5, only those 39 rows move). E7 passed. E8 failed with three symptoms, all diagnosed on
+the built spine:
+
+- `anchor_recompute` 55,622 households (max 286) and `support_split_selection_stored` extra 1 /
+  missing 2: the recompute banded the carriers on post-sacrifice pay. Since microcosm#1069 c9 (on main
+  as #1084) `salary_sacrifice` lowers a converted record's `employment_income` and zeroes its employee
+  contribution in place, after the support split (stage 30) and the anchor (33) banded on them;
+  2,797 clone carriers carry salary sacrifice, 82 of them moved down a Table 3 band, so the anchor
+  derived loss 153,816 / sub-exempt 40,723 against the stage's 153,919 / 40,709 at the same liable mass,
+  and band 100,000 lost households 13421 and 2000006588 to band 0 while band 125,140 gained 6477.
+  The 30 September main spine predates the pay drop, which is why E8 was exact there. Fix: the stage
+  keeps a converted record's pre-conversion pay on `salary_sacrifice_pre_conversion_pay` (zero
+  elsewhere; dropped at the release boundary), and every receipt of a stage before `salary_sacrifice`
+  reverses the conversion from it (`_pre_salary_sacrifice_frame`).
+- `residential_split_permutation`: the stored arms were reproduced to 3.4e-13, but two person orders
+  of the same frame differed by 1e-13 on 2,999 arm weights — the logistic solve's bisection sums are
+  pairwise float sums. Fix: the split walks the liable gainers in `person_id` order (the identity on
+  the spine's sorted tables) and breaks a tie for the exact-total correction row by household id; the
+  order test is now bitwise under a reversed and a random person order.
+
+The weight-shape warning stands (folded max-to-median 1,028 vs main's 609; bound 1,151). Both fixes
+change the spine (a new carrier column; the arms bitwise unchanged), so the final build and the
+certifier run again from the fixed head.
+
 ## Still owed
 
-- Arm C2 and the final build with the certifier; the identity tool with `--spi-tab` on it.
+- The rebuilt final build with the certifier and E7/E8 from the fixed head.
 - Her calls: Child Benefit opt-out pool order (fully charged first, then the taper, as built; or one
   pool over every charged family); `other_residential_property_value` (WAS `DVHseVal`) excludes
   buy-to-let (`DVBltVal`), which sits in the drawn remainder; the Table 8a rows stay fenced

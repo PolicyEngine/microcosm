@@ -15,8 +15,10 @@ from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
     SALSAC_OUTPUT,
+    SALSAC_PRE_CONVERSION_PAY_COLUMN,
     SALSAC_RATE_CAP,
     SALSAC_STAGE_TARGET,
+    UKSalarySacrificeStageTransform,
     _assert_salary_sacrifice_stage_parameters,
     impute_salary_sacrifice,
     load_salary_sacrifice_anchor,
@@ -209,9 +211,17 @@ def test_conversion_moves_full_pension_zeros_source_and_records_cap(
         30_000.0 - person.loc[converted, SALSAC_OUTPUT],
     )
     assert (person.loc[~converted, "employment_income"] == 30_000.0).all()
+    # The converted record's pay before the conversion stays on the carrier,
+    # zero for everyone else, so the rewrite reverses exactly (microcosm#1063).
+    assert (person.loc[converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 30_000.0).all()
+    assert (person.loc[~converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 0.0).all()
+    assert SALSAC_PRE_CONVERSION_PAY_COLUMN in (
+        UKSalarySacrificeStageTransform.output_columns()
+    )
     evidence = result.evidence()["headcount_receipt"]
     assert evidence["target"] == SALSAC_STAGE_TARGET
     assert evidence["converted_rows"] == result.converted_rows
+    assert evidence["pre_conversion_pay_column"] == SALSAC_PRE_CONVERSION_PAY_COLUMN
 
 
 def test_anchor_is_self_consistent() -> None:

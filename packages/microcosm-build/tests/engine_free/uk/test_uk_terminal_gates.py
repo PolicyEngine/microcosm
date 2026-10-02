@@ -327,10 +327,14 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     }
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
-    # The boundary drops the reviewed export exclusions and the internal
-    # disability carriers, and nothing else.
+    # The boundary drops the reviewed export exclusions, the internal
+    # disability carriers and the salary-sacrifice pre-conversion pay
+    # carrier, and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.salary_sacrifice import (
+        SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
 
     dropped = {
@@ -338,9 +342,11 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
         for column in columns
     }
-    assert dropped == set(UK_REVIEWED_EXPORT_EXCLUSIONS) | {
-        f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS
-    }
+    assert dropped == (
+        set(UK_REVIEWED_EXPORT_EXCLUSIONS)
+        | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
+        | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
+    )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
 

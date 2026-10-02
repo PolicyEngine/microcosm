@@ -458,7 +458,10 @@ class TestDeclaredOutputsAreWrittenColumns:
             CGT_SUPPORT_COPY_INDEX_COLUMN,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY,
         )
-        from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
 
         stages = load_country_spec("uk").sources.stage_map()
 
@@ -479,6 +482,7 @@ class TestDeclaredOutputsAreWrittenColumns:
             SALSAC_OUTPUT,
             "employee_pension_contributions",
             "employment_income",
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
         assert stages["student_loans"].outputs == ("student_loan_plan",)
 

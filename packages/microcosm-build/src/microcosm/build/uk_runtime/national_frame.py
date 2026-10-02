@@ -471,6 +471,11 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "dla_m_reported",
         "pip_m_reported",
         "pip_dl_reported",
+        # The salary-sacrifice conversion's pre-conversion pay carrier
+        # (salary_sacrifice.SALSAC_PRE_CONVERSION_PAY_COLUMN): it exists so
+        # the identity receipts can reverse the stage's in-place rewrite of a
+        # converted record's pay, and is no engine input.
+        "salary_sacrifice_pre_conversion_pay",
     ),
 }
 

@@ -836,6 +836,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "employee_pension_contributions",
             # Converted records' pay drops by the sacrificed amount (microcosm#1069).
             "employment_income",
+            # A converted record's pay before the conversion, zero elsewhere:
+            # the carrier that makes the rewrite reversible (microcosm#1063).
+            "salary_sacrifice_pre_conversion_pay",
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),

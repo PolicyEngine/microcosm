@@ -1557,6 +1557,10 @@ def e8_identity_receipt(
     stored arms, indices, weights, probabilities and residential gains. The
     clone-pair, support-split and band-donor checks run on the frame with the
     arms folded onto their sources, the state those layers were written in.
+    Every CGT layer ran before ``salary_sacrifice``, whose conversion
+    rewrites a converted record's pay in place, so the recomputes first
+    reverse it from the stage's pre-conversion pay carrier
+    (``_pre_salary_sacrifice_frame``).
     The A&S prior amounts (overwritten by the Table 3 redraw and its
     sub-AEA remainder mapping), the redraw's seeded within-band draws
     (covered by the merged #560 embedded published-surface tests), and the
@@ -1593,16 +1597,23 @@ def e8_identity_receipt(
     # the annual exempt amount) at the frame's build period.
     parameters = uk_cgt_policy_parameters(uk_time_period(frame))
 
+    # Every CGT layer ran before salary_sacrifice, which rewrites a converted
+    # record's pay and employee contribution in place; the recomputes band
+    # on the income those stages saw, restored from the stage's carrier.
+    pre_sacrifice = _pre_salary_sacrifice_frame(frame)
+
     # (5) Residential split recomputed from the folded pre-split frame; the
     # CGT layers below it are then checked with the arms folded away.
     residential_split = _e8_residential_split(
-        frame,
+        pre_sacrifice,
         problems,
         parameters=parameters,
         facts=load_hmrc_cgt_asset_type_facts(),
         permutation_seed=permutation_seed,
     )
-    cgt_frame = _drop_stacked_layers(frame, [HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE])
+    cgt_frame = _drop_stacked_layers(
+        pre_sacrifice, [HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE]
+    )
     household = cgt_frame.table("household")
 
     # (1) Clone-pair structure over every household: the support split's
@@ -1679,6 +1690,7 @@ def e8_identity_receipt(
             key.endswith("_permutation") for key in problems
         ),
         "clone_pairs": clone_pairs,
+        "pre_salary_sacrifice_restored": pre_sacrifice is not frame,
         "support_split": support_split,
         "band_donors": band_donors,
         "residential_split": residential_split,
@@ -2428,9 +2440,11 @@ def _frs_only_frame(frame):
     population the pre-stacking stages actually drew for. Their weights fold
     each clone back onto its original (exact before and after the #970
     anchor) and each CGT support copy back onto its root, so every surviving
-    row carries its pre-split weight.
+    row carries its pre-split weight. Every pre-stacking stage precedes
+    salary_sacrifice, so the conversion's pay rewrite is reversed too.
     """
 
+    frame = _pre_salary_sacrifice_frame(frame)
     household = frame.table("household")
     return _drop_stacked_layers(
         frame, [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
@@ -2438,10 +2452,95 @@ def _frs_only_frame(frame):
 
 
 def _frame_as_stage_saw(frame, stage: str):
-    """Scope the artifact to the rows present when ``stage`` ran."""
+    """Scope the artifact to the rows present when ``stage`` ran.
 
+    A stage before ``salary_sacrifice`` also saw every converted record's
+    pay and employee contribution before the conversion rewrote them.
+    """
+
+    positions = _roster_positions()
+    if positions[stage] < positions[_SALARY_SACRIFICE_STAGE]:
+        frame = _pre_salary_sacrifice_frame(frame)
     return _drop_stacked_layers(
         frame, _flags_stacked_after(stage, frame.table("household"))
+    )
+
+
+#: The stage whose conversion rewrites pay in place (microcosm#1069 c9).
+_SALARY_SACRIFICE_STAGE = "salary_sacrifice"
+
+
+def _pre_salary_sacrifice_frame(frame):
+    """The artifact with the salary-sacrifice conversion reversed.
+
+    ``salary_sacrifice`` moves a converted record's employee pension
+    contribution whole into ``pension_contributions_via_salary_sacrifice``,
+    zeroes the source and lowers ``employment_income`` by the amount moved,
+    after the capital-gains stages have banded every carrier on that pay
+    (microcosm#1063: on the 2 October spine the E8 recomputes banded 2,797
+    clone carriers on post-sacrifice pay and derived different anchor targets
+    and a different support family). The stage keeps a converted record's
+    pre-conversion pay on ``SALSAC_PRE_CONVERSION_PAY_COLUMN`` (zero for
+    everyone else), so the rewrite reverses exactly: pay back to the carrier
+    and the employee contribution back from the salary-sacrifice column,
+    which the conversion set to zero on the record it converted. The stage's
+    QRF predictions for the records it did not convert stay as stored; no
+    receipted layer before the stage reads them. An artifact without the
+    carrier is returned as it is.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.salary_sacrifice import (
+        SALSAC_OUTPUT,
+        SALSAC_PRE_CONVERSION_PAY_COLUMN,
+    )
+
+    person = frame.table("person")
+    if SALSAC_PRE_CONVERSION_PAY_COLUMN not in person.columns:
+        return frame
+    carrier = pd.to_numeric(
+        person[SALSAC_PRE_CONVERSION_PAY_COLUMN], errors="raise"
+    ).to_numpy(dtype=float)
+    if not np.isfinite(carrier).all() or (carrier < 0.0).any():
+        raise ValueError(
+            f"{SALSAC_PRE_CONVERSION_PAY_COLUMN} must be finite and non-negative."
+        )
+    converted = carrier > 0.0
+    if not converted.any():
+        return frame
+    person = person.copy()
+    pay = pd.to_numeric(person["employment_income"], errors="raise").to_numpy(
+        dtype=float, copy=True
+    )
+    employee = pd.to_numeric(
+        person["employee_pension_contributions"], errors="raise"
+    ).to_numpy(dtype=float, copy=True)
+    sacrifice = pd.to_numeric(person[SALSAC_OUTPUT], errors="raise").to_numpy(
+        dtype=float, copy=True
+    )
+    if (employee[converted] != 0.0).any() or (sacrifice[converted] <= 0.0).any():
+        raise ValueError(
+            "A converted salary-sacrifice record must carry a zero employee "
+            "contribution and a positive salary sacrifice; the artifact's "
+            f"{SALSAC_PRE_CONVERSION_PAY_COLUMN} disagrees with its columns."
+        )
+    pay[converted] = carrier[converted]
+    employee[converted] = sacrifice[converted]
+    sacrifice[converted] = 0.0
+    person["employment_income"] = pay
+    person["employee_pension_contributions"] = employee
+    person[SALSAC_OUTPUT] = sacrifice
+    return uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
     )
 
 

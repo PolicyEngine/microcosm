@@ -263,7 +263,18 @@ def split_cgt_residential_households(
     if not np.isfinite(gains).all():
         raise ValueError("capital_gains must be finite for every person.")
     liable = gains > parameters.annual_exempt_amount
+    # The solve walks the liable gainers in person_id order whatever the row
+    # order of the frame: its bisection sums are pairwise float sums, which
+    # move in their last bits under a permutation, and every arm weight is a
+    # product of the solved probabilities (the E8 identity receipt found
+    # 1e-13 between two orders of the 2 October spine's persons). On a frame
+    # sorted by person_id, as the spine's tables are, this is the identity.
     liable_index = np.flatnonzero(liable)
+    liable_index = liable_index[
+        np.argsort(
+            person["person_id"].to_numpy(dtype="int64")[liable_index], kind="stable"
+        )
+    ]
     liable_gains = gains[liable_index]
     liable_weights = person_weight[liable_index]
     stocks = _stock_signals(person, household)
@@ -428,6 +439,7 @@ def split_cgt_residential_households(
         final_weights,
         target=old_total,
         unsplit=np.flatnonzero(~split_households & (incumbent_weights > 0.0)),
+        household_ids=household_ids,
     )
     receipt = MassChangeRecord(
         entity="household",
@@ -605,17 +617,26 @@ def split_cgt_residential_households(
 
 
 def _exact_residential_weights(
-    values: np.ndarray, *, target: float, unsplit: np.ndarray
+    values: np.ndarray,
+    *,
+    target: float,
+    unsplit: np.ndarray,
+    household_ids: np.ndarray,
 ) -> Weights:
     """Importance weights summing bitwise to ``target``.
 
-    The correction lands on the heaviest unsplit incumbent so every arm weight
-    stays exactly its product; a frame with no unsplit positive incumbent
-    falls back to the shared multi-candidate correction.
+    The correction lands on the heaviest unsplit incumbent (the lowest
+    household id among equal weights, so the choice does not depend on the
+    row order) so every arm weight stays exactly its product; a frame with no
+    unsplit positive incumbent falls back to the shared multi-candidate
+    correction.
     """
 
     if unsplit.size:
-        heaviest = int(unsplit[np.argmax(values[unsplit])])
+        order = np.lexsort(
+            (np.asarray(household_ids)[unsplit], -np.asarray(values)[unsplit])
+        )
+        heaviest = int(unsplit[order[0]])
         corrected = _exact_total_correction(
             values, target=target, correction_index=heaviest
         )

@@ -301,7 +301,29 @@ def test_split_is_stable_under_person_order_and_follows_the_stock_signal() -> No
             index=household["household_id"].to_numpy(),
         ).sort_index()
 
-    pd.testing.assert_series_equal(arms(first), arms(second))
+    # Bitwise, not close: the E8 identity receipt compares two orders of the
+    # same persons with ``Series.equals`` (microcosm#1063).
+    pd.testing.assert_series_equal(arms(first), arms(second), check_exact=True)
+    shuffled_person = (
+        frame.table("person")
+        .iloc[np.random.default_rng(1063).permutation(gains.size)]
+        .reset_index(drop=True)
+    )
+    third = split_cgt_residential_households(
+        uk_national_frame(
+            person=shuffled_person,
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2024",
+            household_weights=frame.weights_for("household").values,
+        ),
+        facts=facts,
+        parameters=PARAMETERS,
+    )
+    pd.testing.assert_series_equal(arms(first), arms(third), check_exact=True)
+    assert third.frame.table("household")["household_id"].tolist() == (
+        first.frame.table("household")["household_id"].tolist()
+    )
     # A gainer who shows the stock the flag implies is more likely residential.
     stocks = {"property_income": np.where(np.arange(gains.size) % 2 == 0, 1.0, 0.0)}
     shifted = split_cgt_residential_households(

@@ -4461,7 +4461,8 @@
       "nonnegative_outputs": [
         "pension_contributions_via_salary_sacrifice",
         "employee_pension_contributions",
-        "employment_income"
+        "employment_income",
+        "salary_sacrifice_pre_conversion_pay"
       ],
       "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.",
       "operations": [
@@ -4487,7 +4488,7 @@
         {
           "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
           "kind": "convert_donors_to_target_stock",
-          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed",
+          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)",
           "rate_cap": 0.5,
           "reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved.",
           "receipt": "weighted_headcount",
@@ -4500,7 +4501,8 @@
       "outputs": [
         "pension_contributions_via_salary_sacrifice",
         "employee_pension_contributions",
-        "employment_income"
+        "employment_income",
+        "salary_sacrifice_pre_conversion_pay"
       ],
       "rewrites": [
         "pension_contributions_via_salary_sacrifice",
