@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from microcosm.graph import (
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     Graph,
     Node,
     Owned,
@@ -17,6 +20,7 @@ from microcosm.graph import (
 def compiled_graph():
     """Return a graph covering carried, rewritten, and structural fields."""
 
+    summary_type = ArtifactType("invented.summary", 1)
     graph = Graph(
         "invented",
         sources=(SourceRef("survey", "unused@1", "Recorded survey tables"),),
@@ -30,6 +34,7 @@ def compiled_graph():
                     Owned("person", "age", "int64"),
                     Owned("person", "keep", "boolean"),
                 ),
+                artifact_outputs=(ArtifactOutput("summary", summary_type),),
                 description="Load the declared source tables",
             ),
             Node(
@@ -71,6 +76,9 @@ def compiled_graph():
                 base="expanded",
                 weights=WeightUpdate("person", "design", "normalize sample weights"),
                 mass="declared",
+                artifact_inputs=(
+                    ArtifactInput("source_summary", "base", "summary", summary_type),
+                ),
             ),
         ),
     )
