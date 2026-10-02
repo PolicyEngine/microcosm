@@ -635,7 +635,6 @@ def impute_uk_spi_income_support(
     verified_donor: VerifiedSPIDonorIdentity | None = None,
     donor_table: pd.DataFrame | None = None,
     initialize_frs_channel_columns: Mapping[str, float] | None = None,
-    stage1_base_redraw_columns: Sequence[str] = (),
     condition_on_state_pension_receipt: bool = False,
     rebase_income_to_build_period: bool = False,
     band_donor_resample: Mapping[str, object] | None = None,
@@ -746,15 +745,6 @@ def impute_uk_spi_income_support(
             base_people=base_people,
             columns=initialize_frs_channel_columns,
         )
-    base_redraw_columns = tuple(stage1_base_redraw_columns)
-    unknown_redraw = sorted(
-        set(base_redraw_columns) - set(SPI_INCOME_QRF_OUTPUT_COLUMNS)
-    )
-    if unknown_redraw:
-        raise ValueError(
-            "SPI stage-1 base redraw columns must be stage-1 QRF outputs; "
-            f"unknown column(s): {unknown_redraw}."
-        )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
 
     recipient_predictors = _stage1_query_predictors(
@@ -784,10 +774,11 @@ def impute_uk_spi_income_support(
         expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
         label="SPI stage-1",
     )
-    # Hold the existing RNG stream fixed: the fitted forest is also used
-    # later for the base-channel dividend redraw. Consume the legacy query
-    # shape, then discard under-age draws before any assignment. This keeps
-    # adult stage-1 draw pool and the base redraw stream identical.
+    # Hold the existing RNG stream fixed: query the legacy shape (every
+    # SPI-channel person), then discard the draws outside the recipient domain
+    # before any assignment, so each recipient keeps the draw it has always
+    # had. FRS-channel rows keep their own reported incomes, dividends
+    # included (uk-data#498, microcosm#1095).
     adult_positions = (
         person.loc[spi_channel_people, "age"].ge(SPI_MINIMUM_RECIPIENT_AGE).to_numpy()
     )
@@ -948,35 +939,6 @@ def impute_uk_spi_income_support(
             step="spi_channel_reports_after_stage2",
         )
         guard_receipts.append(receipt)
-
-    if base_redraw_columns:
-        base_predictors = _stage1_query_predictors(person.loc[base_people], household)
-        _, encoded_base = _encode_predictor_pair(
-            donor[["age", "gender", "region"]],
-            base_predictors,
-        )
-        base_draws = stage1.predict(encoded_base)
-        _validate_predictions(
-            base_draws,
-            expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
-            label="SPI stage-1 base redraw",
-        )
-        if (
-            base_draws[list(base_redraw_columns)]
-            .to_numpy(dtype=np.float64)
-            .min(initial=0.0)
-            < 0.0
-        ):
-            raise ValueError("SPI stage-1 base redraw produced negative outputs.")
-        for column in base_redraw_columns:
-            # This redraw also uses adult SPI donors. Preserve observed FRS
-            # child dividends, while consuming the same base query stream.
-            base_adults = (
-                person.loc[base_people, "age"].ge(SPI_MINIMUM_RECIPIENT_AGE).to_numpy()
-            )
-            person.loc[
-                base_people & person.age.ge(SPI_MINIMUM_RECIPIENT_AGE), column
-            ] = base_draws[column].to_numpy()[base_adults] * uprating_factors[column]
 
     tax_free = person.loc[spi_people, "tax_free_savings_income"].to_numpy(
         dtype=np.float64

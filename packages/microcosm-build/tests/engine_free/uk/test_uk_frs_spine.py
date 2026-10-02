@@ -889,12 +889,6 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             },
                         },
                         {"kind": "fit_weighted_qrf_stage2", "seed": 43},
-                        {
-                            "kind": "redraw_columns_from_fitted_qrf",
-                            "fit": "stage1",
-                            "columns": ["dividend_income"],
-                            "rows": "base_support_channel",
-                        },
                     ],
                     outputs=(
                         "other_investment_income",

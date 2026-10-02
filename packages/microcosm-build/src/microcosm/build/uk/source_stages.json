@@ -1959,14 +1959,6 @@
      "receipt": "rows, weighted people and amounts removed per column and step"
     },
     {
-     "kind": "redraw_columns_from_fitted_qrf",
-     "fit": "stage1",
-     "columns": [
-      "dividend_income"
-     ],
-     "rows": "base_support_channel"
-    },
-    {
      "kind": "materialize_hmrc_income_bands_fail_closed",
      "artifact_role": "published_fact_surface",
      "mapped_build_period": 2024,
@@ -2302,7 +2294,7 @@
     "hmrc_spi_unemployment_benefit_income",
     "hmrc_spi_incapacity_benefit_income"
    ],
-   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
+   "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
    "stage": "spi_housing_shell",

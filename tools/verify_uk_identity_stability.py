@@ -531,7 +531,7 @@ def e7_identity_receipt(
 
     Not covered here, and deliberately so:
 
-    * the stage-1/stage-2 QRF fits and the dividend redraw, which twin-build
+    * the stage-1/stage-2 QRF fits, which twin-build
       determinism covers — the e6 and e8 precedent for QRF surfaces;
     * the ``employer_pension_contributions = 3 * employee_pension_contributions``
       derive, which is a genuine E7 deterministic layer but which E8's
@@ -670,8 +670,8 @@ def e7_identity_receipt(
             entity: list(values.columns) for entity, values in original.items()
         },
         "qrf_draw_columns_scope": (
-            "excluded: the stage-1/stage-2 QRF fits and the dividend redraw "
-            "are covered by twin-build determinism (the e6 and e8 precedent)"
+            "excluded: the stage-1/stage-2 QRF fits are covered by twin-build "
+            "determinism (the e6 and e8 precedent)"
         ),
         "rewritten_layer_scope": (
             "excluded: employer_pension_contributions = 3 x "

@@ -251,7 +251,6 @@ SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
     "gift_aid": 0.0,
     "charitable_investment_gifts": 0.0,
 }
-SPI_SPINE_BASE_REDRAW_COLUMNS = ("dividend_income",)
 SPI_SPINE_SUPPORT_CHANNELS = {"base": "frs", "synthetic": SPI_SYNTHETIC_SUPPORT_CHANNEL}
 SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
 #: The reviewed SPI-channel prior share of households with a member at or over
@@ -656,7 +655,6 @@ class UKSPIIncomeSpineStageTransform:
         assert_frs_hmrc_auxiliary_crosswalk_available(tables["person"])
         support = _support_result_from_frame(frame, tables)
         stage1_op = _operation(self.stage, "fit_weighted_qrf_stage1")
-        redraw_op = _operation(self.stage, "redraw_columns_from_fitted_qrf")
         resample_op = _optional_operation(self.stage, "resample_band_donor_leaves")
         band_donor_resample = (
             None
@@ -710,7 +708,6 @@ class UKSPIIncomeSpineStageTransform:
             initialize_frs_channel_columns=stage1_op.parameters[
                 "initialize_frs_channel_columns"
             ],
-            stage1_base_redraw_columns=redraw_op.parameters["columns"],
             rebase_income_to_build_period=stage1_op.parameters[
                 "rebase_income_to_build_period"
             ],
@@ -1074,7 +1071,12 @@ def _assert_income_stage_parameters(
 ) -> None:
     stage1 = _operation(stage, "fit_weighted_qrf_stage1")
     stage2 = _operation(stage, "fit_weighted_qrf_stage2")
-    redraw = _operation(stage, "redraw_columns_from_fitted_qrf")
+    if _optional_operation(stage, "redraw_columns_from_fitted_qrf") is not None:
+        raise ValueError(
+            "SPI income stage must not redraw FRS-channel incomes from the SPI "
+            "forest: FRS respondents keep their reported dividends "
+            "(uk-data#498, microcosm#1095)."
+        )
     effective_mass = _operation(stage, "gate_distributional_effective_mass")
     if stage1.parameters.get("seed") != seed:
         raise ValueError("SPI income stage-1 seed drifted from the reviewed value.")
@@ -1116,12 +1118,6 @@ def _assert_income_stage_parameters(
     reviewed_absent = stage2.parameters.get("reviewed_absent_outputs", {})
     if set(reviewed_absent) != set(SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS):
         raise ValueError("SPI income stage-2 reviewed-absent outputs drifted.")
-    if redraw.parameters.get("fit") != "stage1":
-        raise ValueError("SPI income base redraw must use the stage-1 fit.")
-    if redraw.parameters.get("rows") != "base_support_channel":
-        raise ValueError("SPI income base redraw must target the base support channel.")
-    if tuple(redraw.parameters.get("columns", ())) != SPI_SPINE_BASE_REDRAW_COLUMNS:
-        raise ValueError("SPI income base redraw columns drifted.")
     if (
         tuple(effective_mass.parameters.get("columns", ()))
         != SPI_SPINE_EFFECTIVE_MASS_COLUMNS
