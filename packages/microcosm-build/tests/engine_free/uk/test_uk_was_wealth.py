@@ -180,6 +180,7 @@ def _frame() -> object:
             "region": ["NORTHERN_IRELAND", "SCOTLAND"],
             "num_bedrooms": [3, 4],
             "council_tax": [1000.0, 1200.0],
+            "council_tax_rebate": [250.0, 0.0],
             "household_net_income": [50000.0, 60000.0],
             "tenure_type": ["OWNED_WITH_MORTGAGE", "OWNED_OUTRIGHT"],
         }
@@ -324,6 +325,9 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert predictors["num_adults"].tolist() == [2.0, 2.0]
     assert predictors["num_children"].tolist() == [0.0, 0.0]
     assert predictors["household_net_income"].tolist() == [50000.0, 60000.0]
+    # The donor records the bill paid, so the reduction comes off the
+    # liability before council tax reduction (microcosm#1095).
+    assert predictors["council_tax"].tolist() == [750.0, 1200.0]
     assert predictors[UK_WAS_TENURE_CATEGORY_COLUMN].tolist() == [
         "owned_with_mortgage",
         "owned_outright",

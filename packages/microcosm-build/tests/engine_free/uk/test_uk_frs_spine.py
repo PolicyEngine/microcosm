@@ -27,6 +27,9 @@ from microcosm.build.uk_runtime import (
     spine_build,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.frs_council_tax import (
+    frs_council_tax_operation_parameters,
+)
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
     frs_relationships_operation_parameters,
@@ -157,6 +160,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "BEDROOM6": 3,
         "CTANNUAL": 1000.0,
         "CTBAND": 4,
+        "CTREB": 2,
         "CTREBAMT": 2.0,
         "ADULTH": 1,
         # CWATAMT/CSEWAMT are retired in FRS 2024-25: the headers survive but
@@ -187,6 +191,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "BEDROOM6": 2,
         "CTANNUAL": -1.0,
         "CTBAND": 2,
+        "CTREB": 1,
         "CTREBAMT": 1.0,
         "CSEWAMT": "",
         "CWATAMTD": 3.0,
@@ -552,7 +557,10 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                 source_stage(
                     "frs_council_tax",
                     tables=("househol",),
-                    operations=[{"kind": "read_tables"}, {"kind": "impute_cell_means"}],
+                    operations=[
+                        {"kind": "read_tables"},
+                        frs_council_tax_operation_parameters(),
+                    ],
                     outputs=("council_tax",),
                     nonnegative_outputs=("council_tax",),
                 ),
