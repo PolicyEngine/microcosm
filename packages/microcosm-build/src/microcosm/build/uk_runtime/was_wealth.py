@@ -78,13 +78,15 @@ UK_WAS_ENGINE_PREDICTORS = (
 UK_WAS_DEBT_OUTPUT_COLUMNS = ("mortgage_debt", "consumer_debt")
 #: Columns drawn only inside a tenure stratum and zero by rule outside it
 #: (microcosm#1063): the main residence exists only for owner-occupiers, and
-#: ``mortgage_debt`` only on a mortgaged tenure. Each maps to the tenure
+#: the mortgage on it only on a mortgaged tenure. Each maps to the tenure
 #: categories of its stratum; the manifest declares the same mapping as
-#: ``stratified_targets`` and the run asserts it.
+#: ``stratified_targets`` and the run asserts it. ``mortgage_debt`` itself is
+#: not stratified: it is the main-residence mortgage plus the mortgages on
+#: other property, which any tenure may hold (review of #1089, item 3).
 UK_WAS_STRATIFIED_TARGETS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "main_residence_value": UK_OWNER_TENURE_CATEGORIES,
-        "mortgage_debt": (UK_TENURE_OWNED_WITH_MORTGAGE,),
+        "main_residence_mortgage": (UK_TENURE_OWNED_WITH_MORTGAGE,),
     }
 )
 #: Components the chain draws but the stage does not emit: the remainder of a
@@ -92,9 +94,14 @@ UK_WAS_STRATIFIED_TARGETS: Mapping[str, tuple[str, ...]] = MappingProxyType(
 #: sum of its drawn parts rather than a draw of its own.
 UK_WAS_OTHER_PROPERTY_COLUMN = "other_property_value"
 UK_WAS_OTHER_FINANCIAL_COLUMN = "other_financial_assets"
+#: The household's mortgages other than the one on its main residence
+#: (``HMortGR8`` less ``TotMortR8`` on the donor): buy-to-let, second homes
+#: and the rest, held on every tenure, drawn without a stratum.
+UK_WAS_OTHER_MORTGAGE_COLUMN = "other_mortgage"
 UK_WAS_INTERNAL_COMPONENT_COLUMNS = (
     UK_WAS_OTHER_PROPERTY_COLUMN,
     UK_WAS_OTHER_FINANCIAL_COLUMN,
+    UK_WAS_OTHER_MORTGAGE_COLUMN,
 )
 #: Totals derived from drawn components, in derivation order. WAS round 8
 #: satisfies each identity on every donor row (checked when the donor is
@@ -117,6 +124,10 @@ UK_WAS_DERIVED_TOTALS: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "corporate_wealth",
             UK_WAS_OTHER_FINANCIAL_COLUMN,
         ),
+        # HMortGR8 is the main-residence mortgage (TotMortR8, zero off the
+        # mortgaged tenure) plus the mortgages on other property, held on any
+        # tenure; the engine's mortgage_debt is their sum.
+        "mortgage_debt": ("main_residence_mortgage", UK_WAS_OTHER_MORTGAGE_COLUMN),
     }
 )
 #: ``net_financial_wealth = gross_financial_wealth - consumer_debt -
@@ -475,6 +486,11 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
         total="gross_financial_wealth",
         components=UK_WAS_DERIVED_TOTALS["gross_financial_wealth"][:-1],
     )
+    cleaned[UK_WAS_OTHER_MORTGAGE_COLUMN] = _donor_remainder(
+        cleaned,
+        total="mortgage_debt",
+        components=UK_WAS_DERIVED_TOTALS["mortgage_debt"][:-1],
+    )
     _assert_donor_net_financial_identity(cleaned)
     cleaned["region"] = cleaned["region_code"].map(REGIONS)
     return cleaned[
@@ -642,7 +658,7 @@ class UKWASWealthImputationResult:
 #: 4 pension and share-like wealth; 5 the financial components, vehicles and
 #: the student loan balance; 6 mortgage debt (mortgaged stratum); 7 consumer
 #: debt. Totals are derived between segments from the components drawn so far.
-UK_WAS_CHAIN_SEGMENTS = 7
+UK_WAS_CHAIN_SEGMENTS = 8
 
 
 def was_wealth_segment_seeds(
@@ -709,9 +725,9 @@ def impute_was_wealth(
         donor, recipient_predictor_frame
     )
     # The tenure rule on the donor's conditioning copies: a later target is
-    # fitted on values the recipients can hold. ``mortgage_debt`` is all of the
-    # household's mortgages (HMortGR8), so donors off a mortgaged tenure carry
-    # mortgages on other property; the stage receipt records the mass.
+    # fitted on values the recipients can hold. The main-residence mortgage is
+    # zero off the mortgaged tenure on the pinned tab already; the mortgages
+    # on other property are carried on every tenure.
     for target, categories in UK_WAS_STRATIFIED_TARGETS.items():
         donor_encoded.loc[~np.isin(donor_category, categories), target] = 0.0
     segment_seeds = was_wealth_segment_seeds(seed)
@@ -854,10 +870,21 @@ def impute_was_wealth(
         recipient_encoded[output] = raw[output]
     run_segment(
         (*base, *prior_outputs),
-        ("mortgage_debt",),
-        stratum=UK_WAS_STRATIFIED_TARGETS["mortgage_debt"],
+        ("main_residence_mortgage",),
+        stratum=UK_WAS_STRATIFIED_TARGETS["main_residence_mortgage"],
     )
     if segments == 6:
+        return _partial_result(raw, fit_records, segment_seeds)
+    recipient_encoded["main_residence_mortgage"] = raw["main_residence_mortgage"]
+    # The mortgages on other property are held on every tenure (an outright
+    # owner's or a renter's buy-to-let), so they are drawn without a stratum
+    # and conditioned on the property the chain already placed.
+    run_segment(
+        (*base, *prior_outputs, "main_residence_mortgage"),
+        (UK_WAS_OTHER_MORTGAGE_COLUMN,),
+    )
+    derive_total("mortgage_debt")
+    if segments == 7:
         return _partial_result(raw, fit_records, segment_seeds)
     recipient_encoded["mortgage_debt"] = raw["mortgage_debt"]
     run_segment((*base, *prior_outputs, "mortgage_debt"), ("consumer_debt",))
@@ -873,6 +900,7 @@ def impute_was_wealth(
 #: totals can be re-derived after the donor-range cap.
 UK_WAS_DRAWN_ONLY_COLUMNS = (
     "corporate_wealth_excl_isa",
+    "main_residence_mortgage",
     *UK_WAS_INTERNAL_COMPONENT_COLUMNS,
 )
 
@@ -921,6 +949,7 @@ _UK_WAS_TOTAL_CAP_ORDER: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "cash_isa",
             "savings",
         ),
+        "mortgage_debt": (UK_WAS_OTHER_MORTGAGE_COLUMN, "main_residence_mortgage"),
     }
 )
 
@@ -946,7 +975,17 @@ def cap_derived_totals_to_donor_range(
             take = np.minimum(remaining, capped[component].clip(lower=0.0))
             capped[component] = capped[component] - take
             remaining = remaining - take
-        capped[total] = capped.loc[:, list(UK_WAS_DERIVED_TOTALS[total])].sum(axis=1)
+        recomputed = capped.loc[:, list(UK_WAS_DERIVED_TOTALS[total])].sum(axis=1)
+        # The reduced components sum back to the maximum up to float
+        # rounding; a sum a few ulp above it would be clipped as a real
+        # excess by the support clip, so it lands on the maximum exactly
+        # (inside the identity tolerance).
+        maximum = float(pd.to_numeric(donor[total], errors="coerce").max())
+        capped[total] = np.where(
+            (recomputed > maximum) & (recomputed - maximum <= 1e-6),
+            maximum,
+            recomputed,
+        )
 
     for total, components in UK_WAS_DERIVED_TOTALS.items():
         # Recomputed first: a reduced share-like total moves gross financial
@@ -1061,6 +1100,8 @@ def _weighted_share(mask: np.ndarray, weights: np.ndarray) -> float:
 #: tenure on both sides.
 UK_WAS_TENURE_RECEIPT_COLUMNS = (
     "main_residence_value",
+    "main_residence_mortgage",
+    UK_WAS_OTHER_MORTGAGE_COLUMN,
     "mortgage_debt",
     "property_wealth",
     "other_residential_property_value",
@@ -1077,11 +1118,13 @@ def tenure_coherence_receipt(
     """Tenure coherence of the housing columns, donor against recipient.
 
     The first two counts are the structural zeros the stage-health gate
-    requires: no mortgage debt off a mortgaged tenure and no main-residence
-    value off an owner tenure. The rest compares the recipient frame with the
-    donor at each side's own weights, and records the donor mortgage mass the
-    tenure rule leaves out (mortgages on other property held off a mortgaged
-    tenure, and the remainder such as lifetime mortgages).
+    requires: no main-residence mortgage off a mortgaged tenure and no
+    main-residence value off an owner tenure. The rest compares the recipient
+    frame with the donor at each side's own weights, and records the mortgage
+    mass held off the mortgaged tenure on each side (the mortgages on other
+    property, which the chain carries on every tenure since the review of
+    #1089; on the donor, TotMortR8 and OthMortR8_sum are read for that record
+    only).
     """
 
     donor_category = donor[UK_WAS_TENURE_CATEGORY_COLUMN].astype(str).to_numpy()
@@ -1097,11 +1140,14 @@ def tenure_coherence_receipt(
         return pd.to_numeric(table[column], errors="coerce").fillna(0.0).to_numpy(float)
 
     main = values(recipient_draws, "main_residence_value")
-    debt = values(recipient_draws, "mortgage_debt")
+    debt = values(recipient_draws, "main_residence_mortgage")
+    total_debt = values(recipient_draws, "mortgage_debt")
     donor_main = values(donor, "main_residence_value")
-    donor_debt = values(donor, "mortgage_debt")
-    donor_debt_mass = float((donor_debt * donor_weights).sum())
-    donor_off_tenure = float((donor_debt * donor_weights)[~donor_mortgaged].sum())
+    donor_debt = values(donor, "main_residence_mortgage")
+    donor_total_debt = values(donor, "mortgage_debt")
+    donor_debt_mass = float((donor_total_debt * donor_weights).sum())
+    donor_off_tenure = float((donor_total_debt * donor_weights)[~donor_mortgaged].sum())
+    off_tenure = float((total_debt * weights)[~mortgaged].sum())
     positive_share: dict[str, dict[str, dict[str, float]]] = {}
     for column in UK_WAS_TENURE_RECEIPT_COLUMNS:
         recipient_positive = values(recipient_draws, column) > 0.0
@@ -1120,9 +1166,15 @@ def tenure_coherence_receipt(
             for tenure in UK_TENURE_CATEGORIES
         }
     return {
-        "mortgage_debt_off_mortgaged_tenure_rows": int(
+        "main_residence_mortgage_off_mortgaged_tenure_rows": int(
             ((debt > 0.0) & ~mortgaged).sum()
         ),
+        # Carried, not a defect: the mortgages on other property that
+        # households off the mortgaged tenure hold.
+        "mortgage_debt_rows_off_mortgaged_tenure": int(
+            ((total_debt > 0.0) & ~mortgaged).sum()
+        ),
+        "mortgage_debt_mass_off_mortgaged_tenure": off_tenure,
         "main_residence_value_off_owner_tenure_rows": int(
             ((main > 0.0) & ~owner).sum()
         ),
@@ -1134,14 +1186,15 @@ def tenure_coherence_receipt(
         "donor_owner_share_without_main_residence_value": _weighted_share(
             donor_main[donor_owner] <= 0.0, donor_weights[donor_owner]
         ),
-        "mortgaged_share_without_mortgage_debt": _weighted_share(
+        "mortgaged_share_without_main_residence_mortgage": _weighted_share(
             debt[mortgaged] <= 0.0, weights[mortgaged]
         ),
-        "donor_mortgaged_share_without_mortgage_debt": _weighted_share(
+        "donor_mortgaged_share_without_main_residence_mortgage": _weighted_share(
             donor_debt[donor_mortgaged] <= 0.0, donor_weights[donor_mortgaged]
         ),
-        # Read before the regional property uprating, which moves the main
-        # residence value and leaves the debt alone.
+        # The main-residence mortgage against the main-residence value, read
+        # before the regional property uprating, which moves the value and
+        # leaves the debt alone.
         "mortgaged_share_debt_above_main_residence_value": _weighted_share(
             debt[mortgaged] > main[mortgaged], weights[mortgaged]
         ),

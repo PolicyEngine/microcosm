@@ -155,6 +155,15 @@
       "expires_on": "2026-11-26"
     },
     {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
+      "reason": "Single-row support: one FRS household (a disabled single council tenant, design weight 760 against the published 1,654) is the only row whose UC award falls in this band on every main-based spine, so the cell is a scaling of one row rather than a composition the spine carries. On the #1063 stack its award moved GBP 678 lower, out of the band and into the 27,600-28,800 band that is already excluded for the same class (uk-data#452), when the stages drawn after the SPI income band donors read their rows in a new order; the cell then sits at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever, as the sibling entries say.",
+      "tracking": "uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1063 (the stack arm of 2026-10-02 on the review of #1089; same class as the 2026-08-26 microcosm#757 dispositions)",
+      "approved_on": "2026-10-02",
+      "expires_on": "2026-11-26"
+    },
+    {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
       "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
       "tracking": "uk-data#452",

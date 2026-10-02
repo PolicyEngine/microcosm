@@ -285,7 +285,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # dropped, so the release candidate ships the spine's own surface. The
     # certifier rehearsal R5 on the 2026-09-30 build named them: the source
     # and support-channel lineage of the three entities, the council tax
-    # family (#934), the reported-benefit inputs the take-up stages read,
+    # family (#934), the reported-benefit inputs the take-up stages read
+    # (the five internal disability carriers are not among them: they leave
+    # at the release boundary, UK_RELEASE_EXPORT_DROPPED_COLUMNS),
     # the SPI channel's hmrc_spi_* leaves (#717), the FRS education and
     # housing fields, the two raw FRS codes the spine fences
     # (ossben_identifiable_subset, srp_regular_code5) and
@@ -306,10 +308,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.source_household_key",
     "household.source_year",
     "household.subrent",
-    "person.attendance_allowance_reported",
     "person.disabled_students_allowance_eligible_expenses",
-    "person.dla_m_reported",
-    "person.dla_sc_reported",
     "person.free_school_breakfasts",
     "person.hmrc_spi_assessable_income",
     "person.hmrc_spi_employed_income",
@@ -331,8 +330,6 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.person_source_id",
     "person.person_support_channel",
     "person.person_support_clone_index",
-    "person.pip_dl_reported",
-    "person.pip_m_reported",
     "person.srp_regular_code5",
 )
 

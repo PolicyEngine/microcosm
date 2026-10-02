@@ -89,7 +89,24 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
     "SPI-channel-exclusive columns are comparable only through per-reference "
     "reviewed exclusions."
 )
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
+# The committed per-reference register (microcosm#1063 c9): the policy payloads
+# sealed into the input-mass evidence digest.
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "adult_ema": {
+        "reason": "The candidate carries the FRS adult EMA input through the build (38.9m against the incumbent's 4.4m, +786%): the enhanced-FRS reference stores this education-maintenance input at a fraction of the FRS amount, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
+        "approved_on": "2026-10-02",
+        "expires_on": "2027-04-02",
+    },
+    "dfe_education_spending": {
+        "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
+        "approved_on": "2026-10-02",
+        "expires_on": "2027-04-02",
+    },
+}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -117,19 +134,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "af76a2dacac04e77a222771be17048abbe76fc78ec2db2eeb4d11664d353cecf"
+    "82a92dfa7ba4e4ce81cfd44d7b89737cf3cce50d69fd2d6bbeeae0ca15a0f8d5"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a063c356fe5e17b2b54a2e39f9a9997d957097c31eba1b202faf38cd3d718589"
+    "c117864fac6df5bb7f37f466c068b8dd9dd032b694cf3d521c51b5dca71b5865"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "51f6bd1cd35624840dd056307e03fa675ffd743b5ace2de304837ae9a738d742"
+    "7ff71ed911b840c01a1b6395de37a04fdf95498444bd692b32d89f3b1767a128"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
+    "e19786e2c2f14ea8760a2cf612a86ce0010f95340c623ab64477c858942a34ab"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {

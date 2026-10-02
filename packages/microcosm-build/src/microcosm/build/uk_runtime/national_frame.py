@@ -459,9 +459,19 @@ def _write_uk_single_year_tables(
 #: legacy layer and the export-surface gate's reviewed exclusion requires the
 #: candidate to drop it. The spine keeps the column (the SPI income stage
 #: reads it); only the release H5 and its readback expectation lose it.
-#: ``terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS`` names the same columns.
+#: ``terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS`` names the first; the
+#: five internal disability carriers (``frs_disability``'s
+#: ``UK_INTERNAL_DISABILITY_REPORTED_COLUMNS``) are stage-internal inputs
+#: that the export registers keep off the release (review of #1089).
 UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
-    "person": ("incapacity_benefit_reported",),
+    "person": (
+        "incapacity_benefit_reported",
+        "attendance_allowance_reported",
+        "dla_sc_reported",
+        "dla_m_reported",
+        "pip_m_reported",
+        "pip_dl_reported",
+    ),
 }
 
 

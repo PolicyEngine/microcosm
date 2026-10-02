@@ -20,9 +20,10 @@ household becomes ``2 ** k`` arms at product weights, one per subset of
 residential gainers (independent flags). At design weights the residential
 count and gains are then the mass identities ``sum(p w)`` and
 ``sum(p w g)``, which the solve put on Table 8a, in every gain band and with
-no draw, no offset and no seed; the calibration, which binds the Table 8a
-totals, decides between the arms afterwards exactly as it decides between
-the incidence clone's halves. Every household's mass and composition and the
+no draw, no offset and no seed; the calibration, which binds the national
+residential taxpayers and gains (``hmrc.cgt.residential_property_taxpayers``
+and ``_gains``; the by-band rows stay fenced), decides between the arms
+afterwards exactly as it decides between the incidence clone's halves. Every household's mass and composition and the
 total household mass are conserved; arm ``j`` takes every entity id plus
 ``j`` times the frame's id multiplier, the lineage rule the executor and the
 geography identity kernel read for the support split and the clone.

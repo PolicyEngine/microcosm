@@ -2139,7 +2139,7 @@ def _binomial_tolerance(*, target: float, rows: int) -> float:
 #: Receipt counts the WAS wealth stage must report as zero (microcosm#1063):
 #: the two tenure rules, and one count per accounting identity.
 _WEALTH_TENURE_ZERO_KEYS = (
-    "mortgage_debt_off_mortgaged_tenure_rows",
+    "main_residence_mortgage_off_mortgaged_tenure_rows",
     "main_residence_value_off_owner_tenure_rows",
 )
 _WEALTH_IDENTITY_ZERO_KEYS = (
@@ -2147,6 +2147,7 @@ _WEALTH_IDENTITY_ZERO_KEYS = (
     "corporate_wealth_violation_rows",
     "gross_financial_wealth_violation_rows",
     "net_financial_wealth_violation_rows",
+    "mortgage_debt_violation_rows",
 )
 
 
@@ -2157,13 +2158,15 @@ def _wealth_coherence_gate(
 ) -> GateResult:
     """The WAS wealth columns are coherent with tenure and with each other.
 
-    The stage draws the main residence and the mortgage debt inside their
-    tenure stratum and derives every total from drawn components; this gate
+    The stage draws the main residence and the main-residence mortgage
+    inside their tenure stratum and derives every total from drawn
+    components (mortgage debt included: the main-residence mortgage plus the
+    mortgages on other property, which any tenure may hold); this gate
     re-reads the receipt so the battery, not only the transform, holds that
-    no household off a mortgaged tenure carries mortgage debt, none off an
-    owner tenure carries a main-residence value, every total equals its
-    components, and owners without a main-residence value are no more common
-    than on the donor beyond the reviewed excess.
+    no household off a mortgaged tenure carries a main-residence mortgage,
+    none off an owner tenure carries a main-residence value, every total
+    equals its components, and owners without a main-residence value are no
+    more common than on the donor beyond the reviewed excess.
     """
 
     check = "wealth_coherence"

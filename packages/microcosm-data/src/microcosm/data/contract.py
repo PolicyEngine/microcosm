@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "af76a2dacac04e77a222771be17048abbe76fc78ec2db2eeb4d11664d353cecf"
+    "82a92dfa7ba4e4ce81cfd44d7b89737cf3cce50d69fd2d6bbeeae0ca15a0f8d5"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a063c356fe5e17b2b54a2e39f9a9997d957097c31eba1b202faf38cd3d718589"
+    "c117864fac6df5bb7f37f466c068b8dd9dd032b694cf3d521c51b5dca71b5865"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "51f6bd1cd35624840dd056307e03fa675ffd743b5ace2de304837ae9a738d742"
+    "7ff71ed911b840c01a1b6395de37a04fdf95498444bd692b32d89f3b1767a128"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -606,7 +606,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
+    "e19786e2c2f14ea8760a2cf612a86ce0010f95340c623ab64477c858942a34ab"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -848,7 +848,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "33af3422058c1e3be797984dbbb859f3ca2488c3204a9cdbf11a2458754893a2"
+            "9708ee040b34e8dbecdb88691079f00682ccf9ca20599f07342b4c33c2e56f40"
         ),
         "policy_sha256": (
             "b22f79584c16ab81fbfa131c19c16f5bc5c1e484003c73a695abf3446ff6175b"
@@ -864,10 +864,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "d7d0c406ca061e6ea66804fc43a21ae24dfb9482744b58fc71a0383440acc127"
+            "4eed0ed4dc6785f7f4611e9af96a84594e73806eccc6eaf6b76f85630b378f35"
         ),
         "policy_sha256": (
-            "977c8ec6c623f5cf406b8439ed90b151c11a2977c2a6c6582364351683edf879"
+            "a673ec3efe1be53567ddc12b344e44ab872e05a6ebcea2862b1762952901ce78"
         ),
     },
 }

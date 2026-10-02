@@ -155,7 +155,7 @@
         "check": "wealth_coherence",
         "maximum_owner_share_without_main_residence_excess": 0.005
       },
-      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry mortgage_debt off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the donor mortgage mass the tenure rule leaves out) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
+      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
     },
     {
       "id": "uk_stage_was_lisa_support",
@@ -923,10 +923,7 @@
           "household.source_household_key",
           "household.source_year",
           "household.subrent",
-          "person.attendance_allowance_reported",
           "person.disabled_students_allowance_eligible_expenses",
-          "person.dla_m_reported",
-          "person.dla_sc_reported",
           "person.free_school_breakfasts",
           "person.hmrc_spi_assessable_income",
           "person.hmrc_spi_employed_income",
@@ -948,8 +945,6 @@
           "person.person_source_id",
           "person.person_support_channel",
           "person.person_support_clone_index",
-          "person.pip_dl_reported",
-          "person.pip_m_reported",
           "person.srp_regular_code5"
         ],
         "reviewed_exclusions": {

@@ -216,6 +216,7 @@ def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> N
     assert donor["other_property_value"].tolist() == [90.0, 400.0]
     assert donor["other_financial_assets"].tolist() == [5.0, 14.0]
     assert donor["main_residence_mortgage"].tolist() == [1000.0, 0.0]
+    assert donor["other_mortgage"].tolist() == [0.0, 0.0]
     assert donor["region"].tolist() == ["LONDON", "SCOTLAND"]
     # The private-renter flag the Lifetime ISA stage reads on both sides.
     assert donor["is_renting"].tolist() == [False, False]
@@ -461,15 +462,17 @@ def test_support_clip_and_integer_vehicle_output(
         "property_wealth_violation_rows": 0,
         "corporate_wealth_violation_rows": 0,
         "gross_financial_wealth_violation_rows": 0,
+        "mortgage_debt_violation_rows": 0,
         "net_financial_wealth_violation_rows": 0,
         "property_wealth_capped_rows": 0,
         "corporate_wealth_capped_rows": 0,
         "gross_financial_wealth_capped_rows": 0,
+        "mortgage_debt_capped_rows": 0,
         "net_financial_wealth_capped_high_rows": 0,
         "net_financial_wealth_capped_low_rows": 0,
     }
     tenure = evidence["tenure_coherence"]
-    assert tenure["mortgage_debt_off_mortgaged_tenure_rows"] == 0
+    assert tenure["main_residence_mortgage_off_mortgaged_tenure_rows"] == 0
     assert tenure["main_residence_value_off_owner_tenure_rows"] == 0
     # The fake imputer hands the outright owner the renter donor's row.
     assert tenure["owner_rows_without_main_residence_value"] == 1
@@ -628,7 +631,8 @@ def test_was_imputer_uses_checkpointed_chain_segments(
             "num_vehicles",
             "student_loan_balance",
         ),
-        ("mortgage_debt",),
+        ("main_residence_mortgage",),
+        ("other_mortgage",),
         ("consumer_debt",),
     ]
     base = calls[0][0]
@@ -645,14 +649,18 @@ def test_was_imputer_uses_checkpointed_chain_segments(
         if column not in ("mortgage_debt", "consumer_debt", "net_financial_wealth")
     )
     assert calls[5][0] == (*base, *prior)
-    assert calls[6][0] == (*base, *prior, "mortgage_debt")
+    assert calls[6][0] == (*base, *prior, "main_residence_mortgage")
+    assert calls[7][0] == (*base, *prior, "mortgage_debt")
     # The stratified targets are fitted on their stratum's donors only: the one
-    # mortgaged owner of the two donors.
-    assert donors == [2, 1, 2, 2, 2, 1, 2]
+    # mortgaged owner of the two donors; the other mortgages on both.
+    assert donors == [2, 1, 2, 2, 2, 1, 2, 2]
     # Both recipients are owners, one of them mortgaged: the outright owner
-    # holds no mortgage debt by rule.
+    # holds no main-residence mortgage by rule but may hold other mortgages,
+    # and mortgage_debt is the sum of the two.
     assert result.draws["main_residence_value"].tolist() == [1.0, 1.0]
-    assert result.draws["mortgage_debt"].tolist() == [1.0, 0.0]
+    assert result.draws["main_residence_mortgage"].tolist() == [1.0, 0.0]
+    assert result.draws["other_mortgage"].tolist() == [1.0, 1.0]
+    assert result.draws["mortgage_debt"].tolist() == [2.0, 1.0]
     # Totals are sums of the drawn components, never draws of their own.
     assert result.draws["property_wealth"].tolist() == [8.0, 8.0]
     assert result.draws["corporate_wealth"].tolist() == [5.0, 5.0]
@@ -665,7 +673,7 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     assert {record.weight_kind for record in result.fit_weight_records} == {"explicit"}
     # One independent RNG root per segment, derived from the declared seed.
     assert seeds == list(module.was_wealth_segment_seeds(0))
-    assert len(set(seeds)) == module.UK_WAS_CHAIN_SEGMENTS == 7
+    assert len(set(seeds)) == module.UK_WAS_CHAIN_SEGMENTS == 8
     assert result.segment_seeds == tuple(seeds)
 
 
@@ -761,9 +769,10 @@ def test_segment_seeds_are_distinct_and_deterministic() -> None:
         1216546553,
         2078861726,
         2471122328,
+        23012616,
     )
-    assert len(seeds) == 7
-    assert len(set(seeds)) == 7
+    assert len(seeds) == 8
+    assert len(set(seeds)) == 8
     assert seeds[:3] == module.was_wealth_segment_seeds(0, segments=3)
     assert seeds == module.was_wealth_segment_seeds(0)
     assert seeds != module.was_wealth_segment_seeds(1)
@@ -815,7 +824,7 @@ def test_later_segments_leave_the_earlier_draws_byte_equal() -> None:
 
     full = impute_was_wealth(donor, recipient, seed=0, n_estimators=2)
     assert list(full.draws.columns) == _DRAW_COLUMNS
-    for segments in range(1, 7):
+    for segments in range(1, 8):
         partial = impute_was_wealth(
             donor, recipient, seed=0, n_estimators=2, segments=segments
         )
@@ -841,12 +850,20 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
     # every fixture donor of the stratum holds a positive value.
     assert (draws.loc[~owner, "main_residence_value"] == 0.0).all()
     assert (draws.loc[owner, "main_residence_value"] > 0.0).all()
-    assert (draws.loc[~mortgaged, "mortgage_debt"] == 0.0).all()
-    assert (draws.loc[mortgaged, "mortgage_debt"] > 0.0).all()
+    assert (draws.loc[~mortgaged, "main_residence_mortgage"] == 0.0).all()
+    assert (draws.loc[mortgaged, "main_residence_mortgage"] > 0.0).all()
+    # The other mortgages are carried on every tenure and mortgage_debt is
+    # the sum of the two, so a renter's buy-to-let keeps its mortgage.
+    assert (draws["other_mortgage"] >= 0.0).all()
+    assert (
+        draws["mortgage_debt"]
+        == draws["main_residence_mortgage"] + draws["other_mortgage"]
+    ).all()
     assert wealth_identity_violations(draws) == {
         "property_wealth_violation_rows": 0,
         "corporate_wealth_violation_rows": 0,
         "gross_financial_wealth_violation_rows": 0,
+        "mortgage_debt_violation_rows": 0,
         "net_financial_wealth_violation_rows": 0,
     }
 
@@ -863,6 +880,7 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
         "property_wealth_capped_rows",
         "corporate_wealth_capped_rows",
         "gross_financial_wealth_capped_rows",
+        "mortgage_debt_capped_rows",
         "net_financial_wealth_capped_high_rows",
         "net_financial_wealth_capped_low_rows",
     }
@@ -873,15 +891,17 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
         recipient_draws=clipped.clipped,
         recipient_weights=np.ones(len(recipient)),
     )
-    assert receipt["mortgage_debt_off_mortgaged_tenure_rows"] == 0
+    assert receipt["main_residence_mortgage_off_mortgaged_tenure_rows"] == 0
     assert receipt["main_residence_value_off_owner_tenure_rows"] == 0
     assert receipt["owner_rows_without_main_residence_value"] == 0
     shares = receipt["positive_share_by_tenure"]["main_residence_value"]
     assert shares["social_rent"] == {"donor": 0.0, "recipient": 0.0}
     assert shares["owned_outright"] == {"donor": 1.0, "recipient": 1.0}
     # The fixture donor carries mortgages on other property off a mortgaged
-    # tenure; the rule leaves them out and the receipt says how much.
+    # tenure; the chain carries them too, and the receipt says how much on
+    # each side.
     assert receipt["donor_mortgage_debt_mass_off_mortgaged_tenure"] > 0.0
+    assert receipt["mortgage_debt_rows_off_mortgaged_tenure"] >= 0
     assert receipt["donor_other_property_mortgage_mass_off_mortgaged_tenure"] == (
         pytest.approx(receipt["donor_mortgage_debt_mass_off_mortgaged_tenure"])
     )

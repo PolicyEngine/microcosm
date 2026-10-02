@@ -327,12 +327,20 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     }
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
-    # The boundary drops exactly the reviewed export exclusions.
-    assert {
+    # The boundary drops the reviewed export exclusions and the internal
+    # disability carriers, and nothing else.
+    from microcosm.build.uk_runtime.frs_disability import (
+        UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
+    )
+
+    dropped = {
         f"{entity}.{column}"
         for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
         for column in columns
-    } == set(UK_REVIEWED_EXPORT_EXCLUSIONS)
+    }
+    assert dropped == set(UK_REVIEWED_EXPORT_EXCLUSIONS) | {
+        f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS
+    }
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
 

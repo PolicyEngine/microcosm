@@ -73,9 +73,35 @@ The arms, in order:
   under the bound on every arm and the solver moves a point among them), and the stale
   `hmrc/state_pension_income_band_50_000_to_70_000@2025` exclusion back inside the bound (24.9%; the
   pensions branch retired it at b19f14d98, so the stack does not carry it).
+  On the calibrated weights (review item 4, `scripts/residential_readout.py` on the C2 solution): the
+  two bound national totals hold (count 202,628 against 202,630, gains £12.246bn against £12.242bn),
+  and within them the solver moves mass between bands: £250–500k 3,680 → 4,256 taxpayers, £500k–1m
+  2,004 → 2,173 (gains £1.25bn → £1.67bn), £1–2m 730 → 552 (£0.94bn → £0.77bn), £2–5m 427 → 274
+  (£1.24bn → £0.87bn), the open band 134 → 139; the bands below £250k move by under 3%. So the
+  by-band identities are a design-weight property; the release carries the national totals. Row
+  level with the arms in place: the smallest positive calibrated weight is 0.012 (an arm, 0.050; the
+  smallest design arm 0.144), the positive-weight median 26.6 (arms 11.8), no row at zero.
 - Stack (ebff84125, the final-build candidate): the spine passed its gates in six minutes; the first
   calibration refused the Chronicle artifact 505e0e7 because the stack pins the pensions feed
-  (facts 28b7105…, artifact 825406f), and was re-run against it; readings below when they land.
+  (facts 28b7105…, artifact 825406f). Against that feed the dense loss is 0.00818 (main 0.00836), but
+  the seam battery blocked the H5 on one cell with no support at all:
+  `dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000@2025` (single, no children, monthly
+  award £2,400–2,500; target 1,654), initial estimate 0 against 763 at design weights on every
+  main-based arm and on every pensions arm. Traced: the cell is supported by one FRS household (a
+  disabled single council tenant in Yorkshire, design weight 760, with its incidence clone at 3.3); on
+  the stack its UC award is £678 a year lower, which moves it into the 27,600–28,800 band that the
+  uk-data#452 class already excludes. Nothing on the household's own inputs changed; its consumption,
+  energy, land and savings draws all moved at once, because the SPI income band donors now insert
+  1,920 rows where 480 stood and every stage drawn after them that is not identity-keyed reads its
+  rows in a new order. The cell joins the measure exclusions beside its sibling (approved 2026-10-02,
+  expiring 2026-11-26 with the class, for her signature).
+
+Child Benefit children in payment (review item 5): the trial's 11.1m is at design weights on the
+1 October spine, where the eligible-child base is 14.04m; the claim rate (86.7%) and the opted-out
+family share (9.0%) match HMRC, and the opted-out families carry 1.82 children each, so claimed
+children are 12.17m and 1.09m of them are in opted-out families. On the 2026-09-30 build's calibrated
+weights the eligible base is 14.79m, which at the same rates gives 11.7m in payment against HMRC's
+11.73m: the gap is the design-weight child base, not the rates or the opt-out ages.
 
 Child Benefit (c8, trial on the 1 October spine at design weights): 86.7% of eligible children claimed
 for (HMRC 86.6%; the frame's age mix implies 87.1%), 9.0% of claiming families opted out, all from
@@ -98,6 +124,19 @@ families charged the whole benefit, 11.1m children in payment against 13.5m befo
   168 carriers.
 
 c9 addresses each at its source (see the commit); the certifier is to be re-run on the final build.
+
+## Review round 1 (Vahid, 2026-10-02)
+
+- The five internal disability carriers leave the export allow-list and are dropped at the release
+  boundary with `incapacity_benefit_reported`; the input-mass evidence pin and the gate digests follow
+  the c9 register entries.
+- WAS mortgages: only the main-residence mortgage (`TotMortR8`) is tenure-stratified; the mortgages
+  on other property (`HMortGR8` less `TotMortR8`) are drawn on every tenure without a stratum, and
+  `mortgage_debt` is derived as their sum, so a renter's or an outright owner's buy-to-let keeps its
+  mortgage beside the property. The chain runs eight segments; the coherence gate holds the
+  main-residence mortgage off the mortgaged tenure at zero and the mortgage identity on every row.
+- The split's docstring and notes say what calibration binds: the two national residential rows.
+- The plan-2 renewal stays on this PR (her ruling).
 
 ## Residential split (c5b)
 

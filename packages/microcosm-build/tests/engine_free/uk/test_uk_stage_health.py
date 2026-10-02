@@ -823,7 +823,7 @@ def _wealth_coherence_evidence() -> dict:
     return {
         "stage": "was_wealth",
         "tenure_coherence": {
-            "mortgage_debt_off_mortgaged_tenure_rows": 0,
+            "main_residence_mortgage_off_mortgaged_tenure_rows": 0,
             "main_residence_value_off_owner_tenure_rows": 0,
             "owner_share_without_main_residence_value": 0.001,
             "donor_owner_share_without_main_residence_value": 0.0,
@@ -833,6 +833,7 @@ def _wealth_coherence_evidence() -> dict:
             "corporate_wealth_violation_rows": 0,
             "gross_financial_wealth_violation_rows": 0,
             "net_financial_wealth_violation_rows": 0,
+            "mortgage_debt_violation_rows": 0,
             "property_wealth_capped_rows": 3,
         },
     }
@@ -858,7 +859,7 @@ def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
     result = _wealth_coherence(_wealth_coherence_evidence())
 
     assert _passed(result)
-    assert result.details["mortgage_debt_off_mortgaged_tenure_rows"] == 0
+    assert result.details["main_residence_mortgage_off_mortgaged_tenure_rows"] == 0
     # The donor-range cap is recorded, never a failure.
     assert result.details["capped_rows"] == {"property_wealth_capped_rows": 3}
 
@@ -866,12 +867,13 @@ def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
 @pytest.mark.parametrize(
     ("block", "key"),
     [
-        ("tenure_coherence", "mortgage_debt_off_mortgaged_tenure_rows"),
+        ("tenure_coherence", "main_residence_mortgage_off_mortgaged_tenure_rows"),
         ("tenure_coherence", "main_residence_value_off_owner_tenure_rows"),
         ("identities", "property_wealth_violation_rows"),
         ("identities", "corporate_wealth_violation_rows"),
         ("identities", "gross_financial_wealth_violation_rows"),
         ("identities", "net_financial_wealth_violation_rows"),
+        ("identities", "mortgage_debt_violation_rows"),
     ],
 )
 def test_wealth_coherence_gate_requires_every_count_and_requires_it_zero(

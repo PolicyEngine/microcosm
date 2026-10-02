@@ -882,6 +882,7 @@ class TestE3ManifestLockstep:
     def test_e5_tenure_strata_and_derived_totals_lockstep(self) -> None:
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_DERIVED_TOTALS,
+            UK_WAS_DRAWN_ONLY_COLUMNS,
             UK_WAS_INTERNAL_COMPONENT_COLUMNS,
             UK_WAS_NET_FINANCIAL_LIABILITIES,
             UK_WAS_STRATIFIED_TARGETS,
@@ -918,14 +919,11 @@ class TestE3ManifestLockstep:
         assert tuple(qrf.parameters["internal_components"]) == (
             UK_WAS_INTERNAL_COMPONENT_COLUMNS
         )
-        # The chain order names every output, each internal component and the
-        # dropped share-like component exactly once.
+        # The chain order names every output and every drawn-only column (the
+        # internal components, the dropped share-like component and the
+        # main-residence mortgage) exactly once.
         assert sorted(qrf.parameters["chain_order"]) == sorted(
-            {
-                *UK_WAS_WEALTH_OUTPUT_COLUMNS,
-                *UK_WAS_INTERNAL_COMPONENT_COLUMNS,
-                "corporate_wealth_excl_isa",
-            }
+            {*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS}
         )
 
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
