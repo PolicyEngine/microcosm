@@ -149,3 +149,22 @@ def household_family_role_counts(
         pd.Series((~claimant).astype(float)).groupby(members, sort=False).sum()
     ).reindex(ids, fill_value=0.0)
     return adults.to_numpy(dtype=float), children.to_numpy(dtype=float)
+
+
+def uc_family_child_member(
+    claimant: np.ndarray, qualifying: np.ndarray, age: np.ndarray
+) -> np.ndarray:
+    """Members DWP's Universal Credit family-type counts treat as children.
+
+    Never a claimant or partner (``claimant``, the FRS adult-file role); any
+    UC child or qualifying young person (``qualifying``), or any other member
+    under 20, since DWP's post-April-2019 child-presence definition includes
+    reported under-20 children beyond those eligible for a child element:
+    https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html
+    One rule for the national family-type composition and the constituency
+    child bands (uk-data#486, microcosm#1095).
+    """
+
+    return ~np.asarray(claimant, dtype=bool) & (
+        np.asarray(qualifying, dtype=bool) | (np.asarray(age, dtype=float) < 20)
+    )

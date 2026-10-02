@@ -18,7 +18,10 @@ from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
+from microcosm.build.uk_runtime.uc_relationships import (
+    frs_uc_claimant_mask,
+    uc_family_child_member,
+)
 from microcosm.build.uk_runtime.uc_target_measurements import (
     UC_PAID_TARGET_VARIABLES,
     UC_TARGET_VARIABLES,
@@ -152,7 +155,9 @@ def _uc_calibration_composition(
     ).astype(bool)
     if len(qualifying) != len(person):
         raise ValueError("UC child status must align with the person table.")
-    children = ~claimant & (qualifying | (person["age"].to_numpy(dtype=float) < 20))
+    children = uc_family_child_member(
+        claimant, qualifying, person["age"].to_numpy(dtype=float)
+    )
     child_count = pd.Series(children).groupby(member_ids).sum().reindex(ids).to_numpy()
     couple = claimant_count == 2
     has_children = child_count > 0
