@@ -3702,8 +3702,22 @@ stages:
       universal_credit_reported_anchor: universal_credit_reported
   - kind: redraw_spi_reporter_capital
     output: frs_benunit_capital
-    rows: spi_channel_post_fill_reporters
-    donor_rows: base_frs_reporters_with_available_capital
+    rows: spi_channel
+    donor_rows: base_frs_with_available_capital
+    reporter_status: universal_credit_reported_anchor
+    investment_income: savings_interest_income + dividend_income + other_investment_income, summed over benefit-unit members
+    investment_income_band_edges:
+    - 0.0
+    - 240.0
+    - 640.0
+    - 2000.0
+    - 8000.0
+    minimum_cell_donors: 20
+    coarsening:
+    - merge dependent-children bands
+    - drop couple status
+    - merge adjacent investment-income bands
+    - reporter status only
     dependent_children_bands:
     - '0'
     - '1'
@@ -3724,7 +3738,7 @@ stages:
   rewrites:
   - frs_benunit_capital
   - would_claim_uc
-  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh.
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh.
 - stage: pension_credit_take_up
   survey: Family Resources Survey 2024-25
   source: 'DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.'

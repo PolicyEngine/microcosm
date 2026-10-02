@@ -8,19 +8,29 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    UC_CAPITAL_COARSENING,
+    UC_CAPITAL_INCOME_BAND_EDGES,
+    UC_CAPITAL_MINIMUM_CELL_DONORS,
     UC_CAPITAL_REDRAW_OUTPUT,
     UC_CAPITAL_REDRAW_SALT,
     UC_CAPITAL_REDRAW_SEED,
     UKUCCapitalCoherenceStageTransform,
     _boolean_values,
     _dependent_children_band,
-    _redraw_spi_reporter_capital,
+    _household_to_benunit_weights,
+    _investment_income_band,
+    _redraw_spi_capital,
     cohere_uc_capital,
+)
+from microcosm.build.uk_runtime.uc_relationships import (
+    UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS,
+    benunit_financial_investment_income,
 )
 from microcosm.frame import WeightKind
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -85,6 +95,8 @@ def _frame():
                 }
             )
     person = pd.concat([person, pd.DataFrame(other_members)], ignore_index=True)
+    for column in UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS:
+        person[column] = 0.0
     benunit = pd.DataFrame(
         {
             "benunit_id": [row[1] for row in rows],

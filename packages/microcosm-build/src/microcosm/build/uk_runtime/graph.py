@@ -337,6 +337,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "is_parent"),
             ("person", "person_support_channel"),
             ("person", "universal_credit_reported"),
+            # The capital cells' financial investment income (microcosm#1095).
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "other_investment_income"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "dependent_children"),
             ("benunit", "frs_benunit_capital"),
