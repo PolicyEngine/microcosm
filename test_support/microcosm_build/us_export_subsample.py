@@ -70,6 +70,12 @@ def sampler():
     return _load_tool("sample_us_export_households", "sample_us_export_households.py")
 
 
+@pytest.fixture(scope="module")
+def probe_tool():
+    """``tools/probe_us_post_export.py``; it loads the release tool lazily."""
+    return _load_tool("probe_us_post_export", "probe_us_post_export.py")
+
+
 def loaded_engine_modules() -> list[str]:
     """The engine modules this process has imported (see the module docstring)."""
     return sorted(

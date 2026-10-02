@@ -173,20 +173,27 @@ def choose_batch_size(
     """The largest batch size up to ``requested`` giving ``minimum_batches``.
 
     ``_household_position_batches`` cuts ``n`` households into
-    ``ceil(n / size)`` batches, so ``size <= ceil(n / minimum_batches)``
-    guarantees at least ``minimum_batches`` whenever ``n >= minimum_batches``.
+    ``ceil(n / size)`` batches, which is at least ``m`` exactly when
+    ``size < n / (m - 1)``; the largest such size is ``ceil(n / (m - 1)) - 1``
+    (``n`` itself when ``m`` is 1). ``ceil(n / m)`` is not enough: four
+    households in batches of two make two batches.
     """
     n_households = int(n_households)
+    minimum_batches = int(minimum_batches)
+    if minimum_batches < 1:
+        raise ValueError(f"minimum_batches must be positive; got {minimum_batches}.")
     if n_households < minimum_batches:
         raise ValueError(
             f"{n_households} household(s) cannot fill {minimum_batches} batches; "
             "the probe needs the multi-batch scoring path."
         )
-    ceiling = math.ceil(n_households / minimum_batches)
-    size = ceiling if requested is None else min(int(requested), ceiling)
-    if size < 1:
+    if requested is not None and int(requested) < 1:
         raise ValueError(f"batch size must be positive; got {requested!r}.")
-    return size
+    if minimum_batches == 1:
+        ceiling = n_households
+    else:
+        ceiling = -(-n_households // (minimum_batches - 1)) - 1
+    return ceiling if requested is None else min(int(requested), ceiling)
 
 
 def batch_count(n_households: int, batch_size: int) -> int:
