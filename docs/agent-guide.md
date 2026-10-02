@@ -176,6 +176,14 @@ Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
 certification.
+To check the post-export stages on a written export without a full rerun,
+subsample it and probe it as
+[the release build rule](us-release-build-rule.md#probing-an-export-on-a-household-subsample)
+describes (`tools/sample_us_export_households.py`,
+`tools/probe_us_post_export.py`). The probe's verdicts are diagnostics, not
+certification. Its sampler tests must stay off `microcosm.build.us_runtime`:
+importing that package builds the policyengine-us tax-benefit system wherever
+the engine is installed.
 
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact

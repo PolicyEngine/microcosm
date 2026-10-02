@@ -1,0 +1,3144 @@
+{
+ "designs": {
+  "30:0": {
+   "certainty_households": 505,
+   "certainty_threshold": 30.0,
+   "mean_sample_households": 18122.0,
+   "probes": {
+    "alimony_expense_ald_abolition": {
+     "carrier_households": 887,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.095,
+      "4": 0.055,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "aotc_abolition": {
+     "carrier_households": 2531,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.025,
+      "4": 0.01,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "cdcc_adult_care_expense_neutralization": {
+     "carrier_households": 13969,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.13,
+      "4": 0.095,
+      "5": 0.055
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_expense_snap_deduction_abolition": {
+     "carrier_households": 3883,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.035,
+      "4": 0.01,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_received_snap_exclusion": {
+     "carrier_households": 8372,
+     "eligible_share": 0.005,
+     "miss_share_of_all_draws": {
+      "3": 0.025,
+      "4": 0.01,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "collectibles_gain_neutralization": {
+     "carrier_households": 1138,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.52,
+      "4": 0.475,
+      "5": 0.445
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "disability_benefits_snap_exclusion": {
+     "carrier_households": 4616,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.04,
+      "4": 0.02,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "domestic_production_ald_reactivation": {
+     "carrier_households": 1325,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.09,
+      "4": 0.065,
+      "5": 0.04
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "educator_expense_ald_abolition": {
+     "carrier_households": 6519,
+     "eligible_share": 0.225,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "form_4952_election_neutralization": {
+     "carrier_households": 394,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "fsla_overtime_premium_neutralization": {
+     "carrier_households": 64277,
+     "eligible_share": 0.37,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "head_start_take_up_neutralization": {
+     "carrier_households": 1097,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.03,
+      "4": 0.025,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "household_head_childcare_cap_neutralization": {
+     "carrier_households": 352932,
+     "eligible_share": 0.92,
+     "miss_share_of_all_draws": {
+      "3": 0.04,
+      "4": 0.04,
+      "5": 0.04
+     },
+     "miss_share_of_eligible": {
+      "3": 0.043478260869565216,
+      "4": 0.043478260869565216,
+      "5": 0.043478260869565216
+     },
+     "take_all": false
+    },
+    "housing_assistance_take_up_neutralization": {
+     "carrier_households": 9892,
+     "eligible_share": 0.92,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.010869565217391304,
+      "4": 0.005434782608695652,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "keogh_distribution_neutralization": {
+     "carrier_households": 13,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "medicare_take_up_neutralization": {
+     "carrier_households": 115349,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_auto_loan_interest": {
+     "carrier_households": 109643,
+     "eligible_share": 0.99,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_casualty_loss_limit": {
+     "carrier_households": 101,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "obbba_cdcc": {
+     "carrier_households": 21269,
+     "eligible_share": 0.06,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_misc_itemized_deductions": {
+     "carrier_households": 54728,
+     "eligible_share": 0.02,
+     "miss_share_of_all_draws": {
+      "3": 0.06,
+      "4": 0.02,
+      "5": 0.015
+     },
+     "miss_share_of_eligible": {
+      "3": 0.25,
+      "4": 0.25,
+      "5": 0.25
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_overtime": {
+     "carrier_households": 64277,
+     "eligible_share": 0.37,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_tips": {
+     "carrier_households": 53827,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.055,
+      "4": 0.04,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "pre_subsidy_rent_neutralization": {
+     "carrier_households": 110977,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "prior_year_self_employment_neutralization": {
+     "carrier_households": 25189,
+     "eligible_share": 0.06,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_farm_operations_income_exclusion": {
+     "carrier_households": 6996,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.16,
+      "4": 0.09,
+      "5": 0.04
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_farm_rent_income_exclusion": {
+     "carrier_households": 2061,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.2,
+      "4": 0.155,
+      "5": 0.105
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_reit_ptp_rate_abolition": {
+     "carrier_households": 30630,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.08,
+      "4": 0.05,
+      "5": 0.025
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_wage_property_guardrails_zeroed": {
+     "carrier_households": 24838,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.065,
+      "4": 0.01,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "salt_refund_income_neutralization": {
+     "carrier_households": 35342,
+     "eligible_share": 0.015,
+     "miss_share_of_all_draws": {
+      "3": 0.18,
+      "4": 0.08,
+      "5": 0.04
+     },
+     "miss_share_of_eligible": {
+      "3": 1.0,
+      "4": 1.0,
+      "5": 0.6666666666666666
+     },
+     "take_all": false
+    },
+    "savers_credit_abolition": {
+     "carrier_households": 121722,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "self_employed_health_premium_neutralization": {
+     "carrier_households": 44958,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "spm_unit_energy_subsidy_neutralization": {
+     "carrier_households": 10817,
+     "eligible_share": 0.045,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_asset_limit_10k_20k": {
+     "carrier_households": 322762,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.095,
+      "4": 0.05,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "ssi_disability_criteria_neutralization": {
+     "carrier_households": 45845,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_take_up_neutralization": {
+     "carrier_households": 243536,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "tip_income_neutralization": {
+     "carrier_households": 2865,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.055,
+      "4": 0.04,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "tx_snap_additional_vehicle_exemption_abolition": {
+     "carrier_households": 309580,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "unrecaptured_section_1250_gain_neutralization": {
+     "carrier_households": 6308,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.11,
+      "4": 0.045,
+      "5": 0.035
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "voluntary_filing_aca_ptc_neutralization": {
+     "carrier_households": 317835,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "wic_claim_neutralization": {
+     "carrier_households": 26664,
+     "eligible_share": 0.965,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "workers_compensation_snap_exclusion": {
+     "carrier_households": 1687,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.11,
+      "4": 0.06,
+      "5": 0.025
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    }
+   },
+   "probes_eligible_in_most_draws": 14,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 23,
+   "sample_share": 0.05134700168871057,
+   "size_certainty_multiplier": 0.0,
+   "worst_miss_share_of_eligible_at_k4": 1.0
+  },
+  "30:1": {
+   "certainty_households": 19264,
+   "certainty_threshold": 30.0,
+   "mean_sample_households": 35945.0,
+   "probes": {
+    "alimony_expense_ald_abolition": {
+     "carrier_households": 887,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.07,
+      "4": 0.03,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "aotc_abolition": {
+     "carrier_households": 2531,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.03,
+      "4": 0.02,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "cdcc_adult_care_expense_neutralization": {
+     "carrier_households": 13969,
+     "eligible_share": 0.815,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.006134969325153374,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "child_support_expense_snap_deduction_abolition": {
+     "carrier_households": 3883,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.03,
+      "4": 0.01,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_received_snap_exclusion": {
+     "carrier_households": 8372,
+     "eligible_share": 0.015,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.01,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "collectibles_gain_neutralization": {
+     "carrier_households": 1138,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.07,
+      "4": 0.035,
+      "5": 0.035
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "disability_benefits_snap_exclusion": {
+     "carrier_households": 4616,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "domestic_production_ald_reactivation": {
+     "carrier_households": 1325,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.1,
+      "4": 0.055,
+      "5": 0.04
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "educator_expense_ald_abolition": {
+     "carrier_households": 6519,
+     "eligible_share": 0.065,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.01,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "form_4952_election_neutralization": {
+     "carrier_households": 394,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "fsla_overtime_premium_neutralization": {
+     "carrier_households": 64277,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "head_start_take_up_neutralization": {
+     "carrier_households": 1097,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.06,
+      "4": 0.02,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "household_head_childcare_cap_neutralization": {
+     "carrier_households": 352932,
+     "eligible_share": 0.935,
+     "miss_share_of_all_draws": {
+      "3": 0.175,
+      "4": 0.175,
+      "5": 0.175
+     },
+     "miss_share_of_eligible": {
+      "3": 0.18716577540106952,
+      "4": 0.18716577540106952,
+      "5": 0.18716577540106952
+     },
+     "take_all": false
+    },
+    "housing_assistance_take_up_neutralization": {
+     "carrier_households": 9892,
+     "eligible_share": 0.89,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.005,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0056179775280898875,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "keogh_distribution_neutralization": {
+     "carrier_households": 13,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "medicare_take_up_neutralization": {
+     "carrier_households": 115349,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_auto_loan_interest": {
+     "carrier_households": 109643,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_casualty_loss_limit": {
+     "carrier_households": 101,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "obbba_cdcc": {
+     "carrier_households": 21269,
+     "eligible_share": 0.985,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_misc_itemized_deductions": {
+     "carrier_households": 54728,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_overtime": {
+     "carrier_households": 64277,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_tips": {
+     "carrier_households": 53827,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "pre_subsidy_rent_neutralization": {
+     "carrier_households": 110977,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "prior_year_self_employment_neutralization": {
+     "carrier_households": 25189,
+     "eligible_share": 0.935,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0213903743315508,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_farm_operations_income_exclusion": {
+     "carrier_households": 6996,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.005,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_farm_rent_income_exclusion": {
+     "carrier_households": 2061,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.055,
+      "4": 0.025,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_reit_ptp_rate_abolition": {
+     "carrier_households": 30630,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_wage_property_guardrails_zeroed": {
+     "carrier_households": 24838,
+     "eligible_share": 0.94,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "salt_refund_income_neutralization": {
+     "carrier_households": 35342,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "savers_credit_abolition": {
+     "carrier_households": 121722,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "self_employed_health_premium_neutralization": {
+     "carrier_households": 44958,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "spm_unit_energy_subsidy_neutralization": {
+     "carrier_households": 10817,
+     "eligible_share": 0.055,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_asset_limit_10k_20k": {
+     "carrier_households": 322762,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_disability_criteria_neutralization": {
+     "carrier_households": 45845,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_take_up_neutralization": {
+     "carrier_households": 243536,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "tip_income_neutralization": {
+     "carrier_households": 2865,
+     "eligible_share": 0.005,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "tx_snap_additional_vehicle_exemption_abolition": {
+     "carrier_households": 309580,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "unrecaptured_section_1250_gain_neutralization": {
+     "carrier_households": 6308,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "voluntary_filing_aca_ptc_neutralization": {
+     "carrier_households": 317835,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "wic_claim_neutralization": {
+     "carrier_households": 26664,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "workers_compensation_snap_exclusion": {
+     "carrier_households": 1687,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.03,
+      "4": 0.01,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    }
+   },
+   "probes_eligible_in_most_draws": 26,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 14,
+   "sample_share": 0.10184681468384844,
+   "size_certainty_multiplier": 1.0,
+   "worst_miss_share_of_eligible_at_k4": 0.18716577540106952
+  },
+  "30:2": {
+   "certainty_households": 8614,
+   "certainty_threshold": 30.0,
+   "mean_sample_households": 25827.0,
+   "probes": {
+    "alimony_expense_ald_abolition": {
+     "carrier_households": 887,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.115,
+      "4": 0.045,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "aotc_abolition": {
+     "carrier_households": 2531,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.01,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "cdcc_adult_care_expense_neutralization": {
+     "carrier_households": 13969,
+     "eligible_share": 0.575,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.017391304347826087,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "child_support_expense_snap_deduction_abolition": {
+     "carrier_households": 3883,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_received_snap_exclusion": {
+     "carrier_households": 8372,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.01,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "collectibles_gain_neutralization": {
+     "carrier_households": 1138,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.065,
+      "4": 0.06,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "disability_benefits_snap_exclusion": {
+     "carrier_households": 4616,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "domestic_production_ald_reactivation": {
+     "carrier_households": 1325,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.11,
+      "4": 0.075,
+      "5": 0.05
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "educator_expense_ald_abolition": {
+     "carrier_households": 6519,
+     "eligible_share": 0.145,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "form_4952_election_neutralization": {
+     "carrier_households": 394,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "fsla_overtime_premium_neutralization": {
+     "carrier_households": 64277,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "head_start_take_up_neutralization": {
+     "carrier_households": 1097,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.06,
+      "4": 0.02,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "household_head_childcare_cap_neutralization": {
+     "carrier_households": 352932,
+     "eligible_share": 0.945,
+     "miss_share_of_all_draws": {
+      "3": 0.05,
+      "4": 0.05,
+      "5": 0.05
+     },
+     "miss_share_of_eligible": {
+      "3": 0.05291005291005291,
+      "4": 0.05291005291005291,
+      "5": 0.05291005291005291
+     },
+     "take_all": false
+    },
+    "housing_assistance_take_up_neutralization": {
+     "carrier_households": 9892,
+     "eligible_share": 0.9,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "keogh_distribution_neutralization": {
+     "carrier_households": 13,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "medicare_take_up_neutralization": {
+     "carrier_households": 115349,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_auto_loan_interest": {
+     "carrier_households": 109643,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_casualty_loss_limit": {
+     "carrier_households": 101,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "obbba_cdcc": {
+     "carrier_households": 21269,
+     "eligible_share": 0.115,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.043478260869565216,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_misc_itemized_deductions": {
+     "carrier_households": 54728,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_overtime": {
+     "carrier_households": 64277,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_tips": {
+     "carrier_households": 53827,
+     "eligible_share": 0.995,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "pre_subsidy_rent_neutralization": {
+     "carrier_households": 110977,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "prior_year_self_employment_neutralization": {
+     "carrier_households": 25189,
+     "eligible_share": 0.105,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.047619047619047616,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_farm_operations_income_exclusion": {
+     "carrier_households": 6996,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_farm_rent_income_exclusion": {
+     "carrier_households": 2061,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.05,
+      "4": 0.025,
+      "5": 0.015
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_reit_ptp_rate_abolition": {
+     "carrier_households": 30630,
+     "eligible_share": 0.225,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_wage_property_guardrails_zeroed": {
+     "carrier_households": 24838,
+     "eligible_share": 0.005,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "salt_refund_income_neutralization": {
+     "carrier_households": 35342,
+     "eligible_share": 0.435,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "savers_credit_abolition": {
+     "carrier_households": 121722,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "self_employed_health_premium_neutralization": {
+     "carrier_households": 44958,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "spm_unit_energy_subsidy_neutralization": {
+     "carrier_households": 10817,
+     "eligible_share": 0.035,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_asset_limit_10k_20k": {
+     "carrier_households": 322762,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_disability_criteria_neutralization": {
+     "carrier_households": 45845,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_take_up_neutralization": {
+     "carrier_households": 243536,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "tip_income_neutralization": {
+     "carrier_households": 2865,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "tx_snap_additional_vehicle_exemption_abolition": {
+     "carrier_households": 309580,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "unrecaptured_section_1250_gain_neutralization": {
+     "carrier_households": 6308,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "voluntary_filing_aca_ptc_neutralization": {
+     "carrier_households": 317835,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "wic_claim_neutralization": {
+     "carrier_households": 26664,
+     "eligible_share": 0.89,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.011235955056179775,
+      "4": 0.0056179775280898875,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "workers_compensation_snap_exclusion": {
+     "carrier_households": 1687,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.05,
+      "4": 0.03,
+      "5": 0.025
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    }
+   },
+   "probes_eligible_in_most_draws": 20,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 13,
+   "sample_share": 0.0731784026384686,
+   "size_certainty_multiplier": 2.0,
+   "worst_miss_share_of_eligible_at_k4": 0.05291005291005291
+  },
+  "30:3": {
+   "certainty_households": 6247,
+   "certainty_threshold": 30.0,
+   "mean_sample_households": 23579.0,
+   "probes": {
+    "alimony_expense_ald_abolition": {
+     "carrier_households": 887,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.085,
+      "4": 0.045,
+      "5": 0.02
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "aotc_abolition": {
+     "carrier_households": 2531,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.025,
+      "4": 0.01,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "cdcc_adult_care_expense_neutralization": {
+     "carrier_households": 13969,
+     "eligible_share": 0.405,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.024691358024691357,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "child_support_expense_snap_deduction_abolition": {
+     "carrier_households": 3883,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.035,
+      "4": 0.015,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_received_snap_exclusion": {
+     "carrier_households": 8372,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "collectibles_gain_neutralization": {
+     "carrier_households": 1138,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.1,
+      "4": 0.065,
+      "5": 0.055
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "disability_benefits_snap_exclusion": {
+     "carrier_households": 4616,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.045,
+      "4": 0.01,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "domestic_production_ald_reactivation": {
+     "carrier_households": 1325,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.09,
+      "4": 0.04,
+      "5": 0.035
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "educator_expense_ald_abolition": {
+     "carrier_households": 6519,
+     "eligible_share": 0.19,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "form_4952_election_neutralization": {
+     "carrier_households": 394,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "fsla_overtime_premium_neutralization": {
+     "carrier_households": 64277,
+     "eligible_share": 0.785,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.006369426751592357,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "head_start_take_up_neutralization": {
+     "carrier_households": 1097,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.03,
+      "4": 0.02,
+      "5": 0.015
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "household_head_childcare_cap_neutralization": {
+     "carrier_households": 352932,
+     "eligible_share": 0.915,
+     "miss_share_of_all_draws": {
+      "3": 0.08,
+      "4": 0.08,
+      "5": 0.08
+     },
+     "miss_share_of_eligible": {
+      "3": 0.08743169398907104,
+      "4": 0.08743169398907104,
+      "5": 0.08743169398907104
+     },
+     "take_all": false
+    },
+    "housing_assistance_take_up_neutralization": {
+     "carrier_households": 9892,
+     "eligible_share": 0.9,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005555555555555556,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "keogh_distribution_neutralization": {
+     "carrier_households": 13,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "medicare_take_up_neutralization": {
+     "carrier_households": 115349,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_auto_loan_interest": {
+     "carrier_households": 109643,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_casualty_loss_limit": {
+     "carrier_households": 101,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "obbba_cdcc": {
+     "carrier_households": 21269,
+     "eligible_share": 0.07,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_misc_itemized_deductions": {
+     "carrier_households": 54728,
+     "eligible_share": 0.735,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_overtime": {
+     "carrier_households": 64277,
+     "eligible_share": 0.785,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.006369426751592357,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_tips": {
+     "carrier_households": 53827,
+     "eligible_share": 0.205,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "pre_subsidy_rent_neutralization": {
+     "carrier_households": 110977,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "prior_year_self_employment_neutralization": {
+     "carrier_households": 25189,
+     "eligible_share": 0.025,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_farm_operations_income_exclusion": {
+     "carrier_households": 6996,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.06,
+      "4": 0.015,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_farm_rent_income_exclusion": {
+     "carrier_households": 2061,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.055,
+      "4": 0.04,
+      "5": 0.015
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_reit_ptp_rate_abolition": {
+     "carrier_households": 30630,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_wage_property_guardrails_zeroed": {
+     "carrier_households": 24838,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "salt_refund_income_neutralization": {
+     "carrier_households": 35342,
+     "eligible_share": 0.06,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "savers_credit_abolition": {
+     "carrier_households": 121722,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "self_employed_health_premium_neutralization": {
+     "carrier_households": 44958,
+     "eligible_share": 0.005,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "spm_unit_energy_subsidy_neutralization": {
+     "carrier_households": 10817,
+     "eligible_share": 0.01,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_asset_limit_10k_20k": {
+     "carrier_households": 322762,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_disability_criteria_neutralization": {
+     "carrier_households": 45845,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_take_up_neutralization": {
+     "carrier_households": 243536,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "tip_income_neutralization": {
+     "carrier_households": 2865,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "tx_snap_additional_vehicle_exemption_abolition": {
+     "carrier_households": 309580,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "unrecaptured_section_1250_gain_neutralization": {
+     "carrier_households": 6308,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.05,
+      "4": 0.02,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "voluntary_filing_aca_ptc_neutralization": {
+     "carrier_households": 317835,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "wic_claim_neutralization": {
+     "carrier_households": 26664,
+     "eligible_share": 0.93,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005376344086021506,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "workers_compensation_snap_exclusion": {
+     "carrier_households": 1687,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.065,
+      "4": 0.025,
+      "5": 0.015
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    }
+   },
+   "probes_eligible_in_most_draws": 18,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 17,
+   "sample_share": 0.06680890369816282,
+   "size_certainty_multiplier": 3.0,
+   "worst_miss_share_of_eligible_at_k4": 0.08743169398907104
+  },
+  "5:0": {
+   "certainty_households": 13,
+   "certainty_threshold": 5.0,
+   "mean_sample_households": 17656.0,
+   "probes": {
+    "alimony_expense_ald_abolition": {
+     "carrier_households": 887,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.09,
+      "4": 0.055,
+      "5": 0.03
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "aotc_abolition": {
+     "carrier_households": 2531,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "cdcc_adult_care_expense_neutralization": {
+     "carrier_households": 13969,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.1,
+      "4": 0.07,
+      "5": 0.055
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_expense_snap_deduction_abolition": {
+     "carrier_households": 3883,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.025,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "child_support_received_snap_exclusion": {
+     "carrier_households": 8372,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "collectibles_gain_neutralization": {
+     "carrier_households": 1138,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.535,
+      "4": 0.49,
+      "5": 0.41
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "disability_benefits_snap_exclusion": {
+     "carrier_households": 4616,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.03,
+      "4": 0.015,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "domestic_production_ald_reactivation": {
+     "carrier_households": 1325,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.115,
+      "4": 0.06,
+      "5": 0.045
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "educator_expense_ald_abolition": {
+     "carrier_households": 6519,
+     "eligible_share": 0.235,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "form_4952_election_neutralization": {
+     "carrier_households": 394,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.585,
+      "4": 0.535,
+      "5": 0.45
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "fsla_overtime_premium_neutralization": {
+     "carrier_households": 64277,
+     "eligible_share": 0.445,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.02247191011235955,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "head_start_take_up_neutralization": {
+     "carrier_households": 1097,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.025,
+      "4": 0.005,
+      "5": 0.005
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "household_head_childcare_cap_neutralization": {
+     "carrier_households": 352932,
+     "eligible_share": 0.905,
+     "miss_share_of_all_draws": {
+      "3": 0.025,
+      "4": 0.025,
+      "5": 0.025
+     },
+     "miss_share_of_eligible": {
+      "3": 0.027624309392265192,
+      "4": 0.027624309392265192,
+      "5": 0.027624309392265192
+     },
+     "take_all": false
+    },
+    "housing_assistance_take_up_neutralization": {
+     "carrier_households": 9892,
+     "eligible_share": 0.92,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "keogh_distribution_neutralization": {
+     "carrier_households": 13,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": true
+    },
+    "medicare_take_up_neutralization": {
+     "carrier_households": 115349,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_auto_loan_interest": {
+     "carrier_households": 109643,
+     "eligible_share": 0.98,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.005,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.00510204081632653,
+      "4": 0.00510204081632653,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_casualty_loss_limit": {
+     "carrier_households": 101,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.44,
+      "4": 0.375,
+      "5": 0.325
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "obbba_cdcc": {
+     "carrier_households": 21269,
+     "eligible_share": 0.055,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.18181818181818182,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_misc_itemized_deductions": {
+     "carrier_households": 54728,
+     "eligible_share": 0.02,
+     "miss_share_of_all_draws": {
+      "3": 0.045,
+      "4": 0.015,
+      "5": 0.01
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_overtime": {
+     "carrier_households": 64277,
+     "eligible_share": 0.445,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.02247191011235955,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "obbba_no_tax_on_tips": {
+     "carrier_households": 53827,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.06,
+      "4": 0.055,
+      "5": 0.025
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "pre_subsidy_rent_neutralization": {
+     "carrier_households": 110977,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "prior_year_self_employment_neutralization": {
+     "carrier_households": 25189,
+     "eligible_share": 0.055,
+     "miss_share_of_all_draws": {
+      "3": 0.01,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.09090909090909091,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "qbi_farm_operations_income_exclusion": {
+     "carrier_households": 6996,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.13,
+      "4": 0.055,
+      "5": 0.045
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_farm_rent_income_exclusion": {
+     "carrier_households": 2061,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.255,
+      "4": 0.21,
+      "5": 0.135
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_reit_ptp_rate_abolition": {
+     "carrier_households": 30630,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.095,
+      "4": 0.065,
+      "5": 0.045
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "qbi_wage_property_guardrails_zeroed": {
+     "carrier_households": 24838,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.075,
+      "4": 0.035,
+      "5": 0.02
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "salt_refund_income_neutralization": {
+     "carrier_households": 35342,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.09,
+      "4": 0.055,
+      "5": 0.035
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "savers_credit_abolition": {
+     "carrier_households": 121722,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "self_employed_health_premium_neutralization": {
+     "carrier_households": 44958,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.02,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "spm_unit_energy_subsidy_neutralization": {
+     "carrier_households": 10817,
+     "eligible_share": 0.035,
+     "miss_share_of_all_draws": {
+      "3": 0.015,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_asset_limit_10k_20k": {
+     "carrier_households": 322762,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.12,
+      "4": 0.065,
+      "5": 0.025
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "ssi_disability_criteria_neutralization": {
+     "carrier_households": 45845,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "ssi_take_up_neutralization": {
+     "carrier_households": 243536,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "tip_income_neutralization": {
+     "carrier_households": 2865,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.065,
+      "4": 0.055,
+      "5": 0.035
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "tx_snap_additional_vehicle_exemption_abolition": {
+     "carrier_households": 309580,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.005,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "unrecaptured_section_1250_gain_neutralization": {
+     "carrier_households": 6308,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.13,
+      "4": 0.095,
+      "5": 0.045
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    },
+    "voluntary_filing_aca_ptc_neutralization": {
+     "carrier_households": 317835,
+     "eligible_share": 1.0,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "wic_claim_neutralization": {
+     "carrier_households": 26664,
+     "eligible_share": 0.94,
+     "miss_share_of_all_draws": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "miss_share_of_eligible": {
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+     },
+     "take_all": false
+    },
+    "workers_compensation_snap_exclusion": {
+     "carrier_households": 1687,
+     "eligible_share": 0.0,
+     "miss_share_of_all_draws": {
+      "3": 0.115,
+      "4": 0.08,
+      "5": 0.045
+     },
+     "miss_share_of_eligible": {
+      "3": null,
+      "4": null,
+      "5": null
+     },
+     "take_all": false
+    }
+   },
+   "probes_eligible_in_most_draws": 12,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 26,
+   "sample_share": 0.05002663402581801,
+   "size_certainty_multiplier": 0.0,
+   "worst_miss_share_of_eligible_at_k4": 0.027624309392265192
+  }
+ },
+ "export": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
+ "fraction": 0.05,
+ "min_effective_households": 30.0,
+ "proxy": "household total of |binding inputs|, weighted",
+ "seeds": 200
+}
