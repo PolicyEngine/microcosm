@@ -180,7 +180,7 @@ def test_tfc_routed_share_series_matches_pinned_chronicle_feed_when_present() ->
 
 
 def test_forbidden_source_dependency_strings_absent_from_uk_resources() -> None:
-    for resource in ("take_up_contract.json", "brma_rent_counts.json"):
+    for resource in ("take_up_contract.json", "brma_private_rented_households.json"):
         text = files("microcosm.build.uk").joinpath(resource).read_text().lower()
         assert "policyengine_" + "uk_data" not in text
         assert "policyengine-" + "uk-data" not in text

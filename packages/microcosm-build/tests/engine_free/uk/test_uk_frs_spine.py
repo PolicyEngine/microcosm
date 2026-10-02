@@ -805,7 +805,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     extra_artifacts=(
                         {
                             "role": "count_resource",
-                            "resource": "brma_rent_counts.json",
+                            "resource": "brma_private_rented_households.json",
                             "kind": "public_aggregated_counts",
                             "format": "json",
                         },
@@ -915,7 +915,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             ),
         ),
         geography_spine=None,
-        resource_hashes={"brma_rent_counts.json": "f" * 64},
+        resource_hashes={"brma_private_rented_households.json": "f" * 64},
     )
 
 
@@ -1480,7 +1480,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
-    assert sidecar["resource_pins"] == {"brma_rent_counts.json": "f" * 64}
+    assert sidecar["resource_pins"] == {"brma_private_rented_households.json": "f" * 64}
     # Resolve the expected version the way the driver does, so the assertion
     # holds in the engine-hermetic lane too: the real version where
     # policyengine-uk is installed, the documented fallback where it is not.
