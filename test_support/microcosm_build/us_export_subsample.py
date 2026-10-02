@@ -366,11 +366,16 @@ def sample_synthetic(
     probes=None,
     chunk_rows: int | None = 7,
     name: str = "export",
+    size_certainty_multiplier: float = 0.0,
+    certainty_threshold: float = 5.0,
 ) -> tuple[Path, dict]:
     """Write ``frame`` as an export, sample it; return (subsample path, receipt).
 
     ``chunk_rows`` defaults to 7 so every table is read in many chunks (the
-    tool's byte-sized default floors a chunk at 1,024 rows).
+    tool's byte-sized default floors a chunk at 1,024 rows). The size
+    certainty rule is off and the thin-probe threshold is 5 unless asked
+    otherwise, so the certainty sets the tests pin stay exact whatever the
+    tool's defaults become.
 
     The deny-list boundary (``refuse_denied=True``, the CLI default) lives in
     ``microcosm.build.us_runtime.h5_io``; this engine-free path skips it, and
@@ -388,6 +393,8 @@ def sample_synthetic(
         write_dataset=lambda sample, path, period: write_table_h5(sample, path, period),
         chunk_rows=chunk_rows,
         refuse_denied=False,
+        size_certainty_multiplier=size_certainty_multiplier,
+        certainty_threshold=certainty_threshold,
     )
     return Path(receipt["output"]["path"]), receipt
 

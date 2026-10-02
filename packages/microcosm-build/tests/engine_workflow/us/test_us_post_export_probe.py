@@ -51,6 +51,7 @@ def test_probe_decomposes_policyengine_us_effects(
         fraction=0.5,
         seed=0,
         certainty_threshold=0.0,
+        size_certainty_multiplier=0.0,
         probes=probes,
     )
     assert receipt["verification"]["passed"]

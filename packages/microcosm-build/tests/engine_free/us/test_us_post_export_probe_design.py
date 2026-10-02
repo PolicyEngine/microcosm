@@ -352,11 +352,12 @@ def test_batch_size_refuses_too_few_households(probe_tool) -> None:
     ),
     take_all=st.booleans(),
     drawn=st.one_of(st.none(), st.integers(min_value=0, max_value=10_000)),
+    effective=st.one_of(st.none(), st.floats(min_value=0.0, max_value=10_000.0)),
     census=st.booleans(),
-    k=st.floats(min_value=0.5, max_value=5.0),
+    k=st.floats(min_value=0.5, max_value=8.0),
 )
 def test_classify_probe_rules(
-    probe_tool, magnitude, floor, standard_error, take_all, drawn, census, k
+    probe_tool, magnitude, floor, standard_error, take_all, drawn, effective, census, k
 ) -> None:
     authority, reason = probe_tool.classify_probe(
         signed_magnitude=magnitude,
@@ -364,24 +365,24 @@ def test_classify_probe_rules(
         standard_error=standard_error,
         take_all=take_all,
         drawn_effect_households=drawn,
+        effective_households=effective,
         census=census,
         se_multiplier=k,
-        min_effect_households=5,
+        min_effective_households=100.0,
     )
     assert authority in (probe_tool.AUTHORITATIVE, probe_tool.INFORMATIONAL)
     assert reason
-    drawn = drawn or 0
     if census:
         assert authority == probe_tool.AUTHORITATIVE
     elif standard_error is None or not math.isfinite(standard_error):
         assert authority == probe_tool.INFORMATIONAL
-    elif take_all and drawn == 0:
+    elif take_all and not drawn:
         # Every pool carrier is certain and no drawn household carries an
         # effect: the effect is the certainty households' exactly.
         assert authority == probe_tool.AUTHORITATIVE
-    elif drawn < 5:
-        # A variance estimated from too few effect-bearing draws (zero
-        # included) bounds nothing, whatever it came out as.
+    elif (effective or 0.0) < 100.0:
+        # A variance resting on too few effective households (none included)
+        # bounds nothing, whatever it came out as.
         assert authority == probe_tool.INFORMATIONAL
     else:
         expected = abs(magnitude - floor) >= k * standard_error
@@ -399,10 +400,44 @@ def test_a_sample_without_effect_bearing_draws_is_not_authoritative(
         standard_error=0.0,
         take_all=False,
         drawn_effect_households=0,
+        effective_households=0.0,
         census=False,
     )
     assert authority == probe_tool.INFORMATIONAL
-    assert "0 drawn household" in reason
+    assert "0.0 effective household" in reason
+
+
+@_SETTINGS
+@given(drawn_samples())
+def test_effective_households_bounds(probe_tool, sample) -> None:
+    """The effective count is between 0 and the number of drawn households,
+    equals 1 when one household carries all the variance, and the terms sum
+    to the variance."""
+    values, weights, labels, records = sample
+    certainty = np.zeros(len(values), dtype=bool)
+    terms = probe_tool.stratified_variance_terms(
+        values,
+        source_weights=weights,
+        labels=labels,
+        certainty=certainty,
+        strata=records,
+    )
+    variance = probe_tool.stratified_ratio_variance(
+        values,
+        source_weights=weights,
+        labels=labels,
+        certainty=certainty,
+        strata=records,
+    )
+    effective = probe_tool.effective_variance_households(terms)
+    if terms is None:
+        assert math.isnan(variance) and effective == 0.0
+        return
+    assert (terms >= 0).all()
+    assert float(terms.sum()) == pytest.approx(variance, rel=1e-12, abs=0.0)
+    assert 0.0 <= effective <= len(values) * (1 + 1e-9)
+    assert probe_tool.effective_variance_households(np.asarray([0.0, 7.0, 0.0])) == 1.0
+    assert probe_tool.effective_variance_households(np.ones(12)) == pytest.approx(12.0)
 
 
 @pytest.mark.parametrize(

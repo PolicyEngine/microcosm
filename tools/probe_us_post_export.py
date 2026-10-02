@@ -42,23 +42,23 @@ multi-batch path (and its population-aggregate refusals) runs. The report's
 ``not_reproduced`` block lists the release steps that need build state the
 export does not carry.
 
-**Which verdicts transfer to full scale.** A subsample is a stratified,
-ratio-adjusted Horvitz-Thompson sample (see the sampler's docstring). Every
-verdict carries an ``authority``:
+**Which verdicts transfer to full scale.** A subsample is a stratified
+sample with a take-all stratum and ratio-estimator weights (see the
+sampler's docstring). Every verdict carries an ``authority``:
 
 - ``authoritative``: the verdict does not depend on the population's size (a
   stage that raised, a stored column name, a baseline plan), it was settled on
   the source export itself, or it is a smoke probe whose effect clears or
   misses its floor by at least ``--se-multiplier`` design-based standard
-  errors with at least ``--min-effect-households`` drawn households carrying
-  the effect.
-- ``informational``: scale-dependent. A smoke probe with too few
-  effect-bearing draws or within ``k`` standard errors of its floor, the QRF
-  tail on the subsample (its top-k and minimum-carrier rules count records),
-  unweighted record counts (demographics' ``n_under_50`` and ``n_under_100``,
-  a state with no sampled record), a take-up column constant on the
-  subsample, and every weighted estimate (validation budget effects, age
-  bands, take-up shares).
+  errors, with a variance estimate that rests on at least
+  ``--min-effective-households`` effective households.
+- ``informational``: scale-dependent. A smoke probe whose variance estimate
+  rests on too few effective households or whose effect is within ``k``
+  standard errors of its floor, the QRF tail on the subsample (its top-k and
+  minimum-carrier rules count records), unweighted record counts
+  (demographics' ``n_under_50`` and ``n_under_100``, a state with no sampled
+  record), a take-up column constant on the subsample, and every weighted
+  estimate (validation budget effects, age bands, take-up shares).
 
 The smoke's standard errors come from the gate's own arrays: each probe's
 baseline and reform values are captured through the ``simulate`` seam and
@@ -70,7 +70,13 @@ no standard error is reported. They feed the linearized variance of the
 sampler's estimator: zero for a certainty household, and
 ``N_h^2 (1 - n_h / N_h) / n_h * S^2(w (y - R_h))`` per stratum for the drawn
 ones (the ratio estimator's Taylor linearization; exact when weights are equal
-within a stratum).
+within a stratum). A weighted total a few records dominate is usually
+underestimated by a sample that missed them, with a standard error that is
+too small for the same reason; the sampler therefore keeps the dominant
+households of every probe's input mass with certainty, and the probe grants
+authority only to a variance estimate that at least
+``--min-effective-households`` households effectively carry
+(``(sum q)^2 / sum q^2`` over their variance terms).
 
 ``--reference-release-dir`` (a full-size build's ``releases/<id>/``) adds each
 smoke probe's full-scale effect and z-score, a row-by-row validation
@@ -130,9 +136,10 @@ PASSES_FILENAME = "passes.jsonl"
 #: matches the build's.
 DEFAULT_BATCH_SIZE = 2_000
 MINIMUM_BATCHES = 3
-DEFAULT_SE_MULTIPLIER = 3.0
-#: Drawn households with a nonzero effect needed for a reliable standard error.
-DEFAULT_MIN_EFFECT_HOUSEHOLDS = 5
+DEFAULT_SE_MULTIPLIER = 4.0
+#: Effective households the variance estimate must rest on for its standard
+#: error to confer authority (see ``classify_probe``).
+DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS = 30.0
 #: Tolerance of the per-household effect decomposition check, relative to
 #: ``sum |w r| + sum |w b|`` (the same arrays summed in another order).
 DECOMPOSITION_RTOL = 1e-9
@@ -341,15 +348,20 @@ class SampleDesign:
         """The estimator ``sum_h W_h y_h`` over the sample (adjusted weights)."""
         return float(np.dot(self.adjusted_weights, self.aligned(values)))
 
-    def variance(self, values: pd.Series) -> float:
-        """Linearized design variance of :meth:`total` (``nan``: not estimable)."""
-        return stratified_ratio_variance(
+    def variance_terms(self, values: pd.Series) -> np.ndarray | None:
+        """Per-household terms of :meth:`variance` (``None``: not estimable)."""
+        return stratified_variance_terms(
             self.aligned(values),
             source_weights=self.source_weights,
             labels=self.labels,
             certainty=self.certainty,
             strata=self.strata,
         )
+
+    def variance(self, values: pd.Series) -> float:
+        """Linearized design variance of :meth:`total` (``nan``: not estimable)."""
+        terms = self.variance_terms(values)
+        return math.nan if terms is None else float(terms.sum())
 
     def verify(self) -> list[str]:
         """Disagreements between the rebuilt design and the receipt."""
@@ -383,15 +395,16 @@ class SampleDesign:
         return problems
 
 
-def stratified_ratio_variance(
+def stratified_variance_terms(
     values: np.ndarray,
     *,
     source_weights: np.ndarray,
     labels: np.ndarray,
     certainty: np.ndarray,
     strata: Mapping[str, Mapping[str, object]],
-) -> float:
-    """Linearized variance of the sampler's estimator of ``sum w_h y_h``.
+) -> np.ndarray | None:
+    """Each sampled household's share of the linearized variance of the
+    sampler's estimator of ``sum w_h y_h``; ``None`` if it is not estimable.
 
     The estimator is ``sum_certainty w y + sum_h X_h * R_h`` with ``X_h`` the
     stratum's eligible non-certainty weight mass and ``R_h`` the drawn
@@ -399,15 +412,16 @@ def stratified_ratio_variance(
     certainty household contributes no variance. Stratum ``h`` (``n`` of ``N``
     eligible households drawn without replacement) contributes
     ``N^2 (1 - n/N) / n * S^2(e)``, ``e = w (y - R_h)`` over its drawn
-    households: the ratio estimator's first-order Taylor linearization.
-    Returns ``nan`` when a stratum drew one household of several (``S^2`` is
-    not estimable).
+    households: the ratio estimator's first-order Taylor linearization. The
+    residuals of a stratum sum to 0, so ``S^2(e) = sum e_i^2 / (n - 1)`` and
+    household ``i`` contributes ``N^2 (1 - n/N) / (n (n - 1)) * e_i^2``.
+    Not estimable when a stratum drew one household of several.
     """
     values = np.asarray(values, dtype=np.float64)
     source_weights = np.asarray(source_weights, dtype=np.float64)
     labels = np.asarray(labels, dtype=object)
     certainty = np.asarray(certainty, dtype=bool)
-    variance = 0.0
+    terms = np.zeros(len(values), dtype=np.float64)
     for label, record in strata.items():
         drawn = (labels == label) & ~certainty
         n = int(drawn.sum())
@@ -415,7 +429,7 @@ def stratified_ratio_variance(
         if n == 0 or n >= eligible:
             continue
         if n < 2:
-            return math.nan
+            return None
         weights = source_weights[drawn]
         y = values[drawn]
         mass = float(weights.sum())
@@ -426,8 +440,45 @@ def stratified_ratio_variance(
             continue
         ratio = float(np.dot(weights, y)) / mass
         residual = weights * (y - ratio)
-        variance += eligible**2 * (1.0 - n / eligible) / n * float(residual.var(ddof=1))
-    return float(variance)
+        residual = residual - residual.mean()  # 0 up to rounding
+        terms[drawn] = eligible**2 * (1.0 - n / eligible) / (n * (n - 1)) * residual**2
+    return terms
+
+
+def stratified_ratio_variance(
+    values: np.ndarray,
+    *,
+    source_weights: np.ndarray,
+    labels: np.ndarray,
+    certainty: np.ndarray,
+    strata: Mapping[str, Mapping[str, object]],
+) -> float:
+    """The linearized design variance (see :func:`stratified_variance_terms`);
+    ``nan`` when it is not estimable."""
+    terms = stratified_variance_terms(
+        values,
+        source_weights=source_weights,
+        labels=labels,
+        certainty=certainty,
+        strata=strata,
+    )
+    return math.nan if terms is None else float(terms.sum())
+
+
+def effective_variance_households(terms: np.ndarray | None) -> float:
+    """How many households the variance estimate effectively rests on:
+    ``(sum q)^2 / sum q^2`` over the per-household variance terms ``q``.
+
+    A variance estimated mostly from one or two drawn households (a heavy
+    tail, or an effect only a handful of sampled households carry) is itself
+    so noisy that its standard error bounds nothing, however small it came
+    out. 0 when the estimate is 0 or not estimable.
+    """
+    if terms is None:
+        return 0.0
+    total = float(terms.sum())
+    squares = float(np.square(terms).sum())
+    return 0.0 if total <= 0.0 or squares <= 0.0 else total * total / squares
 
 
 def design_from_sample(
@@ -699,9 +750,10 @@ def classify_probe(
     standard_error: float | None,
     take_all: bool,
     drawn_effect_households: int | None,
+    effective_households: float | None,
     census: bool,
     se_multiplier: float = DEFAULT_SE_MULTIPLIER,
-    min_effect_households: int = DEFAULT_MIN_EFFECT_HOUSEHOLDS,
+    min_effective_households: float = DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS,
 ) -> tuple[str, str]:
     """``(authority, reason)`` for one smoke probe's verdict at this sample.
 
@@ -709,15 +761,19 @@ def classify_probe(
 
     1. A census (no sample) is authoritative.
     2. No finite standard error is informational.
-    3. Fewer than ``min_effect_households`` drawn (non-certainty) households
-       with a nonzero effect is informational: ``S^2`` is estimated from the
-       drawn households, so a sample in which none or few of them carry the
-       effect estimates a variance near 0 whatever the population's is. The
-       exception is a take-all probe (every pool carrier kept at its source
-       weight) whose drawn households carry no effect at all: its effect is
-       the certainty households' exactly, so its variance is 0.
-    4. A margin to the floor of at least ``se_multiplier`` standard errors is
+    3. A take-all probe (every pool carrier kept at its source weight) none
+       of whose drawn households carries an effect is authoritative: its
+       effect is the certainty households' exactly.
+    4. A variance estimate resting on fewer than ``min_effective_households``
+       effective households (:func:`effective_variance_households`) is
+       informational. ``S^2`` is estimated from the drawn households, so a
+       sample in which none or few of them carry the effect, or one of them
+       dominates it, gives a standard error that bounds nothing.
+    5. A margin to the floor of at least ``se_multiplier`` standard errors is
        authoritative; anything nearer is informational.
+
+    The defaults of rules 4 and 5 were calibrated on the published Route A
+    export (see ``docs/us-release-build-rule.md``).
     """
     if census:
         return AUTHORITATIVE, "scored on the full export (no sample)"
@@ -727,37 +783,37 @@ def classify_probe(
             "no design-based standard error for this probe, so a full-scale "
             "verdict cannot be bounded",
         )
-    drawn = 0 if drawn_effect_households is None else int(drawn_effect_households)
-    exact_take_all = take_all and drawn == 0
-    if drawn < min_effect_households and not exact_take_all:
-        return (
-            INFORMATIONAL,
-            f"only {drawn} drawn household(s) carry an effect (fewer than "
-            f"{min_effect_households}); the standard error is not reliable",
-        )
-    margin = float(signed_magnitude) - float(floor)
-    if exact_take_all:
+    if take_all and not drawn_effect_households:
         return (
             AUTHORITATIVE,
             "take-all probe: every pool carrier is a certainty household at its "
             "source weight and no drawn household carries an effect, so the "
             "effect has zero design variance",
         )
+    effective = 0.0 if effective_households is None else float(effective_households)
+    if effective < min_effective_households:
+        return (
+            INFORMATIONAL,
+            f"the variance estimate rests on {effective:.1f} effective "
+            f"household(s) (fewer than {min_effective_households:g}); the "
+            "standard error is not reliable",
+        )
+    margin = float(signed_magnitude) - float(floor)
+    distance = (
+        f"{abs(margin) / standard_error:.1f} standard errors"
+        if standard_error > 0
+        else "a zero standard error"
+    )
     if abs(margin) >= se_multiplier * standard_error:
         return (
             AUTHORITATIVE,
-            f"the effect is {abs(margin) / standard_error:.1f} standard errors "
-            f"{'above' if margin >= 0 else 'below'} the floor "
-            f"(threshold {se_multiplier:g})"
-            if standard_error > 0
-            else "zero estimated design variance",
+            f"the effect is {distance} {'above' if margin >= 0 else 'below'} "
+            f"the floor (threshold {se_multiplier:g})",
         )
     return (
         INFORMATIONAL,
         f"the effect is within {se_multiplier:g} standard errors of the floor "
-        f"({abs(margin) / standard_error:.2f} SE)"
-        if standard_error > 0
-        else "the effect equals the floor",
+        f"({distance})",
     )
 
 
@@ -1264,7 +1320,7 @@ class ExportProbe:
         qrf_tail_register: Mapping[str, str] | None = None,
         reference_paths: Mapping[str, str | None] | None = None,
         se_multiplier: float = DEFAULT_SE_MULTIPLIER,
-        min_effect_households: int = DEFAULT_MIN_EFFECT_HOUSEHOLDS,
+        min_effective_households: float = DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS,
         release_id: str | None = None,
         probes: Sequence[Any] | None = None,
         builder=None,
@@ -1316,7 +1372,7 @@ class ExportProbe:
         )
         self.reference_paths = dict(reference_paths or {})
         self.se_multiplier = float(se_multiplier)
-        self.min_effect_households = int(min_effect_households)
+        self.min_effective_households = float(min_effective_households)
         self.release_id = release_id
         self.custom_probes = probes is not None
         if probes is None:
@@ -1362,17 +1418,18 @@ class ExportProbe:
             "stages_requested": list(self.stages),
             "rules": {
                 "se_multiplier": self.se_multiplier,
-                "min_effect_households": self.min_effect_households,
+                "min_effective_households": self.min_effective_households,
                 "authoritative": (
                     "does not depend on the population's size, clears or misses "
                     "its floor by at least se_multiplier design-based standard "
                     "errors, or was computed on the source export"
                 ),
                 "informational": (
-                    "scale-dependent at this sample: few sampled carriers, "
-                    "within se_multiplier standard errors of the floor, an "
-                    "unweighted record count, a column constant on the "
-                    "subsample, or a weighted estimate"
+                    "scale-dependent at this sample: a variance estimate "
+                    "resting on fewer than min_effective_households effective "
+                    "households, within se_multiplier standard errors of the "
+                    "floor, an unweighted record count, a column constant on "
+                    "the subsample, or a weighted estimate"
                 ),
             },
             "sample": None
@@ -1975,6 +2032,7 @@ class ExportProbe:
         noncarrier = None
         drawn_effect = None
         certainty_effect = None
+        effective = None
         weight_scale = None
         if effects is not None and self.design_problems:
             decomposition = "the sample design did not verify against its receipt"
@@ -1993,10 +2051,11 @@ class ExportProbe:
                 )
             else:
                 per_unit = self.design.per_unit(effects.weighted)
-                variance = self.design.variance(per_unit)
+                terms = self.design.variance_terms(per_unit)
                 standard_error = (
-                    math.sqrt(variance) if math.isfinite(variance) else None
+                    None if terms is None else math.sqrt(float(terms.sum()))
                 )
+                effective = effective_variance_households(terms)
                 bearing = self.design.aligned(effects.weighted) != 0.0
                 drawn_effect = int((bearing & ~self.design.certainty).sum())
                 certainty_effect = int((bearing & self.design.certainty).sum())
@@ -2016,9 +2075,10 @@ class ExportProbe:
             standard_error=standard_error,
             take_all=take_all,
             drawn_effect_households=drawn_effect,
+            effective_households=effective,
             census=self.census,
             se_multiplier=self.se_multiplier,
-            min_effect_households=self.min_effect_households,
+            min_effective_households=self.min_effective_households,
         )
         return {
             "probe": str(probe.id),
@@ -2037,6 +2097,7 @@ class ExportProbe:
             "decomposition": decomposition,
             "engine_weight_scale": weight_scale,
             "drawn_effect_households": drawn_effect,
+            "effective_variance_households": effective,
             "certainty_effect_households": certainty_effect,
             "noncarrier_effect": noncarrier,
             "pool_carrier_households": None
@@ -2469,7 +2530,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--se-multiplier", type=float, default=DEFAULT_SE_MULTIPLIER)
     parser.add_argument(
-        "--min-effect-households", type=int, default=DEFAULT_MIN_EFFECT_HOUSEHOLDS
+        "--min-effective-households",
+        type=float,
+        default=DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS,
     )
     parser.add_argument(
         "--qrf-tail-register",
@@ -2534,7 +2597,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             key: None if path is None else str(path) for key, path in references.items()
         },
         se_multiplier=args.se_multiplier,
-        min_effect_households=args.min_effect_households,
+        min_effective_households=args.min_effective_households,
         release_id=args.release_id,
     )
     summary = report["summary"]

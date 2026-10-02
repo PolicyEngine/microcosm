@@ -389,6 +389,8 @@ def test_h5_sample_is_invariant_to_source_row_order(sampler, tmp_path) -> None:
         write_dataset=write_table_h5,
         chunk_rows=5,
         refuse_denied=False,
+        size_certainty_multiplier=0.0,
+        certainty_threshold=5.0,
     )
     assert (
         first["selection"]["selected_household_ids_sha256"]
@@ -426,6 +428,7 @@ def test_sample_export_refuses_split_units_and_self_overwrite(
             probes=fixture_sampler_probes(),
             write_dataset=write_table_h5,
             refuse_denied=False,
+            size_certainty_multiplier=0.0,
         )
     person = frame.table("person").copy()
     person.loc[person.index[-1], "person_tax_unit_id"] = person.loc[
@@ -442,6 +445,7 @@ def test_sample_export_refuses_split_units_and_self_overwrite(
             probes=fixture_sampler_probes(),
             write_dataset=write_table_h5,
             refuse_denied=False,
+            size_certainty_multiplier=0.0,
         )
 
 
@@ -466,6 +470,7 @@ def test_verification_catches_a_writer_that_drops_a_column(sampler, tmp_path) ->
             probes=fixture_sampler_probes(),
             write_dataset=lossy_writer,
             refuse_denied=False,
+            size_certainty_multiplier=0.0,
         )
 
 
@@ -790,6 +795,7 @@ def test_verification_catches_each_writer_defect(
             probes=fixture_sampler_probes(),
             write_dataset=tampering_writer,
             refuse_denied=False,
+            size_certainty_multiplier=0.0,
         )
 
 
@@ -890,3 +896,127 @@ def test_draw_refuses_non_string_labels_and_small_strata_draw_two(sampler) -> No
     assert draw.strata["big"]["drawn_noncertainty_households"] == 2
     assert draw.strata["one"]["drawn_noncertainty_households"] == 1
     assert draw.strata["big"]["expansion_factor"] == pytest.approx(11 / 2)
+
+
+# ---------------------------------------------------------------------------
+# Size certainty (the probability-proportional-to-size certainty rule)
+# ---------------------------------------------------------------------------
+
+
+@st.composite
+def probe_masses(draw):
+    """Households with weights and one person-level input; a few are huge."""
+    n = draw(st.integers(min_value=1, max_value=80))
+    weights = draw(
+        st.lists(st.floats(min_value=0.0, max_value=1e4), min_size=n, max_size=n)
+    )
+    values = draw(
+        st.lists(
+            st.one_of(
+                st.just(0.0),
+                st.floats(min_value=-1e3, max_value=1e3),
+                st.floats(min_value=1e6, max_value=1e9),
+            ),
+            min_size=n,
+            max_size=n,
+        )
+    )
+    fraction = draw(st.floats(min_value=0.01, max_value=1.0))
+    multiplier = draw(st.floats(min_value=0.5, max_value=10.0))
+    return (
+        np.arange(1, n + 1, dtype=np.int64),
+        np.asarray(weights, np.float64),
+        np.asarray(values, np.float64),
+        fraction,
+        multiplier,
+    )
+
+
+@settings(max_examples=200, deadline=None)
+@given(probe_masses(), st.randoms(use_true_random=False))
+def test_size_certainty_bounds_every_remaining_household(sampler, masses, rng) -> None:
+    """After the rule, no remaining carrier holds as much as ``multiplier``
+    times the mass one sampled carrier represents; only carriers are taken;
+    the result does not depend on row order; multiplier 0 takes nothing."""
+    ids, weights, values, fraction, multiplier = masses
+    probes = (SamplerProbe("p", ("x",)),)
+    leaves = {"x": ("person", values, ids)}
+    reasons, records = sampler.size_certainty_households(
+        probes, leaves, ids, weights, fraction=fraction, multiplier=multiplier
+    )
+    mass = weights * np.abs(values)
+    certain = np.isin(ids, list(reasons))
+    assert (mass[certain] > 0).all()
+    assert all(why == ["p:size"] for why in reasons.values())
+    residual = (mass > 0) & ~certain
+    if residual.any():
+        cutoff = multiplier * mass[residual].sum() / max(fraction * residual.sum(), 1.0)
+        assert (mass[residual] < cutoff).all()
+        assert certain.sum() == 0 or mass[certain].min() >= mass[residual].max()
+    assert records["p"]["households"] == int(certain.sum())
+    order = list(range(len(ids)))
+    rng.shuffle(order)
+    order = np.asarray(order)
+    shuffled, _ = sampler.size_certainty_households(
+        probes,
+        {"x": ("person", values[order], ids[order])},
+        ids[order],
+        weights[order],
+        fraction=fraction,
+        multiplier=multiplier,
+    )
+    assert shuffled == reasons
+    assert sampler.size_certainty_households(
+        probes, leaves, ids, weights, fraction=fraction, multiplier=0.0
+    ) == ({}, {})
+
+
+def test_a_dominant_household_is_sampled_with_certainty(sampler, tmp_path) -> None:
+    """One household holding most of a probe's weighted input mass is kept at
+    its source weight under the default rule, for the reason the receipt
+    names; without the rule it is drawn or not like any other."""
+    frame = synthetic_export_frame(60, seed=11)
+    person = frame.table("person").copy()
+    giant = int(person["person_household_id"].iloc[-1])
+    person.loc[person.index[-1], "employment_income_before_lsr"] = 5e9
+    tables = {entity: frame.table(entity) for entity in US_ENTITIES} | {
+        "person": person
+    }
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_tables_h5(tables, frame.weights_for("household").values, source)
+    receipt = sampler.sample_export(
+        source,
+        tmp_path / "out",
+        fraction=0.2,
+        seed=3,
+        probes=fixture_sampler_probes(),
+        write_dataset=write_table_h5,
+        chunk_rows=11,
+        refuse_denied=False,
+        certainty_threshold=5.0,
+    )
+    assert (
+        receipt["design"]["size_certainty_multiplier"]
+        == sampler.DEFAULT_SIZE_CERTAINTY_MULTIPLIER
+        > 0
+    )
+    assert "common_wages:size" in receipt["certainty"]["household_reasons"][str(giant)]
+    wages = next(row for row in receipt["probes"] if row["probe"] == "common_wages")
+    assert wages["certainty"] is False  # not a thin probe
+    assert wages["size_certainty"]["households"] >= 1
+    assert wages["size_certainty"]["mass_share"] > 0.9
+    written = load_table_h5(Path(receipt["output"]["path"]))
+    weights = pd.Series(
+        written.weights_for("household").values,
+        index=written.table("household")["household_id"].to_numpy(),
+    )
+    source_weights = pd.Series(
+        frame.weights_for("household").values,
+        index=frame.table("household")["household_id"].to_numpy(),
+    )
+    assert weights[giant] == source_weights[giant]
+    for record in receipt["strata"].values():
+        assert math.isclose(
+            record["sampled_weight_total"], record["source_weight_total"], rel_tol=1e-9
+        )

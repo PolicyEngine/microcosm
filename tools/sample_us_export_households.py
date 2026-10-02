@@ -9,31 +9,45 @@ Route A export. A code or definition failure in those stages does not depend
 on the population's size, so this tool writes a household subsample of an
 export H5 for ``tools/probe_us_post_export.py`` to run them on in minutes.
 
-Design (a stratified Horvitz-Thompson subsample with a take-all stratum):
+Design (a stratified sample with a take-all stratum and a ratio estimator):
 
 - **Strata.** Households are stratified by ``household_support_channel`` and,
   where the export stores it, the person-level ``source_year`` (constant
-  within a household, or the tool refuses). The failed Route A export stores
-  its 168,852 ASEC-channel households first and its 184,080 PUF tax-detail
-  households after them, so a first-N sample would be one channel only; the
-  draw is random within each stratum instead.
-- **Certainty (take-all) stratum.** For every reform-coverage smoke probe, the
-  households carrying any nonzero binding input are that probe's pool
-  carriers. When ``fraction * carriers`` is below ``--certainty-threshold``
-  (default 5), a proportional draw would expect fewer than that many carriers
-  and could miss the probe's support entirely, so every such carrier household
-  is kept with its original weight (inclusion probability 1). The receipt
-  names each certainty household and the probes that put it there.
-- **Draw.** Within each stratum, ``max(1, floor(fraction * N))`` of its ``N``
-  non-certainty households are drawn without replacement, one
+  within a household, or the tool refuses). The Route A export stores its
+  ASEC-channel households first and its PUF tax-detail households after
+  them, so a first-N sample would be one channel only; the draw is random
+  within each stratum instead.
+- **Certainty (take-all) stratum**, kept at source weight (inclusion
+  probability 1), with every household's reasons receipted:
+
+  - *Thin probes.* For every reform-coverage smoke probe, the households
+    carrying any nonzero binding input are its pool carriers. When
+    ``fraction * carriers`` is below ``--certainty-threshold`` (default 30),
+    a draw could miss the probe's support or see too little of it, so every
+    carrier is kept.
+  - *Dominant households.* A weighted total that a few records dominate is
+    usually underestimated by a sample that missed them, with a standard
+    error that is too small for the same reason. So, probe by probe, every
+    carrier whose weighted input mass is at least
+    ``--size-certainty-multiplier`` (default 2) times the mass one sampled
+    carrier would represent is kept, repeated on the rest until none
+    qualifies (:func:`size_certainty_households`).
+
+- **Draw.** Within each stratum, ``min(N, max(2, floor(fraction * N)))`` of
+  its ``N`` non-certainty households are drawn without replacement, one
   ``numpy.random.default_rng(seed)`` stream over the sorted household ids of
   the sorted strata, so the draw depends on ids, not row order.
 - **Weights.** A certainty household keeps its weight. A drawn household in
-  stratum ``h`` gets ``weight / p_h`` with ``p_h`` the drawn share of the
-  stratum's non-certainty weight mass. That ratio form of the
-  Horvitz-Thompson weight conserves every stratum's weight total exactly
-  (``sum of sampled weights == sum of source weights``, per stratum); the
-  count-based design fraction ``n / N`` is receipted beside it.
+  stratum ``h`` gets ``weight * X_h / x_h``, with ``X_h`` the stratum's
+  non-certainty weight mass and ``x_h`` the drawn households': a ratio
+  estimator with the source weight as its auxiliary, which conserves every
+  stratum's weight total exactly (``sum of sampled weights == sum of source
+  weights``). The Horvitz-Thompson factor ``N_h / n_h`` is receipted beside
+  it; the ratio form trades an O(1/n) bias for exact totals.
+
+The defaults were calibrated on the published Route A export
+(``docs/evidence/us-export-subsample-design``). So the subsample is larger
+than ``fraction`` of the pool: at 0.05 on that export, about 7%.
 
 Whole households enter the sample together: a household's persons and every
 group unit they reference, and nothing else. The source must nest every group
@@ -86,7 +100,15 @@ US_ENTITIES = (US_PERSON_ENTITY, *US_GROUP_ENTITIES)
 HOUSEHOLD_WEIGHT_COLUMN = "household_weight"
 TIME_PERIOD_KEY = "_time_period"
 DEFAULT_STRATUM_COLUMNS = ("household_support_channel", "source_year")
-DEFAULT_CERTAINTY_THRESHOLD = 5.0
+#: A probe expecting fewer sampled carriers than this is taken whole. At 5
+#: the Route A probes with 101 and 394 carrier households were still drawn,
+#: and their standard errors missed by more than 3 SE in 13% and 29% of
+#: seeds (docs/evidence/us-export-subsample-design); 30 takes them whole for
+#: 505 more households of 352,932.
+DEFAULT_CERTAINTY_THRESHOLD = 30.0
+#: Size-certainty cutoff, in units of the mass one sampled carrier represents
+#: (see :func:`size_certainty_households`); 0 disables the rule.
+DEFAULT_SIZE_CERTAINTY_MULTIPLIER = 2.0
 #: Rows per chunked read are sized to about this many stored bytes.
 DEFAULT_CHUNK_BYTES = 128 * 2**20
 #: Fewest rows per chunked read when the size comes from ``chunk_bytes``.
@@ -118,6 +140,13 @@ CERTAINTY_RULE = (
     "a probe's carriers are the households with a nonzero value of any of its "
     "binding inputs (booleans count as 1, missing as 0); every carrier of a "
     "probe with 0 < fraction * carriers < threshold is a certainty household"
+)
+SIZE_CERTAINTY_RULE = (
+    "a household's mass in a probe is its weight times the absolute values of "
+    "the probe's binding inputs; probe by probe, every carrier with mass >= "
+    "multiplier * residual mass / (fraction * residual carriers) is a "
+    "certainty household, repeated on the rest until none qualifies (the "
+    "probability-proportional-to-size certainty rule)"
 )
 
 #: Relative tolerance of the per-stratum weight-total conservation check.
@@ -334,6 +363,88 @@ def probe_carriers(
             )
         )
     return records, reasons
+
+
+def size_certainty_households(
+    probes: Iterable[Any],
+    leaf_households: Mapping[str, tuple[str, np.ndarray, np.ndarray]],
+    household_ids: np.ndarray,
+    weights: np.ndarray,
+    *,
+    fraction: float,
+    multiplier: float,
+) -> tuple[dict[int, list[str]], dict[str, dict[str, object]]]:
+    """Households kept with certainty for their size in a probe's input mass.
+
+    A household's mass in a probe is its weight times the absolute values of
+    the probe's binding inputs over its rows (booleans count as 1). Probe by
+    probe, every carrier whose mass is at least ``multiplier * residual mass /
+    (fraction * residual carriers)`` becomes a certainty household, and the
+    rule repeats on the rest until none qualifies. At multiplier 1 the cutoff
+    is the mass one sampled carrier would have to represent: the classical
+    certainty rule of probability-proportional-to-size sampling. Afterwards
+    no remaining carrier holds more than ``multiplier / fraction`` times the
+    mean residual mass, which bounds the skewness an equal-probability draw
+    of the rest (and its variance estimate) has to cope with. A weighted
+    total dominated by a few records is otherwise usually underestimated,
+    with a standard error that is too small because the sample missed them.
+
+    Returns ``{household id: ["<probe id>:size", ...]}`` and a record per
+    probe. A non-positive ``multiplier`` disables the rule.
+    """
+    reasons: dict[int, list[str]] = {}
+    records: dict[str, dict[str, object]] = {}
+    if not (multiplier and multiplier > 0):
+        return reasons, records
+    # Work in household-id order, so sums (and so the cutoffs) do not depend
+    # on the household table's row order.
+    order = np.argsort(np.asarray(household_ids), kind="stable")
+    household_ids = np.asarray(household_ids)[order]
+    weights = np.asarray(weights, dtype=np.float64)[order]
+    index = pd.Index(household_ids)
+    leaf_mass: dict[str, np.ndarray] = {}
+    for probe in probes:
+        mass = np.zeros(len(household_ids), dtype=np.float64)
+        for leaf in (str(leaf) for leaf in probe.binding_inputs):
+            if leaf not in leaf_households:
+                continue
+            if leaf not in leaf_mass:
+                _, values, households = leaf_households[leaf]
+                positions = index.get_indexer(np.asarray(households))
+                if (positions < 0).any():
+                    raise ValueError(
+                        f"binding input {leaf!r} has rows in households the "
+                        "household table does not list."
+                    )
+                total = np.zeros(len(household_ids), dtype=np.float64)
+                np.add.at(total, positions, np.abs(numeric_support_values(values)))
+                leaf_mass[leaf] = total
+            mass += leaf_mass[leaf]
+        mass *= weights
+        residual = mass > 0.0
+        total_mass = float(mass.sum())
+        certain = np.zeros(len(household_ids), dtype=bool)
+        cutoff = None
+        while residual.any():
+            expected = float(fraction) * int(residual.sum())
+            cutoff = (
+                float(multiplier) * float(mass[residual].sum()) / max(expected, 1.0)
+            )
+            large = residual & (mass >= cutoff)
+            if not large.any():
+                break
+            certain |= large
+            residual &= ~large
+        for household_id in household_ids[certain].tolist():
+            reasons.setdefault(int(household_id), []).append(f"{probe.id}:size")
+        records[str(probe.id)] = {
+            "households": int(certain.sum()),
+            "final_cutoff": cutoff,
+            "mass_share": 0.0
+            if total_mass <= 0.0
+            else float(mass[certain].sum() / total_mass),
+        }
+    return reasons, records
 
 
 @dataclass(frozen=True)
@@ -795,6 +906,7 @@ def sample_export(
     fraction: float,
     seed: int,
     certainty_threshold: float = DEFAULT_CERTAINTY_THRESHOLD,
+    size_certainty_multiplier: float = DEFAULT_SIZE_CERTAINTY_MULTIPLIER,
     stratum_columns: Sequence[str] = DEFAULT_STRATUM_COLUMNS,
     probes: Iterable[Any] | None = None,
     write_dataset: Callable[[Any, Path, int], None] | None = None,
@@ -924,6 +1036,16 @@ def sample_export(
     probe_records, certainty_reasons = probe_carriers(
         probes, leaf_households, fraction=fraction, threshold=certainty_threshold
     )
+    size_reasons, size_records = size_certainty_households(
+        probes,
+        leaf_households,
+        household_ids,
+        source_weights,
+        fraction=fraction,
+        multiplier=size_certainty_multiplier,
+    )
+    for household_id, why in size_reasons.items():
+        certainty_reasons.setdefault(household_id, []).extend(why)
     draw = clock.run(
         "draw",
         lambda: draw_households(
@@ -1028,6 +1150,8 @@ def sample_export(
             "fraction": fraction,
             "seed": seed,
             "certainty_threshold": float(certainty_threshold),
+            "size_certainty_multiplier": float(size_certainty_multiplier),
+            "size_certainty_rule": SIZE_CERTAINTY_RULE,
             "strata_columns": strata_columns,
             "certainty_rule": CERTAINTY_RULE,
             "noncertainty_count_rule": NONCERTAINTY_COUNT_RULE,
@@ -1050,6 +1174,7 @@ def sample_export(
         "probes": [
             {
                 **record.record(),
+                "size_certainty": size_records.get(record.probe_id),
                 "sampled_carrier_households": int(
                     np.isin(record.carrier_household_ids, draw.selected_ids).sum()
                 ),
@@ -1203,6 +1328,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="keep every carrier of a probe with fraction x carriers below this",
     )
     parser.add_argument(
+        "--size-certainty-multiplier",
+        type=float,
+        default=DEFAULT_SIZE_CERTAINTY_MULTIPLIER,
+        help="keep every household whose weighted input mass in a probe is at "
+        "least this many times the mass one sampled carrier represents (0: off)",
+    )
+    parser.add_argument(
         "--strata",
         default=",".join(DEFAULT_STRATUM_COLUMNS),
         help="comma-separated stratum columns (household or person level)",
@@ -1226,6 +1358,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fraction=args.fraction,
         seed=args.seed,
         certainty_threshold=args.certainty_threshold,
+        size_certainty_multiplier=args.size_certainty_multiplier,
         stratum_columns=tuple(
             column.strip() for column in args.strata.split(",") if column.strip()
         ),
