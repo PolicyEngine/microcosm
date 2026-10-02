@@ -1504,3 +1504,7 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     assert not gate(band("guarantee_credit", 0.69, 0.50, exceed=True)).passed
     assert not gate(band("guarantee_credit", 0.69, None, units=0)).passed
     assert not gate().passed
+    # The realised rates are population facts: a synthetic smoke fixture records
+    # the failure without blocking, every other posture blocks on it.
+    committed = _gate_parameters("uk_stage_pension_credit_take_up")
+    assert committed["check"] == "pension_credit_take_up"

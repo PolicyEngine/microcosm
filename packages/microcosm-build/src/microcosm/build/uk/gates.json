@@ -447,6 +447,7 @@
       "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
+      "population_fact_check": true,
       "parameters": {
         "stage": "pension_credit_take_up",
         "check": "pension_credit_take_up",
