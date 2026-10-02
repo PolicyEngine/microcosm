@@ -50,6 +50,9 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
     UKCGTPolicyParameters,
 )
+from microcosm.build.uk_runtime.cgt_residential_split import (
+    split_cgt_residential_households,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
@@ -196,6 +199,22 @@ def _frame(gains, *, weights=None, time_period: str = "2024", stocks=None) -> Fr
     benunit = pd.DataFrame({"benunit_id": np.arange(rows, dtype="int64")})
     return uk_national_frame(
         person=person, benunit=benunit, household=household, time_period=time_period
+    )
+
+
+def _split(frame: Frame, facts: HMRCCGTAssetTypeFacts) -> Frame:
+    """The frame the asset-type stage sees: the residential split's arms."""
+
+    return split_cgt_residential_households(
+        frame, facts=facts, parameters=PARAMETERS
+    ).frame
+
+
+def _assign(frame: Frame, facts, parameters, badr_parameters, **kwargs):
+    """Run the residential split, then the asset-type assignment."""
+
+    return assign_uk_cgt_asset_types(
+        _split(frame, facts), facts, parameters, badr_parameters, **kwargs
     )
 
 
@@ -482,10 +501,21 @@ class TestBADRClaims:
         weights = np.full(gains.size, 60.0) if weights is None else weights
         facts = kwargs.pop("facts", None) or _synthetic_facts(gains, weights)
         frame = _frame(gains, weights=weights, stocks=kwargs.pop("stocks", None))
-        result, summary = assign_uk_cgt_asset_types(
+        result, summary = _assign(
             frame, facts, PARAMETERS, kwargs.pop("badr", BADR_PARAMETERS), **kwargs
         )
-        return gains, result.table("person"), summary.evidence()
+        person = result.table("person")
+        # The split adds the residential arms, so the gains are read back
+        # from the classified frame to stay aligned with its rows; the
+        # household stock signals ride along for the stock-conditioning cases.
+        household = result.table("household")
+        person = person.merge(
+            household[["household_id", *CGT_STOCK_HOUSEHOLD_COLUMNS]],
+            left_on="person_household_id",
+            right_on="household_id",
+            how="left",
+        )
+        return person["capital_gains"].to_numpy(dtype=float), person, summary.evidence()
 
     def test_every_band_meets_its_targets_within_the_walk_bound(self) -> None:
         gains, person, evidence = self._run()
@@ -630,10 +660,10 @@ class TestStockConditioning:
         _, _, evidence = TestBADRClaims()._run(gains, stocks=stocks)
 
         residential = evidence["residential"]
-        assert residential["expected_count"] == pytest.approx(
+        assert residential["achieved_count"] == pytest.approx(
             residential["count_target_individuals_basis"], rel=1e-6
         )
-        assert residential["expected_gains"] == pytest.approx(
+        assert residential["achieved_gains"] == pytest.approx(
             residential["gains_target_individuals_basis"], rel=1e-6
         )
         assert residential["stock_share_liable"] == pytest.approx(0.5, abs=0.02)
@@ -654,8 +684,9 @@ class TestStockConditioning:
         for name in CGT_TYPE_STOCK_SIGNALS:
             shares = asset_type["stock_share_by_type"][name]
             assert shares["typed"] > shares["non_residential_liable"] + 0.1
-        # The receipts restate the declared settings.
-        assert residential["stock_log_odds"] == CGT_STOCK_LOG_ODDS
+        # The receipts restate the declared settings; the residential log
+        # odds now live in the split stage's logistic receipt.
+        assert "stock_log_odds" not in residential
         assert residential["stock_signal"] == CGT_RESIDENTIAL_STOCK_SIGNAL
         assert badr["stock_log_odds"] == CGT_STOCK_LOG_ODDS
         assert badr["stock_signal"] == CGT_BUSINESS_STOCK_SIGNAL
@@ -665,7 +696,7 @@ class TestStockConditioning:
         gains = _synthetic_gains()
         stocks = self._stocks(gains.size)
 
-        _, person, evidence = TestBADRClaims()._run(gains, stocks=stocks)
+        gains, person, evidence = TestBADRClaims()._run(gains, stocks=stocks)
 
         top = evidence["badr"]["bands"][-1]
         assert top["qualifying_amount"] == "lifetime_limit"
@@ -674,7 +705,9 @@ class TestStockConditioning:
         assert top["expected_count"] == pytest.approx(top["count_target"], rel=1e-9)
         claimant = person[CGT_BADR_GAINS_COLUMN].to_numpy() > 0
         at_limit = claimant & (gains >= BADR_PARAMETERS.lifetime_limit)
-        business = stocks["corporate_wealth"] > 0
+        # The split's arms carry the stock columns, so read them back from
+        # the classified frame rather than the pre-split draw.
+        business = person["corporate_wealth"].to_numpy(dtype=float) > 0
         assert business[at_limit].mean() > 0.65
 
     def test_refuses_a_frame_without_a_stock_column(self) -> None:
@@ -689,7 +722,7 @@ class TestStockConditioning:
         )
 
         with pytest.raises(ValueError, match=r"lacks \['corporate_wealth'\]"):
-            assign_uk_cgt_asset_types(
+            _assign(
                 stripped,
                 _synthetic_facts(gains, np.full(gains.size, 60.0)),
                 PARAMETERS,
@@ -703,98 +736,12 @@ class TestStockConditioning:
         frame = _frame(gains, stocks={"gross_financial_wealth": wealth})
 
         with pytest.raises(ValueError, match="gross_financial_wealth must be finite"):
-            assign_uk_cgt_asset_types(
+            _assign(
                 frame,
                 _synthetic_facts(gains, np.full(gains.size, 60.0)),
                 PARAMETERS,
                 BADR_PARAMETERS,
             )
-
-
-class TestBandedWalk:
-    BOUNDS = (0, 10_000, 50_000, 250_000, 1_000_000, 5_000_000)
-
-    def _walk(self, probabilities, weights, gains, offsets):
-        return cgt_asset_type._banded_systematic_flags(
-            probabilities=probabilities,
-            weights=weights,
-            gains=gains,
-            person_id=np.arange(gains.size),
-            band_lower_bounds=self.BOUNDS,
-            offsets=np.asarray(offsets, dtype=float),
-        )
-
-    @pytest.mark.parametrize("seed", range(12))
-    def test_every_band_stays_inside_the_walks_own_bounds(self, seed: int) -> None:
-        """The count and gains bounds are properties of the walk: they hold for
-        any weights, probabilities and offsets, heavy rows beside light ones."""
-
-        rng = np.random.default_rng(seed)
-        rows = 600
-        gains = np.exp(rng.normal(11.0, 2.4, rows))
-        weights = np.where(
-            rng.random(rows) < 0.1, 2_000.0, rng.uniform(5.0, 60.0, rows)
-        )
-        probabilities = rng.uniform(0.0, 0.6, rows)
-        offsets = rng.random(len(self.BOUNDS))
-
-        flags, receipts = self._walk(probabilities, weights, gains, offsets)
-
-        assert len(receipts) == len(self.BOUNDS)
-        assert sum(row["pool_rows"] for row in receipts) == rows
-        assert sum(row["achieved_rows"] for row in receipts) == int(flags.sum())
-        for row in receipts:
-            if row["pool_rows"] == 0:
-                continue
-            assert abs(row["achieved_count"] - row["expected_count"]) <= row[
-                "count_bound"
-            ] * (1 + 1e-9)
-            assert abs(row["achieved_gains"] - row["expected_gains"]) <= row[
-                "gains_bound"
-            ] * (1 + 1e-9)
-
-    def test_a_heavy_rows_balance_is_not_paid_by_a_light_row_of_another_band(
-        self,
-    ) -> None:
-        """The defect the per-band walk closes (microcosm#1063): in one walk
-        over every gain, the balance a heavy row leaves behind flags the next
-        row whatever its own probability; a light top row with a 1% chance and
-        a huge gain was flagged, and the realised gains moved by its whole
-        stake."""
-
-        gains = np.array([200_000.0, 300_000.0, 500_000_000.0])
-        weights = np.array([2_000.0, 2_000.0, 20.0])
-        probabilities = np.array([0.2, 0.2, 0.01])
-        order = np.argsort(gains)
-
-        single = cgt_asset_type._weighted_systematic_flags(
-            probabilities, weights, order, 0.5
-        )
-        # One walk: the two heavy rows leave 800 of expected weight owed, short
-        # of either's own threshold, and the light row pays it: a stake of ten
-        # billion flagged on a probability of one percent.
-        assert single.tolist() == [False, False, True]
-
-        banded, receipts = self._walk(probabilities, weights, gains, [0.5] * 6)
-        # Per band: the light row answers only for its own 0.2 of expected
-        # weight, and is not flagged.
-        assert banded.tolist() == [False, False, False]
-        top = receipts[-1]
-        assert top["pool_rows"] == 1 and top["achieved_rows"] == 0
-        assert top["expected_count"] == pytest.approx(0.2)
-
-    def test_a_row_without_weight_is_never_flagged(self) -> None:
-        flags, _ = self._walk(
-            np.array([0.9, 0.9]),
-            np.array([0.0, 10.0]),
-            np.array([20_000.0, 30_000.0]),
-            [0.5] * 6,
-        )
-        assert flags.tolist() == [False, True]
-
-    def test_refuses_a_gain_below_the_lowest_band(self) -> None:
-        with pytest.raises(ValueError, match="below the lowest gain band"):
-            self._walk(np.array([0.5]), np.array([1.0]), np.array([-5.0]), [0.5] * 6)
 
 
 class TestClaimantStatusTargets:
@@ -870,14 +817,14 @@ class TestTypeDiffusion:
 class TestAssignment:
     def test_flags_and_types_every_liable_gainer_and_nobody_else(self) -> None:
         facts = load_hmrc_cgt_asset_type_facts()
-        gains = _synthetic_gains()
-        frame = _frame(gains)
+        split = _split(_frame(_synthetic_gains()), facts)
 
         result, summary = assign_uk_cgt_asset_types(
-            frame, facts, PARAMETERS, BADR_PARAMETERS
+            split, facts, PARAMETERS, BADR_PARAMETERS
         )
 
         person = result.table("person")
+        gains = person["capital_gains"].to_numpy(dtype=float)
         types = person[CGT_ASSET_TYPE_COLUMN].to_numpy()
         residential = person[CGT_RESIDENTIAL_GAINS_COLUMN].to_numpy()
         liable = gains > PARAMETERS.annual_exempt_amount
@@ -887,65 +834,43 @@ class TestAssignment:
         assert not np.isin(
             types[liable], [CGT_ASSET_TYPE_NONE, CGT_ASSET_TYPE_SUB_AEA]
         ).any()
+        # A residential arm (the split's residential gain) is typed residential
+        # and nobody else is.
         flagged = types == CGT_ASSET_TYPE_RESIDENTIAL
+        assert (flagged == (residential > 0.0)).all()
         assert (residential[flagged] == gains[flagged]).all()
-        assert (residential[~flagged] == 0.0).all()
         # Untouched columns and weights, one conservation receipt.
-        assert (person["capital_gains"].to_numpy() == gains).all()
+        assert (
+            residential
+            == split.table("person")[CGT_RESIDENTIAL_GAINS_COLUMN].to_numpy()
+        ).all()
         assert result.mass_log[-1].reason == UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON
         assert result.mass_log[-1].old_total == result.mass_log[-1].new_total
 
         evidence = summary.evidence()
         assert evidence["stage"] == UK_CGT_ASSET_TYPE_STAGE_NAME
         residential_receipt = evidence["residential"]
-        assert residential_receipt["expected_count"] == pytest.approx(
+        # The arms carry Table 8a at design weights: the identities the split
+        # left, restated here by gain band.
+        assert residential_receipt["source_stage"] == "cgt_residential_split"
+        assert residential_receipt["achieved_count"] == pytest.approx(
             facts.residential_taxpayers_individuals_basis, rel=1e-6
         )
-        assert residential_receipt["expected_gains"] == pytest.approx(
+        assert residential_receipt["achieved_gains"] == pytest.approx(
             facts.residential_gains_individuals_basis, rel=1e-6
         )
-        # Each gain band is walked on its own: the band's realised count and
-        # gains sit within the walk's bounds, and the bands restate the totals.
+        assert residential_receipt["count_relative_error"] < 1e-6
+        assert residential_receipt["gains_relative_error"] < 1e-6
         bands = residential_receipt["bands"]
         assert len(bands) == 10
-        for band in bands:
-            assert abs(band["achieved_count"] - band["expected_count"]) <= band[
-                "count_bound"
-            ] * (1 + 1e-9)
-            assert abs(band["achieved_gains"] - band["expected_gains"]) <= band[
-                "gains_bound"
-            ] * (1 + 1e-9)
-            # Equal weights of 60: the count bound is at most one person.
-            assert band["count_bound"] <= 60.0
-        assert sum(band["expected_count"] for band in bands) == pytest.approx(
-            residential_receipt["expected_count"]
+        assert sum(band["achieved_count"] for band in bands) == pytest.approx(
+            residential_receipt["achieved_count"]
         )
         assert sum(band["achieved_gains"] for band in bands) == pytest.approx(
             residential_receipt["achieved_gains"]
         )
-        assert residential_receipt["count_bound"] == pytest.approx(
-            sum(band["count_bound"] for band in bands)
-        )
-        assert (
-            abs(
-                residential_receipt["achieved_count"]
-                - residential_receipt["expected_count"]
-            )
-            <= residential_receipt["count_bound"]
-        )
-        assert (
-            abs(
-                residential_receipt["achieved_gains"]
-                - residential_receipt["expected_gains"]
-            )
-            <= residential_receipt["gains_bound"]
-        )
-        assert 0.0 < residential_receipt["top_stakes_share_of_achieved_gains"] <= 1.0
-        assert residential_receipt["largest_pool_stake"] == pytest.approx(
-            60.0 * gains.max()
-        )
-        assert "gains_bernoulli_sigma" not in residential_receipt
-        assert residential_receipt["logistic_slope"] < 0
+        assert sum(band["achieved_rows"] for band in bands) == int(flagged.sum())
+        assert "count_bound" not in residential_receipt
         asset_types = evidence["asset_type"]
         shares = asset_types["achieved_gains_share"]
         assert sum(shares.values()) == pytest.approx(1.0)
@@ -979,8 +904,9 @@ class TestAssignment:
         )
         assert len(evidence["composition_by_band"]) == 10
         assert evidence["facts"]["resource_sha256"] == facts.resource_sha256
-        # The main type is assigned by a deterministic walk: no seed.
-        assert evidence["seeds"] == {"residential_flag": 553, "badr_flag": 555}
+        # The residential flag is carried as weight by the split and the main
+        # type is assigned by a deterministic walk: only the BADR draw seeds.
+        assert evidence["seeds"] == {"badr_flag": 555}
         badr = evidence["badr"]
         assert set(badr["invariants"].values()) == {0}
         assert badr["totals"]["gains_target"] == pytest.approx(
@@ -991,12 +917,12 @@ class TestAssignment:
 
     def test_is_deterministic_and_seed_sensitive(self) -> None:
         facts = load_hmrc_cgt_asset_type_facts()
-        frame = _frame(_synthetic_gains())
+        frame = _split(_frame(_synthetic_gains()), facts)
 
         first, _ = assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
         second, _ = assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
         other, _ = assign_uk_cgt_asset_types(
-            frame, facts, PARAMETERS, BADR_PARAMETERS, residential_seed=999
+            frame, facts, PARAMETERS, BADR_PARAMETERS, badr_seed=999
         )
 
         assert uk_frame_content_identity(first) == uk_frame_content_identity(second)
@@ -1007,17 +933,18 @@ class TestAssignment:
         frame = _frame([10_000.0, 20_000.0, 50_000.0], weights=[1.0, 1.0, 1.0])
 
         with pytest.raises(ValueError, match="not below the liable taxpayer mass"):
-            assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
+            _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
 
     def test_refuses_a_frame_already_classified(self) -> None:
         facts = load_hmrc_cgt_asset_type_facts()
         frame = _frame(_synthetic_gains())
-        classified, _ = assign_uk_cgt_asset_types(
-            frame, facts, PARAMETERS, BADR_PARAMETERS
-        )
+        classified, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
 
         with pytest.raises(ValueError, match="already carries"):
             assign_uk_cgt_asset_types(classified, facts, PARAMETERS, BADR_PARAMETERS)
+        # Without the split's arms the stage has nothing to type residential.
+        with pytest.raises(ValueError, match="run cgt_residential_split"):
+            assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
 
 
 class TestStageContract:
@@ -1030,11 +957,8 @@ class TestStageContract:
         assert [operation.kind for operation in stage.operations] == list(expected)
         for operation in stage.operations:
             assert dict(operation.parameters) == expected[operation.kind]
-        assert tuple(stage.outputs) == (
-            CGT_ASSET_TYPE_COLUMN,
-            CGT_RESIDENTIAL_GAINS_COLUMN,
-            CGT_BADR_GAINS_COLUMN,
-        )
+        assert tuple(stage.outputs) == (CGT_ASSET_TYPE_COLUMN, CGT_BADR_GAINS_COLUMN)
+        assert "assign_residential_property_flag" not in expected
         roles = {artifact["role"]: artifact for artifact in stage.artifacts}
         assert roles["cgt_asset_type_facts"]["resource"] == HMRC_CGT_ASSET_TYPE_RESOURCE
         assert roles["cgt_asset_type_facts"]["runtime_sha256_required"] is True
@@ -1058,7 +982,6 @@ class TestStageContract:
         stage = spec.sources.stage_map()[UK_CGT_ASSET_TYPE_STAGE_NAME]
         gains = _synthetic_gains(6_000)
         weights = np.full(gains.size, 300.0)
-        frame = _frame(gains, weights=weights)
         # The frame holds a few thousand gainers, so the Table 4.1 bands are
         # sized to it; the vendored Table 8 and Table 7 rows drive the rest.
         vendored = load_hmrc_cgt_asset_type_facts()
@@ -1071,6 +994,7 @@ class TestStageContract:
                 if name.startswith("table4_")
             },
         )
+        frame = _split(_frame(gains, weights=weights), facts)
         resolved: list[str] = []
 
         def load_facts():
@@ -1159,7 +1083,7 @@ def test_synthetic_facts_type_check_without_the_feed() -> None:
     )
     frame = _frame(gains, weights=np.full(3_000, 5.0))
 
-    _, summary = assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
+    _, summary = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
 
     assert summary.evidence()["residential"]["count_target_individuals_basis"] == (
         pytest.approx(1_900.0)

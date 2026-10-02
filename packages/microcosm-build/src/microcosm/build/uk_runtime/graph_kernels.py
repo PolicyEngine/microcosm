@@ -103,6 +103,7 @@ _STAGE_MODULES = {
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
+    "cgt_residential_split": "cgt_residential_split",
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
@@ -403,7 +404,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 37-stage spine "
+            "UK parity fixture must describe the current 38-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -417,6 +418,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .age_tail import UKAgeTailStageTransform
     from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
+    from .cgt_residential_split import UKCGTResidentialSplitStageTransform
     from .cgt_structure import (
         UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
@@ -650,6 +652,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
                 stage=stages["cgt_incidence_anchor"],
+                parameters=cgt_parameters,
+            ),
+            "cgt_residential_split": UKCGTResidentialSplitStageTransform(
+                stage=stages["cgt_residential_split"],
+                facts=cgt_asset_type_facts,
                 parameters=cgt_parameters,
             ),
             "salary_sacrifice": UKSalarySacrificeStageTransform(
@@ -1052,7 +1059,11 @@ class UKExpandStageKernel(KernelBase):
             )
         cells = _expand_cells(context)
         id_offset = None
-        if self.stage in {"cgt_support_split", "cgt_incidence_clone"}:
+        if self.stage in {
+            "cgt_support_split",
+            "cgt_incidence_clone",
+            "cgt_residential_split",
+        }:
             id_offset = id_multiplier_for_values(
                 *(
                     before.table(entity)[before.schema.entity_id_column(entity)]
@@ -1179,6 +1190,7 @@ def build_uk_registry(
             "cgt_support_split",
             "cgt_incidence_clone",
             "cgt_incidence_anchor",
+            "cgt_residential_split",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:

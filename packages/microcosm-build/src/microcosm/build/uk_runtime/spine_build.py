@@ -67,6 +67,9 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
     uk_cgt_asset_type_stage_transform,
 )
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
+from microcosm.build.uk_runtime.cgt_residential_split import (
+    UKCGTResidentialSplitStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
@@ -717,10 +720,7 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["gas_disconnection"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
-                elif operation.kind in (
-                    "assign_residential_property_flag",
-                    "assign_badr_qualifying_gains",
-                ):
+                elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
                 elif operation.kind == "convert_donors_to_target_stock":
                     stage_seeds[str(operation.parameters["salt"])] = seed
@@ -1561,6 +1561,10 @@ def prepare_uk_spine_execution(
             uk_cgt_asset_type_stage_transform(
                 stages_by_name["hmrc_cgt_asset_type_spine"]
             )
+        )
+    if "cgt_residential_split" in stage_names:
+        implementations["cgt_residential_split"] = UKCGTResidentialSplitStageTransform(
+            stage=stages_by_name["cgt_residential_split"]
         )
     if "cgt_incidence_anchor" in stage_names:
         implementations["cgt_incidence_anchor"] = UKCGTIncidenceAnchorStageTransform(

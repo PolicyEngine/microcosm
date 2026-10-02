@@ -249,6 +249,87 @@
       "stage": "cgt_incidence_clone",
       "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence"
     },
+    "cgt_residential_split": {
+      "artifacts": [
+        {
+          "dependency": "policyengine-uk>=2.100.0 via microcosm-build[uk]",
+          "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
+          "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+          "kind": "versioned_parameter_tree",
+          "parameters": [
+            "gov.hmrc.cgt.annual_exempt_amount"
+          ],
+          "role": "policy_parameters",
+          "runtime_sha256_required": false
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_cgt_asset_type_facts.json",
+          "role": "cgt_asset_type_facts",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "cgt_residential_probability",
+        "capital_gains_residential_property"
+      ],
+      "notes": "Structural stage after the incidence anchor and before the asset-type stage (microcosm#1063). The residential-property flag used to be realised by a weighted systematic walk, one whole flag per row, whose gains error is bounded by one row's stake: at the top of the gains distribution one stake is several times a band's expected residential gains, so the realised gains sat short of expectation by the lottery expectation of the giant stakes or over it by one of them. This stage solves the same logistic (intercept to the Table 8a 2024-25 taxpayers on the individuals basis, slope to the gains, with the stock shift) and carries the probability as weight instead: every household with liable gainers becomes 2^k arms at product weights, one per subset of residential gainers, the arm with no residential gainer keeping the household's ids and arm j taking every entity id plus j times the id multiplier, the lineage rule the executor, the geography identity kernel and the identity tool read for the support split and the clone. At design weights the residential count and gains equal the solved expectations in every gain band, with no draw, no offset and no seed; the calibration, which binds hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains, decides between the arms afterwards as it does between the incidence clone's halves. Every household's mass and composition and the total household mass are conserved; the receipt is gated at stage time.",
+      "operations": [
+        {
+          "artifact_role": "cgt_asset_type_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2024,
+          "period_mapping": "published_tax_year_equals_build_period",
+          "record_sets": [
+            "hmrc.cgt_table8_2026.table8a.ty2024",
+            "hmrc.cgt_table8_2026.table8b.ty2024"
+          ],
+          "require_before_source_read": true,
+          "resource": "hmrc_cgt_asset_type_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "2024-25"
+        },
+        {
+          "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, a residential gainer's whole net gain is attributed to residential property, and the gainers of one household are residential independently of each other",
+          "conservation": "exact_total",
+          "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
+          "declared_factor": 1,
+          "flag_column": "household_is_cgt_residential_clone",
+          "gainer_order": "person_id ascending within the household",
+          "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
+          "id_remapping": "id_multiplier_for_values; arm j takes every entity id + j x multiplier, bit m of j marking the household's m-th liable gainer residential",
+          "index_column": "cgt_residential_clone_index",
+          "kind": "split_liable_gainers_by_residential_probability",
+          "maximum_liable_gainers_per_household": 3,
+          "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
+          "output_column": "capital_gains_residential_property",
+          "output_semantics": "the person's capital_gains on an arm where the person is residential, 0 otherwise",
+          "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
+          "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
+          "probability_column": "cgt_residential_probability",
+          "realization": "probability carried as weight, no draw: a household carrying k liable gainers becomes 2^k arms, one per subset of residential gainers, at the household's weight times the product of p over the residential gainers and 1 - p over the others; the arm with no residential gainer keeps the household's ids; at design weights the residential count and gains equal the solved expectations sum(p w) and sum(p w g) in every gain band",
+          "reason": "Capital-gains residential split divides every household carrying liable gainers into arms weighted by the solved residential probabilities, one arm per subset of residential gainers; every household's mass and the total household mass are conserved.",
+          "stock_log_odds": 1.6,
+          "stock_signal": "household other residential property value above zero, or the person's property income above zero",
+          "values": "every other column copied unchanged; no draw, no seed, no salt",
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [
+        "household_is_cgt_residential_clone",
+        "cgt_residential_clone_index",
+        "cgt_residential_probability",
+        "capital_gains_residential_property"
+      ],
+      "rewrites": [],
+      "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+      "stage": "cgt_residential_split",
+      "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative) on the amounts the Table 3 redraw placed"
+    },
     "cgt_support_split": {
       "artifacts": [
         {
@@ -2200,10 +2281,9 @@
       ],
       "grain": "person",
       "nonnegative_outputs": [
-        "capital_gains_residential_property",
         "capital_gains_badr"
       ],
-      "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only: since microcosm#1063 the type is fitted once per claimant status (claimants to Table 7's composition among the types the reliefs apply to, non-claimants to the composition that restores Table 7 overall) and realised by a deterministic walk that keeps the realised gains by type on the fit. The residential flag is walked within each HMRC gain band, so a heavy row's balance is never paid by a light row at the top of the gains order. Carried interest (Table 9) is not modelled (microcosm#725).",
+      "notes": "Spine stage after the amounts redraw, the incidence anchor and the residential split: every liable gainer carries one main asset type; a residential arm (capital_gains_residential_property above zero, written by cgt_residential_split since microcosm#1063) is typed residential and its net gain is already restated there; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential arms carry the Table 8a 2024-25 totals on the individuals basis at design weights, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only: since microcosm#1063 the type is fitted once per claimant status (claimants to Table 7's composition among the types the reliefs apply to, non-claimants to the composition that restores Table 7 overall) and realised by a deterministic walk that keeps the realised gains by type on the fit. Carried interest (Table 9) is not modelled (microcosm#725).",
       "operations": [
         {
           "artifact_role": "cgt_asset_type_facts",
@@ -2229,34 +2309,6 @@
           "source_vintage": "2024-25"
         },
         {
-          "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, and a flagged person's whole net gain is attributed to residential property",
-          "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
-          "gain_band_lower_bounds": [
-            0,
-            10000,
-            25000,
-            50000,
-            100000,
-            250000,
-            500000,
-            1000000,
-            2000000,
-            5000000
-          ],
-          "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
-          "kind": "assign_residential_property_flag",
-          "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
-          "output_column": "capital_gains_residential_property",
-          "output_semantics": "the person's capital_gains where flagged residential, 0 otherwise",
-          "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
-          "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
-          "realization": "weighted systematic sampling within each HMRC gain band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order: a person is flagged when the expected weight owed so far in the band reaches their own weight, and the balance starts at zero in every band, so a heavy row's balance is never paid by a row of another band; per band the realised count sits within max(offset, 1 - offset) of the band's largest weight of its expectation and the realised gains within that weight times (largest gain - min(offset, 1 - offset) x smallest gain), the walk's own bounds, reported per band with the share of the realised gains on the ten largest flagged stakes",
-          "seed": 553,
-          "seed_mixing": "seed combined with the build period",
-          "stock_log_odds": 1.6,
-          "stock_signal": "household other residential property value above zero, or the person's property income above zero"
-        },
-        {
           "band_pool": "the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit",
           "bands": "HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)",
           "basis_assumption": "Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent",
@@ -2268,7 +2320,7 @@
             "gov.hmrc.cgt.badr.lifetime_limit",
             "gov.hmrc.cgt.badr.rate"
           ],
-          "population": "liable gainers not flagged residential",
+          "population": "liable gainers whose arm is not residential (capital_gains_residential_property == 0, cgt_residential_split)",
           "qualifying_amount": "below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit",
           "realization": "weighted systematic sampling within each band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order whether or not the band carries a target",
           "reported_not_fitted": "tax at the relief rate, with the annual exempt amount set against the main-rate gains first as the engine allocates it, against Table 4.1's tax column",
@@ -2346,7 +2398,6 @@
       ],
       "outputs": [
         "capital_gains_asset_type",
-        "capital_gains_residential_property",
         "capital_gains_badr"
       ],
       "rewrites": [],

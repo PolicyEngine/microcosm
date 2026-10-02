@@ -683,11 +683,13 @@ def test_packaged_exclusions_load():
         assert entry["expires_on"] == "2026-11-26", entry["name"]
     assert not [n for n in names if n.startswith("ons.household_composition.")]
 
-    # The 2026-09-03 tranche is #762's A16: five unreachable national rows,
+    # The 2026-09-03 tranche was #762's A16: five unreachable national rows,
     # a one-month window, each row tracked on its spine-defect issue. Two of
     # them (housing benefit, JSA) were re-adjudicated on 2026-09-16 with the
-    # mechanism receipts (#882) and moved to the 2026-12-08 clock; the other
-    # three still lapse on 2026-10-03.
+    # mechanism receipts (#882) and moved to the 2026-12-08 clock; the
+    # savings-interest row moved to the 2026-09-22 concept clock; the two
+    # plan-2 borrower rows were renewed one month on 2026-10-02 (microcosm#1063
+    # stack), so nothing remains on the 2026-09-03 clock.
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
@@ -695,12 +697,15 @@ def test_packaged_exclusions_load():
         "slc.borrowers.plan_2_above_threshold": "microcosm#868",
         "dwp.jsa_claimants": "microcosm#869",
     }
-    a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
-    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS[:2])
-    for entry in a16:
-        assert entry["expires_on"] == "2026-10-03", entry["name"]
+    assert [e for e in exclusions if e["approved_on"] == "2026-09-03"] == []
+    renewed = [e for e in exclusions if e["approved_on"] == "2026-10-02"]
+    assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
+    for entry in renewed:
+        assert entry["expires_on"] == "2026-11-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
+        assert "renewed one month on 2026-10-02" in entry["adjudication"], entry["name"]
+        assert "microcosm#1063" in entry["adjudication"], entry["name"]
     for name in _A16_READJUDICATED_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
         assert entry["approved_on"] == "2026-09-16", name

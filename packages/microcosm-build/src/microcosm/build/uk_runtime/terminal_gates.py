@@ -180,6 +180,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # #1045: the CGT support split's family copy count.
     "household.cgt_support_copies",
     "household.cgt_support_copy_index",
+    # #1063: the residential split's arm flag and index.
+    "household.household_is_cgt_residential_clone",
+    "household.cgt_residential_clone_index",
     "household.clone_index",
     "household.constituency_code_oa",
     "household.consumer_debt",
@@ -235,6 +238,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.capital_gains_asset_type",
     "person.capital_gains_badr",
     "person.capital_gains_residential_property",
+    "person.cgt_residential_probability",
     "person.bus_in_london_trips",
     "person.bus_pass_eligible",
     "person.care_hours",

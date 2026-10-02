@@ -901,28 +901,24 @@ def test_latent_attribute_realization_fails_on_empty_blocks_and_zero_rows() -> N
 
 
 def _residential_bands() -> list[dict[str, object]]:
-    """Two gain bands whose expectations sum to the residential receipt's."""
+    """Two gain bands whose achieved masses sum to the residential receipt's."""
 
     return [
         {
             "gain_lower_bound": 0.0,
             "gain_upper_bound": 250_000.0,
-            "expected_count": 190_000.0,
-            "expected_gains": 8.0e9,
-            "achieved_count": 189_995.0,
-            "achieved_gains": 7.9e9,
-            "count_bound": 40.0,
-            "gains_bound": 0.2e9,
+            "liable_rows": 2_900,
+            "achieved_rows": 2_600,
+            "achieved_count": 190_000.0,
+            "achieved_gains": 8.0e9,
         },
         {
             "gain_lower_bound": 250_000.0,
             "gain_upper_bound": None,
-            "expected_count": 12_630.0,
-            "expected_gains": 4.24e9,
-            "achieved_count": 12_625.0,
-            "achieved_gains": 4.0e9,
-            "count_bound": 30.0,
-            "gains_bound": 0.9e9,
+            "liable_rows": 900,
+            "achieved_rows": 777,
+            "achieved_count": 12_630.0,
+            "achieved_gains": 4.24e9,
         },
     ]
 
@@ -931,19 +927,16 @@ def _asset_type_evidence(**overrides: object) -> dict[str, object]:
     evidence: dict[str, object] = {
         "stage": "hmrc_cgt_asset_type_spine",
         "residential": {
+            "source_stage": "cgt_residential_split",
             "count_target_individuals_basis": 202_630.0,
             "gains_target_individuals_basis": 12.24e9,
-            "expected_count": 202_630.0,
-            "expected_gains": 12.24e9,
-            "achieved_count": 202_620.0,
-            "achieved_gains": 11.9e9,
+            "achieved_count": 202_630.0,
+            "achieved_gains": 12.24e9,
             "achieved_rows": 3_377,
+            "count_relative_error": 0.0,
+            "gains_relative_error": 0.0,
             "max_liable_weight": 60.0,
             "bands": _residential_bands(),
-            "count_bound": 70.0,
-            "gains_bound": 1.1e9,
-            "top_stakes_share_of_achieved_gains": 0.31,
-            "largest_pool_stake_share_of_gains_target": 0.8,
         },
         "asset_type": {
             "achieved_gains_share": {
@@ -1020,11 +1013,10 @@ def _badr_receipt(**overrides: object) -> dict[str, object]:
     return receipt
 
 
-def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
+def test_cgt_asset_type_summary_holds_the_residential_identities() -> None:
     parameters = {
         "stage": "hmrc_cgt_asset_type_spine",
         "check": "cgt_asset_type_summary",
-        "maximum_relative_deviation": 0.05,
         "maximum_solve_relative_error": 1e-6,
     }
 
@@ -1041,59 +1033,30 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
             residential={**_asset_type_evidence()["residential"], **changes}
         )
 
-    def with_band(index: int, **changes: object) -> dict[str, object]:
-        bands = _residential_bands()
-        bands[index].update(changes)
-        return with_residential(bands=bands)
-
     passed = gate(_asset_type_evidence())
     assert passed.passed
-    assert passed.details["residential_count_gap"] == 10.0
-    # The walk's summed band bound (1.1bn) is wider than the 5% band (0.612bn)
-    # here, so it governs; the details still say the gap sits inside the band.
-    assert passed.details["residential_gains_bound"] == pytest.approx(1.1e9)
-    assert passed.details["residential_gains_within_relative_band"] is True
-    assert passed.details["residential_gains_relative_gap"] == pytest.approx(
-        0.34e9 / 12.24e9
-    )
+    assert passed.details["residential_count_relative_error"] == 0.0
+    assert passed.details["residential_gains_relative_error"] == 0.0
     assert passed.details["residential_gain_bands"] == 2
-    assert passed.details["residential_top_stakes_share_of_achieved_gains"] == 0.31
-    assert passed.details["residential_largest_pool_stake_share_of_gains_target"] == 0.8
 
-    # Outside the relative band but inside the walk's own bound: the gate
-    # passes and says so.
-    outside_band = gate(with_residential(achieved_gains=11.3e9))
-    assert outside_band.passed
-    assert outside_band.details["residential_gains_within_relative_band"] is False
-
-    # On a frame whose band bounds are tight, the relative band governs.
-    tight = gate(with_residential(gains_bound=0.1e9))
-    assert tight.passed
-    assert tight.details["residential_gains_bound"] == pytest.approx(0.05 * 12.24e9)
-
-    # A count further off than the bands' walk bounds allow is a broken draw.
+    # The arms carry Table 8a at design weights: a departure beyond the solve
+    # tolerance is not a realisation gap but a broken split.
     failed = gate(with_residential(achieved_count=202_500.0))
     assert not failed.passed
-    assert any("count gap" in failure for failure in failed.failures)
-
-    failed = gate(with_residential(achieved_gains=10.0e9))
+    assert any("on the arms" in failure for failure in failed.failures)
+    failed = gate(with_residential(achieved_gains=11.9e9))
     assert not failed.passed
-    assert any("gains gap" in failure for failure in failed.failures)
+    assert any("gains on the arms" in failure for failure in failed.failures)
 
-    # Each band is held to its own bound, whatever the totals say.
-    failed = gate(with_band(0, achieved_count=189_900.0))
+    # The receipt must come from the split stage and restate it by band.
+    failed = gate(with_residential(source_stage="hmrc_cgt_asset_type_spine"))
     assert not failed.passed
-    assert any("count gap" in f and "gain band" in f for f in failed.failures)
-    failed = gate(with_band(1, achieved_gains=3.0e9))
-    assert not failed.passed
-    assert any("gains gap" in f and "gain band" in f for f in failed.failures)
-
-    # The bands must restate the receipt's own expectations.
-    failed = gate(with_band(0, expected_gains=7.0e9, achieved_gains=7.0e9))
+    assert any("cgt_residential_split" in failure for failure in failed.failures)
+    bands = _residential_bands()
+    bands[0]["achieved_gains"] = 7.0e9
+    failed = gate(with_residential(bands=bands))
     assert not failed.passed
     assert any("sums to" in failure for failure in failed.failures)
-
-    # A receipt without its gain bands is not a per-band walk's receipt.
     failed = gate(with_residential(bands=[]))
     assert not failed.passed
     assert any("no gain bands" in failure for failure in failed.failures)
@@ -1113,11 +1076,127 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
         )
 
 
+def _residential_split_evidence(**overrides: object) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "stage": "cgt_residential_split",
+        "mass": {"old_total": 28_600_000.0, "new_total": 28_600_000.0},
+        "households_before": 58_288,
+        "households_after": 60_600,
+        "arms_created": 2_312,
+        "households_by_liable_gainers": {"1": 2_300, "2": 4},
+        "arm_weights_exact": True,
+        "identities": {
+            "count_target_individuals_basis": 202_630.0,
+            "gains_target_individuals_basis": 12.24e9,
+            "expected_count": 202_630.0,
+            "expected_gains": 12.24e9,
+            "achieved_count": 202_630.0,
+            "achieved_gains": 12.24e9,
+            "count_solve_relative_error": 1e-15,
+            "gains_solve_relative_error": 7e-10,
+            "count_identity_relative_error": 0.0,
+            "gains_identity_relative_error": 0.0,
+        },
+        "bands": [
+            {
+                "gain_lower_bound": 0.0,
+                "gain_upper_bound": 250_000.0,
+                "expected_count": 190_000.0,
+                "expected_gains": 8.0e9,
+                "achieved_count": 190_000.0,
+                "achieved_gains": 8.0e9,
+            },
+            {
+                "gain_lower_bound": 250_000.0,
+                "gain_upper_bound": None,
+                "expected_count": 12_630.0,
+                "expected_gains": 4.24e9,
+                "achieved_count": 12_630.0,
+                "achieved_gains": 4.24e9,
+            },
+        ],
+        "arm_weights": {
+            "residential_arms": 2_312,
+            "minimum": 0.04,
+            "maximum": 700.0,
+            "below_one_household": 300,
+            "below_one_tenth": 12,
+        },
+        "concentration": {
+            "top_arms_share_of_achieved_gains": 0.12,
+            "largest_liable_stake_share_of_gains_target": 0.89,
+        },
+    }
+    evidence.update(overrides)
+    return evidence
+
+
+def test_cgt_residential_split_holds_the_identities_and_the_arm_structure() -> None:
+    parameters = {
+        "stage": "cgt_residential_split",
+        "check": "cgt_residential_split",
+        "maximum_relative_mass_deviation": 1e-9,
+        "maximum_solve_relative_error": 1e-6,
+        "maximum_identity_relative_error": 1e-9,
+        "maximum_liable_gainers_per_household": 3,
+    }
+
+    def gate(evidence: dict[str, object]):
+        return uk_stage_health_gate(
+            stage="cgt_residential_split",
+            check="cgt_residential_split",
+            evidence=evidence,
+            parameters=parameters,
+        )
+
+    def with_identities(**changes: object) -> dict[str, object]:
+        return _residential_split_evidence(
+            identities={**_residential_split_evidence()["identities"], **changes}
+        )
+
+    passed = gate(_residential_split_evidence())
+    assert _passed(passed)
+    assert passed.details["arms_created"] == 2_312
+    assert passed.details["arm_below_one_household"] == 300
+    assert passed.details["top_arms_share_of_achieved_gains"] == 0.12
+
+    # Mass created or lost, arms not the declared products, or an arm count
+    # that does not follow from the households by liable gainers.
+    failed = gate(
+        _residential_split_evidence(
+            mass={"old_total": 28_600_000.0, "new_total": 28_600_100.0}
+        )
+    )
+    assert not failed.passed and "mass deviation" in " ".join(failed.failures)
+    failed = gate(_residential_split_evidence(arm_weights_exact=False))
+    assert not failed.passed and "declared products" in " ".join(failed.failures)
+    failed = gate(_residential_split_evidence(arms_created=2_311))
+    assert not failed.passed and "imply 2312" in " ".join(failed.failures)
+    failed = gate(
+        _residential_split_evidence(households_by_liable_gainers={"1": 2_300, "4": 1})
+    )
+    assert not failed.passed and "above the declared maximum" in " ".join(
+        failed.failures
+    )
+    # The solve must reach the targets and the arms must realise it exactly.
+    failed = gate(with_identities(count_solve_relative_error=1e-3))
+    assert not failed.passed and "solve error" in " ".join(failed.failures)
+    failed = gate(with_identities(gains_identity_relative_error=1e-6))
+    assert not failed.passed and "departs from its expectation" in " ".join(
+        failed.failures
+    )
+    bands = _residential_split_evidence()["bands"]
+    bands[1] = {**bands[1], "achieved_gains": 4.0e9}
+    failed = gate(_residential_split_evidence(bands=bands))
+    assert not failed.passed and "gain band from 250000.0" in " ".join(failed.failures)
+    failed = gate(_residential_split_evidence(bands=[]))
+    assert not failed.passed and "no gain bands" in " ".join(failed.failures)
+
+
 def test_cgt_asset_type_summary_holds_every_badr_band_to_the_walk_bound() -> None:
     parameters = {
         "stage": "hmrc_cgt_asset_type_spine",
         "check": "cgt_asset_type_summary",
-        "maximum_relative_deviation": 0.05,
         "maximum_solve_relative_error": 1e-6,
     }
 

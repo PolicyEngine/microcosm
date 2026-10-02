@@ -2305,12 +2305,41 @@
    "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
-   "artifacts": [],
+   "stage": "spi_housing_shell",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",
    "grain": "household",
-   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged.",
+   "artifacts": [],
    "operations": [
     {
-     "amount_fit": "regime_gated_qrf",
+     "kind": "impute_spi_housing_shell",
+     "training_rows": "base_frs_channel_positive_weight",
+     "rows": "spi_channel",
+     "identity": "household_id",
+     "predictors": [
+      "region",
+      "ons_household_type",
+      "num_adults",
+      "num_children",
+      "single_adult",
+      "hrp_age",
+      "employment_income",
+      "self_employment_income",
+      "private_pension_income",
+      "investment_income",
+      "state_pension_reported"
+     ],
+     "categorical_predictors": [
+      "region",
+      "ons_household_type"
+     ],
+     "categorical_targets": [
+      "tenure_type",
+      "accommodation_type",
+      "num_bedrooms",
+      "council_tax_band"
+     ],
+     "categorical_fit": "weighted_hist_gradient_boosting_classifier",
      "amount_targets": [
       "council_tax",
       "council_tax_reported",
@@ -2327,48 +2356,21 @@
       "housing_benefit_reported",
       "council_tax_benefit_reported"
      ],
-     "categorical_fit": "weighted_hist_gradient_boosting_classifier",
-     "categorical_predictors": [
-      "region",
-      "ons_household_type"
-     ],
-     "categorical_targets": [
+     "amount_fit": "regime_gated_qrf",
+     "support_clip": "donor_range",
+     "structural_zero_keys": [
       "tenure_type",
-      "accommodation_type",
-      "num_bedrooms",
-      "council_tax_band"
+      "region"
      ],
-     "identity": "household_id",
-     "kind": "impute_spi_housing_shell",
-     "landing": "household_reference_person",
-     "n_estimators": 100,
-     "predictors": [
-      "region",
-      "ons_household_type",
-      "num_adults",
-      "num_children",
-      "single_adult",
-      "hrp_age",
-      "employment_income",
-      "self_employment_income",
-      "private_pension_income",
-      "investment_income",
-      "state_pension_reported"
-     ],
-     "rows": "spi_channel",
      "rules": [
       "mortgage_requires_mortgaged_tenure",
       "housing_benefit_requires_rented_tenure",
       "council_tax_benefit_capped_at_council_tax",
       "council_tax_rebate_equals_hrp_council_tax_benefit"
      ],
-     "seed": 0,
-     "structural_zero_keys": [
-      "tenure_type",
-      "region"
-     ],
-     "support_clip": "donor_range",
-     "training_rows": "base_frs_channel_positive_weight"
+     "landing": "household_reference_person",
+     "n_estimators": 100,
+     "seed": 0
     }
    ],
    "outputs": [],
@@ -2391,9 +2393,7 @@
     "housing_benefit_reported",
     "council_tax_benefit_reported"
    ],
-   "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",
-   "stage": "spi_housing_shell",
-   "survey": "Family Resources Survey 2024-25"
+   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged."
   },
   {
    "stage": "was_wealth",
@@ -5061,6 +5061,172 @@
    "notes": "Spine manifest projection of the merged HMRC Table 3 amounts stage. It deliberately omits base_candidate and verify_certified_candidate, which belong only to the certified-H5 path. The allocation targets are raked to the 2024-25 Table 6 age and Table 5 region margins from the vendored conditioning resource and walked inside income x age x region cells, so large gains land on the kind of person who holds them (microcosm#725)."
   },
   {
+   "stage": "cgt_incidence_anchor",
+   "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence",
+   "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+   "grain": "household",
+   "artifacts": [
+    {
+     "role": "capital_gains_incidence_and_quantiles",
+     "kind": "public_aggregate_reference",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "policy_parameters",
+     "kind": "versioned_parameter_tree",
+     "dependency": "policyengine-uk>=2.98.0 via microcosm-build[uk]",
+     "parameters": [
+      "gov.hmrc.cgt.annual_exempt_amount"
+     ],
+     "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+     "runtime_sha256_required": false,
+     "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+    }
+   ],
+   "operations": [
+    {
+     "kind": "pair_clone_households_to_originals",
+     "clone_flag_column": "household_is_capital_gains_clone",
+     "id_remapping": "id_multiplier_for_values",
+     "pairing": "clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false; the support split's copies are pre-clone rows with their own clones)",
+     "requirement": "bijection between clone and original households; an unpaired clone or original fails the build"
+    },
+    {
+     "kind": "derive_reporter_composition_from_banded_quantiles",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "income_proxy_components": [
+      "employment_income",
+      "self_employment_income",
+      "state_pension_reported",
+      "private_pension_income",
+      "property_income",
+      "savings_interest_income",
+      "dividend_income",
+      "miscellaneous_income"
+     ],
+     "allowance_subtraction": false,
+     "carrier": "oldest adult; person_id ascending breaks age ties",
+     "adult_minimum_age": 16,
+     "quantile_points": [
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      0.9,
+      0.95
+     ],
+     "spline_degree": 1,
+     "extrapolation": "ext=0",
+     "crossings": "each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount",
+     "aggregation": "crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains",
+     "liable_mass": "weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw",
+     "targets": "sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)"
+    },
+    {
+     "kind": "transfer_clone_mass_to_originals",
+     "population": "clone households paired to their originals; originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts",
+     "sub_exempt_group": "clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched",
+     "loss_group": "clone households whose carrier's capital_gains are negative",
+     "liable_clones": "untouched",
+     "factor": "min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched",
+     "maximum_factor": 1.0,
+     "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves",
+     "weight_kind_out": "importance",
+     "conservation": "household_total_to_rounding",
+     "pair_conservation": "to_rounding",
+     "declared_factor": 1.0,
+     "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved."
+    }
+   ],
+   "outputs": [],
+   "rewrites": [],
+   "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers are untouched; the groups, targets and receipt are clone-side quantities (originals are outside the anchor), every pair's mass and the household total are conserved, and the receipt is gated at stage time."
+  },
+  {
+   "stage": "cgt_residential_split",
+   "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative) on the amounts the Table 3 redraw placed",
+   "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+   "grain": "household",
+   "artifacts": [
+    {
+     "role": "policy_parameters",
+     "kind": "versioned_parameter_tree",
+     "dependency": "policyengine-uk>=2.100.0 via microcosm-build[uk]",
+     "parameters": [
+      "gov.hmrc.cgt.annual_exempt_amount"
+     ],
+     "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+     "runtime_sha256_required": false,
+     "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+    },
+    {
+     "role": "cgt_asset_type_facts",
+     "kind": "public_aggregate_reference",
+     "resource": "hmrc_cgt_asset_type_facts.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "verify_vendored_fact_resource",
+     "artifact_role": "cgt_asset_type_facts",
+     "resource": "hmrc_cgt_asset_type_facts.json",
+     "feed_pin": "chronicle_feed.json",
+     "record_sets": [
+      "hmrc.cgt_table8_2026.table8a.ty2024",
+      "hmrc.cgt_table8_2026.table8b.ty2024"
+     ],
+     "source_vintage": "2024-25",
+     "mapped_build_period": 2024,
+     "period_mapping": "published_tax_year_equals_build_period",
+     "require_before_source_read": true,
+     "runtime_sha256_required": true,
+     "fail_on_mismatch": true
+    },
+    {
+     "kind": "split_liable_gainers_by_residential_probability",
+     "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
+     "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
+     "stock_log_odds": 1.6,
+     "stock_signal": "household other residential property value above zero, or the person's property income above zero",
+     "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
+     "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
+     "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
+     "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, a residential gainer's whole net gain is attributed to residential property, and the gainers of one household are residential independently of each other",
+     "realization": "probability carried as weight, no draw: a household carrying k liable gainers becomes 2^k arms, one per subset of residential gainers, at the household's weight times the product of p over the residential gainers and 1 - p over the others; the arm with no residential gainer keeps the household's ids; at design weights the residential count and gains equal the solved expectations sum(p w) and sum(p w g) in every gain band",
+     "maximum_liable_gainers_per_household": 3,
+     "gainer_order": "person_id ascending within the household",
+     "id_remapping": "id_multiplier_for_values; arm j takes every entity id + j x multiplier, bit m of j marking the household's m-th liable gainer residential",
+     "flag_column": "household_is_cgt_residential_clone",
+     "index_column": "cgt_residential_clone_index",
+     "probability_column": "cgt_residential_probability",
+     "output_column": "capital_gains_residential_property",
+     "output_semantics": "the person's capital_gains on an arm where the person is residential, 0 otherwise",
+     "values": "every other column copied unchanged; no draw, no seed, no salt",
+     "weight_kind_out": "importance",
+     "conservation": "exact_total",
+     "declared_factor": 1.0,
+     "reason": "Capital-gains residential split divides every household carrying liable gainers into arms weighted by the solved residential probabilities, one arm per subset of residential gainers; every household's mass and the total household mass are conserved."
+    }
+   ],
+   "outputs": [
+    "household_is_cgt_residential_clone",
+    "cgt_residential_clone_index",
+    "cgt_residential_probability",
+    "capital_gains_residential_property"
+   ],
+   "rewrites": [],
+   "nonnegative_outputs": [
+    "cgt_residential_probability",
+    "capital_gains_residential_property"
+   ],
+   "notes": "Structural stage after the incidence anchor and before the asset-type stage (microcosm#1063). The residential-property flag used to be realised by a weighted systematic walk, one whole flag per row, whose gains error is bounded by one row's stake: at the top of the gains distribution one stake is several times a band's expected residential gains, so the realised gains sat short of expectation by the lottery expectation of the giant stakes or over it by one of them. This stage solves the same logistic (intercept to the Table 8a 2024-25 taxpayers on the individuals basis, slope to the gains, with the stock shift) and carries the probability as weight instead: every household with liable gainers becomes 2^k arms at product weights, one per subset of residential gainers, the arm with no residential gainer keeping the household's ids and arm j taking every entity id plus j times the id multiplier, the lineage rule the executor, the geography identity kernel and the identity tool read for the support split and the clone. At design weights the residential count and gains equal the solved expectations in every gain band, with no draw, no offset and no seed; the calibration, which binds hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains, decides between the arms afterwards as it does between the incidence clone's halves. Every household's mass and composition and the total household mass are conserved; the receipt is gated at stage time."
+  },
+  {
    "stage": "hmrc_cgt_asset_type_spine",
    "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative), Table 4.1 (individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed",
    "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
@@ -5112,36 +5278,8 @@
      "fail_on_mismatch": true
     },
     {
-     "kind": "assign_residential_property_flag",
-     "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
-     "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
-     "stock_log_odds": 1.6,
-     "stock_signal": "household other residential property value above zero, or the person's property income above zero",
-     "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
-     "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
-     "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
-     "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, and a flagged person's whole net gain is attributed to residential property",
-     "realization": "weighted systematic sampling within each HMRC gain band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order: a person is flagged when the expected weight owed so far in the band reaches their own weight, and the balance starts at zero in every band, so a heavy row's balance is never paid by a row of another band; per band the realised count sits within max(offset, 1 - offset) of the band's largest weight of its expectation and the realised gains within that weight times (largest gain - min(offset, 1 - offset) x smallest gain), the walk's own bounds, reported per band with the share of the realised gains on the ten largest flagged stakes",
-     "gain_band_lower_bounds": [
-      0,
-      10000,
-      25000,
-      50000,
-      100000,
-      250000,
-      500000,
-      1000000,
-      2000000,
-      5000000
-     ],
-     "seed": 553,
-     "seed_mixing": "seed combined with the build period",
-     "output_column": "capital_gains_residential_property",
-     "output_semantics": "the person's capital_gains where flagged residential, 0 otherwise"
-    },
-    {
      "kind": "assign_badr_qualifying_gains",
-     "population": "liable gainers not flagged residential",
+     "population": "liable gainers whose arm is not residential (capital_gains_residential_property == 0, cgt_residential_split)",
      "bands": "HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)",
      "band_pool": "the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit",
      "model": "per band below the lifetime limit, a logistic probability in centred log gains with the stock shift, solved like the residential flag: the intercept matches the band's published claimant count and the slope its published qualifying gains, with zero slope where the band pool's own mean already matches; the open top band has zero slope, so its probability varies only with the stock shift, and its intercept matches its count",
@@ -5229,99 +5367,12 @@
    ],
    "outputs": [
     "capital_gains_asset_type",
-    "capital_gains_residential_property",
     "capital_gains_badr"
    ],
    "nonnegative_outputs": [
-    "capital_gains_residential_property",
     "capital_gains_badr"
    ],
-   "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only: since microcosm#1063 the type is fitted once per claimant status (claimants to Table 7's composition among the types the reliefs apply to, non-claimants to the composition that restores Table 7 overall) and realised by a deterministic walk that keeps the realised gains by type on the fit. The residential flag is walked within each HMRC gain band, so a heavy row's balance is never paid by a light row at the top of the gains order. Carried interest (Table 9) is not modelled (microcosm#725)."
-  },
-  {
-   "stage": "cgt_incidence_anchor",
-   "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence",
-   "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
-   "grain": "household",
-   "artifacts": [
-    {
-     "role": "capital_gains_incidence_and_quantiles",
-     "kind": "public_aggregate_reference",
-     "resource": "advani_summers_capital_gains_distribution.json",
-     "format": "json",
-     "runtime_sha256_required": true
-    },
-    {
-     "role": "policy_parameters",
-     "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.98.0 via microcosm-build[uk]",
-     "parameters": [
-      "gov.hmrc.cgt.annual_exempt_amount"
-     ],
-     "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
-     "runtime_sha256_required": false,
-     "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
-    }
-   ],
-   "operations": [
-    {
-     "kind": "pair_clone_households_to_originals",
-     "clone_flag_column": "household_is_capital_gains_clone",
-     "id_remapping": "id_multiplier_for_values",
-     "pairing": "clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false; the support split's copies are pre-clone rows with their own clones)",
-     "requirement": "bijection between clone and original households; an unpaired clone or original fails the build"
-    },
-    {
-     "kind": "derive_reporter_composition_from_banded_quantiles",
-     "resource": "advani_summers_capital_gains_distribution.json",
-     "income_proxy_components": [
-      "employment_income",
-      "self_employment_income",
-      "state_pension_reported",
-      "private_pension_income",
-      "property_income",
-      "savings_interest_income",
-      "dividend_income",
-      "miscellaneous_income"
-     ],
-     "allowance_subtraction": false,
-     "carrier": "oldest adult; person_id ascending breaks age ties",
-     "adult_minimum_age": 16,
-     "quantile_points": [
-      0.05,
-      0.1,
-      0.25,
-      0.5,
-      0.75,
-      0.9,
-      0.95
-     ],
-     "spline_degree": 1,
-     "extrapolation": "ext=0",
-     "crossings": "each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount",
-     "aggregation": "crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains",
-     "liable_mass": "weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw",
-     "targets": "sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)"
-    },
-    {
-     "kind": "transfer_clone_mass_to_originals",
-     "population": "clone households paired to their originals; originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts",
-     "sub_exempt_group": "clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched",
-     "loss_group": "clone households whose carrier's capital_gains are negative",
-     "liable_clones": "untouched",
-     "factor": "min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched",
-     "maximum_factor": 1.0,
-     "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves",
-     "weight_kind_out": "importance",
-     "conservation": "household_total_to_rounding",
-     "pair_conservation": "to_rounding",
-     "declared_factor": 1.0,
-     "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved."
-    }
-   ],
-   "outputs": [],
-   "rewrites": [],
-   "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers are untouched; the groups, targets and receipt are clone-side quantities (originals are outside the anchor), every pair's mass and the household total are conserved, and the receipt is gated at stage time."
+   "notes": "Spine stage after the amounts redraw, the incidence anchor and the residential split: every liable gainer carries one main asset type; a residential arm (capital_gains_residential_property above zero, written by cgt_residential_split since microcosm#1063) is typed residential and its net gain is already restated there; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential arms carry the Table 8a 2024-25 totals on the individuals basis at design weights, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only: since microcosm#1063 the type is fitted once per claimant status (claimants to Table 7's composition among the types the reliefs apply to, non-claimants to the composition that restores Table 7 overall) and realised by a deterministic walk that keeps the realised gains by type on the fit. Carried interest (Table 9) is not modelled (microcosm#725)."
   },
   {
    "stage": "salary_sacrifice",

@@ -79,8 +79,11 @@ E8_STAGE_NAMES = [
     "cgt_support_split",
     "cgt_incidence_clone",
     "hmrc_cgt_gains_spine",
-    "hmrc_cgt_asset_type_spine",
     "cgt_incidence_anchor",
+    # microcosm#1063: the residential split carries the flag as weight and
+    # the asset-type stage types its arms, so both run after the anchor.
+    "cgt_residential_split",
+    "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -246,8 +249,9 @@ class TestUKSourceStagesManifest:
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,
                     "hmrc_cgt_gains_spine": _identity,
-                    "hmrc_cgt_asset_type_spine": _identity,
                     "cgt_incidence_anchor": _identity,
+                    "cgt_residential_split": _identity,
+                    "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,

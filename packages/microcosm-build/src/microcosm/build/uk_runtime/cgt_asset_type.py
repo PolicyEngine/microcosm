@@ -95,7 +95,7 @@ family gate requires.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -137,9 +137,7 @@ __all__ = [
     "CGT_BADR_FLAG_SEED",
     "CGT_BADR_GAINS_COLUMN",
     "CGT_CLAIMANT_STATUSES",
-    "CGT_RESIDENTIAL_FLAG_SEED",
     "CGT_RESIDENTIAL_GAINS_COLUMN",
-    "CGT_RESIDENTIAL_TOP_STAKE_ROWS",
     "HMRCCGTAssetTypeFacts",
     "HMRCCGTBADRBand",
     "HMRC_CGT_ASSET_TYPE_RECORD_SETS",
@@ -256,13 +254,10 @@ CGT_BADR_ELIGIBLE_TYPES: tuple[str, ...] = (
 #: type weights, not the width, carry the composition.
 CGT_ASSET_TYPE_LOG_SIGMA = 1.5
 
-#: Seeds are combined with the build period, as the amounts stage does;
-#: distinct from the amounts stage's 552 so the two stages never share a
-#: stream.
-CGT_RESIDENTIAL_FLAG_SEED = 553
-#: Rows the residential receipt's concentration reading covers: the share of
-#: the realised residential gains on this many of the largest flagged stakes.
-CGT_RESIDENTIAL_TOP_STAKE_ROWS = 10
+#: The BADR seed is combined with the build period, as the amounts stage
+#: does; distinct from the amounts stage's 552 so the two stages never share
+#: a stream. The residential flag draws nothing since microcosm#1063: the
+#: ``cgt_residential_split`` stage carries its probability as weight.
 CGT_BADR_FLAG_SEED = 555
 
 _BISECTION_ITERATIONS = 200
@@ -929,110 +924,6 @@ def _weighted_systematic_flags(
     return flags
 
 
-def _banded_systematic_flags(
-    *,
-    probabilities: np.ndarray,
-    weights: np.ndarray,
-    gains: np.ndarray,
-    person_id: np.ndarray,
-    band_lower_bounds: Sequence[float],
-    offsets: np.ndarray,
-) -> tuple[np.ndarray, list[dict[str, object]]]:
-    """Weighted systematic sampling within each gain band (microcosm#1063).
-
-    Each band is walked on its own, in ascending ``(gain, person_id)`` order,
-    with its own offset and a balance that starts at zero. One walk over the
-    whole population let the balance a heavy row leaves behind be paid by the
-    next row whatever its weight, so a light row at the top of the gains order
-    was flagged far more often than its own probability; a band's walk can
-    only carry the balance of that band's rows.
-
-    The walk's balance after every step lies in ``[-theta W, (1 - theta) W)``
-    with ``theta`` the band's offset and ``W`` its largest weight. The realised
-    count therefore sits within ``max(theta, 1 - theta) W`` of the expected
-    count, and, summing by parts along the ascending gains, the realised gains
-    within ``W (g_max - min(theta, 1 - theta) g_min)`` of the expected gains.
-    Both bounds are returned per band; they are properties of the walk, not
-    tolerances.
-    """
-
-    flags = np.zeros(probabilities.shape, dtype=bool)
-    bounds = np.asarray(band_lower_bounds, dtype=float)
-    if offsets.shape != bounds.shape:
-        raise ValueError("One offset per gain band is required.")
-    band = np.searchsorted(bounds, gains, side="right") - 1
-    if (band < 0).any():
-        raise ValueError("A gain lies below the lowest gain band.")
-    receipts: list[dict[str, object]] = []
-    for position, lower in enumerate(bounds):
-        rows = np.flatnonzero(band == position)
-        theta = float(offsets[position])
-        receipt: dict[str, object] = {
-            "gain_lower_bound": float(lower),
-            "gain_upper_bound": (
-                float(bounds[position + 1]) if position + 1 < bounds.size else None
-            ),
-            "offset": theta,
-            "pool_rows": int(rows.size),
-        }
-        if rows.size == 0:
-            receipt.update(
-                {
-                    key: 0.0
-                    for key in (
-                        "pool_mass",
-                        "pool_gains",
-                        "max_pool_weight",
-                        "expected_count",
-                        "expected_gains",
-                        "achieved_count",
-                        "achieved_gains",
-                        "count_bound",
-                        "gains_bound",
-                    )
-                }
-            )
-            receipt["achieved_rows"] = 0
-            receipts.append(receipt)
-            continue
-        order = rows[np.lexsort((person_id[rows], gains[rows]))]
-        band_flags = _weighted_systematic_flags(probabilities, weights, order, theta)
-        flags |= band_flags
-        band_weights = weights[rows]
-        band_gains = gains[rows]
-        flagged = band_flags[rows]
-        heaviest = float(band_weights.max())
-        lean = min(theta, 1.0 - theta)
-        receipt.update(
-            {
-                "pool_mass": float(band_weights.sum()),
-                "pool_gains": float((band_weights * band_gains).sum()),
-                "pool_min_gain": float(band_gains.min()),
-                "pool_max_gain": float(band_gains.max()),
-                "max_pool_weight": heaviest,
-                "expected_count": float((band_weights * probabilities[rows]).sum()),
-                "expected_gains": float(
-                    (band_weights * band_gains * probabilities[rows]).sum()
-                ),
-                "achieved_count": float(band_weights[flagged].sum()),
-                "achieved_gains": float(
-                    (band_weights[flagged] * band_gains[flagged]).sum()
-                ),
-                "achieved_rows": int(flagged.sum()),
-                "count_bound": max(theta, 1.0 - theta) * heaviest,
-                "gains_bound": heaviest
-                * (float(band_gains.max()) - lean * float(band_gains.min())),
-            }
-        )
-        receipts.append(receipt)
-    return flags, receipts
-
-
-# ---------------------------------------------------------------------------
-# BADR and Investors' Relief claims
-# ---------------------------------------------------------------------------
-
-
 def _solve_band_logistic(
     gains: np.ndarray,
     weights: np.ndarray,
@@ -1447,22 +1338,27 @@ def assign_uk_cgt_asset_types(
     parameters: UKCGTPolicyParameters,
     badr_parameters: UKCGTBADRParameters,
     *,
-    residential_seed: int = CGT_RESIDENTIAL_FLAG_SEED,
     badr_seed: int = CGT_BADR_FLAG_SEED,
     mass_change_reason: str = UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
 ) -> tuple[Frame, UKCGTAssetTypeSummary]:
-    """Write the asset-type, residential gains and BADR qualifying gains columns."""
+    """Write the asset-type and BADR qualifying gains columns.
+
+    The residential arms come from ``cgt_residential_split`` (microcosm#1063):
+    a person whose ``capital_gains_residential_property`` is positive is a
+    residential gainer on this arm; the stage types the rest.
+    """
 
     validate_uk_national_frame(frame)
     time_period = uk_time_period(frame)
     person = frame.table("person").reset_index(drop=True)
     if "capital_gains" not in person.columns:
         raise ValueError("Person table has no capital_gains column to classify.")
-    for column in (
-        CGT_ASSET_TYPE_COLUMN,
-        CGT_RESIDENTIAL_GAINS_COLUMN,
-        CGT_BADR_GAINS_COLUMN,
-    ):
+    if CGT_RESIDENTIAL_GAINS_COLUMN not in person.columns:
+        raise ValueError(
+            f"Person table has no {CGT_RESIDENTIAL_GAINS_COLUMN} column; run "
+            "cgt_residential_split before the asset-type stage."
+        )
+    for column in (CGT_ASSET_TYPE_COLUMN, CGT_BADR_GAINS_COLUMN):
         if column in person.columns:
             raise ValueError(f"Person table already carries {column}.")
     household = frame.table("household")
@@ -1484,36 +1380,29 @@ def assign_uk_cgt_asset_types(
 
     stocks = _stock_signals(person, household)
 
-    # 1. Residential flag on the liable population.
+    # 1. Residential arms, as the residential split wrote them.
     liable_index = np.flatnonzero(liable)
     liable_gains = gains[liable_index]
     liable_weights = person_weight[liable_index]
-    count_target = facts.residential_taxpayers_individuals_basis
-    gains_target = facts.residential_gains_individuals_basis
-    residential_offset = CGT_STOCK_LOG_ODDS * stocks["residential"][
-        liable_index
-    ].astype(float)
-    a, b, centre = solve_residential_logistic(
-        liable_gains,
-        liable_weights,
-        count_target=count_target,
-        gains_target=gains_target,
-        offset=residential_offset,
-    )
-    probabilities = _logistic(np.log(liable_gains) - centre, a, b, residential_offset)
-    rng_flag = np.random.default_rng((residential_seed, int(time_period)))
-    flags, residential_bands = _banded_systematic_flags(
-        probabilities=probabilities,
-        weights=liable_weights,
-        gains=liable_gains,
-        person_id=person_id[liable_index],
-        band_lower_bounds=HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
-        offsets=rng_flag.random(len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)),
-    )
+    residential_gains = pd.to_numeric(
+        person[CGT_RESIDENTIAL_GAINS_COLUMN], errors="raise"
+    ).to_numpy(dtype=float)
+    if not np.isfinite(residential_gains).all() or (residential_gains < 0.0).any():
+        raise ValueError(
+            f"{CGT_RESIDENTIAL_GAINS_COLUMN} must be finite and non-negative."
+        )
+    flags = residential_gains[liable_index] > 0.0
+    if (residential_gains[~liable] > 0.0).any():
+        raise ValueError("A residential gain sits on a person who is not liable.")
+    if not np.array_equal(residential_gains[liable_index][flags], liable_gains[flags]):
+        raise ValueError(
+            "A residential arm's residential gain differs from the person's net "
+            "gain; the split attributes the whole gain."
+        )
     residential_rows = liable_index[flags]
     asset_type[residential_rows] = CGT_ASSET_TYPE_RESIDENTIAL
-    residential_gains = np.zeros(len(person))
-    residential_gains[residential_rows] = gains[residential_rows]
+    count_target = facts.residential_taxpayers_individuals_basis
+    gains_target = facts.residential_gains_individuals_basis
 
     # 2. BADR and Investors' Relief claims on the non-residential remainder.
     remainder_index = liable_index[~flags]
@@ -1682,57 +1571,58 @@ def assign_uk_cgt_asset_types(
     if set(asset_type) - set(CGT_ASSET_TYPE_DOMAIN):
         raise ValueError("Asset-type draw produced a value outside the domain.")
 
-    # Reporting.
-    expected_count = float((liable_weights * probabilities).sum())
-    expected_gains = float((liable_weights * liable_gains * probabilities).sum())
+    # Reporting: the residential identities the split left, by gain band.
     achieved_count = float(person_weight[residential_rows].sum())
     achieved_gains = float(
         residential_gains[residential_rows].dot(person_weight[residential_rows])
     )
-    # Concentration: how much of the realised residential gains, and of the
-    # target, rides on single rows. A stake is one row's weight times its gain.
-    liable_stakes = liable_weights * liable_gains
-    flagged_stakes = np.sort(liable_stakes[flags])[::-1]
-    top_stakes = float(flagged_stakes[:CGT_RESIDENTIAL_TOP_STAKE_ROWS].sum())
-    largest_pool_stake = float(liable_stakes.max()) if liable_stakes.size else 0.0
+    bounds = np.asarray(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS, dtype=float)
+    liable_band = np.searchsorted(bounds, liable_gains, side="right") - 1
+    residential_bands = []
+    for position, lower in enumerate(bounds):
+        in_band = liable_band == position
+        on_arm = in_band & flags
+        residential_bands.append(
+            {
+                "gain_lower_bound": float(lower),
+                "gain_upper_bound": (
+                    float(bounds[position + 1]) if position + 1 < bounds.size else None
+                ),
+                "liable_rows": int(in_band.sum()),
+                "achieved_rows": int(on_arm.sum()),
+                "achieved_count": float(liable_weights[on_arm].sum()),
+                "achieved_gains": float(
+                    (liable_weights[on_arm] * liable_gains[on_arm]).sum()
+                ),
+            }
+        )
     residential = {
+        "source_stage": "cgt_residential_split",
         "count_target_individuals_basis": count_target,
         "gains_target_individuals_basis": gains_target,
-        "expected_count": expected_count,
-        "expected_gains": expected_gains,
         "achieved_count": achieved_count,
         "achieved_gains": achieved_gains,
         "achieved_rows": int(residential_rows.size),
-        "max_liable_weight": float(liable_weights.max()),
-        "walk": "per gain band, ascending (gain, person_id), one offset per band",
+        "count_relative_error": (
+            abs(achieved_count - count_target) / count_target
+            if count_target > 0.0
+            else None
+        ),
+        "gains_relative_error": (
+            abs(achieved_gains - gains_target) / gains_target
+            if gains_target > 0.0
+            else None
+        ),
+        "max_liable_weight": float(liable_weights.max())
+        if liable_weights.size
+        else 0.0,
         "bands": residential_bands,
-        "count_bound": float(
-            sum(float(row["count_bound"]) for row in residential_bands)
-        ),
-        "gains_bound": float(
-            sum(float(row["gains_bound"]) for row in residential_bands)
-        ),
-        "top_stake_rows": CGT_RESIDENTIAL_TOP_STAKE_ROWS,
-        "top_stakes_share_of_achieved_gains": (
-            top_stakes / achieved_gains if achieved_gains > 0.0 else 0.0
-        ),
-        "largest_flagged_stake": (
-            float(flagged_stakes[0]) if flagged_stakes.size else 0.0
-        ),
-        "largest_pool_stake": largest_pool_stake,
-        "largest_pool_stake_share_of_gains_target": (
-            largest_pool_stake / gains_target if gains_target > 0.0 else 0.0
-        ),
-        "logistic_intercept": float(a),
-        "logistic_slope": float(b),
-        "log_gain_centre": float(centre),
         "liable_taxpayer_mass": float(liable_weights.sum()),
         "liable_gains_mass": float((liable_weights * liable_gains).sum()),
         "table8a_taxpayers_total": facts.table8a_taxpayers_total,
         "table8a_gains_total": facts.table8a_gains_total,
         "table8b_individuals_taxpayer_share": facts.individuals_share("taxpayers"),
         "table8b_individuals_gains_share": facts.individuals_share("gains"),
-        "stock_log_odds": CGT_STOCK_LOG_ODDS,
         "stock_signal": CGT_RESIDENTIAL_STOCK_SIGNAL,
         "stock_share_flagged": _weighted_share(
             person_weight,
@@ -1885,15 +1775,11 @@ def assign_uk_cgt_asset_types(
             "source_commit": facts.source_commit,
             "annual_exempt_amount": parameters.annual_exempt_amount,
         },
-        seeds={
-            "residential_flag": residential_seed,
-            "badr_flag": badr_seed,
-        },
+        seeds={"badr_flag": badr_seed},
     )
 
     new_person = person.copy()
     new_person[CGT_ASSET_TYPE_COLUMN] = asset_type
-    new_person[CGT_RESIDENTIAL_GAINS_COLUMN] = residential_gains
     new_person[CGT_BADR_GAINS_COLUMN] = qualifying
     weights = frame.weights_for("household")
     household_mass = float(weights.total)
@@ -1964,11 +1850,7 @@ class UKCGTAssetTypeStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return (
-            CGT_ASSET_TYPE_COLUMN,
-            CGT_RESIDENTIAL_GAINS_COLUMN,
-            CGT_BADR_GAINS_COLUMN,
-        )
+        return (CGT_ASSET_TYPE_COLUMN, CGT_BADR_GAINS_COLUMN)
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -1992,61 +1874,11 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
             "runtime_sha256_required": True,
             "fail_on_mismatch": True,
         },
-        "assign_residential_property_flag": {
-            "population": (
-                "persons with net capital gains above the annual exempt amount "
-                "(the national taxpayer proxy)"
-            ),
-            "model": (
-                "logistic probability in centred log gains with a stock shift, p = "
-                "1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean "
-                "log gain of the population, s the stock log-odds and h one where "
-                "the stock signal holds, zero otherwise"
-            ),
-            "stock_log_odds": CGT_STOCK_LOG_ODDS,
-            "stock_signal": CGT_RESIDENTIAL_STOCK_SIGNAL,
-            "parameter_solver": (
-                "nested bisection; the intercept matches the expected weighted "
-                "count at each trial slope, the slope matches the expected weighted "
-                "gains"
-            ),
-            "count_target": (
-                "Table 8a 2024-25 total taxpayers reporting residential property "
-                "disposals times the Table 8b 2024-25 individuals/all taxpayer share "
-                "on the UK Property service"
-            ),
-            "gains_target": (
-                "Table 8a 2024-25 total residential property gains times the Table "
-                "8b 2024-25 individuals/all gains share on the UK Property service"
-            ),
-            "basis_assumption": (
-                "trusts hold the same share of the Self Assessment component as of "
-                "the UK Property service, and a flagged person's whole net gain is "
-                "attributed to residential property"
-            ),
-            "realization": (
-                "weighted systematic sampling within each HMRC gain band in "
-                "ascending (gain, person_id) order with one seeded offset per "
-                "band, drawn in band order: a person is flagged when the expected "
-                "weight owed so far in the band reaches their own weight, and the "
-                "balance starts at zero in every band, so a heavy row's balance is "
-                "never paid by a row of another band; per band the realised count "
-                "sits within max(offset, 1 - offset) of the band's largest weight "
-                "of its expectation and the realised gains within that weight "
-                "times (largest gain - min(offset, 1 - offset) x smallest gain), "
-                "the walk's own bounds, reported per band with the share of the "
-                "realised gains on the ten largest flagged stakes"
-            ),
-            "gain_band_lower_bounds": list(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS),
-            "seed": CGT_RESIDENTIAL_FLAG_SEED,
-            "seed_mixing": "seed combined with the build period",
-            "output_column": CGT_RESIDENTIAL_GAINS_COLUMN,
-            "output_semantics": (
-                "the person's capital_gains where flagged residential, 0 otherwise"
-            ),
-        },
         "assign_badr_qualifying_gains": {
-            "population": "liable gainers not flagged residential",
+            "population": (
+                "liable gainers whose arm is not residential "
+                "(capital_gains_residential_property == 0, cgt_residential_split)"
+            ),
             "bands": (
                 "HMRC Table 4.1 2024-25 individuals claiming Business Asset "
                 "Disposal Relief or Investors' Relief by band of qualifying gain "

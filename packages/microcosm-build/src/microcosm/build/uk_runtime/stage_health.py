@@ -51,6 +51,8 @@ def uk_stage_health_gate(
         return _source_signal_gate(stage, evidence, parameters)
     if check == "age_tail_targets":
         return _age_tail_targets_gate(stage, evidence, parameters)
+    if check == "cgt_residential_split":
+        return _cgt_residential_split_gate(stage, evidence, parameters)
     if check == "cgt_support_split":
         return _cgt_support_split_gate(stage, evidence, parameters)
     if check == "spi_income_band_donor_support":
@@ -1551,26 +1553,157 @@ def _cgt_imputation_summary_gate(
     )
 
 
+def _cgt_residential_split_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The residential split conserved mass and left Table 8a as identities.
+
+    The split carries the solved residential probability as weight
+    (microcosm#1063): every household with liable gainers becomes arms whose
+    weights are products of ``p`` and ``1 - p``, so the residential count and
+    gains at design weights are the solved expectations in every gain band.
+    The gate holds the total household mass to the declared deviation, the
+    solve to its targets, the realised masses to the expectations (an
+    arithmetic identity), the arm weights to their products, and the number
+    of liable gainers per household to the declared ceiling.
+    """
+
+    check = "cgt_residential_split"
+    tolerance = _finite_number(
+        parameters["maximum_relative_mass_deviation"],
+        label=f"{stage}.maximum_relative_mass_deviation",
+    )
+    max_solve_error = _finite_number(
+        parameters["maximum_solve_relative_error"],
+        label=f"{stage}.maximum_solve_relative_error",
+    )
+    max_identity_error = _finite_number(
+        parameters["maximum_identity_relative_error"],
+        label=f"{stage}.maximum_identity_relative_error",
+    )
+    maximum_gainers = int(parameters["maximum_liable_gainers_per_household"])
+    effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
+    failures: list[str] = []
+    details: dict[str, object] = {}
+
+    mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
+    old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
+    new_total = _finite_number(mass.get("new_total"), label=f"{stage}.mass.new_total")
+    if old_total <= 0.0 or new_total <= 0.0:
+        failures.append(f"{stage}: household mass must be positive before and after.")
+    deviation = abs(new_total - old_total) / max(abs(old_total), 1.0)
+    details["relative_mass_deviation"] = deviation
+    if deviation > effective_tolerance:
+        failures.append(
+            f"{stage}: household mass deviation {deviation} exceeds the effective "
+            f"tolerance {effective_tolerance}."
+        )
+    if evidence.get("arm_weights_exact") is not True:
+        failures.append(f"{stage}: the arm weights are not the declared products.")
+    by_k = _mapping(
+        evidence.get("households_by_liable_gainers"),
+        label=f"{stage}.households_by_liable_gainers",
+    )
+    arms_expected = 0
+    for key, count in by_k.items():
+        k = int(key)
+        households = int(count)
+        if k < 1 or households < 0:
+            failures.append(
+                f"{stage}: households_by_liable_gainers[{key!r}] is invalid."
+            )
+            continue
+        if k > maximum_gainers:
+            failures.append(
+                f"{stage}: {households} household(s) carry {k} liable gainers, "
+                f"above the declared maximum {maximum_gainers}."
+            )
+        arms_expected += households * (2**k - 1)
+    arms_created = int(evidence.get("arms_created", -1))
+    details["arms_created"] = arms_created
+    if arms_created != arms_expected:
+        failures.append(
+            f"{stage}: {arms_created} arms created, the households by liable "
+            f"gainers imply {arms_expected}."
+        )
+    identities = _mapping(evidence.get("identities"), label=f"{stage}.identities")
+
+    def number(key: str) -> float:
+        return _finite_number(identities.get(key), label=f"{stage}.identities.{key}")
+
+    for measure in ("count", "gains"):
+        target = number(f"{measure}_target_individuals_basis")
+        if target <= 0.0:
+            failures.append(f"{stage}: residential {measure} target is not positive.")
+            continue
+        solve_error = number(f"{measure}_solve_relative_error")
+        identity_error = number(f"{measure}_identity_relative_error")
+        details[f"residential_{measure}_solve_relative_error"] = solve_error
+        details[f"residential_{measure}_identity_relative_error"] = identity_error
+        if solve_error > max_solve_error:
+            failures.append(
+                f"{stage}: residential {measure} solve error {solve_error} "
+                f"exceeds {max_solve_error}."
+            )
+        if identity_error > max_identity_error:
+            failures.append(
+                f"{stage}: residential {measure} at design weights departs from "
+                f"its expectation by {identity_error}, above {max_identity_error}."
+            )
+    bands = evidence.get("bands")
+    if not isinstance(bands, list) or not bands:
+        failures.append(f"{stage}: the receipt carries no gain bands.")
+        bands = []
+    for position, band in enumerate(bands):
+        label = f"{stage}.bands[{position}]"
+        row = _mapping(band, label=label)
+        for measure in ("count", "gains"):
+            expected = _finite_number(
+                row.get(f"expected_{measure}"), label=f"{label}.expected_{measure}"
+            )
+            achieved = _finite_number(
+                row.get(f"achieved_{measure}"), label=f"{label}.achieved_{measure}"
+            )
+            if abs(achieved - expected) > max_identity_error * max(abs(expected), 1.0):
+                failures.append(
+                    f"{stage}: residential {measure} in the gain band from "
+                    f"{row.get('gain_lower_bound')} is {achieved} against the "
+                    f"expectation {expected}."
+                )
+    details["gain_bands"] = len(bands)
+    arm_weights = _mapping(evidence.get("arm_weights"), label=f"{stage}.arm_weights")
+    for key in ("residential_arms", "below_one_household", "minimum"):
+        details[f"arm_{key}"] = arm_weights.get(key)
+    concentration = _mapping(
+        evidence.get("concentration"), label=f"{stage}.concentration"
+    )
+    for key in (
+        "top_arms_share_of_achieved_gains",
+        "largest_liable_stake_share_of_gains_target",
+    ):
+        details[key] = concentration.get(key)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
 def _cgt_asset_type_summary_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """The residential flag and the BADR claims realised the totals they were solved to.
+    """The residential arms carry Table 8a and the BADR claims their bands.
 
-    The stage solves the logistic exactly in expectation and realises it by
-    systematic sampling within each gain band (microcosm#1063). This gate
-    holds the solve to its targets and every band to the walk's own bounds,
-    which the stage reports per band: the realised weighted count within
-    ``max(offset, 1 - offset)`` of the band's largest weight of its
-    expectation, and the realised gains within that weight times (largest gain
-    - ``min(offset, 1 - offset)`` x smallest gain). Over the whole population
-    the count must sit within the sum of the band bounds and the gains within
-    the wider of the reviewed relative band and the sum of the band bounds;
-    the details also say whether the gains sit inside the relative band alone
-    and how much of them rides on the largest stakes. Every liable gainer must
-    carry an asset type and the composition receipt must be finite
-    (microcosm#725).
+    The residential flag is no longer drawn here: ``cgt_residential_split``
+    carries it as weight (microcosm#1063), so this gate holds the residential
+    count and gains the arms carry at design weights to the Table 8a targets
+    on the individuals basis within the solve tolerance, and requires every
+    gain band row of the receipt to be finite. Every liable gainer must carry
+    an asset type and the composition receipt must be finite (microcosm#725).
 
     Each Table 4.1 BADR band is held to deterministic bounds only
     (microcosm#1014): the solve to the band's targets; the realised count to
@@ -1585,10 +1718,6 @@ def _cgt_asset_type_summary_gate(
     check = "cgt_asset_type_summary"
     failures: list[str] = []
     residential = _mapping(evidence.get("residential"), label=f"{stage}.residential")
-    max_relative = _finite_number(
-        parameters["maximum_relative_deviation"],
-        label=f"{stage}.maximum_relative_deviation",
-    )
     max_solve_error = _finite_number(
         parameters["maximum_solve_relative_error"],
         label=f"{stage}.maximum_solve_relative_error",
@@ -1598,71 +1727,37 @@ def _cgt_asset_type_summary_gate(
     def number(key: str) -> float:
         return _finite_number(residential.get(key), label=f"{stage}.residential.{key}")
 
+    if residential.get("source_stage") != "cgt_residential_split":
+        failures.append(
+            f"{stage}: the residential receipt does not name cgt_residential_split "
+            "as its source."
+        )
     for measure in ("count", "gains"):
         target = number(f"{measure}_target_individuals_basis")
-        expected = number(f"expected_{measure}")
+        achieved = number(f"achieved_{measure}")
         if target <= 0.0:
             failures.append(f"{stage}: residential {measure} target is not positive.")
             continue
-        solve_error = abs(expected - target) / target
-        details[f"residential_{measure}_solve_relative_error"] = solve_error
-        if solve_error > max_solve_error:
+        error = abs(achieved - target) / target
+        details[f"residential_{measure}_relative_error"] = error
+        if error > max_solve_error:
             failures.append(
-                f"{stage}: residential {measure} solve error {solve_error} "
-                f"exceeds {max_solve_error}."
-            )
-    slack = 1.0 + 1e-9
-    count_gap = abs(number("achieved_count") - number("expected_count"))
-    count_bound = number("count_bound") * slack
-    details["residential_count_gap"] = count_gap
-    details["residential_count_bound"] = count_bound
-    if count_gap > count_bound:
-        failures.append(
-            f"{stage}: residential count gap {count_gap} exceeds the sum of the "
-            f"gain bands' walk bounds ({count_bound})."
-        )
-    gains_target = number("gains_target_individuals_basis")
-    gains_gap = abs(number("achieved_gains") - number("expected_gains"))
-    walk_bound = number("gains_bound") * slack
-    gains_bound = max(max_relative * gains_target, walk_bound)
-    details["residential_gains_gap"] = gains_gap
-    details["residential_gains_bound"] = gains_bound
-    details["residential_gains_walk_bound"] = walk_bound
-    if gains_target > 0.0:
-        details["residential_gains_relative_gap"] = gains_gap / gains_target
-        details["residential_gains_within_relative_band"] = bool(
-            gains_gap <= max_relative * gains_target
-        )
-        if gains_gap > gains_bound:
-            failures.append(
-                f"{stage}: residential gains gap {gains_gap} exceeds {gains_bound} "
-                f"(the wider of {max_relative} relative and the sum of the gain "
-                "bands' walk bounds)."
+                f"{stage}: residential {measure} on the arms is {achieved} against "
+                f"the target {target} (relative error {error}, tolerance "
+                f"{max_solve_error})."
             )
     bands = residential.get("bands")
     if not isinstance(bands, list) or not bands:
         failures.append(f"{stage}: residential receipt carries no gain bands.")
         bands = []
-    band_totals = {"expected_count": 0.0, "expected_gains": 0.0}
+    band_totals = {"achieved_count": 0.0, "achieved_gains": 0.0}
     for position, band in enumerate(bands):
         label = f"{stage}.residential.bands[{position}]"
         row = _mapping(band, label=label)
-
-        def band_number(key: str, row=row, label=label) -> float:
-            return _finite_number(row.get(key), label=f"{label}.{key}")
-
-        for measure in ("count", "gains"):
-            band_totals[f"expected_{measure}"] += band_number(f"expected_{measure}")
-            gap = abs(
-                band_number(f"achieved_{measure}") - band_number(f"expected_{measure}")
+        for measure in band_totals:
+            band_totals[measure] += _finite_number(
+                row.get(measure), label=f"{label}.{measure}"
             )
-            bound = band_number(f"{measure}_bound") * slack
-            if gap > bound:
-                failures.append(
-                    f"{stage}: residential {measure} gap {gap} in the gain band "
-                    f"from {row.get('gain_lower_bound')} exceeds the walk's bound "
-                    f"{bound}."
-                )
     for measure, total in band_totals.items():
         expected = number(measure)
         if bands and abs(total - expected) > max_solve_error * max(abs(expected), 1.0):
@@ -1671,11 +1766,6 @@ def _cgt_asset_type_summary_gate(
                 f"residential receipt's {expected}."
             )
     details["residential_gain_bands"] = len(bands)
-    for key in (
-        "top_stakes_share_of_achieved_gains",
-        "largest_pool_stake_share_of_gains_target",
-    ):
-        details[f"residential_{key}"] = number(key)
     counts = _mapping(evidence.get("value_counts"), label=f"{stage}.value_counts")
     for value, rows in counts.items():
         if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:

@@ -48,7 +48,8 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
     # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
     # are retired (#901), so the manifest roster is the graph roster.
-    assert len(expected) == 37
+    # microcosm#1063 also adds cgt_residential_split after the anchor.
+    assert len(expected) == 38
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

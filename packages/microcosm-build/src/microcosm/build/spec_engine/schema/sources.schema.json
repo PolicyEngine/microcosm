@@ -5563,78 +5563,6 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
-      "basis_assumption": {
-       "type": "string"
-      },
-      "count_target": {
-       "type": "string"
-      },
-      "gain_band_lower_bounds": {
-       "type": "array",
-       "items": {
-        "type": "number"
-       },
-       "minItems": 1
-      },
-      "gains_target": {
-       "type": "string"
-      },
-      "kind": {
-       "const": "assign_residential_property_flag"
-      },
-      "model": {
-       "type": "string"
-      },
-      "output_column": {
-       "type": "string"
-      },
-      "output_semantics": {
-       "type": "string"
-      },
-      "parameter_solver": {
-       "type": "string"
-      },
-      "population": {
-       "type": "string"
-      },
-      "realization": {
-       "type": "string"
-      },
-      "seed": {
-       "type": "number"
-      },
-      "seed_mixing": {
-       "type": "string"
-      },
-      "stock_log_odds": {
-       "type": "number"
-      },
-      "stock_signal": {
-       "type": "string"
-      }
-     },
-     "required": [
-      "basis_assumption",
-      "count_target",
-      "gain_band_lower_bounds",
-      "gains_target",
-      "kind",
-      "model",
-      "output_column",
-      "output_semantics",
-      "parameter_solver",
-      "population",
-      "realization",
-      "seed",
-      "seed_mixing",
-      "stock_log_odds",
-      "stock_signal"
-     ]
-    },
-    {
-     "type": "object",
-     "additionalProperties": false,
-     "properties": {
       "band_pool": {
        "type": "string"
       },
@@ -8694,6 +8622,106 @@
       },
       "declared_factor": {
        "type": "number"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "population",
+      "model",
+      "stock_log_odds",
+      "stock_signal",
+      "parameter_solver",
+      "count_target",
+      "gains_target",
+      "basis_assumption",
+      "realization",
+      "maximum_liable_gainers_per_household",
+      "gainer_order",
+      "id_remapping",
+      "flag_column",
+      "index_column",
+      "probability_column",
+      "output_column",
+      "output_semantics",
+      "values",
+      "weight_kind_out",
+      "conservation",
+      "declared_factor",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "split_liable_gainers_by_residential_probability"
+      },
+      "population": {
+       "type": "string"
+      },
+      "model": {
+       "type": "string"
+      },
+      "stock_log_odds": {
+       "type": "number"
+      },
+      "stock_signal": {
+       "type": "string"
+      },
+      "parameter_solver": {
+       "type": "string"
+      },
+      "count_target": {
+       "type": "string"
+      },
+      "gains_target": {
+       "type": "string"
+      },
+      "basis_assumption": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "maximum_liable_gainers_per_household": {
+       "type": "integer"
+      },
+      "gainer_order": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "index_column": {
+       "type": "string"
+      },
+      "probability_column": {
+       "type": "string"
+      },
+      "output_column": {
+       "type": "string"
+      },
+      "output_semantics": {
+       "type": "string"
+      },
+      "values": {
+       "type": "string"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "conservation": {
+       "const": "exact_total"
+      },
+      "declared_factor": {
+       "const": 1.0
       },
       "reason": {
        "type": "string"

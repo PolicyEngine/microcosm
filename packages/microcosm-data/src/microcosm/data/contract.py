@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "902523e7d646249bb35f891e025b6997891de9dd5dcc063758ebac952680cbb7"
+    "12f2ab9cda63111ab6c24b02c4075395ba42836762cc7b1e02b56ce51201f0a6"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d3634098d0ee9e7634da0380b3737fdd52a8b2d73c7fb5bab24efa9820c6cb84"
+    "adf36be97e522dfbdc3b322df8a70755582e981ab3f31b52c233ebead7bbde88"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fa95fa4fd9b675e11a7283461f510e271ad99da4cb5154de8fb027b5f7407ed5"
+    "004163d0b2411362fa353576afbe674f12e5e8919607bf97a5bc4313cf5ea139"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -842,10 +842,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "a296f683d9f8b0202a782aa284389935432e4ce76c756ed37e790a931d73b60c"
+            "467d043980af8a644dcc05f8deda3444dfc7d7dcabe62194e2eeaafead435917"
         ),
         "policy_sha256": (
-            "a5ba9953a8e26bfcd7464fe1117f6002ce4b2f5ac6574fe0cc261ff03a0e76d1"
+            "b654cde9d662f20c09ca353144bf82b1d41cb621ed1750c9b0a6669e273e585e"
         ),
     },
     "calibration_seam": {
@@ -858,10 +858,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "a5c6b9ce8d766fc7519450c489ad0223a0d2f03a111ae875ea2a52b029999003"
+            "b7a237c5bc75dfc5c1311e41a0a46aee8f38960802298815a769923717a698cb"
         ),
         "policy_sha256": (
-            "264084717c05c80509795a69299fe60f4513e821f443e0c3f2126911c8ce3605"
+            "bb0fa7841d681d7fd02acc9ca5bff51882bef7cf1ec9c195e67b8e2ea767c000"
         ),
     },
 }

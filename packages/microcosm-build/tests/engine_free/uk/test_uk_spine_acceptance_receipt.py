@@ -114,9 +114,16 @@ def _apply_pending_roster_transformations(
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster
-    roster.insert(
-        roster.index("pension_credit_take_up") + 1, "child_benefit_take_up"
-    )
+    roster.insert(roster.index("pension_credit_take_up") + 1, "child_benefit_take_up")
+    # microcosm#1063 re-mint pending: the residential split carries the flag
+    # as weight after the anchor, and the asset-type stage types its arms.
+    assert "cgt_residential_split" not in roster
+    roster.remove("hmrc_cgt_asset_type_spine")
+    anchor = roster.index("cgt_incidence_anchor")
+    roster[anchor + 1 : anchor + 1] = [
+        "cgt_residential_split",
+        "hmrc_cgt_asset_type_spine",
+    ]
     return tuple(roster)
 
 

@@ -1023,6 +1023,201 @@ def _e8_support_split(
     return receipt
 
 
+def _e8_residential_split(
+    frame,
+    problems: dict[str, object],
+    *,
+    parameters,
+    facts,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Recompute the residential split from the folded pre-split frame.
+
+    The split (microcosm#1063) is deterministic - no draw, no seed - so it is
+    reconstructible from the artifact alone: every arm folded onto the arm
+    that kept its household's ids gives the household table at the weights
+    the stage saw, and the stage's own function rerun on that table from the
+    vendored Table 8 rows and the policy parameters must reproduce the stored
+    arms (ids, indices and weights), the stored probabilities and the stored
+    residential gains, in original and permuted person order. The stored
+    layer must also agree with itself (every arm has a source, flag and index
+    agree, the mass record conserves the total at declared factor one).
+    Problems land under ``residential_split_*`` keys.
+    """
+
+    from microcosm.build.uk_runtime.cgt_asset_type import (
+        CGT_RESIDENTIAL_GAINS_COLUMN,
+    )
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+        CGT_RESIDENTIAL_PROBABILITY_COLUMN,
+        CGT_RESIDENTIAL_SPLIT_MASS_CHANGE_REASON,
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+        split_cgt_residential_households,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+
+    household = frame.table("household")
+    person = frame.table("person")
+    if HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE not in household.columns:
+        raise ValueError(
+            "e8 identity receipt: the artifact carries no "
+            f"{HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE!r} column, so the CGT "
+            "residential split layer is absent and there is nothing to receipt. "
+            "Receipt the artifact with the tool at the commit that built it."
+        )
+    receipt: dict[str, object] = {}
+    mass_records = [
+        record
+        for record in frame.mass_log
+        if record.reason == CGT_RESIDENTIAL_SPLIT_MASS_CHANGE_REASON
+    ]
+    if not mass_records:
+        problems["residential_split_mass_record"] = "missing"
+    else:
+        record = mass_records[-1]
+        receipt["mass"] = {
+            "old_total": float(record.old_total),
+            "new_total": float(record.new_total),
+            "declared_factor": record.declared_factor,
+        }
+        if record.declared_factor != 1.0 or not np.isclose(
+            record.new_total, record.old_total, rtol=1e-9, atol=0.0
+        ):
+            problems["residential_split_mass_record"] = [
+                float(record.old_total),
+                float(record.new_total),
+                record.declared_factor,
+            ]
+    try:
+        lineage = _residential_arm_lineage(person, frame.table("benunit"), household)
+    except ValueError as error:
+        problems["residential_split_lineage"] = str(error)
+        return receipt
+    receipt["id_multiplier"] = int(lineage.multiplier)
+    receipt["arms"] = int(len(lineage.arm_positions))
+    receipt["households_split"] = int(np.unique(lineage.source_positions).size)
+    receipt["largest_arm_index"] = (
+        int(lineage.arm_index.max()) if lineage.arm_index.size else 0
+    )
+
+    # The frame the split saw: arms folded onto their sources and dropped,
+    # the stage's own columns removed.
+    pre = _drop_stacked_layers(frame, [HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE])
+    pre_person = pre.table("person").drop(
+        columns=[CGT_RESIDENTIAL_PROBABILITY_COLUMN, CGT_RESIDENTIAL_GAINS_COLUMN]
+    )
+    pre_household = pre.table("household").drop(
+        columns=[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE, CGT_RESIDENTIAL_CLONE_INDEX_COLUMN]
+    )
+
+    def pre_frame(person_table: pd.DataFrame):
+        return uk_national_frame(
+            person=person_table,
+            benunit=pre.table("benunit"),
+            household=pre_household,
+            time_period=uk_time_period(frame),
+            weight_kind=uk_household_weight_kind(frame),
+            household_weights=pre.weights_for("household").values,
+            mass_log=pre.mass_log,
+        )
+
+    def recompute(person_table: pd.DataFrame):
+        result = split_cgt_residential_households(
+            pre_frame(person_table), facts=facts, parameters=parameters
+        )
+        table = result.frame.table("household")
+        weights = pd.Series(
+            np.asarray(result.frame.weights_for("household").values, dtype=float),
+            index=pd.to_numeric(table["household_id"]).astype("int64").to_numpy(),
+        )
+        index = pd.Series(
+            table[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN].to_numpy(dtype="int64"),
+            index=weights.index,
+        )
+        people = result.frame.table("person")
+        ids = pd.to_numeric(people["person_id"]).astype("int64").to_numpy()
+        probability = pd.Series(
+            people[CGT_RESIDENTIAL_PROBABILITY_COLUMN].to_numpy(dtype=float), index=ids
+        )
+        gains = pd.Series(
+            people[CGT_RESIDENTIAL_GAINS_COLUMN].to_numpy(dtype=float), index=ids
+        )
+        return weights, index, probability, gains, result.evidence()
+
+    weights, index, probability, gains, evidence = recompute(pre_person)
+    receipt["identities"] = dict(evidence["identities"])
+    receipt["arm_weights"] = dict(evidence["arm_weights"])
+    receipt["concentration"] = dict(evidence["concentration"])
+    stored_weights = pd.Series(
+        np.asarray(frame.weights_for("household").values, dtype=float),
+        index=lineage.household_ids,
+    )
+    stored_index = pd.Series(
+        household[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN].to_numpy(dtype="int64"),
+        index=lineage.household_ids,
+    )
+    missing = int((~stored_weights.index.isin(weights.index)).sum())
+    extra = int((~weights.index.isin(stored_weights.index)).sum())
+    if missing or extra:
+        problems["residential_split_arms_stored"] = {
+            "missing": missing,
+            "extra": extra,
+        }
+    else:
+        aligned = weights.reindex(stored_weights.index)
+        receipt["max_abs_weight_diff"] = float(
+            np.abs(aligned.to_numpy() - stored_weights.to_numpy()).max()
+        )
+        off = ~np.isclose(
+            aligned.to_numpy(), stored_weights.to_numpy(), rtol=1e-9, atol=1e-6
+        )
+        if off.any():
+            problems["residential_split_weights_stored"] = int(off.sum())
+        if not index.reindex(stored_index.index).equals(stored_index):
+            problems["residential_split_index_stored"] = True
+    person_ids = pd.to_numeric(person["person_id"]).astype("int64").to_numpy()
+    stored_probability = pd.Series(
+        person[CGT_RESIDENTIAL_PROBABILITY_COLUMN].to_numpy(dtype=float),
+        index=person_ids,
+    )
+    stored_gains = pd.Series(
+        person[CGT_RESIDENTIAL_GAINS_COLUMN].to_numpy(dtype=float), index=person_ids
+    )
+    if not stored_probability.index.isin(probability.index).all():
+        problems["residential_split_people_stored"] = True
+    else:
+        if not np.allclose(
+            probability.reindex(stored_probability.index).to_numpy(),
+            stored_probability.to_numpy(),
+            rtol=1e-9,
+            atol=0.0,
+        ):
+            problems["residential_split_probability_stored"] = True
+        if not np.array_equal(
+            gains.reindex(stored_gains.index).to_numpy(), stored_gains.to_numpy()
+        ):
+            problems["residential_split_gains_stored"] = True
+
+    rng = np.random.default_rng(permutation_seed)
+    permuted_weights, permuted_index, permuted_probability, permuted_gains, _ = (
+        recompute(
+            pre_person.iloc[rng.permutation(len(pre_person))].reset_index(drop=True)
+        )
+    )
+    if not (
+        permuted_weights.sort_index().equals(weights.sort_index())
+        and permuted_index.sort_index().equals(index.sort_index())
+        and permuted_probability.sort_index().equals(probability.sort_index())
+        and permuted_gains.sort_index().equals(gains.sort_index())
+    ):
+        problems["residential_split_permutation"] = True
+    return receipt
+
+
 def _e8_band_donors(
     frame,
     problems: dict[str, object],
@@ -1355,7 +1550,13 @@ def e8_identity_receipt(
     (4) the SPI income band donors (microcosm#1063) - the stored layer's
     structure, equal band weights and conserving mass record, and, with the
     licensed SPI tape (``spi_tab``), the identity-keyed seating rerun on the
-    reconstructed pre-donor frame in original and permuted row order.
+    reconstructed pre-donor frame in original and permuted row order;
+    (5) the CGT residential split (microcosm#1063) recomputed from the folded
+    pre-split frame with the stage's own function - the solved probability
+    carried as arm weights - in original and permuted row order against the
+    stored arms, indices, weights, probabilities and residential gains. The
+    clone-pair, support-split and band-donor checks run on the frame with the
+    arms folded onto their sources, the state those layers were written in.
     The A&S prior amounts (overwritten by the Table 3 redraw and its
     sub-AEA remainder mapping), the redraw's seeded within-band draws
     (covered by the merged #560 embedded published-surface tests), and the
@@ -1363,7 +1564,13 @@ def e8_identity_receipt(
     consumed by the stage) are covered by twin-build determinism.
     """
 
+    from microcosm.build.uk_runtime.cgt_asset_type import (
+        load_hmrc_cgt_asset_type_facts,
+    )
     from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
     from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
     from microcosm.build.uk_runtime.cgt_support import (
         CGT_SUPPORT_COPIES_COLUMN,
@@ -1380,35 +1587,48 @@ def e8_identity_receipt(
 
     problems: dict[str, object] = {}
     person = frame.table("person")
-    household = frame.table("household")
+
+    # The split's income-band proxy, the anchor and the residential split
+    # read the same policy parameters (the tapered Personal Allowance and
+    # the annual exempt amount) at the frame's build period.
+    parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+
+    # (5) Residential split recomputed from the folded pre-split frame; the
+    # CGT layers below it are then checked with the arms folded away.
+    residential_split = _e8_residential_split(
+        frame,
+        problems,
+        parameters=parameters,
+        facts=load_hmrc_cgt_asset_type_facts(),
+        permutation_seed=permutation_seed,
+    )
+    cgt_frame = _drop_stacked_layers(frame, [HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE])
+    household = cgt_frame.table("household")
 
     # (1) Clone-pair structure over every household: the support split's
     # copies are pre-clone rows with clones of their own.
     is_clone = household[HOUSEHOLD_IS_CGT_CLONE].astype(bool).to_numpy()
     if int((~is_clone).sum()) != int(is_clone.sum()):
         problems["clone_half_counts"] = [int((~is_clone).sum()), int(is_clone.sum())]
-    # The split's income-band proxy and the anchor read the same policy
-    # parameters (the tapered Personal Allowance and the annual exempt
-    # amount) at the frame's build period.
-    parameters = uk_cgt_policy_parameters(uk_time_period(frame))
-    clone_pairs = _e8_clone_pairs(frame, problems, parameters=parameters)
+    clone_pairs = _e8_clone_pairs(cgt_frame, problems, parameters=parameters)
 
     # (2) Support split recomputed from the folded pre-split frame. Same
     # contract as the E6 NHS check: age_tail runs immediately after
     # frs_spine, so the split classified each household by its oldest-adult
     # carrier on the disaggregated age surface stored in the artifact.
     support_split = _e8_support_split(
-        frame,
+        cgt_frame,
         problems,
         distribution=load_hmrc_cgt_joint_distribution(),
         parameters=parameters,
         permutation_seed=permutation_seed,
     )
 
-    # (4) SPI income band donors: the seating reconstructed from ids.
+    # (4) SPI income band donors: the seating reconstructed from ids, on the
+    # arm-free frame (the donor stage ran before the residential split).
     propensity, band_taxpayers = _band_donor_seating_inputs(frame, spi_tab)
     band_donors = _e8_band_donors(
-        frame,
+        cgt_frame,
         problems,
         propensity=propensity,
         band_taxpayers=band_taxpayers,
@@ -1461,6 +1681,7 @@ def e8_identity_receipt(
         "clone_pairs": clone_pairs,
         "support_split": support_split,
         "band_donors": band_donors,
+        "residential_split": residential_split,
         "permutation_mismatches": {
             key: value
             for key, value in problems.items()
@@ -1488,6 +1709,10 @@ def e8_identity_receipt(
             "carriers: exact equality; band-donor weights within a band and "
             "against the rerun: rtol 1e-9 / atol 1e-6; band-donor mass "
             "record: new_total against old_total at rtol 1e-9 with declared "
+            "factor one; residential-split arms, indices and residential "
+            "gains: exact equality; residential-split weights against the "
+            "rerun: rtol 1e-9 / atol 1e-6; probabilities: rtol 1e-9; mass "
+            "record: new_total against old_total at rtol 1e-9 with declared "
             "factor one"
         ),
         "columns_by_entity": {
@@ -1495,9 +1720,15 @@ def e8_identity_receipt(
                 HOUSEHOLD_IS_CGT_CLONE,
                 HOUSEHOLD_IS_CGT_SUPPORT_COPY,
                 CGT_SUPPORT_COPIES_COLUMN,
+                HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+                "cgt_residential_clone_index",
                 "household_weight",
             ],
-            "person": ["student_loan_plan"],
+            "person": [
+                "student_loan_plan",
+                "cgt_residential_probability",
+                "capital_gains_residential_property",
+            ],
         },
         "qrf_draw_columns_scope": (
             "excluded: the A&S prior amounts (overwritten by the Table 3 "
@@ -1764,6 +1995,10 @@ _STACKING_STAGE_BY_FLAG = {
     "household_is_spi_synthetic": "spi_support_channel",
     "household_is_capital_gains_clone": "cgt_incidence_clone",  # E8 clone
     "household_is_cgt_support_copy": "cgt_support_split",  # E8 support copies
+    # microcosm#1063: the residential split's arms carry their source's clone
+    # and copy flags, so dropping the clone layer drops them too; dropping
+    # this layer alone folds each arm onto its source.
+    "household_is_cgt_residential_clone": "cgt_residential_split",
 }
 _STACKED_ROW_FLAGS = tuple(_STACKING_STAGE_BY_FLAG)
 
@@ -1798,20 +2033,173 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
     without the clone layer is returned unchanged.
     """
 
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
     from microcosm.build.uk_runtime.cgt_structure import (
         HOUSEHOLD_IS_CGT_CLONE,
         pair_clone_households,
     )
 
     household = frame.table("household")
-    weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    weights = _pre_residential_household_weights(frame)
     if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
         return weights
-    clone_positions, original_positions, _ = pair_clone_households(
-        frame.table("person"), frame.table("benunit"), household
-    )
+    # The residential arms (microcosm#1063) are stacked after the clone, so
+    # the clone pairing runs on the frame without them, their mass already
+    # folded onto their sources.
+    keep = np.ones(len(household), dtype=bool)
+    if HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE in household.columns:
+        keep &= ~household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE].to_numpy(dtype=bool)
+    if keep.all():
+        clone_positions, original_positions, _ = pair_clone_households(
+            person, benunit, household
+        )
+    else:
+        kept_household = household.loc[keep].reset_index(drop=True)
+        kept_ids = set(kept_household["household_id"].tolist())
+        kept_person = person.loc[
+            person["person_household_id"].isin(kept_ids)
+        ].reset_index(drop=True)
+        kept_benunit = benunit.loc[
+            benunit["benunit_id"].isin(set(kept_person["person_benunit_id"]))
+        ].reset_index(drop=True)
+        clone_kept, original_kept, _ = pair_clone_households(
+            kept_person, kept_benunit, kept_household
+        )
+        kept_positions = np.flatnonzero(keep)
+        clone_positions = kept_positions[clone_kept]
+        original_positions = kept_positions[original_kept]
     weights[original_positions] += weights[clone_positions]
     return weights
+
+
+def _pre_residential_household_weights(frame) -> np.ndarray:
+    """Household weights with every residential arm folded onto its source.
+
+    The arms of ``cgt_residential_split`` (microcosm#1063) divide a
+    household's mass by the solved residential probabilities, so summing
+    them back onto the arm that kept the household's ids is exact. An
+    artifact without the arm layer is returned unchanged. The arms keep their
+    own weights in the returned vector; the scoping that calls this drops
+    those rows.
+    """
+
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
+
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+    if HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE not in household.columns:
+        return weights
+    lineage = _residential_arm_lineage(
+        frame.table("person"), frame.table("benunit"), household
+    )
+    np.add.at(weights, lineage.source_positions, weights[lineage.arm_positions])
+    return weights
+
+
+class _ResidentialArmLineage(NamedTuple):
+    """Where every residential arm sits and which source it came from."""
+
+    household_ids: np.ndarray
+    pre_split: np.ndarray
+    arm_positions: np.ndarray
+    source_positions: np.ndarray
+    arm_index: np.ndarray
+    multiplier: int
+
+
+def _residential_arm_lineage(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> _ResidentialArmLineage:
+    """Every residential arm's position, its source's position and its index.
+
+    The split offsets ids by ``id_multiplier_for_values`` over the rows it
+    saw, every household of the frame before it ran: the households whose
+    arm flag is false. Arm ``j`` of source ``r`` carries ``r + j * M``, so
+    ``j = id // M`` and ``r = id - j * M``. An arm without a source, or with
+    index zero, fails closed, and the stored ``cgt_residential_clone_index``
+    must agree with the id scheme on every row.
+    """
+
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
+    from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+
+    household_ids = (
+        pd.to_numeric(household["household_id"], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    if len(np.unique(household_ids)) != len(household_ids):
+        raise ValueError("CGT residential-arm lineage requires unique household ids.")
+    is_arm = household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE].to_numpy(dtype=bool)
+    if CGT_RESIDENTIAL_CLONE_INDEX_COLUMN not in household.columns:
+        raise ValueError(
+            f"CGT residential-arm lineage requires {CGT_RESIDENTIAL_CLONE_INDEX_COLUMN!r}."
+        )
+    stored_index = (
+        pd.to_numeric(household[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    flag_disagreements = int(((stored_index != 0) != is_arm).sum())
+    if flag_disagreements:
+        raise ValueError(
+            "CGT residential-arm flag and stored arm index disagree on "
+            f"{flag_disagreements} household(s)."
+        )
+    pre_split = ~is_arm
+    pre_split_ids = set(household_ids[pre_split].tolist())
+    person_pre_split = person["person_household_id"].isin(pre_split_ids).to_numpy()
+    benunit_pre_split = (
+        benunit["benunit_id"]
+        .isin(set(person.loc[person_pre_split, "person_benunit_id"].tolist()))
+        .to_numpy()
+    )
+    multiplier = id_multiplier_for_values(
+        person.loc[person_pre_split, "person_id"],
+        person.loc[person_pre_split, "person_household_id"],
+        person.loc[person_pre_split, "person_benunit_id"],
+        benunit.loc[benunit_pre_split, "benunit_id"],
+        household_ids[pre_split],
+    )
+    arm_positions = np.flatnonzero(is_arm)
+    arm_ids = household_ids[arm_positions]
+    arm_index = arm_ids // multiplier
+    source_ids = arm_ids - arm_index * multiplier
+    position_by_id = {int(value): index for index, value in enumerate(household_ids)}
+    source_positions = np.empty(len(arm_positions), dtype=np.int64)
+    for slot, (arm_id, index, source_id) in enumerate(
+        zip(arm_ids.tolist(), arm_index.tolist(), source_ids.tolist(), strict=True)
+    ):
+        source = position_by_id.get(int(source_id))
+        if index < 1 or source is None or not pre_split[source]:
+            raise ValueError(
+                "CGT residential arm without a source household: household_id "
+                f"{arm_id} (id multiplier {multiplier})."
+            )
+        source_positions[slot] = source
+    scheme_disagreements = int((stored_index[arm_positions] != arm_index).sum())
+    if scheme_disagreements:
+        raise ValueError(
+            f"CGT residential arm index stored on {scheme_disagreements} arm(s) "
+            f"disagrees with the id scheme (id // {multiplier})."
+        )
+    return _ResidentialArmLineage(
+        household_ids=household_ids,
+        pre_split=pre_split,
+        arm_positions=arm_positions,
+        source_positions=source_positions,
+        arm_index=arm_index,
+        multiplier=multiplier,
+    )
 
 
 class _SupportCopyLineage(NamedTuple):
@@ -2058,6 +2446,9 @@ def _frame_as_stage_saw(frame, stage: str):
 
 
 def _drop_stacked_layers(frame, flags: Sequence[str]):
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
     from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
     from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
     from microcosm.build.uk_runtime.national_frame import (
@@ -2087,6 +2478,8 @@ def _drop_stacked_layers(frame, flags: Sequence[str]):
         all_weights = _pre_split_household_weights(frame)
     elif HOUSEHOLD_IS_CGT_CLONE in flags:
         all_weights = _pre_clone_household_weights(frame)
+    elif HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE in flags:
+        all_weights = _pre_residential_household_weights(frame)
     else:
         all_weights = np.asarray(frame.weights_for("household").values, dtype=float)
     weights = all_weights[keep.to_numpy()]

@@ -810,6 +810,12 @@ def build_manifest(
                 stage_name="cgt_incidence_anchor",
                 candidate_source=candidate_source,
             ),
+            # The residential split conserves mass like the other CGT
+            # structural stages (microcosm#1063).
+            "cgt_residential_split": _source_stage_family_coverage_contract(
+                stage_name="cgt_residential_split",
+                candidate_source=candidate_source,
+            ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,

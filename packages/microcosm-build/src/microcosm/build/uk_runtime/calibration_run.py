@@ -107,6 +107,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_child_benefit_take_up",
     "uk_stage_cgt_incidence_clone_mass",
     "uk_stage_cgt_support_split_mass",
+    "uk_stage_cgt_residential_split_mass",
     "uk_stage_spi_income_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
     "uk_stage_hmrc_cgt_asset_type_spine_summary",

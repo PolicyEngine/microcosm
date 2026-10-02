@@ -1653,6 +1653,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "headroom",
                 "maximum_copy_weight",
                 "maximum_relative_mass_deviation",
+                # #1063 cgt_residential_split stage-health check: the
+                # identities' tolerance and the arm-count ceiling.
+                "maximum_identity_relative_error",
+                "maximum_liable_gainers_per_household",
                 # spi_income_band_donor_support check (PolicyEngine/chronicle#280
                 # lane; mass-conserving since #1063): the reserved bands, the
                 # seating rule's constants and the funding floor.

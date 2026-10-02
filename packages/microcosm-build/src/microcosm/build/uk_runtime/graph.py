@@ -52,6 +52,7 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
         "cgt_support_split",
         "cgt_incidence_clone",
         "cgt_incidence_anchor",
+        "cgt_residential_split",
     }
 )
 
@@ -79,6 +80,9 @@ _STRUCTURAL_MASS = {
     "spi_income_band_donors": "declared",
     "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
+    # The residential split divides each liable household into arms that are
+    # identical in composition (microcosm#1063), so person mass is conserved.
+    "cgt_residential_split": "conserve",
     "cgt_incidence_anchor": "conserve",
 }
 
@@ -87,6 +91,7 @@ _STRUCTURAL_WEIGHT_KIND = {
     "spi_income_band_donors": "importance",
     "cgt_support_split": "importance",
     "cgt_incidence_clone": "importance",
+    "cgt_residential_split": "importance",
     "cgt_incidence_anchor": "importance",
 }
 
@@ -297,6 +302,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # The support split copies whole households, so its surface is open.
     "cgt_support_split": None,
     "cgt_incidence_clone": None,
+    # The residential split copies whole households into arms, so its
+    # surface is open (microcosm#1063).
+    "cgt_residential_split": None,
     # The amounts redraw conditions on age and household region as well as
     # the income proxy (microcosm#725), ranks gainers on household investable
     # wealth (microcosm#1014) and keys its placement receipts on the support
@@ -807,13 +815,20 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),
-    "hmrc_cgt_asset_type_spine": (
-        _Cell("person", "capital_gains_asset_type", "string"),
-        _Cell("person", "capital_gains_residential_property", "float64"),
-        _Cell("person", "capital_gains_badr", "float64"),
-    ),
     # Weights only: the anchor owns no cell (microcosm#970).
     "cgt_incidence_anchor": (),
+    # The residential split writes its lineage cells, the solved probability
+    # and the residential gains of each arm (microcosm#1063).
+    "cgt_residential_split": (
+        _Cell("household", "household_is_cgt_residential_clone", "bool"),
+        _Cell("household", "cgt_residential_clone_index", "int64"),
+        _Cell("person", "cgt_residential_probability", "float64"),
+        _Cell("person", "capital_gains_residential_property", "float64"),
+    ),
+    "hmrc_cgt_asset_type_spine": (
+        _Cell("person", "capital_gains_asset_type", "string"),
+        _Cell("person", "capital_gains_badr", "float64"),
+    ),
     "salary_sacrifice": _cells(
         "person",
         (

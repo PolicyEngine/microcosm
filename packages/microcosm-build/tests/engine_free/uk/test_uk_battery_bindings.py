@@ -1499,6 +1499,8 @@ def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
     household["household_support_clone_index"] = np.zeros(4, dtype=np.int64)
     household["household_is_cgt_support_copy"] = [False, True, True, False]
     household["cgt_support_copy_index"] = np.asarray([0, 1, 2, 0], dtype=np.int64)
+    household["household_is_cgt_residential_clone"] = False
+    household["cgt_residential_clone_index"] = np.zeros(4, dtype=np.int64)
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
     )
