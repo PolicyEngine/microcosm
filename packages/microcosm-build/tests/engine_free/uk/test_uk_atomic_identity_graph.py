@@ -303,8 +303,11 @@ def test_brma_spread_uses_spine_lineage_and_preserves_expanded_population(tmp_pa
 def test_brma_lineage_draws_do_not_depend_on_population_row_order(tmp_path, k):
     by_lineage = []
     for name, rows in (("forward", LINEAGE), ("reverse", list(reversed(LINEAGE)))):
+        # Frame requires sorted structural IDs. Remap them for each row order,
+        # preserving source lineage: draws must also ignore concrete local IDs.
+        remapped = [(index, *row[1:]) for index, row in enumerate(rows, start=1)]
         manifest, _ = run_identity(
-            lineage_frame(rows), tmp_path / name, k=k, endpoint="uk.full.brma"
+            lineage_frame(remapped), tmp_path / name, k=k, endpoint="uk.full.brma"
         )
         household = manifest.population("uk.full.expand").table("household")
         by_lineage.append(

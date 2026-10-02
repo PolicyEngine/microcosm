@@ -884,10 +884,11 @@ def append_uk_population_nodes(
             id="uk.full.brma",
             kernel=UKBRMACloneSpreadKernel.ref,
             population="uk.full.expand",
+            # Primary keys are implicit in every context table.
             inputs=(
                 Slice(
                     "household",
-                    ("household_id", ladder_clone_index_column("household")),
+                    (ladder_clone_index_column("household"),),
                 ),
             ),
             outputs=(Owned("household", "brma", "string", rewrite=True),),
