@@ -3,7 +3,7 @@
 The UK `frs_employment` stage now maps EMPSTATI codes 1-11 one data-dictionary
 label each (UKDS SN 9563, FRS 2024-25 adult table), so code 11 ("Other
 Inactive") is `OTHER_INACTIVE` rather than `LONG_TERM_DISABLED`. This is the
-same mapping as the incumbent's uk-data#526 (head `d3984002`). Everything below
+same mapping as the incumbent's uk-data#526 (head `fb026659`; the mapping is byte-identical to its earlier head `d3984002`). Everything below
 was run on 2026-10-02 against the pinned `adult.tab`
 (sha256 `4eaea080…658d`). Only aggregates are reported; no cell here is under
 10 survey people.
@@ -36,15 +36,25 @@ reports for its FRS 2024-25 build.
 ## Differential against uk-data#526
 
 `differential_vs_uk_data_526.py` loads uk-data's code table and
-`derive_employment_status_from_frs` from the PR head by AST and compares them
+`derive_employment_status_from_frs` from the PR head (`fb026659`) by AST and compares them
 with microcosm's:
 
 ```
 code tables identical: 11 codes
 fixed cases agree: 34
 hypothesis cases agree: 2000 examples
+refusal exception types (pandas 3.0.3): {'microcosm': ['ValueError'], 'uk-data': ['TypeError', 'ValueError']}
 licensed FRS 2024-25 people: 34966; mismatches: 0
 ```
+
+Agreement means the same statuses, or a refusal on both sides. The refusal's
+exception type is recorded, not compared. At `fb026659`, uk-data's message
+formats the codes with `sorted(set(codes.astype(str)))`. Under pandas 3,
+`astype(str)` keeps NaN as a float, so a blank adult code next to another
+unknown code makes `sorted` raise `TypeError` instead of `ValueError`. The
+build still stops. Under uk-data's locked pandas 2.3.3 it raises
+`ValueError`, which was checked in that checkout's own environment. This was
+reported to the #526 owner. Microcosm's refusal is always `ValueError`.
 
 The fixed cases are codes 0-12, -1, 11.5, NaN and 99, each as an adult and as
 a child row. Agreement means both return the same statuses or both refuse.

@@ -44,7 +44,7 @@ from microcosm.build.uk_runtime.frs_employment import (
 )
 from microcosm.build.uk_runtime.frs_spine import normalize_ids, read_pinned_tab
 
-UK_DATA_526_HEAD = "d3984002c17d2bee0cca5606071e9a5aa2dc4c18"
+UK_DATA_526_HEAD = "fb0266593cab1dbe4464c4c6db63e4868af43db5"
 UK_DATA_NAMES = ("FRS_EMPSTATI_EMPLOYMENT_STATUS", "derive_employment_status_from_frs")
 
 
@@ -75,10 +75,20 @@ def load_uk_data_mapping(checkout: Path):
     return namespace[UK_DATA_NAMES[0]], namespace[UK_DATA_NAMES[1]]
 
 
-def outcome(function, codes, is_adult):
+REFUSAL_TYPES: dict[str, set[str]] = {"microcosm": set(), "uk-data": set()}
+
+
+def outcome(function, codes, is_adult, *, side):
+    """Statuses, or "refused" for any exception (its type is recorded).
+
+    Either side refusing stops the build. The refusal's exception type can
+    differ by environment: uk-data's message formatting depends on the pandas
+    version, so it is recorded and reported rather than compared.
+    """
     try:
         return ("ok", list(function(codes, is_adult)))
-    except ValueError:
+    except Exception as error:  # noqa: BLE001 - every exception refuses a build
+        REFUSAL_TYPES[side].add(type(error).__name__)
         return ("refused", None)
 
 
@@ -102,8 +112,10 @@ def main() -> None:
     fixed = [*range(0, 13), -1, 11.5, math.nan, 99]
     for code in fixed:
         for is_adult in (True, False):
-            ours = outcome(derive_employment_status_from_frs, [code], [is_adult])
-            theirs = outcome(uk_data_derive, [code], [is_adult])
+            ours = outcome(
+                derive_employment_status_from_frs, [code], [is_adult], side="microcosm"
+            )
+            theirs = outcome(uk_data_derive, [code], [is_adult], side="uk-data")
             assert ours == theirs, (code, is_adult, ours, theirs)
     print(f"fixed cases agree: {len(fixed) * 2}")
 
@@ -117,12 +129,17 @@ def main() -> None:
     def agree(sample):
         codes = [code for _, code in sample]
         is_adult = [adult for adult, _ in sample]
-        assert outcome(derive_employment_status_from_frs, codes, is_adult) == outcome(
-            uk_data_derive, codes, is_adult
-        )
+        assert outcome(
+            derive_employment_status_from_frs, codes, is_adult, side="microcosm"
+        ) == outcome(uk_data_derive, codes, is_adult, side="uk-data")
 
     agree()
     print("hypothesis cases agree: 2000 examples")
+    print(
+        f"refusal exception types (pandas {pd.__version__}):",
+        {side: sorted(types) for side, types in REFUSAL_TYPES.items()},
+    )
+    assert REFUSAL_TYPES["microcosm"] <= {"ValueError"}
 
     stages = {stage.stage: stage for stage in load_country_spec("uk").sources.stages}
     employment = {a["table"]: a for a in stages["frs_employment"].artifacts}
