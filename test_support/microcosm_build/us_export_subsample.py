@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,11 +36,22 @@ US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital
 
 
 def _load_tool(module_name: str, filename: str):
+    """Import ``tools/<filename>`` as ``module_name``.
+
+    The module is registered in ``sys.modules`` before it executes:
+    ``dataclasses`` resolves the tools' string annotations (``from __future__
+    import annotations``) through ``sys.modules[cls.__module__]``.
+    """
     path = _TEST_PATHS.repository / "tools" / filename
     spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
-    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
     return module
 
 

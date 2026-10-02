@@ -128,12 +128,24 @@ _TOOLS = Path(__file__).resolve().parent
 
 
 def _load_tool(module_name: str, filename: str):
-    """Import a sibling tool by path (``tools/`` is not a package)."""
+    """Import a sibling tool by path (``tools/`` is not a package).
+
+    The module is registered in ``sys.modules`` before it executes, as
+    ``dataclasses`` resolves string annotations through it; an already
+    imported module of that name is reused.
+    """
+    if module_name in sys.modules:
+        return sys.modules[module_name]
     spec = importlib.util.spec_from_file_location(module_name, _TOOLS / filename)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {filename}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
     return module
 
 
