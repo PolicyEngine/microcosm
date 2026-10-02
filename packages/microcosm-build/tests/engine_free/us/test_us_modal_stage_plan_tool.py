@@ -26,6 +26,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from test_support.git_isolation import GIT_CONFIG_CARRIERS
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     COMMIT,
     FEED_SHA,
@@ -875,10 +876,9 @@ def test_every_repository_variable_git_names_is_withheld(tmp_path: Path) -> None
     if shutil.which("git") is None:
         pytest.skip("git is not installed")
     names = set(_git(tmp_path, "rev-parse", "--local-env-vars").split())
-    carriers = {"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
     assert {"GIT_DIR", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"} <= names
-    assert names - carriers <= plan_lib.GIT_REPOSITORY_ENV
-    assert not carriers & plan_lib.GIT_REPOSITORY_ENV
+    assert names - GIT_CONFIG_CARRIERS <= plan_lib.GIT_REPOSITORY_ENV
+    assert not GIT_CONFIG_CARRIERS & plan_lib.GIT_REPOSITORY_ENV
 
 
 def test_branch_check_argvs_never_touch_the_pinned_clone() -> None:

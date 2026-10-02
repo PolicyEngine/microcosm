@@ -5,9 +5,15 @@ directory on ``sys.path``. Tests that exercise the F0 migration tooling
 import the ``tools.us_bundle_generation`` package from the repository
 root, so the root joins the path here explicitly rather than by the
 accident of ``python -m pytest``.
+
+A suite started by a hook, ``rebase --exec`` command or shell alias in a
+linked worktree inherits an absolute ``GIT_DIR``, which would send every
+fixture's git command to that worktree's repository. The variables that
+pick git's repository are removed here, before any test runs.
 """
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -15,11 +21,16 @@ _ROOT = str(Path(__file__).resolve().parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from test_support.git_isolation import (  # noqa: E402
+    drop_inherited_git_repository,
+)
 from tools.ci_test_plan import (  # noqa: E402
     TEST_GROUPS,
     TestGroup,
     group_name_for_collection_path,
 )
+
+drop_inherited_git_repository(os.environ)
 
 
 def pytest_addoption(parser) -> None:

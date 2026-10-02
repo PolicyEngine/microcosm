@@ -74,6 +74,17 @@ then loads a packaged spec by code must call
 `country_spec._load_packaged_country_spec.cache_clear()` before and after that
 load, or it silently receives the spec an earlier test cached.
 
+Git exports an absolute `GIT_DIR` to the hooks, `rebase --exec` commands and
+shell aliases it runs in a linked worktree, and `GIT_DIR` outranks `-C` and the
+working directory. The root `conftest.py` therefore removes the variables that
+pick git's repository (`git rev-parse --local-env-vars`, less the two that
+carry `git -c` options) before any test runs
+(`test_support.git_isolation`), so a fixture's `git init` or `commit` in a
+temporary directory stays there. A test that needs one of those variables sets
+it itself. Code that runs git against a repository other than its own, as the
+Modal stage runner does, must not rely on that: it drops them from the child
+environment (`modal_us_stage_plan.git_environment`).
+
 **Adding or moving tests.** Every `test_*.py` module must live directly in one
 of these directories below its package's `tests/` directory:
 
