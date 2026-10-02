@@ -2049,15 +2049,24 @@ class ExportProbe:
                 row_map = HouseholdRowMap(self.scorer._batches(), sampler=self.sampler)
             except Exception as error:
                 setup_error = f"{type(error).__name__}: {error}"
-        reference_results = (
-            {}
-            if self.reference_smoke is None
-            else dict(
-                (self.reference_smoke.get("reform_coverage_smoke") or {})
-                .get("details", {})
-                .get("results", {})
-            )
-        )
+        reference_results: dict[str, Any] = {}
+        reference_error = None
+        if self.reference_smoke is not None:
+            try:
+                reference_results = dict(
+                    (
+                        (self.reference_smoke.get("reform_coverage_smoke") or {}).get(
+                            "details"
+                        )
+                        or {}
+                    ).get("results")
+                    or {}
+                )
+            except (AttributeError, TypeError, ValueError) as error:
+                reference_error = (
+                    f"the reference smoke file is malformed "
+                    f"({type(error).__name__}: {error}); no probe is compared"
+                )
         results = gate.details.get("results", {})
         rows = []
         for index, probe in enumerate(probes):
@@ -2105,6 +2114,7 @@ class ExportProbe:
             "passed": gate.passed,
             "failures": list(gate.failures),
             "analysis_setup_error": setup_error,
+            "reference_error": reference_error,
             "baseline_keys": len(plan),
             "reform_passes": scoring_record["reform_passes"],
             "reform_systems": scoring_record["reform_systems"],

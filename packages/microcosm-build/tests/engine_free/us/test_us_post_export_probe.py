@@ -663,13 +663,27 @@ def test_a_receipt_without_probe_records_costs_only_take_all(
 
 
 def test_cancelling_non_carrier_effects_deny_take_all_exactness(
-    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+    sampler, probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
 ) -> None:
-    """A take-all probe whose sampled non-carrier households carry effects
-    that cancel in sum is not exact: two households carry an effect outside
-    the certainty set, so the verdict needs a variance, not rule 3."""
-    frame, path, receipt, _ = chain
+    """A take-all probe none of whose drawn households carries an effect is
+    exact only if no other household carries one either. Here two certainty
+    households outside its carriers carry effects that cancel in sum: a
+    summed test would call the probe exact (authoritative, rule 3); counting
+    the households sends it to the variance rules, which find nothing to
+    estimate from (informational)."""
+    frame, _, _, _ = chain
     monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    # Size certainty keeps the households that dominate the wage probe's
+    # mass: certainty households that do not carry the rare input.
+    path, receipt = sample_synthetic(
+        sampler,
+        tmp_path / "sized",
+        frame,
+        fraction=0.5,
+        seed=1,
+        probes=fixture_engine_probes(),
+        size_certainty_multiplier=1.0,
+    )
     probe, _ = fixture_export_probe(
         probe_tool,
         builder,
@@ -682,9 +696,13 @@ def test_cancelling_non_carrier_effects_deny_take_all_exactness(
     design = probe.design
     rare = next(p for p in fixture_engine_probes() if p.id == "rare_keogh")
     carriers = probe.carriers_by_probe["rare_keogh"]
-    others = [
-        h for h in design.household_ids[~design.certainty] if h not in set(carriers)
-    ][:2]
+    certain_others = [
+        h for h in design.household_ids[design.certainty] if h not in set(carriers)
+    ]
+    assert len(certain_others) >= 2, (
+        "the fixture needs two non-carrier certainty households"
+    )
+    others = certain_others[:2]
     ids = np.asarray([*carriers, *others], dtype=np.int64)
     unweighted = pd.Series([0.0] * len(carriers) + [5.0, -5.0], index=ids)
     weight_of = pd.Series(design.adjusted_weights, index=design.household_ids)
@@ -711,16 +729,45 @@ def test_cancelling_non_carrier_effects_deny_take_all_exactness(
         None,
         carriers,
     )
-    assert analysis["noncarrier_effect"] == 0.0
+    assert analysis["drawn_effect_households"] == 0  # rule 3's first condition holds
+    assert analysis["noncarrier_effect"] == 0.0  # a summed test would pass
     assert analysis["noncarrier_effect_households"] == 2
-    authority, _ = probe_tool.classify_probe(
+    kwargs = dict(
         signed_magnitude=0.0,
         floor=1.0,
         standard_error=analysis["standard_error"],
         take_all=True,
         drawn_effect_households=analysis["drawn_effect_households"],
         effective_households=analysis["effective_variance_households"],
-        noncarrier_effect_households=analysis["noncarrier_effect_households"],
         census=False,
     )
+    authority, _ = probe_tool.classify_probe(
+        **kwargs, noncarrier_effect_households=analysis["noncarrier_effect_households"]
+    )
     assert authority == "informational"
+    # The summed rule's verdict, for contrast: exact, hence authoritative.
+    authority, _ = probe_tool.classify_probe(**kwargs, noncarrier_effect_households=0)
+    assert authority == "authoritative"
+
+
+def test_a_malformed_reference_smoke_file_costs_only_the_comparison(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        reference_smoke={
+            "reform_coverage_smoke": {"details": {"results": ["not", "a", "map"]}}
+        },
+        stages=("reform_coverage_smoke",),
+    )
+    smoke = report["stages"]["reform_coverage_smoke"]
+    assert smoke["status"] == "completed"
+    assert "malformed" in smoke["reference_error"]
+    assert len(smoke["probes"]) == len(fixture_engine_probes())
+    assert all("reference" not in row for row in smoke["probes"])
