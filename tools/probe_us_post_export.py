@@ -420,7 +420,10 @@ def stratified_ratio_variance(
         y = values[drawn]
         mass = float(weights.sum())
         if mass <= 0.0:
-            return math.nan
+            # The sampler draws a weightless stratum only when all of it
+            # weighs 0 (it refuses a zero-mass draw from a weighted stratum):
+            # the stratum adds exactly 0 to every total.
+            continue
         ratio = float(np.dot(weights, y)) / mass
         residual = weights * (y - ratio)
         variance += eligible**2 * (1.0 - n / eligible) / n * float(residual.var(ddof=1))
@@ -1543,6 +1546,19 @@ class ExportProbe:
             sampler=sampler,
         )
         self.design_problems = [] if self.census else self.design.verify()
+        if not self.census:
+            self._add(
+                "load",
+                "the sample design rebuilt from the subsample verifies against "
+                "its receipt",
+                "fail" if self.design_problems else "pass",
+                AUTHORITATIVE,
+                "; ".join(self.design_problems)
+                or "strata, certainty households, draws and weight totals agree "
+                "(without this no standard error is reported)",
+                "probe integrity",
+            )
+        self._verify_source()
         n = int(frame.n("household"))
         self.batch_size = choose_batch_size(n, self.batch_size_requested)
         for probe in self.probes:
@@ -1562,6 +1578,27 @@ class ExportProbe:
                 "problems": self.design_problems,
             },
         }
+
+    def _verify_source(self) -> None:
+        """Bind the source export to the receipt's digest before any verdict
+        is settled on it; a different file disables source settlement."""
+        if self.source_export is None or self.receipt is None:
+            return
+        expected = str(self.receipt["source"]["sha256"])
+        observed = self.sampler.sha256_file(self.source_export)
+        self.report["source_export_sha256"] = observed
+        if observed == expected:
+            return
+        self._add(
+            "load",
+            "the source export is the receipt's source",
+            "fail",
+            AUTHORITATIVE,
+            f"{self.source_export} has SHA-256 {observed}, the receipt's source "
+            f"{expected}; no verdict is settled on it",
+            "probe integrity",
+        )
+        self.source_export = None
 
     # ---- 1. stored inputs (#1031) -------------------------------------------
 

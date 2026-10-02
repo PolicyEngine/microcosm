@@ -95,15 +95,19 @@ RECEIPT_FILENAME = "sample_receipt.json"
 
 #: The per-stratum draw rule, declared in every receipt.
 NONCERTAINTY_COUNT_RULE = (
-    "max(1, floor(fraction * eligible_noncertainty)) per stratum; 0 for a "
-    "stratum whose households are all certainty households"
+    "min(N, max(2, floor(fraction * N))) of a stratum's N eligible "
+    "non-certainty households (N when N < 2), so every sampled stratum has a "
+    "within-stratum variance; 0 for a stratum whose households are all "
+    "certainty households"
 )
 WEIGHT_RULE = (
     "certainty households keep their source weight (inclusion probability 1); "
-    "a drawn household in stratum h gets weight / p_h, p_h = drawn "
-    "non-certainty weight mass / eligible non-certainty weight mass in h (the "
-    "ratio form of the Horvitz-Thompson weight, which conserves each "
-    "stratum's weight total exactly)"
+    "a drawn household in stratum h gets weight * X_h / x_h, X_h the stratum's "
+    "eligible non-certainty weight mass and x_h the drawn households' (a ratio "
+    "estimator with the source weight as its auxiliary, calibrated to every "
+    "stratum's weight total: exact totals, O(1/n) bias). The inclusion "
+    "probability of a drawn household is n_h / N_h; its Horvitz-Thompson "
+    "factor N_h / n_h is receipted beside the ratio factor"
 )
 DRAW_RULE = (
     "numpy.random.default_rng(seed).choice(sorted non-certainty household ids, "
@@ -386,6 +390,11 @@ def draw_households(
     household_ids = np.asarray(household_ids)
     weights = np.asarray(weights, dtype=np.float64)
     labels = np.asarray(labels, dtype=object)
+    if not all(isinstance(label, str) for label in labels.tolist()):
+        raise ValueError(
+            "stratum labels must be strings (household_stratum_labels builds "
+            "them); a numeric or missing label would key its stratum ambiguously."
+        )
     if not np.issubdtype(household_ids.dtype, np.integer):
         raise ValueError(
             f"household ids must be integer-typed; got {household_ids.dtype}."
@@ -423,10 +432,7 @@ def draw_households(
         stratum_cert = np.flatnonzero(in_stratum & certain_sorted)
         eligible = np.flatnonzero(in_stratum & ~certain_sorted)
         n_eligible = int(len(eligible))
-        requested = (
-            0 if n_eligible == 0 else max(1, int(math.floor(fraction * n_eligible)))
-        )
-        requested = min(requested, n_eligible)
+        requested = min(n_eligible, max(2, int(math.floor(fraction * n_eligible))))
         if requested == n_eligible:
             drawn = eligible
         else:
@@ -456,11 +462,14 @@ def draw_households(
             "design_fraction": (
                 None if n_eligible == 0 else float(len(drawn) / n_eligible)
             ),
+            "expansion_factor": (
+                None if len(drawn) == 0 else float(n_eligible / len(drawn))
+            ),
             "source_weight_total": source_mass,
             "certainty_weight_total": certainty_mass,
             "eligible_noncertainty_weight_total": eligible_mass,
             "drawn_noncertainty_weight_total_before_adjustment": drawn_mass,
-            "mass_fraction_p": (
+            "drawn_weight_share": (
                 None if eligible_mass <= 0.0 else float(drawn_mass / eligible_mass)
             ),
             "noncertainty_weight_factor": float(factor),
@@ -711,6 +720,18 @@ class _PhaseClock:
             }
 
 
+def _library_versions() -> dict[str, str | None]:
+    import importlib.metadata as metadata
+
+    versions: dict[str, str | None] = {}
+    for name in ("numpy", "pandas", "tables", "h5py", "policyengine-us"):
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            versions[name] = None
+    return versions
+
+
 def _tool_commit() -> dict[str, object]:
     root = Path(__file__).resolve().parents[1]
     try:
@@ -797,8 +818,21 @@ def sample_export(
     if out_path == export_path:
         raise ValueError("The subsample would overwrite its source export.")
     clock = _PhaseClock()
-    probes = tuple(_default_probes() if probes is None else probes)
     write = write_dataset or _default_write_dataset
+
+    def import_release_modules() -> tuple[Any, ...]:
+        # With policyengine-us installed, importing microcosm.build.us_runtime
+        # (the shipped probes, the deny-list boundary) builds the engine's
+        # tax-benefit system, and so does the release writer: minutes of CPU
+        # booked here rather than under whichever phase first imports them.
+        loaded = tuple(_default_probes() if probes is None else probes)
+        if refuse_denied:
+            import microcosm.build.us_runtime.h5_io  # noqa: F401
+        if write_dataset is None:
+            import policyengine_us  # noqa: F401
+        return loaded
+
+    probes = clock.run("import_release_modules", import_release_modules)
     consumer = "US export household subsampler (tools/sample_us_export_households.py)"
 
     def identify() -> str:
@@ -971,7 +1005,13 @@ def sample_export(
         "tool": "tools/sample_us_export_households.py",
         "tool_source": _tool_commit(),
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "host": {"platform": platform.platform(), "python": sys.version.split()[0]},
+        "host": {
+            "platform": platform.platform(),
+            "python": sys.version.split()[0],
+            # Generator streams may change across NumPy releases (NEP 19), so
+            # the draw is reproducible given the seed and these versions.
+            "libraries": _library_versions(),
+        },
         "source": {
             "path": str(export_path),
             "sha256": source_sha256,
@@ -1007,7 +1047,15 @@ def sample_export(
                 for household_id in certainty_ids
             },
         },
-        "probes": [record.record() for record in probe_records],
+        "probes": [
+            {
+                **record.record(),
+                "sampled_carrier_households": int(
+                    np.isin(record.carrier_household_ids, draw.selected_ids).sum()
+                ),
+            }
+            for record in probe_records
+        ],
         "selection": {
             "households": int(len(draw.selected_ids)),
             "certainty_households": int(draw.certainty.sum()),

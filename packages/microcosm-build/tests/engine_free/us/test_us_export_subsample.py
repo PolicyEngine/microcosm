@@ -98,7 +98,7 @@ def test_draw_conserves_stratum_weights_and_keeps_certainty(sampler, population)
         expected_n = (
             0
             if eligible == 0
-            else min(eligible, max(1, math.floor(fraction * eligible)))
+            else min(eligible, max(2, math.floor(fraction * eligible)))
         )
         assert record["drawn_noncertainty_households"] == expected_n
 
@@ -663,3 +663,230 @@ def test_column_subset_reads_do_not_pin_whole_chunks(sampler, tmp_path) -> None:
     # One 2,000-row chunk is 1/20 of the table; pinning every chunk would
     # trace the whole table (and more).
     assert peak < 0.35 * table_bytes, peak / table_bytes
+
+
+# ---------------------------------------------------------------------------
+# A frame shaped like the real export; verification branches; edge strata
+# ---------------------------------------------------------------------------
+
+
+@settings(max_examples=10, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    st.integers(min_value=0, max_value=10_000), st.integers(min_value=0, max_value=99)
+)
+def test_rich_frame_samples_whole_units_and_group_level_carriers(
+    sampler, tmp_path_factory, frame_seed, seed
+) -> None:
+    """Group-level binding inputs (tax unit, SPM unit, household, a uint8
+    flag) find their households; several SPM units and families per
+    household and shared marital units stay whole; the H5 path equals the
+    ``Frame.select`` reference; stored dtypes survive."""
+    frame = rich_export_frame(50, seed=frame_seed, rare_tax_units=(2, 31))
+    work = tmp_path_factory.mktemp("rich")
+    path, receipt = sample_synthetic(
+        sampler, work, frame, fraction=0.4, seed=seed, probes=rich_sampler_probes()
+    )
+    assert receipt["verification"]["passed"]
+    tax_unit = frame.table("tax_unit")
+    rare_units = tax_unit.loc[[2, 31], "tax_unit_id"].to_numpy()
+    rare_households = sorted(
+        {int(unit) // 10 for unit in rare_units}
+    )  # tax units are household_id * 10 + k
+    probes = {row["probe"]: row for row in receipt["probes"]}
+    assert probes["rare_tax_unit"]["input_entities"] == {
+        "domestic_production_ald": "tax_unit"
+    }
+    assert probes["rare_tax_unit"]["certainty"]
+    reasons = receipt["certainty"]["household_reasons"]
+    for household_id in rare_households:
+        assert "rare_tax_unit" in reasons[str(household_id)]
+    certain_probes = {row["probe"] for row in receipt["probes"] if row["certainty"]}
+    assert all(set(why) <= certain_probes for why in reasons.values())
+    assert probes["rare_tax_unit"]["sampled_carrier_households"] == len(rare_households)
+    assert probes["vehicles"]["absent_inputs"] == ["not_stored"]
+    assert probes["vehicles"]["input_entities"] == {
+        "household_vehicles_owned": "household"
+    }
+    assert probes["spm_subsidy"]["input_entities"] == {
+        "spm_unit_energy_subsidy": "spm_unit"
+    }
+    written = load_table_h5(path)
+    kept = written.table("person")
+    for entity in sampler.US_GROUP_ENTITIES:
+        column = f"person_{entity}_id"
+        source_members = frame.table("person").groupby(column).size()
+        kept_members = kept.groupby(column).size()
+        assert (source_members.reindex(kept_members.index) == kept_members).all(), (
+            entity
+        )
+    assert written.table("tax_unit")["would_file_taxes_voluntarily"].dtype == np.uint8
+    assert written.table("household")["household_vehicles_owned"].dtype == np.int32
+    household = frame.table("household")
+    labels, _ = sampler.household_stratum_labels(
+        household, frame.table("person"), ("household_support_channel", "source_year")
+    )
+    draw = sampler.draw_households(
+        household["household_id"].to_numpy(),
+        frame.weights_for("household").values,
+        labels,
+        receipt["certainty"]["household_ids"],
+        fraction=0.4,
+        seed=seed,
+    )
+    reference = sampler.sample_frame(frame, draw)
+    for entity in US_ENTITIES:
+        pd.testing.assert_frame_equal(
+            written.table(entity).reset_index(drop=True),
+            reference.table(entity).reset_index(drop=True),
+            check_dtype=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("tamper", "message"),
+    [
+        ("rescale_weights", "household weights differ"),
+        ("drop_person", "written rows"),
+        ("int_ages", "dtype kinds differ"),
+        ("extra_table", "_tables"),
+    ],
+)
+def test_verification_catches_each_writer_defect(
+    sampler, tmp_path, tamper, message
+) -> None:
+    frame = synthetic_export_frame(20, seed=2)
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_table_h5(frame, source)
+
+    def tampering_writer(sample, path, period):
+        write_table_h5(sample, path, period)
+        with pd.HDFStore(str(path)) as store:
+            if tamper == "rescale_weights":
+                household = store["household"]
+                household["household_weight"] *= 1.001
+                store.put("household", household, format="table", data_columns=True)
+            elif tamper == "drop_person":
+                person = store["person"].iloc[:-1]
+                store.put("person", person, format="table", data_columns=True)
+            elif tamper == "int_ages":
+                person = store["person"]
+                person["age"] = person["age"].astype(np.int64)
+                store.put("person", person, format="table", data_columns=True)
+            else:
+                store.put(
+                    "extra",
+                    pd.DataFrame({"x": [1.0]}),
+                    format="table",
+                    data_columns=True,
+                )
+
+    with pytest.raises(AssertionError, match=message):
+        sampler.sample_export(
+            source,
+            tmp_path / "out",
+            fraction=0.5,
+            seed=0,
+            probes=fixture_sampler_probes(),
+            write_dataset=tampering_writer,
+            refuse_denied=False,
+        )
+
+
+@settings(max_examples=150, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.sampled_from(["a", "b"]),
+            st.one_of(st.just(0.0), st.floats(min_value=0.01, max_value=1e4)),
+        ),
+        min_size=1,
+        max_size=40,
+    ),
+    st.floats(min_value=0.05, max_value=1.0),
+    st.integers(min_value=0, max_value=1_000),
+)
+def test_zero_weights_conserve_or_are_refused(sampler, rows, fraction, seed) -> None:
+    """With zero weights allowed, a draw either conserves every stratum's
+    total or is refused because a weighted stratum drew only zero weights;
+    a stratum with no zero weight never refuses."""
+    ids = np.arange(1, len(rows) + 1, dtype=np.int64)
+    labels = np.asarray([label for label, _ in rows], dtype=object)
+    weights = np.asarray([weight for _, weight in rows], dtype=np.float64)
+    try:
+        draw = sampler.draw_households(
+            ids, weights, labels, [], fraction=fraction, seed=seed
+        )
+    except ValueError as error:
+        assert "all weigh 0" in str(error)
+        refused = str(error).split("'")[1]
+        in_stratum = labels == refused
+        assert (weights[in_stratum] == 0.0).any() and weights[in_stratum].sum() > 0
+        return
+    for label in set(labels.tolist()):
+        assert math.isclose(
+            float(draw.adjusted_weights[draw.labels == label].sum()),
+            float(weights[labels == label].sum()),
+            rel_tol=1e-9,
+            abs_tol=1e-12,
+        )
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    st.lists(
+        st.tuples(st.sampled_from(["asec", "puf"]), st.integers(2020, 2025)),
+        min_size=1,
+        max_size=12,
+    ),
+    st.booleans(),
+    st.booleans(),
+)
+def test_stratum_labels_ignore_storage_encodings(
+    sampler, households, as_bytes, as_float
+) -> None:
+    """A channel stored as bytes or str, and a year stored as float or int,
+    give the same labels: the probe rebuilds labels from the engine's loader
+    and the sampler from HDF reads, so encodings must not split a stratum."""
+    ids = np.arange(1, len(households) + 1)
+    channels = [channel for channel, _ in households]
+    years = [year for _, year in households]
+    plain = sampler.household_stratum_labels(
+        pd.DataFrame({"household_id": ids, "household_support_channel": channels}),
+        pd.DataFrame({"person_household_id": ids, "source_year": years}),
+        ("household_support_channel", "source_year"),
+    )[0]
+    encoded = sampler.household_stratum_labels(
+        pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_support_channel": [
+                    channel.encode() if as_bytes else channel for channel in channels
+                ],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "person_household_id": ids,
+                "source_year": [float(year) if as_float else year for year in years],
+            }
+        ),
+        ("household_support_channel", "source_year"),
+    )[0]
+    assert plain.tolist() == encoded.tolist()
+
+
+def test_draw_refuses_non_string_labels_and_small_strata_draw_two(sampler) -> None:
+    ids = np.arange(1, 13, dtype=np.int64)
+    weights = np.linspace(1.0, 2.0, 12)
+    with pytest.raises(ValueError, match="stratum labels must be strings"):
+        sampler.draw_households(
+            ids, weights, np.asarray([1.0] * 12, dtype=object), [], fraction=0.1, seed=0
+        )
+    labels = np.asarray(["big"] * 10 + ["one"] + ["big"], dtype=object)
+    draw = sampler.draw_households(ids, weights, labels, [], fraction=0.05, seed=0)
+    # A 11-household stratum at p = 0.05 draws 2 (so its variance exists);
+    # a 1-household stratum is taken whole.
+    assert draw.strata["big"]["drawn_noncertainty_households"] == 2
+    assert draw.strata["one"]["drawn_noncertainty_households"] == 1
+    assert draw.strata["big"]["expansion_factor"] == pytest.approx(11 / 2)

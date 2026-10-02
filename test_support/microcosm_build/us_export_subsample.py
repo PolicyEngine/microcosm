@@ -184,6 +184,125 @@ def synthetic_export_frame(
     )
 
 
+def rich_export_frame(
+    n_households: int = 50,
+    *,
+    seed: int = 0,
+    rare_tax_units: tuple[int, ...] = (),
+) -> Frame:
+    """A synthetic export shaped like the real one where the sampler cares.
+
+    Households of one to five persons hold one or two tax units, SPM units
+    and families each, and couples share a marital unit (the real export has
+    about 185k two-person marital units). Binding inputs live at every level:
+    ``domestic_production_ald`` on the tax units at positions
+    ``rare_tax_units`` (a rare group-level input), ``would_file_taxes_
+    voluntarily`` as a uint8 tax-unit flag, ``spm_unit_energy_subsidy`` on
+    some SPM units and ``household_vehicles_owned`` (int32) on households,
+    plus person wages. Channels and source years as in
+    :func:`synthetic_export_frame`.
+    """
+    rng = np.random.default_rng(seed)
+    person_rows, household_rows = [], []
+    tax_units, spm_units, families = [], [], []
+    person_id = 0
+    for position in range(n_households):
+        household_id = position + 1
+        size = int(rng.integers(1, 6))
+        split = size >= 3 and rng.random() < 0.5
+        year = SOURCE_YEARS[int(rng.integers(0, len(SOURCE_YEARS)))]
+        household_rows.append(
+            {
+                "household_id": household_id,
+                "household_support_channel": CHANNELS[
+                    0 if position < n_households // 2 else 1
+                ],
+                "state_fips": STATES[int(rng.integers(0, len(STATES)))],
+                "household_vehicles_owned": np.int32(rng.integers(0, 3)),
+            }
+        )
+        couple = size >= 2 and rng.random() < 0.6
+        for index in range(size):
+            person_id += 1
+            second = 1 if split and index >= size // 2 else 0
+            marital = (
+                household_id * 100
+                if couple and index < 2
+                else household_id * 100 + 10 + index
+            )
+            person_rows.append(
+                {
+                    "person_id": person_id,
+                    "person_household_id": household_id,
+                    "person_tax_unit_id": household_id * 10 + second,
+                    "person_spm_unit_id": household_id * 100 + second,
+                    "person_family_id": household_id * 1000 + second,
+                    "person_marital_unit_id": marital,
+                    "age": float(
+                        rng.integers(25, 80) if index < 2 else rng.integers(0, 18)
+                    ),
+                    "source_year": year,
+                    "employment_income_before_lsr": float(
+                        rng.integers(0, 90_000) if index < 2 else 0
+                    ),
+                }
+            )
+        for second in range(2 if split else 1):
+            tax_units.append(
+                {
+                    "tax_unit_id": household_id * 10 + second,
+                    "domestic_production_ald": 0.0,
+                    "would_file_taxes_voluntarily": np.uint8(rng.random() < 0.3),
+                }
+            )
+            spm_units.append(
+                {
+                    "spm_unit_id": household_id * 100 + second,
+                    "spm_unit_energy_subsidy": float(
+                        rng.integers(100, 900) if rng.random() < 0.2 else 0
+                    ),
+                    "takes_up_snap_if_eligible": bool(rng.random() < 0.8),
+                }
+            )
+            families.append({"family_id": household_id * 1000 + second})
+    tax_unit = pd.DataFrame(tax_units)
+    for position in rare_tax_units:
+        tax_unit.loc[position, "domestic_production_ald"] = 2_500.0
+    tax_unit["would_file_taxes_voluntarily"] = tax_unit[
+        "would_file_taxes_voluntarily"
+    ].astype(np.uint8)
+    person = pd.DataFrame(person_rows)
+    household = pd.DataFrame(household_rows)
+    household["household_vehicles_owned"] = household[
+        "household_vehicles_owned"
+    ].astype(np.int32)
+    tables = {
+        "person": person,
+        "household": household,
+        "tax_unit": tax_unit,
+        "spm_unit": pd.DataFrame(spm_units),
+        "family": pd.DataFrame(families),
+        "marital_unit": pd.DataFrame(
+            {"marital_unit_id": np.unique(person["person_marital_unit_id"].to_numpy())}
+        ),
+    }
+    weights = 50.0 + rng.lognormal(mean=4.0, sigma=1.0, size=n_households)
+    return Frame(
+        tables, US_SCHEMA, {"household": Weights(weights, WeightKind.CALIBRATED)}
+    )
+
+
+def rich_sampler_probes() -> tuple[SamplerProbe, ...]:
+    """Probes over the rich frame's inputs at every entity level."""
+    return (
+        SamplerProbe("rare_tax_unit", ("domestic_production_ald",)),
+        SamplerProbe("flag_tax_unit", ("would_file_taxes_voluntarily",)),
+        SamplerProbe("spm_subsidy", ("spm_unit_energy_subsidy",)),
+        SamplerProbe("vehicles", ("household_vehicles_owned", "not_stored")),
+        SamplerProbe("wages", ("employment_income_before_lsr",)),
+    )
+
+
 def write_tables_h5(tables, household_weights, path: Path, period: int = 2024) -> None:
     """Write entity tables (any row order) as ``USSingleYearDataset.save`` does."""
     path = Path(path)
