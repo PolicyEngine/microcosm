@@ -178,3 +178,11 @@ def test_every_active_great_britain_fact_binds_great_britain_households() -> Non
         and not _scoped_to_great_britain(targets[target_id]["bindings"]["policyengine"])
     )
     assert unscoped == []
+
+
+def test_obr_pip_binds_dla_and_pip_together() -> None:
+    """OBR's line is "Disability living allowance and personal independence payments"."""
+
+    binding = _targets()["obr.pip"]["bindings"]["policyengine"]
+    assert binding["value_expression"] == "pip + dla"
+    assert "value_variable" not in binding
