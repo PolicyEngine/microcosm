@@ -1,0 +1,1 @@
+Microcosm builds now start a local telemetry emitter service that reports authenticated live progress, process-tree CPU and memory, heartbeats, US engine-batch progress, and UK graph-node progress without making collector network requests in the build process.

@@ -178,10 +178,12 @@ from .rowwise_posture import (
 from .rowwise_staging import (
     STAGED_DATASET_PHASES,
     STAGING_UPLOAD_INTERVAL_SECONDS,
+    calibration_progress,
     create_staging_telemetry,
     fail_staging_telemetry,
     finalize_staging_telemetry,
     gate_statuses,
+    graph_progress,
     preflight_staged_dataset,
     replace_manifest,
     stage,
@@ -214,6 +216,34 @@ __all__ = [
 _SUPPORT_ARGUMENTS = dict(
     zip(ATOMIC_SUPPORT_SYSTEMS, ("ew", "scotland", "ni"), strict=True)
 )
+
+
+def _run_graph_with_progress(compiled, *, telemetry, **kwargs):
+    """Run a graph and emit one lightweight update per completed node."""
+
+    completed = 0
+    previous = time.monotonic()
+    total = len(compiled.order)
+
+    def observe(node_id, _population) -> None:
+        nonlocal completed, previous
+        now = time.monotonic()
+        completed += 1
+        graph_progress(
+            telemetry,
+            node_id=node_id,
+            done=completed,
+            total=total,
+            elapsed_seconds=now - previous,
+        )
+        previous = now
+
+    return run_graph(
+        compiled,
+        _population_observer=observe,
+        _population_observer_detach=False,
+        **kwargs,
+    )
 
 
 def _target_geographies(value: str) -> tuple[str, ...] | None:
@@ -589,12 +619,12 @@ def _solve_observer(args: argparse.Namespace, telemetry):
     from .solve_progress import uk_solve_progress_callback
 
     sinks = [uk_solve_progress_callback(_stderr_progress)]
-    if telemetry is not None:
-        sinks.append(
-            thinned_epochs(
-                telemetry.calibration_progress, every=staging_epoch_every(args)
-            )
+    sinks.append(
+        thinned_epochs(
+            lambda event: calibration_progress(telemetry, event),
+            every=staging_epoch_every(args),
         )
+    )
 
     def observer(event: dict[str, object]) -> None:
         for sink in sinks:
@@ -1302,8 +1332,9 @@ def _execute_full_build(
     ):
         if endpoint not in node_ids:
             continue
-        checkpoint = run_graph(
+        checkpoint = _run_graph_with_progress(
             compile_graph(_through(graph, endpoint)),
+            telemetry=telemetry,
             sources=sources,
             store=store,
             kernels=kernels,
@@ -1314,8 +1345,9 @@ def _execute_full_build(
     # Persist preflight outcomes before any solver can reject them.
     stage(telemetry, "target_compilation", "started")
     preflight_graph = _through(graph, "uk.full.gates.preflight")
-    preflight = run_graph(
+    preflight = _run_graph_with_progress(
         compile_graph(preflight_graph),
+        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1350,8 +1382,9 @@ def _execute_full_build(
         epoch_every=staging_epoch_every(args),
         resumed_from_checkpoint=args.resume_size_checkpoint is not None,
     )
-    manifest = run_graph(
+    manifest = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.gates.calibrated")),
+        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1427,8 +1460,9 @@ def _execute_full_build(
     if not enforcement["artifact_permitted"]:
         return 1
     stage(telemetry, "output_bundle", "started")
-    manifest = run_graph(
+    manifest = _run_graph_with_progress(
         compile_graph(graph),
+        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1507,8 +1541,9 @@ def _execute_full_build(
         spine_provenance=prepared.spine_provenance,
         comparison_sources=tuple(comparisons),
     )
-    final = run_graph(
+    final = _run_graph_with_progress(
         compile_graph(graph),
+        telemetry=telemetry,
         sources={
             **sources,
             "exported_dataset": dataset,
@@ -1893,8 +1928,9 @@ def _execute_national_build(
     resume = args.resume
     # 1. The bound checkpoint: its provenance artifact is the solve's admission.
     stage(telemetry, "input_loading", "started")
-    checkpoint = run_graph(
+    checkpoint = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.spine_checkpoint")),
+        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1914,8 +1950,9 @@ def _execute_national_build(
     )
     # 2. The register: compiled inside the graph, frozen beside the outputs.
     stage(telemetry, "target_compilation", "started")
-    targets = run_graph(
+    targets = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_TARGETS_NODE)),
+        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1967,8 +2004,9 @@ def _execute_national_build(
         epochs=int(args.epochs),
         epoch_every=staging_epoch_every(args),
     )
-    manifest = run_graph(
+    manifest = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_GATES_NODE)),
+        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2122,8 +2160,9 @@ def _execute_national_build(
         size_bytes=paths["dataset"].stat().st_size,
     )
     continued = add_uk_national_readback(graph, population=national.population)
-    final = run_graph(
+    final = _run_graph_with_progress(
         compile_graph(continued),
+        telemetry=telemetry,
         sources={**sources, "exported_dataset": paths["dataset"]},
         store=store,
         kernels=kernels,

@@ -48,7 +48,7 @@ from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MethodType
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -68,6 +68,10 @@ from microcosm.build.gates import (
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -5134,7 +5138,12 @@ class _HouseholdBatchedPostExportScorer:
         parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
             key: [] for key in keys
         }
-        for batch_frame in batches:
+        sweep = _WorkCounter(
+            stage_id="post_export_scoring",
+            unit="scoring_batch",
+            total=len(batches),
+        )
+        for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
                 try:
@@ -5160,6 +5169,7 @@ class _HouseholdBatchedPostExportScorer:
                     release_engine_simulation(simulation)
                 del simulation, engine
             _collect_batch_garbage()
+            sweep.advance(pass_name=label, batch=batch, batches=len(batches))
         _collect_family_garbage()
         return {
             key: _concatenate_post_export_parts(key_parts)
@@ -5389,6 +5399,7 @@ def _reform_household_income_tax(
             reform_income_tax[household_positions] = batch_income_tax
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name=reform_spec.measure, batch=batch, batches=len(batches))
     del reform_system
     _collect_family_garbage()
     return reform_income_tax
@@ -6749,6 +6760,7 @@ def _materialize_base_simulation_columns(
                 columns[column] = pool_values
             del batch_columns, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name="base", batch=batch, batches=len(batches))
     _collect_family_garbage()
 
     assert column_order is not None
@@ -6796,6 +6808,20 @@ def _materialize_target_frame(
     _assert_no_formula_owned_columns(base_frame)
     system = CountryTaxBenefitSystem()
     n_households = base_frame.n("household")
+    requested_reform_measures = {spec.measure for spec in target_specs}
+    global _ACTIVE_WORK
+    passes = 1 + sum(
+        spec.measure in requested_reform_measures
+        for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+    )
+    batch_count = len(
+        tuple(_household_position_batches(n_households, maximum_microsim_batch_size))
+    )
+    _ACTIVE_WORK = _WorkCounter(
+        stage_id="target_compilation",
+        unit="engine_batch",
+        total=passes * batch_count,
+    )
     # The base simulation uses the JCT reform loop's household partition.
     base_columns, base_simulation_batching = _materialize_base_simulation_columns(
         base_frame,
@@ -6815,7 +6841,6 @@ def _materialize_target_frame(
     del base_columns
 
     base_income_tax_household = hh["income_tax"].to_numpy(dtype=np.float64)
-    requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
         if target_materialization_cache_context is not None
@@ -6854,6 +6879,11 @@ def _materialize_target_frame(
             if cached is not None:
                 reform_income_tax, cache_digest, cache_path = cached
                 cache_stats["hits"] = int(cache_stats["hits"]) + 1
+                _advance_work(
+                    batch_count,
+                    pass_name=reform_spec.measure,
+                    cached=True,
+                )
                 cache_entry = {
                     "measure": reform_spec.measure,
                     "neutralized_variable": reform_spec.neutralized_variable,
@@ -8713,7 +8743,7 @@ def _enforce_ssi_take_up_delivery(
     *,
     targets: Mapping[str, float],
     release_dir: Path,
-    telemetry: StagingTelemetry | None,
+    telemetry: _BuildTelemetry | None,
     enforcement_fences: Mapping[str, str] | None = None,
 ) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
@@ -11255,11 +11285,127 @@ def _assert_exact_k_original_pool_alignment(
         )
 
 
-#: The staging run for the build in flight, so the entry point can mark it
-#: failed on the way out. The build body hands its telemetry object down a
-#: large call stack; a module-level handle avoids threading a second copy back
-#: up purely for the failure path.
-_ACTIVE_TELEMETRY: StagingTelemetry | None = None
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
+
+
+class _BuildTelemetry(Protocol):
+    """Telemetry operations used by the release build body."""
+
+    run_id: str
+    repo_id: str | None
+    uploads_succeeded: int
+
+    def stage(
+        self,
+        stage: str,
+        *,
+        message: str | None = None,
+        status: str = "running",
+        force_upload: bool = False,
+        **details: Any,
+    ) -> None: ...
+
+    def calibration_progress(self, event: dict[str, object]) -> None: ...
+
+    def attach_artifact(
+        self,
+        name: str,
+        path: Path | str,
+        **details: Any,
+    ) -> None: ...
+
+    def fail(self, error: BaseException) -> None: ...
+
+    def complete(self) -> None: ...
+
+
+class _EmitterOnlyTelemetry:
+    """Expose the build telemetry interface without writing staging files."""
+
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        emitter: LocalTelemetryEmitter,
+        reason: str,
+    ) -> None:
+        self.run_id = run_id
+        self.repo_id: str | None = None
+        self.uploads_succeeded = 0
+        self.reason = reason
+        self.emitter = emitter
+
+    def stage(
+        self,
+        stage: str,
+        *,
+        message: str | None = None,
+        status: str = "running",
+        force_upload: bool = False,
+        **details: Any,
+    ) -> None:
+        del force_upload
+        self.emitter.transition_stage(
+            stage,
+            status=status,
+            message=message,
+            **details,
+        )
+
+    def calibration_progress(self, event: dict[str, object]) -> None:
+        self.emitter.transition_calibration_progress(event)
+
+    def attach_artifact(
+        self,
+        name: str,
+        path: Path | str,
+        **details: Any,
+    ) -> None:
+        del name, path, details
+
+    def fail(self, error: BaseException) -> None:
+        self.emitter.fail(error)
+
+    def complete(self) -> None:
+        self.emitter.complete()
+
+
+#: The telemetry interface for the build in flight, so the entry point can
+#: report failure on the way out without threading another handle through the
+#: release call stack.
+_ACTIVE_TELEMETRY: _BuildTelemetry | None = None
+
+
+class _WorkCounter:
+    """Report completed independent work units through the emitter service."""
+
+    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+        self.stage_id = stage_id
+        self.unit = unit
+        self.total = max(0, int(total))
+        self.done = 0
+        self.started = time.monotonic()
+
+    def advance(self, units: int = 1, **details: object) -> None:
+        self.done = min(self.total, self.done + max(0, int(units)))
+        if _ACTIVE_EMITTER is None:
+            return
+        _ACTIVE_EMITTER.progress(
+            self.stage_id,
+            done=self.done,
+            total=self.total,
+            unit=self.unit,
+            elapsed_seconds=time.monotonic() - self.started,
+            **details,
+        )
+
+
+_ACTIVE_WORK: _WorkCounter | None = None
+
+
+def _advance_work(units: int = 1, **details: object) -> None:
+    if _ACTIVE_WORK is not None:
+        _ACTIVE_WORK.advance(units, **details)
 
 
 class _ReleaseDryRun:
@@ -11857,7 +12003,7 @@ def _release_dry_run_checks(
     return checks
 
 
-def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
+def _staging_manifest_block(telemetry: _BuildTelemetry | None) -> dict[str, object]:
     """Record what staging did and distinguish an opt-out from non-delivery.
 
     Uploads are best-effort and self-disable after repeated failures, so a
@@ -11866,6 +12012,8 @@ def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, obj
 
     if telemetry is None:
         return {"enabled": False, "reason": "--no-staging"}
+    if isinstance(telemetry, _EmitterOnlyTelemetry):
+        return {"enabled": False, "reason": telemetry.reason}
     return {
         "enabled": True,
         "run_id": telemetry.run_id,
@@ -11879,13 +12027,22 @@ def _staging_telemetry(
     *,
     release_root: Path,
     release_id: str,
-) -> StagingTelemetry | None:
+    emitter: LocalTelemetryEmitter | None = None,
+) -> _BuildTelemetry | None:
     global _ACTIVE_TELEMETRY
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
     _ACTIVE_TELEMETRY = None
+    run_id = args.staging_run_id or release_id
     if args.no_staging:
-        return None
+        if emitter is None:
+            return None
+        _ACTIVE_TELEMETRY = _EmitterOnlyTelemetry(
+            run_id=run_id,
+            emitter=emitter,
+            reason="--no-staging",
+        )
+        return _ACTIVE_TELEMETRY
     if not args.staging_dir and not args.staging_repo_id:
         # The parser rejects this combination, so reaching it means a caller
         # built the namespace directly. Returning None here would reinstate
@@ -11895,7 +12052,6 @@ def _staging_telemetry(
             "empty and staging_dir is unset. Set no_staging to skip staging, "
             "or give a staging_dir for a local-only run."
         )
-    run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
     _ACTIVE_TELEMETRY = StagingTelemetry(
         run_id=run_id,
@@ -11904,6 +12060,7 @@ def _staging_telemetry(
         repo_id=args.staging_repo_id,
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        emitter=emitter,
     )
     return _ACTIVE_TELEMETRY
 
@@ -11919,7 +12076,7 @@ class _TerminalBatchTelemetry:
 
     def __init__(
         self,
-        telemetry: StagingTelemetry | None,
+        telemetry: _BuildTelemetry | None,
         terminal_gate_failures: list[str],
     ) -> None:
         self._telemetry = telemetry
@@ -12011,6 +12168,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         if dry_run is not None and _is_release_refusal(error):
             # A dry run the release refuses before its stop point: the
             # refusal is the report's certain failure (exit 1), not a crash.
+            if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+                _ACTIVE_EMITTER.fail(
+                    error,
+                    failure_class="dry_run_refusal",
+                )
             raise SystemExit(dry_run.refused(error)) from error
         if _ACTIVE_TELEMETRY is not None:
             try:
@@ -12022,9 +12184,15 @@ def main(argv: Sequence[str] | None = None) -> None:
                     f"{type(telemetry_error).__name__}: {telemetry_error}",
                     file=sys.stderr,
                 )
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
         raise
     if dry_run_exit is not None:
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.complete()
         raise SystemExit(dry_run_exit)
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.complete()
 
 
 def _check_committed_us_ledger_feed_pin(
@@ -12066,6 +12234,9 @@ def _check_committed_us_ledger_feed_pin(
 
 
 def _main(argv: Sequence[str] | None = None) -> int | None:
+    global _ACTIVE_EMITTER, _ACTIVE_TELEMETRY
+    _ACTIVE_EMITTER = None
+    _ACTIVE_TELEMETRY = None
     args = _parse_args(argv)
     # --dry-run-gates-report: runs this build up to target materialization and
     # returns the report's exit code from the stop point below (_ReleaseDryRun).
@@ -12170,6 +12341,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         build_timestamp=build_timestamp,
     )
     _assert_us_release_id(release_id, evidence_release=args.evidence_release)
+    run_id = args.staging_run_id or release_id
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="US",
+        pipeline="us_fiscal_refresh",
+        candidate_id=release_id,
+        release_id=release_id if dry_run is None else None,
+        run_kind="release" if dry_run is None else "dry_run",
+    )
+    _ACTIVE_EMITTER.transition_stage(
+        "preflight",
+        message="Validating release inputs and configuration.",
+    )
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
         # The immutable release id is the dataset's exact-count name. Keep the
@@ -12365,17 +12549,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             checkpoint_root.mkdir(parents=True, exist_ok=True)
         artifact_root.mkdir(parents=True, exist_ok=True)
         release_dir.mkdir(parents=True, exist_ok=True)
-    # A dry run writes only its report: no directories under --out, and no
-    # staging run that a dashboard would show as a release attempt.
-    telemetry = (
-        _staging_telemetry(
+    # A dry run writes only its report under --out and creates no staging
+    # artifacts. Hosted telemetry identifies it separately from a release.
+    if dry_run is None:
+        telemetry = _staging_telemetry(
             args,
             release_root=release_root,
             release_id=release_id,
+            emitter=_ACTIVE_EMITTER,
         )
-        if dry_run is None
-        else None
-    )
+    else:
+        telemetry = _EmitterOnlyTelemetry(
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
+            reason="dry run",
+        )
+        _ACTIVE_TELEMETRY = telemetry
     if telemetry is not None:
         telemetry.stage(
             "target_registry",
