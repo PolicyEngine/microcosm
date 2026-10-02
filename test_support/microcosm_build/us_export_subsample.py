@@ -1,14 +1,23 @@
-"""Shared fixtures for the US export subsampler and post-export probe tests.
+"""Shared fixtures for the US export household subsampler tests.
 
 ``tools/sample_us_export_households.py`` writes a stratified whole-household
-subsample of a US export H5; ``tools/probe_us_post_export.py`` runs the release
-tool's post-export stages on it. These helpers build small nested US
-populations (households with several tax units, persons in every entity), write
-them in ``USSingleYearDataset``'s layout without the engine (one
-``format="table", data_columns=True`` frame per entity plus ``_time_period``,
-as ``USSingleYearDataset.save`` writes) and read them back as a
+subsample of a US export H5. These helpers build small nested US populations
+(households with several tax units, persons in every entity), write them in
+``USSingleYearDataset``'s layout without the engine (one ``format="table",
+data_columns=True`` frame per entity plus ``_time_period``, as
+``USSingleYearDataset.save`` writes) and read them back as a
 :class:`~microcosm.frame.Frame`, so the engine-free tests exercise the chunked
 H5 path end to end.
+
+This module must never import ``microcosm.build.us_runtime`` (or anything that
+does). Importing that package runs ``spine_agreement``'s module-level registry,
+which, wherever policyengine-us is installed, attests the take-up ABI lock by
+building the whole policyengine-us tax-benefit system: 173 CPU-seconds and
+1.66 GiB measured on 2026-10-02. On a contended host that import ran for more
+than 49 minutes and was mistaken for a hang in the sampler. The sampler reads
+only a probe's ``id`` and ``binding_inputs``, so :class:`SamplerProbe` stands in
+for ``ReformCoverageProbe`` here; the probe tool's tests, which need the release
+tool anyway, use the real class.
 """
 
 # ruff: noqa: F401
@@ -16,16 +25,14 @@ H5 path end to end.
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.us_runtime.release_input_coverage import ReformCoverageProbe
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.units import US_SCHEMA
 from test_support.paths import paths_for
@@ -33,6 +40,9 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
+
+#: Modules whose import the engine-free sampler path must never trigger.
+ENGINE_MODULE_PREFIXES = ("policyengine_us", "microcosm.build.us_runtime")
 
 
 def _load_tool(module_name: str, filename: str):
@@ -60,16 +70,23 @@ def sampler():
     return _load_tool("sample_us_export_households", "sample_us_export_households.py")
 
 
-@pytest.fixture(scope="module")
-def probe_tool():
-    return _load_tool("probe_us_post_export", "probe_us_post_export.py")
+def loaded_engine_modules() -> list[str]:
+    """The engine modules this process has imported (see the module docstring)."""
+    return sorted(
+        name
+        for name in sys.modules
+        if any(
+            name == prefix or name.startswith(prefix + ".")
+            for prefix in ENGINE_MODULE_PREFIXES
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
 # A nested synthetic export
 # ---------------------------------------------------------------------------
 
-#: Channels in the failed Route A export's order: every ASEC household first.
+#: Channels in the Route A export's order: every ASEC household first.
 CHANNELS = ("asec", "puf_tax_detail")
 SOURCE_YEARS = (2022, 2023, 2024)
 STATES = (6, 24, 36, 48, 12)
@@ -161,18 +178,30 @@ def synthetic_export_frame(
     )
 
 
-def write_table_h5(frame: Frame, path: Path, period: int = 2024) -> None:
-    """Write ``frame`` as ``USSingleYearDataset.save`` does, without the engine."""
+def write_tables_h5(
+    tables, household_weights, path: Path, period: int = 2024
+) -> None:
+    """Write entity tables (any row order) as ``USSingleYearDataset.save`` does."""
     path = Path(path)
     path.unlink(missing_ok=True)
     with pd.HDFStore(str(path)) as store:
         for entity in US_ENTITIES:
-            table = frame.table(entity).copy()
+            table = tables[entity].copy()
             if entity == "household":
-                table["household_weight"] = frame.weights_for("household").values
+                table["household_weight"] = np.asarray(household_weights, np.float64)
             if len(table):
                 store.put(entity, table, format="table", data_columns=True)
         store.put("_time_period", pd.Series([int(period)]), format="table")
+
+
+def write_table_h5(frame: Frame, path: Path, period: int = 2024) -> None:
+    """Write ``frame`` as ``USSingleYearDataset.save`` does, without the engine."""
+    write_tables_h5(
+        {entity: frame.table(entity) for entity in US_ENTITIES},
+        frame.weights_for("household").values,
+        path,
+        period,
+    )
 
 
 def load_table_h5(path: Path, *, expected_sha256: str | None = None) -> Frame:
@@ -187,29 +216,20 @@ def load_table_h5(path: Path, *, expected_sha256: str | None = None) -> Frame:
     )
 
 
-def fixture_probe(probe_id: str, binding_inputs, *, measure="income_tax", floor=1.0):
-    """A neutralization probe over the synthetic export's inputs."""
-    return ReformCoverageProbe(
-        id=probe_id,
-        name=probe_id,
-        parameter_changes={},
-        neutralized_variable=binding_inputs[0],
-        budget_measure=measure,
-        period=2024,
-        binding_inputs=tuple(binding_inputs),
-        min_abs_effect=float(floor),
-        effect_direction="baseline_minus_reform",
-        expected_sign="either",
-        reason="fixture",
-        issue="PolicyEngine/microcosm#956",
-    )
+@dataclass(frozen=True)
+class SamplerProbe:
+    """The two fields of a ``ReformCoverageProbe`` the sampler reads."""
+
+    id: str
+    binding_inputs: tuple[str, ...]
 
 
-def fixture_probes() -> tuple[ReformCoverageProbe, ...]:
+def fixture_sampler_probes() -> tuple[SamplerProbe, ...]:
+    """A rare input (certainty at small p), a common one and an absent one."""
     return (
-        fixture_probe("rare_keogh", ("keogh_distributions",)),
-        fixture_probe("common_wages", ("employment_income_before_lsr",)),
-        fixture_probe("absent_input", ("not_a_stored_column",), measure="snap"),
+        SamplerProbe("rare_keogh", ("keogh_distributions",)),
+        SamplerProbe("common_wages", ("employment_income_before_lsr",)),
+        SamplerProbe("absent_input", ("not_a_stored_column",)),
     )
 
 
@@ -224,7 +244,12 @@ def sample_synthetic(
     chunk_bytes: int = 4096,
     name: str = "export",
 ) -> tuple[Path, dict]:
-    """Write ``frame`` as an export, sample it; return (subsample path, receipt)."""
+    """Write ``frame`` as an export, sample it; return (subsample path, receipt).
+
+    The deny-list boundary (``refuse_denied=True``, the CLI default) lives in
+    ``microcosm.build.us_runtime.h5_io``; this engine-free path skips it, and
+    a separate test pins that the default calls it.
+    """
     source = tmp_path / name / "populace_us_2024.h5"
     source.parent.mkdir(parents=True, exist_ok=True)
     write_table_h5(frame, source)
@@ -233,9 +258,10 @@ def sample_synthetic(
         tmp_path / f"{name}-sample",
         fraction=fraction,
         seed=seed,
-        probes=fixture_probes() if probes is None else probes,
+        probes=fixture_sampler_probes() if probes is None else probes,
         write_dataset=lambda sample, path, period: write_table_h5(sample, path, period),
         chunk_bytes=chunk_bytes,
+        refuse_denied=False,
     )
     return Path(receipt["output"]["path"]), receipt
 

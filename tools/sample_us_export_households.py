@@ -668,7 +668,7 @@ def read_table_rows(
     if not parts:
         empty = store.select(key, start=0, stop=0)
         return (empty if wanted is None else empty[wanted]).reset_index(drop=True)
-    return pd.concat(parts, copy=False).reset_index(drop=True)
+    return pd.concat(parts).reset_index(drop=True)
 
 
 def _rss_peak_bytes() -> int:

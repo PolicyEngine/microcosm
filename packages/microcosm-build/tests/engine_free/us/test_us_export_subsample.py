@@ -19,6 +19,8 @@ written H5 end to end:
 from __future__ import annotations
 
 import math
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -27,6 +29,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from test_support.microcosm_build.us_export_subsample import *
+from test_support.paths import paths_for
 
 _SETTINGS = settings(
     max_examples=60,
@@ -252,9 +255,9 @@ def test_probe_carriers_below_the_threshold_are_certain(sampler) -> None:
         "text": ("person", np.asarray(["x", "y", "", "z", "w"]), households),
     }
     probes = (
-        fixture_probe("rare", ("rare", "missing_leaf")),
-        fixture_probe("common", ("flag",)),
-        fixture_probe("text", ("text",)),
+        SamplerProbe("rare", ("rare", "missing_leaf")),
+        SamplerProbe("common", ("flag",)),
+        SamplerProbe("text", ("text",)),
     )
     records, reasons = sampler.probe_carriers(
         probes, leaves, fraction=0.5, threshold=1.0
@@ -360,36 +363,47 @@ def test_h5_path_matches_the_frame_reference_path(sampler, tmp_path) -> None:
 
 
 def test_h5_sample_is_invariant_to_source_row_order(sampler, tmp_path) -> None:
+    """The person table's stored order is free (group tables are id-sorted in
+    any loadable export); a permuted person table selects the same households
+    at the same weights and writes the same rows."""
     frame = synthetic_export_frame(40, seed=9, rare_households=(1,))
-    _, first = sample_synthetic(
+    path, first = sample_synthetic(
         sampler, tmp_path, frame, fraction=0.3, seed=5, name="ordered"
     )
-    reversed_tables = {
-        entity: frame.table(entity).iloc[::-1].reset_index(drop=True)
-        for entity in US_ENTITIES
-    }
-    from microcosm.frame import Frame, WeightKind, Weights
-    from microcosm.frame.units import US_SCHEMA
-
-    permuted = Frame(
-        reversed_tables,
-        US_SCHEMA,
-        {
-            "household": Weights(
-                frame.weights_for("household").values[::-1].copy(),
-                WeightKind.CALIBRATED,
-            )
-        },
-    )
-    _, second = sample_synthetic(
-        sampler, tmp_path, permuted, fraction=0.3, seed=5, name="reversed"
+    tables = {entity: frame.table(entity) for entity in US_ENTITIES}
+    order = np.random.default_rng(3).permutation(len(tables["person"]))
+    tables["person"] = tables["person"].iloc[order].reset_index(drop=True)
+    source = tmp_path / "permuted" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_tables_h5(tables, frame.weights_for("household").values, source)
+    second = sampler.sample_export(
+        source,
+        tmp_path / "permuted-sample",
+        fraction=0.3,
+        seed=5,
+        probes=fixture_sampler_probes(),
+        write_dataset=write_table_h5,
+        chunk_bytes=4096,
+        refuse_denied=False,
     )
     assert (
         first["selection"]["selected_household_ids_sha256"]
         == second["selection"]["selected_household_ids_sha256"]
     )
+    assert first["selection"]["rows"] == second["selection"]["rows"]
     assert first["strata"] == second["strata"]
     assert first["certainty"] == second["certainty"]
+    left = load_table_h5(path)
+    right = load_table_h5(Path(second["output"]["path"]))
+    for entity in US_ENTITIES:
+        key = f"{entity}_id"
+        pd.testing.assert_frame_equal(
+            left.table(entity).sort_values(key).reset_index(drop=True),
+            right.table(entity).sort_values(key).reset_index(drop=True),
+        )
+    assert np.array_equal(
+        left.weights_for("household").values, right.weights_for("household").values
+    )
 
 
 def test_sample_export_refuses_split_units_and_self_overwrite(sampler, tmp_path) -> None:
@@ -403,8 +417,9 @@ def test_sample_export_refuses_split_units_and_self_overwrite(sampler, tmp_path)
             source.parent,
             fraction=0.5,
             seed=0,
-            probes=fixture_probes(),
+            probes=fixture_sampler_probes(),
             write_dataset=write_table_h5,
+            refuse_denied=False,
         )
     person = frame.table("person").copy()
     person.loc[person.index[-1], "person_tax_unit_id"] = person.loc[
@@ -418,8 +433,9 @@ def test_sample_export_refuses_split_units_and_self_overwrite(sampler, tmp_path)
             tmp_path / "out",
             fraction=0.5,
             seed=0,
-            probes=fixture_probes(),
+            probes=fixture_sampler_probes(),
             write_dataset=write_table_h5,
+            refuse_denied=False,
         )
 
 
@@ -441,6 +457,131 @@ def test_verification_catches_a_writer_that_drops_a_column(sampler, tmp_path) ->
             tmp_path / "out",
             fraction=0.5,
             seed=0,
-            probes=fixture_probes(),
+            probes=fixture_sampler_probes(),
             write_dataset=lossy_writer,
+            refuse_denied=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression: the lost lane's "hung" dev check (2026-09-28)
+# ---------------------------------------------------------------------------
+
+#: The lost lane's dev check, run in a fresh interpreter that refuses every
+#: engine import. Its fixture module once imported ``ReformCoverageProbe``,
+#: which runs ``microcosm.build.us_runtime``'s package init; with
+#: policyengine-us installed that builds the engine's whole tax-benefit system
+#: (173 CPU-s, 1.66 GiB measured) and ran for 49+ minutes on a contended host.
+_HUNG_DEV_CHECK = r"""
+import importlib.abc, json, sys, time
+from pathlib import Path
+
+repo, work, prefixes = sys.argv[1], sys.argv[2], tuple(sys.argv[3:])
+
+
+class RefuseEngineImports(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if any(name == prefix or name.startswith(prefix + ".") for prefix in prefixes):
+            raise ImportError(f"the engine-free sampler path imported {name}")
+        return None
+
+
+sys.meta_path.insert(0, RefuseEngineImports())
+sys.path.insert(0, repo)
+started = time.perf_counter()
+from test_support.microcosm_build import us_export_subsample as fixtures
+
+sampler = fixtures._load_tool(
+    "sample_us_export_households", "sample_us_export_households.py"
+)
+frame = fixtures.synthetic_export_frame(60, seed=1, rare_households=(3, 40))
+_, receipt = fixtures.sample_synthetic(sampler, Path(work), frame, fraction=0.3, seed=0)
+print(
+    json.dumps(
+        {
+            "households": receipt["selection"]["households"],
+            "certainty": receipt["certainty"]["household_ids"],
+            "verified": receipt["verification"]["passed"],
+            "engine_modules": fixtures.loaded_engine_modules(),
+            "seconds": time.perf_counter() - started,
+        }
+    )
+)
+"""
+
+
+def test_the_hung_dev_check_is_engine_free_and_finishes(tmp_path) -> None:
+    """The exact call that "hung" (60 households, p=0.3, seed 0) completes in
+    a fresh interpreter that refuses to import policyengine-us or
+    ``microcosm.build.us_runtime``: the engine-free sampler path never builds
+    the engine. The timeout turns any future hang into a failure."""
+    import json
+    import subprocess
+    import sys
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _HUNG_DEV_CHECK,
+            str(paths_for("microcosm-build").repository),
+            str(tmp_path),
+            *ENGINE_MODULE_PREFIXES,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr[-4000:]
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert result["engine_modules"] == []
+    assert result["verified"] is True
+    # Positions 3 and 40 carry the rare input: households 4 and 41, kept at
+    # certainty. The count is the per-stratum rule, independent of the RNG.
+    assert result["certainty"] == [4, 41]
+    assert result["households"] == 18
+
+
+def test_the_cli_default_crosses_the_deny_list_boundary(
+    sampler, tmp_path, monkeypatch
+) -> None:
+    """``refuse_denied=True`` (the CLI default) hashes the source through
+    ``h5_io.refuse_denied_pool_h5`` and re-checks it with
+    ``assert_h5_unchanged`` after the reads, under the sampler's consumer
+    label. A stub module stands in for ``h5_io`` so the engine is not built."""
+    import types
+
+    frame = synthetic_export_frame(12, seed=4)
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_table_h5(frame, source)
+    calls: list[tuple[str, str]] = []
+    digest = sampler.sha256_file(source)
+
+    def refuse_denied_pool_h5(path, *, consumer):
+        calls.append(("refuse", consumer))
+        assert Path(path) == source.resolve()
+        return digest
+
+    def assert_h5_unchanged(path, sha256, *, consumer):
+        calls.append(("unchanged", consumer))
+        assert sha256 == digest
+
+    stub = types.ModuleType("microcosm.build.us_runtime.h5_io")
+    stub.refuse_denied_pool_h5 = refuse_denied_pool_h5
+    stub.assert_h5_unchanged = assert_h5_unchanged
+    monkeypatch.setitem(sys.modules, "microcosm.build.us_runtime.h5_io", stub)
+    receipt = sampler.sample_export(
+        source,
+        tmp_path / "out",
+        fraction=0.5,
+        seed=0,
+        probes=fixture_sampler_probes(),
+        write_dataset=write_table_h5,
+    )
+    assert [kind for kind, _ in calls] == ["refuse", "unchanged"]
+    assert {consumer for _, consumer in calls} == {
+        "US export household subsampler (tools/sample_us_export_households.py)"
+    }
+    assert receipt["source"]["sha256"] == digest
