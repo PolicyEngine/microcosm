@@ -17,7 +17,7 @@ from microcosm.build.uk_runtime.frs_employment import (
 
 # EMPSTATI ("Adult - Employment Status - ILO definition") value labels in the
 # UKDS FRS 2024-25 data dictionary (SN 9563, adult table), with the status each
-# label means. policyengine-uk-data#526 pins the same table.
+# label means. The incumbent's uk-data#526 pins the same table.
 DATA_DICTIONARY = {
     1: ("Full-time Employee", "FT_EMPLOYED"),
     2: ("Part-time Employee", "PT_EMPLOYED"),

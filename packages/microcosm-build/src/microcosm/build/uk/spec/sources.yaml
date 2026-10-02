@@ -685,7 +685,7 @@ stages:
   - sic_industry_division
   nonnegative_outputs:
   - sic_industry_division
-  notes: Ports FRS employment derivations. empstati code 11 preserves the incumbent truncated-map artifact as LONG_TERM_DISABLED, so OTHER_INACTIVE is not emitted; mjobsect and sic are direct-indexed and fail loudly if absent.
+  notes: "Ports FRS employment derivations. empstati codes 1-11 each map to the status their UKDS SN 9563 adult-table data-dictionary label names, as uk-data#526 does: 11 (Other Inactive) is OTHER_INACTIVE and only 9 (Permanently sick/disabled) is LONG_TERM_DISABLED. People outside adult.tab are CHILD; an adult with a blank or unknown code refuses the build. mjobsect and sic are direct-indexed and fail loudly if absent."
 - stage: frs_council_tax
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.
