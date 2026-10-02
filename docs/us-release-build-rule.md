@@ -321,7 +321,7 @@ against the selection (ids, weights, row counts, stored tables, columns and
 dtype kinds), with a receipt.
 
 - Strata are support channel by source year. Each stratum draws
-  `max(2, floor(p N))` of its `N` eligible households.
+  `min(N, max(2, floor(p N)))` of its `N` eligible households.
 - Two kinds of household are kept with certainty at their source weight.
   A probe expecting fewer than 30 sampled carriers (`--certainty-threshold`)
   has all of its carrier households kept. And, probe by probe, a household
@@ -348,9 +348,14 @@ Every verdict is `authoritative` or `informational`.
 - Authoritative: a stage that raised, a stored column name, a baseline plan,
   anything settled on the source export itself (QRF tail, take-up
   diagnostics and geography counts are re-read from the source column by
-  column), and a smoke probe whose effect is at least 4 design-based standard
+  column), a smoke probe whose effect is at least 4 design-based standard
   errors from its floor with a variance estimate that rests on at least 30
-  effective households.
+  effective households, and a take-all probe whose effect no household
+  outside the certainty set carries (its subsample effect is the full
+  export's).
+- Failures of the probe itself (its receipt, its design check, a fidelity
+  check against the reference release) are reported apart from the
+  release's failures, as `probe_failures`.
 - Informational: everything that depends on the sample's size. That covers
   other smoke probes, the QRF tail on the subsample (its top-k and
   minimum-carrier rules count records), record counts by geography, a take-up

@@ -100,11 +100,12 @@ US_ENTITIES = (US_PERSON_ENTITY, *US_GROUP_ENTITIES)
 HOUSEHOLD_WEIGHT_COLUMN = "household_weight"
 TIME_PERIOD_KEY = "_time_period"
 DEFAULT_STRATUM_COLUMNS = ("household_support_channel", "source_year")
-#: A probe expecting fewer sampled carriers than this is taken whole. At 5
+#: A probe expecting fewer sampled carriers than this is taken whole. At 5,
 #: the Route A probes with 101 and 394 carrier households were still drawn,
-#: and their standard errors missed by more than 3 SE in 13% and 29% of
-#: seeds (docs/evidence/us-export-subsample-design); 30 takes them whole for
-#: 505 more households of 352,932.
+#: and the standard errors of their input mass missed by more than 3 SE in
+#: 44% and 58% of seeds (design 5:0 in docs/evidence/us-export-subsample-
+#: design/coverage.json); 30 takes their carriers whole, 492 households more
+#: than threshold 5 keeps (505 certainty households instead of 13).
 DEFAULT_CERTAINTY_THRESHOLD = 30.0
 #: Size-certainty cutoff, in units of the mass one sampled carrier represents
 #: (see :func:`size_certainty_households`); 0 disables the rule.

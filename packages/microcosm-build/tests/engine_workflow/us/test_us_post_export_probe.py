@@ -102,9 +102,10 @@ def test_sampler_defaults_write_a_verified_engine_subsample(
 ) -> None:
     """The sampler's defaults (the shipped probes, the release writer and the
     deny-list boundary) on an engine-written export: the written file
-    verifies, every shipped probe is receipted, the certainty set is exactly
-    the carriers of the thin probes, and the design the probe rebuilds from
-    the engine's own loader verifies against the receipt."""
+    verifies, every shipped probe is receipted with its binding inputs
+    located or receipted as absent, the probes the receipt calls take-all
+    are the ones it lists as certainty probes, and the design the probe
+    rebuilds from the engine's own loader verifies against the receipt."""
     source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
     receipt = sampler.sample_export(source, tmp_path / "sample", fraction=0.5, seed=1)
     assert receipt["verification"]["passed"]

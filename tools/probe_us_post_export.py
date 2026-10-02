@@ -330,23 +330,6 @@ class SampleDesign:
             )
         return series.reindex(self.household_ids).fillna(0.0).to_numpy()
 
-    def per_unit(self, weighted: pd.Series) -> pd.Series:
-        """``weighted[h] / W_h`` per sampled household: the ``y_h`` whose
-        estimator ``sum_h W_h y_h`` is ``weighted.sum()``.
-
-        A household weighing 0 has ``y = 0``; refused if it carries a nonzero
-        weighted value (no weight can produce one).
-        """
-        aligned = self.aligned(weighted)
-        zero = self.adjusted_weights == 0.0
-        if np.any(aligned[zero] != 0.0):
-            raise ValueError(
-                "A zero-weight household carries a nonzero weighted effect."
-            )
-        out = np.zeros_like(aligned)
-        out[~zero] = aligned[~zero] / self.adjusted_weights[~zero]
-        return pd.Series(out, index=self.household_ids)
-
     def total(self, values: pd.Series) -> float:
         """The estimator ``sum_h W_h y_h`` over the sample (adjusted weights)."""
         return float(np.dot(self.adjusted_weights, self.aligned(values)))
@@ -516,11 +499,15 @@ def design_from_sample(
     certain_ids = np.asarray(receipt["certainty"]["household_ids"], dtype=np.int64)
     certainty = np.isin(household_ids, certain_ids)
     strata = receipt["strata"]
+    # A label the receipt does not know gets no factor (nan), and verify()
+    # reports it as an unreceipted stratum instead of the load failing here.
     factors = np.asarray(
         [
             1.0
             if is_certain
-            else float(strata[str(label)]["noncertainty_weight_factor"])
+            else float(
+                strata.get(str(label), {}).get("noncertainty_weight_factor", math.nan)
+            )
             for label, is_certain in zip(labels, certainty, strict=True)
         ],
         dtype=np.float64,
@@ -669,24 +656,35 @@ class HouseholdEffects:
 
     ``weighted[h]`` is ``sum over household h's rows of w_row * (reform -
     baseline)`` with the engine's own row weights, so ``weighted.sum()`` is
-    the gate's ``reform_total - baseline_total`` up to summation order. The
-    design's estimator of that total is ``sum_h W_h y_h`` with ``W_h`` the
-    subsample's household weight and ``y_h = weighted[h] / W_h``.
+    the gate's ``reform_total - baseline_total`` up to summation order. Every
+    row of household ``h`` weighs ``weight_scale * W_h`` (up to float32
+    rounding), so the design's estimator of that total is ``sum_h W_h y_h``
+    with ``y_h = weight_scale * unweighted[h]`` (:meth:`per_household`).
+    Dividing ``weighted[h]`` by ``W_h`` instead would carry the engine's
+    float32 rounding (about 1e-7, different for every household) into
+    ``y_h``: a variance of that noise alone, spread over every household.
     """
 
     def __init__(
         self,
         weighted: pd.Series,
         *,
+        unweighted: pd.Series,
         entity: str,
         weight_scale: float,
         magnitude: float,
     ) -> None:
         self.weighted = weighted
+        #: ``sum over household h's rows of (reform - baseline)``.
+        self.unweighted = unweighted
         self.entity = entity
         self.weight_scale = weight_scale
         #: ``sum |w r| + sum |w b|``: the scale of the summation-order error.
         self.magnitude = magnitude
+
+    def per_household(self) -> pd.Series:
+        """``y_h``: each household's effect per unit of its household weight."""
+        return self.unweighted * self.weight_scale
 
 
 def household_effects(
@@ -734,11 +732,15 @@ def household_effects(
         for other, _ in matches[1:]
     ):
         return None, entity, f"row entity is ambiguous among {[m for m, _ in matches]}"
-    base = np.nan_to_num(_as_float(baseline), nan=0.0) * base_weights
-    reformed = np.nan_to_num(_as_float(reform), nan=0.0) * base_weights
+    base_values = np.nan_to_num(_as_float(baseline), nan=0.0)
+    reform_values = np.nan_to_num(_as_float(reform), nan=0.0)
+    base = base_values * base_weights
+    reformed = reform_values * base_weights
     weighted = pd.Series(reformed - base).groupby(households).sum()
+    unweighted = pd.Series(reform_values - base_values).groupby(households).sum()
     effects = HouseholdEffects(
         weighted,
+        unweighted=unweighted,
         entity=matches[0][0],
         weight_scale=matches[0][1],
         magnitude=float(np.abs(reformed).sum() + np.abs(base).sum()),
@@ -760,6 +762,7 @@ def classify_probe(
     drawn_effect_households: int | None,
     effective_households: float | None,
     census: bool,
+    noncarrier_effect: float | None = None,
     se_multiplier: float = DEFAULT_SE_MULTIPLIER,
     min_effective_households: float = DEFAULT_MIN_EFFECTIVE_HOUSEHOLDS,
 ) -> tuple[str, str]:
@@ -770,8 +773,10 @@ def classify_probe(
     1. A census (no sample) is authoritative.
     2. No finite standard error is informational.
     3. A take-all probe (every pool carrier kept at its source weight) none
-       of whose drawn households carries an effect is authoritative: its
-       effect is the certainty households' exactly.
+       of whose drawn households carries an effect, and whose households
+       without its binding inputs carry none either (``noncarrier_effect ==
+       0``), is authoritative: its effect is the certainty households'
+       exactly. With a non-carrier effect, rules 4 and 5 decide.
     4. A variance estimate resting on fewer than ``min_effective_households``
        effective households (:func:`effective_variance_households`) is
        informational. ``S^2`` is estimated from the drawn households, so a
@@ -791,11 +796,11 @@ def classify_probe(
             "no design-based standard error for this probe, so a full-scale "
             "verdict cannot be bounded",
         )
-    if take_all and not drawn_effect_households:
+    if take_all and not drawn_effect_households and noncarrier_effect == 0.0:
         return (
             AUTHORITATIVE,
             "take-all probe: every pool carrier is a certainty household at its "
-            "source weight and no drawn household carries an effect, so the "
+            "source weight and no other household carries an effect, so the "
             "effect has zero design variance",
         )
     effective = 0.0 if effective_households is None else float(effective_households)
@@ -997,21 +1002,23 @@ def compare_post_export_plans(
         if recorded is None:
             problems.append(f"{name}: the reference release recorded no plan")
             continue
-        if record["baseline_plan"] != recorded["baseline_plan"]:
+        if record["baseline_plan"] != recorded.get("baseline_plan"):
             mine = {
                 json.dumps(key, sort_keys=True)
                 for key in record["baseline_plan"]["keys"]
             }
             theirs = {
                 json.dumps(key, sort_keys=True)
-                for key in recorded["baseline_plan"]["keys"]
+                for key in (recorded.get("baseline_plan") or {}).get("keys", ())
             }
             problems.append(
                 f"{name}: baseline plan differs ({len(mine - theirs)} key(s) only "
                 f"in the probe, {len(theirs - mine)} only in the reference)"
             )
         for field in ("reform_passes", "reform_systems"):
-            if int(record[field]) != int(recorded[field]):
+            if field not in recorded:
+                problems.append(f"{name}: the reference recorded no {field}")
+            elif int(record[field]) != int(recorded[field]):
                 problems.append(
                     f"{name}: {field} {record[field]} vs the reference's "
                     f"{recorded[field]}"
@@ -1337,6 +1344,7 @@ class ExportProbe:
         load_frame: Callable[..., Any] | None = None,
         measure_entity: Callable[[str], str | None] | None = None,
         sample_rss: bool = True,
+        census: bool = False,
         chunk_bytes: int | None = None,
         chunk_rows: int | None = None,
     ) -> None:
@@ -1354,6 +1362,15 @@ class ExportProbe:
         self.export_path = Path(export_path).resolve()
         self.out_dir = Path(out_dir).resolve()
         self.receipt = sample_receipt
+        if sample_receipt is None and not census:
+            raise ValueError(
+                "No sample receipt: the probe cannot tell a subsample from a "
+                "full export, and would label every scale-dependent verdict "
+                "authoritative. Pass the sampler's receipt, or census=True "
+                "(--census) to score the export as a full population."
+            )
+        # A subsample whose every stratum was taken whole is a census too
+        # (set again from the rebuilt design in _load).
         self.census = sample_receipt is None
         if not source_settlement:
             source_export = None
@@ -1487,8 +1504,15 @@ class ExportProbe:
                     "the stage runs",
                     "error",
                     AUTHORITATIVE,
-                    "the stage raised (a code or definition failure does not "
-                    f"depend on the sample): {record['error']}",
+                    (
+                        "the probe could not run this step (a failure of the "
+                        f"probe or its inputs, not of the release): {record['error']}"
+                    )
+                    if consequence in PROBE_CONSEQUENCES
+                    else (
+                        "the stage raised (a code or definition failure does not "
+                        f"depend on the sample): {record['error']}"
+                    ),
                     consequence,
                 )
             )
@@ -1506,7 +1530,7 @@ class ExportProbe:
     def run(self) -> dict[str, Any]:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.passes_path.write_text("")
-        load = self._stage("load", self._load, "raises")
+        load = self._stage("load", self._load, "probe integrity")
         if load["status"] == "completed":
             if "stored_inputs" in self.stages:
                 self._stage("stored_inputs", self._stored_inputs, "raises")
@@ -1544,7 +1568,11 @@ class ExportProbe:
                         builder._close_post_export_scorer(self.scorer)
                     )
                     self.scorer = None
-                self._compare_plans()
+                self._stage(
+                    "post_export_scoring_plans",
+                    self._compare_plans,
+                    "fidelity of this probe to the release",
+                )
             if "source_coverage" in self.stages:
                 self._stage("source_coverage", self._source_coverage, "recorded")
         self.report["summary"] = _summary(self.report, self.receipt)
@@ -1555,7 +1583,7 @@ class ExportProbe:
         self._write_report()
         return self.report
 
-    def _compare_plans(self) -> None:
+    def _compare_plans(self) -> dict[str, Any]:
         """Did the probe score the plans the reference release recorded?
 
         A consumer's baseline plan and its reform pass and system counts do
@@ -1565,7 +1593,7 @@ class ExportProbe:
         reference = self.reference_build_manifest
         scoring = self.report.get("post_export_scoring")
         if reference is None or scoring is None:
-            return
+            return {"compared": False}
         records = {
             name: record
             for name, record in scoring["consumers"].items()
@@ -1589,6 +1617,7 @@ class ExportProbe:
             "depend on the data)",
             "fidelity of this probe to the release",
         )
+        return {"compared": True, "problems": problems}
 
     # ---- load ---------------------------------------------------------------
 
@@ -1611,6 +1640,8 @@ class ExportProbe:
             sampler=sampler,
         )
         self.design_problems = [] if self.census else self.design.verify()
+        if not self.design_problems and self.design.is_census:
+            self.census = True
         if not self.census:
             self._add(
                 "load",
@@ -2025,51 +2056,10 @@ class ExportProbe:
         }
 
     def _smoke_row(self, probe, result, baseline, reform_results, row_map):
-        builder = self.builder
-        key = (probe.budget_measure, int(result["period"]), None)
-        effects, entity, decomposition = household_effects(
-            baseline[key],
-            reform_results[key],
-            entity=self._resolve_entity(probe.budget_measure),
-            row_map=row_map,
-            entities=("person", *builder.US_SCHEMA.group_entities),
-        )
-        direction = 1.0 if probe.effect_direction == "reform_minus_baseline" else -1.0
-        carriers = self.carriers_by_probe[str(probe.id)]
-        standard_error = None
-        noncarrier = None
-        drawn_effect = None
-        certainty_effect = None
-        effective = None
-        weight_scale = None
-        if effects is not None and self.design_problems:
-            decomposition = "the sample design did not verify against its receipt"
-        elif effects is not None:
-            weight_scale = effects.weight_scale
-            reconstructed = direction * float(effects.weighted.sum())
-            if not math.isclose(
-                reconstructed,
-                float(result["effect"]),
-                rel_tol=0.0,
-                abs_tol=DECOMPOSITION_RTOL * effects.magnitude + 1e-6,
-            ):
-                decomposition = (
-                    f"per-household effects total {reconstructed!r}; the gate "
-                    f"scored {result['effect']!r}"
-                )
-            else:
-                per_unit = self.design.per_unit(effects.weighted)
-                terms = self.design.variance_terms(per_unit)
-                standard_error = (
-                    None if terms is None else math.sqrt(float(terms.sum()))
-                )
-                effective = effective_variance_households(terms)
-                bearing = self.design.aligned(effects.weighted) != 0.0
-                drawn_effect = int((bearing & ~self.design.certainty).sum())
-                certainty_effect = int((bearing & self.design.certainty).sum())
-                noncarrier = direction * float(
-                    effects.weighted[~effects.weighted.index.isin(carriers)].sum()
-                )
+        """The gate's verdict for one probe and, if it can be had, the design
+        analysis behind its authority. A failure in that analysis is the
+        probe tool's, not the release's: it leaves the standard error unset
+        (so the verdict is informational) and names the error."""
         pool = (
             None
             if self.receipt is None
@@ -2077,13 +2067,36 @@ class ExportProbe:
         )
         take_all = bool(pool and pool["certainty"])
         magnitude = signed_magnitude(result["effect"], probe.expected_sign)
+        carriers = self.carriers_by_probe.get(str(probe.id), np.asarray([], np.int64))
+        analysis: dict[str, Any] = {
+            "measure_entity": None,
+            "standard_error": None,
+            "decomposition": "not attempted",
+            "engine_weight_scale": None,
+            "drawn_effect_households": None,
+            "effective_variance_households": None,
+            "certainty_effect_households": None,
+            "noncarrier_effect": None,
+        }
+        try:
+            analysis.update(
+                self._smoke_analysis(
+                    probe, result, baseline, reform_results, row_map, carriers
+                )
+            )
+        except Exception as error:  # the probe's own failure, not the release's
+            analysis["decomposition"] = (
+                f"analysis error ({type(error).__name__}: {error}); no standard error"
+            )
+            analysis["standard_error"] = None
         authority, reason = classify_probe(
             signed_magnitude=magnitude,
             floor=float(probe.min_abs_effect),
-            standard_error=standard_error,
+            standard_error=analysis["standard_error"],
             take_all=take_all,
-            drawn_effect_households=drawn_effect,
-            effective_households=effective,
+            drawn_effect_households=analysis["drawn_effect_households"],
+            effective_households=analysis["effective_variance_households"],
+            noncarrier_effect=analysis["noncarrier_effect"],
             census=self.census,
             se_multiplier=self.se_multiplier,
             min_effective_households=self.min_effective_households,
@@ -2092,7 +2105,6 @@ class ExportProbe:
             "probe": str(probe.id),
             "period": int(result["period"]),
             "budget_measure": probe.budget_measure,
-            "measure_entity": entity,
             "baseline_total": float(result["baseline_total"]),
             "reform_total": float(result["reform_total"]),
             "effect": float(result["effect"]),
@@ -2101,13 +2113,7 @@ class ExportProbe:
             "signed_magnitude": magnitude,
             "margin_to_floor": magnitude - float(probe.min_abs_effect),
             "passed": bool(result["passed"]),
-            "standard_error": standard_error,
-            "decomposition": decomposition,
-            "engine_weight_scale": weight_scale,
-            "drawn_effect_households": drawn_effect,
-            "effective_variance_households": effective,
-            "certainty_effect_households": certainty_effect,
-            "noncarrier_effect": noncarrier,
+            **analysis,
             "pool_carrier_households": None
             if pool is None
             else int(pool["carrier_households"]),
@@ -2119,6 +2125,52 @@ class ExportProbe:
             "authority": authority,
             "authority_reason": reason,
         }
+
+    def _smoke_analysis(
+        self, probe, result, baseline, reform_results, row_map, carriers
+    ) -> dict[str, Any]:
+        builder = self.builder
+        key = (probe.budget_measure, int(result["period"]), None)
+        effects, entity, decomposition = household_effects(
+            baseline[key],
+            reform_results[key],
+            entity=self._resolve_entity(probe.budget_measure),
+            row_map=row_map,
+            entities=("person", *builder.US_SCHEMA.group_entities),
+        )
+        out: dict[str, Any] = {"measure_entity": entity, "decomposition": decomposition}
+        if effects is None:
+            return out
+        out["engine_weight_scale"] = effects.weight_scale
+        if self.design_problems:
+            out["decomposition"] = (
+                "the sample design did not verify against its receipt"
+            )
+            return out
+        direction = 1.0 if probe.effect_direction == "reform_minus_baseline" else -1.0
+        reconstructed = direction * float(effects.weighted.sum())
+        if not math.isclose(
+            reconstructed,
+            float(result["effect"]),
+            rel_tol=0.0,
+            abs_tol=DECOMPOSITION_RTOL * effects.magnitude + 1e-6,
+        ):
+            out["decomposition"] = (
+                f"per-household effects total {reconstructed!r}; the gate "
+                f"scored {result['effect']!r}"
+            )
+            return out
+        terms = self.design.variance_terms(effects.per_household())
+        bearing = self.design.aligned(effects.unweighted) != 0.0
+        out.update(
+            standard_error=None if terms is None else math.sqrt(float(terms.sum())),
+            effective_variance_households=effective_variance_households(terms),
+            drawn_effect_households=int((bearing & ~self.design.certainty).sum()),
+            certainty_effect_households=int((bearing & self.design.certainty).sum()),
+            noncarrier_effect=direction
+            * float(effects.weighted[~effects.weighted.index.isin(carriers)].sum()),
+        )
+        return out
 
     # ---- 3. reform validation -----------------------------------------------
 
@@ -2365,9 +2417,18 @@ def _geography_summary(summary: Mapping[str, Any] | None) -> dict[str, Any] | No
     return {key: value for key, value in summary.items() if key != "counts"}
 
 
+#: Verdict consequences about the probe itself rather than the release.
+PROBE_CONSEQUENCES = ("probe integrity", "fidelity of this probe to the release")
+
+
 def _summary(report: Mapping[str, Any], receipt) -> dict[str, Any]:
     failing = [row for row in report["verdicts"] if row["verdict"] in ("fail", "error")]
+    probe_failures = [
+        row for row in failing if row["release_consequence"] in PROBE_CONSEQUENCES
+    ]
+    failing = [row for row in failing if row not in probe_failures]
     summary: dict[str, Any] = {
+        "probe_failures": probe_failures,
         "authoritative_failures": [
             row for row in failing if row["authority"] == AUTHORITATIVE
         ],
@@ -2551,6 +2612,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--release-id", default=None)
     parser.add_argument(
+        "--census",
+        action="store_true",
+        help="score --export as a full population (no sample receipt); "
+        "without a receipt the probe refuses unless this is given",
+    )
+    parser.add_argument(
         "--chunk-rows",
         type=int,
         default=None,
@@ -2607,11 +2674,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         se_multiplier=args.se_multiplier,
         min_effective_households=args.min_effective_households,
         release_id=args.release_id,
+        census=args.census,
     )
     summary = report["summary"]
     print(
         f"[probe] {len(summary['authoritative_failures'])} authoritative and "
-        f"{len(summary['informational_failures'])} informational failure(s); "
+        f"{len(summary['informational_failures'])} informational release "
+        f"failure(s), {len(summary['probe_failures'])} probe failure(s); "
         f"report {Path(args.out) / REPORT_FILENAME}",
         flush=True,
     )

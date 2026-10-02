@@ -123,6 +123,7 @@ def run_fixture_probe(
     probes=None,
     batch_size: int | None = None,
     fail_on: str | None = None,
+    census: bool = False,
     **options,
 ):
     """Run the probe with the float32 fake engine; return (report, log).
@@ -148,6 +149,7 @@ def run_fixture_probe(
         load_frame=load_table_h5,
         measure_entity=_native_entity,
         chunk_rows=7,
+        census=census,
         **options,
     )
     return report, log

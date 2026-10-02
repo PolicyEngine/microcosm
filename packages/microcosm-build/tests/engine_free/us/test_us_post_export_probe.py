@@ -102,6 +102,16 @@ def test_probe_runs_every_stage_on_a_subsample(
         FAKE_UPRATING[2026], rel=1e-6
     )
     assert smoke["snap_take_up_2026"]["measure_entity"] == "spm_unit"
+    # The fake engine's SNAP effect is the same for every household (one SPM
+    # unit each), so the effect has no variance at all: exactly 0, on no
+    # effective household, and no authority. Dividing the engine-weighted
+    # effect by the design weight would leave float32 rounding of the
+    # uprated weights behind as a spurious variance spread over every
+    # household (the review's finding on the first version).
+    snap = smoke["snap_take_up_2026"]
+    assert snap["standard_error"] == 0.0
+    assert snap["effective_variance_households"] == 0.0
+    assert snap["authority"] == "informational"
     assert smoke["rare_keogh"]["take_all"] is True
     assert smoke["common_wages"]["take_all"] is False
 
@@ -147,6 +157,7 @@ def test_a_census_probe_matches_one_whole_frame_engine(
         builder,
         source,
         tmp_path / "census",
+        census=True,
         stages=("reform_coverage_smoke",),
     )
     assert report["stages"]["reform_coverage_smoke"]["status"] == "completed"
@@ -183,6 +194,7 @@ def test_a_reference_release_checks_plans_and_compares_effects(
         builder,
         source,
         tmp_path / "census",
+        census=True,
         calibration_diagnostics=diagnostics,
         stages=("reform_coverage_smoke", "reform_validation", "demographics"),
     )
@@ -367,3 +379,130 @@ def test_a_source_export_with_other_bytes_settles_nothing(
     ]
     assert (check["verdict"], check["authority"]) == ("fail", "authoritative")
     assert "source" not in report["stages"]["take_up_participation"]
+
+
+def test_a_subsample_without_its_receipt_is_refused(
+    probe_tool, builder, fake_reforms, chain, tmp_path
+) -> None:
+    """Scored without a receipt, a subsample would pass for the full export
+    and every scale-dependent verdict would be labelled authoritative."""
+    _, path, _, _ = chain
+    with pytest.raises(ValueError, match="No sample receipt"):
+        run_fixture_probe(probe_tool, builder, path, tmp_path / "probe")
+
+
+def test_a_full_fraction_subsample_is_a_census(
+    sampler, probe_tool, builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    """Every stratum taken whole (fraction 1) is a census by design: its
+    smoke verdicts are authoritative without a variance."""
+    frame = synthetic_export_frame(30, seed=8)
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    path, receipt = sample_synthetic(
+        sampler, tmp_path, frame, fraction=1.0, seed=0, probes=fixture_engine_probes()
+    )
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("reform_coverage_smoke",),
+    )
+    assert report["stages"]["load"]["design"]["census"] is True
+    rows = report["stages"]["reform_coverage_smoke"]["probes"]
+    assert rows and all(row["authority"] == "authoritative" for row in rows)
+
+
+def test_an_unreceipted_stratum_is_reported_not_fatal(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """A household whose rebuilt stratum label the receipt does not know
+    fails the design check visibly; the probe still runs its stages."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    tampered = json.loads(json.dumps(receipt))
+    label = sorted(tampered["strata"])[0]
+    tampered["strata"][label + "|renamed"] = tampered["strata"].pop(label)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=tampered,
+        stages=("reform_coverage_smoke", "demographics"),
+    )
+    assert report["stages"]["load"]["status"] == "completed"
+    assert report["stages"]["demographics"]["status"] == "completed"
+    design = verdicts_by_check(report)[
+        (
+            "load",
+            "the sample design rebuilt from the subsample verifies against its receipt",
+        )
+    ]
+    assert design["verdict"] == "fail"
+    assert "unreceipted strata" in design["reason"]
+    assert design in report["summary"]["probe_failures"]
+    assert design not in report["summary"]["authoritative_failures"]
+    for row in report["stages"]["reform_coverage_smoke"]["probes"]:
+        assert row["standard_error"] is None
+
+
+def test_an_analysis_error_keeps_every_gate_verdict(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """A failure in the probe's own decomposition is not a release failure:
+    every probe keeps the gate's pass/fail, without a standard error."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("decomposition exploded")
+
+    monkeypatch.setattr(probe_tool, "household_effects", broken)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("reform_coverage_smoke",),
+    )
+    assert report["stages"]["reform_coverage_smoke"]["status"] == "completed"
+    rows = report["stages"]["reform_coverage_smoke"]["probes"]
+    assert len(rows) == len(fixture_engine_probes())
+    for row in rows:
+        assert "decomposition exploded" in row["decomposition"]
+        assert row["standard_error"] is None
+        assert row["authority"] == "informational"
+    smoke_checks = [
+        v for v in report["verdicts"] if v["stage"] == "reform_coverage_smoke"
+    ]
+    assert len(smoke_checks) == len(rows)
+    assert not report["summary"]["authoritative_failures"]
+
+
+def test_an_older_reference_manifest_is_compared_not_fatal(probe_tool) -> None:
+    record = {
+        "baseline_plan": {"keys": [["income_tax", 2024, None]], "period_order": [2024]},
+        "baseline_passes": 1,
+        "reform_passes": 3,
+        "reform_systems": 3,
+    }
+    problems = probe_tool.compare_post_export_plans(
+        {"reform_coverage_smoke": record, "demographics": record},
+        {
+            "post_export_scoring": {
+                "consumers": {
+                    "reform_coverage_smoke": {
+                        "baseline_plan": record["baseline_plan"],
+                        "reform_passes": 3,
+                    }
+                }
+            }
+        },
+    )
+    assert problems == [
+        "reform_coverage_smoke: the reference recorded no reform_systems",
+        "demographics: the reference release recorded no plan",
+    ]
