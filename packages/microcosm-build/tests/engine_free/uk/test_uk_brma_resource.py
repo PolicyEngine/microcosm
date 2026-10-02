@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
 from importlib.resources import files
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.frs_brma import assign_brma_by_cell
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -16,9 +19,8 @@ _TEST_PATHS = paths_for("microcosm-build")
 ROOT = _TEST_PATHS.repository
 # The census households CSV is a staged input, not repo content: the
 # regeneration check runs wherever it is staged (point UK_BRMA_HOUSEHOLDS_CSV
-# at it) and skips elsewhere, including PR CI. The committed resource's
-# integrity is still pinned in CI by the source-facts test below, which holds
-# its sha256, row count, and cell/BRMA counts against the generator's constants.
+# at it) and skips elsewhere, including PR CI. In CI the committed cells are
+# pinned by digest and by each nation's census total below.
 STAGED_HOUSEHOLDS = Path(
     os.environ.get(
         "UK_BRMA_HOUSEHOLDS_CSV",
@@ -123,8 +125,39 @@ def test_glasgow_and_edinburgh_lead_scotland() -> None:
     assert set(top_two) == {"LOTHIAN", "GREATER_GLASGOW"}
 
 
-def test_missing_brma_cell_fails_closed() -> None:
-    resource = _resource()
+# sha256 of the cells as compact sorted JSON; regenerate only with the CSV.
+CELLS_SHA256 = "74a69e169516cbfc439b0d094a609dc71bc0288e6c61c7e71a4adfd53d426f0e"
+# Private-rented households per nation in the source CSV (Census 2021/2022).
+NATION_TOTALS = {
+    "ENGLAND": 4_795_158,
+    "WALES": 228_601,
+    "SCOTLAND": 323_001,
+    "NORTHERN_IRELAND": 132_449,
+}
 
-    with pytest.raises(KeyError):
-        resource["cells"]["LONDON"]["Z"]
+
+def test_cells_are_pinned_in_ci() -> None:
+    cells = _resource()["cells"]
+    canonical = json.dumps(cells, sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(canonical).hexdigest() == CELLS_SHA256
+    totals: dict[str, int] = {}
+    for region, categories in cells.items():
+        nation = region if region in NATION_TOTALS else "ENGLAND"
+        # A repeats B (both one-bedroom); Northern Ireland repeats one cell.
+        used = "A" if region == "NORTHERN_IRELAND" else "BCDE"
+        totals[nation] = totals.get(nation, 0) + sum(
+            sum(categories[c].values()) for c in used
+        )
+    assert totals == NATION_TOTALS
+
+
+def test_missing_brma_cell_fails_closed() -> None:
+    benunits = pd.DataFrame(
+        {
+            "benunit_id": [1, 2],
+            "region": ["LONDON", "LONDON"],
+            "LHA_category": ["B", "Z"],
+        }
+    )
+    with pytest.raises(KeyError, match="missing BRMA count-table cell"):
+        assign_brma_by_cell(benunits, count_resource=_resource(), seed=0)

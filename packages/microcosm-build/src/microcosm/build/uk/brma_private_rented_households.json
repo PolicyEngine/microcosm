@@ -353,54 +353,54 @@
     },
     "NORTHERN_IRELAND": {
       "A": {
-        "BELFAST": 31175,
-        "LOUGH_NEAGH_LOWER": 15652,
-        "LOUGH_NEAGH_UPPER": 23933,
-        "NORTH_NI": 7169,
-        "NORTH_WEST_NI": 12592,
-        "SOUTH_EAST_NI": 19530,
-        "SOUTH_NI": 12697,
-        "SOUTH_WEST_NI": 9718
+        "BELFAST": 26599,
+        "LOUGH_NEAGH_LOWER": 14176,
+        "LOUGH_NEAGH_UPPER": 26520,
+        "NORTH_NI": 6892,
+        "NORTH_WEST_NI": 11924,
+        "SOUTH_EAST_NI": 25164,
+        "SOUTH_NI": 12101,
+        "SOUTH_WEST_NI": 9073
       },
       "B": {
-        "BELFAST": 31175,
-        "LOUGH_NEAGH_LOWER": 15652,
-        "LOUGH_NEAGH_UPPER": 23933,
-        "NORTH_NI": 7169,
-        "NORTH_WEST_NI": 12592,
-        "SOUTH_EAST_NI": 19530,
-        "SOUTH_NI": 12697,
-        "SOUTH_WEST_NI": 9718
+        "BELFAST": 26599,
+        "LOUGH_NEAGH_LOWER": 14176,
+        "LOUGH_NEAGH_UPPER": 26520,
+        "NORTH_NI": 6892,
+        "NORTH_WEST_NI": 11924,
+        "SOUTH_EAST_NI": 25164,
+        "SOUTH_NI": 12101,
+        "SOUTH_WEST_NI": 9073
       },
       "C": {
-        "BELFAST": 31175,
-        "LOUGH_NEAGH_LOWER": 15652,
-        "LOUGH_NEAGH_UPPER": 23933,
-        "NORTH_NI": 7169,
-        "NORTH_WEST_NI": 12592,
-        "SOUTH_EAST_NI": 19530,
-        "SOUTH_NI": 12697,
-        "SOUTH_WEST_NI": 9718
+        "BELFAST": 26599,
+        "LOUGH_NEAGH_LOWER": 14176,
+        "LOUGH_NEAGH_UPPER": 26520,
+        "NORTH_NI": 6892,
+        "NORTH_WEST_NI": 11924,
+        "SOUTH_EAST_NI": 25164,
+        "SOUTH_NI": 12101,
+        "SOUTH_WEST_NI": 9073
       },
       "D": {
-        "BELFAST": 31175,
-        "LOUGH_NEAGH_LOWER": 15652,
-        "LOUGH_NEAGH_UPPER": 23933,
-        "NORTH_NI": 7169,
-        "NORTH_WEST_NI": 12592,
-        "SOUTH_EAST_NI": 19530,
-        "SOUTH_NI": 12697,
-        "SOUTH_WEST_NI": 9718
+        "BELFAST": 26599,
+        "LOUGH_NEAGH_LOWER": 14176,
+        "LOUGH_NEAGH_UPPER": 26520,
+        "NORTH_NI": 6892,
+        "NORTH_WEST_NI": 11924,
+        "SOUTH_EAST_NI": 25164,
+        "SOUTH_NI": 12101,
+        "SOUTH_WEST_NI": 9073
       },
       "E": {
-        "BELFAST": 31175,
-        "LOUGH_NEAGH_LOWER": 15652,
-        "LOUGH_NEAGH_UPPER": 23933,
-        "NORTH_NI": 7169,
-        "NORTH_WEST_NI": 12592,
-        "SOUTH_EAST_NI": 19530,
-        "SOUTH_NI": 12697,
-        "SOUTH_WEST_NI": 9718
+        "BELFAST": 26599,
+        "LOUGH_NEAGH_LOWER": 14176,
+        "LOUGH_NEAGH_UPPER": 26520,
+        "NORTH_NI": 6892,
+        "NORTH_WEST_NI": 11924,
+        "SOUTH_EAST_NI": 25164,
+        "SOUTH_NI": 12101,
+        "SOUTH_WEST_NI": 9073
       }
     },
     "NORTH_EAST": {
@@ -1359,9 +1359,9 @@
       "northern_ireland": 2021,
       "scotland": 2022
     },
-    "provenance": "Private-rented households (private landlord or letting agency plus other private rented) by region, BRMA and bedrooms: ONS Census 2021 (England and Wales; TS054 by LSOA with the LSOA's private-rented-or-rent-free bedroom mix), NRS Scotland's Census 2022 (tenure by bedrooms by ward), NISRA Census 2021 (tenure by Data Zone). Areas are mapped to BRMAs with the VOA (May 2020), Rent Officers Wales, Scottish Government and NIHE BRMA geographies.",
+    "provenance": "Private-rented households (private landlord or letting agency plus other private rented) by region, BRMA and bedrooms: ONS Census 2021 (England and Wales; TS054 by LSOA with the LSOA's private-rented-or-rent-free bedroom mix), NRS Scotland's Census 2022 (tenure by bedrooms by ward), NISRA Census 2021 (households by postcode district times Northern Ireland's private-rented share). Areas are mapped to BRMAs with the VOA (May 2020), Rent Officers Wales, Scottish Government and NIHE BRMA geographies.",
     "rows": 936,
-    "sha256": "3ba714d4f5267656f19cd60785da379804420f633aa4c5745bdd0fba20473e72",
+    "sha256": "fd40dae019e5eefb8c976873f69c66f9b74a0747505326e8098b0ad99cc2ae1f",
     "unique_brmas": 200
   },
   "version": 2

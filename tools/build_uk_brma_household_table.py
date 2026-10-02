@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pandas as pd
 
-EXPECTED_SHA256 = "3ba714d4f5267656f19cd60785da379804420f633aa4c5745bdd0fba20473e72"
+EXPECTED_SHA256 = "fd40dae019e5eefb8c976873f69c66f9b74a0747505326e8098b0ad99cc2ae1f"
 EXPECTED_ROWS = 936
 # The households CSV is a staged input, not repo content. Point
 # UK_BRMA_HOUSEHOLDS_CSV at wherever it is staged, or pass --source.
 DEFAULT_SOURCE = Path(
     os.environ.get(
         "UK_BRMA_HOUSEHOLDS_CSV",
-        "incumbent/storage/brma_private_rented_households.csv",
+        ".codex-work/incumbent/storage/brma_private_rented_households.csv",
     )
 )
 DEFAULT_OUTPUT = Path(
@@ -55,9 +55,10 @@ def build_resource(source: Path) -> dict[str, object]:
     for region, rows in households.groupby("region", sort=True):
         bands = set(rows.bedrooms)
         for category, band in LHA_CATEGORY_BEDROOMS.items():
-            chosen = rows[rows.bedrooms == ("all" if bands == {"all"} else band)]
+            used = "all" if bands == {"all"} else band
+            chosen = rows[rows.bedrooms == used]
             if chosen.empty or (chosen.households <= 0).any():
-                raise ValueError(f"{region} has no positive {band} households.")
+                raise ValueError(f"{region} has no positive {used!r} households.")
             cells.setdefault(str(region), {})[category] = {
                 str(row.brma): int(row.households)
                 for row in chosen.sort_values("brma").itertuples(index=False)
@@ -81,10 +82,11 @@ def build_resource(source: Path) -> dict[str, object]:
                 "plus other private rented) by region, BRMA and bedrooms: ONS "
                 "Census 2021 (England and Wales; TS054 by LSOA with the LSOA's "
                 "private-rented-or-rent-free bedroom mix), NRS Scotland's Census "
-                "2022 (tenure by bedrooms by ward), NISRA Census 2021 (tenure by "
-                "Data Zone). Areas are mapped to BRMAs with the VOA (May 2020), "
-                "Rent Officers Wales, Scottish Government and NIHE BRMA "
-                "geographies."
+                "2022 (tenure by bedrooms by ward), NISRA Census 2021 "
+                "(households by postcode district times Northern Ireland's "
+                "private-rented share). Areas are mapped to BRMAs with the VOA "
+                "(May 2020), Rent Officers Wales, Scottish Government and NIHE "
+                "BRMA geographies."
             ),
             "census_years": {
                 "england_wales": 2021,
