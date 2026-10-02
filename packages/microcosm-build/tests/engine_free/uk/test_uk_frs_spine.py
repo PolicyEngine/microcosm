@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
+    SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
@@ -160,6 +161,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "BEDROOM6": 3,
         "CTANNUAL": 1000.0,
         "CTBAND": 4,
+        "CTDISC": 2,
+        "CT25D50D": "",
         "CTREB": 2,
         "CTREBAMT": 2.0,
         "ADULTH": 1,
@@ -191,6 +194,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "BEDROOM6": 2,
         "CTANNUAL": -1.0,
         "CTBAND": 2,
+        "CTDISC": 1,
+        "CT25D50D": 1,
         "CTREB": 1,
         "CTREBAMT": 1.0,
         "CSEWAMT": "",
@@ -1197,11 +1202,11 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     assert household.loc[1, "council_tax_band"] == "B"
     assert household.loc[1, "council_tax_rebate"] == pytest.approx(WEEKS_IN_YEAR)
     assert household.loc[1, "council_tax_single_adult_raw"] == 1
-    # Scotland: CWATAMTD 3 (after discount) + CSEWAMT1 5 (gross) discounted at
-    # this household's own observed factor CWATAMTD/CWATAMT1 = 3/4, so
-    # 3 + 5 * 0.75 = 6.75. WATSEWRT is not asked in Scotland and is ignored.
+    # Scotland: the gross CWATAMT1 4 + CSEWAMT1 5, less the 25% status discount,
+    # at the 65% a council tax reduction recipient pays: 9 * 0.75 * 0.65.
+    # WATSEWRT is not asked in Scotland and is ignored.
     assert household.loc[1, "water_and_sewerage_charges"] == pytest.approx(
-        6.75 * WEEKS_IN_YEAR
+        9.0 * 0.75 * 0.65 * WEEKS_IN_YEAR
     )
     assert household.loc[1, "domestic_rates"] == pytest.approx(5 * WEEKS_IN_YEAR)
     assert household.loc[1, "rent"] == pytest.approx(6 * WEEKS_IN_YEAR)
@@ -2520,62 +2525,86 @@ def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
 
 
 class TestScottishWaterAndSewerage:
-    """The FRS 2024-25 cell retirement, at the three shapes the tab presents.
+    """The charge a Scottish household pays, at the shapes the 2024-25 tab presents.
 
-    CWATAMT/CSEWAMT survive as headers in this vintage but carry no data, so a
-    fixture that supplies them (as the pre-#686 one did) never exercises what
-    the real tab does. Each case below is a real domain on the 2024-25 tab.
+    CWATAMT/CSEWAMT survive as headers in this vintage but carry no data; the
+    gross successors CWATAMT1/CSEWAMT1 carry the charge, less the household's
+    status discount, and a council tax reduction recipient pays 65% of it
+    (uk-data#499, microcosm#1095).
     """
 
     @staticmethod
     def _frame(**columns: object) -> pd.DataFrame:
-        return pd.DataFrame({name: [value] for name, value in columns.items()})
+        cells = {
+            "CSEWAMT": "",
+            "CWATAMTD": 0.0,
+            "CWATAMT1": 0.0,
+            "CSEWAMT1": 0.0,
+            "CTDISC": 2,
+            "CT25D50D": "",
+            "CTREB": 2,
+            **columns,
+        }
+        frame = pd.DataFrame({name: [value] for name, value in cells.items()})
+        frame.columns = [column.lower() for column in frame.columns]
+        return frame
 
-    def test_discount_factor_carries_to_the_gross_sewerage_cell(self) -> None:
-        # 1,641 of 1,684 Scottish households: a positive gross water bill, so
-        # the household's own discount factor is observable and applies to the
-        # sewerage side of the same bill.
-        frame = self._frame(CSEWAMT="", CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
-        frame.columns = [c.lower() for c in frame.columns]
-        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(6.75)
-
-    def test_undiscounted_household_keeps_the_gross_sewerage_charge(self) -> None:
-        frame = self._frame(CWATAMTD=4.0, CWATAMT1=4.0, CSEWAMT1=5.0)
-        frame.columns = [c.lower() for c in frame.columns]
+    def test_undiscounted_household_pays_the_gross_charges(self) -> None:
+        # CWATAMTD sits below the gross water cell even without a discount, so
+        # it is not read where the gross cell exists.
+        frame = self._frame(CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
         assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(9.0)
 
-    def test_recorded_water_without_a_gross_bill_cell_is_not_scaled(self) -> None:
+    @pytest.mark.parametrize(("code", "discount"), [(1, 0.25), (2, 0.5)])
+    def test_status_discount_applies_to_both_charges(self, code, discount) -> None:
+        frame = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0, CTDISC=1, CT25D50D=code)
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(
+            9.0 * (1 - discount)
+        )
+
+    def test_discount_code_without_a_status_discount_is_ignored(self) -> None:
+        frame = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0, CTDISC=2, CT25D50D=1)
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(9.0)
+
+    def test_reduction_recipient_pays_the_scheme_share(self) -> None:
+        frame = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0, CTDISC=1, CT25D50D=1, CTREB=1)
+        assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(
+            9.0 * 0.75 * SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE
+        )
+
+    def test_recorded_water_without_a_gross_bill_cell_is_paid_as_recorded(
+        self,
+    ) -> None:
         # 22 Scottish households carry a recorded CWATAMTD with CWATAMT1 == 0;
-        # their CSEWAMT1 is zero too, so the fallback factor cannot move them.
-        frame = self._frame(CWATAMTD=3.0, CWATAMT1=0.0, CSEWAMT1=0.0)
-        frame.columns = [c.lower() for c in frame.columns]
+        # their CSEWAMT1 is zero too.
+        frame = self._frame(CWATAMTD=3.0, CTDISC=1, CT25D50D=1, CTREB=1)
         assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(3.0)
 
-    def test_sewerage_without_an_observable_discount_is_refused(self) -> None:
+    def test_sewerage_without_a_gross_water_bill_is_refused(self) -> None:
         # The domain claim in the docstring — that a household with no gross
-        # water bill also carries no gross sewerage — is what makes the 1.0
-        # fallback safe. A vintage refresh that breaks it must refuse at build
-        # time rather than silently pay sewerage at gross, which would flow
-        # into council_tax through the netting.
-        frame = self._frame(CWATAMTD=3.0, CWATAMT1=0.0, CSEWAMT1=5.0)
-        frame.columns = [c.lower() for c in frame.columns]
-        with pytest.raises(ValueError, match="no discount factor is observable"):
+        # water bill also carries no gross sewerage — is what makes CWATAMTD
+        # the whole charge there. A vintage refresh that breaks it must refuse
+        # at build time rather than mix the two bases.
+        frame = self._frame(CWATAMTD=3.0, CSEWAMT1=5.0)
+        with pytest.raises(ValueError, match="cannot be assembled on one basis"):
             scottish_water_and_sewerage_weekly(frame)
 
     def test_household_without_council_tax_cells_is_zero(self) -> None:
         # 21 Scottish households carry no council-tax cells at all.
-        frame = self._frame(CWATAMTD="", CWATAMT1="", CSEWAMT1="")
-        frame.columns = [c.lower() for c in frame.columns]
+        frame = self._frame(CWATAMTD="", CWATAMT1="", CSEWAMT1="", CTDISC="", CTREB="")
         assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(0.0)
+
+    def test_missing_raw_cells_refuse(self) -> None:
+        frame = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0).drop(columns="ctdisc")
+        with pytest.raises(KeyError, match="ctdisc"):
+            scottish_water_and_sewerage_weekly(frame)
 
     def test_retired_cells_cannot_reintroduce_the_incumbent_zeroing(self) -> None:
         # The incumbent adds CSEWAMT before filling, so an all-blank CSEWAMT
         # propagates NaN and zeroes every Scottish household. The successor
         # cells must decide the answer on their own.
-        blank = self._frame(CSEWAMT="", CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
-        blank.columns = [c.lower() for c in blank.columns]
-        absent = self._frame(CWATAMTD=3.0, CWATAMT1=4.0, CSEWAMT1=5.0)
-        absent.columns = [c.lower() for c in absent.columns]
+        blank = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0)
+        absent = blank.drop(columns="csewamt")
         result = scottish_water_and_sewerage_weekly(blank).iloc[0]
         assert result == pytest.approx(
             scottish_water_and_sewerage_weekly(absent).iloc[0]
