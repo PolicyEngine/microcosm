@@ -44,7 +44,7 @@ from microcosm.build.uk_runtime.frs_employment import (
 )
 from microcosm.build.uk_runtime.frs_spine import normalize_ids, read_pinned_tab
 
-UK_DATA_526_HEAD = "fb0266593cab1dbe4464c4c6db63e4868af43db5"
+UK_DATA_526_HEAD = "89c48e074f77f196b1a91bbb2a69f78bb29884fc"
 UK_DATA_NAMES = ("FRS_EMPSTATI_EMPLOYMENT_STATUS", "derive_employment_status_from_frs")
 
 
@@ -81,9 +81,9 @@ REFUSAL_TYPES: dict[str, set[str]] = {"microcosm": set(), "uk-data": set()}
 def outcome(function, codes, is_adult, *, side):
     """Statuses, or "refused" for any exception (its type is recorded).
 
-    Either side refusing stops the build. The refusal's exception type can
-    differ by environment: uk-data's message formatting depends on the pandas
-    version, so it is recorded and reported rather than compared.
+    Either side refusing stops the build. The refusal's exception type is
+    recorded and checked separately, because message formatting has depended
+    on the pandas version before.
     """
     try:
         return ("ok", list(function(codes, is_adult)))
@@ -139,7 +139,10 @@ def main() -> None:
         f"refusal exception types (pandas {pd.__version__}):",
         {side: sorted(types) for side, types in REFUSAL_TYPES.items()},
     )
+    # Both sides refuse with ValueError at the pinned head, under pandas 2 or 3
+    # (fb026659's message raised TypeError under pandas 3; 89c48e07 fixed it).
     assert REFUSAL_TYPES["microcosm"] <= {"ValueError"}
+    assert REFUSAL_TYPES["uk-data"] <= {"ValueError"}
 
     stages = {stage.stage: stage for stage in load_country_spec("uk").sources.stages}
     employment = {a["table"]: a for a in stages["frs_employment"].artifacts}
