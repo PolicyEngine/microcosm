@@ -4387,7 +4387,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4412,7 +4412,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4437,7 +4437,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4462,7 +4462,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4487,7 +4487,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4512,7 +4512,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4537,7 +4537,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4562,7 +4562,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4587,7 +4587,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4612,7 +4612,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4637,7 +4637,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4662,7 +4662,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4687,7 +4687,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },

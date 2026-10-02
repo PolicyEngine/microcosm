@@ -11,6 +11,7 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
         "hmrc.itl_2026.total_income_growth_by_total_income_band",
         "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+        UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
     assert len(UK_ENGINE_INDEX_PARAMETERS) == 7
@@ -228,3 +229,77 @@ def test_a_regional_open_top_band_sums_every_table_2_5_band_above_it() -> None:
     assert spec.metadata["uprating_index_itl_bands"] == (
         "200000-500000;500000-1000000;1000000-2000000;2000000-inf"
     )
+
+def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate() -> (
+    None
+):
+    """microcosm#1069: amount = recipients (the count row's growth) x the rate."""
+
+    registry = TargetRegistry(
+        (
+            _spec(
+                name="hmrc/state_pension_income_band_40_000_to_50_000@2025",
+                value=6.0e9,
+                lower_bound=40_000,
+            ),
+        ),
+        country="uk",
+    )
+
+    def rate(path: str, instant: str) -> float:
+        assert path == UK_SPI_STATE_PENSION_RATE_PARAMETER
+        return {"2023-01-01": 200.0, "2025-01-01": 230.0}[instant]
+
+    (spec,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT),
+        registry,
+        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+        parameter_value=rate,
+        rows=_count_rows(),
+    ).specs
+
+    # The count row's factor for the band (the 30-50k Table 2.5 band's window
+    # over 2023) times the rate ratio: the mean per recipient moves by the rate.
+    (count,) = align_hmrc_count_row_by_taxpayer_growth(
+        _reference(UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+        registry,
+        count_rows=_count_rows(),
+    ).specs
+    count_factor = float(count.metadata["uprating_factor"])
+    assert count_factor == pytest.approx(1.175)
+    assert spec.value == pytest.approx(6.0e9 * 1.175 * 1.15)
+    assert spec.metadata["uprating_index"] == UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT
+    assert float(spec.metadata["uprating_count_factor"]) == pytest.approx(1.175)
+    assert float(spec.metadata["uprating_rate_factor"]) == pytest.approx(1.15)
+    assert (
+        spec.metadata["uprating_rate_parameter"] == UK_SPI_STATE_PENSION_RATE_PARAMETER
+    )
+    assert spec.metadata["uprating_index_itl_bands"] == "30000-50000"
+    assert spec.metadata["ledger_value_before_alignment"] == "6000000000"
+    # Another index passes through untouched.
+    assert (
+        align_hmrc_amount_by_recipient_growth_and_rate(
+            _reference(EARNINGS_INDEX),
+            registry,
+            index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+            parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+            parameter_value=rate,
+            rows=_count_rows(),
+        )
+        is registry
+    )
+    # Compiled at its own year (the production-2023 parity surface), the row
+    # stays as published with a complete receipt rather than dropping out.
+    (own_year,) = align_hmrc_amount_by_recipient_growth_and_rate(
+        _reference(UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT, period=2023),
+        registry,
+        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+        parameter_value=rate,
+        rows=_count_rows(),
+    ).specs
+    assert own_year.value == 6.0e9
+    assert own_year.metadata["uprating_factor"] == "1"
+    assert own_year.metadata["uprating_rate_from_instant"] == "2023-01-01"
+    assert "uprating_rate_from_value" not in own_year.metadata

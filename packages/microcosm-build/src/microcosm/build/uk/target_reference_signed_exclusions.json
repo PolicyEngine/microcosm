@@ -159,7 +159,7 @@
     {
       "target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
       "reason_id": "no_frame_support",
-      "rationale": "DWP's new State Pension £40.00 to under £60.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under £100 a week in FRS 2024-25, and the two nearest (£58.59 a week) restate to £60.99 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound.",
+      "rationale": "DWP's new State Pension £40.00 to under £60.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under £100 a week in FRS 2024-25, and the nearest of them restate above £60 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound.",
       "tracking": "microcosm#1069",
       "approved_by": "juaristi22",
       "approved_on": "2026-10-01",

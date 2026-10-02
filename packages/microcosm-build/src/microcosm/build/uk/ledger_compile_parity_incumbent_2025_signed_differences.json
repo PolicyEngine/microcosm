@@ -7075,7 +7075,7 @@
   {
    "fixture_value": 847000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 956692420.897719,
+   "ledger_value": 1190417391.6067786,
    "name": "hmrc/state_pension_income_band_100_000_to_150_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7083,7 +7083,7 @@
   {
    "fixture_value": 11800000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 13328182487.122885,
+   "ledger_value": 13901060506.30619,
    "name": "hmrc/state_pension_income_band_12_570_to_15_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7091,7 +7091,7 @@
   {
    "fixture_value": 265000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 299319352.46504784,
+   "ledger_value": 348951387.9503221,
    "name": "hmrc/state_pension_income_band_150_000_to_200_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7099,7 +7099,7 @@
   {
    "fixture_value": 22200000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 25075055187.63797,
+   "ledger_value": 24542266944.500935,
    "name": "hmrc/state_pension_income_band_15_000_to_20_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7107,7 +7107,7 @@
   {
    "fixture_value": 20000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 22590139.808682855,
+   "ledger_value": 26355163.11013001,
    "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7115,7 +7115,7 @@
   {
    "fixture_value": 179000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 202181751.28771156,
+   "ledger_value": 242163030.07933253,
    "name": "hmrc/state_pension_income_band_200_000_to_300_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7123,7 +7123,7 @@
   {
    "fixture_value": 24900000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 28124724061.810158,
+   "ledger_value": 28193657209.02049,
    "name": "hmrc/state_pension_income_band_20_000_to_30_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7131,7 +7131,7 @@
   {
    "fixture_value": 96000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 108432671.0816777,
+   "ledger_value": 129875144.62355264,
    "name": "hmrc/state_pension_income_band_300_000_to_500_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7139,7 +7139,7 @@
   {
    "fixture_value": 12300000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 13892935982.339956,
+   "ledger_value": 15597393406.099285,
    "name": "hmrc/state_pension_income_band_30_000_to_40_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7147,7 +7147,7 @@
   {
    "fixture_value": 6020000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 6799632082.41354,
+   "ledger_value": 7633846203.635585,
    "name": "hmrc/state_pension_income_band_40_000_to_50_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7155,7 +7155,7 @@
   {
    "fixture_value": 43000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 48568800.58866814,
+   "ledger_value": 58912156.269587904,
    "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7163,7 +7163,7 @@
   {
    "fixture_value": 4660000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 5263502575.423105,
+   "ledger_value": 6406539912.292578,
    "name": "hmrc/state_pension_income_band_50_000_to_70_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."
@@ -7171,7 +7171,7 @@
   {
    "fixture_value": 1890000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 2134768211.9205298,
+   "ledger_value": 2598360608.2045007,
    "name": "hmrc/state_pension_income_band_70_000_to_100_000",
    "period": 2025,
    "reason": "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours moves the SPI 2023-24 band value to the 2025 calibration year by the index the reference declares (amounts by the pinned engine's per-variable OBR and ONS indices between 1 January 2023 and 1 January 2025, the state pension by the new State Pension rate the engine pays, counts by HMRC's projected taxpayer growth in the containing Table 2.5 band as the calendar-2025 window); the frozen incumbent fixture holds the 2023-24 values it projects one year forward with its own income-projection ratios."

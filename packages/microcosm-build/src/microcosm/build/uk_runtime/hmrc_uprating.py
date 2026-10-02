@@ -120,6 +120,20 @@ UK_HMRC_ITL_GROWTH_BASIS = (
     "calibration year over the SPI fact's year, summed over the Table 2.5 bands "
     "the SPI band spans"
 )
+#: The SPI State Pension amount by band (microcosm#1069): an amount row is the
+#: band's recipients times the amount each is paid, so it moves by the growth
+#: its count row declares (the band's taxpayers, HMRC Table 2.5) times the
+#: rate the engine pays. Moving it by the rate alone held the band's recipients
+#: at the fact year's number while the count row grew them, and the two rows
+#: described different populations.
+UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT = "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+UK_SPI_STATE_PENSION_RATE_PARAMETER = "gov.dwp.state_pension.new_state_pension.amount"
+UK_RECIPIENT_AMOUNT_GROWTH_BASIS = (
+    "recipients times the amount per recipient: the band's recipients grow like its "
+    "taxpayers (the count row's index, {count_basis}) and the amount per recipient by "
+    "the pinned engine's {parameter} between 1 January of the fact's opening year and "
+    "1 January of the calibration year"
+)
 UK_INCOME_UPRATING_ADJUDICATION = (
     "PolicyEngine/chronicle#280 lane (María, 2026-09-22): the calibration binds at calendar "
     "2025; facts published by fiscal or tax year use the months to the end of "
@@ -638,6 +652,71 @@ def align_hmrc_row_by_itl_growth(
     return TargetRegistry(aligned, country="uk")
 
 
+def align_hmrc_amount_by_recipient_growth_and_rate(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    index_concept: str,
+    parameter_path: str,
+    parameter_value: ParameterValue = engine_parameter_value,
+    rows: list[Mapping[str, Any]] | None = None,
+) -> TargetRegistry:
+    """Move an SPI amount band row by its recipients' growth and their rate.
+
+    factor = (the band's taxpayer growth, exactly as the count row computes it)
+    x (the engine parameter ratio, exactly as the engine-index applier computes
+    it); both component receipts are written on the spec.
+    """
+
+    if reference.uprating_index != index_concept:
+        return registry
+    counted = align_hmrc_row_by_itl_growth(
+        replace(reference, uprating_index=UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT),
+        registry,
+        index_concept=UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
+        rows=rows,
+    )
+    rated = align_hmrc_row_by_engine_index(
+        replace(
+            reference,
+            uprating_index=f"{UK_ENGINE_PARAMETER_INDEX_PREFIX}{parameter_path}",
+        ),
+        registry,
+        parameter_path=parameter_path,
+        parameter_value=parameter_value,
+    )
+    aligned = []
+    for spec, count_spec, rate_spec in zip(
+        registry.specs, counted.specs, rated.specs, strict=True
+    ):
+        count_factor = float(count_spec.metadata["uprating_factor"])
+        rate_factor = float(rate_spec.metadata["uprating_factor"])
+        factor = count_factor * rate_factor
+        count_basis = str(count_spec.metadata["uprating_index_basis"])
+        # A fact compiled at its own year (the production-2023 parity surface)
+        # reads both halves as identities, which write the instants only.
+        rate_receipt = {
+            f"uprating_rate_{key}": str(rate_spec.metadata[f"uprating_index_{key}"])
+            for key in ("from_instant", "to_instant", "from_value", "to_value")
+            if f"uprating_index_{key}" in rate_spec.metadata
+        }
+        metadata = {
+            **count_spec.metadata,
+            "uprating_index": index_concept,
+            "uprating_index_basis": UK_RECIPIENT_AMOUNT_GROWTH_BASIS.format(
+                count_basis=count_basis, parameter=parameter_path
+            ),
+            "uprating_count_factor": f"{count_factor:.15g}",
+            "uprating_rate_parameter": parameter_path,
+            **rate_receipt,
+            "uprating_rate_factor": f"{rate_factor:.15g}",
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
+
+
 def hmrc_uprating_appliers() -> dict[str, Any]:
     """The appliers this module contributes to ``UK_UPRATING_APPLIERS``."""
 
@@ -651,6 +730,11 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         appliers[index_concept] = partial(
             align_hmrc_row_by_itl_growth, index_concept=index_concept
         )
+    appliers[UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT] = partial(
+        align_hmrc_amount_by_recipient_growth_and_rate,
+        index_concept=UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
+        parameter_path=UK_SPI_STATE_PENSION_RATE_PARAMETER,
+    )
     return appliers
 
 
@@ -672,6 +756,9 @@ def align_hmrc_count_row_by_taxpayer_growth(
 
 __all__ = [
     "SPI_BAND_TO_ITL_BANDS",
+    "UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT",
+    "UK_SPI_STATE_PENSION_RATE_PARAMETER",
+    "align_hmrc_amount_by_recipient_growth_and_rate",
     "UK_ENGINE_INDEX_CONCEPTS",
     "UK_ENGINE_INDEX_PARAMETERS",
     "UK_ENGINE_PARAMETER_INDEX_PREFIX",

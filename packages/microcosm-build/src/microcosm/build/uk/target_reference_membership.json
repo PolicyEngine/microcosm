@@ -5217,104 +5217,104 @@
       "name": "hmrc/state_pension_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.40545146588758",
       "value_before_uprating": "847000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.3177581555065",
       "value_before_uprating": "20000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.17805597511069",
       "value_before_uprating": "11800000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.10550752002256",
       "value_before_uprating": "22200000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.31679769037857",
       "value_before_uprating": "265000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.1322753899205",
       "value_before_uprating": "24900000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.35286608982867",
       "value_before_uprating": "179000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.26808076472352",
       "value_before_uprating": "12300000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.35286608982867",
       "value_before_uprating": "96000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.26808076472352",
       "value_before_uprating": "6020000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.37479397259497",
       "value_before_uprating": "4660000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.37005014580437",
       "value_before_uprating": "43000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.37479397259497",
       "value_before_uprating": "1890000000.0"
     },
     {
@@ -13378,12 +13378,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 956692420.897719,
+          "resolved_value": 1190417391.6067786,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d63e1a96cab57582f482b8c2",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.40545146588758",
             "value_before_uprating": "847000000.0"
           }
         },
@@ -13393,12 +13393,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 22590139.808682855,
+          "resolved_value": 26355163.11013001,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_9a20bd62d4d5984865242929",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.3177581555065",
             "value_before_uprating": "20000000.0"
           }
         },
@@ -13408,12 +13408,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13328182487.122885,
+          "resolved_value": 13901060506.30619,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_45083c1383ea711226aebd1b",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.17805597511069",
             "value_before_uprating": "11800000000.0"
           }
         },
@@ -13423,12 +13423,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 25075055187.63797,
+          "resolved_value": 24542266944.500935,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_310febb949c686fad2b71a94",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.10550752002256",
             "value_before_uprating": "22200000000.0"
           }
         },
@@ -13438,12 +13438,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 299319352.46504784,
+          "resolved_value": 348951387.9503221,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e79668076aadc063559585e9",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.31679769037857",
             "value_before_uprating": "265000000.0"
           }
         },
@@ -13453,12 +13453,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 28124724061.810158,
+          "resolved_value": 28193657209.02049,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3d18e138c32f6581d6dafdd7",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.1322753899205",
             "value_before_uprating": "24900000000.0"
           }
         },
@@ -13468,12 +13468,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 202181751.28771156,
+          "resolved_value": 242163030.07933253,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e1dda799099ac0f4f439700d",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.35286608982867",
             "value_before_uprating": "179000000.0"
           }
         },
@@ -13483,12 +13483,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13892935982.339956,
+          "resolved_value": 15597393406.099285,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_151045b793ac454ab29260fc",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.26808076472352",
             "value_before_uprating": "12300000000.0"
           }
         },
@@ -13498,12 +13498,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 108432671.0816777,
+          "resolved_value": 129875144.62355264,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c95154893499181b7f3a8903",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.35286608982867",
             "value_before_uprating": "96000000.0"
           }
         },
@@ -13513,12 +13513,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 6799632082.41354,
+          "resolved_value": 7633846203.635585,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bc4cee7d39f5e1c311464a55",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.26808076472352",
             "value_before_uprating": "6020000000.0"
           }
         },
@@ -13528,12 +13528,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 5263502575.423105,
+          "resolved_value": 6406539912.292578,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_7f09c940c0fbc3cc42b9e510",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.37479397259497",
             "value_before_uprating": "4660000000.0"
           }
         },
@@ -13543,12 +13543,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 48568800.58866814,
+          "resolved_value": 58912156.269587904,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d265dfcd4ba09d10053a78a4",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.37005014580437",
             "value_before_uprating": "43000000.0"
           }
         },
@@ -13558,12 +13558,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2134768211.9205298,
+          "resolved_value": 2598360608.2045007,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_41c1df25454fdf413d5765d7",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.37479397259497",
             "value_before_uprating": "1890000000.0"
           }
         }
@@ -28713,7 +28713,7 @@
             "dimension": "grouped_amount_of_benefit",
             "value": "\u00a340.00 to under \u00a360.00"
           },
-          "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the two nearest (\u00a358.59 a week) restate to \u00a360.99 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
+          "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the nearest of them restate above \u00a360 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
         },
         {
           "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
@@ -29258,7 +29258,7 @@
       "target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
       "row": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
       "status": "signed_excluded",
-      "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the two nearest (\u00a358.59 a week) restate to \u00a360.99 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
+      "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the nearest of them restate above \u00a360 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
     },
     {
       "family": "hmrc_cgt",

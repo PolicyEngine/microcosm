@@ -3510,8 +3510,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the new State Pension weekly rate the engine pays at each period (203.85 at 2023, 230.25 at 2025 on the pinned engine): the engine fixes every pensioner's amount at the period's rate, so the bands can only be met at that level. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -25645,7 +25645,18 @@
       "measurement": {
         "entity": "person",
         "map_to": "household",
-        "concept": "uk.pensions.contributions.employer.amount"
+        "concept": "uk.pensions.contributions.employer.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
