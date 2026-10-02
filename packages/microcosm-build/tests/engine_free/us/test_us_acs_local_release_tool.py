@@ -229,7 +229,10 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "RELSHIPP 34",
         "under 15",
         "foster",
-        "no unmarried partner (22 or 24)",
+        "unmarried partner (22 or 24) whose age",
+        "at least 15 years",
+        "a partner's sibling or cousin",
+        "34-and-36-with-partner-kin",
         "the roommate's child",
     ):
         assert fragment in spm_units["reason"]
@@ -1056,7 +1059,9 @@ def test_ssi_disability_criteria_are_never_default_filled() -> None:
 def _spm_unit_receipt(**overrides) -> dict:
     receipt = {
         "issue": "microcosm#1023",
-        "method": "roommates_and_unpartnered_other_nonrelatives_own_spm_unit",
+        "method": (
+            "roommates_and_other_nonrelatives_own_spm_unit_except_partner_generation"
+        ),
         "persons_moved": 3,
         "units_created": 3,
     }
@@ -1102,6 +1107,13 @@ def _staging_spm_unit_summary(**overrides) -> dict:
                 method="adult_nonrelative_own_spm_unit"
             )
         ),
+        # microcosm#1061 review (C2): staging split with the partner-kin rule,
+        # which kept every 36 in a partner's household with the partner.
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(
+                method="roommates_and_unpartnered_other_nonrelatives_own_spm_unit"
+            )
+        ),
         _staging_spm_unit_summary(
             acs_local_spm_units=_spm_unit_receipt(persons_moved="3")
         ),
@@ -1118,6 +1130,7 @@ def _staging_spm_unit_summary(**overrides) -> dict:
         "wrong-issue",
         "wrong-method",
         "pre-review-method",
+        "partner-kin-method",
         "untyped-count",
         "unit-count-mismatch",
     ],

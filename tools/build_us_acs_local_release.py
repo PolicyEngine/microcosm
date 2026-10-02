@@ -2357,20 +2357,25 @@ def finalize_reviewed_limitations(
                 "housemate (RELSHIPP 34) aged 15 or over an SPM unit of their "
                 "own, per the Census SPM unit definition (related people, "
                 "co-resident unrelated children cared for by the family, and "
-                "cohabiting partners and their children and relatives). An "
-                "other nonrelative (36) aged 15 or over gets their own unit "
-                "only when the household has no unmarried partner (22 or "
-                "24): the ACS records relationship to the householder only, "
-                "so a partner's child or relative is coded 36, and with a "
-                "partner present a 36 stays with the reference person and "
-                "the partner (microcosm#1061 review). RELSHIPP relates each "
-                "person to the reference person only, so a couple or a "
-                "parent and child among the nonrelatives is not "
+                "cohabiting partners and their children). An other "
+                "nonrelative (36) aged 15 or over gets their own unit unless "
+                "the household has an unmarried partner (22 or 24) whose age "
+                "differs from theirs by at least 15 years (the closest-aged "
+                "partner, if several): the ACS records relationship to the "
+                "householder only, so a partner's child or parent is coded "
+                "36, and a generation's age gap makes a 36 plausibly one "
+                "(microcosm#1061 review, C2). This generational rule is a "
+                "proxy: a partner's sibling or cousin near the partner's age "
+                "is split, and an unrelated adult a generation apart is kept; "
+                "the staging receipt counts the 36s on each side. RELSHIPP "
+                "relates each person to the reference person only, so a "
+                "couple or a parent and child among the nonrelatives is not "
                 "identifiable: each mover is a one-person unit, and a 36 "
                 "moved from a household that also holds a roommate, who may "
                 "be the roommate's child, is counted in the staging receipt, "
-                "with the unit-size sensitivity under the 34-only and "
-                "34-and-every-36 rules. Nonrelatives under 15 stay in the "
+                "with the unit-size sensitivity under the 34-only, "
+                "34-and-every-36 and 34-and-36-with-partner-kin rules. "
+                "Nonrelatives under 15 stay in the "
                 "reference person's unit, whose tax unit claims them. "
                 "Unmarried partners (22, 24), foster children (35) and every "
                 "relative stay with the reference person. New units take the "
@@ -2612,12 +2617,13 @@ def _require_local_spm_units(staging_summary: dict) -> dict:
     """The staging ACS SPM-unit receipt (microcosm#1023), or refuse it.
 
     Staging gives every ACS roommate (``RELSHIPP`` 34) aged 15 or over, and
-    every other nonrelative (36) aged 15 or over in a household with no
-    unmarried partner (22/24), an SPM unit of their own, per the Census SPM
-    unit definition, and gates the partition before writing the H5. A summary
-    without a passing receipt and gate, or with an earlier method, is a
-    pre-change staging run: whole-household ACS SPM units, or a partner's
-    child or relative split from the partner.
+    every other nonrelative (36) aged 15 or over unless an unmarried partner
+    (22/24) in the household is a generation (15+ years) from their age, an
+    SPM unit of their own, per the Census SPM unit definition, and gates the
+    partition before writing the H5. A summary without a passing receipt and
+    gate, or with an earlier method, is a pre-change staging run:
+    whole-household ACS SPM units, a partner's child split from the partner,
+    or an independent adult merged into a partner's household.
     """
 
     receipt = staging_summary.get("acs_local_spm_units")
@@ -2999,8 +3005,10 @@ def do_finalize(args) -> None:
                 f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
                 "acs_local_ssi_medicaid_take_up). ACS SPM units are not the "
                 "loader's whole households: staging gives each ACS roommate "
-                "and other nonrelative aged 15 or over an SPM unit of their "
-                "own before the transfer, gated by acs_local_spm_unit_signal "
+                "and other nonrelative aged 15 or over (except a 36 a "
+                "generation from an unmarried partner's age) an SPM unit of "
+                "their own before the transfer, gated by "
+                "acs_local_spm_unit_signal "
                 f"({ACS_LOCAL_SPM_UNIT_ISSUE}; reviewed limitation "
                 "acs_spm_unit_adult_nonrelatives)."
             ),
