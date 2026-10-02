@@ -42,46 +42,57 @@ A design is `<thin-probe certainty threshold>:<size certainty multiplier>`.
 
 ## Results (2026-10-02, 200 seeds, fraction 0.05)
 
-| Design | Sample | Certainty households | Probes missing in over 1% of all draws at 3 SE (no guard) | Probes eligible in most draws | Misses among eligible draws at 4 SE | Same, without the count-like proxy |
+Regenerated after commit `8e8f525a3`, which made a value that is constant
+over a stratum give exactly zero variance (its residuals had been left at
+rounding level).
+
+| Design | Sample | Certainty households | Probes missing in over 1% of all draws at 3 SE (no guard) | Probes eligible in most draws | Misses among eligible draws at 3 SE | At 4 SE |
 |---|---|---|---|---|---|---|
-| 5:0 (the salvaged design) | 17,656 (5.0%) | 13 | 26 of 41 | 12 | 0.23% | 1 of 2,426 |
-| 30:0 | 18,122 (5.1%) | 505 | 23 | 14 | 0.43% | 5 of 2,809 |
-| 30:3 | 23,579 (6.7%) | 6,247 | 17 | 18 | 0.44% | 0 of 3,421 |
-| **30:2 (default)** | 25,827 (7.3%) | 8,614 | 13 | 20 | 0.27% | 1 of 3,885 |
-| 30:1 | 35,945 (10.2%) | 19,264 | 14 | 26 | 0.68% | 0 of 4,941 |
+| 5:0 (the salvaged design) | 17,656 (5.0%) | 13 | 25 of 41 | 11 | 11 of 2,426 | 1 of 2,426 |
+| 30:0 | 18,122 (5.1%) | 505 | 22 | 13 | 9 of 2,809 | 5 of 2,809 |
+| 30:3 | 23,579 (6.7%) | 6,247 | 16 | 17 | 14 of 3,421 | 0 of 3,421 |
+| **30:2 (default)** | 25,827 (7.3%) | 8,614 | 12 | 19 | 14 of 3,885 | 1 of 3,885 |
+| 30:1 | 35,945 (10.2%) | 19,264 | 13 | 25 | 19 of 4,941 | 0 of 4,941 |
 
 What the numbers say:
 
 - **Unguarded, the standard errors do not cover.** Under the salvaged design
-  26 of 41 probes miss by more than 3 SE in over 1% of draws (nominal 0.3%);
-  the worst, `form_4952_election_neutralization` (394 carrier households),
-  misses in 58%. The weighted totals are dominated by a few records
-  (household weights run from 0.02 to 9,740 and the inputs are heavy-tailed):
-  a sample that misses them underestimates the total, and its standard error
-  is too small for the same reason. Stratifying by weight class as well does
-  not help (an earlier run: 24 of 41 still missed).
+  25 of 41 probes miss by more than 3 SE in over 1% of draws (nominal 0.3%).
+  The worst are `form_4952_election_neutralization` (394 carrier households,
+  58%), `collectibles_gain_neutralization` (1,138, 54%) and
+  `obbba_casualty_loss_limit` (101, 44%). The weighted totals are dominated
+  by a few records: household weights run from 0.02 to 9,740, and the inputs
+  are heavy-tailed. A sample that misses those records underestimates the
+  total, and its standard error is too small for the same reason.
+  Stratifying by weight class as well did not help. An earlier comparison
+  (200 seeds, counting draws with at least 5 drawn carriers) found 26 of 41
+  probes missing in over 1% of draws without weight classes and 24 of 41
+  with five weight classes per stratum.
 - **The effective-households guard removes almost every miss.** Requiring the
-  variance estimate to rest on at least 30 effective households, at 4 SE,
-  leaves 0 to 5 misses in 2,400 to 4,900 eligible draws, outside one proxy.
+  variance estimate to rest on at least 30 effective households leaves, at
+  3 SE, 0.3% to 0.45% of eligible draws missing (about the nominal 0.27%).
+  At 4 SE, the probe's default, it leaves 0 to 1 per design, except 30:0's 5.
 - **Size certainty buys eligibility.** Keeping the households that dominate a
-  probe's input mass raises the probes eligible in most draws from 12 to 20
-  at multiplier 2, for 7.3% of the pool instead of 5.0%. Multiplier 1 reaches
-  26 at 10.2%.
+  probe's input mass raises the number of probes eligible in most draws from
+  11 to 19 at multiplier 2, for 7.3% of the pool instead of 5.0%. Multiplier
+  1 reaches 25, at 10.2%.
 - **Threshold 30 makes the two worst rare probes exact.** At threshold 5,
-  `obbba_casualty_loss_limit` (101 carriers) and
-  `form_4952_election_neutralization` (394) were drawn, about 5 and 20
-  households each. At 30 their carriers are taken whole (505 households).
+  `obbba_casualty_loss_limit` and `form_4952_election_neutralization` were
+  drawn, with about 5 and 20 sampled households each. At 30 their carriers
+  are taken whole: 505 certainty households instead of 13.
 
-## The limit of the guard
+## What the guard does not rule out
 
-One proxy keeps missing under every design: `household_head_childcare_cap_
-neutralization`, whose only binding input is the `is_household_head` flag, so
-`y_h` is a count of heads that is constant across almost every household. Its
-misses among eligible draws at 4 SE run from 2.8% (5:0) to 18.7% (30:1), and
-5.3% at the default. The total's error then comes from the few households
-that deviate, which size certainty cannot see (every household has about the
-same mass) and whose absence from a draw leaves a small variance estimate
-spread over many households. The probe's real effect, a childcare cap among
-heads with childcare expenses, is not shaped like its flag. The case still
-shows what the guard cannot rule out: an effect that is nearly constant with
-rare large deviations. "Authoritative" is a calibrated label, not a proof.
+- **A probe that is only rarely eligible.** Under 30:0,
+  `salt_refund_income_neutralization` was eligible in 3 of 200 draws, and all
+  3 missed. Those draws had just reached 30 effective households because a
+  few large households were drawn. The default design takes such households
+  with certainty; it still has one miss in 3,885 eligible draws
+  (`wic_claim_neutralization`).
+- **The proxy is not the effect.** Each probe's real effect is a function of
+  its inputs, computed by the engine, and its tails can differ from the
+  inputs'. The calibration is on the inputs' mass. The real run's z-scores
+  against the published full-size effects (in the PR and the build rule) are
+  one draw on the effects themselves.
+
+"Authoritative" is a calibrated label, not a proof.

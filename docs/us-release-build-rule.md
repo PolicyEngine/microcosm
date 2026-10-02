@@ -362,7 +362,7 @@ Every verdict is `authoritative` or `informational`.
   column that is constant on the subsample, and every weighted estimate.
 
 The thresholds are calibrated, not assumed. On the published route A export,
-the design-based standard error of 26 of the 41 probes' input mass missed its
+the design-based standard error of 25 of the 41 probes' input mass missed its
 known total by more than 3 standard errors in over 1% of draws under a plain
 channel-by-year sample; the worst missed in 58%. The weighted totals are
 dominated by a few records, so a sample that misses them underestimates both

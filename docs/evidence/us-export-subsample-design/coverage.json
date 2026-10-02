@@ -187,16 +187,16 @@
     },
     "household_head_childcare_cap_neutralization": {
      "carrier_households": 352932,
-     "eligible_share": 0.92,
+     "eligible_share": 0.0,
      "miss_share_of_all_draws": {
-      "3": 0.04,
-      "4": 0.04,
-      "5": 0.04
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
      },
      "miss_share_of_eligible": {
-      "3": 0.043478260869565216,
-      "4": 0.043478260869565216,
-      "5": 0.043478260869565216
+      "3": null,
+      "4": null,
+      "5": null
      },
      "take_all": false
     },
@@ -621,8 +621,8 @@
      "take_all": false
     }
    },
-   "probes_eligible_in_most_draws": 14,
-   "probes_missing_over_1pct_of_all_draws_at_k3": 23,
+   "probes_eligible_in_most_draws": 13,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 22,
    "sample_share": 0.05134700168871057,
    "size_certainty_multiplier": 0.0,
    "worst_miss_share_of_eligible_at_k4": 1.0
@@ -814,16 +814,16 @@
     },
     "household_head_childcare_cap_neutralization": {
      "carrier_households": 352932,
-     "eligible_share": 0.935,
+     "eligible_share": 0.0,
      "miss_share_of_all_draws": {
-      "3": 0.175,
-      "4": 0.175,
-      "5": 0.175
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
      },
      "miss_share_of_eligible": {
-      "3": 0.18716577540106952,
-      "4": 0.18716577540106952,
-      "5": 0.18716577540106952
+      "3": null,
+      "4": null,
+      "5": null
      },
      "take_all": false
     },
@@ -1248,11 +1248,11 @@
      "take_all": false
     }
    },
-   "probes_eligible_in_most_draws": 26,
-   "probes_missing_over_1pct_of_all_draws_at_k3": 14,
+   "probes_eligible_in_most_draws": 25,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 13,
    "sample_share": 0.10184681468384844,
    "size_certainty_multiplier": 1.0,
-   "worst_miss_share_of_eligible_at_k4": 0.18716577540106952
+   "worst_miss_share_of_eligible_at_k4": 0.0
   },
   "30:2": {
    "certainty_households": 8614,
@@ -1441,16 +1441,16 @@
     },
     "household_head_childcare_cap_neutralization": {
      "carrier_households": 352932,
-     "eligible_share": 0.945,
+     "eligible_share": 0.0,
      "miss_share_of_all_draws": {
-      "3": 0.05,
-      "4": 0.05,
-      "5": 0.05
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
      },
      "miss_share_of_eligible": {
-      "3": 0.05291005291005291,
-      "4": 0.05291005291005291,
-      "5": 0.05291005291005291
+      "3": null,
+      "4": null,
+      "5": null
      },
      "take_all": false
     },
@@ -1875,11 +1875,11 @@
      "take_all": false
     }
    },
-   "probes_eligible_in_most_draws": 20,
-   "probes_missing_over_1pct_of_all_draws_at_k3": 13,
+   "probes_eligible_in_most_draws": 19,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 12,
    "sample_share": 0.0731784026384686,
    "size_certainty_multiplier": 2.0,
-   "worst_miss_share_of_eligible_at_k4": 0.05291005291005291
+   "worst_miss_share_of_eligible_at_k4": 0.0056179775280898875
   },
   "30:3": {
    "certainty_households": 6247,
@@ -2068,16 +2068,16 @@
     },
     "household_head_childcare_cap_neutralization": {
      "carrier_households": 352932,
-     "eligible_share": 0.915,
+     "eligible_share": 0.0,
      "miss_share_of_all_draws": {
-      "3": 0.08,
-      "4": 0.08,
-      "5": 0.08
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
      },
      "miss_share_of_eligible": {
-      "3": 0.08743169398907104,
-      "4": 0.08743169398907104,
-      "5": 0.08743169398907104
+      "3": null,
+      "4": null,
+      "5": null
      },
      "take_all": false
     },
@@ -2502,11 +2502,11 @@
      "take_all": false
     }
    },
-   "probes_eligible_in_most_draws": 18,
-   "probes_missing_over_1pct_of_all_draws_at_k3": 17,
+   "probes_eligible_in_most_draws": 17,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 16,
    "sample_share": 0.06680890369816282,
    "size_certainty_multiplier": 3.0,
-   "worst_miss_share_of_eligible_at_k4": 0.08743169398907104
+   "worst_miss_share_of_eligible_at_k4": 0.0
   },
   "5:0": {
    "certainty_households": 13,
@@ -2695,16 +2695,16 @@
     },
     "household_head_childcare_cap_neutralization": {
      "carrier_households": 352932,
-     "eligible_share": 0.905,
+     "eligible_share": 0.0,
      "miss_share_of_all_draws": {
-      "3": 0.025,
-      "4": 0.025,
-      "5": 0.025
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
      },
      "miss_share_of_eligible": {
-      "3": 0.027624309392265192,
-      "4": 0.027624309392265192,
-      "5": 0.027624309392265192
+      "3": null,
+      "4": null,
+      "5": null
      },
      "take_all": false
     },
@@ -3129,11 +3129,11 @@
      "take_all": false
     }
    },
-   "probes_eligible_in_most_draws": 12,
-   "probes_missing_over_1pct_of_all_draws_at_k3": 26,
+   "probes_eligible_in_most_draws": 11,
+   "probes_missing_over_1pct_of_all_draws_at_k3": 25,
    "sample_share": 0.05002663402581801,
    "size_certainty_multiplier": 0.0,
-   "worst_miss_share_of_eligible_at_k4": 0.027624309392265192
+   "worst_miss_share_of_eligible_at_k4": 0.00510204081632653
   }
  },
  "export": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
