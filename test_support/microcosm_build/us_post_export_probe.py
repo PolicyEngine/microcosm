@@ -102,11 +102,12 @@ def fixture_engine_probes() -> tuple[ReformCoverageProbe, ...]:
 
 
 def fixture_engine(frame, *, missing: tuple[str, ...] = ()) -> CertifiedEngine:
-    """An "installed engine" defining every stored column except ``missing``."""
+    """An "installed engine" defining every stored column except ``missing``
+    (``household_weight`` included: the writer stores it from the weights)."""
     columns = {
         column
         for entity in US_ENTITIES
-        for column in frame.table(entity).columns
+        for column in (*frame.table(entity).columns, "household_weight")
         if column not in missing
     }
     return CertifiedEngine(label="fixture engine", variables=frozenset(columns))
