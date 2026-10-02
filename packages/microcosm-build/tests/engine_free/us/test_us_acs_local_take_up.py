@@ -158,6 +158,57 @@ def test_weighted_acs_shares_land_on_the_manifest_and_contract_rates() -> None:
     assert tanf_share == pytest.approx(float(program.rate["value"]), abs=0.03)
 
 
+def test_receipt_cross_tabs_transferred_tanf_receipt_against_the_draw() -> None:
+    """#1051 review: the TANF draw ignores receives_tanf; the receipt measures it."""
+
+    frame = _frame()
+    acs = _acs(frame)
+    receives_tanf = np.random.default_rng(11).random(len(acs)) < 0.05
+    with_receipt = _with_spm(frame, receives_tanf=receives_tanf)
+    result, receipt = with_acs_local_take_up_inputs(with_receipt, seed=5)
+    table = receipt["programs"][TANF]["receipt_crosstab"]
+    weights = np.asarray(frame.weights_for("household").values)[acs]
+    reports = receives_tanf[acs]
+    takes_up = result.table("spm_unit").loc[acs, TANF].to_numpy(dtype=bool)
+    assert table["available"] is True
+    assert table["graded"] is False
+    assert table["units"] == int(acs.sum())
+    assert table["missing_receipt_rows_as_non_reporters"] == 0
+    expected = {
+        "receives_tanf__takes_up": reports & takes_up,
+        "receives_tanf__no_take_up": reports & ~takes_up,
+        "no_receives_tanf__takes_up": ~reports & takes_up,
+        "no_receives_tanf__no_take_up": ~reports & ~takes_up,
+    }
+    assert set(table["cells"]) == set(expected)
+    for label, cell in expected.items():
+        assert table["cells"][label]["units"] == int(cell.sum())
+        assert table["cells"][label]["weight"] == pytest.approx(weights[cell].sum())
+        assert table["cells"][label]["weight_share"] == pytest.approx(
+            weights[cell].sum() / weights.sum()
+        )
+    assert table["receives_tanf_units"] == int(reports.sum())
+    assert table["receives_tanf_drew_false_units"] == int((reports & ~takes_up).sum())
+    assert table["receives_tanf_drew_false_share"] == pytest.approx(
+        weights[reports & ~takes_up].sum() / weights[reports].sum()
+    )
+    # The draw is independent of receipt, so most reporters draw False at the
+    # contract's sub-0.5 rate, but not all of them.
+    assert 0 < table["receives_tanf_drew_false_units"] < table["receives_tanf_units"]
+    # Recording the table changes nothing in the assignment.
+    _, plain = with_acs_local_take_up_inputs(frame, seed=5)
+    assert plain["assigned_sha256"] == receipt["assigned_sha256"]
+
+
+def test_receipt_crosstab_reports_an_absent_receives_tanf() -> None:
+    _, receipt = with_acs_local_take_up_inputs(_frame(), seed=0)
+    assert receipt["programs"][TANF]["receipt_crosstab"] == {
+        "available": False,
+        "graded": False,
+        "reason": "spm_unit carries no receives_tanf column",
+    }
+
+
 def test_assignment_is_deterministic_in_the_seed() -> None:
     first, first_receipt = with_acs_local_take_up_inputs(_frame(), seed=11)
     again, again_receipt = with_acs_local_take_up_inputs(_frame(), seed=11)
