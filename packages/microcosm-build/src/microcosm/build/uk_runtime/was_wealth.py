@@ -36,6 +36,9 @@ from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_SOCIAL_RENT,
     UK_TENURE_TYPE_TO_CATEGORY,
 )
+from microcosm.build.uk_runtime.uc_relationships import (
+    household_family_role_counts,
+)
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -61,15 +64,20 @@ UK_WAS_WEALTH_PREDICTORS = (
     "employment_income",
     "self_employment_income",
     "capital_income",
+    # Net rental income: WAS investment income excludes rent, so without it
+    # the property draws have no income of their own (uk-data#495,
+    # microcosm#1095).
+    "rental_income",
     "num_bedrooms",
     "council_tax",
     *UK_WAS_TENURE_PREDICTORS,
     "region",
 )
+#: The household counts come from the FRS family roles instead
+#: (``uc_relationships.household_family_role_counts``), matching the donor's
+#: NumAdultR8 and NumChildR8.
 UK_WAS_ENGINE_PREDICTORS = (
     "household_net_income",
-    "num_adults",
-    "num_children",
     "private_pension_income",
     "employment_income",
     "self_employment_income",
@@ -184,8 +192,6 @@ REGIONS: Mapping[int, str] = {
 REGION_REMAP = {"NORTHERN_IRELAND": "WALES"}
 UK_WAS_ENGINE_PREDICTOR_ENTITIES: Mapping[str, str] = {
     "household_net_income": "household",
-    "num_adults": "benunit",
-    "num_children": "benunit",
     "private_pension_income": "person",
     "employment_income": "person",
     "self_employment_income": "person",
@@ -236,7 +242,10 @@ _RAW_TO_CLEAN = {
     "totalpenr8_aggr": "pensions",
     "dvvaldbt_scaper8_aggr": "db_pensions",
     "NumAdultR8": "num_adults",
-    "NumCh18R8": "num_children",
+    # NumChildR8 + NumAdultR8 is the household size on 99.99% of rows; the
+    # under-18 NumCh18R8 also counts the 16- and 17-year-olds NumAdultR8
+    # counts, overrunning the size on 5.6% of rows (uk-data#486).
+    "NumChildR8": "num_children",
     "DVGIPPENR8_AGGR": "private_pension_income",
     "DVGISER8_AGGR": "self_employment_income",
     "DVGIINVR8_aggr": "capital_income",
@@ -244,7 +253,10 @@ _RAW_TO_CLEAN = {
     "HBedRmR8": "num_bedrooms",
     "GORR8": "region_code",
     "DVPriRntR8": "private_rent_code",
-    "CTAmtR8": "council_tax",
+    # The annual council tax paid; CTAmtR8 is one instalment (weighted mean
+    # GBP 479 against 1,395 on the pinned tab; microcosm#1095).
+    "DVCTaxAmtAnnualR8": "council_tax",
+    "DVNetRentAmtAnnualR8_aggr": "rental_income",
     "HFINWNTR8_Sum": "net_financial_wealth",
     # WAS round-8 household derived variables (UKDS SN 7215, DOI
     # 10.5255/UKDA-SN-7215-20; round-8 user guide and derived-variable
@@ -433,6 +445,11 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     for column in cleaned.columns:
         cleaned[column] = pd.to_numeric(cleaned[column], errors="coerce")
     cleaned = cleaned.fillna(0)
+    if (cleaned["rental_income"] < 0.0).any():
+        raise ValueError(
+            "WAS donor DVNetRentAmtAnnualR8_aggr carries negative values; the "
+            "rent predictor has no reviewed reading for a sentinel or a loss."
+        )
     for column in _SENTINEL_RECODE_COLUMNS:
         values = cleaned[column]
         cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
@@ -629,6 +646,18 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
                 .sum()
             )
             result[predictor] = summed.reindex(household_ids).fillna(0.0).to_numpy()
+    adults, children = household_family_role_counts(person, household)
+    result["num_adults"] = adults
+    result["num_children"] = children
+    if "property_income" not in person.columns:
+        raise KeyError("recipient person table is missing 'property_income'.")
+    rent = (
+        pd.to_numeric(person["property_income"], errors="coerce")
+        .fillna(0.0)
+        .groupby(person["person_household_id"].to_numpy())
+        .sum()
+    )
+    result["rental_income"] = rent.reindex(household_ids).fillna(0.0).to_numpy()
     for predictor in ("num_bedrooms", "council_tax", "region"):
         if predictor not in household.columns:
             raise KeyError(f"recipient household table is missing {predictor!r}.")
@@ -1350,6 +1379,23 @@ def _assert_chain_declaration(stage: SourceStageSpec) -> None:
         raise ValueError(
             "was_wealth stratified_targets drifted: manifest declares "
             f"{declared_strata!r}, runtime uses {dict(UK_WAS_STRATIFIED_TARGETS)!r}."
+        )
+    declared_predictors = tuple(operation.parameters.get("predictors", ()))
+    if declared_predictors != UK_WAS_WEALTH_PREDICTORS:
+        raise ValueError(
+            "was_wealth predictors drifted: manifest declares "
+            f"{declared_predictors!r}, runtime uses {UK_WAS_WEALTH_PREDICTORS!r}."
+        )
+    materialized = next(
+        op
+        for op in stage.operations
+        if op.kind == "materialize_rules_engine_predictors"
+    )
+    declared_engine = tuple(materialized.parameters.get("predictors", ()))
+    if declared_engine != UK_WAS_ENGINE_PREDICTORS:
+        raise ValueError(
+            "was_wealth engine predictors drifted: manifest declares "
+            f"{declared_engine!r}, runtime materializes {UK_WAS_ENGINE_PREDICTORS!r}."
         )
     declared_totals = {
         str(total): tuple(components)

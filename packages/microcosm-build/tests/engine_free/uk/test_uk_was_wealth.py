@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime.was_wealth import (
     UK_WAS_DERIVED_TOTALS,
     UK_WAS_DRAWN_ONLY_COLUMNS,
     UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    UK_WAS_ENGINE_PREDICTORS,
     UK_WAS_NET_FINANCIAL_LIABILITIES,
     UK_WAS_STRATIFIED_TARGETS,
     UK_WAS_TENURE_CATEGORY_COLUMN,
@@ -41,6 +42,7 @@ def _chain_operation(n_estimators: int = 2) -> dict[str, object]:
         "kind": "fit_weighted_qrf_chain",
         "seed": 0,
         "n_estimators": n_estimators,
+        "predictors": list(UK_WAS_WEALTH_PREDICTORS),
         "stratified_targets": {
             target: list(categories)
             for target, categories in UK_WAS_STRATIFIED_TARGETS.items()
@@ -55,6 +57,14 @@ def _chain_operation(n_estimators: int = 2) -> dict[str, object]:
                 *(f"-{column}" for column in UK_WAS_NET_FINANCIAL_LIABILITIES),
             ],
         },
+    }
+
+
+def _materialize_operation() -> dict[str, object]:
+    return {
+        "kind": "materialize_rules_engine_predictors",
+        "predictors": list(UK_WAS_ENGINE_PREDICTORS),
+        "consumed_only": True,
     }
 
 
@@ -87,7 +97,7 @@ def _stage() -> SourceStageSpec:
             "source": "test",
             "grain": "household",
             "artifacts": [],
-            "operations": [_chain_operation()],
+            "operations": [_materialize_operation(), _chain_operation()],
             "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
             "nonnegative_outputs": [
                 name
@@ -116,7 +126,7 @@ def _raw_was() -> pd.DataFrame:
             "totalpenr8_aggr": [100.0, 200.0],
             "dvvaldbt_scaper8_aggr": [40.0, 50.0],
             "NumAdultR8": [2, 1],
-            "NumCh18R8": [1, 0],
+            "NumChildR8": [1, 0],
             "DVGIPPENR8_AGGR": [11.0, 12.0],
             "DVGISER8_AGGR": [13.0, 14.0],
             "DVGIINVR8_aggr": [15.0, 16.0],
@@ -124,7 +134,8 @@ def _raw_was() -> pd.DataFrame:
             "HBedRmR8": [3, 4],
             "GORR8": [8, 12],
             "DVPriRntR8": [-9, 2],
-            "CTAmtR8": [1000.0, 1200.0],
+            "DVCTaxAmtAnnualR8": [1000.0, 1200.0],
+            "DVNetRentAmtAnnualR8_aggr": [0.0, 300.0],
             "HFINWNTR8_Sum": [-4_480.0, -1_356.0],
             "HFINWNTR8_exSLC_Sum": [520.0, 644.0],
             "HFINWR8_SUM": [530.0, 644.0],
@@ -164,6 +175,9 @@ def _frame() -> object:
             "employment_income": [4.0, 6.0, 12.0, 8.0],
             "self_employment_income": [0.0, 0.0, 1.0, 0.0],
             "capital_income": [1.0, 2.0, 4.0, 0.0],
+            "property_income": [0.0, 100.0, 50.0, 0.0],
+            # The 19-year-old is a dependent child of the benefit unit.
+            "is_uc_claimant": [True, True, False, True],
         }
     )
     benunit = pd.DataFrame(
@@ -322,8 +336,11 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert predictors["private_pension_income"].tolist() == [1.0, 2.0]
     assert predictors["self_employment_income"].tolist() == [0.0, 1.0]
     assert predictors["capital_income"].tolist() == [3.0, 4.0]
-    assert predictors["num_adults"].tolist() == [2.0, 2.0]
-    assert predictors["num_children"].tolist() == [0.0, 0.0]
+    # Adults and children are the FRS family roles, as WAS counts them, so
+    # the 19-year-old dependant is a child (microcosm#1095).
+    assert predictors["num_adults"].tolist() == [2.0, 1.0]
+    assert predictors["num_children"].tolist() == [0.0, 1.0]
+    assert predictors["rental_income"].tolist() == [100.0, 50.0]
     assert predictors["household_net_income"].tolist() == [50000.0, 60000.0]
     # The donor records the bill paid, so the reduction comes off the
     # liability before council tax reduction (microcosm#1095).
@@ -703,7 +720,7 @@ def test_chain_declaration_drift_is_refused() -> None:
             "source": "test",
             "grain": "household",
             "artifacts": [],
-            "operations": [operation],
+            "operations": [_materialize_operation(), operation],
             "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
         }
     )
@@ -719,11 +736,28 @@ def test_chain_declaration_drift_is_refused() -> None:
             "source": "test",
             "grain": "household",
             "artifacts": [],
-            "operations": [operation],
+            "operations": [_materialize_operation(), operation],
             "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
         }
     )
     with pytest.raises(ValueError, match="derived_totals drifted"):
+        module._assert_chain_declaration(stage)
+    operation = _chain_operation()
+    operation["predictors"] = [
+        name for name in UK_WAS_WEALTH_PREDICTORS if name != "rental_income"
+    ]
+    stage = SourceStageSpec.from_mapping(
+        {
+            "stage": "was_wealth",
+            "survey": "test",
+            "source": "test",
+            "grain": "household",
+            "artifacts": [],
+            "operations": [_materialize_operation(), operation],
+            "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
+        }
+    )
+    with pytest.raises(ValueError, match="predictors drifted"):
         module._assert_chain_declaration(stage)
 
 
@@ -795,6 +829,7 @@ def _synthetic_recipients(n: int = 80, seed: int = 1063) -> pd.DataFrame:
             "employment_income": rng.uniform(0, 60_000, n),
             "self_employment_income": rng.uniform(0, 10_000, n),
             "capital_income": rng.uniform(0, 5_000, n),
+            "rental_income": np.where(rng.uniform(size=n) < 0.1, 8_000.0, 0.0),
             "num_bedrooms": rng.integers(1, 6, n),
             "council_tax": rng.uniform(800, 3_000, n),
         }
