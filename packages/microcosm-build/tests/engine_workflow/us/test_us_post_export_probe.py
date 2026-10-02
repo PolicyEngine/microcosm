@@ -116,12 +116,13 @@ def test_sampler_defaults_write_a_verified_engine_subsample(
     assert [row["probe"] for row in receipt["probes"]] == [
         str(probe.id) for probe in us_release_reform_coverage_probes()
     ]
-    wages = [
-        row
-        for row in receipt["probes"]
-        if "employment_income_before_lsr" in row["binding_inputs"]
-    ]
-    assert wages and all(row["carrier_households"] > 0 for row in wages)
+    # Every binding input is either located in a stored table or receipted
+    # as absent (the tiny fixture stores few of them).
+    for row in receipt["probes"]:
+        assert set(row["input_entities"]) | set(row["absent_inputs"]) == set(
+            row["binding_inputs"]
+        ), row["probe"]
+        assert row["sampled_carrier_households"] <= row["carrier_households"]
     thin = {row["probe"] for row in receipt["probes"] if row["certainty"]}
     assert set(receipt["certainty"]["probes_with_certainty"]) == thin
     path = Path(receipt["output"]["path"])
