@@ -47,6 +47,8 @@ def uk_stage_health_gate(
         return _pension_credit_take_up_gate(stage, evidence, parameters)
     if check == "child_benefit_take_up":
         return _child_benefit_take_up_gate(stage, evidence, parameters)
+    if check == "spi_benefit_coherence":
+        return _spi_benefit_coherence_gate(stage, evidence, parameters)
     if check == "source_signal":
         return _source_signal_gate(stage, evidence, parameters)
     if check == "age_tail_targets":
@@ -1004,6 +1006,76 @@ def _pension_credit_take_up_gate(
                 f"{stage}: band {name} realizes take-up {realized:.4f} against the "
                 f"rate {rate:.4f} (tolerance {tolerance})."
             )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _spi_benefit_coherence_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """SPI-channel benefit reports and take-up are coherent (microcosm#1095).
+
+    Structural zeros only: no SPI row keeps a zeroed report, every restored
+    report equals the FRS twin's, no person's ``receives_benefits_in_own_right``
+    disagrees with their own reports, base rows are unchanged, every SPI unit
+    with a Universal Credit reporter claims, and no SPI unit outside the
+    Universal Credit age population claims without reporting.
+    """
+
+    check = "spi_benefit_coherence"
+    failures: list[str] = []
+    zeroed = _mapping(evidence.get("zeroed"), label=f"{stage}.zeroed")
+    restored = _mapping(evidence.get("restored"), label=f"{stage}.restored")
+    own_right = _mapping(
+        evidence.get("benefits_in_own_right"), label=f"{stage}.benefits_in_own_right"
+    )
+    take_up = _mapping(
+        evidence.get("universal_credit_take_up"),
+        label=f"{stage}.universal_credit_take_up",
+    )
+    for column in parameters["zeroed_columns"]:
+        receipt = zeroed.get(column)
+        if not isinstance(receipt, Mapping):
+            failures.append(f"{stage}: the receipt does not record zeroing {column}.")
+        elif int(receipt.get("rows_reporting_after", -1)) != 0:
+            failures.append(f"{stage}: SPI rows still report {column}.")
+    for column in parameters["restored_columns"]:
+        receipt = restored.get(column)
+        if not isinstance(receipt, Mapping):
+            failures.append(f"{stage}: the receipt does not record restoring {column}.")
+        elif int(receipt.get("rows_differing_from_twin_after", -1)) != 0:
+            failures.append(f"{stage}: SPI {column} differs from the FRS twin.")
+    if int(own_right.get("mismatches_after", -1)) != 0:
+        failures.append(
+            f"{stage}: receives_benefits_in_own_right disagrees with own reports."
+        )
+    if evidence.get("base_rows_unchanged") is not True:
+        failures.append(f"{stage}: base rows are not recorded as unchanged.")
+    for key, label in (
+        ("reporters_not_claiming", "SPI Universal Credit reporters not claiming"),
+        (
+            "outside_population_non_reporters_claiming",
+            "SPI units outside the Universal Credit population claiming",
+        ),
+    ):
+        if int(take_up.get(key, -1)) != 0:
+            failures.append(f"{stage}: {label}: {take_up.get(key)}.")
+    details = {
+        "zeroed": {
+            column: _mapping(zeroed.get(column, {}), label=f"{stage}.zeroed").get(
+                "rows_reporting_before"
+            )
+            for column in parameters["zeroed_columns"]
+        },
+        "spi_claiming_before": take_up.get("spi_claiming_before"),
+        "spi_claiming_after": take_up.get("spi_claiming_after"),
+        "own_right_changed": own_right.get("spi_rows_changed"),
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

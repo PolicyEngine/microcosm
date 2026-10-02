@@ -4459,6 +4459,94 @@
    "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. The consumed is_uc_couple predictor counts two retained FRS claimant/partner roles, independently of legal is_married; older dependent children do not become partners. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses."
   },
   {
+   "stage": "spi_benefit_coherence",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Family Resources Survey 2024-25 benefit reports carried through the SPI support channel, with the UK take-up contract's Universal Credit rate.",
+   "grain": "person+benunit",
+   "artifacts": [],
+   "operations": [
+    {
+     "kind": "zero_spi_channel_reports",
+     "rows": "spi_synthetic_support_channel",
+     "columns": [
+      "jsa_contrib_reported",
+      "jsa_income_reported",
+      "income_support_reported",
+      "working_tax_credit_reported",
+      "child_tax_credit_reported",
+      "sda_reported",
+      "ssmg_reported"
+     ],
+     "reason": "award needs an existing legacy claim, an out-of-work or incapacity test, or a claim the copied household's new incomes cannot carry"
+    },
+    {
+     "kind": "restore_spi_channel_reports_from_source",
+     "rows": "spi_synthetic_support_channel",
+     "columns": [
+      "iidb_reported",
+      "afcs_reported",
+      "bsp_reported"
+     ],
+     "linkage": "person_source_id -> FRS-channel person_id",
+     "reason": "follows an injury, service or a death, not income"
+    },
+    {
+     "kind": "derive",
+     "scope": "disability categories and flags re-derived on SPI-channel rows from the final reports with the frs_disability rule at its declared year; the categories, which read only AA, DLA and PIP, asserted unchanged"
+    },
+    {
+     "kind": "derive",
+     "output": "receives_benefits_in_own_right",
+     "formula": "universal_credit_reported + jsa_contrib_reported + jsa_income_reported + esa_contrib_reported + esa_income_reported > 0 (frs_education), SPI-channel rows; FRS rows asserted unchanged"
+    },
+    {
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_positive",
+     "consumed_only": true,
+     "aggregates": {
+      "universal_credit_reported_anchor": "universal_credit_reported"
+     }
+    },
+    {
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_adult_under_state_pension_age",
+     "consumed_only": true,
+     "aggregates": {
+      "uc_age_eligible": "age"
+     }
+    },
+    {
+     "kind": "assign_binary_with_anchored_residual",
+     "output": "would_claim_uc",
+     "draw": "would_claim_uc",
+     "rate_key": "universal_credit",
+     "anchor": "universal_credit_reported_anchor",
+     "population": "uc_age_eligible",
+     "seed": 0,
+     "rows": "spi_synthetic_support_channel"
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "jsa_contrib_reported",
+    "jsa_income_reported",
+    "income_support_reported",
+    "working_tax_credit_reported",
+    "child_tax_credit_reported",
+    "sda_reported",
+    "ssmg_reported",
+    "iidb_reported",
+    "afcs_reported",
+    "bsp_reported",
+    "is_disabled_for_benefits",
+    "is_enhanced_disabled_for_benefits",
+    "is_severely_disabled_for_benefits",
+    "receives_benefits_in_own_right",
+    "would_claim_uc"
+   ],
+   "notes": "Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult's benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit's entitlement or claim history. This stage zeroes the SPI rows' contributory and income-based JSA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work or incapacity test, or a claim the copied household's new incomes cannot carry; restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in the Universal Credit age population claim as the residual of the contract's universal_credit rate on draws keyed on the SPI unit's own identity. ESA, PIP, DLA, AA, Carer's Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified."
+  },
+  {
    "stage": "uc_capital_coherence",
    "survey": "Family Resources Survey 2024-25",
    "source": "Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.",

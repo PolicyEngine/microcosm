@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "82a92dfa7ba4e4ce81cfd44d7b89737cf3cce50d69fd2d6bbeeae0ca15a0f8d5"
+    "d685ebc526c3e235bfef5d56885a17cfb7a4fd687a6996640cb56265c29f6077"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c117864fac6df5bb7f37f466c068b8dd9dd032b694cf3d521c51b5dca71b5865"
+    "b074f2dc1532bdd61a75e77b51b596ec4ebf513850ab30d8198ad21edba9d4ae"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7ff71ed911b840c01a1b6395de37a04fdf95498444bd692b32d89f3b1767a128"
+    "8543f0c46086d157f25e4bc9aaa087c8d537a174c5312cbb7582ca2b38c79732"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -487,6 +487,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
@@ -585,6 +586,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_frs_hmrc_spine_leaves_signal",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
+        "uk_stage_spi_benefit_coherence",
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
@@ -801,6 +803,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_nts_bus_travel_support",
             "uk_stage_pension_credit_take_up",
             "uk_stage_salary_sacrifice_realization",
+            "uk_stage_spi_benefit_coherence",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
@@ -848,10 +851,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "9708ee040b34e8dbecdb88691079f00682ccf9ca20599f07342b4c33c2e56f40"
+            "3208ecb77fb2ee8575136932f143629aa83bf9192d30e3cc8b3d775060090c6b"
         ),
         "policy_sha256": (
-            "b22f79584c16ab81fbfa131c19c16f5bc5c1e484003c73a695abf3446ff6175b"
+            "f38ef351a2421cf145f3f17850e6c045ca8620eeaee7043bc0b70000050be9b6"
         ),
     },
     "calibration_seam": {
@@ -864,7 +867,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "4eed0ed4dc6785f7f4611e9af96a84594e73806eccc6eaf6b76f85630b378f35"
+            "e072281905223b9346f77da11dd52c390421b22046292cef92094a3b894ab365"
         ),
         "policy_sha256": (
             "a673ec3efe1be53567ddc12b344e44ab872e05a6ebcea2862b1762952901ce78"

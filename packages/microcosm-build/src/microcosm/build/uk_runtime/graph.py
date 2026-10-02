@@ -108,6 +108,11 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # open-surface SPI income stage, which would otherwise bind them.
         "spi_housing_shell",
         "uc_reporter_redraw",
+        # The SPI benefit pass rewrites cells the open-surface readers before
+        # it bind: the SPI income stage's reports, frs_disability's flags,
+        # frs_education's receives_benefits_in_own_right and frs_take_up's
+        # would_claim_uc (microcosm#1095).
+        "spi_benefit_coherence",
         "uc_capital_coherence",
         # The Pension Credit redraw rewrites ``frs_take_up``'s would_claim_pc,
         # which the open-surface readers before it bind (microcosm#1069).
@@ -285,6 +290,47 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One temporary engine materialization of Child Benefit eligibility and
     # adjusted net income over the whole frame: an open surface.
     "child_benefit_take_up": None,
+    "spi_benefit_coherence": frozenset(
+        {
+            ("person", "person_support_channel"),
+            ("person", "person_source_id"),
+            *(
+                ("person", column)
+                for column in (
+                    "jsa_contrib_reported",
+                    "jsa_income_reported",
+                    "income_support_reported",
+                    "working_tax_credit_reported",
+                    "child_tax_credit_reported",
+                    "sda_reported",
+                    "ssmg_reported",
+                    "iidb_reported",
+                    "afcs_reported",
+                    "bsp_reported",
+                    "universal_credit_reported",
+                    "esa_contrib_reported",
+                    "esa_income_reported",
+                    "attendance_allowance_reported",
+                    "dla_sc_reported",
+                    "dla_m_reported",
+                    "pip_m_reported",
+                    "pip_dl_reported",
+                    "incapacity_benefit_reported",
+                    "aa_category",
+                    "dla_sc_category",
+                    "dla_m_category",
+                    "pip_m_category",
+                    "pip_dl_category",
+                    "is_disabled_for_benefits",
+                    "is_enhanced_disabled_for_benefits",
+                    "is_severely_disabled_for_benefits",
+                    "receives_benefits_in_own_right",
+                )
+            ),
+            ("benunit", "benunit_support_channel"),
+            ("benunit", "would_claim_uc"),
+        }
+    ),
     "uc_capital_coherence": frozenset(
         {
             ("person", "is_benunit_head"),
@@ -787,6 +833,34 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("person", ("housing_benefit_reported", "council_tax_benefit_reported")),
     ),
     "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),
+    "spi_benefit_coherence": (
+        *_cells(
+            "person",
+            (
+                "jsa_contrib_reported",
+                "jsa_income_reported",
+                "income_support_reported",
+                "working_tax_credit_reported",
+                "child_tax_credit_reported",
+                "sda_reported",
+                "ssmg_reported",
+                "iidb_reported",
+                "afcs_reported",
+                "bsp_reported",
+            ),
+        ),
+        *_cells(
+            "person",
+            (
+                "is_disabled_for_benefits",
+                "is_enhanced_disabled_for_benefits",
+                "is_severely_disabled_for_benefits",
+                "receives_benefits_in_own_right",
+            ),
+            "bool",
+        ),
+        _Cell("benunit", "would_claim_uc", "bool"),
+    ),
     "uc_capital_coherence": (
         _Cell("benunit", "uc_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),

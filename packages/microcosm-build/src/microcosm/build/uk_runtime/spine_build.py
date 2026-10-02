@@ -141,6 +141,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTr
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
 )
+from microcosm.build.uk_runtime.spi_benefit_coherence import (
+    UKSPIBenefitCoherenceStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -1523,6 +1526,10 @@ def prepare_uk_spine_execution(
         implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(
             stage=stages_by_name["uc_reporter_redraw"],
             engine=engine,
+        )
+    if "spi_benefit_coherence" in stage_names:
+        implementations["spi_benefit_coherence"] = UKSPIBenefitCoherenceStageTransform(
+            stage=stages_by_name["spi_benefit_coherence"]
         )
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(

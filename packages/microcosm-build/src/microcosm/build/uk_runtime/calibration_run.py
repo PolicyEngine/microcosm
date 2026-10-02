@@ -103,6 +103,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_frs_hmrc_spine_leaves_signal",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
+    "uk_stage_spi_benefit_coherence",
     "uk_stage_pension_credit_take_up",
     "uk_stage_child_benefit_take_up",
     "uk_stage_cgt_incidence_clone_mass",
