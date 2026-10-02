@@ -241,6 +241,7 @@ class TestE6Receipt:
                     "person_household_id": [100],
                     "age": [float(UK_AGE_TOP_CODE)],
                     "gender": ["FEMALE"],
+                    "is_uc_claimant": [True],
                 }
             ),
             benunit=pd.DataFrame({"benunit_id": [10], "benunit_household_id": [100]}),

@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipResult,
     support_clip_to_donor_with_receipt,
 )
+from microcosm.build.uk_runtime.uc_relationships import household_family_role_counts
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -36,6 +37,16 @@ UK_ETB_VAT_PREDICTORS = (
     "is_child",
     "is_SP_age",
     "household_net_income",
+)
+#: The ETB donor's ``adults`` and ``childs`` count a household's adults and
+#: dependent children, so the recipient counts are its FRS claimants and
+#: partners and its other members (``is_uc_claimant``), not the engine's
+#: age-18 split (uk-data#486, microcosm#1095). Only the rest materialize.
+UK_ETB_FAMILY_ROLE_COUNTS = ("is_adult", "is_child")
+UK_ETB_VAT_ENGINE_PREDICTORS = tuple(
+    predictor
+    for predictor in UK_ETB_VAT_PREDICTORS
+    if predictor not in UK_ETB_FAMILY_ROLE_COUNTS
 )
 UK_ETB_VAT_OUTPUT_COLUMNS = ("full_rate_vat_expenditure_rate",)
 # The donor-realized support includes negative rates (totvat can exceed expdis
@@ -228,19 +239,24 @@ def etb_vat_configuration(
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
     """Materialize ETB VAT recipient predictors at household grain.
 
-    Predictors materialize at their native entity (is_adult / is_child /
-    is_SP_age are person booleans) and aggregate to household by
-    person_household_id — direct engine arrays would crash the licensed
-    build on the person/household length mismatch (the E5 review class).
+    Engine predictors materialize at their native entity (is_SP_age is a
+    person boolean) and aggregate to household by person_household_id — direct
+    engine arrays would crash the licensed build on the person/household
+    length mismatch (the E5 review class). The adult and child counts are the
+    household's FRS family roles.
     """
 
     materialized = engine.materialize(
-        frame, UK_ETB_VAT_PREDICTORS, uk_time_period(frame)
+        frame, UK_ETB_VAT_ENGINE_PREDICTORS, uk_time_period(frame)
     )
     household = frame.table("household")
     person = frame.table("person")
     result = pd.DataFrame(index=household.index)
+    adults, children = household_family_role_counts(person, household)
     for predictor in UK_ETB_VAT_PREDICTORS:
+        if predictor in UK_ETB_FAMILY_ROLE_COUNTS:
+            result[predictor] = adults if predictor == "is_adult" else children
+            continue
         declared = str(engine.variable_metadata(predictor).entity)
         values = np.asarray(materialized[predictor])
         if declared == "household":
