@@ -14,7 +14,11 @@ Invariants pinned here (each holds for every input the strategies draw):
 4. With no targets and ``mass="conserve"``, the chi-square solve returns the
    design weights from any warm start, under both mass parametrizations.
 5. The softmax parametrization conserves the input total, respects the ratio
-   cap, and keeps every weight positive.
+   cap, and keeps every weight positive. Every vector it evaluates in the
+   loop, before the closing projection, also sits within the cap up to
+   float32 rounding (the receipt's ``softmax_in_loop_max_cap_ratio``), even
+   when the cap binds on nearly every record. The per-step projection's own
+   contracts are in ``test_softmax_cap_projection.py``.
 6. Each solve under softmax-conserve and free mass lands within a bound of
    the exact optimum of the same convex program (differential against
    CLARABEL on these tests' own problems, fixture
@@ -72,6 +76,10 @@ _TEST_PATHS = paths_for("microcosm-calibrate")
 # few, derandomized examples; the pure penalty algebra runs many.
 _SOLVER_SETTINGS = settings(max_examples=8, deadline=None, derandomize=True)
 _ALGEBRA_SETTINGS = settings(max_examples=200, deadline=None)
+#: Float32 slack for a softmax solve's in-loop weights over their caps: the
+#: log-weights and the softmax's normalizer are float32, and on these sizes
+#: their error stays below 1e-6 (measured 2e-7 to 6e-7).
+_IN_LOOP_CAP_TOLERANCE = 1e-5
 
 
 def _frame(columns: dict[str, np.ndarray], design: np.ndarray) -> Frame:
@@ -320,10 +328,53 @@ def test_softmax_parametrization_conserves_mass_and_respects_the_cap(
         assert (result.weights <= cap * design * (1.0 + 1e-12)).all()
     assert result.options["mass_parametrization"] == MASS_PARAMETRIZATION_SOFTMAX
     assert result.options["iterate_selection"] == "closing_state"
-    exhausted = result.options["iterate_selection_receipt"][
-        "softmax_cap_rounds_exhausted_epochs"
+    receipt = result.options["iterate_selection_receipt"]
+    assert set(receipt) == {"softmax_in_loop_max_cap_ratio"}
+    in_loop = receipt["softmax_in_loop_max_cap_ratio"]
+    if cap is None:
+        assert in_loop is None
+    else:
+        assert 0.0 < in_loop <= 1.0 + _IN_LOOP_CAP_TOLERANCE
+
+
+@_SOLVER_SETTINGS
+@given(st.integers(0, 2**32 - 1), st.sampled_from([1.0, 1.001, 1.05]))
+def test_softmax_iterates_stay_at_a_cap_that_binds_almost_everywhere(
+    seed: int, cap: float
+) -> None:
+    """Targets far above the design push every record into a tight cap.
+
+    The per-step projection holds every in-loop vector at the cap, where it
+    binds on nearly every record (and on all of them at a cap of 1, whose
+    only feasible vector is the design itself).
+    """
+    frame, targets, design = _problem(seed, n=60, k=4, factors=(1.5, 3.0))
+    result = calibrate(
+        frame,
+        targets,
+        epochs=200,
+        learning_rate=0.05,
+        mass="conserve",
+        max_weight_ratio=cap,
+        mass_parametrization=MASS_PARAMETRIZATION_SOFTMAX,
+        seed=0,
+    )
+    in_loop = result.options["iterate_selection_receipt"][
+        "softmax_in_loop_max_cap_ratio"
     ]
-    assert isinstance(exhausted, int) and 0 <= exhausted <= 300
+    assert 1.0 - _IN_LOOP_CAP_TOLERANCE <= in_loop <= 1.0 + _IN_LOOP_CAP_TOLERANCE
+    assert result.weights.sum() == pytest.approx(design.sum(), rel=1e-12)
+    assert (result.weights <= cap * design * (1.0 + 1e-12)).all()
+    if cap == 1.0:
+        np.testing.assert_allclose(result.weights, design, rtol=1e-12)
+
+
+def test_projection_solves_record_no_softmax_receipt() -> None:
+    frame, targets, _ = _problem(0, n=40, k=3)
+    result = calibrate(
+        frame, targets, epochs=20, mass="conserve", max_weight_ratio=5.0, seed=0
+    )
+    assert result.options["iterate_selection_receipt"] == {}
 
 
 # --- 6: the regularization path ----------------------------------------------

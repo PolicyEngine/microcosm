@@ -170,24 +170,22 @@ MASS_PARAMETRIZATION_PROJECTION = "projection"
 #: For a smooth objective that reduced gradient vanishes at the constrained
 #: optimum, which the projection scheme's full gradient does not; with the
 #: capped-MAPE kink Adam still oscillates there on the scale of ``lr``, as it
-#: does under ``mass="free"``. The ratio cap is a per-step clamp, alternated
-#: with the softmax-invariant renormalization (``_SOFTMAX_CAP_ROUNDS``), plus
-#: the closing float64 projection.
+#: does under ``mass="free"``. After every step the log-weights are projected
+#: exactly onto the capped simplex (:func:`_project_softmax_log_weights_`),
+#: and the closing float64 projection is shared with ``"projection"``.
 MASS_PARAMETRIZATION_SOFTMAX = "softmax"
 
 MASS_PARAMETRIZATIONS = frozenset(
     {MASS_PARAMETRIZATION_PROJECTION, MASS_PARAMETRIZATION_SOFTMAX}
 )
 
-#: Upper bound on the per-step renormalize/clamp rounds under the softmax
-#: parametrization. Each renormalization lifts the capped records back over
-#: the cap by the capped records' share of the excess, so the excess shrinks
-#: geometrically without reaching exactly zero; the rounds stop when no
-#: record exceeds its bound in float32. A step that exhausts the rounds ends
-#: on a clamp, so its next forward pass renormalizes slightly past the cap;
-#: such epochs are counted in ``options["iterate_selection_receipt"]`` and the
-#: closing float64 projection makes the returned vector exact regardless.
-_SOFTMAX_CAP_ROUNDS = 32
+#: Active-set rounds the softmax cap projection takes before it finishes with
+#: a sort. Each round is one pass over the records and only ever adds records
+#: to the capped set, so the rounds alone are exact and finite, but an
+#: adversarial input can need one per record. The sort bounds that worst case
+#: at ``O(n log n)``. On the ACS local release (1.59M records, a 5x cap) the
+#: rounds settle in one or two.
+_SOFTMAX_CAP_ACTIVE_SET_ROUNDS = 8
 
 #: Threshold below which a weight counts as pruned (a "zero") when reporting the
 #: non-zero record count for the L0 path. Relative to the *initial* mean weight.
@@ -932,25 +930,156 @@ def _l2_penalty(
     raise ValueError(f"l2_basis must be one of {sorted(L2_BASES)}, got {basis!r}.")
 
 
-def _renormalize_softmax_log_weights_(
-    log_w: torch.Tensor, total: float, log_upper: torch.Tensor | None
-) -> bool:
-    """Shift ``log_w`` so ``exp(log_w)`` sums to ``total``; clamp to the cap.
+def _cap_every_record_shift(cap_shift: torch.Tensor) -> float:
+    """The smallest shift that puts every record able to reach its cap at it."""
+    reachable = cap_shift[torch.isfinite(cap_shift)]
+    return float(reachable.max()) if reachable.numel() else 0.0
 
-    In place, under ``no_grad``. The shift leaves ``total * softmax(log_w)``
-    unchanged (softmax is shift-invariant); it only keeps ``exp(log_w)`` equal
-    to the realized weights, so the cap comparison is in weight units. Each
-    clamp lowers the normalizer, so the next shift lifts every record,
-    including the capped ones, by a shrinking amount. Returns ``True`` when
-    the rounds ran out with a record still over its bound after the last
-    shift (the vector then ends on a clamp; see ``_SOFTMAX_CAP_ROUNDS``).
+
+def _sorted_capped_log_shift(
+    cap_shift: torch.Tensor,
+    caps: torch.Tensor,
+    mass: torch.Tensor,
+    total: float,
+    capped: torch.Tensor,
+    lower: float,
+) -> float:
+    """Finish :func:`_capped_log_shift` exactly with one sort.
+
+    ``capped`` marks records known to be at their caps at the answer and
+    ``lower`` is a lower bound on it. Sort the remaining records by the shift
+    at which each meets its cap. With the first ``k`` of them capped too, the
+    shift that meets ``total`` is ``log(room_k / free_k)``, ``room_k`` being
+    the total less every capped record's cap and ``free_k`` the mass of the
+    records after the ``k``-th. The answer is that shift at the smallest
+    ``k`` where it does not pass the ``k``-th record's own cap shift: the
+    ``k`` records before it reach their caps at a smaller shift, so they are
+    capped, and every record from the ``k``-th on is not.
     """
-    for _ in range(_SOFTMAX_CAP_ROUNDS):
-        log_w.add_(math.log(total) - float(torch.logsumexp(log_w, dim=0).item()))
-        if log_upper is None or not bool((log_w > log_upper).any().item()):
-            return False
-        log_w.clamp_(max=log_upper)
-    return True
+    rest = ~capped & (mass > 0.0)
+    order = torch.argsort(cap_shift[rest])
+    rest_shift = cap_shift[rest][order]
+    rest_caps = caps[rest][order]
+    rest_mass = mass[rest][order]
+    capped_before = torch.cat(
+        (rest_caps.new_zeros(1), torch.cumsum(rest_caps, dim=0)[:-1])
+    )
+    room = (total - float(caps[capped].sum())) - capped_before
+    free = torch.flip(torch.cumsum(torch.flip(rest_mass, (0,)), dim=0), (0,))
+    # Once the capped records' caps reach the total, no shift meets it short
+    # of capping every record (a cap of exactly 1, up to rounding).
+    candidate = torch.where(
+        room > 0.0,
+        torch.log(room.clamp_min(torch.finfo(torch.float64).tiny)) - torch.log(free),
+        math.inf,
+    )
+    meets = candidate <= rest_shift
+    if not bool(meets.any()):
+        return max(lower, _cap_every_record_shift(cap_shift))
+    return max(lower, float(candidate[int(meets.to(torch.uint8).argmax())]))
+
+
+def _capped_log_shift(
+    log_weights: torch.Tensor,
+    log_upper: torch.Tensor,
+    total: float,
+    *,
+    active_set_rounds: int = _SOFTMAX_CAP_ACTIVE_SET_ROUNDS,
+) -> tuple[float, int]:
+    """The shift ``s`` with ``sum(min(exp(log_weights + s), exp(log_upper))) == total``.
+
+    Float64 tensors; ``log_weights`` sums to ``total`` (``exp`` of it does),
+    so ``s >= 0``. The left side is continuous and nondecreasing in ``s``, so
+    the shift exists and the projection it defines is unique whenever the caps
+    sum to at least ``total``.
+
+    Active-set rounds: with ``C`` the records whose cap shift
+    ``log_upper - log_weights`` is at most the current shift, the next shift
+    solves ``sum(caps[C]) + exp(s) * sum(mass[~C]) == total``. That left side
+    bounds the true one from above for every ``C`` (a record outside ``C``
+    contributes ``exp(...)`` where the true sum has the smaller ``min``), so
+    every round's shift is a lower bound on the answer and ``C`` only grows.
+    When a round adds no record, the bound is attained and the shift is exact.
+    If ``active_set_rounds`` pass without that, :func:`_sorted_capped_log_shift`
+    finishes from the current capped set and bound. Records with a zero cap
+    are capped at every shift; records with zero mass never reach a positive
+    cap and contribute nothing.
+
+    Returns the shift and the rounds taken (``active_set_rounds + 1`` when
+    the sort finished it).
+    """
+    cap_shift = torch.where(
+        torch.isneginf(log_upper),
+        torch.full_like(log_upper, -math.inf),
+        log_upper - log_weights,
+    )
+    caps = torch.exp(log_upper)
+    mass = torch.exp(log_weights)
+    zero = torch.zeros((), dtype=torch.float64)
+    shift = 0.0
+    capped = cap_shift <= shift
+    for rounds in range(1, active_set_rounds + 1):
+        room = total - float(torch.where(capped, caps, zero).sum())
+        free = float(torch.where(capped, zero, mass).sum())
+        if room <= 0.0 or free <= 0.0:
+            # The capped records alone hold the total (a cap of exactly 1, up
+            # to rounding): every record that can reach its cap sits at it.
+            return max(shift, _cap_every_record_shift(cap_shift)), rounds
+        shift = max(shift, math.log(room) - math.log(free))
+        grown = capped | (cap_shift <= shift)
+        if int(grown.sum()) == int(capped.sum()):
+            return shift, rounds
+        capped = grown
+    return (
+        _sorted_capped_log_shift(cap_shift, caps, mass, total, capped, shift),
+        active_set_rounds + 1,
+    )
+
+
+def _project_softmax_log_weights_(
+    log_w: torch.Tensor, total: float, log_upper: torch.Tensor | None
+) -> int:
+    """Project ``log_w`` exactly onto the capped simplex, in place.
+
+    The softmax parametrization's per-step cap. The target is
+    ``{w : sum(w) == total, w <= exp(log_upper)}``, reached in log space:
+    every log-weight moves by one common shift ``s``, then each is clamped to
+    its log cap, ``log_w <- min(log_w + s, log_upper)``, with ``s`` from
+    :func:`_capped_log_shift` (computed in float64; exact in a finite number
+    of steps). This is the projection in Kullback-Leibler divergence: the
+    uncapped records keep their relative weights, which is the direction
+    ``total * softmax(log_w)`` cannot see, and only records whose share
+    would pass their caps are held at them. A vector already within its caps
+    after the shift moves by the shift alone.
+
+    Afterwards ``exp(log_w)`` sums to ``total`` up to float32 rounding of
+    ``log_w`` and never passes ``exp(log_upper)``, so the realized weights
+    ``total * softmax(log_w)`` sit within the caps up to the float32 error of
+    the softmax's own normalizer. ``log_upper`` is the float64 copy of the
+    float32 log caps, so the clamp is exact in float32. Without a cap the
+    projection is the shift alone. Returns the active-set rounds taken (0
+    without a cap).
+    """
+    log_weights = log_w.detach().to(torch.float64)
+    log_weights = log_weights + (
+        math.log(total) - float(torch.logsumexp(log_weights, dim=0))
+    )
+    if log_upper is None:
+        log_w.copy_(log_weights)
+        return 0
+    shift, rounds = _capped_log_shift(log_weights, log_upper, total)
+    log_w.copy_(torch.minimum(log_weights + shift, log_upper))
+    return rounds
+
+
+def _max_cap_ratio(weights: torch.Tensor, cap: torch.Tensor) -> float:
+    """The largest ``weights / cap``, in float64 against the float64 cap.
+
+    A record with a zero cap reads ``0`` while its weight is zero (``0 / 0``)
+    and ``inf`` once it is not.
+    """
+    ratio = weights.detach().to(torch.float64) / cap
+    return float(torch.nan_to_num(ratio, nan=0.0, posinf=math.inf).max())
 
 
 def _optimize(
@@ -1014,7 +1143,6 @@ def _optimize(
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
     log_w = torch.tensor(np.log(start), dtype=torch.float32, requires_grad=True)
     softmax_mass = mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX
-    softmax_cap_exhausted_epochs = 0
     if softmax_mass and (
         not conserve_mass or l0_lambda > 0.0 or target_records is not None
     ):
@@ -1047,6 +1175,15 @@ def _optimize(
         if max_weight_ratio is not None
         else None
     )
+    # Under softmax: the float32 log caps the per-step projection clamps to
+    # (float64 copies, so its arithmetic stays float64), and the float64 cap
+    # the in-loop receipt measures every realized weight against.
+    softmax_log_upper: torch.Tensor | None = None
+    softmax_cap: torch.Tensor | None = None
+    softmax_max_cap_ratio = 0.0
+    if softmax_mass and upper is not None:
+        softmax_log_upper = torch.log(upper).to(torch.float64)
+        softmax_cap = torch.tensor(max_weight_ratio * w0, dtype=torch.float64)
     if l2_lambda > 0.0:
         # The L2 penalty's reference vector. "initial" divides by each record's
         # own starting weight; "uniform" divides by the shared mean weight; an
@@ -1086,6 +1223,10 @@ def _optimize(
         optimizer.zero_grad()
         if softmax_mass:
             weights = total0 * torch.softmax(log_w, dim=0)
+            if softmax_cap is not None:
+                softmax_max_cap_ratio = max(
+                    softmax_max_cap_ratio, _max_cap_ratio(weights, softmax_cap)
+                )
         else:
             weights = torch.exp(log_w)
         if gates is not None:
@@ -1134,11 +1275,9 @@ def _optimize(
         if softmax_mass:
             # The softmax weights sum to the input total whatever log_w is, so
             # there is no mass shift for Adam's normalized step to fight; only
-            # the ratio cap needs a per-step clamp.
+            # the ratio cap needs a per-step projection, exact in one call.
             with torch.no_grad():
-                softmax_cap_exhausted_epochs += _renormalize_softmax_log_weights_(
-                    log_w, total0, None if upper is None else torch.log(upper)
-                )
+                _project_softmax_log_weights_(log_w, total0, softmax_log_upper)
             continue
 
         # Hard projections, applied to the realized weights every step so the
@@ -1163,14 +1302,20 @@ def _optimize(
                         # hard so it can never be violated mid-run.
                         log_w.clamp_(max=torch.log(upper))
 
-    if softmax_mass and selection_receipt is not None:
-        selection_receipt["softmax_cap_rounds_exhausted_epochs"] = (
-            softmax_cap_exhausted_epochs
-        )
     gate_open_probabilities: np.ndarray | None = None
     with torch.no_grad():
         if softmax_mass:
             weights = total0 * torch.softmax(log_w, dim=0)
+            if softmax_cap is not None:
+                softmax_max_cap_ratio = max(
+                    softmax_max_cap_ratio, _max_cap_ratio(weights, softmax_cap)
+                )
+            if selection_receipt is not None:
+                # Every realized vector the solve evaluated, and the closing
+                # one, over its float64 cap, before the closing projection.
+                selection_receipt["softmax_in_loop_max_cap_ratio"] = (
+                    softmax_max_cap_ratio if softmax_cap is not None else None
+                )
         else:
             weights = torch.exp(log_w)
         if best_log_w is not None:
@@ -1915,12 +2060,16 @@ def calibrate(
             construction and Adam sees the gradient with its mass-constraint
             component removed. It requires ``mass="conserve"`` and no L0
             gates. Recorded in ``options["mass_parametrization"]`` whatever
-            the mass mode, like ``l2_basis`` whatever ``l2_lambda``; a softmax
-            solve also counts, in ``options["iterate_selection_receipt"]``,
-            the epochs whose cap rounds ran out. On the ACS local release
-            (1.6M records, a 5x cap) that is most epochs, which then optimize
-            past the cap until the closing projection; prefer
-            ``"projection"`` at that scale (docs/calibration-l2-basis.md).
+            the mass mode, like ``l2_basis`` whatever ``l2_lambda``. Every
+            softmax step ends on an exact projection onto the capped simplex,
+            and a softmax solve records in
+            ``options["iterate_selection_receipt"]
+            ["softmax_in_loop_max_cap_ratio"]`` the largest ratio of a
+            realized weight it evaluated to its ``max_weight_ratio`` cap,
+            before the closing projection (``None`` without a cap). It is 1
+            up to the float32 error of the softmax's normalizer.
+            docs/calibration-l2-basis.md compares the two parametrizations
+            at the ACS local release's scale.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
         target_records: If given, enable L0 pruning with **budget control**: the
