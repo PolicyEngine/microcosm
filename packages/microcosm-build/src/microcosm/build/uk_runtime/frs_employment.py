@@ -135,7 +135,8 @@ def derive_employment_status_from_frs(empstati, is_adult_record) -> np.ndarray:
     their code. Every adult must carry a code in
     ``FRS_EMPSTATI_EMPLOYMENT_STATUS``: a missing or unknown adult code refuses
     the build rather than falling back to a guessed status, as the old fallback
-    silently made code 11 (Other inactive) LONG_TERM_DISABLED.
+    silently made code 11 (Other inactive) LONG_TERM_DISABLED. The refusal
+    names the offending codes but never how many adults carry them.
     """
 
     codes = pd.Series(
@@ -153,10 +154,10 @@ def derive_employment_status_from_frs(empstati, is_adult_record) -> np.ndarray:
         labels = [_code_label(code) for code in sorted(bad.dropna().unique())]
         if bad.isna().any():
             labels.append("blank or non-numeric")
-        count = int(unknown.sum())
-        adults = str(count) if count >= 10 else "fewer than 10"
+        # Build logs are not licensed outputs, and adults are not survey
+        # households, so the refusal names the codes and never a count.
         raise ValueError(
-            f"FRS adult.tab carries {adults} adults with EMPSTATI code(s) "
+            "FRS adult.tab carries adults with EMPSTATI code(s) "
             f"{labels} outside FRS_EMPSTATI_EMPLOYMENT_STATUS; map them from the "
             "release's data dictionary."
         )

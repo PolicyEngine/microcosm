@@ -159,16 +159,23 @@ def test_adult_record_with_unknown_or_blank_code_fails_the_stage(code) -> None:
         derive_frs_employment(person, adult)
 
 
-def test_unknown_code_message_names_codes_and_suppresses_small_counts() -> None:
-    with pytest.raises(ValueError) as small:
-        derive_employment_status_from_frs([12, 12, np.nan, 11.5], [True] * 4)
-    message = str(small.value)
-    assert "fewer than 10 adults" in message
-    assert "['11.5', '12', 'blank or non-numeric']" in message
+def _digits_outside_code_list(message: str) -> list[str]:
+    return re.findall(r"\d", re.sub(r"\[.*?\]", "", message))
 
-    with pytest.raises(ValueError) as large:
-        derive_employment_status_from_frs([13] * 10, [True] * 10)
-    assert "carries 10 adults" in str(large.value)
+
+def test_unknown_code_message_names_codes_and_prints_no_count() -> None:
+    # Adults are not survey households, so even a count of 10 or more could
+    # describe fewer than 10 households: the refusal never prints one.
+    with pytest.raises(ValueError) as few:
+        derive_employment_status_from_frs([12, 12, np.nan, 11.5], [True] * 4)
+    message = str(few.value)
+    assert "['11.5', '12', 'blank or non-numeric']" in message
+    assert _digits_outside_code_list(message) == []
+
+    with pytest.raises(ValueError) as many:
+        derive_employment_status_from_frs([13] * 25, [True] * 25)
+    assert "['13']" in str(many.value)
+    assert _digits_outside_code_list(str(many.value)) == []
 
 
 def test_mismatched_lengths_fail() -> None:
@@ -199,15 +206,12 @@ def test_any_unknown_adult_code_fails_the_build(rows, bad_code, position) -> Non
         _derive(rows)
 
 
-@given(st.lists(unknown_adult_codes, min_size=1, max_size=30))
-def test_unknown_code_message_never_prints_a_count_under_10(bad_codes) -> None:
+@given(st.lists(unknown_adult_codes, min_size=1, max_size=30), people)
+def test_unknown_code_message_never_prints_a_count(bad_codes, rows) -> None:
+    rows = [*rows, *((True, code) for code in bad_codes)]
     with pytest.raises(ValueError) as error:
-        derive_employment_status_from_frs(bad_codes, [True] * len(bad_codes))
-    printed = re.search(r"carries (.+?) adults", str(error.value)).group(1)
-    if len(bad_codes) < 10:
-        assert printed == "fewer than 10"
-    else:
-        assert printed == str(len(bad_codes))
+        _derive(rows)
+    assert _digits_outside_code_list(str(error.value)) == []
 
 
 @given(people)
