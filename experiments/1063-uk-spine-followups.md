@@ -291,6 +291,10 @@ reaches all 20 gates: 17 pass, three fail.
   stages; the rulings on them (an FRS outlier fence on `access_fund`, the SPI channel's treatment of
   `jsa_income_reported` and `working_tax_credit_reported`, or reviewed exclusions) are hers.
 
+Certifier rerun from the gate-fix head (1e58ecb3a) on the same artifacts, 2026-10-03 00:23Z: 19 of 20 pass;
+`uk_input_mass_parity` alone fails, on the three columns above (`final/certify2.err`,
+`microcosm_uk_2024_25.release_cut_gates.rerun.json`).
+
 ## Still owed
 
 - The certifier's three input-mass findings on the second run (above): her rulings.
