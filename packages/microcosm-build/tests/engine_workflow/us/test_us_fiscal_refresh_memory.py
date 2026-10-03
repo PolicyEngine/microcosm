@@ -373,5 +373,102 @@ def test_released_simulations_do_not_accumulate() -> None:
     )
 
 
+def _isolated_post_export_measurement() -> None:
+    """Measure the post-export scorer's module registrations; asserts on failure.
+
+    Each reform pass builds one reform system, and policyengine-core
+    registers that system's variable modules under names keyed by its id. The
+    scorer must evict a reform's modules once the system is collected, so
+    reform passes keep about one set registered (the live reform's), not one
+    set per pass. A fresh interpreter for the reasons in
+    ``_isolated_family_measurement``.
+    """
+    import tempfile
+
+    from test_support.microcosm_build.us_post_export_scoring import (
+        _ENGINE_HOUSEHOLDS,
+        _engine_probe,
+        _write_engine_h5,
+    )
+
+    builder = _load_builder_module()
+    probes = tuple(
+        _engine_probe(
+            f"wages_{measure}_{index}",
+            measure,
+            2024,
+            neutralized_variable="employment_income_before_lsr",
+        )
+        for index, measure in enumerate(
+            ("income_tax", "income_tax", "state_income_tax", "income_tax")
+        )
+    )
+    counts: list[tuple[str, int]] = []
+
+    class CountingScorer(builder._HouseholdBatchedPostExportScorer):
+        def _score(self, keys, *, label, reform_system=None):
+            scored = super()._score(keys, label=label, reform_system=reform_system)
+            counts.append((label, _variable_module_count()))
+            return scored
+
+    def smoke(simulate):
+        return builder.us_reform_coverage_smoke_gate(
+            simulate=simulate, probes=probes, period=builder.PERIOD
+        )
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = _write_engine_h5(builder, Path(directory), _ENGINE_HOUSEHOLDS)
+        scorer = CountingScorer(path, maximum_microsim_batch_size=2)
+        assert scorer.n_batches == 2
+        plan = builder._record_post_export_baseline_plan(smoke)
+        scoring = scorer.open_consumer("reform_coverage_smoke", plan)
+        smoke(scoring.simulate)
+        scorer.close()
+
+    assert scoring.record()["reform_systems"] == len(probes)
+    (_, baseline), *reform_counts = counts
+    assert len(reform_counts) == len(probes)
+    one_set = reform_counts[0][1] - baseline
+    # Sanity: the engine still registers a set per system under the
+    # id-prefixed names the eviction keys on.
+    assert one_set > 1_000, counts
+    for label, count in reform_counts:
+        assert count - baseline <= int(1.5 * one_set), (
+            f"after {label} {count - baseline} variable modules stay registered "
+            f"(one reform system's set is {one_set}): the post-export scorer no "
+            "longer evicts a finished reform's modules"
+        )
+
+
+def test_post_export_reform_passes_do_not_accumulate_variable_modules() -> None:
+    """Four reform passes of the batched post-export scorer keep about one
+    reform system's variable modules registered. Before the eviction each
+    pass left its system's set (5,990 on policyengine-us 2.2.1) for the rest
+    of the run; this assertion then sees four sets and fails."""
+    import subprocess
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys; runpy.run_path(sys.argv[1], run_name='__main__')",
+            str(Path(__file__).resolve()),
+            "post-export",
+        ],
+        cwd=_TEST_PATHS.repository,
+        capture_output=True,
+        text=True,
+        timeout=1_200,
+    )
+    assert result.returncode == 0, (
+        "isolated post-export measurement failed in the fresh interpreter:\n"
+        f"{result.stdout}\n{result.stderr}"
+    )
+
+
 if __name__ == "__main__":
-    _isolated_family_measurement()
+    # ``python -c "runpy.run_path(<this file>)" <this file> [mode]``.
+    if sys.argv[2:] == ["post-export"]:
+        _isolated_post_export_measurement()
+    else:
+        _isolated_family_measurement()

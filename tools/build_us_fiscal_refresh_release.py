@@ -229,7 +229,10 @@ from microcosm.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
-from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
+from microcosm.build.us_runtime.engine_lifecycle import (
+    build_reform_tax_benefit_system,
+    release_engine_simulation,
+)
 from microcosm.build.us_runtime.exact_k_ladder import (
     ExactKLadderCalibration,
     assert_exact_k_realized_count,
@@ -4448,7 +4451,12 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 #   dry run and scored in ONE batch-outer pass, in ascending period order;
 #   the served baseline refuses any key outside that recorded plan;
 # * each reform builds ONE tax-benefit system (microcosm#456) and scores its
-#   keys batch by batch; every batch engine is released before the next;
+#   keys batch by batch; every batch engine is released before the next, and
+#   the system's variable modules leave ``sys.modules`` once the consumer has
+#   dropped the reform and the system is collected
+#   (``build_reform_tax_benefit_system``: policyengine-core registers one
+#   module per variable file per system and never removes them, so without
+#   this every reform pass left 5,990 modules behind for the rest of the run);
 # * a batch reform engine gets that system alone, not ``reform=`` too (see
 #   ``_HouseholdBatchedPostExportScorer._construct``), so it carries no
 #   ``baseline`` branch; it refuses the formulas that read one
@@ -5322,7 +5330,9 @@ class _BatchedPostExportReform:
 
     The reform's tax-benefit system is built once, on the first key, and
     handed to every batch engine (microcosm#456). The engines get that system
-    alone (see ``_HouseholdBatchedPostExportScorer._construct``).
+    alone (see ``_HouseholdBatchedPostExportScorer._construct``). Its variable
+    modules leave ``sys.modules`` once this object is dropped and the system
+    collected (``build_reform_tax_benefit_system``).
     """
 
     def __init__(self, consumer: _PostExportConsumer, reform) -> None:
@@ -5336,8 +5346,8 @@ class _BatchedPostExportReform:
         if key not in self._results:
             if self._system is None:
                 scorer = self._consumer._scorer
-                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
-                    reform=self._reform
+                self._system = build_reform_tax_benefit_system(
+                    scorer._microsimulation_cls, self._reform
                 )
                 self._consumer.reform_systems += 1
             self._results[key] = self._consumer._reform_values(self._system, key)
@@ -5365,8 +5375,10 @@ def _reform_household_income_tax(
     # under a unique per-system name and never evicts). Build the reform
     # system once per target family instead — the same
     # ``default_tax_benefit_system(reform=...)`` construction the engine ran
-    # per batch — and hand it to every batch simulation explicitly.
-    reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
+    # per batch — and hand it to every batch simulation explicitly. Its
+    # variable modules leave sys.modules once the system is collected after
+    # the family (``build_reform_tax_benefit_system``).
+    reform_system = build_reform_tax_benefit_system(microsimulation_cls, reform)
     batches = tuple(_household_position_batches(n_households, batch_size))
     guard_armed = (
         len(batches) > 1

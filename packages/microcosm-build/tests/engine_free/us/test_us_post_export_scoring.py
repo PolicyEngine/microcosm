@@ -1490,3 +1490,97 @@ def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) ->
 
     with pytest.raises(subprocess.CalledProcessError):
         sweep._run_workers(args, run=fail)
+
+
+def test_reform_passes_do_not_accumulate_engine_variable_modules(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """Memory stays bounded across the shipped consumers' reform passes.
+
+    policyengine-core registers every variable module of each system it builds
+    in ``sys.modules`` and never removes it; with one reform system per reform,
+    the scorer used to keep every reform's modules for the rest of the run
+    (5,990 per pass on policyengine-us 2.2.1). Here each fake reform system
+    registers modules the same way, carrying a known payload, and holds a
+    reference cycle as the engine's systems do, so only the production full
+    collections free it. After every pass, at most two reform systems' modules
+    may remain registered or traced (the current reform's, and the one the
+    consumer dropped, which goes at the next full collection); without the
+    eviction both grow by one system per pass.
+    """
+    import tracemalloc
+    import types
+
+    payload_bytes = 512 * 1024
+    modules_per_system = 4
+    per_system = payload_bytes * modules_per_system
+    registered: list[str] = []
+
+    class ModuleRegisteringSystem:
+        def __init__(self, reform=None) -> None:
+            self.reform = reform
+            self.parameters = _FakeParameterTree(
+                {} if reform is None else reform.parameters
+            )
+            self.formulas = []
+            for index in range(modules_per_system):
+                name = f"{id(self)}_{index}_fixture_variable"
+                module = types.ModuleType(name)
+                module.payload = bytearray(payload_bytes)
+                exec("def formula():\n    return payload\n", module.__dict__)
+                sys.modules[name] = module
+                registered.append(name)
+                self.formulas.append(module.formula)
+            self.cycle = self
+
+    engine = _fake_engine(_EngineLog())
+    engine.default_tax_benefit_system = ModuleRegisteringSystem
+    # The production full collections (the fixture stubs them out).
+    monkeypatch.setattr(builder, "_collect_family_garbage", gc.collect)
+
+    def live_fixture_modules() -> int:
+        return sum(1 for name in set(registered) if name in sys.modules)
+
+    rows: list[tuple[str, int, int]] = []
+
+    class MeasuredScorer(builder._HouseholdBatchedPostExportScorer):
+        def _score(self, keys, *, label, reform_system=None):
+            scored = super()._score(keys, label=label, reform_system=reform_system)
+            rows.append(
+                (label, live_fixture_modules(), tracemalloc.get_traced_memory()[0])
+            )
+            return scored
+
+    frame = _nested_frame()
+    path = _written_h5(tmp_path)
+    scorer = MeasuredScorer(
+        path,
+        maximum_microsim_batch_size=3,
+        microsimulation_cls=engine,
+        dataset_from_frame=lambda batch_frame: batch_frame,
+        load_frame=lambda load_path, *, expected_sha256: frame,
+    )
+
+    def simulate_for(name, consumer):
+        plan = builder._record_post_export_baseline_plan(consumer)
+        return scorer.open_consumer(name, plan).simulate
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        _run_consumers(builder, simulate_for)
+    finally:
+        tracemalloc.stop()
+        for name in registered:
+            sys.modules.pop(name, None)
+
+    reform_rows = [row for row in rows if " reform " in row[0]]
+    assert len(reform_rows) > 41  # the 41 smoke probes plus validation reforms
+    assert len(registered) == modules_per_system * len(reform_rows)
+    for label, modules, _ in rows:
+        assert modules <= 2 * modules_per_system, (label, modules)
+    # Traced memory after the second pass may grow by at most two systems'
+    # payloads over the whole run; one system per pass would be > 40.
+    floor = rows[1][2]
+    peak = max(traced for _, _, traced in rows[1:])
+    assert peak - floor <= 2 * per_system, (peak - floor) / per_system

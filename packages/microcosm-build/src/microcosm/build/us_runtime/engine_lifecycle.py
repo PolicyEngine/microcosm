@@ -25,13 +25,27 @@ Every access is defensive (``getattr``/instance-dict checks): the helper runs
 against engine versions that may drift and against test stubs — releasing
 less is survivable, raising mid-build is not. It must never be the thing that
 kills an 8-hour run.
+
+A tax-benefit system outlives itself in ``sys.modules`` as well: building one
+executes every variable file as a new module registered under a name unique
+to that system, and nothing removes those modules when the system is freed.
+:func:`build_reform_tax_benefit_system` builds a reform system whose variable
+modules are evicted when it is collected (see
+:func:`evict_variable_modules_when_freed`).
 """
 
 from __future__ import annotations
 
+import sys
+import weakref
+from collections.abc import Collection, Mapping
 from typing import Any
 
-__all__ = ["release_engine_simulation"]
+__all__ = [
+    "build_reform_tax_benefit_system",
+    "evict_variable_modules_when_freed",
+    "release_engine_simulation",
+]
 
 #: Instance attributes whose only post-mortem job is to keep big object
 #: graphs alive: the (multi-year) dataset tables, memoized short-path results,
@@ -109,3 +123,76 @@ def release_engine_simulation(simulation: Any) -> None:
 
         for attribute in _SEVERED_ATTRIBUTES:
             _sever_existing_attribute(current, attribute)
+
+
+def _evict_modules(registered: Mapping[str, weakref.ref]) -> None:
+    """Remove each still-registered module of a freed system from ``sys.modules``."""
+    try:
+        for name, module_ref in registered.items():
+            module = module_ref()
+            if module is not None and sys.modules.get(name) is module:
+                sys.modules.pop(name, None)
+    except Exception:  # pragma: no cover - a finalizer must not raise
+        pass
+
+
+def evict_variable_modules_when_freed(
+    system: Any, modules_before: Collection[str]
+) -> int:
+    """Evict ``system``'s variable modules from ``sys.modules`` once it is freed.
+
+    policyengine-core's ``TaxBenefitSystem.add_variables_from_file`` executes
+    each variable file of a system being built as a new module named
+    ``f"{id(system)}_{hash(path)}_{file name}"`` and registers it in
+    ``sys.modules``; nothing ever removes it. The modules hold the system's
+    ``Variable`` classes, formula functions and code objects, so every system
+    built leaves them behind for the rest of the process after the system
+    itself is collected (policyengine-us 2.2.1 has 5,990 variable files, and
+    microcosm#456 measured a ~55-60 MB resident floor per build).
+
+    This system's modules are the names absent from ``modules_before`` that
+    start with ``f"{id(system)}_"``; any other module first imported during
+    the build is left alone. A finalizer on ``system`` removes each of them
+    when the system is collected, unless ``sys.modules`` by then maps the name
+    to a different module. Until then nothing changes, so the system itself
+    never runs without its modules. No module is kept alive by this (the
+    finalizer holds weak references).
+
+    Returns the number of modules arranged for eviction: 0 when the engine
+    registered none under that name, or when ``system`` cannot be weakly
+    referenced. Never raises.
+    """
+    try:
+        prefix = f"{id(system)}_"
+        registered: dict[str, weakref.ref] = {}
+        for name, module in list(sys.modules.items()):
+            if (
+                isinstance(name, str)
+                and name.startswith(prefix)
+                and name not in modules_before
+            ):
+                try:
+                    registered[name] = weakref.ref(module)
+                except TypeError:  # pragma: no cover - not weak-referenceable
+                    continue
+        if not registered:
+            return 0
+        finalizer = weakref.finalize(system, _evict_modules, registered)
+        # At interpreter exit the modules go anyway.
+        finalizer.atexit = False
+        return len(registered)
+    except Exception:
+        return 0
+
+
+def build_reform_tax_benefit_system(microsimulation_cls: Any, reform: Any) -> Any:
+    """``microsimulation_cls.default_tax_benefit_system(reform=reform)``, with
+    the system's variable modules evicted from ``sys.modules`` once the system
+    is freed (:func:`evict_variable_modules_when_freed`).
+
+    A build failure propagates unchanged.
+    """
+    modules_before = set(sys.modules)
+    system = microsimulation_cls.default_tax_benefit_system(reform=reform)
+    evict_variable_modules_when_freed(system, modules_before)
+    return system
