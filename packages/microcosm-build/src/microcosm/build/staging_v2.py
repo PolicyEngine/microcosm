@@ -25,6 +25,7 @@ from microcosm.build.staging_storage import (
     BestEffortUploadSession,
     HuggingFaceDatasetStorage,
 )
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 
 STAGING_CONTRACT_VERSION = 2
 DEFAULT_STAGING_PREFIX = "runs"
@@ -728,6 +729,7 @@ class StagingTelemetryV2:
         monotonic: Callable[[], float] = time.monotonic,
         content_policy: StagingContentPolicy | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        emitter: LocalTelemetryEmitter | None = None,
     ) -> None:
         self.run_id = _safe_identifier(run_id, label="run_id")
         self.candidate_id = _safe_identifier(candidate_id, label="candidate_id")
@@ -765,6 +767,7 @@ class StagingTelemetryV2:
         self._monotonic = monotonic
         self._sleep = sleep
         self._content_policy = content_policy or StagingContentPolicy()
+        self.emitter = emitter
         self._transport = (
             HuggingFaceDatasetStorage(self.repo_id, api=api)
             if self.delivery_mode == "local_and_remote" and self.repo_id
@@ -970,7 +973,22 @@ class StagingTelemetryV2:
             timestamp=self.updated_at,
         )
         self._persist_bundle()
-        self._terminal_upload()
+        try:
+            self._terminal_upload()
+        finally:
+            if self.emitter is not None:
+                self.emitter.emit(
+                    event_type="run",
+                    stage_id="failed",
+                    status="failed",
+                    message=self.message,
+                    details={
+                        "error_type": error_type,
+                        "failure_class": error_code.lower(),
+                        "failed_during": stage,
+                    },
+                )
+                self.emitter.close()
 
     def complete(self, *, message: str = "Staging run completed.") -> None:
         self._require_running("complete the run")
@@ -987,7 +1005,11 @@ class StagingTelemetryV2:
             timestamp=self.updated_at,
         )
         self._persist_bundle()
-        self._terminal_upload()
+        try:
+            self._terminal_upload()
+        finally:
+            if self.emitter is not None:
+                self.emitter.close()
 
     def verify_remote(self) -> None:
         if self.status == "running":
@@ -1065,6 +1087,20 @@ class StagingTelemetryV2:
         }
         self._content_policy.validate_payload(event["details"])
         self._events.append(validate_v2_document(event))
+        if self.emitter is not None:
+            collector_status = {
+                "completed": "completed",
+                "failed": "failed",
+                "progress": "progress",
+                "started": "started",
+            }.get(status, "progress")
+            self.emitter.emit(
+                event_type=("calibration" if event_type == "calibration" else "stage"),
+                stage_id=stage_id,
+                status=collector_status,
+                message=message,
+                details=details,
+            )
 
     def _run_fields(self) -> dict[str, Any]:
         return {

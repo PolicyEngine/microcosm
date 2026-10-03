@@ -35,6 +35,10 @@ from microcosm.build.staging_v2 import (
     StagingTelemetryV2,
     disabled_staging_delivery,
 )
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
 from microcosm.build.uk_runtime.rowwise_cli import (
     BUDGET_ITERS,
     MANIFEST_FILENAME,
@@ -50,11 +54,13 @@ __all__ = [
     "STAGING_MAX_EPOCH_ROWS",
     "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
+    "calibration_progress",
     "create_staging_telemetry",
     "fail_staging_telemetry",
     "finalize_staging_telemetry",
     "fit_summary",
     "gate_statuses",
+    "graph_progress",
     "preflight_staged_dataset",
     "publish_staged_files",
     "replace_manifest",
@@ -92,6 +98,7 @@ _STAGING_UPLOAD_INTERVAL_SECONDS = STAGING_UPLOAD_INTERVAL_SECONDS
 _STAGING_EPOCH_EVERY = STAGING_EPOCH_EVERY
 _STAGING_MAX_EPOCH_ROWS = STAGING_MAX_EPOCH_ROWS
 _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
 def _hub_api() -> Any:
@@ -186,13 +193,22 @@ def _require_write_credential(storage: HuggingFaceDatasetStorage, *, hint: str) 
 def create_staging_telemetry(
     args: argparse.Namespace, *, build_id: str
 ) -> StagingTelemetryV2 | None:
+    global _ACTIVE_EMITTER
+    posture = posture_of(args)
+    run_id = args.staging_run_id or build_id
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=posture.pipeline,
+        candidate_id=args.staging_candidate_id or build_id,
+        run_kind="calibration",
+    )
     if args.no_staging:
         return None
     local_only = bool(args.staging_local_only)
     out_dir = args.out.expanduser().resolve()
-    posture = posture_of(args)
     return StagingTelemetryV2(
-        run_id=args.staging_run_id or build_id,
+        run_id=run_id,
         country_code="GB",
         operation_id=posture.staging_operation_id,
         pipeline_id=posture.pipeline,
@@ -204,6 +220,7 @@ def create_staging_telemetry(
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
         api=None if local_only else _hub_api(),
+        emitter=_ACTIVE_EMITTER,
     )
 
 
@@ -225,6 +242,12 @@ def stage(
     """
 
     if telemetry is None:
+        if _ACTIVE_EMITTER is not None:
+            _ACTIVE_EMITTER.stage(
+                stage_id,
+                status=event_status,
+                **details,
+            )
         return
     try:
         telemetry.stage(stage_id, event_status=event_status, **details)
@@ -239,6 +262,44 @@ def stage(
 
 
 _stage = stage
+
+
+def calibration_progress(
+    telemetry: StagingTelemetryV2 | None,
+    event: Mapping[str, Any],
+) -> None:
+    """Forward calibration progress with or without staging artifacts."""
+
+    if telemetry is not None:
+        telemetry.calibration_progress(event)
+    elif _ACTIVE_EMITTER is not None:
+        _ACTIVE_EMITTER.transition_calibration_progress(event)
+
+
+def graph_progress(
+    telemetry: StagingTelemetryV2 | None,
+    *,
+    node_id: str,
+    done: int,
+    total: int,
+    elapsed_seconds: float,
+) -> None:
+    """Send graph work progress only through the local emitter service."""
+
+    emitter = telemetry.emitter if telemetry is not None else _ACTIVE_EMITTER
+    if emitter is None:
+        return
+    emitter.emit(
+        event_type="progress",
+        stage_id=node_id,
+        status="completed",
+        details={
+            "done": done,
+            "total": total,
+            "unit": "graph_nodes",
+            "elapsed_seconds": elapsed_seconds,
+        },
+    )
 
 
 def stage_sample(
@@ -334,7 +395,11 @@ _gate_statuses = gate_statuses
 def fail_staging_telemetry(
     telemetry: StagingTelemetryV2 | None, error: BaseException
 ) -> None:
-    if telemetry is None or telemetry.status != "running":
+    if telemetry is None:
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
+        return
+    if telemetry.status != "running":
         return
     try:
         telemetry.fail(error)
@@ -350,6 +415,8 @@ def finalize_staging_telemetry(
     args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
 ) -> None:
     if telemetry is None:
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.complete()
         return
     try:
         telemetry.complete(message="UK rowwise candidate staging run completed.")
