@@ -409,6 +409,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         None,
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),

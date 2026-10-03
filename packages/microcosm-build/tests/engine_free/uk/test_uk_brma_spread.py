@@ -292,6 +292,35 @@ def test_clone_assignment_has_regional_support_conserves_and_ignores_row_order(k
         np.testing.assert_array_equal(assigned[2 * clone : 2 * (clone + 1)], expected)
 
 
+@pytest.mark.parametrize(
+    ("names", "cumulative", "uniform", "k", "expected"),
+    [
+        # A quantile exactly on a cumulative boundary takes the next BRMA.
+        (["A", "B", "B"], [0.5, 1.0, 1.0], 0.5, 2, ["B", "A"]),
+        (["A", "B", "B"], [0.5, 1.0, 1.0], 0.0, 4, ["A", "A", "B", "B"]),
+        # A zero-probability column is never chosen, even at quantile zero.
+        (["Z", "A", "B"], [0.0, 0.5, 1.0], 0.0, 2, ["A", "B"]),
+        (["A", "Z", "B"], [0.5, 0.5, 1.0], 0.5, 1, ["B"]),
+        # Just below one stays inside the support.
+        (["A", "B", "B"], [0.5, 1.0, 1.0], float(np.nextafter(1.0, 0.0)), 1, ["B"]),
+    ],
+)
+def test_clone_assignment_cdf_boundaries(names, cumulative, uniform, k, expected):
+    payload = {
+        "household_ids": [7],
+        "ordered_brmas": [names],
+        "cumulative_probabilities": [cumulative],
+        "uniforms": [uniform],
+    }
+    household = pd.DataFrame(
+        {"household_id": [7 + clone * 100 for clone in range(k)], "clone": range(k)}
+    )
+    assigned = assign_clone_brmas(
+        household, payload, n_clones=k, id_multiplier=100, clone_index_column="clone"
+    )
+    assert assigned.tolist() == expected
+
+
 def test_lineage_draws_and_quantile_assignments_are_independent_of_row_order():
     lineage = _lineage_keys()
     p = np.asarray([[0.125, 0.5, 0.375], [0.5, 0.5, 0]])
