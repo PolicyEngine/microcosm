@@ -25,6 +25,7 @@ tool anyway, use the real class.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -397,6 +398,23 @@ def sample_synthetic(
         certainty_threshold=certainty_threshold,
     )
     return Path(receipt["output"]["path"]), receipt
+
+
+#: The commit git reports once :func:`move_head_after_load` has run.
+LATER_HEAD = "f" * 40
+
+
+def move_head_after_load(monkeypatch) -> None:
+    """Make every later ``git`` call report :data:`LATER_HEAD`, as when the
+    worktree moves on while a long run is still going."""
+    real_run = subprocess.run
+
+    def run(args, *rest, **options):
+        if list(args)[:1] == ["git"]:
+            return subprocess.CompletedProcess(args, 0, LATER_HEAD + "\n", "")
+        return real_run(args, *rest, **options)
+
+    monkeypatch.setattr(subprocess, "run", run)
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

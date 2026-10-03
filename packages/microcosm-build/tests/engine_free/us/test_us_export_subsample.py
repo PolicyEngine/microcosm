@@ -9,15 +9,19 @@ written H5 end to end:
   its source weights (relative tolerance 1e-9);
 - certainty households are always selected and keep their source weights;
 - determinism given the seed, and invariance to the source's row order;
-- each stratum draws ``max(1, floor(p * N))`` of its ``N`` non-certainty
-  households, and ``p = 1`` selects everything at unchanged weights;
+- each stratum draws ``min(N, max(2, floor(p * N)))`` of its ``N``
+  non-certainty households, and ``p = 1`` selects everything at unchanged
+  weights;
 - the chunked H5 path realizes the same tables and weights as the in-memory
-  ``Frame.select`` reference path (differential).
+  ``Frame.select`` reference path (differential);
+- the receipt names the commit the tool was loaded from, not the worktree's
+  HEAD when the receipt is written.
 """
 
 # ruff: noqa: F403, F405
 from __future__ import annotations
 
+import hashlib
 import math
 import sys
 from pathlib import Path
@@ -336,6 +340,21 @@ def test_sample_export_writes_a_verified_subsample(sampler, tmp_path) -> None:
     )
     assert receipt["output"]["sha256"] == sampler.sha256_file(path)
     assert (tmp_path / "export-sample" / sampler.RECEIPT_FILENAME).exists()
+
+
+def test_the_receipt_names_the_commit_the_sampler_loaded_from(
+    sampler, tmp_path, monkeypatch
+) -> None:
+    """A draw can outlive its worktree's HEAD; the receipt keeps the commit
+    read when the tool loaded, and the file's sha256 checks it."""
+    move_head_after_load(monkeypatch)
+    frame = synthetic_export_frame(60, seed=3, rare_households=(4, 41))
+    _, receipt = sample_synthetic(sampler, tmp_path, frame, fraction=0.25)
+    source = receipt["tool_source"]
+    assert source == sampler._TOOL_SOURCE
+    assert source["commit"] != LATER_HEAD
+    tool = Path(sampler.__file__).read_bytes()
+    assert source["sha256"] == hashlib.sha256(tool).hexdigest()
 
 
 def test_h5_path_matches_the_frame_reference_path(sampler, tmp_path) -> None:

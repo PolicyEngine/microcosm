@@ -845,7 +845,10 @@ def _library_versions() -> dict[str, str | None]:
 
 
 def _tool_commit() -> dict[str, object]:
+    """The commit this tool was loaded from, whether ``tools/`` differed from
+    it, and this file's sha256 (a check on the commit)."""
     root = Path(__file__).resolve().parents[1]
+    sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     try:
         head = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
@@ -860,8 +863,13 @@ def _tool_commit() -> dict[str, object]:
             check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        return {"commit": None, "tools_dirty": None}
-    return {"commit": head, "tools_dirty": bool(dirty)}
+        return {"commit": None, "tools_dirty": None, "sha256": sha256}
+    return {"commit": head, "tools_dirty": bool(dirty), "sha256": sha256}
+
+
+# Read once, as the module loads: the worktree's HEAD can move while a long
+# draw runs.
+_TOOL_SOURCE = _tool_commit()
 
 
 def _default_probes() -> tuple[Any, ...]:
@@ -1126,7 +1134,7 @@ def sample_export(
     receipt: dict[str, object] = {
         "schema_version": SAMPLE_RECEIPT_SCHEMA_VERSION,
         "tool": "tools/sample_us_export_households.py",
-        "tool_source": _tool_commit(),
+        "tool_source": dict(_TOOL_SOURCE),
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "host": {
             "platform": platform.platform(),

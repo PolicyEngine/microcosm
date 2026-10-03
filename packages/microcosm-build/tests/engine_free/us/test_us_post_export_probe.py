@@ -17,14 +17,18 @@ as policyengine-core does. Invariants:
   plans and reform passes equal the reference's, its effects carry z-scores,
   and a stored column the engine does not define fails the stored-input gate
   authoritatively;
-- the target surface resolves from the reference release manifest.
+- the target surface resolves from the reference release manifest;
+- the report names the commit the probe was loaded from, not the worktree's
+  HEAD when the report is written.
 """
 
 # ruff: noqa: F403, F405
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -780,3 +784,21 @@ def test_a_malformed_reference_smoke_file_costs_only_the_comparison(
     assert "malformed" in smoke["reference_error"]
     assert len(smoke["probes"]) == len(fixture_engine_probes())
     assert all("reference" not in row for row in smoke["probes"])
+
+
+def test_the_report_names_the_commit_the_probe_loaded_from(
+    probe_tool, builder, chain, tmp_path, monkeypatch
+) -> None:
+    """The Route A probe of 2026-10-03 named a commit made ten minutes after
+    it started: it read HEAD when it wrote its report header. The header now
+    keeps the commit read when the tool loaded, and the file's sha256."""
+    _, path, receipt, _ = chain
+    move_head_after_load(monkeypatch)
+    probe, _ = fixture_export_probe(
+        probe_tool, builder, path, tmp_path / "probe", receipt=receipt
+    )
+    source = probe.report["tool_source"]
+    assert source == probe_tool._TOOL_SOURCE
+    assert source["commit"] != LATER_HEAD
+    tool = Path(probe_tool.__file__).read_bytes()
+    assert source["sha256"] == hashlib.sha256(tool).hexdigest()

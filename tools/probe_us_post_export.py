@@ -1259,9 +1259,14 @@ def _verdict(
 
 
 def _tool_source() -> dict[str, object]:
+    """The commit this tool was loaded from, whether ``tools/`` or
+    ``packages/`` differed from it, and this file's sha256 (a check on the
+    commit: ``git show <commit>:tools/probe_us_post_export.py`` hashes to it
+    when the file was clean)."""
     import subprocess
 
     root = _TOOLS.parent
+    sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     try:
         head = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
@@ -1285,8 +1290,13 @@ def _tool_source() -> dict[str, object]:
             check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        return {"commit": None, "dirty": None}
-    return {"commit": head, "dirty": bool(dirty)}
+        return {"commit": None, "dirty": None, "sha256": sha256}
+    return {"commit": head, "dirty": bool(dirty), "sha256": sha256}
+
+
+# Read once, as the module loads. A run can outlive its worktree's HEAD, so a
+# commit read when the report is written can name code that never ran.
+_TOOL_SOURCE = _tool_source()
 
 
 def _package_versions() -> dict[str, str | None]:
@@ -1436,7 +1446,7 @@ class ExportProbe:
         return {
             "schema_version": PROBE_REPORT_SCHEMA_VERSION,
             "tool": "tools/probe_us_post_export.py",
-            "tool_source": _tool_source(),
+            "tool_source": dict(_TOOL_SOURCE),
             "packages": _package_versions(),
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "host": {

@@ -1,0 +1,3215 @@
+{
+  "classification": "probe diagnostics (not release evidence)",
+  "created_at": "2026-10-02T22:27:17+00:00",
+  "export": "<run>/subsample/populace_us_2024.h5",
+  "host": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "not_reproduced": [
+    {
+      "step": "written-H5 stored-input premise (#1031)",
+      "why": "compares the pre-write export frame's modeled stored tables with the written bytes; the probe has only the written bytes"
+    },
+    {
+      "step": "calibration NPZ (_write_npz)",
+      "why": "needs the calibration result and target registry"
+    },
+    {
+      "step": "us_medicaid_take_up.json, us_snap_state_take_up.json, us_ssi_take_up.json",
+      "why": "computed by pre-export stages from target specs, seeds and priors; the export does not carry their inputs"
+    },
+    {
+      "step": "source coverage fiscal_target_sources, CD vintage crosswalk, fiscal-target exclusion receipt",
+      "why": "need the compiled target specs and build metadata"
+    },
+    {
+      "step": "release and build manifests (_build_manifests), publisher preflight",
+      "why": "bind the build's gate evidence, calibration and artifacts"
+    },
+    {
+      "step": "--audit-export-targets",
+      "why": "needs the calibration result and target specs (and was off in the published Route A build)"
+    }
+  ],
+  "packages": {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "policyengine-core": "3.32.5",
+    "policyengine-us": "2.2.1"
+  },
+  "post_export_scoring": {
+    "consumers": {
+      "demographics": {
+        "baseline_passes": 1,
+        "baseline_plan": {
+          "keys": [
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "age"
+            }
+          ],
+          "period_order": [
+            2024
+          ]
+        },
+        "reform_passes": 0,
+        "reform_systems": 0
+      },
+      "reform_coverage_smoke": {
+        "baseline_passes": 1,
+        "baseline_plan": {
+          "keys": [
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "tax_unit_earned_income_last_year"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "spm_unit_capped_work_childcare_expenses"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "spm_unit_benefits"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "medicare_cost"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ssi"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "head_start"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "american_opportunity_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "savers_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "qualified_business_income_deduction"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "state_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "snap"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "wic"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "aca_ptc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "housing_assistance"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "qualified_business_income_deduction"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "snap"
+            }
+          ],
+          "period_order": [
+            2024,
+            2026
+          ]
+        },
+        "reform_passes": 41,
+        "reform_systems": 41
+      },
+      "reform_validation": {
+        "baseline_passes": 1,
+        "baseline_plan": {
+          "keys": [
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "state_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "basic_income"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "alternative_minimum_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "cdcc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "income_tax_before_credits"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "education_tax_credits"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "savers_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "non_refundable_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "refundable_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "net_investment_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "self_employment_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ca_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ca_yctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ny_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ny_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "co_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "co_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "wa_working_families_tax_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "mn_child_and_working_families_credits"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "mn_wfc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ct_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "nm_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "nm_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ri_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "il_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "hi_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ia_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ks_total_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "la_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ne_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "wi_earned_income_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "vt_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "vt_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "md_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "or_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "or_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "md_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "nj_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "nj_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ma_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ma_child_and_family_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "me_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "mi_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "mt_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "in_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ok_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "de_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "dc_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "il_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "az_dependent_tax_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "id_grocery_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "va_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "oh_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "mo_wftc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "sc_eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "co_family_affordability_credit"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "id_ctc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "ut_ctc"
+            },
+            {
+              "map_to": "household",
+              "period": 2024,
+              "variable": "eitc"
+            },
+            {
+              "map_to": null,
+              "period": 2024,
+              "variable": "state_code_str"
+            },
+            {
+              "map_to": "person",
+              "period": 2024,
+              "variable": "in_poverty"
+            },
+            {
+              "map_to": "person",
+              "period": 2024,
+              "variable": "is_child"
+            },
+            {
+              "map_to": "person",
+              "period": 2024,
+              "variable": "state_fips"
+            },
+            {
+              "map_to": null,
+              "period": 2025,
+              "variable": "nd_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2025,
+              "variable": "ia_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2025,
+              "variable": "mi_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "ga_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "ok_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "ks_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "id_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2026,
+              "variable": "ct_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2027,
+              "variable": "md_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2027,
+              "variable": "co_income_tax"
+            },
+            {
+              "map_to": null,
+              "period": 2027,
+              "variable": "ca_income_tax"
+            }
+          ],
+          "period_order": [
+            2024,
+            2025,
+            2026,
+            2027
+          ]
+        },
+        "reform_passes": 55,
+        "reform_systems": 55
+      }
+    },
+    "dataset_sha256": "92a8373fe69761a8f53ddfcf990337986934fb282ed6564238bd7bce7559d391",
+    "max_batch_households": 2000,
+    "maximum_batch_size": 2000,
+    "method": "household_batched_written_h5",
+    "n_batches": 13,
+    "n_households": 25827,
+    "spm": {
+      "geography_kind": "county"
+    }
+  },
+  "process_peak_rss_gib": 20.907,
+  "reference_plan_comparison": {
+    "consumers": [
+      "demographics",
+      "reform_coverage_smoke",
+      "reform_validation"
+    ],
+    "problems": []
+  },
+  "references": {
+    "build_manifest": true,
+    "calibration_diagnostics": true,
+    "paths": {
+      "build_manifest": "<release>/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/build_manifest.json",
+      "calibration_diagnostics": "<release>/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/calibration_diagnostics.json",
+      "qrf_tail": "<release>/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/qrf_tail_concentration.json",
+      "release_manifest": "<release>/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/release_manifest.json",
+      "smoke": "<release>/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/reform_coverage_smoke.json",
+      "validation": "<release>/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/reform_validation.json"
+    },
+    "qrf_tail": true,
+    "smoke": true,
+    "validation": true
+  },
+  "rss_source": "psutil rss sampled every 0.5 s",
+  "rules": {
+    "authoritative": "does not depend on the population's size, clears or misses its floor by at least se_multiplier design-based standard errors, or was computed on the source export",
+    "informational": "scale-dependent at this sample: a variance estimate resting on fewer than min_effective_households effective households, within se_multiplier standard errors of the floor, an unweighted record count, a column constant on the subsample, or a weighted estimate",
+    "min_effective_households": 30.0,
+    "se_multiplier": 4.0
+  },
+  "sample": {
+    "certainty_households": 8614,
+    "certainty_threshold": 30.0,
+    "fraction": 0.05,
+    "receipt_path": "<run>/subsample/sample_receipt.json",
+    "sampled_households": 25827,
+    "seed": 0,
+    "source_households": 352932,
+    "source_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+    "subsample_sha256": "92a8373fe69761a8f53ddfcf990337986934fb282ed6564238bd7bce7559d391"
+  },
+  "schema_version": 1,
+  "scored_dataset_sha256": "92a8373fe69761a8f53ddfcf990337986934fb282ed6564238bd7bce7559d391",
+  "source_export": "<release>/artifacts/populace_us_2024.h5",
+  "source_export_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+  "stages": {
+    "demographics": {
+      "congressional_districts": {
+        "household_records_max": 344,
+        "household_records_median": 49.5,
+        "household_records_min": 25,
+        "n_geographies": 436,
+        "n_under_100": 407,
+        "n_under_50": 218
+      },
+      "source": {
+        "congressional_districts": {
+          "household_records_max": 6010,
+          "household_records_median": 612.0,
+          "household_records_min": 457,
+          "n_geographies": 436,
+          "n_under_100": 0,
+          "n_under_50": 0
+        },
+        "states": {
+          "household_records_max": 32227,
+          "household_records_median": 5670.0,
+          "household_records_min": 2628,
+          "n_geographies": 51,
+          "n_under_100": 0,
+          "n_under_50": 0
+        }
+      },
+      "states": {
+        "household_records_max": 2594,
+        "household_records_median": 385.0,
+        "household_records_min": 194,
+        "n_geographies": 51,
+        "n_under_100": 0,
+        "n_under_50": 0
+      },
+      "states_without_sampled_records": [],
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 33.298,
+        "peak_rss_gib": 20.903,
+        "rss_before_gib": 20.74,
+        "wall_seconds": 36.09
+      },
+      "total_population": 338365038.2212715
+    },
+    "load": {
+      "batch_size": 2000,
+      "design": {
+        "census": false,
+        "problems": [],
+        "strata": 6,
+        "verified_against_receipt": true
+      },
+      "household_weight_total": 138098416.6187297,
+      "n_batches": 13,
+      "rows": {
+        "family": 28757,
+        "household": 25827,
+        "marital_unit": 53648,
+        "person": 68312,
+        "spm_unit": 26845,
+        "tax_unit": 34382
+      },
+      "sha256": "92a8373fe69761a8f53ddfcf990337986934fb282ed6564238bd7bce7559d391",
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 5.51,
+        "peak_rss_gib": 0.56,
+        "rss_before_gib": 0.212,
+        "wall_seconds": 11.16
+      }
+    },
+    "open_scorer": {
+      "max_batch_households": 2000,
+      "maximum_batch_size": 2000,
+      "n_batches": 13,
+      "n_households": 25827,
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 2.473,
+        "peak_rss_gib": 0.93,
+        "rss_before_gib": 0.902,
+        "wall_seconds": 6.162
+      }
+    },
+    "post_export_scoring_plans": {
+      "compared": true,
+      "problems": [],
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 0.0,
+        "peak_rss_gib": 20.907,
+        "rss_before_gib": 20.907,
+        "wall_seconds": 0.0
+      }
+    },
+    "qrf_tail_concentration": {
+      "reference": {
+        "columns_compared": 33,
+        "differences": []
+      },
+      "register": "4 reviewed exclusion(s)",
+      "source": {
+        "failures": [],
+        "passed": true
+      },
+      "status": "completed",
+      "subsample": {
+        "failures": [
+          "QRF tail concentration failed: farm_operations_income: top 100 weighted records carry 82.8% of the weighted |mass| across 789 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail concentration failed: miscellaneous_income: top 100 weighted records carry 84.1% of the weighted |mass| across 1211 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail concentration failed: non_sch_d_capital_gains: top 100 weighted records carry 85.9% of the weighted |mass| across 832 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail concentration failed: qualified_bdc_income: top 100 weighted records carry 92.4% of the weighted |mass| across 529 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail concentration failed: sstb_self_employment_income_before_lsr: top 100 weighted records carry 83.1% of the weighted |mass| across 1397 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail concentration failed: sstb_unadjusted_basis_qualified_property: top 100 weighted records carry 84.9% of the weighted |mass| across 693 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail concentration failed: unrecaptured_section_1250_gain: top 100 weighted records carry 87.6% of the weighted |mass| across 545 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.",
+          "QRF tail-concentration register mismatch: the per-run exclusion register must exactly match the concentrated columns; stale (checked, at or below the threshold) = []; unused (dense, thin, absent, or not a checked QRF output) = ['estate_income', 'long_term_capital_gains_on_collectibles', 'w2_wages_from_qualified_business']. Remove these entries; qrf_tail_concentration.json records the measured surface."
+        ],
+        "passed": false
+      },
+      "timing": {
+        "cpu_seconds": 14.906,
+        "peak_rss_gib": 1.324,
+        "rss_before_gib": 0.183,
+        "wall_seconds": 92.011
+      }
+    },
+    "reform_coverage_smoke": {
+      "baseline_keys": 18,
+      "failures": [
+        "tx_snap_additional_vehicle_exemption_abolition: 'Texas SNAP additional-vehicle exemption abolition' scores +0 on snap for 2026; expected a positive effect with magnitude at least $1,000,000. The reform did not bind as declared, so its input leaves ['household_vehicles_owned', 'household_vehicles_value'] are absent or degenerate on the export. Setting the Texas TANF non-cash additional-vehicle exemption to zero tightens the asset test used by Texas SNAP categorical eligibility, so baseline-minus-reform SNAP must be positive. PolicyEngine-US computes the exemption from both household vehicle count and value; if either restored SIPP vehicle input is absent or degenerate, this vehicle-specific reform loses its intended binding channel. A persisted 30,000-household Microcosm smoke scored +$3.58 million in 2026 SNAP. Restore them (PolicyEngine/microcosm#49)."
+      ],
+      "passed": false,
+      "probes": [
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 22.5 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 364225969541.3797,
+          "budget_measure": "tax_unit_earned_income_last_year",
+          "certainty_effect_households": 2283,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 1105,
+          "effect": 364225969541.3797,
+          "effective_variance_households": 22.528698670883976,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 1259.45,
+          "expected_sign": "positive",
+          "margin_to_floor": 363225969541.3797,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 25189,
+          "probe": "prior_year_self_employment_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -10331748611.37378,
+            "effect": 374557718152.7535,
+            "passed": true,
+            "relative_difference": -0.02758386254147418,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.504849493439348
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 3406,
+          "signed_magnitude": 364225969541.3797,
+          "standard_error": 20465007384.651405,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "take-all probe: every pool carrier is a certainty household at its source weight and no other household carries an effect, so the effect has zero design variance",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 11,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 0,
+          "effect": 9047549.74609375,
+          "effective_variance_households": 0.0,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 0.65,
+          "expected_sign": "positive",
+          "margin_to_floor": 8047549.74609375,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 13,
+          "probe": "keogh_distribution_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 0.0,
+            "effect": 9047549.74609375,
+            "passed": true,
+            "relative_difference": 0.0,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": null
+          },
+          "reform_total": 2356693289681.3384,
+          "sampled_carrier_households": 13,
+          "signed_magnitude": 9047549.74609375,
+          "standard_error": 0.0,
+          "take_all": true
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 3.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 231,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 71,
+          "effect": -1009221472.034668,
+          "effective_variance_households": 3.0694824542654304,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 143.25,
+          "expected_sign": "negative",
+          "margin_to_floor": 909221472.034668,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": 187754341.11102524,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 2865,
+          "probe": "tip_income_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 67022460.501464844,
+            "effect": -1076243932.5361328,
+            "passed": true,
+            "relative_difference": 0.06227441426176374,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.7483752454029191
+          },
+          "reform_total": 2711531646017.184,
+          "sampled_carrier_households": 524,
+          "signed_magnitude": 1009221472.034668,
+          "standard_error": 89557292.16481566,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "the effect is 16.7 standard errors above the floor (threshold 4)",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 1044,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 2518,
+          "effect": -21614627391.483887,
+          "effective_variance_households": 34.51221954266522,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 3213.8500000000004,
+          "expected_sign": "negative",
+          "margin_to_floor": 17614627391.483887,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 4000000000.0,
+          "noncarrier_effect": 138078076.2955584,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 64277,
+          "probe": "fsla_overtime_premium_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 466349259.39990234,
+            "effect": -22080976650.88379,
+            "passed": true,
+            "relative_difference": 0.021119956185508524,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.44087042922114045
+          },
+          "reform_total": 2732137051936.6333,
+          "sampled_carrier_households": 4635,
+          "signed_magnitude": 21614627391.483887,
+          "standard_error": 1057792105.0948548,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 19.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 282076907147.6144,
+          "budget_measure": "spm_unit_capped_work_childcare_expenses",
+          "certainty_effect_households": 533,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 892,
+          "effect": -10040641708.88977,
+          "effective_variance_households": 19.134548712291785,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 17646.600000000002,
+          "expected_sign": "negative",
+          "margin_to_floor": 10039641708.88977,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 352932,
+          "probe": "household_head_childcare_cap_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -1279504554.2999878,
+            "effect": -8761137154.589783,
+            "passed": true,
+            "relative_difference": -0.14604320554777311,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -1.000833410745788
+          },
+          "reform_total": 292117548856.50415,
+          "sampled_carrier_households": 25827,
+          "signed_magnitude": 10040641708.88977,
+          "standard_error": 1278439089.4250257,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 7.6 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 2694,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 31,
+          "effect": -1001157238.5942383,
+          "effective_variance_households": 7.590008891081716,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 2247.9,
+          "expected_sign": "negative",
+          "margin_to_floor": 701157238.5942383,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 300000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 44958,
+          "probe": "self_employed_health_premium_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 188645.6826171875,
+            "effect": -1001345884.2768555,
+            "passed": true,
+            "relative_difference": 0.00018839212861340338,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.9199760969136059
+          },
+          "reform_total": 2357703494469.6787,
+          "sampled_carrier_households": 6296,
+          "signed_magnitude": 1001157238.5942383,
+          "standard_error": 205054.98267842826,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 0.0 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 397,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 0,
+          "effect": -128500665.9296875,
+          "effective_variance_households": 0.0,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 698.45,
+          "expected_sign": "negative",
+          "margin_to_floor": 98500665.9296875,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 30000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 13969,
+          "probe": "cdcc_adult_care_expense_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 24927.0654296875,
+            "effect": -128525592.99511719,
+            "passed": true,
+            "relative_difference": 0.00019394631721819408,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": null
+          },
+          "reform_total": 2356830837897.014,
+          "sampled_carrier_households": 1478,
+          "signed_magnitude": 128500665.9296875,
+          "standard_error": 0.0,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 14.5 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 1792332968062.5146,
+          "budget_measure": "spm_unit_benefits",
+          "certainty_effect_households": 339,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 528,
+          "effect": 3681448474.205078,
+          "effective_variance_households": 14.52819237149316,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 540.85,
+          "expected_sign": "positive",
+          "margin_to_floor": 3581448474.205078,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 10817,
+          "probe": "spm_unit_energy_subsidy_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -56596816.01660156,
+            "effect": 3738045290.2216797,
+            "passed": true,
+            "relative_difference": -0.015140751816103642,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.16463462628968453
+          },
+          "reform_total": 1788651519588.3096,
+          "sampled_carrier_households": 867,
+          "signed_magnitude": 3681448474.205078,
+          "standard_error": 343772250.662604,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "the effect is 40.7 standard errors above the floor (threshold 4)",
+          "baseline_total": 513492495471.24603,
+          "budget_measure": "medicare_cost",
+          "certainty_effect_households": 2147,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 5255,
+          "effect": 513492495471.24603,
+          "effective_variance_households": 366.31824078131325,
+          "engine_weight_scale": 0.9999999999844865,
+          "expected_sampled_carriers": 5767.450000000001,
+          "expected_sign": "positive",
+          "margin_to_floor": 512492495471.24603,
+          "measure_entity": "person",
+          "min_abs_effect": 1000000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 115349,
+          "probe": "medicare_take_up_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -3401453495.34375,
+            "effect": 516893948966.5898,
+            "passed": true,
+            "relative_difference": -0.006580563580100274,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.27022271759874567
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 8182,
+          "signed_magnitude": 513492495471.24603,
+          "standard_error": 12587592655.309523,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.7 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 60701344441.81195,
+          "budget_measure": "ssi",
+          "certainty_effect_households": 7,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 49,
+          "effect": 1628367608.5106812,
+          "effective_variance_households": 2.6897519695703784,
+          "engine_weight_scale": 0.9999999999844865,
+          "expected_sampled_carriers": 16138.1,
+          "expected_sign": "positive",
+          "margin_to_floor": 628367608.5106812,
+          "measure_entity": "person",
+          "min_abs_effect": 1000000000.0,
+          "noncarrier_effect": 0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 322762,
+          "probe": "ssi_asset_limit_10k_20k",
+          "reference": {
+            "changed_fields": [],
+            "difference": -1064458527.9118958,
+            "effect": 2692826136.422577,
+            "passed": true,
+            "relative_difference": -0.39529419055848525,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -2.0867492536828007
+          },
+          "reform_total": 62329712050.32263,
+          "sampled_carrier_households": 23745,
+          "signed_magnitude": 1628367608.5106812,
+          "standard_error": 510103706.05538034,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "the effect is 8.8 standard errors above the floor (threshold 4)",
+          "baseline_total": 60701344441.81195,
+          "budget_measure": "ssi",
+          "certainty_effect_households": 108,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 173,
+          "effect": 35713370671.831696,
+          "effective_variance_households": 35.086131103851315,
+          "engine_weight_scale": 0.9999999999844865,
+          "expected_sampled_carriers": 2292.25,
+          "expected_sign": "positive",
+          "margin_to_floor": 35613370671.831696,
+          "measure_entity": "person",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 45845,
+          "probe": "ssi_disability_criteria_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 2759135813.273308,
+            "effect": 32954234858.558388,
+            "passed": true,
+            "relative_difference": 0.08372628965945315,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.6832443769593612
+          },
+          "reform_total": 24987973769.98025,
+          "sampled_carrier_households": 3201,
+          "signed_magnitude": 35713370671.831696,
+          "standard_error": 4038285430.9789934,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "the effect is 10.4 standard errors above the floor (threshold 4)",
+          "baseline_total": 60701344441.81195,
+          "budget_measure": "ssi",
+          "certainty_effect_households": 187,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 411,
+          "effect": 60701344441.81195,
+          "effective_variance_households": 59.607287521350926,
+          "engine_weight_scale": 0.9999999999844865,
+          "expected_sampled_carriers": 12176.800000000001,
+          "expected_sign": "positive",
+          "margin_to_floor": 50701344441.81195,
+          "measure_entity": "person",
+          "min_abs_effect": 10000000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 243536,
+          "probe": "ssi_take_up_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -1857272413.3733368,
+            "effect": 62558616855.18529,
+            "passed": true,
+            "relative_difference": -0.02968851465614514,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.3820578077022883
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 18124,
+          "signed_magnitude": 60701344441.81195,
+          "standard_error": 4861234022.524107,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.0 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2263632048.8455715,
+          "budget_measure": "head_start",
+          "certainty_effect_households": 5,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 22,
+          "effect": 2263632048.8455715,
+          "effective_variance_households": 1.973920091233119,
+          "engine_weight_scale": 0.9999999999844865,
+          "expected_sampled_carriers": 54.85,
+          "expected_sign": "positive",
+          "margin_to_floor": 2163632048.8455715,
+          "measure_entity": "person",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 1097,
+          "probe": "head_start_take_up_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -2480497691.2291126,
+            "effect": 4744129740.074684,
+            "passed": true,
+            "relative_difference": -0.522856209069456,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -3.3973522292821947
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 70,
+          "signed_magnitude": 2263632048.8455715,
+          "standard_error": 730126735.1231349,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 9.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 1539998374.71937,
+          "budget_measure": "american_opportunity_credit",
+          "certainty_effect_households": 49,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 92,
+          "effect": 1539998374.71937,
+          "effective_variance_households": 9.050131881785173,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 126.55000000000001,
+          "expected_sign": "positive",
+          "margin_to_floor": 1439998374.71937,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 2531,
+          "probe": "aotc_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": -203728266.73662162,
+            "effect": 1743726641.4559915,
+            "passed": true,
+            "relative_difference": -0.11683497968839364,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.7636890454120023
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 228,
+          "signed_magnitude": 1539998374.71937,
+          "standard_error": 266768612.121066,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 13.0 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2097396956.3258314,
+          "budget_measure": "savers_credit",
+          "certainty_effect_households": 376,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 912,
+          "effect": 2097396956.3258314,
+          "effective_variance_households": 13.047370181871294,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 6086.1,
+          "expected_sign": "positive",
+          "margin_to_floor": 1997396956.3258314,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 121722,
+          "probe": "savers_credit_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": 242656077.56071544,
+            "effect": 1854740878.765116,
+            "passed": true,
+            "relative_difference": 0.13083017705539307,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 1.4234130004617795
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 9161,
+          "signed_magnitude": 2097396956.3258314,
+          "standard_error": 170474821.77132964,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 25.0 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 255349749905.94733,
+          "budget_measure": "qualified_business_income_deduction",
+          "certainty_effect_households": 1487,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 1254,
+          "effect": 1743874051.675232,
+          "effective_variance_households": 25.03083588858451,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 1531.5,
+          "expected_sign": "positive",
+          "margin_to_floor": 1742874051.675232,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 30630,
+          "probe": "qbi_reit_ptp_rate_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": -754783.5801391602,
+            "effect": 1744628835.255371,
+            "passed": true,
+            "relative_difference": -0.00043263275539560725,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.038123721497087704
+          },
+          "reform_total": 253605875854.2721,
+          "sampled_carrier_households": 3203,
+          "signed_magnitude": 1743874051.675232,
+          "standard_error": 19798266.027014665,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 1.2 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 255349749905.94733,
+          "budget_measure": "qualified_business_income_deduction",
+          "certainty_effect_households": 422,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 157,
+          "effect": 80256192368.39386,
+          "effective_variance_households": 1.1806923921525356,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 1241.9,
+          "expected_sign": "positive",
+          "margin_to_floor": 80255192368.39386,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 24838,
+          "probe": "qbi_wage_property_guardrails_zeroed",
+          "reference": {
+            "changed_fields": [],
+            "difference": 16114844983.172302,
+            "effect": 64141347385.22156,
+            "passed": true,
+            "relative_difference": 0.2512395769672471,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.9932389148399278
+          },
+          "reform_total": 175093557537.55347,
+          "sampled_carrier_households": 3060,
+          "signed_magnitude": 80256192368.39386,
+          "standard_error": 16224540483.06132,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 8.7 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 271023960743.1435,
+          "budget_measure": "qualified_business_income_deduction",
+          "certainty_effect_households": 263,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 179,
+          "effect": 4990235430.528748,
+          "effective_variance_households": 8.681549637236184,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 349.8,
+          "expected_sign": "either",
+          "margin_to_floor": 4989235430.528748,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 33287.87642219663,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 6996,
+          "probe": "qbi_farm_operations_income_exclusion",
+          "reference": {
+            "changed_fields": [],
+            "difference": 377324645.52908325,
+            "effect": 4612910784.999664,
+            "passed": true,
+            "relative_difference": 0.08179751638728272,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.47307100586729434
+          },
+          "reform_total": 266033725312.61475,
+          "sampled_carrier_households": 762,
+          "signed_magnitude": 4990235430.528748,
+          "standard_error": 797606788.0916172,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 6.3 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 271023960743.1435,
+          "budget_measure": "qualified_business_income_deduction",
+          "certainty_effect_households": 76,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 64,
+          "effect": 1182638453.5778503,
+          "effective_variance_households": 6.291098691070166,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 103.05000000000001,
+          "expected_sign": "positive",
+          "margin_to_floor": 1181638453.5778503,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 33287.87642219663,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 2061,
+          "probe": "qbi_farm_rent_income_exclusion",
+          "reference": {
+            "changed_fields": [],
+            "difference": 11305843.161987305,
+            "effect": 1171332610.415863,
+            "passed": true,
+            "relative_difference": 0.009652120210307596,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.04375073731372037
+          },
+          "reform_total": 269841322289.56564,
+          "sampled_carrier_households": 248,
+          "signed_magnitude": 1182638453.5778503,
+          "standard_error": 258414917.23710352,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 3.0 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 205,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 54,
+          "effect": 7152712887.007324,
+          "effective_variance_households": 2.9932391374731773,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 66.25,
+          "expected_sign": "positive",
+          "margin_to_floor": 7151712887.007324,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 1325,
+          "probe": "domestic_production_ald_reactivation",
+          "reference": {
+            "changed_fields": [],
+            "difference": -496357410.89208984,
+            "effect": 7649070297.899414,
+            "passed": true,
+            "relative_difference": -0.06489120789338274,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.8927481674884835
+          },
+          "reform_total": 2349549624344.077,
+          "sampled_carrier_households": 274,
+          "signed_magnitude": 7152712887.007324,
+          "standard_error": 555988159.8955989,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "take-all probe: every pool carrier is a certainty household at its source weight and no other household carries an effect, so the effect has zero design variance",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 190,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 0,
+          "effect": 1157988175.8847656,
+          "effective_variance_households": 0.0,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 19.700000000000003,
+          "expected_sign": "positive",
+          "margin_to_floor": 1156988175.8847656,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 394,
+          "probe": "form_4952_election_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 0.0,
+            "effect": 1157988175.8847656,
+            "passed": true,
+            "relative_difference": 0.0,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": null
+          },
+          "reform_total": 2355544349055.1997,
+          "sampled_carrier_households": 394,
+          "signed_magnitude": 1157988175.8847656,
+          "standard_error": 0.0,
+          "take_all": true
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.9 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 570414115045.9507,
+          "budget_measure": "state_income_tax",
+          "certainty_effect_households": 27,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 74,
+          "effect": -44638405.23095703,
+          "effective_variance_households": 2.900831520737559,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 1767.1000000000001,
+          "expected_sign": "negative",
+          "margin_to_floor": 43638405.23095703,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 35342,
+          "probe": "salt_refund_income_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 3814724.1845703125,
+            "effect": -48453129.415527344,
+            "passed": true,
+            "relative_difference": 0.07873019205541432,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.4353911424024005
+          },
+          "reform_total": 570458753451.1816,
+          "sampled_carrier_households": 3087,
+          "signed_magnitude": 44638405.23095703,
+          "standard_error": 8761602.644283101,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 36,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 55,
+          "effect": 2541353646.512207,
+          "effective_variance_households": 2.0703859703242213,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 56.900000000000006,
+          "expected_sign": "positive",
+          "margin_to_floor": 2540353646.512207,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 1138,
+          "probe": "collectibles_gain_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -107803014.51171875,
+            "effect": 2649156661.023926,
+            "passed": true,
+            "relative_difference": -0.040693333126645595,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.5428852566080496
+          },
+          "reform_total": 2354160983584.5723,
+          "sampled_carrier_households": 93,
+          "signed_magnitude": 2541353646.512207,
+          "standard_error": 198574216.55779094,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 4.9 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 227,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 261,
+          "effect": 3505140466.0620117,
+          "effective_variance_households": 4.8837645508997785,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 315.40000000000003,
+          "expected_sign": "positive",
+          "margin_to_floor": 3504140466.0620117,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 6308,
+          "probe": "unrecaptured_section_1250_gain_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 41966136.19189453,
+            "effect": 3463174329.870117,
+            "passed": true,
+            "relative_difference": 0.012117823763572545,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.1253667963852793
+          },
+          "reform_total": 2353197196765.0225,
+          "sampled_carrier_households": 545,
+          "signed_magnitude": 3505140466.0620117,
+          "standard_error": 334746818.15210074,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 3.8 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 87645150859.4265,
+          "budget_measure": "snap",
+          "certainty_effect_households": 43,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 105,
+          "effect": 1612940337.143921,
+          "effective_variance_households": 3.8029948888140903,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 418.6,
+          "expected_sign": "positive",
+          "margin_to_floor": 1611940337.143921,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 8372,
+          "probe": "child_support_received_snap_exclusion",
+          "reference": {
+            "changed_fields": [],
+            "difference": 28103442.92427063,
+            "effect": 1584836894.2196503,
+            "passed": true,
+            "relative_difference": 0.01773270361560351,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.07747014255744147
+          },
+          "reform_total": 89258091196.57042,
+          "sampled_carrier_households": 648,
+          "signed_magnitude": 1612940337.143921,
+          "standard_error": 362764827.79714626,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 87645150859.4265,
+          "budget_measure": "snap",
+          "certainty_effect_households": 4,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 5,
+          "effect": 146992474.76683044,
+          "effective_variance_households": 2.052161280780939,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 194.15,
+          "expected_sign": "positive",
+          "margin_to_floor": 145992474.76683044,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 3883,
+          "probe": "child_support_expense_snap_deduction_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": 44868290.58325195,
+            "effect": 102124184.18357849,
+            "passed": true,
+            "relative_difference": 0.4393502963274271,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.5152280812953997
+          },
+          "reform_total": 87498158384.65967,
+          "sampled_carrier_households": 287,
+          "signed_magnitude": 146992474.76683044,
+          "standard_error": 87084326.7518396,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.4 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 87645150859.4265,
+          "budget_measure": "snap",
+          "certainty_effect_households": 12,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 26,
+          "effect": 874883955.5609131,
+          "effective_variance_households": 2.393459564448237,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 230.8,
+          "expected_sign": "positive",
+          "margin_to_floor": 873883955.5609131,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 4616,
+          "probe": "disability_benefits_snap_exclusion",
+          "reference": {
+            "changed_fields": [],
+            "difference": 153868409.66932678,
+            "effect": 721015545.8915863,
+            "passed": true,
+            "relative_difference": 0.21340512079952131,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.36356653057343613
+          },
+          "reform_total": 88520034814.98741,
+          "sampled_carrier_households": 321,
+          "signed_magnitude": 874883955.5609131,
+          "standard_error": 423219402.0352684,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 1.3 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 87645150859.4265,
+          "budget_measure": "snap",
+          "certainty_effect_households": 1,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 17,
+          "effect": 369137457.8650818,
+          "effective_variance_households": 1.3089765057694092,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 84.35000000000001,
+          "expected_sign": "positive",
+          "margin_to_floor": 359137457.8650818,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 10000000.0,
+          "noncarrier_effect": 0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 1687,
+          "probe": "workers_compensation_snap_exclusion",
+          "reference": {
+            "changed_fields": [],
+            "difference": 80644261.76182556,
+            "effect": 288493196.1032562,
+            "passed": true,
+            "relative_difference": 0.2795360960019373,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.4059020186163818
+          },
+          "reform_total": 88014288317.29158,
+          "sampled_carrier_households": 132,
+          "signed_magnitude": 369137457.8650818,
+          "standard_error": 198679134.52788836,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 18.3 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 6518480980.521951,
+          "budget_measure": "wic",
+          "certainty_effect_households": 237,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 542,
+          "effect": 6518480980.521951,
+          "effective_variance_households": 18.295047528617737,
+          "engine_weight_scale": 0.9999999999844865,
+          "expected_sampled_carriers": 1333.2,
+          "expected_sign": "positive",
+          "margin_to_floor": 6493480980.521951,
+          "measure_entity": "person",
+          "min_abs_effect": 25000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 26664,
+          "probe": "wic_claim_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -98730055.27234745,
+            "effect": 6617211035.794298,
+            "passed": true,
+            "relative_difference": -0.014920191412709928,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.15644811238009393
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 1905,
+          "signed_magnitude": 6518480980.521951,
+          "standard_error": 631072205.1569452,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 18.7 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 180,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 321,
+          "effect": 143856772.86376953,
+          "effective_variance_households": 18.69200649789694,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 325.95000000000005,
+          "expected_sign": "positive",
+          "margin_to_floor": 142856772.86376953,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 6519,
+          "probe": "educator_expense_ald_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": -18638796.833984375,
+            "effect": 162495569.6977539,
+            "passed": true,
+            "relative_difference": -0.11470341541405119,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -1.3339503241954314
+          },
+          "reform_total": 2356846194003.948,
+          "sampled_carrier_households": 522,
+          "signed_magnitude": 143856772.86376953,
+          "standard_error": 13972631.885843514,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 1.5 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2356702337231.0845,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 53,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 41,
+          "effect": -3410713379.633301,
+          "effective_variance_households": 1.478772855143198,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 44.35,
+          "expected_sign": "negative",
+          "margin_to_floor": 3409713379.633301,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 887,
+          "probe": "alimony_expense_ald_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": -702155292.734375,
+            "effect": -2708558086.898926,
+            "passed": true,
+            "relative_difference": -0.25923582592916977,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.6709982769334706
+          },
+          "reform_total": 2360113050610.718,
+          "sampled_carrier_households": 97,
+          "signed_magnitude": 3410713379.633301,
+          "standard_error": 1046433823.8591238,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 2.2 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 86,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 22,
+          "effect": 1396353324.6699219,
+          "effective_variance_households": 2.1703158259960333,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 5.050000000000001,
+          "expected_sign": "positive",
+          "margin_to_floor": 1395353324.6699219,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 187501607.0195024,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 101,
+          "probe": "obbba_casualty_loss_limit",
+          "reference": {
+            "changed_fields": [],
+            "difference": 64992728.22167969,
+            "effect": 1331360596.4482422,
+            "passed": true,
+            "relative_difference": 0.04881677315301733,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.7957059213582693
+          },
+          "reform_total": 2709126071220.4795,
+          "sampled_carrier_households": 101,
+          "signed_magnitude": 1396353324.6699219,
+          "standard_error": 81679332.1215169,
+          "take_all": true
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 14.3 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 891,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 575,
+          "effect": 19895912757.351562,
+          "effective_variance_households": 14.278715682294594,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 2736.4,
+          "expected_sign": "positive",
+          "margin_to_floor": 19795912757.351562,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": 109740953.2882206,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 54728,
+          "probe": "obbba_misc_itemized_deductions",
+          "reference": {
+            "changed_fields": [],
+            "difference": -657006962.6293945,
+            "effect": 20552919719.980957,
+            "passed": true,
+            "relative_difference": -0.03196659995663153,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -0.6268951041032267
+          },
+          "reform_total": 2690626511787.798,
+          "sampled_carrier_households": 5041,
+          "signed_magnitude": 19895912757.351562,
+          "standard_error": 1048033328.5889077,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 11.6 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 464,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 467,
+          "effect": -1052081123.6982422,
+          "effective_variance_households": 11.629809764871972,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 1063.45,
+          "expected_sign": "negative",
+          "margin_to_floor": 1051081123.6982422,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": 53331884.95818559,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 21269,
+          "probe": "obbba_cdcc",
+          "reference": {
+            "changed_fields": [],
+            "difference": 177099602.0439453,
+            "effect": -1229180725.7421875,
+            "passed": true,
+            "relative_difference": 0.14407938420691668,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 1.303047506228379
+          },
+          "reform_total": 2711574505668.8477,
+          "sampled_carrier_households": 1645,
+          "signed_magnitude": 1052081123.6982422,
+          "standard_error": 135911853.7101946,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 3.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 231,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 71,
+          "effect": -1009221472.034668,
+          "effective_variance_households": 3.0694824542654304,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 2691.3500000000004,
+          "expected_sign": "negative",
+          "margin_to_floor": 909221472.034668,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": 177552345.48508802,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 53827,
+          "probe": "obbba_no_tax_on_tips",
+          "reference": {
+            "changed_fields": [],
+            "difference": 67022460.501464844,
+            "effect": -1076243932.5361328,
+            "passed": true,
+            "relative_difference": 0.06227441426176374,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.7483752454029191
+          },
+          "reform_total": 2711531646017.184,
+          "sampled_carrier_households": 4426,
+          "signed_magnitude": 1009221472.034668,
+          "standard_error": 89557292.16481566,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "the effect is 20.3 standard errors above the floor (threshold 4)",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 1044,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 2518,
+          "effect": -21614627391.483887,
+          "effective_variance_households": 34.51221954266522,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 3213.8500000000004,
+          "expected_sign": "negative",
+          "margin_to_floor": 21514627391.483887,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": 138078076.2955584,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 64277,
+          "probe": "obbba_no_tax_on_overtime",
+          "reference": {
+            "changed_fields": [],
+            "difference": 466349259.39990234,
+            "effect": -22080976650.88379,
+            "passed": true,
+            "relative_difference": 0.021119956185508524,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.44087042922114045
+          },
+          "reform_total": 2732137051936.6333,
+          "sampled_carrier_households": 4635,
+          "signed_magnitude": 21614627391.483887,
+          "standard_error": 1057792105.0948548,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 3.6 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 2710522424545.1494,
+          "budget_measure": "income_tax",
+          "certainty_effect_households": 1393,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 3762,
+          "effect": -943186761.0068359,
+          "effective_variance_households": 3.563525942328894,
+          "engine_weight_scale": 1.016492204183516,
+          "expected_sampled_carriers": 5482.150000000001,
+          "expected_sign": "negative",
+          "margin_to_floor": 843186761.0068359,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": 156654585.2747315,
+          "passed": true,
+          "period": 2026,
+          "pool_carrier_households": 109643,
+          "probe": "obbba_auto_loan_interest",
+          "reference": {
+            "changed_fields": [],
+            "difference": 52205271.200683594,
+            "effect": -995392032.2075195,
+            "passed": true,
+            "relative_difference": 0.05244694503421525,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.5568295329229496
+          },
+          "reform_total": 2711465611306.1562,
+          "sampled_carrier_households": 7803,
+          "signed_magnitude": 943186761.0068359,
+          "standard_error": 93754494.17462456,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 0.0 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 85048453374.7583,
+          "budget_measure": "snap",
+          "certainty_effect_households": 0,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 0,
+          "effect": 0.0,
+          "effective_variance_households": 0.0,
+          "engine_weight_scale": 1.0164922043194553,
+          "expected_sampled_carriers": 15479.0,
+          "expected_sign": "positive",
+          "margin_to_floor": -1000000.0,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": false,
+          "period": 2026,
+          "pool_carrier_households": 309580,
+          "probe": "tx_snap_additional_vehicle_exemption_abolition",
+          "reference": {
+            "changed_fields": [],
+            "difference": -19683639.334121704,
+            "effect": 19683639.334121704,
+            "passed": true,
+            "relative_difference": -1.0,
+            "same_definition": true,
+            "verdict_agrees": false,
+            "z": null
+          },
+          "reform_total": 85048453374.7583,
+          "sampled_carrier_households": 22889,
+          "signed_magnitude": 0.0,
+          "standard_error": 0.0,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 3.7 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 139095949532.02356,
+          "budget_measure": "aca_ptc",
+          "certainty_effect_households": 18,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 42,
+          "effect": 4382196502.289215,
+          "effective_variance_households": 3.6500876854420485,
+          "engine_weight_scale": 0.9999999999820398,
+          "expected_sampled_carriers": 15891.75,
+          "expected_sign": "positive",
+          "margin_to_floor": 4282196502.289215,
+          "measure_entity": "tax_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 317835,
+          "probe": "voluntary_filing_aca_ptc_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": -2007246510.959259,
+            "effect": 6389443013.248474,
+            "passed": true,
+            "relative_difference": -0.31415046770074395,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": -1.3461899961576902
+          },
+          "reform_total": 134713753029.73434,
+          "sampled_carrier_households": 23276,
+          "signed_magnitude": 4382196502.289215,
+          "standard_error": 1491057366.8563602,
+          "take_all": false
+        },
+        {
+          "authority": "authoritative",
+          "authority_reason": "the effect is 11.5 standard errors above the floor (threshold 4)",
+          "baseline_total": 87645150859.4265,
+          "budget_measure": "snap",
+          "certainty_effect_households": 166,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 472,
+          "effect": 10942259408.036621,
+          "effective_variance_households": 39.14187312152227,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 5548.85,
+          "expected_sign": "positive",
+          "margin_to_floor": 10941259408.036621,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 1000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 110977,
+          "probe": "pre_subsidy_rent_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 458496288.7093048,
+            "effect": 10483763119.327316,
+            "passed": true,
+            "relative_difference": 0.043733942048351425,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.481709254402585
+          },
+          "reform_total": 76702891451.38988,
+          "sampled_carrier_households": 8213,
+          "signed_magnitude": 10942259408.036621,
+          "standard_error": 951811252.3661833,
+          "take_all": false
+        },
+        {
+          "authority": "informational",
+          "authority_reason": "the variance estimate rests on 5.1 effective household(s) (fewer than 30); the standard error is not reliable",
+          "baseline_total": 11864870182.638567,
+          "budget_measure": "housing_assistance",
+          "certainty_effect_households": 46,
+          "decomposition": "decomposed",
+          "drawn_effect_households": 133,
+          "effect": 11864870182.638567,
+          "effective_variance_households": 5.117514640487291,
+          "engine_weight_scale": 0.9999999999831456,
+          "expected_sampled_carriers": 494.6,
+          "expected_sign": "positive",
+          "margin_to_floor": 11764870182.638567,
+          "measure_entity": "spm_unit",
+          "min_abs_effect": 100000000.0,
+          "noncarrier_effect": -0.0,
+          "passed": true,
+          "period": 2024,
+          "pool_carrier_households": 9892,
+          "probe": "housing_assistance_take_up_neutralization",
+          "reference": {
+            "changed_fields": [],
+            "difference": 2307720384.6034126,
+            "effect": 9557149798.035154,
+            "passed": true,
+            "relative_difference": 0.24146533572989037,
+            "same_definition": true,
+            "verdict_agrees": true,
+            "z": 0.8860401401391603
+          },
+          "reform_total": 0.0,
+          "sampled_carrier_households": 704,
+          "signed_magnitude": 11864870182.638567,
+          "standard_error": 2604532548.876358,
+          "take_all": false
+        }
+      ],
+      "reform_passes": 41,
+      "reform_systems": 41,
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 6264.232,
+        "peak_rss_gib": 12.232,
+        "rss_before_gib": 0.859,
+        "wall_seconds": 18451.862
+      }
+    },
+    "reform_validation": {
+      "baseline_keys": 75,
+      "baseline_plan_sha256": "1a87bb3eeaef5852673cfaa967d3b868d5064fe14bb07884bf46b8181f619c72",
+      "in_sample_rows": "taken from the build's calibration fit (--calibration-diagnostics), as the release does; full-scale values, not subsample estimates",
+      "reference": {
+        "authority": "informational",
+        "max_abs_relative_difference": 1.0722558721751716,
+        "median_abs_relative_difference": 0.1543035322420014,
+        "only_in_probe": [],
+        "only_in_reference": [],
+        "relative_difference": {
+          "fed_eitc_co": -0.16091832135808642,
+          "fed_eitc_ct": -0.2820013043357002,
+          "fed_eitc_hi": 0.3789411448351709,
+          "fed_eitc_ia": -0.24099792891761151,
+          "fed_eitc_il": -0.37320193984499833,
+          "fed_eitc_in": 0.07294494298448906,
+          "fed_eitc_ks": 0.17425173585494236,
+          "fed_eitc_la": -0.11080054685688279,
+          "fed_eitc_me": 0.7263744408788679,
+          "fed_eitc_mi": 0.11062627756576363,
+          "fed_eitc_mt": 0.5581095163780789,
+          "fed_eitc_ne": -0.04920180547689081,
+          "fed_eitc_nj": 0.08811343583190889,
+          "fed_eitc_nm": -0.07266029737376341,
+          "fed_eitc_ny": 0.23247570985177107,
+          "fed_eitc_ok": -0.39247344790933425,
+          "fed_eitc_ri": 0.1309847455190361,
+          "fed_eitc_vt": -0.5923383878841458,
+          "federal.arpa_childless_eitc": -0.006892076617356371,
+          "federal.arpa_ctc_2021": 0.051206278075045505,
+          "federal.cbo_rates_plus_1pt": 0.011960354304268915,
+          "federal.ubi_mechanical": -0.005693761287398984,
+          "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss": 0.0,
+          "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss": 0.0,
+          "obbba_amt": 0.05587611093971809,
+          "obbba_auto_loan_interest": -0.008441646551126844,
+          "obbba_casualty_loss_limit": 0.0,
+          "obbba_cdcc": 0.08163744513616175,
+          "obbba_charitable_floor": 0.04334403105248362,
+          "obbba_charitable_nonitemizer_deduction": 0.05593984715412175,
+          "obbba_child_tax_credit": 0.017089022525958716,
+          "obbba_itemized_tax_benefit_limit": -0.08191107027082548,
+          "obbba_misc_itemized_deductions": -0.035283578329742035,
+          "obbba_mortgage_interest_limit": 0.14005979882478736,
+          "obbba_no_tax_on_overtime": 0.018167111310663342,
+          "obbba_no_tax_on_tips": 0.0010735773166588567,
+          "obbba_personal_exemption_termination": 0.0052280742007637425,
+          "obbba_qbi_deduction": -0.14870251654448066,
+          "obbba_reduced_rates": -0.04585210856581466,
+          "obbba_salt_limit": 0.11723665204821451,
+          "obbba_standard_deduction": -0.02467091360031013,
+          "soi_amt": -0.1934888222198017,
+          "soi_cdcc": -0.03409967266002808,
+          "soi_ctc_nonrefundable": -0.02902368366828692,
+          "soi_ctc_refundable": -0.05843661598413037,
+          "soi_education_credits": -0.315844311090571,
+          "soi_income_tax_net": 0.024521438746841814,
+          "soi_niit": 0.03987166687672305,
+          "soi_savers_credit": 0.13083017705539307,
+          "soi_se_tax": 0.02273058677972938,
+          "spm_child_poverty_ak": 0.8545762276838804,
+          "spm_child_poverty_al": -0.09282741111944916,
+          "spm_child_poverty_ar": -0.022765150541950965,
+          "spm_child_poverty_az": 1.0722558721751716,
+          "spm_child_poverty_ca": 0.06700985975285276,
+          "spm_child_poverty_co": -0.5587359164499627,
+          "spm_child_poverty_ct": 0.48876093507941676,
+          "spm_child_poverty_dc": -0.19120260808959358,
+          "spm_child_poverty_de": 0.2984753121828916,
+          "spm_child_poverty_fl": -0.07149202056859785,
+          "spm_child_poverty_ga": -0.12785963263011757,
+          "spm_child_poverty_hi": -0.6614814306318599,
+          "spm_child_poverty_ia": -0.6085997231600256,
+          "spm_child_poverty_id": 0.19078481101776198,
+          "spm_child_poverty_il": -0.6930727006507575,
+          "spm_child_poverty_in": -0.24401611636983733,
+          "spm_child_poverty_ks": 0.0908861366810009,
+          "spm_child_poverty_ky": -0.8773587713833618,
+          "spm_child_poverty_la": -0.07464272300357018,
+          "spm_child_poverty_ma": 0.09224876403609644,
+          "spm_child_poverty_md": -0.735082454940646,
+          "spm_child_poverty_me": -0.7899941949540346,
+          "spm_child_poverty_mi": -0.35865942541752344,
+          "spm_child_poverty_mn": -0.149834963205677,
+          "spm_child_poverty_mo": 0.08614285008772488,
+          "spm_child_poverty_ms": 0.2124982660906882,
+          "spm_child_poverty_mt": -0.5999010785605694,
+          "spm_child_poverty_nc": -0.05501741606227698,
+          "spm_child_poverty_nd": -0.5412480706706255,
+          "spm_child_poverty_ne": -0.06149742360216041,
+          "spm_child_poverty_nh": -0.5398009382543203,
+          "spm_child_poverty_nj": -0.31372099209815313,
+          "spm_child_poverty_nm": 0.2057041650254847,
+          "spm_child_poverty_nv": -0.4869952410949013,
+          "spm_child_poverty_ny": -0.37102177340012216,
+          "spm_child_poverty_oh": -0.7045699017297047,
+          "spm_child_poverty_ok": 0.0976594410585551,
+          "spm_child_poverty_or": -0.22696425919061475,
+          "spm_child_poverty_pa": 0.41586821984391875,
+          "spm_child_poverty_ri": -0.6270871981632535,
+          "spm_child_poverty_sc": 0.8176174405528734,
+          "spm_child_poverty_sd": 0.4389210896933328,
+          "spm_child_poverty_tn": 0.4496266116428105,
+          "spm_child_poverty_tx": 0.14169744649655702,
+          "spm_child_poverty_us": -0.05572057743314676,
+          "spm_child_poverty_ut": -0.17090587480610492,
+          "spm_child_poverty_va": -0.18327458931431523,
+          "spm_child_poverty_vt": -0.7762941709248296,
+          "spm_child_poverty_wa": -0.22816141027218917,
+          "spm_child_poverty_wi": 0.14161180872709733,
+          "spm_child_poverty_wv": 0.1475324938340609,
+          "spm_child_poverty_wy": -0.7525478745642369,
+          "spm_poverty_ak": 0.5212606285148317,
+          "spm_poverty_al": -0.2104618014282519,
+          "spm_poverty_ar": -0.07575020401389111,
+          "spm_poverty_az": 0.5825371946545652,
+          "spm_poverty_ca": 0.023527125589759623,
+          "spm_poverty_co": -0.12469286173797547,
+          "spm_poverty_ct": 0.08457875909599194,
+          "spm_poverty_dc": -0.30410606647280425,
+          "spm_poverty_de": 0.006079196689098761,
+          "spm_poverty_fl": 0.11358020803615085,
+          "spm_poverty_ga": -0.004852107628428267,
+          "spm_poverty_hi": -0.3854129885835568,
+          "spm_poverty_ia": 0.045517063930531385,
+          "spm_poverty_id": -0.11856251542479951,
+          "spm_poverty_il": -0.27083690912466213,
+          "spm_poverty_in": -0.01957927507995302,
+          "spm_poverty_ks": 0.08763154417370399,
+          "spm_poverty_ky": -0.47927560881823067,
+          "spm_poverty_la": 0.38144103169895344,
+          "spm_poverty_ma": 0.27116067405443617,
+          "spm_poverty_md": -0.6347642946742695,
+          "spm_poverty_me": -0.6038927940321615,
+          "spm_poverty_mi": -0.16643163395091767,
+          "spm_poverty_mn": -0.016399882069812147,
+          "spm_poverty_mo": -0.13008128123573004,
+          "spm_poverty_ms": 0.4377646979406151,
+          "spm_poverty_mt": -0.3658450272905691,
+          "spm_poverty_nc": 0.16784474656686538,
+          "spm_poverty_nd": -0.10067626013621836,
+          "spm_poverty_ne": 0.1959549167145954,
+          "spm_poverty_nh": 0.25183662330283413,
+          "spm_poverty_nj": 0.008891179830398412,
+          "spm_poverty_nm": 0.007400622281531103,
+          "spm_poverty_nv": 0.1543035322420014,
+          "spm_poverty_ny": -0.10102198859965719,
+          "spm_poverty_oh": -0.6448065574022939,
+          "spm_poverty_ok": 0.023629765233895123,
+          "spm_poverty_or": -0.2348171911339966,
+          "spm_poverty_pa": -0.07427084504178588,
+          "spm_poverty_ri": -0.6379393635954701,
+          "spm_poverty_sc": 0.8352035723563862,
+          "spm_poverty_sd": 0.5644666774771915,
+          "spm_poverty_tn": 0.1086334237399122,
+          "spm_poverty_tx": -0.05727129862032641,
+          "spm_poverty_us": -0.020404260391613756,
+          "spm_poverty_ut": -0.014727179322495662,
+          "spm_poverty_va": -0.19468091093314221,
+          "spm_poverty_vt": 0.13726565839132018,
+          "spm_poverty_wa": -0.31737857830309185,
+          "spm_poverty_wi": -0.15177241033770025,
+          "spm_poverty_wv": -0.2905903494310643,
+          "spm_poverty_wy": -0.3833229557733633,
+          "state.ca.ab2591": -0.00419911981442096,
+          "state.co.hb1062": 0.2025508887282047,
+          "state.ct.hb5134": 0.4584269052767834,
+          "state.ct.rebate2026": 0.2897958995650978,
+          "state.ct.sb69": -0.2917309589894108,
+          "state.ga.hb1001": -0.219501999216485,
+          "state.ia.hf1020": 0.5642152524972471,
+          "state.id.sb1450": 0.08746256916304893,
+          "state.ks.hb2620": -0.16079624966311729,
+          "state.ks.hb2629": 0.024763313564708157,
+          "state.md.hb411": 0.30421527094858425,
+          "state.mi.hb4170": 0.0217281032990023,
+          "state.nd.hb1388": -0.3888615720647092,
+          "state.ok.sb2156": 0.0808829974761916,
+          "state_az_dependent_credit": -0.2419688189341873,
+          "state_ca_eitc": 0.2226372236453357,
+          "state_ca_yctc": -0.20689470222610146,
+          "state_co_ctc": 0.03514029734334838,
+          "state_co_eitc": -0.17300739549336586,
+          "state_co_fac": 0.13464982135863796,
+          "state_ct_eitc": -0.2820013104576976,
+          "state_dc_eitc": 0.6628527679322371,
+          "state_de_eitc": 0.17344821596011356,
+          "state_hi_eitc": 0.3789411394439709,
+          "state_ia_eitc": -0.2409979394929398,
+          "state_id_ctc": -0.10053757101284824,
+          "state_id_grocery_credit": 0.004685231065499617,
+          "state_il_ctc": -0.37149535756875696,
+          "state_il_eitc": -0.38550159216879587,
+          "state_in_eitc": 0.0746863485836332,
+          "state_ks_eitc": 0.1742517196040437,
+          "state_la_eitc": -0.11080054624327344,
+          "state_ma_cftc": 0.17383716264568178,
+          "state_ma_eitc": 0.26333893297093974,
+          "state_md_ctc": -0.8177396782210696,
+          "state_md_eitc": -0.6283691799932817,
+          "state_me_eitc": 0.6291900208304414,
+          "state_mi_eitc": 0.11062626867442107,
+          "state_mn_cwfc": 0.09922895103623658,
+          "state_mn_wfc": 0.34062884309650554,
+          "state_mo_wftc": 0.10968233901870963,
+          "state_mt_eitc": 0.5581095170765712,
+          "state_ne_eitc": -0.049201798077371045,
+          "state_nj_ctc": 0.047262662019833306,
+          "state_nj_eitc": 0.0758166576439743,
+          "state_nm_ctc": -0.11694146580560498,
+          "state_nm_eitc": -0.13483492881137918,
+          "state_ny_eitc": 0.2413002247026276,
+          "state_ny_escc": 0.19500160335916758,
+          "state_oh_eitc": 0.04767511116101483,
+          "state_ok_eitc": -0.3888700309171523,
+          "state_or_eitc": -0.12409753608467591,
+          "state_or_kids_credit": -0.7153082512899429,
+          "state_repeal_ca_eitc": 0.2226372255565487,
+          "state_repeal_ca_yctc": -0.20689469638321323,
+          "state_repeal_co_ctc": 0.03514029684606844,
+          "state_repeal_co_eitc": -0.1730074353393454,
+          "state_repeal_ct_eitc": -0.28200131051468613,
+          "state_repeal_il_eitc": -0.3837847136838917,
+          "state_repeal_md_eitc": -0.6961823568924934,
+          "state_repeal_mn_cwfc": 0.09922894750878855,
+          "state_repeal_nm_ctc": -0.11694146511445137,
+          "state_repeal_nm_eitc": -0.13483492771232364,
+          "state_repeal_ny_eitc": 0.2413002092996377,
+          "state_repeal_ny_escc": 0.19500158268186724,
+          "state_ri_eitc": 0.13098473639931757,
+          "state_sc_eitc": -0.3569696913062447,
+          "state_ut_ctc": 0.5035674146857416,
+          "state_va_eitc_cli": 0.12136820061363168,
+          "state_vt_ctc": -0.12703313332191968,
+          "state_vt_eitc": -0.5923383860767116,
+          "state_wa_wftc": 0.2710283329119597,
+          "state_wi_eic": 0.29368464292034424,
+          "te_cdcc": -0.030345456590759202,
+          "te_ctc": -0.03832883723132892,
+          "te_eitc": -0.0015889987810254885,
+          "te_itemized_total": 0.18362569371283383,
+          "te_standard_deduction": 0.002431717075567216
+        },
+        "rows_compared": 241
+      },
+      "reform_passes": 55,
+      "reform_systems": 55,
+      "rows": 242,
+      "rows_with_budget_effect": 242,
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 7610.912,
+        "peak_rss_gib": 20.763,
+        "rss_before_gib": 12.232,
+        "wall_seconds": 9627.482
+      }
+    },
+    "source_coverage": {
+      "gate": {
+        "failures": [],
+        "name": "us_source_coverage",
+        "passed": true
+      },
+      "reproduced": "complete",
+      "status": "completed",
+      "target_surface": "national_state",
+      "timing": {
+        "cpu_seconds": 0.002,
+        "peak_rss_gib": 20.907,
+        "rss_before_gib": 20.907,
+        "wall_seconds": 0.065
+      }
+    },
+    "stored_inputs": {
+      "gate_details": {
+        "engine": "policyengine-us 2.2.1",
+        "evaluated": true,
+        "refused": [],
+        "register_sha256": "0d9337be53d42e7da7e466ba76642a7d3e83eeb917023544b78dd0cd1147bc0c",
+        "registered_non_variables": [
+          "family_source_id",
+          "family_support_channel",
+          "family_support_clone_index",
+          "filing_status_input",
+          "household_source_id",
+          "household_support_channel",
+          "household_support_clone_index",
+          "marital_unit_source_id",
+          "marital_unit_support_channel",
+          "marital_unit_support_clone_index",
+          "parent_1_id",
+          "parent_2_id",
+          "person_source_id",
+          "person_support_channel",
+          "person_support_clone_index",
+          "puf_capital_gains_tail_donor_agi_band_index",
+          "puf_capital_gains_tail_donor_filing_status_code",
+          "puf_capital_gains_tail_donor_is_synthetic",
+          "puf_capital_gains_tail_donor_source_id",
+          "puf_capital_gains_tail_transfer_applied",
+          "puf_capital_gains_tail_transfer_weight",
+          "source_household_id",
+          "source_person_id",
+          "source_row_id",
+          "source_year",
+          "spm_unit_source_id",
+          "spm_unit_support_channel",
+          "spm_unit_support_clone_index",
+          "tax_unit_role_input",
+          "tax_unit_source_id",
+          "tax_unit_support_channel",
+          "tax_unit_support_clone_index"
+        ],
+        "stored_columns": 387
+      },
+      "gate_failures": [],
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 0.01,
+        "peak_rss_gib": 0.183,
+        "rss_before_gib": 0.169,
+        "wall_seconds": 0.014
+      }
+    },
+    "take_up_participation": {
+      "gate": {
+        "failures": [],
+        "name": "take_up_signal",
+        "passed": true
+      },
+      "seeded_program_count": 2,
+      "shares": {
+        "takes_up_eitc": 0.7091706558906138,
+        "takes_up_medicaid_if_eligible": 0.9898547452100965,
+        "takes_up_ssi_if_eligible": 0.42772585692810977,
+        "takes_up_tanf_if_eligible": 0.22062380936466425
+      },
+      "source": {
+        "gate": {
+          "failures": [],
+          "name": "take_up_signal",
+          "passed": true
+        },
+        "shares": {
+          "takes_up_eitc": 0.7154960230602341,
+          "takes_up_medicaid_if_eligible": 0.9892799814563658,
+          "takes_up_ssi_if_eligible": 0.4307644463452222,
+          "takes_up_tanf_if_eligible": 0.22046599967666838
+        },
+        "stale_count_calibrated": []
+      },
+      "stale_count_calibrated": [],
+      "stale_count_calibrated_constant": [],
+      "stale_count_calibrated_missing": [],
+      "status": "completed",
+      "timing": {
+        "cpu_seconds": 11.861,
+        "peak_rss_gib": 0.942,
+        "rss_before_gib": 0.237,
+        "wall_seconds": 30.867
+      }
+    }
+  },
+  "stages_requested": [
+    "stored_inputs",
+    "qrf_tail_concentration",
+    "take_up_participation",
+    "reform_coverage_smoke",
+    "reform_validation",
+    "demographics",
+    "source_coverage"
+  ],
+  "summary": {
+    "authoritative_failures": [],
+    "full_scale_extrapolation": {
+      "household_ratio": 13.66523405738181,
+      "method": "stage wall time x source households / sampled households: a rough linear extrapolation of the engine stages, not a measurement",
+      "wall_seconds": {
+        "demographics": 493.2,
+        "open_scorer": 84.2,
+        "reform_coverage_smoke": 252149.0,
+        "reform_validation": 131561.8
+      }
+    },
+    "informational_failures": [
+      {
+        "authority": "informational",
+        "check": "QRF tail gate and register (subsample)",
+        "reason": "top_k = 100 and min_nonzero_records = 500 are record counts, so the subsample checks different columns and tails than the pool: QRF tail concentration failed: farm_operations_income: top 100 weighted records carry 82.8% of the weighted |mass| across 789 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: miscellaneous_income: top 100 weighted records carry 84.1% of the weighted |mass| across 1211 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: non_sch_d_capital_gains: top 100 weighted records carry 85.9% of the weighted |mass| across 832 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: qualified_bdc_income: top 100 weighted records carry 92.4% of the weighted |mass| across 529 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: sstb_self_employment_income_before_lsr: top 100 weighted records carry 83.1% of the weighted |mass| across 1397 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: sstb_unadjusted_basis_qualified_property: top 100 weighted records carry 84.9% of the weighted |mass| across 693 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: unrecaptured_section_1250_gain: top 100 weighted records carry 87.6% of the weighted |mass| across 545 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail-concentration register mismatch: the per-run exclusion register must exactly match the concentrated columns; stale (checked, at or below the threshold) = []; unused (dense, thin, absent, or not a checked QRF output) = ['estate_income', 'long_term_capital_gains_on_collectibles', 'w2_wages_from_qualified_business']. Remove these entries; qrf_tail_concentration.json records the measured surface.",
+        "release_consequence": "raises (pre-export terminal gate)",
+        "stage": "qrf_tail_concentration",
+        "verdict": "fail"
+      },
+      {
+        "authority": "informational",
+        "check": "probe tx_snap_additional_vehicle_exemption_abolition",
+        "reason": "the variance estimate rests on 0.0 effective household(s) (fewer than 30); the standard error is not reliable",
+        "release_consequence": "raises",
+        "stage": "reform_coverage_smoke",
+        "verdict": "fail"
+      }
+    ],
+    "probe_failures": [],
+    "stage_status": {
+      "demographics": "completed",
+      "load": "completed",
+      "open_scorer": "completed",
+      "post_export_scoring_plans": "completed",
+      "qrf_tail_concentration": "completed",
+      "reform_coverage_smoke": "completed",
+      "reform_validation": "completed",
+      "source_coverage": "completed",
+      "stored_inputs": "completed",
+      "take_up_participation": "completed"
+    }
+  },
+  "target_surface": {
+    "dropped_congressional_district_targets": 27148,
+    "mode": "national_state",
+    "source": "reference release_manifest.json build.target_surface_selection"
+  },
+  "tool": "tools/probe_us_post_export.py",
+  "tool_source": {
+    "commit": "0a80bc884ce44ebab7dccb6430d8c33d185e1d9a",
+    "dirty": false
+  },
+  "verdicts": [
+    {
+      "authority": "authoritative",
+      "check": "the sample design rebuilt from the subsample verifies against its receipt",
+      "reason": "strata, certainty households, draws and weight totals agree (without this no standard error is reported)",
+      "release_consequence": "probe integrity",
+      "stage": "load",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "stored-input gate (#1031): stored columns the installed engine does not define",
+      "reason": "column names do not depend on the sample, and the sampler verified that the subsample stores exactly the source's tables and columns: no refused stored column",
+      "release_consequence": "raises",
+      "stage": "stored_inputs",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "written-H5 stored-input premise (#1031)",
+      "reason": "not reproducible standalone: it compares the pre-write export frame's modeled stored tables with the written bytes, and the probe has only the written bytes",
+      "release_consequence": "raises",
+      "stage": "stored_inputs",
+      "verdict": "not_run"
+    },
+    {
+      "authority": "informational",
+      "check": "QRF tail gate and register (subsample)",
+      "reason": "top_k = 100 and min_nonzero_records = 500 are record counts, so the subsample checks different columns and tails than the pool: QRF tail concentration failed: farm_operations_income: top 100 weighted records carry 82.8% of the weighted |mass| across 789 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: miscellaneous_income: top 100 weighted records carry 84.1% of the weighted |mass| across 1211 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: non_sch_d_capital_gains: top 100 weighted records carry 85.9% of the weighted |mass| across 832 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: qualified_bdc_income: top 100 weighted records carry 92.4% of the weighted |mass| across 529 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: sstb_self_employment_income_before_lsr: top 100 weighted records carry 83.1% of the weighted |mass| across 1397 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: sstb_unadjusted_basis_qualified_property: top 100 weighted records carry 84.9% of the weighted |mass| across 693 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail concentration failed: unrecaptured_section_1250_gain: top 100 weighted records carry 87.6% of the weighted |mass| across 545 carriers (threshold 75%) \u2014 a donor-tail point mass broadcast by a sparse imputation (the microcosm#462 non_sch_d_capital_gains signature); fix the imputation or record a reviewed exclusion.; QRF tail-concentration register mismatch: the per-run exclusion register must exactly match the concentrated columns; stale (checked, at or below the threshold) = []; unused (dense, thin, absent, or not a checked QRF output) = ['estate_income', 'long_term_capital_gains_on_collectibles', 'w2_wages_from_qualified_business']. Remove these entries; qrf_tail_concentration.json records the measured surface.",
+      "release_consequence": "raises (pre-export terminal gate)",
+      "stage": "qrf_tail_concentration",
+      "verdict": "fail"
+    },
+    {
+      "authority": "authoritative",
+      "check": "QRF tail gate and register (source export)",
+      "reason": "settled on the source export's QRF columns at its weights: passed",
+      "release_consequence": "raises (pre-export terminal gate)",
+      "stage": "qrf_tail_concentration",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "source-export QRF tail result equals the release's qrf_tail_concentration.json",
+      "reason": "same verdict, columns and top-k shares",
+      "release_consequence": "fidelity of this probe to the release",
+      "stage": "qrf_tail_concentration",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "take-up signal gate: missing seeded columns",
+      "reason": "every seeded column is stored",
+      "release_consequence": "diagnostic",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "take-up signal gate: constant columns",
+      "reason": "every stored seeded column varies here, so it varies on the pool",
+      "release_consequence": "diagnostic",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "take-up signal gate: share bands",
+      "reason": "every share inside its band (weighted estimates at this sample)",
+      "release_consequence": "diagnostic",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "stale count-calibrated take-up columns: missing",
+      "reason": "every count-calibrated column is stored",
+      "release_consequence": "raises",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "stale count-calibrated take-up columns: constant",
+      "reason": "every stored count-calibrated column varies here, so it varies on the pool",
+      "release_consequence": "raises",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "take-up signal gate (source export)",
+      "reason": "settled on the source export: passed",
+      "release_consequence": "diagnostic",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "stale count-calibrated take-up columns (source export)",
+      "reason": "settled on the source export: none",
+      "release_consequence": "raises",
+      "stage": "take_up_participation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe prior_year_self_employment_neutralization",
+      "reason": "the variance estimate rests on 22.5 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe keogh_distribution_neutralization",
+      "reason": "take-all probe: every pool carrier is a certainty household at its source weight and no other household carries an effect, so the effect has zero design variance",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe tip_income_neutralization",
+      "reason": "the variance estimate rests on 3.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe fsla_overtime_premium_neutralization",
+      "reason": "the effect is 16.7 standard errors above the floor (threshold 4)",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe household_head_childcare_cap_neutralization",
+      "reason": "the variance estimate rests on 19.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe self_employed_health_premium_neutralization",
+      "reason": "the variance estimate rests on 7.6 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe cdcc_adult_care_expense_neutralization",
+      "reason": "the variance estimate rests on 0.0 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe spm_unit_energy_subsidy_neutralization",
+      "reason": "the variance estimate rests on 14.5 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe medicare_take_up_neutralization",
+      "reason": "the effect is 40.7 standard errors above the floor (threshold 4)",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe ssi_asset_limit_10k_20k",
+      "reason": "the variance estimate rests on 2.7 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe ssi_disability_criteria_neutralization",
+      "reason": "the effect is 8.8 standard errors above the floor (threshold 4)",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe ssi_take_up_neutralization",
+      "reason": "the effect is 10.4 standard errors above the floor (threshold 4)",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe head_start_take_up_neutralization",
+      "reason": "the variance estimate rests on 2.0 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe aotc_abolition",
+      "reason": "the variance estimate rests on 9.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe savers_credit_abolition",
+      "reason": "the variance estimate rests on 13.0 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe qbi_reit_ptp_rate_abolition",
+      "reason": "the variance estimate rests on 25.0 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe qbi_wage_property_guardrails_zeroed",
+      "reason": "the variance estimate rests on 1.2 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe qbi_farm_operations_income_exclusion",
+      "reason": "the variance estimate rests on 8.7 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe qbi_farm_rent_income_exclusion",
+      "reason": "the variance estimate rests on 6.3 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe domestic_production_ald_reactivation",
+      "reason": "the variance estimate rests on 3.0 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe form_4952_election_neutralization",
+      "reason": "take-all probe: every pool carrier is a certainty household at its source weight and no other household carries an effect, so the effect has zero design variance",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe salt_refund_income_neutralization",
+      "reason": "the variance estimate rests on 2.9 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe collectibles_gain_neutralization",
+      "reason": "the variance estimate rests on 2.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe unrecaptured_section_1250_gain_neutralization",
+      "reason": "the variance estimate rests on 4.9 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe child_support_received_snap_exclusion",
+      "reason": "the variance estimate rests on 3.8 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe child_support_expense_snap_deduction_abolition",
+      "reason": "the variance estimate rests on 2.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe disability_benefits_snap_exclusion",
+      "reason": "the variance estimate rests on 2.4 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe workers_compensation_snap_exclusion",
+      "reason": "the variance estimate rests on 1.3 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe wic_claim_neutralization",
+      "reason": "the variance estimate rests on 18.3 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe educator_expense_ald_abolition",
+      "reason": "the variance estimate rests on 18.7 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe alimony_expense_ald_abolition",
+      "reason": "the variance estimate rests on 1.5 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe obbba_casualty_loss_limit",
+      "reason": "the variance estimate rests on 2.2 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe obbba_misc_itemized_deductions",
+      "reason": "the variance estimate rests on 14.3 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe obbba_cdcc",
+      "reason": "the variance estimate rests on 11.6 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe obbba_no_tax_on_tips",
+      "reason": "the variance estimate rests on 3.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe obbba_no_tax_on_overtime",
+      "reason": "the effect is 20.3 standard errors above the floor (threshold 4)",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe obbba_auto_loan_interest",
+      "reason": "the variance estimate rests on 3.6 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe tx_snap_additional_vehicle_exemption_abolition",
+      "reason": "the variance estimate rests on 0.0 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "fail"
+    },
+    {
+      "authority": "informational",
+      "check": "probe voluntary_filing_aca_ptc_neutralization",
+      "reason": "the variance estimate rests on 3.7 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "probe pre_subsidy_rent_neutralization",
+      "reason": "the effect is 11.5 standard errors above the floor (threshold 4)",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "probe housing_assistance_take_up_neutralization",
+      "reason": "the variance estimate rests on 5.1 effective household(s) (fewer than 30); the standard error is not reliable",
+      "release_consequence": "raises",
+      "stage": "reform_coverage_smoke",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "every reform scores through the batched scorer",
+      "reason": "the stage ran to completion; whether a reform raises does not depend on the sample, but its budget effects are weighted estimates (informational)",
+      "release_consequence": "raises",
+      "stage": "reform_validation",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "age distribution and geography coverage",
+      "reason": "the stage scored ages through the batched scorer and read the geography counts; the age bands are weighted estimates",
+      "release_consequence": "raises",
+      "stage": "demographics",
+      "verdict": "pass"
+    },
+    {
+      "authority": "informational",
+      "check": "states: geographies under 50 / 100 household records",
+      "reason": "51 geographies; unweighted record counts scale with p",
+      "release_consequence": "diagnostic",
+      "stage": "demographics",
+      "verdict": "0 / 0"
+    },
+    {
+      "authority": "informational",
+      "check": "congressional_districts: geographies under 50 / 100 household records",
+      "reason": "436 geographies; unweighted record counts scale with p",
+      "release_consequence": "diagnostic",
+      "stage": "demographics",
+      "verdict": "218 / 407"
+    },
+    {
+      "authority": "authoritative",
+      "check": "states: geographies under 50 / 100 household records (source export)",
+      "reason": "settled on the source export: 51 geographies",
+      "release_consequence": "diagnostic",
+      "stage": "demographics",
+      "verdict": "0 / 0"
+    },
+    {
+      "authority": "authoritative",
+      "check": "congressional_districts: geographies under 50 / 100 household records (source export)",
+      "reason": "settled on the source export: 436 geographies",
+      "release_consequence": "diagnostic",
+      "stage": "demographics",
+      "verdict": "0 / 0"
+    },
+    {
+      "authority": "informational",
+      "check": "states with source records but none sampled",
+      "reason": "none: such a state has zero support only in the subsample",
+      "release_consequence": "diagnostic",
+      "stage": "demographics",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "baseline plans and reform passes match the reference release's build manifest",
+      "reason": "identical for demographics, reform_coverage_smoke, reform_validation (plans do not depend on the data)",
+      "release_consequence": "fidelity of this probe to the release",
+      "stage": "post_export_scoring",
+      "verdict": "pass"
+    },
+    {
+      "authority": "authoritative",
+      "check": "source coverage gate",
+      "reason": "does not read the dataset: passed",
+      "release_consequence": "recorded (surfaces at publish)",
+      "stage": "source_coverage",
+      "verdict": "pass"
+    }
+  ]
+}
