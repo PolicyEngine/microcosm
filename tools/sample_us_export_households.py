@@ -92,7 +92,7 @@ import numpy as np
 import pandas as pd
 
 #: Bump with any change to the draw, the weights or the receipt layout.
-SAMPLE_RECEIPT_SCHEMA_VERSION = 1
+SAMPLE_RECEIPT_SCHEMA_VERSION = 2
 
 US_PERSON_ENTITY = "person"
 US_GROUP_ENTITIES = ("household", "tax_unit", "spm_unit", "family", "marital_unit")
@@ -844,7 +844,9 @@ def _library_versions() -> dict[str, str | None]:
     return versions
 
 
-def _tool_commit() -> dict[str, object]:
+def _git_state() -> tuple[str | None, bool | None]:
+    """HEAD and whether ``tools/`` or ``packages/`` differ from it; ``(None,
+    None)`` outside a git checkout."""
     root = Path(__file__).resolve().parents[1]
     try:
         head = subprocess.run(
@@ -854,14 +856,53 @@ def _tool_commit() -> dict[str, object]:
             check=True,
         ).stdout.strip()
         dirty = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain", "--", "tools"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "status",
+                "--porcelain",
+                "--",
+                "tools",
+                "packages",
+            ],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        return {"commit": None, "tools_dirty": None}
-    return {"commit": head, "tools_dirty": bool(dirty)}
+        return None, None
+    return head, bool(dirty)
+
+
+def _tool_commit() -> dict[str, object]:
+    """The commit this file was loaded from, whether ``tools/`` or
+    ``packages/`` differed from it, and this file's sha256 (``git show
+    <commit>:tools/sample_us_export_households.py`` hashes to it when the
+    tree was clean)."""
+    commit, dirty = _git_state()
+    sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    return {"commit": commit, "dirty": dirty, "sha256": sha256}
+
+
+# Read once, as this file loads: the worktree's HEAD can move while a long
+# draw runs. It covers this file; the microcosm packages imported later are
+# covered by the check in _tool_source_record.
+_TOOL_SOURCE = _tool_commit()
+
+
+def _tool_source_record() -> dict[str, object]:
+    """``_TOOL_SOURCE`` and whether HEAD or the tree's cleanliness changed
+    since this file loaded: the editable microcosm packages are imported
+    later, and if the tree moved they may come from either state."""
+    commit, dirty = _git_state()
+    return {
+        **_TOOL_SOURCE,
+        "commit_at_write": commit,
+        "dirty_at_write": dirty,
+        "moved_since_load": (commit, dirty)
+        != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["dirty"]),
+    }
 
 
 def _default_probes() -> tuple[Any, ...]:
@@ -1126,7 +1167,7 @@ def sample_export(
     receipt: dict[str, object] = {
         "schema_version": SAMPLE_RECEIPT_SCHEMA_VERSION,
         "tool": "tools/sample_us_export_households.py",
-        "tool_source": _tool_commit(),
+        "tool_source": _tool_source_record(),
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "host": {
             "platform": platform.platform(),

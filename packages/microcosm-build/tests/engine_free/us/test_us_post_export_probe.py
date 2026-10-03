@@ -17,14 +17,19 @@ as policyengine-core does. Invariants:
   plans and reform passes equal the reference's, its effects carry z-scores,
   and a stored column the engine does not define fails the stored-input gate
   authoritatively;
-- the target surface resolves from the reference release manifest.
+- the target surface resolves from the reference release manifest;
+- the report names the commit the probe was loaded from, not the worktree's
+  HEAD when the report is written.
 """
 
 # ruff: noqa: F403, F405
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -780,3 +785,55 @@ def test_a_malformed_reference_smoke_file_costs_only_the_comparison(
     assert "malformed" in smoke["reference_error"]
     assert len(smoke["probes"]) == len(fixture_engine_probes())
     assert all("reference" not in row for row in smoke["probes"])
+
+
+def test_the_report_names_the_commit_the_probe_loaded_from(
+    probe_tool, builder, chain, tmp_path, monkeypatch
+) -> None:
+    """The Route A probe launched 2026-10-02 named a commit made ten minutes
+    after it started: it read HEAD when it wrote its report header. The
+    report now keeps the commit read when the probe loaded, the sha256 of the
+    probe and of the sibling tools it runs, and whether the tree moved
+    before each write (modules imported later would then come from either
+    state)."""
+    _, path, receipt, _ = chain
+    loaded_state = (probe_tool._TOOL_SOURCE["commit"], probe_tool._TOOL_SOURCE["dirty"])
+    with monkeypatch.context() as unmoved:
+        unmoved.setattr(probe_tool, "_git_state", lambda: loaded_state)
+        probe, _ = fixture_export_probe(
+            probe_tool, builder, path, tmp_path / "probe", receipt=receipt
+        )
+    assert probe.report["tool_source"]["moved_since_load"] is False
+
+    move_head_after_load(monkeypatch)
+    probe._write_report()
+    source = json.loads((tmp_path / "probe" / probe_tool.REPORT_FILENAME).read_text())[
+        "tool_source"
+    ]
+    loaded = {key: source[key] for key in ("commit", "dirty", "sha256")}
+    assert loaded == probe_tool._TOOL_SOURCE
+    assert source["commit"] != LATER_HEAD
+    assert source["commit_at_write"] == LATER_HEAD
+    assert source["moved_since_load"] is True
+
+    def sha256(path) -> str:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    assert source["sha256"] == sha256(probe_tool.__file__)
+    assert source["tools"] == {
+        "tools/build_us_fiscal_refresh_release.py": sha256(builder.__file__),
+        "tools/sample_us_export_households.py": sha256(probe.sampler.__file__),
+    }
+
+
+def test_load_tool_hashes_the_bytes_it_runs(probe_tool) -> None:
+    """A sibling tool the probe loads itself carries the sha256 of the file
+    it executed, which the report records."""
+    name = "sample_us_export_households_hash_check"
+    try:
+        module = probe_tool._load_tool(name, "sample_us_export_households.py")
+        expected = hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
+        assert module.__loaded_sha256__ == expected
+        assert probe_tool._module_sha256(module) == expected
+    finally:
+        sys.modules.pop(name, None)
