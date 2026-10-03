@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -60,6 +60,7 @@ __all__ = [
     "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
+    "uk_release_export_frame",
     "write_uk_national_frame",
 ]
 
@@ -451,6 +452,61 @@ def _write_uk_single_year_tables(
     finally:
         temporary_path.unlink(missing_ok=True)
     return path
+
+
+#: Columns the release boundary drops from the written candidate (microcosm#1063
+#: c9): the enhanced FRS stores ``incapacity_benefit_reported`` as an all-zero
+#: legacy layer and the export-surface gate's reviewed exclusion requires the
+#: candidate to drop it. The spine keeps the column (the SPI income stage
+#: reads it); only the release H5 and its readback expectation lose it.
+#: ``terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS`` names the first; the
+#: five internal disability carriers (``frs_disability``'s
+#: ``UK_INTERNAL_DISABILITY_REPORTED_COLUMNS``) are stage-internal inputs
+#: that the export registers keep off the release (review of #1089).
+UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
+    "person": (
+        "incapacity_benefit_reported",
+        "attendance_allowance_reported",
+        "dla_sc_reported",
+        "dla_m_reported",
+        "pip_m_reported",
+        "pip_dl_reported",
+        # The salary-sacrifice conversion's pre-conversion pay carrier
+        # (salary_sacrifice.SALSAC_PRE_CONVERSION_PAY_COLUMN): it exists so
+        # the identity receipts can reverse the stage's in-place rewrite of a
+        # converted record's pay, and is no engine input.
+        "salary_sacrifice_pre_conversion_pay",
+    ),
+}
+
+
+def uk_release_export_frame(frame: Frame) -> Frame:
+    """The frame the release boundary writes: reviewed export exclusions dropped."""
+
+    tables: dict[str, pd.DataFrame] = {}
+    changed = False
+    for entity in ("person", "benunit", "household"):
+        table = frame.table(entity)
+        dropped = [
+            column
+            for column in UK_RELEASE_EXPORT_DROPPED_COLUMNS.get(entity, ())
+            if column in table.columns
+        ]
+        if dropped:
+            table = table.drop(columns=dropped)
+            changed = True
+        tables[entity] = table
+    if not changed:
+        return frame
+    return uk_national_frame(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
 
 
 def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:

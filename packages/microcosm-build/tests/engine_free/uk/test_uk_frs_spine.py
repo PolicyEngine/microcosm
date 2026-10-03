@@ -2336,14 +2336,14 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "uc_deduction_type_random_draw": 0,
     }
     assert "cgt_support_split" not in declared
-    assert declared["spi_income_band_donors"] == {
-        "stack_income_band_donor_households": 3
-    }
+    assert declared["spi_income_band_donors"] == {"spi_income_band_donor_draw": 3}
+    assert declared["hmrc_spi_income_spine"]["spi_income_band_donor_leaf_draw"] == 44
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
+    # The residential flag is carried as weight by cgt_residential_split
+    # (microcosm#1063), which seeds nothing; only the BADR draw remains.
+    assert "cgt_residential_split" not in declared
     assert declared["hmrc_cgt_asset_type_spine"] == {
-        "assign_residential_property_flag": 553,
         "assign_badr_qualifying_gains": 555,
-        "assign_main_asset_type": 554,
     }
     # The #970 incidence anchor is deterministic and consumes no seed.
     assert "cgt_incidence_anchor" not in declared

@@ -59,7 +59,9 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: target-fit register from the PolicyEngine/chronicle#280 lane; earliest expiry
 #: 2026-10-21, the same entries) so the suite never drifts across an approval
 #: or expiry boundary. Move it forward when a register gains a later approval.
-CLOCK = date(2026, 9, 23)
+# The committed registers are evaluated as of this date; the microcosm#1063
+# c9 input-mass and QRF-tail entries take force on 2026-10-02.
+CLOCK = date(2026, 10, 2)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -482,6 +484,133 @@ class TestUKSurfaceAdapter:
         result = binding.evaluate(context, {})
 
         assert result.passed is True
+
+    def _salary_sacrifice_frames(self, *, carrier):
+        """The release frame without the pre-conversion pay carrier, the spine with it.
+
+        The carrier leaves at the release boundary
+        (UK_RELEASE_EXPORT_DROPPED_COLUMNS), so a certifier checking the
+        salary_sacrifice stage's declared non-negative outputs on the release
+        candidate finds it only on the spine frame (microcosm#1063).
+        """
+
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
+
+        person, benunit, household = _tables()
+        person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
+        release = uk_national_frame(
+            person=person.copy(),
+            benunit=benunit.copy(),
+            household=household.copy(),
+            time_period="2023",
+        )
+        spine_person = person.copy()
+        spine_person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = carrier
+        spine = uk_national_frame(
+            person=spine_person,
+            benunit=benunit.copy(),
+            household=household.copy(),
+            time_period="2023",
+        )
+        return release, spine
+
+    def test_nonnegative_binding_reads_export_dropped_columns_from_the_spine(
+        self,
+    ) -> None:
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        release, spine = self._salary_sacrifice_frames(carrier=[0.0, 30.0, 0.0, 20.0])
+        # Without the spine frame the dropped carrier is a missing column.
+        missing = binding.evaluate(
+            EvidenceContext(
+                frame=release, artifacts={"build_stage_names": ("salary_sacrifice",)}
+            ),
+            {},
+        )
+        assert missing.passed is False
+        assert "salary_sacrifice_pre_conversion_pay" in missing.failures[0]
+        # With it the carrier is checked where it lives.
+        checked = binding.evaluate(
+            EvidenceContext(
+                frame=release,
+                artifacts={
+                    "build_stage_names": ("salary_sacrifice",),
+                    "spine_frame": spine,
+                },
+            ),
+            {},
+        )
+        assert checked.passed is True
+        # The spine's values are really checked, not just their presence.
+        _, negative_spine = self._salary_sacrifice_frames(
+            carrier=[0.0, 30.0, -1.0, 20.0]
+        )
+        failing = binding.evaluate(
+            EvidenceContext(
+                frame=release,
+                artifacts={
+                    "build_stage_names": ("salary_sacrifice",),
+                    "spine_frame": negative_spine,
+                },
+            ),
+            {},
+        )
+        assert failing.passed is False
+        assert (
+            "salary_sacrifice_pre_conversion_pay: 1 finite value(s) below zero"
+            in (failing.failures[0])
+        )
+
+    def test_only_export_dropped_columns_are_read_from_the_spine(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _export_dropped_columns_from_spine,
+        )
+        from microcosm.build.uk_runtime.frs_disability import (
+            UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
+        )
+
+        release, spine = self._salary_sacrifice_frames(carrier=[0.0, 30.0, 0.0, 20.0])
+        spine_person = spine.table("person").copy()
+        spine_person["sic_industry_division"] = [1.0, 2.0, 3.0, 4.0]
+        spine_person[UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0]] = 0.0
+        spine = uk_national_frame(
+            person=spine_person,
+            benunit=spine.table("benunit"),
+            household=spine.table("household"),
+            time_period="2023",
+            household_weights=spine.weights_for("household").values,
+        )
+        found = _export_dropped_columns_from_spine(
+            EvidenceContext(frame=release, artifacts={"spine_frame": spine}),
+            [
+                "salary_sacrifice_pre_conversion_pay",
+                UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+                "sic_industry_division",
+                "never_declared",
+            ],
+        )
+        # A column the export keeps is never answered from the spine, even
+        # when the spine carries it; one absent from the spine is not found.
+        assert set(found) == {
+            "salary_sacrifice_pre_conversion_pay",
+            UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+        }
+        assert found["salary_sacrifice_pre_conversion_pay"].tolist() == [
+            0.0,
+            30.0,
+            0.0,
+            20.0,
+        ]
+        assert (
+            _export_dropped_columns_from_spine(
+                EvidenceContext(frame=release, artifacts={}),
+                ["salary_sacrifice_pre_conversion_pay"],
+            )
+            == {}
+        )
 
     def test_nonnegative_binding_does_not_demand_unscheduled_stages(self) -> None:
         # This isolated stage declares no nonnegative outputs. Outputs of
@@ -1499,6 +1628,8 @@ def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
     household["household_support_clone_index"] = np.zeros(4, dtype=np.int64)
     household["household_is_cgt_support_copy"] = [False, True, True, False]
     household["cgt_support_copy_index"] = np.asarray([0, 1, 2, 0], dtype=np.int64)
+    household["household_is_cgt_residential_clone"] = False
+    household["cgt_residential_clone_index"] = np.zeros(4, dtype=np.int64)
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
     )

@@ -52,6 +52,7 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
         "cgt_support_split",
         "cgt_incidence_clone",
         "cgt_incidence_anchor",
+        "cgt_residential_split",
     }
 )
 
@@ -72,11 +73,16 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
-    # Reserved income rows add their published band mass (microcosm#1063 owes
-    # them the channel treatment).
-    "spi_income_band_donors": "free",
+    # The reserved income rows are funded from the incumbent households of
+    # each donor's region (microcosm#1063): household mass is conserved
+    # exactly, and person mass moves with the composition of the copied
+    # households, as it does for the support channel.
+    "spi_income_band_donors": "declared",
     "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
+    # The residential split divides each liable household into arms that are
+    # identical in composition (microcosm#1063), so person mass is conserved.
+    "cgt_residential_split": "conserve",
     "cgt_incidence_anchor": "conserve",
 }
 
@@ -85,6 +91,7 @@ _STRUCTURAL_WEIGHT_KIND = {
     "spi_income_band_donors": "importance",
     "cgt_support_split": "importance",
     "cgt_incidence_clone": "importance",
+    "cgt_residential_split": "importance",
     "cgt_incidence_anchor": "importance",
 }
 
@@ -105,6 +112,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # The Pension Credit redraw rewrites ``frs_take_up``'s would_claim_pc,
         # which the open-surface readers before it bind (microcosm#1069).
         "pension_credit_take_up",
+        # The Child Benefit redraw rewrites ``frs_take_up``'s two Child Benefit
+        # flags, which the open-surface readers before it bind (microcosm#1063).
+        "child_benefit_take_up",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
         # reader already bound to.  In the root version that rewrite opened a
@@ -229,6 +239,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
+            ("household", "owned_land"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
             ("household", "household_support_channel"),
         }
     ),
@@ -269,6 +282,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One temporary engine materialization of Pension Credit entitlement over
     # the whole frame: an open surface, like the UC award screen.
     "pension_credit_take_up": None,
+    # One temporary engine materialization of Child Benefit eligibility and
+    # adjusted net income over the whole frame: an open surface.
+    "child_benefit_take_up": None,
     "uc_capital_coherence": frozenset(
         {
             ("person", "is_benunit_head"),
@@ -286,6 +302,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # The support split copies whole households, so its surface is open.
     "cgt_support_split": None,
     "cgt_incidence_clone": None,
+    # The residential split copies whole households into arms, so its
+    # surface is open (microcosm#1063).
+    "cgt_residential_split": None,
     # The amounts redraw conditions on age and household region as well as
     # the income proxy (microcosm#725), ranks gainers on household investable
     # wealth (microcosm#1014) and keys its placement receipts on the support
@@ -640,7 +659,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_local_bus_trips", "float64"),
     ),
     "regional_property_uprating": _cells(
-        "household", ("main_residence_value", "property_wealth")
+        "household",
+        (
+            "main_residence_value",
+            "property_wealth",
+            "owned_land",
+            "other_residential_property_value",
+            "non_residential_property_value",
+        ),
     ),
     "lcfs_consumption": (
         *_cells(
@@ -767,6 +793,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
     "pension_credit_take_up": (_Cell("benunit", "would_claim_pc", "bool"),),
+    "child_benefit_take_up": (
+        _Cell("benunit", "would_claim_child_benefit", "bool"),
+        _Cell("benunit", "child_benefit_opts_out", "bool"),
+    ),
     "uc_deduction_attributes": (
         _Cell("benunit", "uc_deduction_random_draw", "float64"),
         _Cell("benunit", "uc_deduction_type_random_draw", "float64"),
@@ -785,13 +815,20 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),
-    "hmrc_cgt_asset_type_spine": (
-        _Cell("person", "capital_gains_asset_type", "string"),
-        _Cell("person", "capital_gains_residential_property", "float64"),
-        _Cell("person", "capital_gains_badr", "float64"),
-    ),
     # Weights only: the anchor owns no cell (microcosm#970).
     "cgt_incidence_anchor": (),
+    # The residential split writes its lineage cells, the solved probability
+    # and the residential gains of each arm (microcosm#1063).
+    "cgt_residential_split": (
+        _Cell("household", "household_is_cgt_residential_clone", "bool"),
+        _Cell("household", "cgt_residential_clone_index", "int64"),
+        _Cell("person", "cgt_residential_probability", "float64"),
+        _Cell("person", "capital_gains_residential_property", "float64"),
+    ),
+    "hmrc_cgt_asset_type_spine": (
+        _Cell("person", "capital_gains_asset_type", "string"),
+        _Cell("person", "capital_gains_badr", "float64"),
+    ),
     "salary_sacrifice": _cells(
         "person",
         (
@@ -799,6 +836,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "employee_pension_contributions",
             # Converted records' pay drops by the sacrificed amount (microcosm#1069).
             "employment_income",
+            # A converted record's pay before the conversion, zero elsewhere:
+            # the carrier that makes the rewrite reversible (microcosm#1063).
+            "salary_sacrifice_pre_conversion_pay",
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),
@@ -1343,7 +1383,7 @@ def uk_spine_operation_inventory(
                 "artifact_outputs": [output.name for output in node.artifact_outputs],
                 "randomness": "Existing literal/child seeds and draw order are preserved inside the registered transform.",
                 "coupling": (
-                    "Donor and recipient region encoding, four segmented fit/draw chains and their child seeds remain coupled."
+                    "Donor and recipient region and tenure encoding, seven segmented fit/draw chains with their child seeds, the tenure strata and the totals derived from drawn components remain coupled."
                     if stage.stage == "was_wealth"
                     else "Source assembly, declared household sample selection and same-kind mass normalization execute once in CREATE."
                     if stage.stage == "frs_spine"

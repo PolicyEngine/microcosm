@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.release_identity import (
 __all__ = [
     "RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS",
     "UKEffectiveMassCoveragePolicy",
+    "UK_FAMILY_MASS_CHANGE_SEMANTICS",
     "UK_LOADER_INPUT_ALIASES",
     "UK_RELEASE_INPUT_COVERAGE_RESOURCE",
     "PolicyEngineUKCoverageEngine",
@@ -70,6 +71,9 @@ _VALID_FAMILY_STATUSES = frozenset(
     {_REQUIRED_AT_BUILD_STATUS, _DEFERRED_UNTIL_RESTORED_STATUS}
 )
 _DISTRIBUTIONAL_REQUIRED_STATUS = "distributional_required"
+#: The one mass-change semantics a stage family may declare: its household
+#: mass record conserves the total and declares factor one.
+UK_FAMILY_MASS_CHANGE_SEMANTICS = "mass_conserving"
 _UK_PACKAGE = "microcosm.build.uk"
 _EFRS_PARITY_REFERENCE_RESOURCE = "efrs_parity_reference.json"
 
@@ -342,15 +346,17 @@ def _parse_family_coverage(
                 "required_mass_change_reason."
             )
         mass_change_semantics = str(
-            raw_family.get("mass_change_semantics", "mass_conserving")
+            raw_family.get("mass_change_semantics", UK_FAMILY_MASS_CHANGE_SEMANTICS)
         ).strip()
-        if mass_change_semantics not in {
-            "mass_conserving",
-            "mass_increasing_support",
-        }:
+        # Every spine stage conserves household mass: the last stage that
+        # added support mass (the SPI income band donors) became a funded
+        # channel in microcosm#1063, and ``mass_increasing_support`` retired
+        # with it.
+        if mass_change_semantics != UK_FAMILY_MASS_CHANGE_SEMANTICS:
             raise ValueError(
                 f"{resource}: family {name!r} has invalid "
-                f"mass_change_semantics {mass_change_semantics!r}."
+                f"mass_change_semantics {mass_change_semantics!r}; the only "
+                f"semantics is {UK_FAMILY_MASS_CHANGE_SEMANTICS!r}."
             )
 
         raw_requirements = raw_family.get("effective_mass_requirements", {})
@@ -993,18 +999,16 @@ def _family_build_state_diagnostics(
 
         required_reason = str(family.get("required_mass_change_reason", "")).strip()
         if required_reason:
-            semantics = str(family.get("mass_change_semantics", "mass_conserving"))
+            semantics = str(
+                family.get("mass_change_semantics", UK_FAMILY_MASS_CHANGE_SEMANTICS)
+            )
             records = tuple(getattr(frame, "mass_log", ()))
             matches = [
                 record
                 for record in records
                 if _mass_record_field(record, "reason") == required_reason
             ]
-            valid_matches = [
-                record
-                for record in matches
-                if _valid_mass_record(record, semantics=semantics)
-            ]
+            valid_matches = [record for record in matches if _valid_mass_record(record)]
             details["required_mass_change_reason"] = required_reason
             details["mass_change_semantics"] = semantics
             details["matching_mass_change_records"] = len(matches)
@@ -1027,7 +1031,9 @@ def _mass_record_field(record: object, name: str) -> object:
     return getattr(record, name, None)
 
 
-def _valid_mass_record(record: object, *, semantics: str) -> bool:
+def _valid_mass_record(record: object) -> bool:
+    """A household record that conserves mass and declares factor one."""
+
     old_total = _mass_record_field(record, "old_total")
     new_total = _mass_record_field(record, "new_total")
     declared_factor = _mass_record_field(record, "declared_factor")
@@ -1044,8 +1050,6 @@ def _valid_mass_record(record: object, *, semantics: str) -> bool:
     )
     if not common:
         return False
-    if semantics == "mass_increasing_support":
-        return bool(new > old and declared_factor is None)
     try:
         factor = float(declared_factor)
     except (TypeError, ValueError):

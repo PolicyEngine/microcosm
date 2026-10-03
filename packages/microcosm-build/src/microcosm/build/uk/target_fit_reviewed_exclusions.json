@@ -1,5 +1,13 @@
 {
-  "schema_version": 2,
-  "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
-  "exclusions": {}
+ "schema_version": 2,
+ "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+ "exclusions": {
+  "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025": {
+   "reason": "The frame carries too few taxpayers just above the personal allowance: 0.278m South East taxpayers with total income in GBP 12,570-15,000 at design weights against HMRC's projected 0.364m (nationally 2.31m against 2.97m; the North West and London are 28-31% short, the East 6%), and the ones it carries pay GBP 250 of income tax each against HMRC's GBP 215 (they sit higher in the band). The bound taxpayer-count rows make the solver scale these households up by a third to hit the count exactly, and the income-tax cell, carried by the same households, lands at +30.3% (its total-income sibling at +11.2%); main pulls the same cell from -20% to +22.6% by the same route. With the Table 3.6 amount rows projected by HMRC's band growth (microcosm#1063, 2026-10-02) the national employment rows fit within 4-12% and the cell still breaches, so the pull is the count gap, not the employment rows. The row was deferred on 2026-09-18 and retired on microcosm#1012 at +24.5%; deferred four weeks again while the lowest taxpayer band's support is corrected in the frame (the SPI support channel's coverage of the band and the FRS's small incomes around the frozen allowance), which is where the gap lives.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1063 (the stack arms of 2026-10-02 on the review of #1089)",
+   "approved_on": "2026-10-02",
+   "expires_on": "2026-11-02"
+  }
+ }
 }

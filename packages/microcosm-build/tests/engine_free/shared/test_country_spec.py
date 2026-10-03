@@ -945,6 +945,7 @@ class TestUKCountryPackage:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -1009,10 +1010,12 @@ class TestUKCountryPackage:
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
         # spi_income_band_donors (PolicyEngine/chronicle#280 lane), the SPI
-        # housing shell (#1012), was_lisa (#1003) and pension_credit_take_up
-        # (microcosm#1069) as the newest); the frs_hmrc_retained_leaves /
-        # hmrc_spi_income pair is retired (#901).
-        assert len(spec.sources.stages) == 36
+        # housing shell (#1012), was_lisa (#1003), pension_credit_take_up
+        # (microcosm#1069) and child_benefit_take_up (microcosm#1063) as the
+        # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
+        # retired (#901).
+        # microcosm#1063 also adds cgt_residential_split after the anchor.
+        assert len(spec.sources.stages) == 38
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1067,6 +1070,7 @@ class TestExistingPackagesGeneralize:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -1380,6 +1384,7 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1394,10 +1399,12 @@ class TestUKGatesManifest:
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_pension_credit_take_up",
+            "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_cgt_residential_split_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
@@ -1483,6 +1490,7 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1497,10 +1505,12 @@ class TestUKGatesManifest:
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_pension_credit_take_up",
+            "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_cgt_residential_split_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",

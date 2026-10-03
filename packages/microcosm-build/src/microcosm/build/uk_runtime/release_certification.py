@@ -59,6 +59,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX,
     uk_cgt_projection_read_from_engine,
 )
+from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 
 __all__ = [
     "UK_RELEASE_CERTIFICATION_KIND",
@@ -244,11 +245,7 @@ def uk_release_parity_evidence(
             )
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
-        candidate_columns={
-            f"{entity}.{column}"
-            for entity in frame.entities
-            for column in frame.table(entity).columns
-        },
+        candidate_columns=uk_export_candidate_columns(frame),
         reference_columns={
             f"{entity}.{name}"
             for name, entity in parity_reference.input_entities.items()

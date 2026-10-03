@@ -24,7 +24,7 @@
       "source": {
         "source": "Child Benefit statistics: 2022 annual release",
         "agency": "HMRC",
-        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022.",
+        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022. Since microcosm#1063 this is only frs_take_up's early draw, which the intermediate engine simulations read; child_benefit_take_up replaces it after the SPI income chain with HMRC's August 2025 claim rates of eligible children by single year of age (hmrc_child_benefit_statistics.json).",
         "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
         "status": "sourced_administrative"
       }
@@ -39,7 +39,7 @@
       "source": {
         "source": "Child Benefit Statistics: Annual Release, August 2022",
         "agency": "HMRC",
-        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS.",
+        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS. Since microcosm#1063 this is only frs_take_up's early draw over every benefit unit; child_benefit_take_up replaces it after the SPI income chain with the published opted-out share of registered families (August 2025), drawn among claiming families charged the whole benefit.",
         "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
         "status": "sourced_administrative_derived"
       }

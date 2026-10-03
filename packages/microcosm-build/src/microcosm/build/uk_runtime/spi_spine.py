@@ -59,6 +59,8 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_AGE_POPULATION_PERIOD,
     SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
+    SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
+    SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
     SPI_INCOME_UPRATING_VARIABLES,
     SPI_MINIMUM_RECIPIENT_AGE,
     SPI_SOURCE_TI_FORMULA,
@@ -111,6 +113,10 @@ SPI_SPINE_BAND_DONOR_POOL = (
     "narrowed to the carrier's SPI age band where that pool holds the age "
     "minimum (composites never age-match), then to the carrier's region where "
     "that pool holds the regional minimum"
+)
+SPI_SPINE_BAND_DONOR_DRAW = (
+    "identity_keyed_inverse_cdf: stable_identity_uniforms(draw_key, seed, salt) "
+    "over the pool's cumulative FACT in tape order"
 )
 SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM = 20
 SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM = 20
@@ -1144,6 +1150,9 @@ def _assert_income_stage_parameters(
             "age_pool_minimum": SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM,
             "weighting": "FACT",
             "with_replacement": True,
+            "draw": SPI_SPINE_BAND_DONOR_DRAW,
+            "draw_key": SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
+            "salt": SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
             "outputs": "stage-1 outputs, uprated as the stage-1 draws",
             "seed": seed + 2,
         }

@@ -89,6 +89,7 @@ UK_LOCAL_GATE_SCOPE = (
 
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
+    "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",
@@ -103,8 +104,10 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
     "uk_stage_pension_credit_take_up",
+    "uk_stage_child_benefit_take_up",
     "uk_stage_cgt_incidence_clone_mass",
     "uk_stage_cgt_support_split_mass",
+    "uk_stage_cgt_residential_split_mass",
     "uk_stage_spi_income_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
     "uk_stage_hmrc_cgt_asset_type_spine_summary",

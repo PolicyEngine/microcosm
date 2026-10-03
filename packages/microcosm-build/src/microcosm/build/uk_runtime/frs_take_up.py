@@ -74,9 +74,11 @@ UK_UC_CHILDCARE_RATE_KEYS = {
 # would_claim_pc is redrawn after the SPI chain by ``pension_credit_take_up``,
 # whose rates are shares of the entitled units the engine finds; its stage
 # gate measures them, so the terminal signal gate does not (microcosm#1069 R9).
+# would_claim_child_benefit and child_benefit_opts_out are redrawn by
+# ``child_benefit_take_up`` against HMRC's claim rates of eligible children and
+# opted-out share of registered families; its stage gate measures them
+# (microcosm#1063).
 UK_TAKE_UP_SIGNAL_OUTPUTS = (
-    ("benunit", "would_claim_child_benefit", "child_benefit"),
-    ("benunit", "child_benefit_opts_out", "child_benefit_opts_out_rate"),
     ("benunit", "would_claim_uc", "universal_credit"),
     ("benunit", "would_claim_tfc", "tax_free_childcare"),
     ("benunit", "would_claim_extended_childcare", "extended_childcare"),

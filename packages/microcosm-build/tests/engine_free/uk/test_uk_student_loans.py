@@ -285,6 +285,13 @@ def test_top_up_receipt_records_the_taken_rows_lineage() -> None:
                 "household_support_channel": ["frs", "spi", "frs", "spi", "frs"],
                 "household_is_cgt_support_copy": [False, False, True, True, False],
                 "household_is_capital_gains_clone": [False, True, False, False, True],
+                "household_is_cgt_residential_clone": [
+                    False,
+                    False,
+                    False,
+                    True,
+                    False,
+                ],
             },
         ),
         stocks=_stocks(plan_2=4, plan_5=0),
@@ -297,12 +304,14 @@ def test_top_up_receipt_records_the_taken_rows_lineage() -> None:
     channels = np.asarray(["frs", "spi", "frs", "spi", "frs"])[taken]
     copies = np.asarray([False, False, True, True, False])[taken]
     clones = np.asarray([False, True, False, False, True])[taken]
+    arms = np.asarray([False, False, False, True, False])[taken]
     weights = np.asarray([5.0, 3.0, 2.0, 2.0, 1.0])[taken]
 
     assert lineage["columns"] == [
         "household_support_channel",
         "household_is_cgt_support_copy",
         "household_is_capital_gains_clone",
+        "household_is_cgt_residential_clone",
     ]
     assert lineage["rows_by_channel"] == {
         channel: int((channels == channel).sum()) for channel in sorted(set(channels))
@@ -315,6 +324,8 @@ def test_top_up_receipt_records_the_taken_rows_lineage() -> None:
     assert lineage["support_copy_mass"] == float(weights[copies].sum())
     assert lineage["clone_rows"] == int(clones.sum())
     assert lineage["clone_mass"] == float(weights[clones].sum())
+    assert lineage["residential_arm_rows"] == int(arms.sum())
+    assert lineage["residential_arm_mass"] == float(weights[arms].sum())
     assert sum(lineage["rows_by_channel"].values()) == receipt.topped_up_rows
     assert receipt.evidence()["topped_up_lineage"] == lineage
 
