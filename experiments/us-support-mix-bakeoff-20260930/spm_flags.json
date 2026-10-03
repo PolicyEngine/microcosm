@@ -1,0 +1,9 @@
+{
+ "acs_households": 1531614,
+ "group_quarters_households": 183206,
+ "group_quarters_share": 0.11961630019051797,
+ "rule": "age >= 18 or (age >= 15 and (is_household_head or is_household_spouse)), per SPM unit",
+ "spm_zero_adult_households": 5246,
+ "spm_zero_adult_in_group_quarters": 5246,
+ "spm_zero_adult_share": 0.003425144977781608
+}
