@@ -39,6 +39,7 @@ import math
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -1827,8 +1828,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--staging-upload-interval-seconds",
         type=float,
-        default=30.0,
-        help="Minimum seconds between progress uploads to the staging repo.",
+        default=300.0,
+        help=(
+            "Minimum seconds between progress uploads to the staging repo. "
+            "Each upload is up to six single-file Hub commits, and the Hub "
+            "allows roughly 128 commits per hour per repository, so the "
+            "default matches the UK builds' 300 s. Stage failures and the "
+            "final state always upload."
+        ),
     )
     parser.add_argument(
         _DRY_RUN_REPORT_FLAG,
@@ -1962,10 +1969,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(
                 "ExactKExplicitSeedError: --exact-k requires an explicit "
                 "non-negative --seed."
-            )
-        if not args.no_staging:
-            parser.error(
-                "ExactKPointerSuppressionError: --exact-k requires --no-staging."
             )
         if not math.isfinite(args.exact_k_pi_hi) or not (
             0.0 <= args.exact_k_pi_hi <= 1.0
@@ -12053,6 +12056,14 @@ def _staging_telemetry(
         repo_id=args.staging_repo_id,
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        # An exact-count release never moves a shared pointer (#578): it
+        # stages under its own run prefix and leaves latest_staging.json and
+        # runs.json alone.
+        update_pointers=getattr(args, "exact_k", None) is None,
+        # A slow or unreachable Hub must not stall the build thread.
+        background_uploads=True,
+        # No write token: warn, keep telemetry local, build as usual.
+        check_write_access=True,
     )
     return _ACTIVE_TELEMETRY
 
@@ -12153,6 +12164,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     global _ACTIVE_DRY_RUN
     _ACTIVE_DRY_RUN = None
+    previous_sigterm = _raise_build_terminated_on_sigterm()
     try:
         dry_run_exit = _main(argv)
     except BaseException as error:
@@ -12172,8 +12184,41 @@ def main(argv: Sequence[str] | None = None) -> None:
                     file=sys.stderr,
                 )
         raise
+    finally:
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
     if dry_run_exit is not None:
         raise SystemExit(dry_run_exit)
+
+
+class BuildTerminatedError(SystemExit):
+    """SIGTERM ended the build (a supervisor, a Modal budget stop, ``kill``).
+
+    Raised from the signal handler so ``main`` records the staging run as
+    failed instead of leaving it ``running``; exits with 128 + SIGTERM.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(128 + signal.SIGTERM)
+
+    def __str__(self) -> str:
+        return "The build was terminated by SIGTERM."
+
+
+def _raise_build_terminated_on_sigterm():
+    """Turn SIGTERM into ``BuildTerminatedError``; return the prior handler.
+
+    Returns ``None`` (and changes nothing) off the main thread, where Python
+    does not allow installing signal handlers.
+    """
+
+    def handle(signum, frame):  # noqa: ARG001 - signal handler signature
+        raise BuildTerminatedError()
+
+    try:
+        return signal.signal(signal.SIGTERM, handle)
+    except ValueError:
+        return None
 
 
 def _check_committed_us_ledger_feed_pin(

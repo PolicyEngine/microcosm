@@ -250,7 +250,7 @@ def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
     assert parsed.seed == 17
     assert parsed.pool_release_id == "fixture-publication"
     assert parsed.release_id == "populace-us-2024-k20000-fixture"
-    assert parsed.no_staging is True
+    assert parsed.no_staging is False
     assert parsed.ssi_take_up_prior_weight_basis == tmp_path / "ssi.json"
     assert parsed.ssi_take_up_prior_weight_basis_sha256 == "1" * 64
 
@@ -285,7 +285,7 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
 
     assert captured[captured.index("--exact-k") + 1] == "N"
     assert captured[captured.index("--seed") + 1] == "17"
-    assert "--no-staging" in captured
+    assert "--no-staging" not in captured
     assert captured[captured.index("--pool-manifest-sha256") + 1] == _sha256(manifest)
     assert result["automatic_publish"] is False
     assert result["release_dir"] == str(
@@ -356,17 +356,24 @@ def test_staging_credentials_cannot_enable_pointer_writes(
     config = launcher._read_config(_write_config(tmp_path, payload))
     monkeypatch.setenv("HF_TOKEN", "credentialed-fixture")
     monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "fixture/staging")
-    constructed = False
+    uploads: list[str] = []
 
-    class UnexpectedTelemetry:
-        def __init__(self, **kwargs):
-            nonlocal constructed
-            constructed = True
+    class RecordingApi:
+        def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type):
+            uploads.append(path_in_repo)
+
+        def hf_hub_download(self, **kwargs):  # pragma: no cover - never reached
+            raise AssertionError("an exact-count run must not read the runs index")
+
+    real_telemetry = launcher.fiscal_release.StagingTelemetry
+
+    def telemetry_with_recording_api(**kwargs):
+        return real_telemetry(api=RecordingApi(), **kwargs)
 
     monkeypatch.setattr(
         launcher.fiscal_release,
         "StagingTelemetry",
-        UnexpectedTelemetry,
+        telemetry_with_recording_api,
     )
     argv = launcher._builder_argv(
         config=config,
@@ -381,8 +388,12 @@ def test_staging_credentials_cannot_enable_pointer_writes(
         release_root=tmp_path / "out",
         release_id=config.release_id,
     )
+    telemetry.stage("target_registry", force_upload=True)
+    telemetry.complete()
 
-    assert parsed.no_staging is True
-    assert telemetry is None
-    assert constructed is False
-    assert not (tmp_path / "out" / "staging").exists()
+    # The run is visible, but only under its own prefix: credentials never let
+    # an exact-count build move latest_staging.json or the runs.json index.
+    assert uploads
+    assert all(path.startswith(f"runs/{config.release_id}/") for path in uploads)
+    assert "latest_staging.json" not in uploads
+    assert "runs.json" not in uploads

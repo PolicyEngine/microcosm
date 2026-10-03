@@ -13,6 +13,7 @@ import json
 import math
 import shutil
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -52,6 +53,105 @@ def _jsonable(value: Any) -> Any:
     return str(value)
 
 
+def _ambient_hub_token() -> str | None:
+    """The token huggingface_hub would use (env or ``hf auth login``), if any."""
+
+    try:
+        from huggingface_hub.utils import get_token
+    except ImportError:  # pragma: no cover - very old huggingface_hub
+        return None
+    try:
+        return get_token()
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+RUN_FILES = (
+    "run_manifest.json",
+    "progress.json",
+    "calibration_progress.json",
+    "events.ndjson",
+)
+
+
+def restage_run(
+    run_dir: Path | str,
+    *,
+    repo_id: str,
+    path_prefix: str = DEFAULT_STAGING_PREFIX,
+    update_index: bool = True,
+    api: Any = None,
+) -> list[str]:
+    """Upload a finished local run folder to the staging repository.
+
+    For a run that kept its telemetry local (no write token, a failed
+    upload, ``--staging-dir`` only). Uploads the run files and the artifacts
+    its manifest lists under ``<path_prefix>/<run_id>/``, and upserts the run
+    into ``runs.json`` unless ``update_index`` is false. Never moves
+    ``latest_staging.json``. Returns the repository paths written.
+    """
+
+    run_dir = Path(run_dir)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text())
+    run_id = str(manifest["run_id"])
+    prefix = path_prefix.strip().strip("/") or DEFAULT_STAGING_PREFIX
+    storage = HuggingFaceDatasetStorage(repo_id, api=api)
+    artifacts = manifest.get("artifacts") or {}
+    names = list(RUN_FILES) + [
+        str(artifact["path"])
+        for artifact in artifacts.values()
+        if isinstance(artifact, dict) and artifact.get("path")
+    ]
+    written: list[str] = []
+    for name in dict.fromkeys(names):
+        local = run_dir / name
+        if not local.is_file():
+            continue
+        path_in_repo = f"{prefix}/{run_id}/{name}"
+        storage.upload(local, path_in_repo)
+        written.append(path_in_repo)
+    if update_index and (run_dir / "progress.json").is_file():
+        progress = json.loads((run_dir / "progress.json").read_text())
+        try:
+            index = json.loads(storage.download(RUNS_INDEX))
+            runs = [
+                run
+                for run in (index.get("runs") or [])
+                if isinstance(run, dict) and run.get("run_id") != run_id
+            ]
+        except Exception:
+            runs = []
+        runs.append(
+            {
+                "run_id": run_id,
+                "candidate_release_id": manifest.get("candidate_release_id"),
+                "status": progress.get("status"),
+                "stage": progress.get("stage"),
+                "started_at": manifest.get("started_at"),
+                "updated_at": progress.get("updated_at"),
+                "progress_path": f"{prefix}/{run_id}/progress.json",
+                "run_manifest_path": f"{prefix}/{run_id}/run_manifest.json",
+            }
+        )
+        runs.sort(
+            key=lambda run: str(run.get("updated_at") or run.get("started_at") or ""),
+            reverse=True,
+        )
+        local_index = run_dir / ".upload" / RUNS_INDEX
+        local_index.parent.mkdir(exist_ok=True)
+        _write_json(
+            local_index,
+            {
+                "schema_version": STAGING_SCHEMA_VERSION,
+                "updated_at": _now(),
+                "runs": runs,
+            },
+        )
+        storage.upload(local_index, RUNS_INDEX)
+        written.append(RUNS_INDEX)
+    return written
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_jsonable(payload), indent=1, allow_nan=False))
@@ -71,6 +171,19 @@ class StagingTelemetry:
         api: Optional ``huggingface_hub.HfApi``-shaped object for tests.
         upload_interval_seconds: Minimum interval between best-effort progress
             uploads. Final states always upload.
+        update_pointers: Whether uploads also refresh the repository-level
+            ``latest_staging.json`` pointer and ``runs.json`` index. A run
+            that must never move a shared pointer (an exact-count release)
+            sets this to ``False`` and writes only under its own run prefix.
+        background_uploads: Upload from a worker thread instead of the build
+            thread, so a slow or unreachable Hub never stalls the build. The
+            terminal ``complete``/``fail`` upload is still awaited, for at most
+            ``final_upload_timeout_seconds``.
+        check_write_access: Check at the start that the ambient Hugging Face
+            credential can write ``repo_id``. Without one, the run warns, keeps
+            its telemetry local, records why in the run manifest, and builds
+            as usual; ``restage_run`` uploads the folder later. A check that
+            cannot reach the Hub changes nothing: uploads stay best-effort.
     """
 
     run_id: str
@@ -80,6 +193,10 @@ class StagingTelemetry:
     path_prefix: str = DEFAULT_STAGING_PREFIX
     api: Any = None
     upload_interval_seconds: float = 30.0
+    update_pointers: bool = True
+    background_uploads: bool = False
+    final_upload_timeout_seconds: float = 120.0
+    check_write_access: bool = False
     started_at: str = field(default_factory=_now)
 
     def __post_init__(self) -> None:
@@ -103,8 +220,25 @@ class StagingTelemetry:
         self._upload_session = (
             BestEffortUploadSession(self._storage) if self._storage else None
         )
+        self._delivery_check: dict[str, Any] | None = None
+        if self._storage is not None and self.check_write_access:
+            self._delivery_check = self._check_write_access()
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
+        # Local writes and the uploader's snapshots take this lock, so a
+        # background upload never ships a half-written file.
+        self._io_lock = threading.RLock()
+        self._pending_artifacts: list[tuple[Path, str]] = []
+        self._upload_requested = threading.Event()
+        self._uploads_closing = False
+        self._upload_thread: threading.Thread | None = None
+        if self._upload_session is not None and self.background_uploads:
+            self._upload_thread = threading.Thread(
+                target=self._upload_worker,
+                name=f"staging-upload-{self.run_id}",
+                daemon=True,
+            )
+            self._upload_thread.start()
         self._progress: dict[str, Any] = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -116,6 +250,48 @@ class StagingTelemetry:
         }
         self._write_run_manifest()
         self.stage("created", message="Staging run created.")
+
+    def _check_write_access(self) -> dict[str, Any] | None:
+        """Keep the run local, loudly, when no credential can write the repo.
+
+        Returns the reason recorded in the run manifest, or ``None`` when
+        uploads go ahead (write access confirmed, or not determinable).
+        """
+
+        repo_id = self.repo_id
+        reason: str | None = None
+        if self.api is None and _ambient_hub_token() is None:
+            reason = "no Hugging Face token is configured"
+        else:
+            try:
+                can_write = self._storage.credential_can_write()
+            except Exception as error:
+                print(
+                    "warning: could not check write access to the staging "
+                    f"repository {repo_id} ({type(error).__name__}); uploads "
+                    "stay best-effort.",
+                    file=sys.stderr,
+                )
+                return None
+            if can_write is False:
+                reason = "the Hugging Face token cannot write this repository"
+        if reason is None:
+            return None
+        self.repo_id = None
+        self._storage = None
+        self._upload_session = None
+        print(
+            f"warning: staging uploads are off for this run: {reason} "
+            f"({repo_id}). The build continues and its telemetry stays in "
+            f"{self.run_dir}. Upload it afterwards with:\n"
+            f"  uv run python tools/restage_us_staging_run.py --run-dir {self.run_dir}",
+            file=sys.stderr,
+        )
+        return {
+            "uploads": "local_only",
+            "repository": repo_id,
+            "reason": reason,
+        }
 
     @property
     def repo_run_prefix(self) -> str:
@@ -166,17 +342,81 @@ class StagingTelemetry:
         if not force and now - self._last_upload_at < self.upload_interval_seconds:
             return
         self._last_upload_at = now
-        for filename in (
-            "run_manifest.json",
-            "progress.json",
-            "calibration_progress.json",
-            "events.ndjson",
-        ):
-            local = self.run_dir / filename
-            if local.exists():
-                self._upload_file(local, f"{self.repo_run_prefix}/{filename}")
-        self._upload_latest_pointer()
-        self._upload_runs_index()
+        if self._upload_thread is None:
+            self._upload_cycle()
+        else:
+            self._upload_requested.set()
+
+    def _upload_cycle(self) -> None:
+        with self._io_lock:
+            pending = [
+                (self._upload_copy(local), path_in_repo)
+                for local, path_in_repo in self._pending_artifacts
+                if local.exists()
+            ]
+            self._pending_artifacts.clear()
+            for filename in (
+                "run_manifest.json",
+                "progress.json",
+                "calibration_progress.json",
+                "events.ndjson",
+            ):
+                local = self.run_dir / filename
+                if local.exists():
+                    pending.append(
+                        (self._upload_copy(local), f"{self.repo_run_prefix}/{filename}")
+                    )
+        for local, path_in_repo in pending:
+            self._upload_file(local, path_in_repo)
+        if self.update_pointers:
+            self._upload_latest_pointer()
+            self._upload_runs_index()
+
+    def _upload_copy(self, local: Path) -> Path:
+        """The file to upload: a snapshot when a worker thread uploads it.
+
+        The build thread keeps appending to these files while the worker
+        uploads, so the worker ships a copy taken under the write lock.
+        """
+
+        if self._upload_thread is None:
+            return local
+        snapshots = self.run_dir / ".upload"
+        snapshots.mkdir(exist_ok=True)
+        copy = snapshots / local.name
+        shutil.copyfile(local, copy)
+        return copy
+
+    def _upload_worker(self) -> None:
+        while True:
+            self._upload_requested.wait()
+            self._upload_requested.clear()
+            try:
+                self._upload_cycle()
+            except Exception as error:  # pragma: no cover - defensive
+                print(
+                    f"warning: staging upload cycle failed: {error}",
+                    file=sys.stderr,
+                )
+            if self._uploads_closing and not self._upload_requested.is_set():
+                return
+
+    def _finish_uploads(self) -> None:
+        """Wait for the terminal upload when uploads run in the background."""
+
+        thread = self._upload_thread
+        if thread is None:
+            return
+        self._uploads_closing = True
+        self._upload_requested.set()
+        thread.join(timeout=self.final_upload_timeout_seconds)
+        if thread.is_alive():
+            print(
+                "warning: the final staging upload did not finish within "
+                f"{self.final_upload_timeout_seconds:g} s; local staging "
+                "artifacts are complete.",
+                file=sys.stderr,
+            )
 
     def _upload_latest_pointer(self) -> None:
         payload = {
@@ -249,38 +489,46 @@ class StagingTelemetry:
         }
 
     def _write_run_manifest(self) -> None:
-        _write_json(
-            self.run_dir / "run_manifest.json",
-            {
-                "schema_version": STAGING_SCHEMA_VERSION,
-                "run_id": self.run_id,
-                "candidate_release_id": self.candidate_release_id,
-                "started_at": self.started_at,
-                "repo_id": self.repo_id,
-                "path_prefix": self.path_prefix,
-                "artifacts": self._artifacts,
-            },
-        )
+        with self._io_lock:
+            _write_json(
+                self.run_dir / "run_manifest.json",
+                {
+                    "schema_version": STAGING_SCHEMA_VERSION,
+                    "run_id": self.run_id,
+                    "candidate_release_id": self.candidate_release_id,
+                    "started_at": self.started_at,
+                    "repo_id": self.repo_id,
+                    "path_prefix": self.path_prefix,
+                    "artifacts": self._artifacts,
+                    **(
+                        {"delivery_check": self._delivery_check}
+                        if self._delivery_check
+                        else {}
+                    ),
+                },
+            )
 
     def _write_progress(self) -> None:
-        _write_json(self.run_dir / "progress.json", self._progress)
+        with self._io_lock:
+            _write_json(self.run_dir / "progress.json", self._progress)
 
     def _write_calibration_progress(self) -> None:
-        _write_json(
-            self.run_dir / "calibration_progress.json",
-            {
-                "schema_version": STAGING_SCHEMA_VERSION,
-                "run_id": self.run_id,
-                "candidate_release_id": self.candidate_release_id,
-                "updated_at": _now(),
-                "events": self._calibration_events,
-            },
-        )
+        with self._io_lock:
+            _write_json(
+                self.run_dir / "calibration_progress.json",
+                {
+                    "schema_version": STAGING_SCHEMA_VERSION,
+                    "run_id": self.run_id,
+                    "candidate_release_id": self.candidate_release_id,
+                    "updated_at": _now(),
+                    "events": self._calibration_events,
+                },
+            )
 
     def _append_event(self, event: dict[str, Any]) -> None:
         path = self.run_dir / "events.ndjson"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as stream:
+        with self._io_lock, path.open("a") as stream:
             stream.write(json.dumps(_jsonable(event), allow_nan=False) + "\n")
 
     def stage(
@@ -359,7 +607,12 @@ class StagingTelemetry:
         }
         self._write_run_manifest()
         if local.exists():
-            self._upload_file(local, f"{self.repo_run_prefix}/{source.name}")
+            path_in_repo = f"{self.repo_run_prefix}/{source.name}"
+            if self._upload_thread is None:
+                self._upload_file(local, path_in_repo)
+            else:
+                with self._io_lock:
+                    self._pending_artifacts.append((local, path_in_repo))
         self._maybe_upload(force=force_upload)
 
     def fail(self, error: BaseException) -> None:
@@ -371,6 +624,7 @@ class StagingTelemetry:
             error_type=type(error).__name__,
             traceback=traceback.format_exc(),
         )
+        self._finish_uploads()
 
     def complete(self) -> None:
         self.stage(
@@ -379,3 +633,4 @@ class StagingTelemetry:
             message="Staging run completed.",
             force_upload=True,
         )
+        self._finish_uploads()

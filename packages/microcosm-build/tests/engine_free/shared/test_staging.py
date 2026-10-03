@@ -1,4 +1,5 @@
 import json
+import threading
 
 import microcosm.build.staging as staging_module
 from microcosm.build.staging import StagingTelemetry
@@ -243,3 +244,188 @@ def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
     assert (run_dir / "events.ndjson").read_text().splitlines() == (
         V1_FIXTURE / "events.ndjson"
     ).read_text().splitlines()
+
+
+def test_pointer_free_runs_upload_only_under_their_prefix(tmp_path) -> None:
+    api = FakeApi()
+    telemetry = StagingTelemetry(
+        run_id="run-k",
+        candidate_release_id="populace-us-2024-k20000-fixture",
+        run_dir=tmp_path / "run-k",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        update_pointers=False,
+    )
+    telemetry.stage("target_compilation", force_upload=True)
+    telemetry.complete()
+
+    uploaded_paths = {upload[1] for upload in api.uploads}
+    assert "runs/run-k/progress.json" in uploaded_paths
+    assert all(path.startswith("runs/run-k/") for path in uploaded_paths)
+
+
+class BlockingApi(FakeApi):
+    """Holds every upload until released, like a slow or unreachable Hub."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.release = threading.Event()
+
+    def upload_file(self, **kwargs):
+        self.release.wait(timeout=10)
+        return super().upload_file(**kwargs)
+
+    def hf_hub_download(self, **kwargs):
+        raise FileNotFoundError("no runs index yet")
+
+
+def test_background_uploads_never_block_the_build(tmp_path) -> None:
+    api = BlockingApi()
+    telemetry = StagingTelemetry(
+        run_id="run-bg",
+        candidate_release_id="populace-us-2024-bg-20260618T000000Z",
+        run_dir=tmp_path / "run-bg",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        background_uploads=True,
+    )
+
+    # The Hub is stuck, yet the build thread keeps going and writes locally.
+    for stage in ("target_registry", "load_base_frame", "target_compilation"):
+        telemetry.stage(stage, force_upload=True)
+    progress = json.loads((tmp_path / "run-bg" / "progress.json").read_text())
+    assert progress["stage"] == "target_compilation"
+    assert api.uploads == []
+
+    api.release.set()
+    telemetry.complete()
+
+    # The terminal state is awaited and uploaded, from a consistent snapshot.
+    uploaded = {path: local for local, path, _, _ in api.uploads}
+    final = json.loads(open(uploaded["runs/run-bg/progress.json"]).read())
+    assert final["status"] == "passed"
+    events = open(uploaded["runs/run-bg/events.ndjson"]).read().splitlines()
+    assert json.loads(events[-1])["stage"] == "complete"
+    assert telemetry.uploads_succeeded > 0
+
+
+def test_background_final_upload_wait_is_bounded(tmp_path, capsys) -> None:
+    api = BlockingApi()
+    telemetry = StagingTelemetry(
+        run_id="run-stuck",
+        candidate_release_id="populace-us-2024-stuck-20260618T000000Z",
+        run_dir=tmp_path / "run-stuck",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        background_uploads=True,
+        final_upload_timeout_seconds=0.2,
+    )
+
+    telemetry.complete()
+
+    assert "did not finish within 0.2 s" in capsys.readouterr().err
+    progress = json.loads((tmp_path / "run-stuck" / "progress.json").read_text())
+    assert progress["status"] == "passed"
+    api.release.set()
+
+
+class RoleApi(FakeApi):
+    """A Hub client whose credential has the given role."""
+
+    def __init__(self, role: str) -> None:
+        super().__init__()
+        self.role = role
+
+    def whoami(self):
+        return {"auth": {"accessToken": {"role": self.role}}}
+
+    def hf_hub_download(self, **kwargs):
+        raise FileNotFoundError("no runs index yet")
+
+
+def test_a_run_without_write_access_builds_on_and_stays_local(tmp_path, capsys):
+    api = RoleApi("read")
+    telemetry = StagingTelemetry(
+        run_id="run-ro",
+        candidate_release_id="populace-us-2024-ro",
+        run_dir=tmp_path / "run-ro",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        check_write_access=True,
+    )
+    telemetry.stage("target_compilation", force_upload=True)
+    telemetry.complete()
+
+    # Nothing is refused: the run completes with full local telemetry.
+    progress = json.loads((tmp_path / "run-ro" / "progress.json").read_text())
+    assert progress["status"] == "passed"
+    assert api.uploads == []
+    manifest = json.loads((tmp_path / "run-ro" / "run_manifest.json").read_text())
+    assert manifest["delivery_check"] == {
+        "uploads": "local_only",
+        "repository": "policyengine/populace-us-staging",
+        "reason": "the Hugging Face token cannot write this repository",
+    }
+    assert "restage_us_staging_run.py --run-dir" in capsys.readouterr().err
+
+
+def test_a_run_with_write_access_uploads(tmp_path):
+    api = RoleApi("write")
+    telemetry = StagingTelemetry(
+        run_id="run-rw",
+        candidate_release_id="populace-us-2024-rw",
+        run_dir=tmp_path / "run-rw",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        check_write_access=True,
+    )
+    telemetry.complete()
+
+    assert "runs/run-rw/progress.json" in {upload[1] for upload in api.uploads}
+    manifest = json.loads((tmp_path / "run-rw" / "run_manifest.json").read_text())
+    assert "delivery_check" not in manifest
+
+
+def test_restage_uploads_a_local_run_without_moving_the_pointer(tmp_path):
+    run_dir = tmp_path / "run-local"
+    telemetry = StagingTelemetry(
+        run_id="run-local",
+        candidate_release_id="populace-us-2024-local",
+        run_dir=run_dir,
+    )
+    (run_dir / "calibration_diagnostics.json").write_text("{}")
+    telemetry.attach_artifact(
+        "calibration_diagnostics", run_dir / "calibration_diagnostics.json"
+    )
+    telemetry.complete()
+
+    api = RoleApi("write")
+    written = staging_module.restage_run(
+        run_dir, repo_id="policyengine/populace-us-staging", api=api
+    )
+
+    assert set(written) == {
+        "runs/run-local/run_manifest.json",
+        "runs/run-local/progress.json",
+        "runs/run-local/events.ndjson",
+        "runs/run-local/calibration_diagnostics.json",
+        "runs.json",
+    }
+    assert "latest_staging.json" not in {upload[1] for upload in api.uploads}
+    uploaded = {path_in_repo: local for local, path_in_repo, _, _ in api.uploads}
+    index = json.loads(open(uploaded["runs.json"]).read())
+    assert [run["run_id"] for run in index["runs"]] == ["run-local"]
+
+    api = RoleApi("write")
+    written = staging_module.restage_run(
+        run_dir,
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        update_index=False,
+    )
+    assert "runs.json" not in written

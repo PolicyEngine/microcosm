@@ -441,7 +441,6 @@ def _builder_argv(
         str(config.l2_lambda),
         "--refit-l2-lambda",
         str(config.refit_l2_lambda),
-        "--no-staging",
     ]
     if config.ssi_take_up_prior_weight_basis is not None:
         argv.extend(

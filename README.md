@@ -51,7 +51,18 @@ progress JSON is uploaded to `policyengine/populace-us-staging` while the build
 runs (best-effort — a missing token or failed upload never fails the build), so
 every candidate shows up on the staging dashboard before it is published.
 Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
-`POPULACE_STAGING_REPO_ID`. An *empty* `POPULACE_STAGING_REPO_ID` is ignored
+`POPULACE_STAGING_REPO_ID`. Uploads run on a background thread every 300 s
+(`--staging-upload-interval-seconds`), so a slow or unreachable Hub never
+stalls the build, and SIGTERM marks the run failed. Exact-count (`--exact-k`)
+builds stage too, under their own `runs/<run_id>/` prefix only: they never
+move `latest_staging.json` or `runs.json`. A build whose Hugging Face token
+cannot write the staging repository is never refused: it warns, keeps its
+telemetry under `runs/<run_id>/` locally, and builds as usual. Upload that
+folder later from any machine with a token:
+
+```bash
+uv run python tools/restage_us_staging_run.py --run-dir <release_root>/staging/runs/<run_id>
+``` An *empty* `POPULACE_STAGING_REPO_ID` is ignored
 rather than read as off, and staging with no destination at all is an argparse
 error — `--no-staging` is the only way a build produces no telemetry.
 
