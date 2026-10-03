@@ -3,20 +3,22 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Mapping
 from copy import deepcopy
 from dataclasses import replace
-from functools import cache
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_runtime
 import microcosm.build.us_runtime.h5_io as h5_io
+import microcosm.build.us_runtime.immigration as immigration_runtime
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
+import microcosm.build.us_runtime.puf_support as puf_support_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
+import microcosm.build.us_runtime.us_late_producer_registry as late_producer_registry_module
 import microcosm.build.us_runtime.worker_identity as worker_identity_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
@@ -50,7 +52,12 @@ from microcosm.build.us_runtime.h5_io import (
     us_multispine_pool_release_receipt,
     write_nullable_us_h5,
 )
+from microcosm.build.us_runtime.late_producer_dag import ProducerContract
 from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    spine_assembly_manifest,
+    spine_provenance_counts,
+    support_channel_column,
     support_clone_index_column,
     support_source_id_column,
 )
@@ -113,10 +120,7 @@ def _pool_frame() -> Frame:
     )
 
 
-def _pool_frame_with_object_strings_on_every_entity(
-    *,
-    stacked: bool = False,
-) -> Frame:
+def _pool_frame_with_object_strings_on_every_entity() -> Frame:
     """Match the assembled pool's object-backed source-string shape."""
 
     frame = _pool_frame()
@@ -134,21 +138,6 @@ def _pool_frame_with_object_strings_on_every_entity(
             ),
         )
         tables[entity] = table
-    if stacked:
-        household = tables["household"].copy()
-        household["puma"] = ["0600101", "0600102", "0600102"]
-        household["congressional_district_geoid"] = np.asarray(
-            [601, 601, 601],
-            dtype=np.int64,
-        )
-        household["county_fips"] = ["06001", "06001", "06001"]
-        household[support_source_id_column("household")] = np.asarray(
-            [10, 20, 20], dtype=np.int64
-        )
-        household[support_clone_index_column("household")] = np.asarray(
-            [0, 0, 1], dtype=np.int64
-        )
-        tables["household"] = household
     return Frame(
         tables,
         frame.schema,
@@ -157,6 +146,181 @@ def _pool_frame_with_object_strings_on_every_entity(
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _stacked_pool_frame_with_live_immigration(
+    *,
+    include_zero_weight_clone: bool = False,
+) -> tuple[Frame, dict[str, object]]:
+    """Build a persisted-shape final stack and its real immigration receipt."""
+
+    controls = immigration_runtime.us_immigration_controls()
+    positive_draws = tuple(draw for draw in controls.humanitarian if draw.target > 0)
+    acs_evidence = {
+        "paroled_one_year:afghanistan": (200, 2021, "NONE", "UNDOCUMENTED"),
+        "paroled_one_year:ukraine": (164, 2022, "NONE", "UNDOCUMENTED"),
+        "paroled_one_year:nicaragua": (315, 2023, "NONE", "UNDOCUMENTED"),
+        "paroled_one_year:venezuela": (373, 2022, "NONE", "UNDOCUMENTED"),
+        "refugee": (
+            412,
+            2022,
+            "OTHER_NON_CITIZEN",
+            "LEGAL_PERMANENT_RESIDENT",
+        ),
+        "asylee": (
+            207,
+            2020,
+            "OTHER_NON_CITIZEN",
+            "LEGAL_PERMANENT_RESIDENT",
+        ),
+        "tps:venezuela": (373, 2015, "NONE", "UNDOCUMENTED"),
+        "tps:el_salvador": (312, 2001, "NONE", "UNDOCUMENTED"),
+        "tps:honduras": (314, 1998, "NONE", "UNDOCUMENTED"),
+        "tps:nicaragua": (315, 1998, "NONE", "UNDOCUMENTED"),
+        "tps:nepal": (229, 2015, "NONE", "UNDOCUMENTED"),
+        "tps:other_designated": (248, 2020, "NONE", "UNDOCUMENTED"),
+    }
+    expected_labels = {draw.label for draw in positive_draws}
+    if set(acs_evidence) != expected_labels:
+        raise AssertionError(
+            "Stacked H5 immigration evidence must exactly cover the positive "
+            "canonical humanitarian draws."
+        )
+
+    row_count = 1 + len(positive_draws) + int(include_zero_weight_clone)
+    ids = np.arange(1, row_count + 1, dtype=np.int64)
+    channels = np.asarray(
+        [BASE_ASEC_SUPPORT_CHANNEL]
+        + [stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL] * len(positive_draws)
+        + ([BASE_ASEC_SUPPORT_CHANNEL] if include_zero_weight_clone else []),
+        dtype=object,
+    )
+    clone_indices = np.zeros(row_count, dtype=np.int64)
+    source_ids = ids.copy()
+    if include_zero_weight_clone:
+        clone_indices[-1] = 1
+        source_ids[-1] = ids[0]
+
+    person_rows: list[dict[str, object]] = [
+        {
+            "PRCITSHP": 1,
+            "PENATVTY": 57,
+            "PEINUSYR": 0,
+            "CIT": np.nan,
+            "POBP": np.nan,
+            "YOEP": np.nan,
+            "A_AGE": 50,
+            "age": 50,
+            "ssn_card_type": "CITIZEN",
+            "immigration_status_str": "CITIZEN",
+        }
+    ]
+    for draw in positive_draws:
+        birth_country, arrival_year, ssn_card_type, immigration_status = acs_evidence[
+            draw.label
+        ]
+        person_rows.append(
+            {
+                "PRCITSHP": np.nan,
+                "PENATVTY": np.nan,
+                "PEINUSYR": np.nan,
+                "CIT": 5,
+                "POBP": birth_country,
+                "YOEP": arrival_year,
+                "A_AGE": np.nan,
+                "age": 50,
+                "ssn_card_type": ssn_card_type,
+                "immigration_status_str": immigration_status,
+            }
+        )
+    if include_zero_weight_clone:
+        person_rows.append(dict(person_rows[0]))
+
+    person = pd.DataFrame(person_rows)
+    person.insert(0, "PERIDNUM", pd.Series([f"person-{value}" for value in ids]))
+    person.insert(1, "person_id", ids)
+    for entity in US_SCHEMA.group_entities:
+        person[US_SCHEMA.membership_column(entity)] = ids
+    person["nullable_input"] = np.resize(
+        np.asarray([True, None, False], dtype=object),
+        row_count,
+    )
+    person["is_incapable_of_self_care"] = True
+    person["tax_unit_role_input"] = "DEPENDENT"
+    person[support_channel_column("person")] = channels
+    person[support_source_id_column("person")] = source_ids
+    person[support_clone_index_column("person")] = clone_indices
+
+    household_weights = np.asarray(
+        [1.0]
+        + [float(draw.target) for draw in positive_draws]
+        + ([0.0] if include_zero_weight_clone else []),
+        dtype=np.float64,
+    )
+    mutable = channels == stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL
+    reconciled_person, reconciliation = (
+        immigration_runtime.reconcile_us_immigration_humanitarian_transfer(
+            person,
+            weights=household_weights,
+            mutable_rows=mutable,
+            seed=0,
+            time_period=2024,
+            controls=controls,
+        )
+    )
+
+    tables = {"person": reconciled_person}
+    for entity in US_SCHEMA.group_entities:
+        table = pd.DataFrame({US_SCHEMA.id_column(entity): ids})
+        table.insert(
+            0,
+            f"{entity}_source_label",
+            pd.Series([f"{entity}-{value}" for value in ids], dtype=object),
+        )
+        table[support_channel_column(entity)] = channels
+        table[support_source_id_column(entity)] = source_ids
+        table[support_clone_index_column(entity)] = clone_indices
+        tables[entity] = table
+
+    household = tables["household"]
+    household["puma"] = "0600101"
+    household["congressional_district_geoid"] = np.full(
+        row_count,
+        601,
+        dtype=np.int64,
+    )
+    household["county_fips"] = "06001"
+
+    for index, spec in enumerate(
+        post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+    ):
+        tables[spec.entity][spec.target] = (
+            10.0 + index + np.arange(row_count, dtype=np.float64)
+        )
+
+    assembly_tables = {
+        entity: table.loc[table[support_clone_index_column(entity)].eq(0)]
+        for entity, table in tables.items()
+    }
+    metadata = spine_assembly_manifest(
+        assembly_tables,
+        channels=(
+            BASE_ASEC_SUPPORT_CHANNEL,
+            stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL,
+        ),
+    )
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                household_weights,
+                WeightKind.IMPORTANCE,
+            )
+        },
+        metadata=metadata,
+    )
+    return frame, reconciliation
 
 
 def _semantic_string_columns(table: pd.DataFrame) -> tuple[str, ...]:
@@ -646,24 +810,54 @@ def _write_ready_pool(
     tmp_path: Path,
     *,
     stacked: bool = False,
+    include_zero_weight_clone: bool = False,
     sample_fraction: float = 1.0,
 ) -> Path:
     run_id = "fixture-publication"
     pool_path = tmp_path / "pool.h5"
     diagnostics_path = tmp_path / "pool.agreement.json"
     manifest_path = tmp_path / "pool.manifest.json"
+    gate_names = (
+        (
+            "us_stacked_completeness",
+            "us_by_origin_battery",
+            "immigration_composition",
+        )
+        if stacked
+        else ("us_spine_agreement",)
+    )
     agreement_gate = {
         "passed": True,
         "gates": {
-            "us_spine_agreement": {
+            name: {
                 "passed": True,
                 "failures": [],
                 "details": {"fixture": True},
             }
+            for name in gate_names
         },
     }
+    if include_zero_weight_clone and not stacked:
+        raise ValueError("Only the stacked H5 fixture may include a clone row.")
     schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 4
-    pool_frame = _pool_frame_with_object_strings_on_every_entity(stacked=stacked)
+    if stacked:
+        pool_frame, immigration_reconciliation = (
+            _stacked_pool_frame_with_live_immigration(
+                include_zero_weight_clone=include_zero_weight_clone,
+            )
+        )
+        dag = _canonical_stacked_late_dag_receipt(
+            pool_frame,
+            immigration_reconciliation=immigration_reconciliation,
+        )
+        provenance_counts = spine_provenance_counts(
+            pool_frame,
+            boundary="stacked H5 fixture provenance counts",
+        )
+    else:
+        pool_frame = _pool_frame_with_object_strings_on_every_entity()
+        dag = None
+        provenance_counts = {"household": {"rows": pool_frame.n("household")}}
     geography_assignment = (
         _fixture_geography_assignment(pool_frame.table("household"))
         if stacked
@@ -741,7 +935,7 @@ def _write_ready_pool(
             },
         },
         "agreement_gate": agreement_gate,
-        "provenance_counts": {"household": {"rows": 3}},
+        "provenance_counts": provenance_counts,
         "pool_h5": {
             "path": str(pool_path.resolve()),
             "sha256": _sha256(pool_path),
@@ -756,7 +950,7 @@ def _write_ready_pool(
         },
     }
     if stacked:
-        dag = _canonical_stacked_late_dag_receipt()
+        assert dag is not None
         assert geography_assignment is not None
         sampling, stack_manifest = _fixture_stacked_sampling(sample_fraction)
         transition_authority = (
@@ -832,15 +1026,14 @@ def _write_gate_failed_pool(tmp_path: Path) -> Path:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
     diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    failed_gate = {
+    # The scoring loader authenticates the canonical terminal gate set, so the
+    # failed fixture must carry the real gates with one of them flipped.
+    failed_gate = json.loads(json.dumps(manifest["terminal_gates"]))
+    failed_gate["passed"] = False
+    failed_gate["gates"]["us_stacked_completeness"] = {
         "passed": False,
-        "gates": {
-            "us_spine_agreement": {
-                "passed": False,
-                "failures": ["fixture terminal failure"],
-                "details": {"fixture": False},
-            }
-        },
+        "failures": ["fixture terminal failure"],
+        "details": {"fixture": False},
     }
     manifest.update(
         {
@@ -864,28 +1057,44 @@ def _write_gate_failed_pool(tmp_path: Path) -> Path:
 
 
 def _canonical_late_calibration_owner_receipt(
+    frame: Frame,
     spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
 ) -> dict[str, object]:
-    values = np.asarray(
-        [10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+    table = frame.table(spec.entity)
+    channel = table[support_channel_column(spec.entity)].astype(str)
+    clone_index = pd.to_numeric(
+        table[support_clone_index_column(spec.entity)],
+        errors="raise",
     )
-    weights = np.asarray([2.0, 3.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0])
-    entity_ids = np.arange(1, len(values) + 1)
-    reference = np.asarray([True] * 5 + [False] * 5)
-    recipient = ~reference
+    reference = (channel.eq(BASE_ASEC_SUPPORT_CHANNEL) & clone_index.eq(0)).to_numpy(
+        dtype=bool
+    )
+    recipient = (
+        channel.eq(stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL) & clone_index.eq(0)
+    ).to_numpy(dtype=bool)
+    weights = np.asarray(
+        frame.resolve_weights(spec.entity).values,
+        dtype=np.float64,
+    )
+    entity_ids = table[frame.schema.entity_id_column(spec.entity)].to_numpy(copy=False)
     constrained = spec.special_constraint != "none"
-    result = post_transfer_calibration_runtime.calibrate_post_transfer_values(
-        values,
-        weights,
-        entity_ids,
-        spec=spec,
+    application = post_transfer_calibration_runtime.apply_post_transfer_calibration(
+        frame,
+        entity=spec.entity,
+        family=spec.family,
+        target=spec.target,
         reference_rows=reference,
         recipient_rows=recipient,
         mutable_rows=recipient,
         allowed_carrier_rows=recipient if constrained else None,
         addition_candidate_rows=recipient if constrained else None,
     )
-    calibration = result.receipt
+    result_values = application.frame.table(spec.entity)[spec.target].to_numpy(
+        dtype=np.float64,
+        copy=True,
+    )
+    table[spec.target] = result_values
+    calibration = application.receipt
     scope = calibration["scope"]
     constraint: dict[str, object] = {"constraint": spec.special_constraint}
     if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
@@ -926,13 +1135,13 @@ def _canonical_late_calibration_owner_receipt(
                 ),
                 "reference_output_values_sha256": (
                     stacked_spine_module._post_transfer_float64_sha256(
-                        result.values[reference],
+                        result_values[reference],
                         boundary="synthetic reference calibration output",
                     )
                 ),
                 "recipient_output_values_sha256": (
                     stacked_spine_module._post_transfer_float64_sha256(
-                        result.values[recipient],
+                        result_values[recipient],
                         boundary="synthetic recipient calibration output",
                     )
                 ),
@@ -958,7 +1167,7 @@ def _canonical_late_calibration_owner_receipt(
 
 
 def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
-    policy = acs_transfer_module.acs_transfer_execution_contract_identity(
+    policy = acs_transfer_runtime.acs_transfer_execution_contract_identity(
         targets=("is_pregnant",),
         derive_schedule_d=False,
     )["structural_target_policies"]["is_pregnant"]
@@ -986,11 +1195,10 @@ def _canonical_pregnancy_structural_receipt() -> dict[str, object]:
     }
 
 
-@cache
-def _cached_canonical_stacked_late_dag_receipt(
-    _fit_jobs: str | None,
-    _predict_workers: str | None,
-    _cpu_count: int | None,
+def _canonical_stacked_late_dag_receipt(
+    frame: Frame,
+    *,
+    immigration_reconciliation: dict[str, object],
 ) -> dict[str, object]:
     """Build a signed fixture receipt over the live canonical contracts."""
 
@@ -1041,17 +1249,80 @@ def _cached_canonical_stacked_late_dag_receipt(
             "sha256"
         ]
     )
+    immigration_reconciliation = stacked_spine_module._json_ready(
+        immigration_reconciliation
+    )
+    immigration_recipient_rows = int(immigration_reconciliation["mutable_rows"])
+    immigration_producer_rows = int(immigration_reconciliation["immutable_rows"])
     group_receipts: dict[str, object] = {}
     for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
+        is_immigration_group = (
+            group.entity == "person" and group.family == "source_operator_immigration"
+        )
         group_targets = {
             f"{group.entity}/{group.family}/{target}": {
-                "authorized_null_rows": 0,
-                "imputed_rows": 0,
+                **(
+                    {
+                        "producer_roles": ["asec_source"],
+                        "producer_rows": immigration_producer_rows,
+                    }
+                    if is_immigration_group
+                    else {}
+                ),
+                "authorized_null_rows": (
+                    immigration_recipient_rows if is_immigration_group else 0
+                ),
+                "imputed_rows": (
+                    immigration_recipient_rows if is_immigration_group else 0
+                ),
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
             for target in group.targets
         }
+        if is_immigration_group:
+            required_predictors, _optional_predictors = (
+                stacked_spine_module._acs_pattern_predictor_authority(
+                    entity=group.entity,
+                    family_targets=group.targets,
+                )
+            )
+            pattern = acs_transfer_runtime.AcsTransferPattern(
+                name=acs_transfer_runtime._pattern_name(0, ()),
+                observed_optional_predictors=(),
+                predictors=required_predictors,
+                seed=0,
+                weight_kind="design",
+                donor_rows=immigration_producer_rows,
+                recipient_rows=immigration_recipient_rows,
+                target_regimes=tuple(
+                    (model_target, "positive_only")
+                    for model_target in acs_transfer_runtime._model_target_names(
+                        group.targets
+                    )
+                ),
+            )
+            for target in group.targets:
+                key = f"{group.entity}/{group.family}/{target}"
+                record = acs_transfer_runtime.AcsImputedInput(
+                    column=target,
+                    entity=group.entity,
+                    family=group.family,
+                    donor_spine="synthetic_stacked_h5_fixture",
+                    donor_channel="asec",
+                    predictors=pattern.predictors,
+                    seed=pattern.seed,
+                    weight_kind=pattern.weight_kind,
+                    patterns=(pattern,),
+                    imputed_recipient_rows=immigration_recipient_rows,
+                    reconciliation=immigration_reconciliation,
+                )
+                group_targets[key]["qrf_pattern_evidence"] = (
+                    stacked_spine_module._acs_imputed_pattern_evidence(record)
+                )
+                group_targets[key]["post_transfer_reconciliation"] = dict(
+                    immigration_reconciliation
+                )
         pregnancy_key = f"{group.entity}/{group.family}/is_pregnant"
         if pregnancy_key in group_targets:
             group_targets[pregnancy_key]["structural_policy"] = (
@@ -1060,7 +1331,7 @@ def _cached_canonical_stacked_late_dag_receipt(
         calibrated_keys = sorted(set(group_targets) & set(late_specs))
         for key in calibrated_keys:
             group_targets[key]["post_transfer_calibration"] = (
-                _canonical_late_calibration_owner_receipt(late_specs[key])
+                _canonical_late_calibration_owner_receipt(frame, late_specs[key])
             )
         group_receipts[group.name] = {
             "producer": group.name,
@@ -1309,20 +1580,290 @@ def _cached_canonical_stacked_late_dag_receipt(
     return receipt
 
 
-def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
-    return deepcopy(
-        _cached_canonical_stacked_late_dag_receipt(
-            worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
-            worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-            worker_identity_module.os.cpu_count(),
-        )
+def _strip_immigration_transfer_evidence(transfer: dict[str, object]) -> None:
+    """Restore the pre-schema-10 shape of the immigration transfer targets."""
+
+    branch_only = (
+        "qrf_pattern_evidence",
+        "post_transfer_reconciliation",
+        "producer_roles",
+        "producer_rows",
     )
+
+    def historical(target_key: str, receipt: dict[str, object]) -> None:
+        entity, family, target = target_key.split("/", 2)
+        if not stacked_spine_module._is_immigration_transfer_target(
+            entity=entity, family=family, target=target
+        ):
+            return
+        for key in branch_only:
+            receipt.pop(key, None)
+        receipt["authorized_null_rows"] = 0
+        receipt["imputed_rows"] = 0
+
+    for group in transfer["groups"].values():
+        for target_key, receipt in group["targets"].items():
+            historical(target_key, receipt)
+    for target_key, receipt in transfer["targets"].items():
+        historical(target_key, receipt)
+
+
+_IMMIGRATION_SOURCE_PRODUCER = "source:with_us_immigration_inputs"
+_IMMIGRATION_TRANSFER_PRODUCER = "transfer:person/source_operator_immigration"
+
+#: One wage-earning CPS ASEC person record: the raw fields the immigration
+#: source producer reads that the persisted fixture stack does not carry.
+#: WSAL_VAL and SEMP_VAL are the schema-16 requirement #767 replaced with
+#: A_LFSR, which only today's contract reads; both contracts read the rest.
+_ASEC_PERSON_RECORD = {
+    "WSAL_VAL": 52_000.0,
+    "SEMP_VAL": 0.0,
+    "A_LFSR": 1.0,
+    "A_HSCOL": 0.0,
+    "A_MARITL": 7.0,
+    "A_MJOCC": 2.0,
+    "A_SPOUSE": 0.0,
+    "CAID": 2.0,
+    "CHAMPVA": 2.0,
+    "IHSFLG": 2.0,
+    "MCARE": 2.0,
+    "MIL": 2.0,
+    "PEAFEVER": 2.0,
+    "PEIO1COW": 4.0,
+    "PEN_SC1": 0.0,
+    "PEN_SC2": 0.0,
+    "RESNSS1": 0.0,
+    "RESNSS2": 0.0,
+    "SPM_CAPHOUSESUB": 0.0,
+    "SSI_YN": 2.0,
+    "SS_YN": 2.0,
+}
+
+
+def _historically_changed_late_producers() -> tuple[str, ...]:
+    """Name every producer whose schema-16 contract differs from today's."""
+
+    legacy = late_producer_registry_module.legacy_us_late_producer_contracts()
+    live = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    return tuple(
+        name for name in legacy.schedule.order if legacy.registry[name] != live[name]
+    )
+
+
+def _late_dag_input_frame(manifest: Mapping[str, object]) -> Frame:
+    """The fixture stack plus what the immigration producers' contracts read.
+
+    This is the frame ``_write_ready_pool(stacked=True)`` hands the fixture
+    DAG builder, plus exactly the inputs the immigration source and transfer
+    contracts (schema-16 and current) declare that the fixture stack does not
+    carry: the raw ASEC person record on the ASEC-origin rows (the ACS spine
+    has no CPS fields, so its rows stay null), ``is_female``, the person and
+    household spine source ids, ``state_fips``, ACS ``TYPEHUGQ``, and the
+    stack and PUF-attachment manifests in frame metadata. The transfer's
+    optional predictors stay absent, so its row seals their tolerated
+    absences exactly as the builder does. One frame serves every sealed row,
+    so a row's input and output evidence are computed on the same frame.
+    """
+
+    frame, _reconciliation = _stacked_pool_frame_with_live_immigration()
+    assert (
+        spine_provenance_counts(frame, boundary="late DAG input fixture")
+        == manifest["provenance_counts"]
+    ), "the rebuilt fixture stack is not the one this pool persisted"
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    asec_person = (
+        person[support_channel_column("person")]
+        .astype(str)
+        .eq(BASE_ASEC_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+    for column, value in _ASEC_PERSON_RECORD.items():
+        person[column] = np.where(asec_person, value, np.nan)
+    person["is_female"] = (np.arange(len(person)) % 2).astype(np.float64)
+    person["person_spine_source_id"] = person[
+        support_source_id_column("person")
+    ].to_numpy(dtype=np.float64)
+    household = tables["household"]
+    acs_household = (
+        household[support_channel_column("household")]
+        .astype(str)
+        .eq(stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+    # Every fixture household is in PUMA 0600101 / county 06001.
+    household["state_fips"] = 6.0
+    household["household_spine_source_id"] = household[
+        support_source_id_column("household")
+    ].to_numpy(dtype=np.float64)
+    household["TYPEHUGQ"] = np.where(acs_household, 1.0, np.nan)
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    _sampling, stack_manifest = _fixture_stacked_sampling(1.0)
+    # The attachment step records its manifest under the controls the
+    # fixture's primary-PUF resource receipts declare (fraction 1, seed 578).
+    attached = puf_support_runtime._attach_clone_arm_to_seeded_sample(
+        frame,
+        fraction=1.0,
+        seed=578,
+    )
+    return Frame(
+        tables,
+        frame.schema,
+        weights,
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={
+            **frame.metadata,
+            stacked_spine_module.STACKED_SPINE_MANIFEST_KEY: stack_manifest,
+            puf_support_runtime.PUF_CLONE_ATTACHMENT_MANIFEST_KEY: attached.metadata[
+                puf_support_runtime.PUF_CLONE_ATTACHMENT_MANIFEST_KEY
+            ],
+        },
+    )
+
+
+def _seal_execution_rows(
+    dag: dict[str, object],
+    contracts: Mapping[str, ProducerContract],
+    frame: Frame,
+) -> None:
+    """Seal the named rows' surfaces exactly as ``run_stacked_late_producer_dag``.
+
+    Readiness counts, tolerated-absence receipts, content-bound declared-input
+    evidence, and output evidence all come from the production builders,
+    computed on ``frame`` against the given contract and the row's own sealed
+    available-input receipts and callback receipt. Callers re-chain digests.
+    """
+
+    for row in dag["execution"]:
+        contract = contracts.get(row["producer"])
+        if contract is None:
+            continue
+        available = row["available_input_receipts"]
+        unfilled_rows, invalid_rows = stacked_spine_module._late_input_readiness_rows(
+            frame,
+            contract,
+            available_input_receipts=available,
+        )
+        row["declared_inputs"] = stacked_spine_module._late_declared_input_evidence(
+            frame,
+            contract,
+            available_input_receipts=available,
+            unfilled_rows=unfilled_rows,
+            invalid_rows=invalid_rows,
+        )
+        row["declared_absence_receipts"] = {
+            receipt_id: dict(receipt)
+            for receipt_id, receipt in (
+                stacked_spine_module._late_declared_absence_receipts(
+                    contract,
+                    unfilled_rows,
+                    invalid_rows=invalid_rows,
+                ).items()
+            )
+        }
+        row["output_surface"] = [
+            stacked_spine_module._late_output_column_evidence(
+                frame,
+                output=output,
+                producer_receipt=row["producer_receipt"],
+            )
+            for output in contract.outputs
+        ]
+
+
+def _rechain_late_dag(dag: dict[str, object]) -> None:
+    """Re-derive every row's surface digests, the chain, and the receipt digest.
+
+    The chain starts from the genesis digest of the receipt's own version, so
+    this serves both a current receipt and a version-3 (schema-9) one.
+    """
+
+    previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=dag["producer_schedule"]["payload_sha256"],
+        input_frame_sha256=dag["input_frame_sha256"],
+        receipt_schema_version=dag["version"],
+    )
+    for row in dag["execution"]:
+        row["input_surface_sha256"] = _json_sha256(row["declared_inputs"])
+        row["output_surface_sha256"] = _json_sha256(row["output_surface"])
+        row["producer_receipt_sha256"] = _json_sha256(row["producer_receipt"])
+        row["previous_execution_sha256"] = previous_sha256
+        row.pop("sha256", None)
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous_sha256 = row["sha256"]
+    dag["execution_chain_sha256"] = previous_sha256
+    dag.pop("sha256", None)
+    dag["sha256"] = stacked_spine_module._canonical_sha256(dag)
+
+
+def _reseal_current_pool_rows(
+    manifest_path: Path,
+    contracts: Mapping[str, ProducerContract],
+) -> None:
+    """Re-seal a current pool's named rows and re-chain its late DAG."""
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    _seal_execution_rows(dag, contracts, _late_dag_input_frame(manifest))
+    _rechain_late_dag(dag)
+    manifest["late_producer_transition_authority_sha256"] = (
+        stacked_spine_module._late_producer_transition_authority_receipt(dag)["sha256"]
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _immigration_row_contracts(
+    *, historical: Collection[str]
+) -> dict[str, ProducerContract]:
+    """Every historically changed producer's contract, legacy only if named."""
+
+    legacy = late_producer_registry_module.legacy_us_late_producer_contracts()
+    live = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    changed = _historically_changed_late_producers()
+    unknown = set(historical) - set(changed)
+    if unknown:
+        raise ValueError(f"{sorted(unknown)} have no distinct historical contract.")
+    return {
+        name: legacy.registry[name] if name in historical else live[name]
+        for name in changed
+    }
+
+
+def _late_row(manifest_path: Path, producer: str) -> dict[str, object]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    return next(row for row in dag["execution"] if row["producer"] == producer)
+
+
+def _declared_input_columns(row: Mapping[str, object]) -> set[str]:
+    return {
+        column["column"]
+        for declared in row["declared_inputs"]
+        for alternative in declared["evidence"]["alternatives"]
+        for column in alternative
+    }
 
 
 def _rewrite_as_legacy_relocated_worker_pool(
     manifest_path: Path,
+    *,
+    historical_contract: bool = True,
+    current_surface_producers: Collection[str] = (),
 ) -> tuple[dict[str, object], dict[str, object]]:
-    """Re-sign the tiny fixture with the frozen schema-9 worker binding."""
+    """Re-sign the tiny fixture with the frozen schema-9 worker binding.
+
+    With ``historical_contract`` (the default), every producer whose
+    schema-16 contract differs from today's has its execution row sealed by
+    the production row builder against that historical contract, as a real
+    schema-9 pool's row was. ``current_surface_producers`` seals the named
+    ones against today's contract instead: the stale surface the loader must
+    refuse.
+
+    ``historical_contract=False`` keeps today's schedule, operator order, and
+    immigration evidence and only lowers the version numbers: the forgery a
+    real schema-9 pool can never be, which the loader must refuse.
+    """
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
@@ -1404,24 +1945,57 @@ def _rewrite_as_legacy_relocated_worker_pool(
         available
     )
 
-    schedule = dag["producer_schedule"]
-    schedule["schema_version"] = 16
-    schedule["execution_receipt_contract"]["version"] = 3
-    schedule["execution_receipt_contract"]["transition_authority"]["version"] = 1
-    schedule_payload = {
-        key: value
-        for key, value in schedule.items()
-        if key
-        not in {
-            "payload_sha256",
-            "producer_count",
-            "source_producer_count",
-            "transfer_group_count",
-            "transfer_target_count",
-            "status",
-        }
-    }
-    schedule["payload_sha256"] = _json_sha256(schedule_payload)
+    # A schema-9 pool sealed the historical schedule, not a version-downgraded
+    # copy of today's: install the frozen content real pools carry, and give
+    # the immigration targets the ordinary transfer receipts they had before
+    # the paired reconciliation and QRF evidence existed.
+    if historical_contract:
+        schedule = json.loads(
+            json.dumps(
+                dict(
+                    late_producer_registry_module.legacy_us_late_producer_schedule_receipt()
+                )
+            )
+        )
+        dag["producer_schedule"] = schedule
+        _strip_immigration_transfer_evidence(dag["post_puf_transfer"])
+        for row in dag["execution"]:
+            group_receipt = dag["post_puf_transfer"]["groups"].get(row["producer"])
+            if group_receipt is not None:
+                row["producer_receipt"] = json.loads(json.dumps(group_receipt))
+        # Seal every row whose schema-16 contract differs from today's with
+        # the production readiness and evidence builders, run against that
+        # historical contract on the fixture's own late-DAG input frame, so
+        # the rows carry the surfaces a schema-9 build sealed.
+        _seal_execution_rows(
+            dag,
+            _immigration_row_contracts(
+                historical=set(_historically_changed_late_producers())
+                - set(current_surface_producers)
+            ),
+            _late_dag_input_frame(manifest),
+        )
+        manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
+    else:
+        schedule = dag["producer_schedule"]
+        schedule["schema_version"] = 16
+        schedule["execution_receipt_contract"]["version"] = 3
+        schedule["execution_receipt_contract"]["transition_authority"]["version"] = 1
+        schedule["payload_sha256"] = _json_sha256(
+            {
+                key: value
+                for key, value in schedule.items()
+                if key
+                not in {
+                    "payload_sha256",
+                    "producer_count",
+                    "source_producer_count",
+                    "transfer_group_count",
+                    "transfer_target_count",
+                    "status",
+                }
+            }
+        )
     dag["post_puf_transfer"]["producer_schedule"] = json.loads(json.dumps(schedule))
     dag["post_puf_transfer"]["authority"] = (
         stacked_spine_module._legacy_stacked_authority_receipt()
@@ -1802,6 +2376,56 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
 
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
+    positive_draws = tuple(
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    )
+    expected_rows = 1 + len(positive_draws)
+    expected_weights = np.asarray(
+        [1.0, *(float(draw.target) for draw in positive_draws)],
+        dtype=np.float64,
+    )
+    assert all(frame.n(entity) == expected_rows for entity in US_SCHEMA.entities)
+    np.testing.assert_array_equal(
+        frame.weights_for("household").values,
+        expected_weights,
+    )
+    person = frame.table("person")
+    assert person.loc[0, "PRCITSHP"] == 1
+    assert pd.isna(person.loc[0, "CIT"])
+    assert person.loc[0, "immigration_status_str"] == "CITIZEN"
+    assert person.loc[1:, "CIT"].eq(5).all()
+    assert person.loc[1:, ["POBP", "YOEP"]].notna().all().all()
+    for entity in US_SCHEMA.group_entities:
+        np.testing.assert_array_equal(
+            person[US_SCHEMA.membership_column(entity)],
+            frame.table(entity)[US_SCHEMA.id_column(entity)],
+        )
+    for draw in positive_draws:
+        emitted = immigration_runtime.us_immigration_humanitarian_draw_mask(
+            frame,
+            draw,
+        )
+        assert int(emitted.sum()) == 1
+        assert float(frame.resolve_weights("person").values[emitted].sum()) == float(
+            draw.target
+        )
+    for entity in US_SCHEMA.entities:
+        assert manifest["provenance_counts"][entity] == {
+            "rows": expected_rows,
+            "by_source_channel": {
+                BASE_ASEC_SUPPORT_CHANNEL: 1,
+                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: len(positive_draws),
+            },
+            "by_clone_index": {"0": expected_rows},
+            "by_source_channel_and_clone_index": {
+                BASE_ASEC_SUPPORT_CHANNEL: {"0": 1},
+                stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL: {
+                    "0": len(positive_draws)
+                },
+            },
+        }
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
     assert manifest["schema_version"] == US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
     assert (
@@ -1949,6 +2573,61 @@ def test_ready_stacked_pool_loader_rejects_boolean_sampling_aliases(
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
+def test_ready_stacked_pool_loader_replays_immigration_status_against_h5(
+    tmp_path: Path,
+) -> None:
+    """An ordinary H5 re-hash cannot forge the sealed live immigration proof."""
+
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        person = h5_io.read_frame_table(store, "person")
+        parole_rows = person["immigration_status_str"].eq("PAROLED_ONE_YEAR")
+        assert parole_rows.any()
+        person.loc[parole_rows.idxmax(), "immigration_status_str"] = (
+            "LEGAL_PERMANENT_RESIDENT"
+        )
+        h5_io.put_frame_table(
+            store,
+            "person",
+            person,
+            preferred_format="fixed",
+        )
+
+    # Re-sign only the ordinary byte-level artifact envelope. The immutable
+    # late-transition receipt still describes the untampered live population.
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="differs from the live ASEC/ACS weighted population",
+    ):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_requires_immigration_terminal_gate(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    for payload in (manifest, diagnostics):
+        payload["terminal_gates"]["gates"].pop("immigration_composition")
+        payload["agreement_gate"]["gates"].pop("immigration_composition")
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="canonical terminal gate set"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
 def test_ready_stacked_pool_loader_binds_h5_cd_vintage_attrs(
     tmp_path: Path,
 ) -> None:
@@ -2017,7 +2696,11 @@ def test_ready_stacked_pool_loader_rejects_divergent_clone_geography(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest_path = _write_ready_pool(
+        tmp_path,
+        stacked=True,
+        include_zero_weight_clone=True,
+    )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     pool_path = Path(manifest["pool_h5"]["path"])
     clone_column = support_clone_index_column("household")
@@ -2059,7 +2742,11 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         )
     )
 
-    assert frame.n("household") == 3
+    expected_rows = 1 + sum(
+        draw.target > 0
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+    )
+    assert frame.n("household") == expected_rows
     assert loaded_manifest["status"] == "gate_failed"
     assert loaded_manifest["simulation_ready"] is False
     assert loaded_manifest["terminal_gates"]["passed"] is False
@@ -2090,7 +2777,7 @@ def test_scoring_pool_loader_authenticates_failed_stacked_terminal_receipt(
         "failure_count": 1,
         "failures": [
             {
-                "gate": "us_spine_agreement",
+                "gate": "us_stacked_completeness",
                 "message": "fixture terminal failure",
             }
         ],
@@ -2123,7 +2810,12 @@ def test_current_worker_authentication_ignores_audit_alias_relocation(
         manifest_path
     )
 
-    assert frame.n("household") == 3
+    positive_draws = [
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    ]
+    assert frame.n("household") == 1 + len(positive_draws)
     assert authenticated.sha256 == pool_sha256
     assert (
         manifest["worker_execution_authentication"]["audit_aliases"]
@@ -2158,6 +2850,27 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
     )
+    # The sealed rows are the schema-16 ones, not today's: the immigration
+    # source still reads WSAL_VAL/SEMP_VAL (#767 replaced them with A_LFSR),
+    # and the immigration transfer lacks the seven requirements #767 added.
+    legacy = late_producer_registry_module.legacy_us_late_producer_contracts()
+    live = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    source_row = _late_row(manifest_path, _IMMIGRATION_SOURCE_PRODUCER)
+    transfer_row = _late_row(manifest_path, _IMMIGRATION_TRANSFER_PRODUCER)
+    assert (
+        len(source_row["declared_inputs"])
+        == 57
+        == len(legacy.registry[_IMMIGRATION_SOURCE_PRODUCER].inputs)
+    )
+    assert (
+        len(transfer_row["declared_inputs"])
+        == 93
+        == len(legacy.registry[_IMMIGRATION_TRANSFER_PRODUCER].inputs)
+    )
+    assert len(live[_IMMIGRATION_SOURCE_PRODUCER].inputs) == 56
+    assert len(live[_IMMIGRATION_TRANSFER_PRODUCER].inputs) == 100
+    assert {"WSAL_VAL", "SEMP_VAL"} <= _declared_input_columns(source_row)
+    assert "A_LFSR" not in _declared_input_columns(source_row)
     manifest_sha256 = _sha256(manifest_path)
     attestation_path = _write_legacy_worker_attestation(
         manifest_path,
@@ -2186,7 +2899,12 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
         "compatibility_attestation_sha256": _sha256(attestation_path),
         "purpose": "scoring_only",
     }
-    assert frame.n("household") == 3
+    positive_draws = [
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    ]
+    assert frame.n("household") == 1 + len(positive_draws)
     assert manifest["status"] == "gate_failed"
     assert manifest["simulation_ready"] is False
     assert authenticated.sha256 == manifest["pool_h5"]["sha256"]
@@ -2211,6 +2929,105 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
             manifest,
             authenticated,
             allow_gate_failed_base_pool=True,
+        )
+
+
+def test_scoring_loader_refuses_legacy_rows_sealed_with_todays_surfaces(
+    tmp_path: Path,
+) -> None:
+    """An attested schema-9 pool must carry the rows schema 16 sealed."""
+
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path,
+        current_surface_producers=(_IMMIGRATION_SOURCE_PRODUCER,),
+    )
+    source_row = _late_row(manifest_path, _IMMIGRATION_SOURCE_PRODUCER)
+    assert len(source_row["declared_inputs"]) == 56
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="exact 57-input readiness surface"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=_sha256(manifest_path),
+            worker_identity_attestation=attestation_path,
+        )
+
+
+def test_current_loader_refuses_rows_sealed_with_historical_surfaces(
+    tmp_path: Path,
+) -> None:
+    """History authenticates only under an attestation, never on the current path."""
+
+    pytest.importorskip("tables")
+    (tmp_path / "control").mkdir()
+    control_path = _write_gate_failed_pool(tmp_path / "control")
+    # Control: re-sealing with today's contracts reproduces a loadable pool,
+    # so the refusal below comes from the historical surfaces, not the helper.
+    _reseal_current_pool_rows(control_path, _immigration_row_contracts(historical=()))
+    load_authenticated_us_multispine_pool_for_scoring(control_path)
+
+    (tmp_path / "historical").mkdir()
+    manifest_path = _write_gate_failed_pool(tmp_path / "historical")
+    _reseal_current_pool_rows(
+        manifest_path,
+        _immigration_row_contracts(historical=_historically_changed_late_producers()),
+    )
+    source_row = _late_row(manifest_path, _IMMIGRATION_SOURCE_PRODUCER)
+    assert len(source_row["declared_inputs"]) == 57
+
+    with pytest.raises(ValueError, match="exact 56-input readiness surface"):
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
+
+
+def test_scoring_loader_refuses_version_downgraded_current_contract(
+    tmp_path: Path,
+) -> None:
+    """Lowered version numbers do not make today's contract a schema-9 pool."""
+
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path,
+        historical_contract=False,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    assert dag["producer_schedule"]["payload_sha256"] != (
+        late_producer_registry_module.LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="canonical late-DAG operator order"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=_sha256(manifest_path),
+            worker_identity_attestation=attestation_path,
+        )
+
+    # Borrowing the historical operator order does not rescue it: the sealed
+    # schedule is still today's content under yesterday's version numbers.
+    manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+    with pytest.raises(ValueError, match="DAG schedule is not canonical"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=_sha256(manifest_path),
+            worker_identity_attestation=attestation_path,
         )
 
 
@@ -2533,7 +3350,14 @@ def test_denied_gate_failed_pool_is_available_only_for_scoring(
     frame, loaded_manifest, _ = load_authenticated_us_multispine_pool_for_scoring(
         manifest_path
     )
-    assert frame.n("household") == 3
+    # The stacked fixture carries one base row plus one row per positive
+    # canonical humanitarian draw (see _stacked_pool_frame_with_live_immigration).
+    positive_draws = [
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    ]
+    assert frame.n("household") == 1 + len(positive_draws)
     assert loaded_manifest["status"] == "gate_failed"
 
     refused_loaders = (

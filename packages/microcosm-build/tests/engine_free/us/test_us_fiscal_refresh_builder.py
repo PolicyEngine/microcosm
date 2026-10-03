@@ -537,7 +537,8 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         staged_frame_sha256="staged-frame-sha",
     )
     # 12 = the identity carries the staged-frame digest (microcosm#956); 13 =
-    # the batched base pass. Schema 2 distinguishes the values+mask codec from
+    # the batched base pass; 14 = source-aware humanitarian-stock columns
+    # (microcosm#767). Schema 2 distinguishes the values+mask codec from
     # schema-1 checkpoints.
     assert identity["schema_version"] == 2
     assert (
@@ -761,7 +762,8 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     """A checkpoint stored under a superseded materializer version must not load.
 
     Version 12 adds the staged-frame digest to the identity (microcosm#956)
-    and 13 the batched base pass. The version constant participates in the
+    and 13 the batched base pass; 14 adds the source-aware humanitarian-stock
+    target columns (microcosm#767). The version constant participates in the
     identity comparison; this pins rejection of the immediately preceding
     version and the one before it, derived from the current constant so every
     bump moves the test with it.
@@ -800,7 +802,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         staged_frame_sha256="staged-frame-sha",
     )
     current = builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
-    assert current >= 13  # microcosm#1018 uses version 12.
+    assert current >= 14  # #1018 uses 12, #956 13, #767 14.
     assert identity["materializer_version"] == current
     # The two preceding versions must both miss against the current version.
     stale_identity = {**dict(identity), "materializer_version": current - 1}
@@ -6378,6 +6380,7 @@ def _run_green_register_release(
         "crash",
         "telemetry",
         "puf_tail",
+        "immigration_drift",
         "spm_missing_pool",
         "qrf_tail_register",
         "qrf_tail_register_clean",
@@ -6418,6 +6421,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``puf_tail``: exact-k selection loses the original PUF capital-gains tail;
     the failure is batched while diagnostics and final-weight evidence remain,
     every later terminal group runs, and release artifacts stay suppressed.
+    ``immigration_drift``: the source-frame immigration composition passes, then
+    calibrated weights make the same selected status mix fail on the final
+    export-frame recheck; that final verdict reaches diagnostics and aborts
+    publication.
     ``spm_missing_pool``: a prepared pool without the source role fails at
     the real SPM signal gate before calibration or terminal coverage checks.
     ``qrf_tail_register``: the per-run tail register carries a stale and an
@@ -6556,11 +6563,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     class FakeFrame:
-        # Household-only, shaped like the real ``Frame`` contract: ``schema``
-        # is always present, and ``table`` raises ``ValueError`` for an entity
-        # the schema does not declare (``Frame.table``). That is what lets the
-        # pre-calibration SPM composition advisory degrade to a notice here
-        # instead of aborting the run before the gate under test.
+        # Household and person only, shaped like the real ``Frame`` contract:
+        # ``schema`` is always present, and ``table`` raises ``ValueError`` for
+        # an entity the schema does not declare (``Frame.table``). That is what
+        # lets the pre-calibration SPM composition advisory degrade to a notice
+        # here instead of aborting the run before the gate under test; the
+        # person table carries the immigration statuses the composition gate
+        # reads.
         schema = EntitySchema(group_entities=("household",))
 
         def n(self, entity):
@@ -6569,16 +6578,42 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
         def table(self, entity):
             if terminal_mode == "spm_missing_pool" and entity == "person":
+                # A prepared pool carries its immigration statuses; only the
+                # SPM source role is missing.
                 return pd.DataFrame(
-                    {"person_id": [1, 2, 3, 4], "age": [30, 40, 16, 17]}
+                    {
+                        "person_id": [1, 2, 3, 4],
+                        "age": [30, 40, 16, 17],
+                        "immigration_status_str": [
+                            "REFUGEE",
+                            "LEGAL_PERMANENT_RESIDENT",
+                            "ASYLEE",
+                            "LEGAL_PERMANENT_RESIDENT",
+                        ],
+                    }
                 )
-            if entity != "household":
+            if entity not in self.schema.entities:
                 raise ValueError(
                     f"Unknown entity {entity!r}; schema declares "
                     f"{list(self.schema.entities)}."
                 )
             size = self.n("household")
-            return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
+            if entity == "household":
+                return pd.DataFrame(
+                    {"household_id": np.arange(1, size + 1, dtype="int64")}
+                )
+            assert entity == "person"
+            return pd.DataFrame(
+                {
+                    "household_id": np.arange(1, size + 1, dtype="int64"),
+                    "immigration_status_str": [
+                        "REFUGEE",
+                        "LEGAL_PERMANENT_RESIDENT",
+                        "ASYLEE",
+                        "LEGAL_PERMANENT_RESIDENT",
+                    ][:size],
+                }
+            )
 
         def weights_for(self, entity):
             assert entity == "household"
@@ -6588,8 +6623,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             )
 
     class FakeExportFrame:
-        # Household-only, shaped like the real ``Frame`` contract for the same
-        # reason ``FakeFrame`` above is: ``schema`` is always present and
+        # Household and person only, shaped like the real ``Frame`` contract for
+        # the same reason ``FakeFrame`` above is: ``schema`` is always present and
         # ``table`` raises ``ValueError`` for an entity the schema does not
         # carry. That is what lets the batched SPM composition gate contribute
         # one "cannot be classified" failure line to this run's report — the
@@ -6609,12 +6644,25 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             )
 
         def table(self, entity):
-            if entity != "household":
+            if entity not in self.schema.entities:
                 raise ValueError(
                     f"Unknown entity {entity!r}; schema declares "
                     f"{list(self.schema.entities)}."
                 )
-            return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
+            if entity == "household":
+                return pd.DataFrame(
+                    {"household_id": np.asarray([10, 20], dtype="int64")}
+                )
+            assert entity == "person"
+            return pd.DataFrame(
+                {
+                    "household_id": np.asarray([10, 20], dtype="int64"),
+                    "immigration_status_str": [
+                        "REFUGEE",
+                        "LEGAL_PERMANENT_RESIDENT",
+                    ],
+                }
+            )
 
     if prepared_pool:
         loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
@@ -6808,6 +6856,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "retirement",
         "telemetry",
         "puf_tail",
+        "immigration_drift",
         "spm_missing_pool",
         "qrf_tail_register",
         "qrf_tail_register_clean",
@@ -7372,14 +7421,51 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "with_us_immigration_inputs",
         lambda frame, *, seed, time_period: frame,
     )
+
+    def fake_immigration_composition_gate(frame, *, time_period):
+        assert time_period == builder.PERIOD
+        statuses = frame.table("person")["immigration_status_str"].astype(str)
+        household_weights = frame.weights_for("household")
+        weights = np.asarray(household_weights.values, dtype=np.float64)
+        assert len(statuses) == len(weights)
+        humanitarian = statuses.isin(
+            {"REFUGEE", "ASYLEE", "DEPORTATION_WITHHELD", "CUBAN_HAITIAN_ENTRANT"}
+        ).to_numpy(dtype=bool)
+        humanitarian_share = float(np.average(humanitarian, weights=weights))
+        calls = captured.setdefault("immigration_gate_calls", [])
+        is_final_drift = (
+            terminal_mode == "immigration_drift"
+            and household_weights.kind == WeightKind.CALIBRATED
+        )
+        calls.append(
+            {
+                "weight_kind": household_weights.kind.value,
+                "weights": weights.tolist(),
+                "statuses": statuses.tolist(),
+                "humanitarian_share": humanitarian_share,
+                "passed": not is_final_drift,
+            }
+        )
+        failure = (
+            "weighted humanitarian status share drifted from 0.500000 to "
+            f"{humanitarian_share:.6f} after calibration "
+            "[final-immigration-sentinel]"
+        )
+        return builder.GateResult(
+            name="immigration_composition",
+            passed=not is_final_drift,
+            failures=(failure,) if is_final_drift else (),
+            details={
+                "checked": True,
+                "weight_kind": household_weights.kind.value,
+                "humanitarian_share": humanitarian_share,
+            },
+        )
+
     monkeypatch.setattr(
         builder,
         "us_immigration_composition_gate",
-        lambda frame: builder.GateResult(
-            name="immigration_composition",
-            passed=True,
-            details={"checked": True},
-        ),
+        fake_immigration_composition_gate,
     )
     monkeypatch.setattr(
         builder,
@@ -8163,6 +8249,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 passed=True,
                 details={"checked": True},
             )
+        if terminal_mode == "immigration_drift":
+            return builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            )
         # Export-frame call fails deliberately: the microcosm#547 cofailure
         # regression proves a failing post-solve signal gate batches
         # alongside the SSI delivery failure instead of masking it with an
@@ -8430,6 +8522,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "integrity",
             "retirement",
             "puf_tail",
+            "immigration_drift",
             "qrf_tail_register_clean",
             "qrf_tail_register_green",
             "qrf_tail_register_green_skipped_smoke",
@@ -8474,6 +8567,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             return []
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        if terminal_mode == "immigration_drift":
+            final_immigration_gate = args[6]
+            assert final_immigration_gate.name == "immigration_composition"
+            assert not final_immigration_gate.passed
+            return [
+                f"Immigration composition failed: {failure}"
+                for failure in final_immigration_gate.failures
+            ]
         if terminal_mode == "retirement":
             # The degraded pre-solve contract (PR #557 round 3): the failing
             # degenerate gate is NOT raised early — the gate object itself
@@ -8604,6 +8705,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Bernoulli-law violation [final-integrity-sentinel]"
             )
             assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "immigration_drift":
+            # The drift leads; the only other line is the SPM composition
+            # gate's degraded-mode refusal on the household/person-only fake
+            # export frame, which this cofailure contract expects.
+            assert message == (
+                "Release gates failed: Immigration composition failed: weighted "
+                "humanitarian status share drifted from 0.500000 to 0.255319 "
+                "after calibration [final-immigration-sentinel]; SPM measurement "
+                "composition failed (export frame): the export frame cannot be "
+                "classified, so the rule the engine applies to it cannot be "
+                "checked: Unknown entity 'spm_unit'; schema declares "
+                "['person', 'household']."
+            )
         elif clean_run:
             # The register mismatch is the run's only terminal failure, yet
             # it reaches the batched raise (the old register raise escaped
@@ -8621,14 +8735,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Release gates failed: SSI take-up delivery failed: "
                 "18_64 delivered over envelope [cofailure-sentinel]"
             )
-        if not clean_run:
+        if terminal_mode != "immigration_drift" and not clean_run:
             assert (
                 "Other health insurance signal failed on the export frame: "
                 "premiums signal flattened [cofailure-sentinel]" in message
             )
         if clean_run:
             pass
-        elif terminal_mode != "crash":
+        elif terminal_mode not in {"crash", "immigration_drift"}:
             assert "ctc failed" in message
             if terminal_mode == "telemetry":
                 assert (
@@ -8636,7 +8750,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                     "attach_artifact('calibration_diagnostics') crashed" in message
                 )
                 assert "telemetry-crash-sentinel" in message
-        else:
+        elif terminal_mode == "crash":
             assert "health-input exploded [crash-sentinel]" in message
             assert "release-gate evaluation exploded [crash-sentinel]" in message
             assert "ctc failed" not in message
@@ -8655,6 +8769,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert "QRF tail-concentration evaluation failed" not in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
+
+    if terminal_mode == "immigration_drift":
+        immigration_calls = captured["immigration_gate_calls"]
+        assert len(immigration_calls) == 2
+        source_call, final_call = immigration_calls
+        assert source_call["weight_kind"] == "importance"
+        assert source_call["weights"] == [1.0, 1.0, 1.0, 1.0]
+        assert source_call["statuses"] == [
+            "REFUGEE",
+            "LEGAL_PERMANENT_RESIDENT",
+            "ASYLEE",
+            "LEGAL_PERMANENT_RESIDENT",
+        ]
+        assert source_call["humanitarian_share"] == pytest.approx(0.5)
+        assert source_call["passed"] is True
+        assert final_call["weight_kind"] == "calibrated"
+        assert final_call["weights"] == [12.0, 35.0]
+        assert final_call["statuses"] == ["REFUGEE", "LEGAL_PERMANENT_RESIDENT"]
+        assert final_call["humanitarian_share"] == pytest.approx(12.0 / 47.0)
+        assert final_call["passed"] is False
 
     release_dir = out / "releases" / release_id
     written_diagnostics = json.loads(
@@ -8685,6 +8819,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "Bernoulli-law violation [final-integrity-sentinel]"
             in written_diagnostics["build"]["release_gates"]["failures"]
         )
+    elif terminal_mode == "immigration_drift":
+        assert written_diagnostics["build"]["release_gates"]["failures"] == [
+            "Immigration composition failed: weighted humanitarian status share "
+            "drifted from 0.500000 to 0.255319 after calibration "
+            "[final-immigration-sentinel]"
+        ]
     # The SSI retry-basis artifact is written even though the run fails
     # terminally — it IS the remedy input for the next attempt.
     assert (release_dir / "us_ssi_take_up.json").exists()
@@ -8709,6 +8849,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     cache_context = captured["materialize_kwargs"][
         "target_materialization_cache_context"
     ]
+    active_specs = captured["ssi_band_targets_specs"]
+    assert any(
+        spec.metadata.get("target_role") == "humanitarian_immigration_stock"
+        for spec in active_specs
+    )
+    assert (
+        cache_context["target_registry_version"]
+        == TargetRegistry(active_specs, country="us").version
+    )
     expected_evidence_identity = builder._target_frame_checkpoint_identity(
         base_dataset_sha256=cache_context["base_dataset_sha256"],
         policyengine_us_version=cache_context["policyengine_us_version"],
@@ -8791,6 +8940,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "retirement",
         "telemetry",
         "puf_tail",
+        "immigration_drift",
         "qrf_tail_register",
         "qrf_tail_register_clean",
     }:
@@ -8833,6 +8983,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Other health insurance signal failed on the export frame: "
                 "premiums signal flattened [cofailure-sentinel]",
                 "ctc failed",
+            ]
+        elif terminal_mode == "immigration_drift":
+            expected_gate_failures = [
+                "Immigration composition failed: weighted humanitarian status share "
+                "drifted from 0.500000 to 0.255319 after calibration "
+                "[final-immigration-sentinel]"
             ]
         elif clean_run:
             # Nothing failed before the terminal tail gate.
@@ -9123,7 +9279,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
     ]
-    if terminal_mode not in {"integrity", "retirement", "qrf_tail_register_clean"}:
+    if terminal_mode not in {
+        "integrity",
+        "retirement",
+        "immigration_drift",
+        "qrf_tail_register_clean",
+    }:
         # A delivery miss rewrites the final measurement as the retry basis.
         expected_ssi_event_order.append("write:us_ssi_take_up.json")
     assert captured["ssi_event_order"] == expected_ssi_event_order
@@ -11642,6 +11803,240 @@ def test_population_age_targets_materialize_person_age_counts(
     assert np.array_equal(household["ssi_age_8_to_64"], np.asarray([0.0, 1.0]))
     assert len(registry) == 6
     assert compilation["dropped_target_names"] == []
+
+
+def test_humanitarian_stock_specs_follow_positive_manifest_draws(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    draws = (
+        SimpleNamespace(
+            label="paroled_one_year:afghanistan",
+            category="paroled_one_year",
+            origin="afghanistan",
+            status="PAROLED_ONE_YEAR",
+            target=75_000.0,
+            source="https://example.test/parole",
+        ),
+        SimpleNamespace(
+            label="refugee",
+            category="refugee",
+            origin=None,
+            status="REFUGEE",
+            target=160_000.0,
+            source="https://example.test/refugee",
+        ),
+        SimpleNamespace(
+            label="deportation_withheld",
+            category="deportation_withheld",
+            origin=None,
+            status="DEPORTATION_WITHHELD",
+            target=0.0,
+            source="https://example.test/withheld",
+        ),
+        SimpleNamespace(
+            label="tps:venezuela",
+            category="tps",
+            origin="venezuela",
+            status="TPS",
+            target=344_335.0,
+            source="https://example.test/tps",
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_immigration_controls",
+        lambda: SimpleNamespace(humanitarian=draws),
+    )
+
+    specs = builder._humanitarian_immigration_stock_specs(time_period=2024)
+
+    assert [spec.name for spec in specs] == [
+        "humanitarian_immigration_stock.paroled_one_year.afghanistan",
+        "humanitarian_immigration_stock.refugee",
+        "humanitarian_immigration_stock.tps.venezuela",
+    ]
+    assert [spec.value for spec in specs] == [75_000.0, 160_000.0, 344_335.0]
+    assert [spec.source for spec in specs] == [
+        "https://example.test/parole",
+        "https://example.test/refugee",
+        "https://example.test/tps",
+    ]
+    assert all(spec.period == 2024 for spec in specs)
+    assert all(
+        spec.metadata["materializer"] == "humanitarian_immigration_stock"
+        for spec in specs
+    )
+    assert specs[0].metadata["humanitarian_origin"] == "afghanistan"
+    assert "humanitarian_origin" not in specs[1].metadata
+    # The active-registry content hash therefore binds the manifest controls;
+    # removing even one draw produces a different checkpoint registry id.
+    assert (
+        TargetRegistry(specs, country="us").version
+        != TargetRegistry(specs[:-1], country="us").version
+    )
+
+
+def test_humanitarian_stock_materializer_collapses_source_aware_person_masks(
+    monkeypatch,
+    small_frame,
+) -> None:
+    from microcosm.calibrate import build_constraint_matrix
+
+    builder = _load_builder_module()
+    draws = (
+        SimpleNamespace(
+            label="paroled_one_year:afghanistan",
+            category="paroled_one_year",
+            origin="afghanistan",
+            status="PAROLED_ONE_YEAR",
+            target=1.0,
+            source="fixture",
+        ),
+        SimpleNamespace(
+            label="refugee",
+            category="refugee",
+            origin=None,
+            status="REFUGEE",
+            target=2.0,
+            source="fixture",
+        ),
+    )
+    controls = SimpleNamespace(humanitarian=draws)
+    monkeypatch.setattr(builder, "us_immigration_controls", lambda: controls)
+    observed: list[tuple[str, int]] = []
+
+    def draw_mask(frame, draw, *, time_period):
+        assert frame is small_frame
+        observed.append((draw.label, time_period))
+        return {
+            "paroled_one_year:afghanistan": np.asarray([True, False, False, False]),
+            "refugee": np.asarray([False, True, True, False]),
+        }[draw.label]
+
+    monkeypatch.setattr(builder, "us_immigration_humanitarian_draw_mask", draw_mask)
+    specs = builder._humanitarian_immigration_stock_specs(time_period=2024)
+    household = small_frame.table("household").copy()
+
+    builder._materialize_humanitarian_immigration_stock_targets(
+        frame=small_frame,
+        household=household,
+        target_specs=specs,
+        time_period=2024,
+    )
+
+    np.testing.assert_array_equal(
+        household[
+            "humanitarian_immigration_stock.paroled_one_year.afghanistan"
+        ].to_numpy(),
+        np.asarray([1.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        household["humanitarian_immigration_stock.refugee"].to_numpy(),
+        np.asarray([1.0, 1.0]),
+    )
+    assert observed == [
+        ("paroled_one_year:afghanistan", 2024),
+        ("refugee", 2024),
+    ]
+
+    target_frame = Frame(
+        {
+            "person": small_frame.table("person"),
+            "household": household,
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    registry, compilation = builder._compile_materialized_target_registry(
+        target_frame,
+        specs,
+    )
+    target_set = registry.to_target_set()
+
+    assert compilation["dropped_target_names"] == []
+    assert tuple(target.row_name for target in target_set) == (
+        "humanitarian_immigration_stock.paroled_one_year.afghanistan@2024",
+        "humanitarian_immigration_stock.refugee@2024",
+    )
+    problem = build_constraint_matrix(target_frame, target_set)
+    assert problem.names == tuple(target.row_name for target in target_set)
+    assert problem.skipped == ()
+    np.testing.assert_array_equal(
+        problem.matrix.toarray(),
+        np.asarray([[1.0, 0.0], [1.0, 1.0]]),
+    )
+    np.testing.assert_array_equal(
+        problem.target_vector,
+        np.asarray([1.0, 2.0]),
+    )
+
+
+def test_dense_and_l0_solvers_consume_compiled_registry_target_set() -> None:
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    for solver_name in ("calibrate", "calibrate_l0_refit"):
+        calls = [
+            node
+            for node in ast.walk(main_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == solver_name
+        ]
+        assert len(calls) == 1
+        assert ast.unparse(calls[0].args[0]) == "target_frame"
+        assert ast.unparse(calls[0].args[1]) == "registry.to_target_set()"
+
+
+def test_main_rechecks_immigration_composition_on_export_for_terminal_gates() -> None:
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    final_assignments = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "final_immigration_gate"
+            for target in node.targets
+        )
+    ]
+    assert len(final_assignments) == 1
+    final_assignment = final_assignments[0]
+    assert isinstance(final_assignment.value, ast.Call)
+    assert getattr(final_assignment.value.func, "id", None) == (
+        "us_immigration_composition_gate"
+    )
+    assert ast.unparse(final_assignment.value.args[0]) == "export_frame"
+    assert [
+        (keyword.arg, ast.unparse(keyword.value))
+        for keyword in final_assignment.value.keywords
+    ] == [("time_period", "PERIOD")]
+
+    terminal_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "_release_gate_failures"
+        and node.lineno > final_assignment.lineno
+    ]
+    assert len(terminal_calls) == 1
+    assert ast.unparse(terminal_calls[0].args[6]) == "final_immigration_gate"
 
 
 def test_unknown_ledger_filter_metadata_fails_closed() -> None:

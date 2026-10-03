@@ -1,4 +1,4 @@
-"""The pinned ASEC education-assistance sidecar: load, verify, and fill.
+"""The pinned ASEC ED_VAL/A_LFSR sidecar: load, verify, and fill.
 
 The frozen census_cps inputs never carried raw ASEC ``ED_VAL``
 (microcosm#417's sibling gap), so the education-inputs stage restores it from
@@ -21,8 +21,11 @@ import pytest
 from microcosm.build.us_runtime.education_assistance_source import (
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
     ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    ASEC_LABOR_FORCE_STATUS_COLUMN,
+    ASEC_LABOR_FORCE_STATUS_VALID_CODES,
     AsecEducationArchive,
     fill_asec_education_assistance_source,
+    fill_asec_labor_force_status_source,
     load_asec_education_assistance_sources,
 )
 
@@ -41,6 +44,7 @@ def _source_frame(rows: int = 6) -> pd.DataFrame:
             "A_LINENO": np.ones(rows, dtype=np.int64),
             "PERIDNUM": [_peridnum(index) for index in range(rows)],
             "ED_VAL": [0.0, 0.0, 2_500.0, 0.0, 12_000.0, 0.0][:rows],
+            "A_LFSR": [0, 1, 2, 3, 4, 7][:rows],
             "A_FNLWGT": np.full(rows, 100.0),
         }
     )
@@ -112,7 +116,27 @@ def test_loader_reads_pinned_zip_and_audits(pinned_archive) -> None:
     )
     assert list(source["source_year"].unique()) == [_YEAR]
     assert len(source) == len(frame)
+    assert source[ASEC_LABOR_FORCE_STATUS_COLUMN].tolist() == [0, 1, 2, 3, 4, 7]
+    assert source[ASEC_LABOR_FORCE_STATUS_COLUMN].dtype == np.dtype("int64")
     assert source.attrs["source_audit"][_YEAR]["positive_rows"] == 2
+
+
+def test_loader_rejects_invalid_labor_force_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frame = _source_frame()
+    frame.loc[0, ASEC_LABOR_FORCE_STATUS_COLUMN] = 6
+    member = f"pppub{str(_YEAR + 1)[2:]}.csv"
+    path = tmp_path / "invalid-a-lfsr.zip"
+    _write_archive(path, frame, member)
+    monkeypatch.setitem(
+        ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
+        _YEAR,
+        _pins_for(path, frame, member),
+    )
+
+    with pytest.raises(ValueError, match="A_LFSR must be a complete integer"):
+        load_asec_education_assistance_sources({_YEAR: path}, income_years=(_YEAR,))
 
 
 def test_loader_rejects_wrong_zip_bytes(pinned_archive, tmp_path) -> None:
@@ -153,6 +177,21 @@ def test_fill_joins_ed_val_by_identity(pinned_archive) -> None:
     expected = frame.set_index("PERIDNUM")["ED_VAL"]
     for _, row in filled.iterrows():
         assert row["ED_VAL"] == expected[row["PERIDNUM"]]
+
+
+def test_fill_joins_labor_force_status_by_identity(pinned_archive) -> None:
+    path, frame = pinned_archive
+    source = load_asec_education_assistance_sources(
+        {_YEAR: path}, income_years=(_YEAR,)
+    )
+    filled = fill_asec_labor_force_status_source(_person_frame(), source)
+    expected = frame.set_index("PERIDNUM")[ASEC_LABOR_FORCE_STATUS_COLUMN]
+    for _, row in filled.iterrows():
+        assert row[ASEC_LABOR_FORCE_STATUS_COLUMN] == expected[row["PERIDNUM"]]
+    assert filled[ASEC_LABOR_FORCE_STATUS_COLUMN].dtype == np.dtype("int64")
+    assert set(filled[ASEC_LABOR_FORCE_STATUS_COLUMN]) <= (
+        ASEC_LABOR_FORCE_STATUS_VALID_CODES
+    )
 
 
 def test_fill_fails_closed_on_uncovered_key(pinned_archive) -> None:
@@ -197,6 +236,19 @@ def test_fill_refuses_to_overwrite_measured_values(pinned_archive) -> None:
     person["ED_VAL"] = 1.0
     with pytest.raises(ValueError, match="refusing to overwrite"):
         fill_asec_education_assistance_source(person, source)
+
+
+def test_labor_force_fill_refuses_to_overwrite_measured_values(
+    pinned_archive,
+) -> None:
+    path, _ = pinned_archive
+    source = load_asec_education_assistance_sources(
+        {_YEAR: path}, income_years=(_YEAR,)
+    )
+    person = _person_frame()
+    person[ASEC_LABOR_FORCE_STATUS_COLUMN] = 7
+    with pytest.raises(ValueError, match="refusing to overwrite"):
+        fill_asec_labor_force_status_source(person, source)
 
 
 def test_pins_reject_audit_drift(pinned_archive, monkeypatch) -> None:

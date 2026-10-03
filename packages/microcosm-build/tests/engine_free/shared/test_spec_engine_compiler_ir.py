@@ -22,7 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+US_SCHEDULE_SHA256 = "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
 
 
 @pytest.fixture(scope="module")
@@ -107,9 +107,9 @@ def test_us_seed_stream_map_is_complete_and_owner_typed(
 ) -> None:
     seed_map = compiled_us.seed_stream_map
     assert seed_map.protocol_id == "legacy-v1"
-    assert len(seed_map.sites) == 53
+    assert len(seed_map.sites) == 66
     assert len(seed_map.owners) == 54
-    assert sum(len(site.owners) for site in seed_map.sites) == 112
+    assert sum(len(site.owners) for site in seed_map.sites) == 125
     assert {site.id for site in seed_map.sites} == {
         site.id for site in resolved_us.seed_protocol.sites
     }
@@ -244,5 +244,5 @@ def test_bundle_without_imputation_compiles_empty_graph(
     assert compiled.producer_graph.nodes == ()
     assert compiled.stage_dag.nodes == ()
     assert compiled.nodes == ()
-    assert len(compiled.seed_stream_map.sites) == 53
+    assert len(compiled.seed_stream_map.sites) == 66
     assert compiled.seed_stream_map.owners == ()

@@ -83,6 +83,9 @@ _PERSON_REQUIRED = (
     "SSIP",
     "RETP",
     "INTP",
+    "CIT",
+    "POBP",
+    "YOEP",
     "PWGTP",
 )
 # Preserve source hours and their universe/allocation evidence when supplied.

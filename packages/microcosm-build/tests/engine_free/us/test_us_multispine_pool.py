@@ -1152,7 +1152,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     )
 
     assert len(targets) == 118
-    assert len(predictors) == 32
+    assert len(predictors) == 35
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
         (
@@ -2238,8 +2238,13 @@ def test_source_operator_chains_are_availability_aware_and_source_blind(
             name: str = operator_name,
             column: str = output,
             value: float = float(index + 1),
+            person_weight_scale: float = 1.0,
         ) -> Frame:
             calls.append(name)
+            if name == "with_us_immigration_inputs":
+                assert person_weight_scale > 1.0
+            else:
+                assert person_weight_scale == 1.0
             assert "us_spine_assembly_manifest" not in available.metadata
             assert not available.mass_log
             person = available.table("person")

@@ -47,6 +47,7 @@ from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_YEAR,
     ASEC_2023_WEEKS_UNEMPLOYED_ZIP_URL,
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
+    ASEC_LABOR_FORCE_STATUS_COLUMN,
     ASEC_RAW_STAGE_ARTIFACT_KIND,
     ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
     ASEC_RAW_STAGE_OPERATOR_STATUS,
@@ -62,6 +63,7 @@ from microcosm.build.us_runtime import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    US_IMMIGRATION_OUTPUT_COLUMNS,
     US_PUF_SUPPORT_FIT_NAME,
     US_SOURCE_MANIFEST,
     US_SUPPORT_SPINE_SPEC,
@@ -76,6 +78,7 @@ from microcosm.build.us_runtime import (
     fetch_asec_2023_weeks_unemployed_source,
     fill_asec_2022_weeks_unemployed_source,
     fill_asec_education_assistance_source,
+    fill_asec_labor_force_status_source,
     fill_asec_public_assistance_type_source,
     finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
@@ -346,7 +349,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "maps to the survey-year YYYY+1 archive). Source construction "
             "restores from it the reviewed Census person columns the "
             "--asec-h5 input lacks (microcosm #720); the raw-stage mapping "
-            "restores ED_VAL and PAW_TYP; the SPM independence role stage "
+            "restores ED_VAL and PAW_TYP; the immigration stage reads A_LFSR "
+            "from it; the SPM independence role stage "
             "derives the role. Years without a mapping are fetched from the "
             "official Census archive and verified against the same pins."
         ),
@@ -1048,6 +1052,80 @@ def _write_policyengine_dataset(
         )
 
 
+def _with_asec_labor_force_status_source(
+    frame: Frame,
+    source: pd.DataFrame,
+) -> Frame:
+    """Attach measured A_LFSR without mutating the source-construction frame."""
+
+    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    tables["person"] = fill_asec_labor_force_status_source(tables["person"], source)
+    return Frame(
+        tables,
+        frame.schema,
+        {
+            entity: Weights(
+                frame.weights_for(entity).values.copy(),
+                frame.weights_for(entity).kind,
+            )
+            for entity in frame.weighted_entities
+        },
+        frame.strata.copy(deep=True),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _with_us_immigration_inputs_from_asec_source(
+    frame: Frame,
+    source: pd.DataFrame,
+    *,
+    seed: int,
+    time_period: int,
+) -> Frame:
+    """Run immigration with measured A_LFSR as an ephemeral raw input."""
+
+    person = frame.table("person")
+    if set(US_IMMIGRATION_OUTPUT_COLUMNS).issubset(person.columns):
+        return with_us_immigration_inputs(
+            frame,
+            seed=seed,
+            time_period=time_period,
+        )
+    carried_labor_force_status = ASEC_LABOR_FORCE_STATUS_COLUMN in person
+    staged = (
+        frame
+        if carried_labor_force_status
+        else _with_asec_labor_force_status_source(frame, source)
+    )
+    result = with_us_immigration_inputs(
+        staged,
+        seed=seed,
+        time_period=time_period,
+    )
+    if carried_labor_force_status:
+        return result
+
+    tables = {
+        entity: result.table(entity).copy(deep=True) for entity in result.entities
+    }
+    tables["person"] = tables["person"].drop(columns=[ASEC_LABOR_FORCE_STATUS_COLUMN])
+    return Frame(
+        tables,
+        result.schema,
+        {
+            entity: Weights(
+                result.weights_for(entity).values.copy(),
+                result.weights_for(entity).kind,
+            )
+            for entity in result.weighted_entities
+        },
+        result.strata.copy(deep=True),
+        mass_log=result.mass_log,
+        metadata=result.metadata,
+    )
+
+
 def _run_all(
     args: argparse.Namespace,
     *,
@@ -1217,8 +1295,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    base = with_us_immigration_inputs(
+    base = _with_us_immigration_inputs_from_asec_source(
         base,
+        education_assistance_source,
         seed=args.seed,
         time_period=args.target_year,
     )
@@ -2116,6 +2195,7 @@ def _asec_raw_source_mapping_frame(
         weeks_source,
     )
     person = fill_asec_education_assistance_source(person, education_source)
+    person = fill_asec_labor_force_status_source(person, education_source)
     person = fill_asec_public_assistance_type_source(
         person,
         public_assistance_type_source,
@@ -2160,6 +2240,14 @@ def _asec_raw_source_mapping_frame(
             "operation": "exact_source_join",
             "source_pins": education_pins,
         },
+        "A_LFSR": {
+            "audit": dict(education_source.attrs.get("source_audit", {})),
+            "column": "A_LFSR",
+            "entity": "person",
+            "join_keys": ["source_year", "PERIDNUM"],
+            "operation": "exact_source_join",
+            "source_pins": education_pins,
+        },
         "LKWEEKS": {
             "audit": dict(weeks_source.attrs.get("source_audit", {})),
             "column": "LKWEEKS",
@@ -2176,8 +2264,8 @@ def _asec_raw_source_mapping_frame(
                 }
             ],
         },
-        # PAW_TYP lives in the same pinned survey-year person members as
-        # ED_VAL, so the mapping reuses those archive pins (microcosm#591).
+        # PAW_TYP and A_LFSR live in the same pinned survey-year person members
+        # as ED_VAL, so their mappings reuse those archive pins.
         "PAW_TYP": {
             "audit": dict(public_assistance_type_source.attrs.get("source_audit", {})),
             "column": "PAW_TYP",
@@ -2197,6 +2285,10 @@ def _pre_clone_enrichment_stage(
     weeks_path = Path(str(source_metadata["weeks_unemployed_source_path"]))
     weeks_source = load_asec_2023_weeks_unemployed_source(weeks_path)
     public_assistance_type_source = load_asec_public_assistance_type_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
+    education_assistance_source = load_asec_education_assistance_sources(
         _asec_education_source_paths(args),
         income_years=_pooled_income_years(args),
     )
@@ -2328,8 +2420,9 @@ def _pre_clone_enrichment_stage(
         seed=args.seed,
         time_period=args.target_year,
     )
-    base = with_us_immigration_inputs(
+    base = _with_us_immigration_inputs_from_asec_source(
         base,
+        education_assistance_source,
         seed=args.seed,
         time_period=args.target_year,
     )
