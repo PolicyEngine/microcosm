@@ -893,15 +893,16 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 32,842 compiled targets after
     Medicaid substitution, 5,694 national_state targets at registry
-    d315c75804ef, 32 CHIP rows none of them for an M-CHIP state, no
+    65e4dde11c83, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. Before microcosm#956 it was
-    32,867 / 5,719 at d5f9d854fe11, and before decision d179 dropped the
-    ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
-    (docs/us-chronicle-feed-repin.md)."""
+    32,867 / 5,719 at d5f9d854fe11, before decision d179 dropped the ty2020
+    tips return count it was 32,843 / 5,695 at 386fac439e77, and before
+    microcosm#1035 moved the capital-gains control back to Table 1.4 it was
+    d315c75804ef at the same counts (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 32_842
     assert len(surface.specs) == 5_694
-    assert surface.version == "d315c75804ef"
+    assert surface.version == "65e4dde11c83"
     chip = [
         spec
         for spec in surface.specs
@@ -926,6 +927,101 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
+
+
+def test_pinned_feed_capital_gains_rows_take_the_table_1_4_level(
+    pinned_feed_national_state_surface,
+) -> None:
+    """The 51 Historic Table 2 state capital-gains rows take their level from
+    Table 1.4 ty2023, the concept capital_gains_gross measures, and not from
+    the congressional-district US row that shares its period stamp and sorts
+    first in the feed (microcosm#1035). The return counts sum to 12,289,836,
+    99.2% of the national 12,392,020 target, as in the Build P release; with
+    the CD row as control they summed to 29,599,604."""
+    _, surface, _ = pinned_feed_national_state_surface
+    expected = {
+        "net_capital_gains_returns": (
+            "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+            "0.406751165649407",
+            12_289_835.97216556,
+        ),
+        "net_capital_gains_amount": (
+            "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            "0.771900044145164",
+            None,
+        ),
+    }
+    for measure, (control_id, factor, total) in expected.items():
+        rows = [
+            spec
+            for spec in surface.specs
+            if ".historic_table_2.state_broad." in spec.name
+            and spec.metadata.get("source_measure_id") == measure
+        ]
+        assert len(rows) == 51
+        national = next(spec for spec in surface.specs if spec.name == control_id)
+        for spec in rows:
+            assert spec.metadata["uprating_index_source_record_id"] == control_id
+            assert spec.metadata["uprating_factor"] == factor
+            assert spec.metadata["soi_source_concept"] == (
+                "form_1040_line_7_net_gain_or_loss"
+            )
+            assert spec.metadata["soi_control_concept"] == (
+                "schedule_d_taxable_net_gain"
+            )
+        state_total = sum(spec.value for spec in rows)
+        assert state_total < national.value
+        if total is not None:
+            assert math.isclose(state_total, total, rel_tol=1e-12)
+
+
+def test_pinned_feed_no_soi_state_family_sums_past_its_national_target(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Invariant: the states partition the nation (HT2 state rows omit only
+    other areas and Puerto Rico), so on national_state no SOI state family may
+    sum past every national target of the same model quantity and filters.
+    Before microcosm#1035 the capital_gains_gross return counts, one of the 63
+    compared families, summed to 2.39x theirs. Some quantities still carry
+    both a stale HT2 US row and a newer Table 1.x row, a few percent apart, so
+    the bound is the larger of them."""
+    _, surface, _ = pinned_feed_national_state_surface
+
+    def quantity(spec) -> tuple[object, ...]:
+        metadata = spec.metadata
+        return (
+            metadata.get("variable"),
+            metadata.get("measure_mode"),
+            metadata.get("agi_lower_bound"),
+            metadata.get("agi_upper_bound"),
+            metadata.get("filing_status"),
+            metadata.get("soi_return_universe", "all_returns"),
+            metadata.get("itemized_only"),
+            tuple(
+                sorted(
+                    (key, value)
+                    for key, value in metadata.items()
+                    if key.startswith("ledger_filter_")
+                )
+            ),
+        )
+
+    national: dict[tuple[object, ...], list[float]] = {}
+    states: dict[tuple[object, ...], float] = {}
+    for spec in surface.specs:
+        if spec.family != "irs_soi":
+            continue
+        if spec.metadata.get("state_fips"):
+            states[quantity(spec)] = states.get(quantity(spec), 0.0) + spec.value
+        else:
+            national.setdefault(quantity(spec), []).append(spec.value)
+    compared = {key: total for key, total in states.items() if key in national}
+    assert len(compared) == 63
+    assert {
+        key[:2]: total / max(national[key])
+        for key, total in compared.items()
+        if total > max(national[key])
+    } == {}
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -4029,6 +4125,435 @@ def test_stale_soi_capital_gains_without_source_total_is_dropped() -> None:
         spec.metadata["ledger_source_record_id"] for spec in registry.specs
     }
     assert state_record_id not in source_record_ids
+
+
+_CG_T14_RETURNS = "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns"
+_CG_T14_AMOUNT = "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount"
+_CG_CD_RECORD_SET = "irs_soi.ty2023.congressional_district_2022.all_returns"
+_CG_HT2_CA_RETURNS = (
+    "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_returns"
+)
+_CG_HT2_CA_AMOUNT = (
+    "irs_soi.ty2022.historic_table_2.state_broad.ca.all.net_capital_gains_amount"
+)
+
+
+def _capital_gains_ht2_facts() -> list[dict[str, object]]:
+    """TY2022 Historic Table 2 line-7 rows: US 100 / 1,000 and CA 25 / 250."""
+    return [
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns"
+            ),
+            measure_id="net_capital_gains_returns",
+            value=100.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=(
+                "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_amount"
+            ),
+            value=1_000.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=_CG_HT2_CA_RETURNS,
+            measure_id="net_capital_gains_returns",
+            geography_level="state",
+            geography_id="0400000US06",
+            value=25.0,
+        ),
+        _soi_capital_gains_fact(
+            2022,
+            source_record_id=_CG_HT2_CA_AMOUNT,
+            geography_level="state",
+            geography_id="0400000US06",
+            value=250.0,
+        ),
+    ]
+
+
+def _capital_gains_cd_us_facts() -> list[dict[str, object]]:
+    """The congressional-district file's US row: TY2022 line-7 data stamped
+    ty2023, as on the pinned feed (PolicyEngine/chronicle#117)."""
+    return [
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id=f"{_CG_CD_RECORD_SET}.us.net_capital_gains_returns",
+            measure_id="net_capital_gains_returns",
+            layout_record_set_id=_CG_CD_RECORD_SET,
+            value=98.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id=f"{_CG_CD_RECORD_SET}.us.net_capital_gains_amount",
+            layout_record_set_id=_CG_CD_RECORD_SET,
+            value=925.0,
+        ),
+    ]
+
+
+def _capital_gains_t14_facts() -> list[dict[str, object]]:
+    """Table 1.4 ty2023 Schedule D taxable net gain: 40 returns / 800."""
+    return [
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id=_CG_T14_RETURNS,
+            measure_id="net_capital_gains_returns",
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=40.0,
+        ),
+        _soi_capital_gains_fact(
+            2023,
+            source_record_id=_CG_T14_AMOUNT,
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+            value=800.0,
+        ),
+    ]
+
+
+@pytest.mark.parametrize("cd_first", [True, False], ids=["cd-first", "t14-first"])
+def test_capital_gains_controls_are_table_1_4_in_either_feed_order(
+    cd_first: bool,
+) -> None:
+    """A congressional-district US row that shares Table 1.4's period never
+    becomes the control, whichever comes first in the feed (microcosm#1035).
+    On the pinned feed it sorted first and set the HT2 state returns rows at
+    2.39x the national Table 1.4 target of the same model quantity."""
+    cd, t14 = _capital_gains_cd_us_facts(), _capital_gains_t14_facts()
+    facts = [
+        *packaged_reference_facts(),
+        *_capital_gains_ht2_facts(),
+        *(cd + t14 if cd_first else t14 + cd),
+    ]
+
+    controls = fiscal_targets._soi_capital_gains_active_totals(
+        tuple(facts), target_period=2024
+    )
+    assert {key[0]: control.source_record_id for key, control in controls.items()} == {
+        "net_capital_gains_returns": _CG_T14_RETURNS,
+        "net_capital_gains_amount": _CG_T14_AMOUNT,
+    }
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    ca_returns = specs[_CG_HT2_CA_RETURNS]
+    ca_amount = specs[_CG_HT2_CA_AMOUNT]
+    assert ca_returns.value == 10.0
+    assert ca_returns.metadata["uprating_factor"] == "0.4"
+    assert ca_returns.metadata["uprating_index_source_record_id"] == _CG_T14_RETURNS
+    assert ca_amount.value == 200.0
+    assert ca_amount.metadata["uprating_index_source_record_id"] == _CG_T14_AMOUNT
+    for spec in (ca_returns, ca_amount):
+        # The bridge is declared: the row supplies a line-7 share, the level
+        # comes from the Schedule D concept capital_gains_gross measures.
+        assert spec.metadata["soi_source_concept"] == (
+            "form_1040_line_7_net_gain_or_loss"
+        )
+        assert spec.metadata["soi_control_concept"] == "schedule_d_taxable_net_gain"
+
+
+def test_capital_gains_rows_without_a_concept_matched_control_are_dropped() -> None:
+    """With only a congressional-district row stamped later, no control
+    exists, and a line-7 HT2 row cannot stand as a capital_gains_gross level."""
+    facts = [
+        *packaged_reference_facts(),
+        *_capital_gains_ht2_facts(),
+        *_capital_gains_cd_us_facts(),
+    ]
+
+    assert (
+        fiscal_targets._soi_capital_gains_active_totals(
+            tuple(facts), target_period=2024
+        )
+        == {}
+    )
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    source_record_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+    assert _CG_HT2_CA_RETURNS not in source_record_ids
+    assert _CG_HT2_CA_AMOUNT not in source_record_ids
+
+
+def test_capital_gains_rows_whose_control_predates_them_are_dropped() -> None:
+    """A control older than the HT2 row would reverse its period, so the row
+    drops rather than ship its line-7 level."""
+    facts = [
+        *packaged_reference_facts(),
+        *_capital_gains_ht2_facts(),
+        _soi_capital_gains_fact(
+            2021,
+            source_record_id="irs_soi.ty2021.table_1_4.all.net_capital_gains_returns",
+            measure_id="net_capital_gains_returns",
+            layout_record_set_id="irs_soi.ty2021.table_1_4",
+            value=41.0,
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    source_record_ids = {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
+    assert _CG_HT2_CA_RETURNS not in source_record_ids
+
+
+def test_capital_gains_control_refuses_two_matched_records_at_one_period() -> None:
+    duplicate = _soi_capital_gains_fact(
+        2023,
+        source_record_id="irs_soi.ty2023.table_1_4.all_returns.net_capital_gains_returns",
+        measure_id="net_capital_gains_returns",
+        layout_record_set_id="irs_soi.ty2023.table_1_4",
+        value=41.0,
+    )
+    facts = (*_capital_gains_t14_facts(), duplicate)
+
+    for ordered in (facts, tuple(reversed(facts))):
+        with pytest.raises(
+            fiscal_targets.AmbiguousSoiCapitalGainsControlError,
+            match="all_returns.net_capital_gains_returns",
+        ):
+            fiscal_targets._soi_capital_gains_active_totals(ordered, target_period=2024)
+    # The same record twice is one candidate, not a tie.
+    same = (*_capital_gains_t14_facts(), *_capital_gains_t14_facts())
+    assert (
+        len(fiscal_targets._soi_capital_gains_active_totals(same, target_period=2024))
+        == 2
+    )
+
+
+def _t14_returns_fact(period: object, *, record_id: str, value: float) -> dict:
+    fact = _soi_capital_gains_fact(
+        2023,
+        source_record_id=record_id,
+        measure_id="net_capital_gains_returns",
+        layout_record_set_id="irs_soi.ty2023.table_1_4",
+        value=value,
+    )
+    fact["period"] = {**fact["period"], "value": period}
+    return fact
+
+
+@pytest.mark.parametrize(
+    "rival",
+    [
+        # One record id carrying two values: order would pick the value.
+        {"period": 2023, "record_id": _CG_T14_RETURNS, "value": 41.0},
+        # Another record at the same period under an equivalent label.
+        {
+            "period": "tax_year_2023",
+            "record_id": "irs_soi.ty2023.table_1_4.v2.net_capital_gains_returns",
+            "value": 40.0,
+        },
+    ],
+    ids=["same-id-other-value", "equivalent-period-label"],
+)
+def test_capital_gains_control_refuses_any_ambiguous_candidate(rival) -> None:
+    control = _t14_returns_fact(2023, record_id=_CG_T14_RETURNS, value=40.0)
+    other = _t14_returns_fact(
+        rival["period"], record_id=rival["record_id"], value=rival["value"]
+    )
+    for ordered in ((control, other), (other, control)):
+        with pytest.raises(fiscal_targets.AmbiguousSoiCapitalGainsControlError):
+            fiscal_targets._soi_capital_gains_active_totals(ordered, target_period=2024)
+
+
+def test_capital_gains_tie_at_a_superseded_period_is_not_ambiguous() -> None:
+    """Only a tie at the winning period matters: a later control supersedes
+    an older tie, in any order."""
+    older = (
+        _t14_returns_fact(2022, record_id="irs_soi.ty2022.table_1_4.a", value=1.0),
+        _t14_returns_fact(2022, record_id="irs_soi.ty2022.table_1_4.b", value=2.0),
+    )
+    latest = _t14_returns_fact(2023, record_id=_CG_T14_RETURNS, value=40.0)
+    for ordered in ((*older, latest), (latest, *older), (older[0], latest, older[1])):
+        (control,) = fiscal_targets._soi_capital_gains_active_totals(
+            ordered, target_period=2024
+        ).values()
+        assert (control.source_record_id, control.value) == (_CG_T14_RETURNS, 40.0)
+
+
+@pytest.mark.parametrize(
+    ("record_set_id", "family"),
+    [
+        ("irs_soi.ty2023.table_1_4", "table_1_4"),
+        ("irs_soi.table_1_4", "table_1_4"),
+        ("irs_soi.ty2022.historic_table_2.us", "historic_table_2"),
+        ("irs_soi.ty2022.historic_table_2.state_broad", "historic_table_2"),
+        (_CG_CD_RECORD_SET, "congressional_district"),
+        (
+            "irs_soi.ty2024.congressional_district_2024.all_returns",
+            "congressional_district",
+        ),
+        ("irs_soi.congressional_district_2022.all_returns", "congressional_district"),
+        ("irs_soi.ty2023.table_4_3.all_returns_excluding_dependents", "table_4_3"),
+        ("irs_soi.ty2023", ""),
+        ("cbo.revenue_projection.ty2023", ""),
+        ("", ""),
+    ],
+)
+def test_soi_record_set_family_drops_period_and_data_vintage(
+    record_set_id: str, family: str
+) -> None:
+    assert fiscal_targets._soi_record_set_family(record_set_id) == family
+
+
+def test_capital_gains_control_is_order_free_latest_and_concept_matched() -> None:
+    """Property (microcosm#1035): for any set of national capital-gains facts
+    and any build period, the control per measure is the latest Table 1.4
+    fact not after the build period, whatever the feed order, and no
+    Historic Table 2, congressional-district or unreviewed-family fact is ever
+    chosen. With no such Table 1.4 fact there is no control."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    record_sets = {
+        "table_1_4": "irs_soi.ty{period}.table_1_4",
+        "historic_table_2": "irs_soi.ty{period}.historic_table_2.us",
+        "congressional_district": (
+            "irs_soi.ty{period}.congressional_district_2022.all_returns"
+        ),
+        "unreviewed": "irs_soi.ty{period}.table_4_3",
+    }
+    measures = ("net_capital_gains_returns", "net_capital_gains_amount")
+    candidate = st.tuples(
+        st.sampled_from(sorted(record_sets)),
+        st.integers(min_value=2018, max_value=2027),
+        st.sampled_from(measures),
+        st.floats(min_value=1.0, max_value=1e12, allow_nan=False),
+    )
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        st.lists(candidate, max_size=14, unique_by=lambda item: item[:3]),
+        st.integers(min_value=2019, max_value=2026),
+        st.randoms(use_true_random=False),
+    )
+    def check(candidates, target_period, rng) -> None:
+        facts = [
+            _soi_capital_gains_fact(
+                period,
+                source_record_id=(
+                    f"{record_sets[family].format(period=period)}.us.{measure}"
+                ),
+                measure_id=measure,
+                layout_record_set_id=record_sets[family].format(period=period),
+                value=value,
+            )
+            for family, period, measure, value in candidates
+        ]
+        shuffled = list(facts)
+        rng.shuffle(shuffled)
+
+        controls = fiscal_targets._soi_capital_gains_active_totals(
+            tuple(facts), target_period=target_period
+        )
+        assert controls == fiscal_targets._soi_capital_gains_active_totals(
+            tuple(shuffled), target_period=target_period
+        )
+        chosen = {key[0]: control for key, control in controls.items()}
+        for measure in measures:
+            eligible = [
+                (period, value)
+                for family, period, candidate_measure, value in candidates
+                if family == "table_1_4"
+                and candidate_measure == measure
+                and period <= target_period
+            ]
+            if not eligible:
+                assert measure not in chosen
+                continue
+            period, value = max(eligible)
+            control = chosen[measure]
+            assert control.source_period == str(period)
+            assert control.value == value
+            assert control.source_record_id == (
+                f"irs_soi.ty{period}.table_1_4.us.{measure}"
+            )
+
+    check()
+
+
+def test_rebased_capital_gains_states_never_outgrow_their_control() -> None:
+    """Property: whatever the HT2 state rows and national total, rebased
+    state rows keep their HT2 shares and so sum to the control times the
+    states' share of the HT2 nation; when the HT2 states sum to at most the
+    HT2 nation, they sum to at most the control."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    states = (("ca", "06"), ("ny", "36"), ("tx", "48"))
+
+    @settings(max_examples=25, deadline=None)
+    @given(
+        st.lists(
+            st.integers(min_value=1, max_value=10_000_000),
+            min_size=len(states),
+            max_size=len(states),
+        ),
+        st.integers(min_value=0, max_value=5_000_000),
+        st.integers(min_value=1, max_value=50_000_000),
+    )
+    def check(state_values, other_areas, control_value) -> None:
+        national = sum(state_values) + other_areas
+        facts = [
+            *packaged_reference_facts(),
+            _soi_capital_gains_fact(
+                2022,
+                source_record_id=(
+                    "irs_soi.ty2022.historic_table_2.us.all.net_capital_gains_returns"
+                ),
+                measure_id="net_capital_gains_returns",
+                value=float(national),
+            ),
+            *(
+                _soi_capital_gains_fact(
+                    2022,
+                    source_record_id=(
+                        "irs_soi.ty2022.historic_table_2.state_broad."
+                        f"{postal}.all.net_capital_gains_returns"
+                    ),
+                    measure_id="net_capital_gains_returns",
+                    geography_level="state",
+                    geography_id=f"0400000US{fips}",
+                    value=float(value),
+                )
+                for (postal, fips), value in zip(states, state_values, strict=True)
+            ),
+            _soi_capital_gains_fact(
+                2023,
+                source_record_id=_CG_T14_RETURNS,
+                measure_id="net_capital_gains_returns",
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+                value=float(control_value),
+            ),
+        ]
+        registry = compile_us_fiscal_target_registry(
+            facts, allow_unaged_dollar_targets=True
+        )
+        rebased = [
+            spec
+            for spec in registry.specs
+            if ".historic_table_2.state_broad." in spec.name
+            and spec.metadata.get("source_measure_id") == "net_capital_gains_returns"
+        ]
+        assert len(rebased) == len(states)
+        total = sum(spec.value for spec in rebased)
+        assert math.isclose(
+            total, control_value * sum(state_values) / national, rel_tol=1e-12
+        )
+        assert total <= control_value * (1 + 1e-12)
+
+    check()
 
 
 def test_cross_period_soi_taxable_interest_agi_slice_without_total_is_dropped() -> None:
