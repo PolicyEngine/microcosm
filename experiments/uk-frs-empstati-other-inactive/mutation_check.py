@@ -55,10 +55,10 @@ MUTATIONS = {
         '9: "SHORT_TERM_DISABLED",  # Permanently sick/disabled\n'
         '        10: "LONG_TERM_DISABLED",',
     ),
-    "small counts printed": (
+    "adult count printed": (
         EMPLOYMENT,
-        "if count >= 10 else",
-        "if count >= 0 else",
+        '"FRS adult.tab carries adults with EMPSTATI code(s) "',
+        'f"FRS adult.tab carries {int(unknown.sum())} adults with EMPSTATI code(s) "',
     ),
     "children get a non-CHILD status": (
         EMPLOYMENT,

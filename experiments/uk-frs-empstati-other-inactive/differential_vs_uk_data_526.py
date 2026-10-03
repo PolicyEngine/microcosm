@@ -11,8 +11,9 @@ imports are never executed), then checks the two implementations agree:
 3. on the licensed FRS 2024-25 person set (``adult.tab`` plus ``child.tab``,
    read through microcosm's sha-pinned reader), element by element.
 
-Only aggregates are printed: per-status counts, with cells under 10 people
-suppressed, and the mismatch count. Usage (UK engine environment)::
+Only aggregates are printed: per-status counts of people, with cells covering
+fewer than 10 survey households suppressed, and the mismatch count, with 1-9
+suppressed. Usage (UK engine environment)::
 
     uv run --no-sync python \
         experiments/uk-frs-empstati-other-inactive/differential_vs_uk_data_526.py \
@@ -44,7 +45,7 @@ from microcosm.build.uk_runtime.frs_employment import (
 )
 from microcosm.build.uk_runtime.frs_spine import normalize_ids, read_pinned_tab
 
-UK_DATA_526_HEAD = "5f9912df1ddd28a8de0fcb41bce1c9159e08bc95"
+UK_DATA_526_HEAD = "1832adeb2296b53fe5a7d7194e770118aa34d1f8"
 UK_DATA_NAMES = ("FRS_EMPSTATI_EMPLOYMENT_STATUS", "derive_employment_status_from_frs")
 
 
@@ -92,10 +93,15 @@ def outcome(function, codes, is_adult, *, side):
         return ("refused", None)
 
 
-def suppressed(counts: pd.Series) -> dict[str, object]:
+def suppressed(statuses: np.ndarray, household_ids: np.ndarray) -> dict[str, object]:
+    """People per status, shown only for cells covering 10 or more households."""
+    cells = pd.DataFrame({"status": statuses, "household": household_ids})
+    grouped = cells.groupby("status")
+    people = grouped.size()
+    households = grouped["household"].nunique()
     return {
-        str(key): (int(value) if value >= 10 else "<10")
-        for key, value in counts.items()
+        str(status): (int(people[status]) if households[status] >= 10 else "suppressed")
+        for status in people.index
     }
 
 
@@ -141,7 +147,7 @@ def main() -> None:
     )
     # Both sides refuse with ValueError at the pinned head, under pandas 2 or 3
     # (fb026659's message raised TypeError under pandas 3; 89c48e07 fixed it,
-    # and 5f9912df changed only tests).
+    # 5f9912df changed only tests, and 1832adeb dropped the count from it).
     assert REFUSAL_TYPES["microcosm"] <= {"ValueError"}
     assert REFUSAL_TYPES["uk-data"] <= {"ValueError"}
 
@@ -170,8 +176,8 @@ def main() -> None:
     shown = mismatches if mismatches == 0 or mismatches >= 10 else "1-9 (suppressed)"
     print(f"licensed FRS 2024-25 people: {len(person)}; mismatches: {shown}")
     print(
-        "employment_status counts (unweighted, cells under 10 suppressed):",
-        suppressed(pd.Series(ours).value_counts().sort_index()),
+        "employment_status people (unweighted; cells under 10 households suppressed):",
+        suppressed(ours, (person["person_id"] // 1000).to_numpy()),
     )
     assert mismatches == 0
 

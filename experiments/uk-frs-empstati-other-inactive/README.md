@@ -3,10 +3,11 @@
 The UK `frs_employment` stage now maps EMPSTATI codes 1-11 one data-dictionary
 label each (UKDS SN 9563, FRS 2024-25 adult table), so code 11 ("Other
 Inactive") is `OTHER_INACTIVE` rather than `LONG_TERM_DISABLED`. This is the
-same mapping as the incumbent's uk-data#526 (head `5f9912df`; its `frs.py` is byte-identical to `89c48e07`, and the mapping to the earlier heads `d3984002` and `fb026659`). Everything below
+same mapping as the incumbent's uk-data#526 (head `1832adeb`; its mapping and accept/refuse logic are unchanged since `d3984002`, and only the refusal message has changed). Everything below
 was run on 2026-10-02 against the pinned `adult.tab`
-(sha256 `4eaea080…658d`). Only aggregates are reported; no cell here is under
-10 survey people.
+(sha256 `4eaea080…658d`). Only aggregates are reported, and every cell here
+covers at least 127 survey households, so none falls under the 10-household
+suppression rule.
 
 ## The licensed input
 
@@ -36,7 +37,7 @@ reports for its FRS 2024-25 build.
 ## Differential against uk-data#526
 
 `differential_vs_uk_data_526.py` loads uk-data's code table and
-`derive_employment_status_from_frs` from the PR head (`5f9912df`) by AST and
+`derive_employment_status_from_frs` from the PR head (`1832adeb`) by AST and
 compares them with microcosm's:
 
 ```
@@ -101,7 +102,7 @@ killed: unknown adult codes default to LONG_TERM_DISABLED (rc=1)
 killed: every row treated as an adult (rc=1)
 killed: adult records by code presence, not adult.tab membership (rc=1)
 killed: 9 and 10 swapped (rc=1)
-killed: small counts printed (rc=1)
+killed: adult count printed (rc=1)
 killed: children get a non-CHILD status (rc=1)
 killed: code 0 accepted for adults (rc=1)
 killed: non-integer codes truncated (rc=1)
