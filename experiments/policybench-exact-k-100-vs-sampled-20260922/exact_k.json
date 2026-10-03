@@ -1,0 +1,261 @@
+{
+  "settings": {
+    "resource_limits": {
+      "omp_num_threads": 4,
+      "concurrent_compute_processes": 2,
+      "max_rss_gb": 32,
+      "rss_guard_gb": 31.0,
+      "minimum_free_disk_gib": 10
+    },
+    "sample_refit": {
+      "method": "adam",
+      "mass": "free",
+      "max_weight_ratio": 10.0,
+      "epochs": 1024,
+      "learning_rate": 0.02,
+      "seed": 0
+    },
+    "exact_k_selection": {
+      "method": "adam",
+      "mass": "conserve",
+      "max_weight_ratio": null,
+      "target_records": 100,
+      "budget_basis": "nonzero_count",
+      "epochs": 1024,
+      "learning_rate": 0.02,
+      "init_mean": 0.5,
+      "temperature": 0.25,
+      "budget_iters": 10,
+      "seed": 0
+    },
+    "exact_k_draw_pi_hi": 0.95,
+    "exact_k_draw_seed": 0,
+    "sampling_distribution": {
+      "n_seeds": 200,
+      "seed_generator_seed": 20260922
+    },
+    "fit_scale": "s = max(|target|, 1) (microcosm.calibrate.default_target_loss_scales)",
+    "capped_mape_cap": 10.0,
+    "target_loss_weights": "equal (calibrate default)"
+  },
+  "runs": {
+    "national_all": {
+      "selection": {
+        "settled_l0_lambda": 0.0004869675251658631,
+        "budget_basis": "nonzero_count",
+        "budget_measure_at_settle": 99,
+        "open_probability_mass": 529.7431049218867,
+        "gated_weights_nonzero_count": 99,
+        "deterministic_gate_open_threshold": 0.14204332884812804,
+        "gates_above_deterministic_threshold": 99,
+        "open_probability_mass_at_or_below_deterministic_threshold": 488.5042218884919,
+        "gates_open_prob_ge_0_5": 31,
+        "gates_open_prob_ge_pi_hi": 6,
+        "open_probability_rank_100": 0.14193828403949738,
+        "open_probability_rank_101": 0.1413019746541977,
+        "budget_search": {
+          "budget_basis": "nonzero_count",
+          "target_records": 100,
+          "tolerance": 5,
+          "budget_iters": 10,
+          "feasible_draw_pi_hi": null,
+          "evaluations": 7,
+          "probes": [
+            {
+              "l0_lambda": 0.001,
+              "measure": 34,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 1e-05,
+              "measure": 1722,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.0001,
+              "measure": 409,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.00031622776601683794,
+              "measure": 155,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.0005623413251903491,
+              "measure": 89,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.00042169650342858224,
+              "measure": 121,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.0004869675251658631,
+              "measure": 99,
+              "verdict": "not_required"
+            }
+          ],
+          "selected_l0_lambda": 0.0004869675251658631,
+          "selected_measure": 99,
+          "selected_feasible": null,
+          "stopped_on": "acceptable_within_tolerance"
+        }
+      },
+      "selection_failed": null,
+      "feasibility": {
+        "k": 100,
+        "pi_hi": 0.95,
+        "pool_size": 75112,
+        "certainty_count": 6,
+        "boundary_draw": 94,
+        "boundary_pool_size": 75106,
+        "boundary_positive": 75106,
+        "boundary_mass": 523.9627351632807,
+        "boundary_max": 0.9479897618293762,
+        "max_normalized_probability": 0.17007132689348983,
+        "feasible": true,
+        "reason": "feasible"
+      },
+      "draw": {
+        "receipt": {
+          "k": 100,
+          "pi_hi": 0.95,
+          "seed": 0,
+          "certainty_count": 6,
+          "boundary_pool_size": 75106,
+          "design": "sampford"
+        },
+        "pi_hi": 0.95,
+        "seed": 0,
+        "boundary_draw_needed": true,
+        "certainties": 6,
+        "boundary_draws": 94,
+        "boundary_draws_at_or_below_deterministic_threshold": 90,
+        "support_open_probability": {
+          "p05": 0.0052080283174291255,
+          "p50": 0.005533061921596527,
+          "p95": 0.9509554475545883,
+          "min": 0.00479876808822155,
+          "max": 0.9798791408538818
+        },
+        "inclusion_probability_min": 0.0008609089349689265,
+        "inclusion_probability_max": 1.0,
+        "support_in_top_100_open_probability": 10
+      },
+      "draw_failed": null,
+      "refit_skipped_targets": [],
+      "design2_skipped_targets": []
+    },
+    "headline": {
+      "selection": {
+        "settled_l0_lambda": 0.0003651741272548377,
+        "budget_basis": "nonzero_count",
+        "budget_measure_at_settle": 102,
+        "open_probability_mass": 524.403479434317,
+        "gated_weights_nonzero_count": 102,
+        "deterministic_gate_open_threshold": 0.14204332884812804,
+        "gates_above_deterministic_threshold": 102,
+        "open_probability_mass_at_or_below_deterministic_threshold": 501.44682899839245,
+        "gates_open_prob_ge_0_5": 3,
+        "gates_open_prob_ge_pi_hi": 0,
+        "open_probability_rank_100": 0.14376036822795868,
+        "open_probability_rank_101": 0.14337414503097534,
+        "budget_search": {
+          "budget_basis": "nonzero_count",
+          "target_records": 100,
+          "tolerance": 5,
+          "budget_iters": 10,
+          "feasible_draw_pi_hi": null,
+          "evaluations": 7,
+          "probes": [
+            {
+              "l0_lambda": 0.001,
+              "measure": 23,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 1e-05,
+              "measure": 2578,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.0001,
+              "measure": 566,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.00031622776601683794,
+              "measure": 134,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.0005623413251903491,
+              "measure": 60,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.00042169650342858224,
+              "measure": 86,
+              "verdict": "not_required"
+            },
+            {
+              "l0_lambda": 0.0003651741272548377,
+              "measure": 102,
+              "verdict": "not_required"
+            }
+          ],
+          "selected_l0_lambda": 0.0003651741272548377,
+          "selected_measure": 102,
+          "selected_feasible": null,
+          "stopped_on": "acceptable_within_tolerance"
+        }
+      },
+      "selection_failed": null,
+      "feasibility": {
+        "k": 100,
+        "pi_hi": 0.95,
+        "pool_size": 75112,
+        "certainty_count": 0,
+        "boundary_draw": 100,
+        "boundary_pool_size": 75112,
+        "boundary_positive": 75112,
+        "boundary_mass": 524.403479434317,
+        "boundary_max": 0.8719617128372192,
+        "max_normalized_probability": 0.16627687401651478,
+        "feasible": true,
+        "reason": "feasible"
+      },
+      "draw": {
+        "receipt": {
+          "k": 100,
+          "pi_hi": 0.95,
+          "seed": 0,
+          "certainty_count": 0,
+          "boundary_pool_size": 75112,
+          "design": "sampford"
+        },
+        "pi_hi": 0.95,
+        "seed": 0,
+        "boundary_draw_needed": true,
+        "certainties": 0,
+        "boundary_draws": 100,
+        "boundary_draws_at_or_below_deterministic_threshold": 97,
+        "support_open_probability": {
+          "p05": 0.005075549613684416,
+          "p50": 0.00531667354516685,
+          "p95": 0.08943429738283155,
+          "min": 0.004324688110500574,
+          "max": 0.4651945233345032
+        },
+        "inclusion_probability_min": 0.0008246871502770518,
+        "inclusion_probability_max": 0.08870927474324093,
+        "support_in_top_100_open_probability": 3
+      },
+      "draw_failed": null,
+      "refit_skipped_targets": [],
+      "design2_skipped_targets": []
+    }
+  }
+}
