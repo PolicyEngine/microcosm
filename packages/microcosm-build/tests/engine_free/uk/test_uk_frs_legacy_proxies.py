@@ -106,8 +106,11 @@ def test_esa_proxies_follow_the_corrected_statuses(rows) -> None:
     assert (
         health.tolist() == (reported & working_age & np.isin(codes, (9, 10))).tolist()
     )
+    assert (
+        support.tolist()
+        == (reported & working_age & (codes == 9) & (hours <= 0)).tolist()
+    )
     assert not (support & ~health).any()
-    assert not support[codes != 9].any()
     assert not health[codes == 11].any()
 
 
