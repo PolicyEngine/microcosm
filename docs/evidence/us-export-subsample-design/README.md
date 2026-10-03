@@ -91,8 +91,8 @@ What the numbers say:
   (`wic_claim_neutralization`).
 - **The proxy is not the effect.** Each probe's real effect is a function of
   its inputs, computed by the engine, and its tails can differ from the
-  inputs'. The calibration is on the inputs' mass. The real run's z-scores
-  against the published full-size effects (in the PR and the build rule) are
-  one draw on the effects themselves.
+  inputs'. The calibration is on the inputs' mass. A probe run with
+  `--reference-release-dir` reports each effect's z-score against the
+  full-size build's, which is one draw on the effects themselves.
 
 "Authoritative" is a calibrated label, not a proof.
