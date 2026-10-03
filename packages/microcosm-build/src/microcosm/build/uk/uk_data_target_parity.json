@@ -174,13 +174,13 @@
       "covers": [
         "policyengine_uk_data.targets.sources.local_la_extras"
       ],
-      "evidence": "Pinned feed has 18 Scottish statistical_scope BRMA rows at 2026-06 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs.",
+      "evidence": "Pinned feed has 18 Scottish statistical_scope BRMA rows at 2026-06 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs. uk/scotland_brma_la_overlap.json (Scotland's Census 2022 in the official BRMA geography) holds 322,995 private-rented households in 63 BRMA x council cells: 18 councils span more than one BRMA, 16 BRMAs span more than one council, 29 councils and 17 BRMAs form one connected block, and 4 councils coincide with one BRMA at 99% both ways. In Rent Service Scotland's 2020-21 market evidence the household-weighted mean of BRMA rents is up to 30.9% from a council's own mean rent, and over 10% for 9 of 31 councils (experiments/1090-scotland-brma-la-rent-dispersion.json).",
       "fence": {
         "origin": "PIPR publishes Scottish rent levels at BRMA grain.",
         "purpose": "Preserve source geography without allocating BRMA averages over local authorities.",
-        "verdict_basis": "Keep all 32 Scottish LA cells signed deferred until a source-backed BRMA-to-LA bridge with an explicit aggregation rule exists."
+        "verdict_basis": "Keep all 32 Scottish LA cells signed deferred. The source-backed overlap now exists and shows the cells cannot bind by translation: a household-weighted mean of BRMA rents is the allocation this fence forbids. Bind PIPR at its own grain instead (BRMA target rows whose model side uses the overlap shares), or sign a boundary-frame exception for the four coincident councils (microcosm#1090)."
       },
-      "reason": "CrossGrainBridge cannot express an overlapping BRMA-to-LA geography translation and no signed crosswalk is available.",
+      "reason": "PIPR's Scottish rents are means over 18 BRMAs that overlap the 32 councils, and no rule turns them into council targets without spreading a BRMA average over the councils inside it. CrossGrainBridge equates additive totals over a partition of legs; a mean over overlapping areas is neither. Routed to microcosm#1090: bind the rents at BRMA grain.",
       "status": "routed"
     },
     {
