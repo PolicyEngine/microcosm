@@ -298,6 +298,86 @@ L0 results drop those frames; exact-k substitutes the clean export frame for
 its receipt's later household-count check. The fixture sweep does not measure
 memory or wall time of the batched stages at full size.
 
+## Probing an export on a household subsample
+
+The post-export stages run only after a full build: route A's attempt on
+build 310842b98 ran 49,304 s before its smoke failed on four stale probe
+definitions. Two tools run those stages on a subsample of a written export
+in a fraction of that time. Their output is diagnostic: it certifies nothing
+and writes no manifest.
+
+```bash
+uv run --no-sync python tools/sample_us_export_households.py \
+  --export /path/to/artifacts/populace_us_2024.h5 \
+  --fraction 0.05 --seed 0 --out /path/to/subsample
+uv run --no-sync python tools/probe_us_post_export.py \
+  --export /path/to/subsample/populace_us_2024.h5 --out /path/to/probe \
+  --reference-release-dir /path/to/releases/<release id>
+```
+
+**The sample** (`tools/sample_us_export_households.py`) is a seeded draw of
+whole households, written through the release's own writer and verified
+against the selection (ids, weights, row counts, stored tables, columns and
+dtype kinds), with a receipt.
+
+- Strata are support channel by source year. Each stratum draws
+  `min(N, max(2, floor(p N)))` of its `N` eligible households.
+- Two kinds of household are kept with certainty at their source weight.
+  A probe expecting fewer than 30 sampled carriers (`--certainty-threshold`)
+  has all of its carrier households kept. And, probe by probe, a household
+  whose weighted input mass is at least twice the mass one sampled carrier
+  would represent is kept (`--size-certainty-multiplier`).
+- A drawn household's weight is scaled so each stratum's weight total is
+  conserved exactly (a ratio estimator; the Horvitz-Thompson factor is
+  receipted beside it).
+- At `--fraction 0.05` the published route A export gives about 7.3% of its
+  households.
+
+**The probe** (`tools/probe_us_post_export.py`) runs the stored-input gate,
+the QRF tail gate, take-up participation with the stale count-calibrated
+check, the reform-coverage smoke, reform validation, demographics and source
+coverage through the release tool's own functions and file names, on the
+household-batched scorer in at least three batches. A stage that raises is
+recorded and the next stage still runs. Its report lists the release steps it
+cannot reproduce without build state (the written-H5 stored-input premise,
+the calibration NPZ, the Medicaid, SNAP and SSI take-up diagnostics, the
+manifests).
+
+Every verdict is `authoritative` or `informational`.
+
+- Authoritative: a stage that raised, a stored column name, a baseline plan,
+  anything settled on the source export itself (QRF tail, take-up
+  diagnostics and geography counts are re-read from the source column by
+  column), a smoke probe whose effect is at least 4 design-based standard
+  errors from its floor with a variance estimate that rests on at least 30
+  effective households, and a take-all probe whose effect no household
+  outside the certainty set carries (its subsample effect is the full
+  export's).
+- Failures of the probe itself (its receipt, its design check, a fidelity
+  check against the reference release) are reported apart from the
+  release's failures, as `probe_failures`.
+- Informational: everything that depends on the sample's size. That covers
+  other smoke probes, the QRF tail on the subsample (its top-k and
+  minimum-carrier rules count records), record counts by geography, a take-up
+  column that is constant on the subsample, and every weighted estimate.
+
+The thresholds are calibrated, not assumed. On the published route A export,
+the design-based standard error of 25 of the 41 probes' input mass missed its
+known total by more than 3 standard errors in over 1% of draws under a plain
+channel-by-year sample; the worst missed in 58%. The weighted totals are
+dominated by a few records, so a sample that misses them underestimates both
+the total and its standard error. [The evidence
+folder](evidence/us-export-subsample-design/README.md) has the experiment,
+the per-probe results for five designs, and the limits of the guard.
+
+`--reference-release-dir` points at a full-size build's `releases/<id>/`. It
+supplies the build's target surface, QRF register and calibration fit (so
+reform validation takes its in-sample rows from the fit, as the release
+does), compares each smoke effect with the full-size one, and checks two
+things that do not depend on the data: the probe's baseline plans and reform
+pass counts equal the build manifest's, and the source export's QRF tail
+result equals the release's `qrf_tail_concentration.json`.
+
 ## Measured stage times
 
 From the September attempt, on one 128 GiB machine, under policyengine-us
