@@ -345,14 +345,25 @@ def test_sample_export_writes_a_verified_subsample(sampler, tmp_path) -> None:
 def test_the_receipt_names_the_commit_the_sampler_loaded_from(
     sampler, tmp_path, monkeypatch
 ) -> None:
-    """A draw can outlive its worktree's HEAD; the receipt keeps the commit
-    read when the tool loaded, and the file's sha256 checks it."""
-    move_head_after_load(monkeypatch)
+    """A draw can outlive its worktree's HEAD. The receipt keeps the commit
+    read when the tool loaded, with the file's sha256, and says whether the
+    tree moved before the receipt was written (the microcosm packages it
+    imports later would then come from either state)."""
     frame = synthetic_export_frame(60, seed=3, rare_households=(4, 41))
-    _, receipt = sample_synthetic(sampler, tmp_path, frame, fraction=0.25)
+    loaded_state = (sampler._TOOL_SOURCE["commit"], sampler._TOOL_SOURCE["dirty"])
+    with monkeypatch.context() as unmoved:
+        unmoved.setattr(sampler, "_git_state", lambda: loaded_state)
+        _, still = sample_synthetic(sampler, tmp_path, frame, fraction=0.25, name="a")
+    assert still["tool_source"]["moved_since_load"] is False
+
+    move_head_after_load(monkeypatch)
+    _, receipt = sample_synthetic(sampler, tmp_path, frame, fraction=0.25, name="b")
     source = receipt["tool_source"]
-    assert source == sampler._TOOL_SOURCE
+    loaded = {key: source[key] for key in ("commit", "dirty", "sha256")}
+    assert loaded == sampler._TOOL_SOURCE
     assert source["commit"] != LATER_HEAD
+    assert source["commit_at_write"] == LATER_HEAD
+    assert source["moved_since_load"] is True
     tool = Path(sampler.__file__).read_bytes()
     assert source["sha256"] == hashlib.sha256(tool).hexdigest()
 

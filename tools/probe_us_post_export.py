@@ -129,7 +129,7 @@ import numpy as np
 import pandas as pd
 
 #: Bump with any change to the report layout or the authority rules.
-PROBE_REPORT_SCHEMA_VERSION = 1
+PROBE_REPORT_SCHEMA_VERSION = 2
 REPORT_FILENAME = "probe_report.json"
 PASSES_FILENAME = "passes.jsonl"
 #: Route A's ``--maximum-microsim-batch-size``; the per-batch cost then
@@ -211,6 +211,8 @@ def _load_tool(module_name: str, filename: str):
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {filename}")
     module = importlib.util.module_from_spec(spec)
+    # The bytes about to run, for the report's tool_source.
+    module.__loaded_sha256__ = _file_sha256(_TOOLS / filename)
     sys.modules[module_name] = module
     try:
         spec.loader.exec_module(module)
@@ -1258,15 +1260,12 @@ def _verdict(
     }
 
 
-def _tool_source() -> dict[str, object]:
-    """The commit this tool was loaded from, whether ``tools/`` or
-    ``packages/`` differed from it, and this file's sha256 (a check on the
-    commit: ``git show <commit>:tools/probe_us_post_export.py`` hashes to it
-    when the file was clean)."""
+def _git_state() -> tuple[str | None, bool | None]:
+    """HEAD and whether ``tools/`` or ``packages/`` differ from it; ``(None,
+    None)`` outside a git checkout."""
     import subprocess
 
     root = _TOOLS.parent
-    sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     try:
         head = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
@@ -1290,13 +1289,56 @@ def _tool_source() -> dict[str, object]:
             check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        return {"commit": None, "dirty": None, "sha256": sha256}
-    return {"commit": head, "dirty": bool(dirty), "sha256": sha256}
+        return None, None
+    return head, bool(dirty)
 
 
-# Read once, as the module loads. A run can outlive its worktree's HEAD, so a
-# commit read when the report is written can name code that never ran.
+def _file_sha256(path: str | Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _module_sha256(module: Any) -> str | None:
+    """The sha256 :func:`_load_tool` took of a module's file as it loaded it,
+    else of its file now (a module passed in), else None (not a file)."""
+    loaded = getattr(module, "__loaded_sha256__", None)
+    if loaded is not None:
+        return loaded
+    path = getattr(module, "__file__", None)
+    return None if path is None else _file_sha256(path)
+
+
+def _tool_source() -> dict[str, object]:
+    """The commit this file was loaded from, whether ``tools/`` or
+    ``packages/`` differed from it, and this file's sha256 (``git show
+    <commit>:tools/probe_us_post_export.py`` hashes to it when the tree was
+    clean)."""
+    commit, dirty = _git_state()
+    return {"commit": commit, "dirty": dirty, "sha256": _file_sha256(__file__)}
+
+
+# Read once, as this file loads: a run can outlive its worktree's HEAD. It
+# covers this file; what the probe imports later is covered by the check in
+# _tool_source_record.
 _TOOL_SOURCE = _tool_source()
+
+
+def _tool_source_record(tools: Mapping[str, Any]) -> dict[str, object]:
+    """``_TOOL_SOURCE``, the sha256 of each sibling tool the probe runs, and
+    whether HEAD or the tree's cleanliness changed since this file loaded.
+
+    The release tool, the sampler and the editable microcosm packages are
+    imported after this file, some of them minutes later. If the tree moved,
+    they may come from either state, and ``moved_since_load`` says so.
+    """
+    commit, dirty = _git_state()
+    return {
+        **_TOOL_SOURCE,
+        "tools": {name: _module_sha256(module) for name, module in tools.items()},
+        "commit_at_write": commit,
+        "dirty_at_write": dirty,
+        "moved_since_load": (commit, dirty)
+        != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["dirty"]),
+    }
 
 
 def _package_versions() -> dict[str, str | None]:
@@ -1446,7 +1488,7 @@ class ExportProbe:
         return {
             "schema_version": PROBE_REPORT_SCHEMA_VERSION,
             "tool": "tools/probe_us_post_export.py",
-            "tool_source": dict(_TOOL_SOURCE),
+            "tool_source": self._tool_source(),
             "packages": _package_versions(),
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "host": {
@@ -1506,7 +1548,16 @@ class ExportProbe:
             "verdicts": self.verdicts,
         }
 
+    def _tool_source(self) -> dict[str, object]:
+        return _tool_source_record(
+            {
+                "tools/build_us_fiscal_refresh_release.py": self.builder,
+                "tools/sample_us_export_households.py": self.sampler,
+            }
+        )
+
     def _write_report(self) -> None:
+        self.report["tool_source"] = self._tool_source()
         _write_json(self.out_dir / REPORT_FILENAME, self.report)
 
     def _stage(self, name: str, fn: Callable[[], Mapping[str, Any]], consequence):

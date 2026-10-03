@@ -8,9 +8,9 @@ probe's verdicts with that release's own full-size outputs.
 `probe_report.json` is the probe's report as written. The only change is that
 local paths are replaced by `<release>` (the release's output folder) and
 `<run>` (this run's folder). `passes.jsonl` is the probe's per-pass timing
-log, unchanged. Run
-`scripts/summarize_probe_report.py route-a-p005/probe_report.json` to print
-every table below from it.
+log, unchanged. `scripts/summarize_probe_report.py
+route-a-p005/probe_report.json` prints the verdicts and the smoke table below
+from the report.
 
 These are probe diagnostics, not release evidence. The release's verdicts are
 its own full-size ones.
@@ -23,7 +23,7 @@ its own full-size ones.
 | Subsample | 25,827 households (7.3%), 8,614 of them certainty; seed 0, fraction 0.05, thresholds at the tools' defaults (30 and 2); sha256 `92a8373f…d391` |
 | Sampler | drew at commit `5f72575a9`, 2026-10-02 17:38 to 17:51 EDT, peak 3.1 GiB; all six strata conserve their weight totals to about 1e-16 |
 | Probe | commit `cf23a8edc` with `--reference-release-dir <release>/releases/<id>`, 2026-10-02 18:13 EDT to 2026-10-03 03:53 EDT |
-| Engine | policyengine-us 2.2.1, policyengine-core 3.32.5, CPython 3.14.7 (free-threaded), macOS arm64 |
+| Engine | policyengine-us 2.2.1, policyengine-core 3.32.5, CPython 3.14.7 on macOS arm64. The worktree's venv is a free-threaded build (its `pyvenv.cfg`), and the run log shows the GIL was re-enabled when `quantile_forest` loaded |
 
 ```bash
 python tools/sample_us_export_households.py \
@@ -31,25 +31,57 @@ python tools/sample_us_export_households.py \
   --fraction 0.05 --seed 0 --out <run>/subsample
 python tools/probe_us_post_export.py \
   --export <run>/subsample/populace_us_2024.h5 --out <run>/probe \
-  --reference-release-dir <release>/releases/<id>
+  --reference-release-dir <release>/releases/<id> --release-id probe-of-<id>
 ```
 
 **The commits in the receipt and the report are wrong.** The receipt names
 `e39b14b66` and the report names `0a80bc884`. Each tool read git HEAD when it
 wrote its record, minutes after it started, and the worktree had moved on by
-then. The commits above are the ones the run script logged at launch.
+then. The commits above are the ones the run script logged at launch, with
+`git status --porcelain -- tools packages` empty.
 
-- Between `5f72575a9` and the merged tools, only a comment in the sampler
-  changed, so the subsample is what the merged sampler draws.
-- Between `cf23a8edc` and the merged probe, three things changed: the probe's
-  fault isolation, its stage names (`load` became `identify`, `load` and
-  `design`), and the take-all rule, which now counts non-carrier effect
-  households instead of summing their effects. No fault path fired in this
-  run. The two authoritative take-all probes equal the full-size effects bit
-  for bit.
+A tool file is read when Python starts it, but the release tool, the sampler
+(for the probe) and the editable microcosm packages are imported later, from
+whatever the worktree holds then. So every commit made while a tool ran
+matters. The worktree's reflog shows only commits in those windows, with no
+checkout or reset:
 
-Both tools now read the commit when they load and record their own sha256
-beside it.
+- While the sampler ran (17:38 to 17:51): `8e8f525a3` and `e39b14b66`. They
+  changed only `tools/probe_us_post_export.py` and a test
+  (`git diff --stat 5f72575a9 e39b14b66 -- tools packages`), and the sampler
+  does not load the probe.
+- While the probe ran (18:13 to 03:53): `d929de102`, `0a80bc884`,
+  `7999e6535`, `dd283c1ab`, `5fc0ae4f4` and `19df6bc8a`. They changed only
+  the probe file, read at launch, and tests (`git diff --stat cf23a8edc
+  19df6bc8a -- tools packages`).
+
+So every committed module this run loaded came from the logged commits.
+
+What differs from the merged tools:
+
+- Sampler, `5f72575a9` to `d4c6ac85e`: one comment. The subsample is what the
+  merged sampler draws. `packages/` did not change in this range, so neither
+  did the probes' binding inputs, which decide certainty.
+- Probe, `cf23a8edc` to `d4c6ac85e` (`0a80bc884`, `7999e6535`, `dd283c1ab`;
+  only the probe file and tests changed):
+  - The steps after the smoke gate (reform-count check, row map, result
+    lookup, reference comparison) lose a probe only its standard error or
+    comparison when they fail.
+  - The `load` stage is split into `identify`, `load` and `design`.
+  - The take-all rule counts sampled non-carrier households with any effect
+    instead of summing their effects.
+  - `--census` with a receipt is refused.
+  - Receipt probe records are read defensively.
+  - A malformed reference smoke file costs only the comparison.
+
+  None of these fires on a well-formed reference, a complete receipt and no
+  `--census`, which is this run. The new take-all count applies to two
+  probes, whose effects equal the full-size build's bit for bit.
+
+Both tools now record the commit at load with their own sha256. When they
+write, they check HEAD and the tree's cleanliness again and flag any change
+since load (`moved_since_load`). The probe also records the sha256 of the
+release tool and sampler it ran.
 
 ## Result
 
@@ -61,7 +93,7 @@ informational failures.
 | Design rebuilt from the subsample against its receipt | pass |
 | Stored-input gate | pass. The written-H5 premise cannot be reproduced standalone (the probe has only the written bytes) |
 | QRF tail | source export: pass, and it equals the release's `qrf_tail_concentration.json` (verdict, columns, top-k shares). Subsample: informational fail, because the top-k and minimum-record rules count records, so the subsample checks different columns and tails |
-| Take-up participation and stale count-calibrated columns | all 7 checks pass, on the source and on the subsample |
+| Take-up participation and stale count-calibrated columns | all 7 checks pass (5 on the subsample, 2 on the source) |
 | Reform-coverage smoke, 41 probes | 40 pass. 8 are authoritative; all 8 pass and agree with the full-size build. One informational fail (below) |
 | Reform validation, 55 reform passes | every reform scores. Budget effects are weighted estimates, so they are informational. Across 241 rows the median relative difference from full size is 15%; 11 of those rows are read from the build's calibration fit, as the release does. The largest is 107% (`spm_child_poverty_az`); state SPM poverty rows differ most |
 | Demographics | pass. 218 of 436 congressional districts have under 50 sampled household records (informational; this scales with p). The source export has none under 50 |
@@ -81,8 +113,8 @@ difference over the full-size effect's magnitude.
   - the failing probe.
 - Median |z| is 0.56. The largest is 3.40 (`head_start_take_up_neutralization`,
   informational, 2.0 effective households). None exceeds 4.
-- The 8 authoritative verdicts rest on 34.5 to 366 effective households, and
-  their largest |z| is 0.68.
+- The 8 authoritative verdicts pass, and their largest |z| is 0.68. The six
+  that are not take-all rest on 34.5 to 366 effective households.
   - The two authoritative take-all probes, `form_4952_election_neutralization`
     and `keogh_distribution_neutralization`, equal the full-size effects
     exactly.
@@ -148,9 +180,10 @@ names: the coverage proxy is a probe's inputs, not its effect.
 
 ## Cost
 
-Other sessions saturated the host for most of the run (load 100 to 140, swap
-nearly full), so wall times overstate the work. CPU seconds are the better
-measure.
+The host was contended: wall time runs far above CPU time (pass 7 of
+`passes.jsonl`: 1,718 s wall, 194 s CPU). Notes taken during the run record
+load averages above 100 and heavy swapping by other sessions. So wall times
+overstate the work, and CPU seconds are the better measure.
 
 | Stage | Wall (s) | CPU (s) | Peak RSS (GiB) |
 |---|---|---|---|
@@ -165,7 +198,9 @@ records RSS before and at peak for each of the batched scorer's 99 passes:
 
 - 0.8 GiB before the smoke's baseline pass, and 7.4 GiB after it;
 - 12.2 GiB by the end of the smoke, and 20.8 GiB by the end of validation;
-- two dips mid-smoke, to 3.8 and 0.8 GiB, while the host was swapping.
+- falls early in the smoke: 3.8 GiB before pass 3, and 0.8 to 1.8 GiB before
+  passes 7 to 9 (of 42), each back above 5 GiB within the pass.
 
-Under memory pressure macOS compresses and swaps pages, so these RSS figures
-understate the footprint. This run does not show what holds the memory.
+RSS leaves out compressed and swapped-out pages, so under memory pressure
+these figures can understate the footprint. This run does not show what
+holds the memory.
