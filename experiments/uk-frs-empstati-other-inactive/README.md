@@ -3,7 +3,7 @@
 The UK `frs_employment` stage now maps EMPSTATI codes 1-11 one data-dictionary
 label each (UKDS SN 9563, FRS 2024-25 adult table), so code 11 ("Other
 Inactive") is `OTHER_INACTIVE` rather than `LONG_TERM_DISABLED`. This is the
-same mapping as the incumbent's uk-data#526 (head `89c48e07`; the mapping is byte-identical to its earlier heads `d3984002` and `fb026659`). Everything below
+same mapping as the incumbent's uk-data#526 (head `5f9912df`; its `frs.py` is byte-identical to `89c48e07`, and the mapping to the earlier heads `d3984002` and `fb026659`). Everything below
 was run on 2026-10-02 against the pinned `adult.tab`
 (sha256 `4eaea080…658d`). Only aggregates are reported; no cell here is under
 10 survey people.
@@ -36,7 +36,7 @@ reports for its FRS 2024-25 build.
 ## Differential against uk-data#526
 
 `differential_vs_uk_data_526.py` loads uk-data's code table and
-`derive_employment_status_from_frs` from the PR head (`89c48e07`) by AST and
+`derive_employment_status_from_frs` from the PR head (`5f9912df`) by AST and
 compares them with microcosm's:
 
 ```
@@ -72,12 +72,20 @@ with 0, adult records by `adult.tab` membership), over all 34,966 people.
 - In policyengine-uk 2.100.0 (microcosm's lock), no variable formula reads
   `employment_status`. The labour-supply dynamics read the self-employed and
   student statuses only, and the three proxies are not engine variables.
-- The eFRS parity reference (uk-data 1.56.16), the release input-coverage gate
-  and the input-mass parity compare `employment_status` only as a non-empty
-  or non-default (engine default `UNEMPLOYED`) share, which this change leaves
-  as it was. No CI job reads a released uk-data artifact. Until uk-data ships
-  #526, microcosm's code-11 adults and ESA proxies differ from the pinned
-  incumbent, and no committed instrument measures that difference.
+- The instruments that see the column are blind to this change:
+  - The eFRS parity reference (uk-data 1.56.16) records `employment_status` as
+    an unweighted non-empty-string share (`_nonzero_share` in
+    `tools/build_uk_efrs_parity_reference.py`).
+  - The release input-coverage gate counts a row as signal when it differs
+    from the engine default, `UNEMPLOYED` (`_nondefault_signal_mask`).
+  - The input-mass parity skips string columns entirely
+    (`microcosm/build/input_mass.py`). The ESA proxies are not engine
+    variables, so the reference totals leave them out as well.
+- PR CI never compares these categories or proxies with a released uk-data
+  H5. The engine-uk parity-reference tests load only the committed extraction.
+- Until uk-data ships #526, microcosm's code-11 adults and ESA proxies differ
+  from the pinned incumbent, and no committed instrument measures that
+  difference.
 
 ## Mutation check
 
@@ -97,6 +105,7 @@ killed: small counts printed (rc=1)
 killed: children get a non-CHILD status (rc=1)
 killed: code 0 accepted for adults (rc=1)
 killed: non-integer codes truncated (rc=1)
+killed: support group ignores hours worked (rc=1)
 killed: OTHER_INACTIVE added to the ESA health statuses (rc=1)
-10/10 mutations killed
+11/11 mutations killed
 ```

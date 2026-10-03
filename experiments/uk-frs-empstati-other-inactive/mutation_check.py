@@ -75,6 +75,11 @@ MUTATIONS = {
         'np.asarray(pd.to_numeric(empstati, errors="coerce"), dtype="float64")',
         'np.floor(np.asarray(pd.to_numeric(empstati, errors="coerce"), dtype="float64"))',
     ),
+    "support group ignores hours worked": (
+        PROXIES,
+        '(status == "LONG_TERM_DISABLED") & (hours <= 0)',
+        '(status == "LONG_TERM_DISABLED")',
+    ),
     "OTHER_INACTIVE added to the ESA health statuses": (
         PROXIES,
         'ESA_HEALTH_EMPLOYMENT_STATUSES = ("LONG_TERM_DISABLED", "SHORT_TERM_DISABLED")',

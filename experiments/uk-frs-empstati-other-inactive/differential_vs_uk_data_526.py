@@ -44,7 +44,7 @@ from microcosm.build.uk_runtime.frs_employment import (
 )
 from microcosm.build.uk_runtime.frs_spine import normalize_ids, read_pinned_tab
 
-UK_DATA_526_HEAD = "89c48e074f77f196b1a91bbb2a69f78bb29884fc"
+UK_DATA_526_HEAD = "5f9912df1ddd28a8de0fcb41bce1c9159e08bc95"
 UK_DATA_NAMES = ("FRS_EMPSTATI_EMPLOYMENT_STATUS", "derive_employment_status_from_frs")
 
 
@@ -140,7 +140,8 @@ def main() -> None:
         {side: sorted(types) for side, types in REFUSAL_TYPES.items()},
     )
     # Both sides refuse with ValueError at the pinned head, under pandas 2 or 3
-    # (fb026659's message raised TypeError under pandas 3; 89c48e07 fixed it).
+    # (fb026659's message raised TypeError under pandas 3; 89c48e07 fixed it,
+    # and 5f9912df changed only tests).
     assert REFUSAL_TYPES["microcosm"] <= {"ValueError"}
     assert REFUSAL_TYPES["uk-data"] <= {"ValueError"}
 
@@ -166,7 +167,8 @@ def main() -> None:
         person["person_id"].isin(adult["person_id"]).to_numpy(),
     )
     mismatches = int((ours != theirs).sum())
-    print(f"licensed FRS 2024-25 people: {len(person)}; mismatches: {mismatches}")
+    shown = mismatches if mismatches == 0 or mismatches >= 10 else "1-9 (suppressed)"
+    print(f"licensed FRS 2024-25 people: {len(person)}; mismatches: {shown}")
     print(
         "employment_status counts (unweighted, cells under 10 suppressed):",
         suppressed(pd.Series(ours).value_counts().sort_index()),
