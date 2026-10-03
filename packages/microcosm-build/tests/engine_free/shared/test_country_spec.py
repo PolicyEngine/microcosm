@@ -1509,6 +1509,7 @@ class TestUKGatesManifest:
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.
             "uk_cgt_projection_entrants",
+            "uk_local_brma_enum_domain",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
 
