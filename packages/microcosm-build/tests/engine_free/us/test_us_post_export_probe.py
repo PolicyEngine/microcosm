@@ -262,7 +262,16 @@ def test_a_reference_release_checks_plans_and_compares_effects(
     for row in report["stages"]["reform_coverage_smoke"]["probes"]:
         reference = row["reference"]
         assert reference["same_definition"] is True
-        assert reference["z"] is not None and math.isfinite(reference["z"])
+        if row["standard_error"]:
+            assert reference["z"] is not None and math.isfinite(reference["z"])
+        else:
+            # The fake SNAP effect is the same for every household, so the
+            # ratio estimator reproduces the census total exactly (each
+            # stratum's weight total is conserved) and there is no variance
+            # to scale a difference by.
+            assert row["probe"] == "snap_take_up_2026"
+            assert reference["z"] is None
+            assert abs(reference["relative_difference"]) < 1e-6
     stored = checks[
         (
             "stored_inputs",
