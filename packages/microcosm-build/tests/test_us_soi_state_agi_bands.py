@@ -223,22 +223,32 @@ def _totals(postal: str, period: int, returns: float, agi: float) -> list[dict]:
     ]
 
 
-#: Colorado's published TY2023 cells (23in55cmcsv.csv; AGI in dollars).
+#: Colorado's published TY2023 cells (23in55cmcsv.csv, sha256 d1f7c890...668f,
+#: AGI_STUB 1-10: N1 and A00100 x 1000, AGI in dollars).
 CO_2023 = {
-    "under_1": (47_150, -2_559_604_000),
-    "1_to_10k": (291_060, 1_416_216_000),
-    "10k_to_25k": (389_460, 6_728_128_000),
-    "25k_to_50k": (632_110, 23_615_781_000),
-    "50k_to_75k": (477_700, 29_421_989_000),
-    "75k_to_100k": (320_010, 27_725_880_000),
-    "100k_to_200k": (581_560, 81_122_417_000),
+    "under_1": (52_560, -2_879_696_000),
+    "1_to_10k": (315_840, 1_452_173_000),
+    "10k_to_25k": (397_560, 6_852_985_000),
+    "25k_to_50k": (630_840, 23_652_280_000),
+    "50k_to_75k": (480_120, 29_575_755_000),
+    "75k_to_100k": (317_240, 27_490_269_000),
+    "100k_to_200k": (581_520, 81_135_957_000),
     "200k_to_500k": (257_510, 74_198_170_000),
     "500k_to_1m": (38_030, 25_370_899_000),
     "1m_plus": (15_610, 47_266_883_000),
 }
+#: Colorado's published TY2023 all-returns total (AGI_STUB 0).
+CO_2023_TOTAL_RETURNS = 3_086_830
+CO_2023_TOTAL_AGI = 314_115_675_000
 #: Colorado's TY2022 all-returns totals (22in55cmcsv.csv, AGI_STUB 0).
 CO_2022_TOTAL_RETURNS = 2_972_380
 CO_2022_TOTAL_AGI = 297_676_269_000
+
+
+def test_colorado_fixture_adds_up_to_the_published_state_total() -> None:
+    """Guards the fixture itself: its ten cells sum to the file's stub 0."""
+    assert sum(returns for returns, _ in CO_2023.values()) == CO_2023_TOTAL_RETURNS
+    assert sum(agi for _, agi in CO_2023.values()) == CO_2023_TOTAL_AGI
 
 
 def _reference_fact(reference, value: float) -> dict[str, object]:
@@ -594,11 +604,22 @@ def test_rebased_bands_age_with_the_state_total() -> None:
         )
 
 
-def test_release_coverage_requires_a_top_tail_row_in_every_state() -> None:
+@pytest.mark.parametrize(
+    ("requirement_id", "measure"),
+    [
+        ("irs_state_agi_top_tail", "adjusted_gross_income"),
+        ("irs_state_agi_top_tail_returns", "return_count"),
+    ],
+)
+def test_release_coverage_requires_top_tail_rows_in_every_state(
+    requirement_id: str, measure: str
+) -> None:
+    """Both halves of a state's $1M+ cell are release requirements: dropping
+    one state's row of either measure fails the gate."""
     requirement = next(
         requirement
         for requirement in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS
-        if requirement.requirement_id == "irs_state_agi_top_tail"
+        if requirement.requirement_id == requirement_id
     )
     facts = []
     for postal in sorted(POSTAL_TO_FIPS):
@@ -607,17 +628,136 @@ def test_release_coverage_requires_a_top_tail_row_in_every_state() -> None:
     registry = _compile(facts)
     everything = target_profile_coverage_gate(registry.specs, [requirement])
     one_state_short = target_profile_coverage_gate(
-        [
-            spec
-            for spec in registry.specs
-            if spec.name != _co_name("1m_plus", "adjusted_gross_income")
-        ],
+        [spec for spec in registry.specs if spec.name != _co_name("1m_plus", measure)],
         [requirement],
     )
 
     assert requirement.min_matches == 51
     assert everything.passed
     assert not one_state_short.passed
+
+
+def test_state_bands_below_the_floor_never_bind_even_in_their_own_year() -> None:
+    """At a target period equal to the bands' tax year nothing is cross-period,
+    so the floor itself must refuse sub-$100k state bands (and non-all filing
+    statuses); binding bands still carry the rebase flag."""
+    from microcosm.build.us_runtime import fiscal_targets
+
+    for band, lower, upper in BANDS:
+        for measure in MEASURES:
+            fact = _band_fact("CO", 2023, band, lower, upper, measure, 1_000.0)
+            reference = fiscal_targets._soi_reference_from_fact(fact, target_period=2023)
+            if band in BINDING_BANDS:
+                assert reference is not None, band
+                assert reference.metadata[FLAG] == "true"
+            else:
+                assert reference is None, band
+            single = _band_fact(
+                "CO", 2023, band, lower, upper, measure, 1_000.0, filing_status="single"
+            )
+            assert (
+                fiscal_targets._soi_reference_from_fact(single, target_period=2023)
+                is None
+            )
+
+
+def test_an_incomplete_newest_vintage_falls_back_to_the_last_complete_one() -> None:
+    """A TY2023 partition with a gap does not bind; the complete TY2022 bands
+    do, as shares, instead of the state losing its bands."""
+    ty2022_values = {band: (100.0, 1_000_000.0) for band, _, _ in COLLAPSED_BANDS}
+    gapped_2023 = [
+        fact
+        for fact in _partition("CO", 2023, CO_2023)
+        if ".75k_to_100k." not in str(fact["lineage"]["source_record_id"])
+    ]
+    registry = _compile(
+        [
+            *_partition("CO", 2022, ty2022_values, bands=COLLAPSED_BANDS),
+            *gapped_2023,
+            *_totals("CO", 2022, 900.0, 9_000_000.0),
+        ]
+    )
+    bands = _band_specs(registry)
+
+    assert bands
+    assert {spec.metadata["uprating_from_period"] for spec in bands.values()} == {
+        "2022"
+    }
+    assert {name.split(".")[5] for name in bands} == {
+        "100k_to_200k",
+        "200k_to_500k",
+        "500k_plus",
+    }
+
+
+def test_identical_reemissions_collapse_and_conflicting_ones_raise() -> None:
+    """One source record id emitted twice with the same bytes is one band;
+    the same id with a different value is a feed error."""
+    base = [
+        *_partition("CO", 2023, CO_2023),
+        *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+    ]
+    duplicate = dict(base[0])
+    registry = _compile([*base, duplicate])
+    assert len(_band_specs(registry)) == len(BINDING_BANDS) * len(MEASURES)
+
+    conflicting = {**base[0], "value": base[0]["value"] + 10}
+    with pytest.raises(ValueError, match="appears twice with different"):
+        _compile([*base, conflicting])
+
+
+def test_a_malformed_vintage_that_cannot_bind_does_not_stop_the_compile() -> None:
+    """An overlapping TY2021 partition is never examined when the state's
+    newest vintage (TY2023) is complete."""
+    overlapping_2021 = [
+        *_partition("CO", 2021, CO_2023),
+        _band_fact("CO", 2021, "500k_plus", 500_000, None, "return_count", 1.0),
+    ]
+    registry = _compile(
+        [
+            *overlapping_2021,
+            *_partition("CO", 2023, CO_2023),
+            *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+        ]
+    )
+
+    assert {
+        spec.metadata["uprating_from_period"]
+        for spec in _band_specs(registry).values()
+    } == {"2023"}
+
+
+def test_period_contract_reads_the_period_a_rebased_band_sits_at() -> None:
+    """Without aging, TY2023 AGI bands rebased onto a TY2022 state total hold
+    2022-level dollars: at a 2023 build they violate the period contract like
+    the state total they are shares of, and at a 2022 build neither does."""
+    from microcosm.build.us_runtime.target_aging import (
+        find_period_contract_violations,
+    )
+
+    registry = _compile(
+        [
+            *_partition("CO", 2023, CO_2023),
+            *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+        ]
+    )
+    agi_bands = {
+        name
+        for name, spec in _band_specs(registry).items()
+        if spec.metadata["source_measure_id"] == "adjusted_gross_income"
+    }
+    total = "irs_soi.ty2022.historic_table_2.state_broad.co.all.adjusted_gross_income"
+    at_2023 = {
+        violation.target_name
+        for violation in find_period_contract_violations(registry, target_period=2023)
+    }
+    at_2022 = {
+        violation.target_name
+        for violation in find_period_contract_violations(registry, target_period=2022)
+    }
+
+    assert agi_bands | {total} <= at_2023
+    assert not (agi_bands | {total}) & at_2022
 
 
 # --------------------------------------------------------------------------

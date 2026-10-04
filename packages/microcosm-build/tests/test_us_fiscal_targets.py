@@ -6833,22 +6833,23 @@ def complete_coverage_targets() -> list[dict[str, object]]:
 def complete_state_agi_top_tail_rows() -> list[dict[str, object]]:
     rows = []
     for postal in US_STATE_FIPS_TO_POSTAL.values():
-        name = (
-            f"irs_soi.ty2023.historic_table_2.state_agi.{postal.lower()}."
-            "1m_plus.adjusted_gross_income"
-        )
-        rows.append(
-            {
-                "name": name,
-                "measure": name,
-                "family": "irs_soi",
-                "metadata": {
-                    "requires_state_agi_band_rebase": "true",
-                    "source_measure_id": "adjusted_gross_income",
-                    "agi_lower_bound": "1000000.0",
-                },
-            }
-        )
+        for measure in ("adjusted_gross_income", "return_count"):
+            name = (
+                f"irs_soi.ty2023.historic_table_2.state_agi.{postal.lower()}."
+                f"1m_plus.{measure}"
+            )
+            rows.append(
+                {
+                    "name": name,
+                    "measure": name,
+                    "family": "irs_soi",
+                    "metadata": {
+                        "requires_state_agi_band_rebase": "true",
+                        "source_measure_id": measure,
+                        "agi_lower_bound": "1000000.0",
+                    },
+                }
+            )
     return rows
 
 
