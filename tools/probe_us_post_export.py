@@ -211,11 +211,16 @@ def _load_tool(module_name: str, filename: str):
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {filename}")
     module = importlib.util.module_from_spec(spec)
-    # The bytes about to run, for the report's tool_source.
-    module.__loaded_sha256__ = _file_sha256(_TOOLS / filename)
+    # Read the file once and execute those bytes, so the report's hash is of
+    # the code that ran (the loader would read the file again).
+    source = (_TOOLS / filename).read_bytes()
+    module.__loaded_sha256__ = hashlib.sha256(source).hexdigest()
     sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)
+        exec(  # the loader's exec_module, minus its second read of the file
+            compile(source, str(_TOOLS / filename), "exec", dont_inherit=True),
+            module.__dict__,
+        )
     except BaseException:
         sys.modules.pop(module_name, None)
         raise
@@ -1260,84 +1265,144 @@ def _verdict(
     }
 
 
-def _git_state() -> tuple[str | None, bool | None]:
-    """HEAD and whether ``tools/`` or ``packages/`` differ from it; ``(None,
-    None)`` outside a git checkout."""
+#: The repository paths whose state a receipt or report records: the tools and
+#: the editable microcosm packages they import.
+WATCHED_PATHS = ("tools", "packages")
+
+
+def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str | None]:
+    """The repository's state under :data:`WATCHED_PATHS`: HEAD, whether the
+    working tree differs from it there (tracked changes or untracked files),
+    and a sha256 of those differences (``None`` when there are none).
+    ``(None, None, None)`` outside a git checkout or without git.
+
+    The digest covers ``git diff --binary HEAD`` and every untracked,
+    unignored file's path and bytes, so it changes with any edit to a dirty
+    tree, not only with a change between clean and dirty. Git runs with
+    ``--no-optional-locks``: these reads never take the index lock that a
+    concurrent commit in the same worktree needs.
+    """
     import subprocess
 
-    root = _TOOLS.parent
+    root = _TOOLS.parent if root is None else Path(root)
+
+    def git(*args: str, text: bool = True):
+        return subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(root), *args],
+            capture_output=True,
+            text=text,
+            check=True,
+        ).stdout
+
     try:
-        head = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        dirty = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(root),
-                "status",
-                "--porcelain",
+        head = git("rev-parse", "HEAD").strip()
+        status = git(
+            "status", "--porcelain", "--untracked-files=all", "--", *WATCHED_PATHS
+        )
+        if not status.strip():
+            return head, False, None
+        digest = hashlib.sha256(
+            git(
+                "diff",
+                "--binary",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-textconv",
+                "HEAD",
                 "--",
-                "tools",
-                "packages",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+                *WATCHED_PATHS,
+                text=False,
+            )
+        )
+        untracked = git(
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *WATCHED_PATHS,
+            text=False,
+        )
+        for name in sorted(filter(None, untracked.split(b"\0"))):
+            digest.update(b"\0untracked\0" + name + b"\0")
+            try:
+                digest.update(
+                    hashlib.sha256((root / os.fsdecode(name)).read_bytes()).digest()
+                )
+            except OSError as error:
+                digest.update(f"unreadable {error.errno}".encode())
     except (OSError, subprocess.CalledProcessError):
-        return None, None
-    return head, bool(dirty)
+        return None, None, None
+    return head, True, digest.hexdigest()
 
 
 def _file_sha256(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def _module_sha256(module: Any) -> str | None:
-    """The sha256 :func:`_load_tool` took of a module's file as it loaded it,
-    else of its file now (a module passed in), else None (not a file)."""
+def _module_sha256(module: Any) -> dict[str, str | None]:
+    """A sibling tool's sha256 and when it was taken: ``"at load"`` for a
+    module :func:`_load_tool` loaded (the bytes it executed), ``"at write"``
+    for one passed in (its file when the record is written, which may be
+    newer than the code that ran), ``None`` for a module with no file."""
     loaded = getattr(module, "__loaded_sha256__", None)
     if loaded is not None:
-        return loaded
+        return {"sha256": loaded, "hashed": "at load"}
     path = getattr(module, "__file__", None)
-    return None if path is None else _file_sha256(path)
+    if path is None:
+        return {"sha256": None, "hashed": None}
+    return {"sha256": _file_sha256(path), "hashed": "at write"}
 
 
 def _tool_source() -> dict[str, object]:
-    """The commit this file was loaded from, whether ``tools/`` or
-    ``packages/`` differed from it, and this file's sha256 (``git show
+    """The repository state this file was loaded from (:func:`_git_state`)
+    and this file's sha256, read as the module body runs. ``git show
     <commit>:tools/probe_us_post_export.py`` hashes to it when the tree was
-    clean)."""
-    commit, dirty = _git_state()
-    return {"commit": commit, "dirty": dirty, "sha256": _file_sha256(__file__)}
+    clean."""
+    commit, dirty, changes = _git_state()
+    return {
+        "commit": commit,
+        "dirty": dirty,
+        "changes_sha256": changes,
+        "sha256": _file_sha256(__file__),
+    }
 
 
-# Read once, as this file loads: a run can outlive its worktree's HEAD. It
-# covers this file; what the probe imports later is covered by the check in
-# _tool_source_record.
+# Read once, as this file loads: a run can outlive its worktree's HEAD. The
+# release tool, the sampler and the microcosm packages are imported later,
+# from whatever the tree holds then; _tool_source_record compares the two
+# moments and hashes the sibling tools.
 _TOOL_SOURCE = _tool_source()
 
 
-def _tool_source_record(tools: Mapping[str, Any]) -> dict[str, object]:
-    """``_TOOL_SOURCE``, the sha256 of each sibling tool the probe runs, and
-    whether HEAD or the tree's cleanliness changed since this file loaded.
+def _moved(commit, changes) -> bool | None:
+    """Whether the repository state differs from the one at load; ``None``
+    when either moment has no git state."""
+    if commit is None or _TOOL_SOURCE["commit"] is None:
+        return None
+    return (commit, changes) != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["changes_sha256"])
 
-    The release tool, the sampler and the editable microcosm packages are
-    imported after this file, some of them minutes later. If the tree moved,
-    they may come from either state, and ``moved_since_load`` says so.
+
+def _tool_source_record(tools: Mapping[str, Any]) -> dict[str, object]:
+    """``_TOOL_SOURCE``, each sibling tool's sha256 (:func:`_module_sha256`)
+    and the repository state when the record is written.
+
+    ``moved_since_load`` is true when HEAD or the working-tree differences
+    under :data:`WATCHED_PATHS` changed since this file loaded; modules
+    imported in between may then come from either state.
+    Equal endpoints show the tree under :data:`WATCHED_PATHS` was the same when
+    this file loaded and when the record was written, not that it never
+    changed in between: an edit made and undone between the two is invisible.
+    Installed libraries outside the repository are recorded by version only.
     """
-    commit, dirty = _git_state()
+    commit, dirty, changes = _git_state()
     return {
         **_TOOL_SOURCE,
         "tools": {name: _module_sha256(module) for name, module in tools.items()},
         "commit_at_write": commit,
         "dirty_at_write": dirty,
-        "moved_since_load": (commit, dirty)
-        != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["dirty"]),
+        "changes_sha256_at_write": changes,
+        "moved_since_load": _moved(commit, changes),
     }
 
 
@@ -1558,6 +1623,7 @@ class ExportProbe:
 
     def _write_report(self) -> None:
         self.report["tool_source"] = self._tool_source()
+        self.out_dir.mkdir(parents=True, exist_ok=True)
         _write_json(self.out_dir / REPORT_FILENAME, self.report)
 
     def _stage(self, name: str, fn: Callable[[], Mapping[str, Any]], consequence):
@@ -1650,6 +1716,9 @@ class ExportProbe:
                 self._stage("source_coverage", self._source_coverage, "recorded")
         self.report["summary"] = _summary(self.report, self.receipt)
         self.report["process_peak_rss_gib"] = _gib(_lifetime_peak_rss())
+        self.report["process_peak_rss_source"] = (
+            "resource.getrusage(RUSAGE_SELF).ru_maxrss (the process's lifetime peak)"
+        )
         self.report["rss_source"] = (
             None if self.clock.sampler is None else self.clock.sampler.source
         )

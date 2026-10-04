@@ -403,18 +403,32 @@ def sample_synthetic(
 #: The commit git reports once :func:`move_head_after_load` has run.
 LATER_HEAD = "f" * 40
 
+#: The fields a tool records about the repository state it loaded from.
+LOAD_STATE_FIELDS = ("commit", "dirty", "changes_sha256", "sha256")
+
 
 def move_head_after_load(monkeypatch) -> None:
-    """Make every later ``git`` call report :data:`LATER_HEAD`, as when the
-    worktree moves on while a long run is still going."""
+    """Make every later ``git`` call see a clean tree at :data:`LATER_HEAD`,
+    as when the worktree moves on while a long run is still going."""
     real_run = subprocess.run
 
     def run(args, *rest, **options):
-        if list(args)[:1] == ["git"]:
-            return subprocess.CompletedProcess(args, 0, LATER_HEAD + "\n", "")
+        args = list(args)
+        if args[:1] == ["git"]:
+            out = LATER_HEAD + "\n" if "rev-parse" in args else ""
+            if not options.get("text"):
+                out = out.encode()
+            return subprocess.CompletedProcess(args, 0, out, out[:0])
         return real_run(args, *rest, **options)
 
     monkeypatch.setattr(subprocess, "run", run)
+
+
+def pin_git_state_at_load(monkeypatch, tool) -> None:
+    """Make ``tool._git_state`` report the state the tool loaded from."""
+    loaded = tool._TOOL_SOURCE
+    state = (loaded["commit"], loaded["dirty"], loaded["changes_sha256"])
+    monkeypatch.setattr(tool, "_git_state", lambda *args, **kwargs: state)
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

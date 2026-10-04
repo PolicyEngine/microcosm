@@ -844,64 +844,121 @@ def _library_versions() -> dict[str, str | None]:
     return versions
 
 
-def _git_state() -> tuple[str | None, bool | None]:
-    """HEAD and whether ``tools/`` or ``packages/`` differ from it; ``(None,
-    None)`` outside a git checkout."""
-    root = Path(__file__).resolve().parents[1]
+#: The repository paths whose state a receipt or report records: the tools and
+#: the editable microcosm packages they import.
+WATCHED_PATHS = ("tools", "packages")
+
+
+def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str | None]:
+    """The repository's state under :data:`WATCHED_PATHS`: HEAD, whether the
+    working tree differs from it there (tracked changes or untracked files),
+    and a sha256 of those differences (``None`` when there are none).
+    ``(None, None, None)`` outside a git checkout or without git.
+
+    The digest covers ``git diff --binary HEAD`` and every untracked,
+    unignored file's path and bytes, so it changes with any edit to a dirty
+    tree, not only with a change between clean and dirty. Git runs with
+    ``--no-optional-locks``: these reads never take the index lock that a
+    concurrent commit in the same worktree needs.
+    """
+    root = Path(__file__).resolve().parents[1] if root is None else Path(root)
+
+    def git(*args: str, text: bool = True):
+        return subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(root), *args],
+            capture_output=True,
+            text=text,
+            check=True,
+        ).stdout
+
     try:
-        head = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        dirty = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(root),
-                "status",
-                "--porcelain",
+        head = git("rev-parse", "HEAD").strip()
+        status = git(
+            "status", "--porcelain", "--untracked-files=all", "--", *WATCHED_PATHS
+        )
+        if not status.strip():
+            return head, False, None
+        digest = hashlib.sha256(
+            git(
+                "diff",
+                "--binary",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-textconv",
+                "HEAD",
                 "--",
-                "tools",
-                "packages",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+                *WATCHED_PATHS,
+                text=False,
+            )
+        )
+        untracked = git(
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *WATCHED_PATHS,
+            text=False,
+        )
+        for name in sorted(filter(None, untracked.split(b"\0"))):
+            digest.update(b"\0untracked\0" + name + b"\0")
+            try:
+                digest.update(
+                    hashlib.sha256((root / os.fsdecode(name)).read_bytes()).digest()
+                )
+            except OSError as error:
+                digest.update(f"unreadable {error.errno}".encode())
     except (OSError, subprocess.CalledProcessError):
-        return None, None
-    return head, bool(dirty)
+        return None, None, None
+    return head, True, digest.hexdigest()
 
 
 def _tool_commit() -> dict[str, object]:
-    """The commit this file was loaded from, whether ``tools/`` or
-    ``packages/`` differed from it, and this file's sha256 (``git show
+    """The repository state this file was loaded from (:func:`_git_state`)
+    and this file's sha256, read as the module body runs. ``git show
     <commit>:tools/sample_us_export_households.py`` hashes to it when the
-    tree was clean)."""
-    commit, dirty = _git_state()
-    sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    return {"commit": commit, "dirty": dirty, "sha256": sha256}
+    tree was clean."""
+    commit, dirty, changes = _git_state()
+    return {
+        "commit": commit,
+        "dirty": dirty,
+        "changes_sha256": changes,
+        "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    }
 
 
 # Read once, as this file loads: the worktree's HEAD can move while a long
-# draw runs. It covers this file; the microcosm packages imported later are
-# covered by the check in _tool_source_record.
+# draw runs. The microcosm packages are imported later, from whatever the tree
+# holds then; _tool_source_record compares the two moments.
 _TOOL_SOURCE = _tool_commit()
 
 
+def _moved(commit, changes) -> bool | None:
+    """Whether the repository state differs from the one at load; ``None``
+    when either moment has no git state."""
+    if commit is None or _TOOL_SOURCE["commit"] is None:
+        return None
+    return (commit, changes) != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["changes_sha256"])
+
+
 def _tool_source_record() -> dict[str, object]:
-    """``_TOOL_SOURCE`` and whether HEAD or the tree's cleanliness changed
-    since this file loaded: the editable microcosm packages are imported
-    later, and if the tree moved they may come from either state."""
-    commit, dirty = _git_state()
+    """``_TOOL_SOURCE`` and the repository state when the receipt is written.
+
+    ``moved_since_load`` is true when HEAD or the working-tree differences
+    under :data:`WATCHED_PATHS` changed since this file loaded; the microcosm
+    packages imported in between may then come from either state.
+    Equal endpoints show the tree under :data:`WATCHED_PATHS` was the same when
+    this file loaded and when the record was written, not that it never
+    changed in between: an edit made and undone between the two is invisible.
+    Installed libraries outside the repository are recorded by version only.
+    """
+    commit, dirty, changes = _git_state()
     return {
         **_TOOL_SOURCE,
         "commit_at_write": commit,
         "dirty_at_write": dirty,
-        "moved_since_load": (commit, dirty)
-        != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["dirty"]),
+        "changes_sha256_at_write": changes,
+        "moved_since_load": _moved(commit, changes),
     }
 
 
