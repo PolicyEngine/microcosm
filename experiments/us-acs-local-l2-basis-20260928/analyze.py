@@ -187,8 +187,22 @@ def weighted_columns(payload: dict) -> dict:
     metrics = payload["metrics"]
     fit = metrics["fit_train"]
     prior_fit = metrics["fit_train_design"]["overall"]
+    multipliers = dict(payload["spec"].get("family_loss_multipliers") or ())
+    yardstick = metrics.get("fit_train_yardstick", {}).get("overall", {})
+    district = fit["per_family"].get("pop_cd", {})
     out = {
         "target_weighting": _weighting(payload),
+        "pop_multiplier": float(multipliers.get("census_population", 1.0)),
+        "yardstick_loss": yardstick.get(
+            "weighted_mean_capped_scaled_error", payload["result"]["final_loss"]
+        ),
+        "train_cds_off_10pct": int(
+            round(
+                district.get("n_targets", 0)
+                * (1.0 - district.get("fraction_within_10pct", 1.0))
+            )
+        ),
+        "train_cd_pop_worst_miss": district.get("max_abs_rel_error"),
         "unweighted_loss": payload["consistency"]["unweighted_final_loss"],
         "weighted_within_10pct": fit["overall"]["weighted_fraction_within_10pct"],
         "prior_weighted_loss": prior_fit["weighted_mean_capped_scaled_error"],
@@ -215,6 +229,10 @@ def weighted_columns(payload: dict) -> dict:
 #: Columns only weighted runs carry; equal-weight outputs drop them.
 WEIGHTED_ONLY_COLUMNS = (
     "target_weighting",
+    "pop_multiplier",
+    "yardstick_loss",
+    "train_cds_off_10pct",
+    "train_cd_pop_worst_miss",
     "unweighted_loss",
     "weighted_within_10pct",
     "prior_weighted_loss",
@@ -612,6 +630,14 @@ WEIGHTED_KEY_CONFIGS = (
     ("w_proj_chi_s050_0.01", "Share 0.5, projection, chi-square λ 0.01"),
     ("w_proj_chi_s050_0.03", "Share 0.5, projection, chi-square λ 0.03"),
     ("w_proj_chi_s050_0.1", "Share 0.5, projection, chi-square λ 0.1"),
+    ("w_proj_chi_s050_0.2", "Share 0.5, projection, chi-square λ 0.2"),
+    ("w_proj_chi_s050_0.3", "Share 0.5, projection, chi-square λ 0.3"),
+    ("w_pop4_proj_s050_0", "Population ×4: share 0.5, projection, λ 0"),
+    ("w_pop4_proj_chi_s050_0.03", "Population ×4: projection, chi-square λ 0.03"),
+    ("w_pop4_proj_chi_s050_0.1", "Population ×4: projection, chi-square λ 0.1"),
+    ("w_pop8_proj_s050_0", "Population ×8: share 0.5, projection, λ 0"),
+    ("w_pop8_proj_chi_s050_0.03", "Population ×8: projection, chi-square λ 0.03"),
+    ("w_pop8_proj_chi_s050_0.1", "Population ×8: projection, chi-square λ 0.1"),
     ("w_soft_chi_s050_0", "Share 0.5, softmax, no penalty"),
     ("w_soft_chi_s050_0.01", "Share 0.5, softmax, chi-square λ 0.01"),
     ("w_soft_chi_s050_0.03", "Share 0.5, softmax, chi-square λ 0.03"),
@@ -654,8 +680,8 @@ def weighted_key_config_table(frame: pd.DataFrame) -> str:
         "MA ESS",
         "Weighted loss",
         "Train within 10%",
+        "Trained CD populations > 10% off / worst",
         "Held-out weighted error, fold 0 / 1",
-        "Held-out capped error, fold 0 / 1",
         "Held-out within 10%, fold 0 / 1",
     )
     lines = [
@@ -671,9 +697,9 @@ def weighted_key_config_table(frame: pd.DataFrame) -> str:
             f"| {label} | {r.kish_ess:,.0f} | {r.cd_ess_median:,.0f} / "
             f"{r.cd_ess_min:,.0f} | {int(r.cds_below_50)} | "
             f"{int(r['cds_below_0.25_of_prior'])} | {r.ma_ess:,.0f} | "
-            f"{r.final_loss:.4f} | {r.within_10pct:.1%} | "
+            f"{r.yardstick_loss:.4f} | {r.within_10pct:.1%} | "
+            f"{int(r.train_cds_off_10pct)} / {r.train_cd_pop_worst_miss:.0%} | "
             f"{_fold_cells(by_id, held, 'holdout_weighted_capped_error', '.4f')} | "
-            f"{_fold_cells(by_id, held, 'holdout_mean_capped_error', '.4f')} | "
             f"{_fold_cells(by_id, held, 'holdout_within_10pct', '.1%')} |"
         )
     return "\n".join(lines) + "\n"
@@ -683,6 +709,7 @@ def weighted_markdown(frame: pd.DataFrame) -> str:
     sections = []
     full = frame[frame.arm == "full surface"]
     columns = (
+        ("Population ×", "pop_multiplier", "g"),
         ("Prior ACS share", "prior_acs_share", ".3g"),
         ("λ", "l2_lambda", "g"),
         ("National ESS", "kish_ess", ",.0f"),
@@ -705,6 +732,7 @@ def weighted_markdown(frame: pd.DataFrame) -> str:
     for (parametrization, basis), group in full.groupby(
         ["mass_parametrization", "l2_basis"], sort=False
     ):
+        group = group.sort_values(["pop_multiplier", "prior_acs_share", "l2_lambda"])
         lines = [
             f"### `{parametrization}` parametrization, `{basis}` basis",
             "",
@@ -721,11 +749,18 @@ def weighted_markdown(frame: pd.DataFrame) -> str:
             lines.append("| " + " | ".join(cells) + " |")
         sections.append("\n".join(lines))
     held = frame[frame.arm == "holdout"].sort_values(
-        ["holdout_fold", "prior_acs_share", "mass_parametrization", "l2_lambda"]
+        [
+            "holdout_fold",
+            "pop_multiplier",
+            "prior_acs_share",
+            "mass_parametrization",
+            "l2_lambda",
+        ]
     )
     if len(held):
         hold_columns = (
             ("Fold", "holdout_fold", ".0f"),
+            ("Population ×", "pop_multiplier", "g"),
             ("Parametrization", "mass_parametrization", "s"),
             ("Prior ACS share", "prior_acs_share", ".3g"),
             ("λ", "l2_lambda", "g"),
@@ -788,6 +823,16 @@ def lambda_table(weighted: pd.DataFrame, equal: pd.DataFrame, cross: dict) -> st
                 "capped": [by_id.loc[i, "holdout_mean_capped_error"] for i in ids],
                 "within": [by_id.loc[i, "holdout_within_10pct"] for i in ids],
                 "ess": by_id.loc[run_id, "kish_ess"] if run_id in by_id.index else None,
+                "cds_off": (
+                    int(by_id.loc[run_id, "train_cds_off_10pct"])
+                    if run_id in by_id.index
+                    else None
+                ),
+                "gate": [
+                    int(by_id.loc[i, "cds_below_0.25_of_prior"])
+                    for i in (run_id, *ids)
+                    if i in by_id.index
+                ],
             }
         )
     equal_by_id = equal.set_index("run_id")
@@ -815,6 +860,20 @@ def lambda_table(weighted: pd.DataFrame, equal: pd.DataFrame, cross: dict) -> st
                     if run_id in equal_by_id.index
                     else None
                 ),
+                "cds_off": (
+                    int(
+                        round(
+                            436 * (1 - equal_by_id.loc[run_id, "within_10pct_pop_cd"])
+                        )
+                    )
+                    if run_id in equal_by_id.index
+                    else None
+                ),
+                "gate": [
+                    int(equal_by_id.loc[i, "cds_below_0.25_of_prior"])
+                    for i in (run_id, *ids)
+                    if i in equal_by_id.index
+                ],
             }
         )
     if not rows:
@@ -830,6 +889,8 @@ def lambda_table(weighted: pd.DataFrame, equal: pd.DataFrame, cross: dict) -> st
         "vs release settings, fold 0 / 1",
         "Held-out capped error, fold 0 / 1 (mean)",
         "Held-out within 10%, fold 0 / 1 (mean)",
+        "Trained CD populations > 10% off",
+        "CDs < ¼ of prior: full / fold 0 / 1",
     )
     lines = [
         "| " + " | ".join(columns) + " |",
@@ -848,7 +909,9 @@ def lambda_table(weighted: pd.DataFrame, equal: pd.DataFrame, cross: dict) -> st
             f"{r['capped'][0]:.4f} / {r['capped'][1]:.4f} "
             f"({np.mean(r['capped']):.4f}) | "
             f"{r['within'][0]:.1%} / {r['within'][1]:.1%} "
-            f"({np.mean(r['within']):.1%}) |"
+            f"({np.mean(r['within']):.1%}) | "
+            f"{_fmt(r['cds_off'], 'd')} | "
+            f"{' / '.join(str(g) for g in r['gate'])} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -920,7 +983,8 @@ def weighted_chart(weighted: pd.DataFrame, equal: pd.DataFrame, path: Path) -> N
     import matplotlib.pyplot as plt
 
     surface, ink, muted, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-    full = weighted[weighted.arm == "full surface"]
+    full_all = weighted[weighted.arm == "full surface"]
+    full = full_all[full_all.pop_multiplier == 1.0]
     equal_full = equal[equal.arm == "full surface"]
     paths = (
         (
@@ -939,6 +1003,15 @@ def weighted_chart(weighted: pd.DataFrame, equal: pd.DataFrame, path: Path) -> N
             "#6b4fbb",
             "-",
             "Weighted, projection, share 0.5",
+        ),
+        (
+            full_all[
+                (full_all.mass_parametrization == "projection")
+                & (full_all.pop_multiplier == 8.0)
+            ],
+            "#c43b6b",
+            ":",
+            "Weighted, projection, population ×8",
         ),
         (
             full[

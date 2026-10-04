@@ -141,6 +141,20 @@ summary, so the gate is a finalize-stage check on data it already has.
 ### Key configurations on the weighted loss
 
 <!-- weighted-key-configs:start (written by analyze.py) -->
+| Configuration | National ESS | CD ESS median / min | CDs < 50 | CDs < ¼ of prior | MA ESS | Weighted loss | Train within 10% | Trained CD populations > 10% off / worst | Held-out weighted error, fold 0 / 1 | Held-out within 10%, fold 0 / 1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Release settings: share 0.5, projection, λ 0 | 13,707 | 34 / 11 | 351 | 28 | 478 | 0.0097 | 97.2% | 11 / 33% | 0.0786 / 0.0783 | 62.3% / 63.9% |
+| Share 0.5, projection, chi-square λ 0.01 | 17,758 | 40 / 16 | 320 | 0 | 546 | 0.0113 | 96.5% | 38 / 45% | – / – | – / – |
+| Share 0.5, projection, chi-square λ 0.03 | 19,618 | 44 / 19 | 302 | 0 | 580 | 0.0134 | 95.5% | 73 / 46% | 0.0723 / 0.0719 | 64.0% / 65.9% |
+| Share 0.5, projection, chi-square λ 0.1 | 21,751 | 49 / 28 | 240 | 0 | 609 | 0.0192 | 92.3% | 135 / 50% | 0.0713 / 0.0704 | 64.3% / 66.3% |
+| Share 0.5, softmax, no penalty | 14,424 | 36 / 11 | 343 | 17 | 497 | 0.0093 | 97.2% | 13 / 35% | 0.0833 / 0.0823 | 60.1% / 63.2% |
+| Share 0.5, softmax, chi-square λ 0.01 | 18,167 | 41 / 16 | 307 | 0 | 560 | 0.0113 | 96.6% | 36 / 46% | – / – | – / – |
+| Share 0.5, softmax, chi-square λ 0.03 | 20,387 | 46 / 20 | 278 | 0 | 605 | 0.0139 | 95.3% | 73 / 45% | 0.0739 / 0.0732 | 62.9% / 65.7% |
+| Share 0.5, softmax, chi-square λ 0.1 | 23,507 | 53 / 29 | 175 | 0 | 651 | 0.0208 | 91.7% | 136 / 46% | 0.0744 / 0.0737 | 62.8% / 65.4% |
+| Share 0.5, softmax, chi-square λ 0.3 | 28,506 | 64 / 37 | 36 | 0 | 772 | 0.0408 | 83.3% | 173 / 47% | – / – | – / – |
+| Share 0.5, softmax, chi-square λ 1 | 33,058 | 73 / 44 | 7 | 0 | 901 | 0.0742 | 65.5% | 182 / 45% | – / – | – / – |
+| Share 0.9, softmax, no penalty | 81,714 | 198 / 64 | 0 | 371 | 2,503 | 0.0170 | 95.8% | 2 / 12% | 0.1108 / 0.1068 | 57.2% / 57.6% |
+| Share 0.9, softmax, chi-square λ 0.01 | 112,432 | 270 / 75 | 0 | 220 | 3,054 | 0.0199 | 95.2% | 7 / 16% | – / – | – / – |
 <!-- weighted-key-configs:end -->
 
 ### Re-picking λ
@@ -163,6 +177,18 @@ The rule, fixed before any weighted held-out result was read (commit
    the release settings' by more than the noise on both folds.
 
 <!-- weighted-lambda:start (written by analyze.py) -->
+| Configuration | Loss trained on | National ESS | Held-out weighted error, fold 0 / 1 (mean) | vs release settings, fold 0 / 1 | Held-out capped error, fold 0 / 1 (mean) | Held-out within 10%, fold 0 / 1 (mean) | Trained CD populations > 10% off | CDs < ¼ of prior: full / fold 0 / 1 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Release settings: share 0.5, projection, λ 0 | weighted | 13,707 | 0.0786 / 0.0783 (0.0784) | +0.0% / +0.0% | 0.1314 / 0.1225 (0.1270) | 62.3% / 63.9% (63.1%) | 11 | 28 / 21 / 17 |
+| Share 0.5, projection, chi-square λ 0.03 | weighted | 19,618 | 0.0723 / 0.0719 (0.0721) | -8.1% / -8.2% | 0.1201 / 0.1150 (0.1175) | 64.0% / 65.9% (65.0%) | 73 | 0 / 0 / 0 |
+| Share 0.5, projection, chi-square λ 0.1 | weighted | 21,751 | 0.0713 / 0.0704 (0.0708) | -9.3% / -10.1% | 0.1182 / 0.1134 (0.1158) | 64.3% / 66.3% (65.3%) | 135 | 0 / 0 / 0 |
+| Share 0.5, softmax, no penalty | weighted | 14,424 | 0.0833 / 0.0823 (0.0828) | +6.0% / +5.1% | 0.1387 / 0.1274 (0.1331) | 60.1% / 63.2% (61.7%) | 13 | 17 / 13 / 20 |
+| Share 0.5, softmax, chi-square λ 0.03 | weighted | 20,387 | 0.0739 / 0.0732 (0.0736) | -6.0% / -6.4% | 0.1217 / 0.1154 (0.1186) | 62.9% / 65.7% (64.3%) | 73 | 0 / 0 / 0 |
+| Share 0.5, softmax, chi-square λ 0.1 | weighted | 23,507 | 0.0744 / 0.0737 (0.0740) | -5.4% / -5.9% | 0.1216 / 0.1164 (0.1190) | 62.8% / 65.4% (64.1%) | 136 | 0 / 0 / 0 |
+| Share 0.9, softmax, no penalty | weighted | 81,714 | 0.1108 / 0.1068 (0.1088) | +41.0% / +36.4% | 0.1697 / 0.1733 (0.1715) | 57.2% / 57.6% (57.4%) | 2 | 371 / 318 / 331 |
+| Equal-weight release (projection, λ 0) | equal | 13,646 | 0.0779 / 0.0766 (0.0772) | -0.9% / -2.2% | 0.1296 / 0.1236 (0.1266) | 63.3% / 65.8% (64.6%) | 0 | 15 / 22 / 24 |
+| Equal-weight pick (projection, λ 0.03) | equal | 20,690 | 0.0734 / 0.0715 (0.0724) | -6.7% / -8.6% | 0.1247 / 0.1191 (0.1219) | 64.2% / 67.0% (65.6%) | 0 | 0 / 0 / 0 |
+| Equal-weight softmax λ 0.03 | equal | 21,835 | 0.0750 / 0.0727 (0.0738) | -4.6% / -7.1% | 0.1242 / 0.1166 (0.1204) | 63.1% / 66.3% (64.7%) | 0 | 0 / 0 / 0 |
 <!-- weighted-lambda:end -->
 
 ## How it was run
