@@ -1202,11 +1202,12 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     assert household.loc[1, "council_tax_band"] == "B"
     assert household.loc[1, "council_tax_rebate"] == pytest.approx(WEEKS_IN_YEAR)
     assert household.loc[1, "council_tax_single_adult_raw"] == 1
-    # Scotland: the gross CWATAMT1 4 + CSEWAMT1 5, less the 25% status discount,
-    # at the 65% a council tax reduction recipient pays: 9 * 0.75 * 0.65.
+    # Scotland: the gross CWATAMT1 4 + CSEWAMT1 5; the household is a council
+    # tax reduction recipient with the 25% status discount, which the Water
+    # Charges Reduction Scheme tops up to 35%, not stacks under: 9 * 0.65.
     # WATSEWRT is not asked in Scotland and is ignored.
     assert household.loc[1, "water_and_sewerage_charges"] == pytest.approx(
-        9.0 * 0.75 * 0.65 * WEEKS_IN_YEAR
+        9.0 * 0.65 * WEEKS_IN_YEAR
     )
     assert household.loc[1, "domestic_rates"] == pytest.approx(5 * WEEKS_IN_YEAR)
     assert household.loc[1, "rent"] == pytest.approx(6 * WEEKS_IN_YEAR)
