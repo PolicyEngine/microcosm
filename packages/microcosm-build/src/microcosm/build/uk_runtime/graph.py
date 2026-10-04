@@ -843,6 +843,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "jsa_contrib_reported",
                 "jsa_income_reported",
+                "esa_income_reported",
                 "income_support_reported",
                 "working_tax_credit_reported",
                 "child_tax_credit_reported",

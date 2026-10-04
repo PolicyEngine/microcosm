@@ -19,10 +19,14 @@ and the Pension Credit and Child Benefit take-up stages, which read
 qualifying-young-person status and the taxable benefits:
 
 - it zeroes the reports whose award needs an existing legacy claim, an
-  out-of-work or incapacity test, or a claim the copied household's new
-  incomes cannot support: contributory and income-based JSA, Income Support,
-  Working and Child Tax Credit, Severe Disablement Allowance and the Sure
-  Start Maternity Grant;
+  out-of-work test, or a claim the copied household's new incomes cannot
+  support: contributory and income-based JSA, income-related ESA, Income
+  Support, Working and Child Tax Credit, Severe Disablement Allowance and the
+  Sure Start Maternity Grant. policyengine-uk pays income-related ESA as
+  reported behind a capital test alone, so a kept draw paid the twin's award
+  whatever the copy's new incomes: on the microcosm#1095 arm A8 spine the SPI
+  rows held 29% of the income-related ESA reporters at design weights, and
+  56% of their benefit units had incomes above GBP 12,570;
 - it restores Industrial Injuries Disablement Benefit, the Armed Forces
   Compensation Scheme and bereavement support from the FRS twin, since they
   follow an injury, service or a death and not income;
@@ -36,8 +40,13 @@ qualifying-young-person status and the taxable benefits:
   other units in the Universal Credit age population claim as the residual of
   the take-up contract's rate, on draws keyed on the SPI unit's own identity.
 
-ESA, the disability benefits, Carer's Allowance, State Pension and Winter Fuel
-Payment keep their draws, and FRS base rows are never modified.
+Contributory ESA, the disability benefits, Carer's Allowance, State Pension
+and Winter Fuel Payment keep their draws, and FRS base rows are never
+modified. Contributory ESA is not income-tested, and the incapacity it needs
+follows the person, whose health and disability reports the SPI copy keeps; on
+the A8 spine its SPI draw sits at half the FRS rate per working-age adult, and
+9.9% of its SPI reporters by weight earn above the permitted-work limit
+(uk-data#514 zeroes it on a build where 41% did).
 """
 
 from __future__ import annotations
@@ -91,11 +100,13 @@ from microcosm.frame import Frame
 
 SPI_BENEFIT_COHERENCE_STAGE_NAME = "spi_benefit_coherence"
 SPI_BENEFIT_COHERENCE_ROWS = "spi_synthetic_support_channel"
-#: Reports whose award needs an existing legacy claim, an out-of-work or
-#: incapacity test, or a claim the copied household's new incomes cannot carry.
+#: Reports whose award needs an existing legacy claim, an out-of-work test, or
+#: a claim the copied household's new incomes cannot carry. Contributory ESA,
+#: open to new claims and not income-tested, keeps its draw (module docstring).
 SPI_ZEROED_REPORT_COLUMNS = (
     "jsa_contrib_reported",
     "jsa_income_reported",
+    "esa_income_reported",
     "income_support_reported",
     "working_tax_credit_reported",
     "child_tax_credit_reported",
@@ -103,8 +114,8 @@ SPI_ZEROED_REPORT_COLUMNS = (
     "ssmg_reported",
 )
 SPI_ZEROED_REPORT_REASON = (
-    "award needs an existing legacy claim, an out-of-work or incapacity test, "
-    "or a claim the copied household's new incomes cannot carry"
+    "award needs an existing legacy claim, an out-of-work test, or a claim the "
+    "copied household's new incomes cannot carry"
 )
 #: Reports that follow an injury, service or a death, not income: the SPI row
 #: keeps the FRS twin's value.

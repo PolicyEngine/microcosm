@@ -213,6 +213,32 @@ def test_spi_rows_lose_out_of_work_and_legacy_reports() -> None:
     )
 
 
+def test_spi_rows_lose_income_related_esa_and_keep_contributory_esa() -> None:
+    # policyengine-uk pays a drawn income-related ESA report as the award,
+    # behind a capital test alone, whatever the copy's new incomes; contributory
+    # ESA is open to new claims and not income-tested, so the copy keeps it.
+    frame = _frame()
+    person = frame.table("person").copy()
+    copy = person["person_id"] == 106
+    person.loc[copy, "esa_income_reported"] = 600.0
+    person.loc[copy, "esa_contrib_reported"] = 700.0
+    drawn = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        household_weights=frame.weights_for("household").values,
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2024",
+    )
+    result = _apply(drawn)
+    after = result.frame.table("person").set_index("person_id")
+
+    assert after.loc[106, "esa_income_reported"] == 0.0
+    assert after.loc[106, "esa_contrib_reported"] == 700.0
+    assert result.zeroed["esa_income_reported"]["rows_reporting_before"] == 1
+    assert "esa_contrib_reported" not in result.zeroed
+
+
 def test_spi_rows_take_injury_service_and_bereavement_reports_from_their_twin() -> None:
     result = _apply(_frame())
     person = result.frame.table("person").set_index("person_id")
