@@ -670,13 +670,13 @@ def test_committed_exclusion_registers_load() -> None:
     # is retired. The 3 October final build's certifier earned three more,
     # signed 2026-10-04: the FRS access-fund outlier at the weight bound
     # (expiring with the owed period rule) and the SPI channel's two
-    # legacy-benefit leaves.
-    assert set(input_mass["efrs-post-calibration"]) == {
-        "access_fund",
-        "dfe_education_spending",
-        "jsa_income_reported",
-        "working_tax_credit_reported",
-    }
+    # legacy-benefit leaves. All three are retired with the microcosm#1095
+    # ports: spi_benefit_coherence zeroes income-based JSA and Working Tax
+    # Credit on SPI rows, and on the review-head arm the columns sit at +316%
+    # and +103% of the reference and the access fund at +62%, its household
+    # off the weight bound, all inside the fence, so the gate fails them as
+    # stale.
+    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
     assert set(qrf_tail) == {"charitable_investment_gifts"}
     for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
         assert record.approved_by == "juaristi22"
