@@ -225,6 +225,12 @@ class RunSpec:
     holdout_fold: int | None = None
     acs_share: float | None = None
     target_weighting: str = "equal"
+    #: ``(family, multiplier)`` pairs passed to the shared weighting as its
+    #: ``family_multipliers`` (the tool's ``--target-family-loss-multiplier``);
+    #: empty is the tool's default. Training weights only: held-out scoring
+    #: always uses the unmultiplied full-surface weights, one yardstick for
+    #: every run.
+    family_loss_multipliers: tuple[tuple[str, float], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.run_id or "/" in self.run_id:
@@ -249,6 +255,16 @@ class RunSpec:
             raise ValueError(f"acs_share must be in (0, 1): {self.acs_share!r}")
         if self.target_weighting not in TARGET_WEIGHTINGS:
             raise ValueError(f"unknown target_weighting {self.target_weighting!r}")
+        if self.family_loss_multipliers and self.target_weighting == "equal":
+            raise ValueError("family_loss_multipliers need target_weighting='shared'")
+        families = [family for family, _ in self.family_loss_multipliers]
+        if len(set(families)) != len(families):
+            raise ValueError("family_loss_multipliers repeats a family")
+        for family, multiplier in self.family_loss_multipliers:
+            if not (isinstance(family, str) and family):
+                raise ValueError(f"bad family in family_loss_multipliers: {family!r}")
+            if not (math.isfinite(multiplier) and multiplier > 0):
+                raise ValueError(f"multiplier for {family!r} must be positive")
 
     @classmethod
     def from_mapping(cls, mapping: dict) -> RunSpec:
@@ -267,6 +283,16 @@ class RunSpec:
                 values[key] = int(values[key])
         if values.get("holdout_fold") is not None:
             values["holdout_fold"] = int(values["holdout_fold"])
+        multipliers = values.get("family_loss_multipliers")
+        if multipliers:
+            pairs = (
+                multipliers.items() if isinstance(multipliers, dict) else multipliers
+            )
+            values["family_loss_multipliers"] = tuple(
+                sorted((str(family), float(value)) for family, value in pairs)
+            )
+        elif "family_loss_multipliers" in values:
+            values["family_loss_multipliers"] = ()
         return cls(**values)
 
 
@@ -538,7 +564,11 @@ def shared_weight_function():
     return module, getattr(module, function_name)
 
 
-def target_loss_weights_for(inputs: Inputs, rows: np.ndarray) -> np.ndarray:
+def target_loss_weights_for(
+    inputs: Inputs,
+    rows: np.ndarray,
+    family_multipliers: dict[str, float] | None = None,
+) -> np.ndarray:
     """The shared weighting of the specs at ``rows``, in that order.
 
     The function sees exactly the specs a build calibrating on ``rows`` would
@@ -549,7 +579,10 @@ def target_loss_weights_for(inputs: Inputs, rows: np.ndarray) -> np.ndarray:
         raise SystemExit("a weighted run needs the rebuilt target registry")
     _, function = shared_weight_function()
     specs = inputs.registry.specs
-    weights = np.asarray(function([specs[int(i)] for i in rows]), dtype=np.float64)
+    weights = np.asarray(
+        function([specs[int(i)] for i in rows], family_multipliers or None),
+        dtype=np.float64,
+    )
     if weights.shape != (len(rows),):
         raise SystemExit(
             f"the shared weighting returned shape {weights.shape} for {len(rows)} specs"
@@ -634,9 +667,10 @@ def weight_summary(
 class LossWeights:
     """A run's target-loss weights: on its training rows and on every row.
 
-    ``train`` is what ``calibrate`` receives. ``full`` weights the whole
-    surface at once, as the full-surface run does; held-out fit is weighted
-    with its held-out rows, so every fold scores a target with the weight the
+    ``train`` is what ``calibrate`` receives, with the run's family
+    multipliers. ``full`` weights the whole surface at once without
+    multipliers; held-out fit is weighted with its held-out rows, so every
+    fold and every run scores a target with the weight the default
     full-surface objective gives it.
     """
 
@@ -653,9 +687,10 @@ def loss_weights_for(spec: RunSpec, inputs: Inputs, train: np.ndarray) -> LossWe
         return LossWeights(None, None)
     full_rows = np.arange(inputs.matrix.shape[0], dtype=np.int64)
     full = target_loss_weights_for(inputs, full_rows)
-    if np.array_equal(train, full_rows):
+    multipliers = dict(spec.family_loss_multipliers)
+    if np.array_equal(train, full_rows) and not multipliers:
         return LossWeights(full, full)
-    return LossWeights(target_loss_weights_for(inputs, train), full)
+    return LossWeights(target_loss_weights_for(inputs, train, multipliers), full)
 
 
 def loss_weights_block(
@@ -683,7 +718,7 @@ def loss_weights_block(
         "function_qualname": getattr(function, "__qualname__", None),
         "row_mapping": module.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
         "formula": module.US_FISCAL_TARGET_LOSS_WEIGHTING,
-        "family_multipliers": {},
+        "family_multipliers": dict(spec.family_loss_multipliers),
         "module_file": getattr(module, "__file__", None),
         "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV)),
         "module_sha256": sha256(Path(module.__file__)),
@@ -1376,6 +1411,18 @@ def score(
             design_estimates, inputs.meta, train, loss_weights=train_w
         )["overall"]
     }
+    if loss_weights.weighted:
+        # Training fit on the yardstick (unmultiplied full-surface weights of
+        # the training rows), comparable across runs with and without family
+        # multipliers.
+        metrics["fit_train_yardstick"] = {
+            "overall": fit_block(
+                estimates,
+                inputs.meta,
+                train,
+                loss_weights=loss_weights.full[train],
+            )["overall"]
+        }
     return metrics
 
 
@@ -1620,6 +1667,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--target-weighting", choices=TARGET_WEIGHTINGS, default="equal"
     )
     parser.add_argument(
+        "--family-loss-multiplier",
+        action="append",
+        default=[],
+        metavar="FAMILY=MULTIPLIER",
+        help="shared weighting only: scale one family's training weights",
+    )
+    parser.add_argument(
         "--weights", default="design", help="evaluate: 'design' or <npz>[:key]"
     )
     parser.add_argument(
@@ -1666,6 +1720,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             holdout_fold=args.holdout_fold,
             acs_share=args.acs_share,
             target_weighting=args.target_weighting,
+            family_loss_multipliers=tuple(
+                sorted(
+                    (family, float(value))
+                    for family, _, value in (
+                        entry.partition("=") for entry in args.family_loss_multiplier
+                    )
+                )
+            ),
         )
     calibrate_mode(
         spec,

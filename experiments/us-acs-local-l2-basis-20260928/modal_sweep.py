@@ -348,7 +348,59 @@ def weighted_grid() -> list[dict]:
     return specs
 
 
-GRIDS = {"equal": grid, "weighted": weighted_grid}
+def weighted_grid_2() -> list[dict]:
+    """The weighted grid's second pass, after the first one's results.
+
+    1. Projection at λ 0.2 and 0.3 (full surface and folds 0 and 1): the
+       first pass's held-out weighted error was still falling at λ 0.1, the
+       edge of its projection holdout.
+    2. The family lever: ``census_population`` multiplied by 4 or 8 in the
+       training weights (the tool's ``--target-family-loss-multiplier``) at
+       λ 0, 0.03 and 0.1, folds 0 and 1 at 8. The shared weighting gives the
+       436 district population rows 1.7% of the loss (9.8% under equal
+       weights; a multiplier of about 8.4 restores that share), and the first
+       pass's weighted solves miss 11-135 trained districts by more than 10%.
+    ``w_release_repro`` leads so the launch's gate step finds it cached.
+    """
+
+    first = weighted_grid()
+    specs = [first[0]]
+
+    def projection(lam: float, multiplier: float | None = None, **fields) -> dict:
+        tag = "" if multiplier is None else f"pop{multiplier:g}_"
+        base = "proj_s050_0" if lam == 0 else f"proj_chi_s050_{lam:g}"
+        spec = {
+            "run_id": f"w_{tag}{base}",
+            "target_weighting": "shared",
+            "mass_parametrization": "projection",
+            **fields,
+        }
+        if lam:
+            spec.update(l2_lambda=lam, l2_basis="chi_square")
+        if multiplier is not None:
+            spec["family_loss_multipliers"] = [["census_population", multiplier]]
+        return spec
+
+    def held(spec: dict, fold: int) -> dict:
+        tag = "hold" if fold == 0 else f"hold{fold}"
+        return {
+            **spec,
+            "run_id": "w_" + tag + "_" + spec["run_id"].removeprefix("w_"),
+            "holdout_fold": fold,
+        }
+
+    for lam in (0.2, 0.3):
+        specs.append(projection(lam))
+        specs += [held(projection(lam), fold) for fold in (0, 1)]
+    for multiplier in (4.0, 8.0):
+        for lam in (0.0, 0.03, 0.1):
+            specs.append(projection(lam, multiplier))
+    for lam in (0.0, 0.03, 0.1):
+        specs += [held(projection(lam, 8.0), fold) for fold in (0, 1)]
+    return specs
+
+
+GRIDS = {"equal": grid, "weighted": weighted_grid, "weighted2": weighted_grid_2}
 
 
 @app.function(
@@ -461,9 +513,9 @@ def launch(skip_repro: bool = False, grid: str = "equal") -> None:
             "kernel sources or sweep.py differ from HEAD; commit before launching"
         )
     print(f"kernel HEAD {GIT_SHA}, grid {grid}")
-    _upload_checkpoint(weighted=grid == "weighted")
+    _upload_checkpoint(weighted=grid != "equal")
     specs = GRIDS[grid]()
-    if not skip_repro and grid == "weighted":
+    if not skip_repro and grid != "equal":
         repro = run_point.remote(specs[0])
         print(f"{specs[0]['run_id']}:", json.dumps(repro))
         if not repro.get("cached"):
