@@ -134,6 +134,37 @@ configuration's three solves (full surface, fold 0, fold 1):
 Main's tool already records ESS by state and district in the calibration
 summary, so the gate is a finalize-stage check on data it already has.
 
+## On the weighted loss
+
+<!-- weighted-summary: written after the w_ grid -->
+
+### Key configurations on the weighted loss
+
+<!-- weighted-key-configs:start (written by analyze.py) -->
+<!-- weighted-key-configs:end -->
+
+### Re-picking λ
+
+The rule, fixed before any weighted held-out result was read (commit
+"Fix the weighted λ re-pick rule before the results"):
+
+1. **Measure.** Held-out weighted capped error: each held-out target's
+   capped scaled miss, weighted by its full-surface weight. It is the
+   objective's own out-of-sample form, averaged over folds 0 and 1.
+2. **Noise.** The two `w_dup_hold_` reruns give the run-to-run change in that
+   measure on one fold. Two configurations whose fold means differ by less
+   than the larger rerun change are not distinguished.
+3. **Pick.** Take the configuration with the lowest mean. Then take the
+   largest λ of the same parametrization whose mean is within the noise of
+   it: more ESS at no measurable held-out cost.
+4. **Constraints.** The pick must pass the d797 gate (no district below a
+   quarter of its starting ESS) on all three of its solves (full surface and
+   both folds), and its held-out unweighted share within 10% must not trail
+   the release settings' by more than the noise on both folds.
+
+<!-- weighted-lambda:start (written by analyze.py) -->
+<!-- weighted-lambda:end -->
+
 ## How it was run
 
 - **Inputs.** The release's calibration checkpoint was a 28.7 GB dense
