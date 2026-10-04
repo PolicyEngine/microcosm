@@ -408,9 +408,27 @@ def run_point(spec: dict) -> dict:
 
 
 def _upload_checkpoint(weighted: bool = False) -> None:
+    """Upload the checkpoint files the volume lacks or holds at another size.
+
+    Other sessions run from this volume, so files already there are not
+    rewritten; every container still checks each input's sha256 against
+    ``MANIFEST.json`` (and the registry against its receipt) before use.
+    """
+
     names = UPLOAD + (UPLOAD_WEIGHTED if weighted else ())
+    present = {
+        Path(entry.path).name: entry.size for entry in volume.listdir("/checkpoint")
+    }
+    missing = [
+        name
+        for name in names
+        if present.get(name) != (CHECKPOINT / name).stat().st_size
+    ]
+    print(f"checkpoint upload: {missing or 'nothing missing'}")
+    if not missing:
+        return
     with volume.batch_upload(force=True) as batch:
-        for name in names:
+        for name in missing:
             batch.put_file(str(CHECKPOINT / name), f"/checkpoint/{name}")
 
 
