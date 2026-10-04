@@ -253,7 +253,9 @@ def find_period_contract_violations(
         # it from. A state AGI band rebased onto an older state total
         # (microcosm#940) is a row whose two periods differ.
         uprated_to = (
-            metadata.get("uprating_to_period") if "uprating_factor" in metadata else None
+            metadata.get("uprating_to_period")
+            if "uprating_factor" in metadata
+            else None
         )
         fact_period = (
             uprated_to
