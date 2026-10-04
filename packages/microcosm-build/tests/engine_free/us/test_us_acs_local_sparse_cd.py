@@ -1205,8 +1205,11 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
         target_loss_cap=1.0,
         l2_lambda=0.0,
         seed=0,
+        target_family_loss_multipliers={},
     )
-    settings = module._solver_settings(args)
+    settings = module._solver_settings(
+        args, module.release_target_loss_weights(args, [])[1]
+    )
     for saved in (
         {"weights": np.ones(5), "epochs_done": 5, "staging_sha256": "s"},
         {
