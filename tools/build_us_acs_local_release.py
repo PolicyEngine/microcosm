@@ -29,10 +29,13 @@ package; each is separately resumable):
                 Heavy stage; a crash in calibrate never re-runs the microsim.
   calibrate   : epoch-batched warm-start calibrate on the checkpoint's
                 training targets (adam, mass conserved, hard weight-ratio cap;
-                resumable with --resume), score the held-out district targets
-                against the pro-rata baseline, record ESS over rows and
-                distinct households, and write the calibrated weights onto a
-                copy of the staging H5.
+                resumable with --resume; each target's loss weighted as the
+                national release weights it, by
+                ``microcosm.build.us_runtime.target_loss_weights``, with
+                ``--target-family-loss-multiplier``), score the held-out
+                district targets against the pro-rata baseline, record ESS
+                over rows and distinct households, and write the calibrated
+                weights onto a copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
@@ -73,6 +76,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -1481,8 +1485,13 @@ SOLVER_LEARNING_RATE = 0.02
 SOLVER_MASS = "conserve"
 
 
-def _solver_settings(args) -> dict:
-    """The calibrate-stage settings a resume or reuse must share."""
+def _solver_settings(args, target_loss: dict) -> dict:
+    """The calibrate-stage settings a resume or reuse must share.
+
+    ``target_loss`` is the stamp :func:`release_target_loss_weights` returns,
+    so weights calibrated under another loss weighting, or under none (a run
+    from before the weights), are never warm-started from.
+    """
 
     return {
         "method": SOLVER_METHOD,
@@ -1493,7 +1502,40 @@ def _solver_settings(args) -> dict:
         "l2_lambda": args.l2_lambda,
         "seed": args.seed,
         "epoch_batch": args.epoch_batch,
+        "target_loss": target_loss,
     }
+
+
+def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
+    """The loss weights of the training targets, and the stamp describing them.
+
+    The national release's formula under the ACS local row mapping
+    (:data:`loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING`), over the
+    training specs only, row-aligned with the calibration TargetSet. The
+    stamp names the formula, the mapping and the multipliers and digests the
+    (name, weight) vector.
+    """
+
+    multipliers = dict(args.target_family_loss_multipliers)
+    try:
+        weights = loss_weighting.us_acs_local_target_loss_weights(
+            train_specs, multipliers
+        )
+    except ValueError as error:
+        raise SystemExit(f"Target loss weights: {error}") from error
+    stamp = {
+        "weighting": loss_weighting.US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "row_mapping": loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
+        "family_multipliers": {
+            family: float(multiplier)
+            for family, multiplier in sorted(multipliers.items())
+        },
+        "n_targets": len(train_specs),
+        "weights_sha256": loss_weighting.target_loss_weights_sha256(
+            [loss_weighting.target_row_name(spec) for spec in train_specs], weights
+        ),
+    }
+    return weights, stamp
 
 
 def _weights_digest(weights) -> str:
@@ -1668,6 +1710,7 @@ def calibrate_surface(
     target_loss_cap: float,
     l2_lambda: float,
     seed: int,
+    target_loss_weights: np.ndarray | None = None,
     warm: np.ndarray | None = None,
     done: int = 0,
     on_batch=None,
@@ -1677,7 +1720,10 @@ def calibrate_surface(
     ``target_set`` comes from ``cd_surface.calibration_target_set``, which
     builds only the training targets, each a callable row of the checkpoint
     CSR. Each batch calls the kernel's ``calibrate``, which compiles those
-    rows into its own CSR constraint matrix. Returns ``(result, epochs_done)``.
+    rows into its own CSR constraint matrix. ``target_loss_weights`` is
+    row-aligned with ``target_set``; ``do_calibrate`` always passes the
+    release weights (:func:`release_target_loss_weights`), and ``None`` (equal
+    weights) is for harnesses. Returns ``(result, epochs_done)``.
     """
 
     from microcosm.calibrate import calibrate
@@ -1699,6 +1745,7 @@ def calibrate_surface(
             target_loss_cap=target_loss_cap,
             l2_lambda=l2_lambda,
             seed=seed,
+            target_loss_weights=target_loss_weights,
             warm_start_weights=warm,
         )
         done += this_batch
@@ -1781,14 +1828,34 @@ def do_calibrate(args) -> None:
     target_set = cd_surface.calibration_target_set(
         roles, matrix, n_households, specs=registry.specs
     )
+    train_specs = [registry.specs[index] for index in cd_surface.train_rows(roles)]
+    if [target.name for target in target_set] != [spec.name for spec in train_specs]:
+        raise SystemExit(
+            "The calibration TargetSet is not row-aligned with the training "
+            "specs, so their loss weights would attach to the wrong targets."
+        )
+    loss_weights, target_loss = release_target_loss_weights(args, train_specs)
+    loss_distribution = loss_weighting.target_loss_weight_distribution(
+        train_specs,
+        loss_weights,
+        row_mapping=loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+    )
     log(
         f"calibrate: households={n_households}, targets={len(target_set)} "
         f"trained + {len(roles) - len(target_set)} held out, "
         f"nnz={matrix.nnz:,}, design_total={design_weights.sum():,.0f}"
     )
+    log(
+        "target loss shares: "
+        + ", ".join(
+            f"{cell['family']}/{cell['geography_level']}/{cell['basis']} "
+            f"{cell['loss_share']:.1%} (equal {cell['equal_share']:.1%})"
+            for cell in loss_distribution["by_family_level_basis"]
+        )
+    )
 
     stamp = _run_identity_digest(identity)
-    settings = _solver_settings(args)
+    settings = _solver_settings(args, target_loss)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
@@ -1870,6 +1937,7 @@ def do_calibrate(args) -> None:
         target_loss_cap=args.target_loss_cap,
         l2_lambda=args.l2_lambda,
         seed=args.seed,
+        target_loss_weights=loss_weights,
         warm=warm,
         done=done,
         on_batch=save,
@@ -1898,6 +1966,7 @@ def do_calibrate(args) -> None:
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
         "target_loss_cap": args.target_loss_cap,
+        "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
@@ -1943,6 +2012,14 @@ def do_calibrate(args) -> None:
             "mass_conserved_ratio": summary["mass_conserved_ratio"],
             "n_holdout_targets": summary["n_holdout_targets"],
             "sampling_rung": (identity.get("sampling") or {}).get("rung"),
+            # The fields the calibration dashboard reads, as the national
+            # release names them, plus the ACS local row mapping and digest.
+            "target_loss_weighting": target_loss["weighting"],
+            "target_loss_family_multipliers": target_loss["family_multipliers"] or None,
+            "target_loss_cap": args.target_loss_cap,
+            "target_loss_row_mapping": target_loss["row_mapping"],
+            "target_loss_weights_sha256": target_loss["weights_sha256"],
+            "target_loss_distribution": loss_distribution,
         },
     )
     summary["calibration_diagnostics"] = (
@@ -3072,6 +3149,7 @@ def do_package(args) -> dict:
                 "max_weight_ratio",
                 "l2_lambda",
                 "seed",
+                "target_loss",
                 "final_loss",
                 "fraction_within_10pct",
                 "effective_sample_size",
@@ -3336,6 +3414,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
+    parser.add_argument(
+        "--target-family-loss-multiplier",
+        action="append",
+        default=[],
+        metavar="FAMILY=MULTIPLIER",
+        help=(
+            "Multiply the loss weight of every training target in FAMILY "
+            "(e.g. usda_snap=2) on top of the national release's weighting, "
+            "then renormalize to mean 1 (repeatable). Calibrate fails if FAMILY "
+            "matches no training target. Recorded in the solver settings, the "
+            "calibration summary and the diagnostics."
+        ),
+    )
     parser.add_argument("--l2-lambda", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
@@ -3383,6 +3474,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    try:
+        args.target_family_loss_multipliers = (
+            loss_weighting.parse_target_family_loss_multipliers(
+                args.target_family_loss_multiplier
+            )
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     stages = (
         ["materialize", "calibrate", "qa", "finalize", "package"]

@@ -1,0 +1,850 @@
+{
+ "head": "ab2888e4c6fc5f807989b8aef4520f57ad78d07a",
+ "release_20260923": {
+  "acs_local": {
+   "by_basis": {
+    "amount": {
+     "equal_share": 0.44539134335052705,
+     "loss_share": 0.5,
+     "max_weight": 20.07815684376652,
+     "min_weight": 0.026382541553434134,
+     "n_targets": 1986,
+     "weight_sum": 2229.5
+    },
+    "count": {
+     "equal_share": 0.554608656649473,
+     "loss_share": 0.5,
+     "max_weight": 10.735052604030335,
+     "min_weight": 0.02893321253946566,
+     "n_targets": 2473,
+     "weight_sum": 2229.5
+    }
+   },
+   "by_family_level_basis": [
+    {
+     "basis": "count",
+     "equal_share": 0.097779771249159,
+     "family": "census_population",
+     "geography_level": "congressional_district",
+     "loss_share": 0.01690514095213597,
+     "max_weight": 1.6986417529456324,
+     "min_weight": 0.02893321253946566,
+     "n_targets": 436,
+     "weight_sum": 75.38002350557429
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "census_population",
+     "geography_level": "state",
+     "loss_share": 0.044084835140848454,
+     "max_weight": 10.735052604030335,
+     "min_weight": 1.2966639256624166,
+     "n_targets": 51,
+     "weight_sum": 196.57427989304324
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "cms_medicaid",
+     "geography_level": "state",
+     "loss_share": 0.020202667473303407,
+     "max_weight": 5.976369353732321,
+     "min_weight": 0.4114422700797128,
+     "n_targets": 51,
+     "weight_sum": 90.08369426345989
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.43395380130074007,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.4943042552743249,
+     "max_weight": 20.07815684376652,
+     "min_weight": 0.026382541553434134,
+     "n_targets": 1935,
+     "weight_sum": 2204.1026742682147
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.42251625925095315,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.407727690679605,
+     "max_weight": 7.340690756422455,
+     "min_weight": 0.05359876149178415,
+     "n_targets": 1884,
+     "weight_sum": 1818.0577727403588
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.011437542049786947,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.005695744725675059,
+     "max_weight": 1.4971300501336557,
+     "min_weight": 0.10133218466779395,
+     "n_targets": 51,
+     "weight_sum": 25.397325731785088
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.011079665754107086,
+     "max_weight": 3.0197665996176326,
+     "min_weight": 0.199762143226361,
+     "n_targets": 51,
+     "weight_sum": 49.4042295975635
+    }
+   ],
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 51,
+    "n_district_rows": 436,
+    "n_groups": 4074,
+    "n_singleton_district_groups": 7
+   },
+   "max": 20.07815684376652,
+   "mean": 1.0,
+   "min": 0.026382541553434134,
+   "n_targets": 4459,
+   "row_mapping": "us_acs_local.v1",
+   "weights_sha256": "6911ebfe62aed5222272f69713293859887deb55e41e9f0e026957664181fe61"
+  },
+  "equal": {
+   "by_basis": {
+    "amount": {
+     "equal_share": 0.44539134335052705,
+     "loss_share": 0.44539134335052705,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 1986,
+     "weight_sum": 1986.0
+    },
+    "count": {
+     "equal_share": 0.554608656649473,
+     "loss_share": 0.554608656649473,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 2473,
+     "weight_sum": 2473.0
+    }
+   },
+   "by_family_level_basis": [
+    {
+     "basis": "count",
+     "equal_share": 0.097779771249159,
+     "family": "census_population",
+     "geography_level": "congressional_district",
+     "loss_share": 0.097779771249159,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 436,
+     "weight_sum": 436.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "census_population",
+     "geography_level": "state",
+     "loss_share": 0.011437542049786947,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "cms_medicaid",
+     "geography_level": "state",
+     "loss_share": 0.011437542049786947,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.43395380130074007,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.43395380130074007,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 1935,
+     "weight_sum": 1935.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.42251625925095315,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.42251625925095315,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 1884,
+     "weight_sum": 1884.0
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.011437542049786947,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.011437542049786947,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.011437542049786947,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    }
+   ],
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 51,
+    "n_district_rows": 436,
+    "n_groups": 4074,
+    "n_singleton_district_groups": 7
+   },
+   "n_targets": 4459,
+   "row_mapping": "us_acs_local.v1"
+  },
+  "family_level_table": [
+   {
+    "acs_local": 0.01690514095213597,
+    "equal": 0.097779771249159,
+    "family": "census_population",
+    "geography_level": "congressional_district",
+    "n_targets": 436,
+    "national_as_is": 0.0011434719694104272
+   },
+   {
+    "acs_local": 0.044084835140848454,
+    "equal": 0.011437542049786947,
+    "family": "census_population",
+    "geography_level": "state",
+    "n_targets": 51,
+    "national_as_is": 0.000346454578376415
+   },
+   {
+    "acs_local": 0.020202667473303407,
+    "equal": 0.011437542049786947,
+    "family": "cms_medicaid",
+    "geography_level": "state",
+    "n_targets": 51,
+    "national_as_is": 0.023009346453536136
+   },
+   {
+    "acs_local": 0.9020319459539299,
+    "equal": 0.8564700605516933,
+    "family": "irs_soi",
+    "geography_level": "state",
+    "n_targets": 3819,
+    "national_as_is": 0.9572030336025672
+   },
+   {
+    "acs_local": 0.016775410479782146,
+    "equal": 0.022875084099573895,
+    "family": "usda_snap",
+    "geography_level": "state",
+    "n_targets": 102,
+    "national_as_is": 0.018297693396109604
+   }
+  ],
+  "n_train": 4459,
+  "national_as_is": {
+   "by_basis": {
+    "amount": {
+     "equal_share": 0.554608656649473,
+     "loss_share": 0.5,
+     "max_weight": 20.01832688594221,
+     "min_weight": 0.009878640882875314,
+     "n_targets": 2473,
+     "weight_sum": 2229.5
+    },
+    "count": {
+     "equal_share": 0.44539134335052705,
+     "loss_share": 0.5,
+     "max_weight": 8.360504722754632,
+     "min_weight": 0.06104503151747696,
+     "n_targets": 1986,
+     "weight_sum": 2229.5
+    }
+   },
+   "by_family_level_basis": [
+    {
+     "basis": "amount",
+     "equal_share": 0.097779771249159,
+     "family": "census_population",
+     "geography_level": "congressional_district",
+     "loss_share": 0.0011434719694104272,
+     "max_weight": 0.013349311854045127,
+     "min_weight": 0.009878640882875314,
+     "n_targets": 436,
+     "weight_sum": 5.098741511601095
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.011437542049786947,
+     "family": "census_population",
+     "geography_level": "state",
+     "loss_share": 0.000346454578376415,
+     "max_weight": 0.08436479600967803,
+     "min_weight": 0.010190242341294911,
+     "n_targets": 51,
+     "weight_sum": 1.5448409649804344
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "cms_medicaid",
+     "geography_level": "state",
+     "loss_share": 0.023009346453536136,
+     "max_weight": 6.806643388851351,
+     "min_weight": 0.4686023640394807,
+     "n_targets": 51,
+     "weight_sum": 102.59867583631762
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.43395380130074007,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.4928313012090904,
+     "max_weight": 20.01832688594221,
+     "min_weight": 0.026303925455317033,
+     "n_targets": 1935,
+     "weight_sum": 2197.534772091334
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.42251625925095315,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.46437173239347684,
+     "max_weight": 8.360504722754632,
+     "min_weight": 0.06104503151747696,
+     "n_targets": 1884,
+     "weight_sum": 2070.6335547425133
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.011437542049786947,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.005678772243122659,
+     "max_weight": 1.4926688225192888,
+     "min_weight": 0.10103022964363038,
+     "n_targets": 51,
+     "weight_sum": 25.321645432083933
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.011437542049786947,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.012618921152986946,
+     "max_weight": 3.439291172377916,
+     "min_weight": 0.22751433036603236,
+     "n_targets": 51,
+     "weight_sum": 56.26776942116879
+    }
+   ],
+   "concept_groups": {
+    "max_district_group_size": 1,
+    "n_district_groups": 436,
+    "n_district_rows": 436,
+    "n_groups": 4459,
+    "n_singleton_district_groups": 436
+   },
+   "n_targets": 4459,
+   "row_mapping": "us_fiscal_ledger_metadata.v1"
+  },
+  "registry": {
+   "path": "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/checkpoint/target_registry.json",
+   "sha256": "fd25c6002cae0c991842c81399d43a3840f12cba0294021ca8ff6718e22a209f"
+  }
+ },
+ "state_cd_pinned_feed": {
+  "acs_local": {
+   "by_basis": {
+    "amount": {
+     "equal_share": 0.4961870443308472,
+     "loss_share": 0.49999999999999994,
+     "max_weight": 83.35942303676308,
+     "min_weight": 0.002503737168727989,
+     "n_targets": 11842,
+     "weight_sum": 11932.999999999996
+    },
+    "count": {
+     "equal_share": 0.5038129556691527,
+     "loss_share": 0.49999999999999994,
+     "max_weight": 46.362099173632934,
+     "min_weight": 0.008618522250148825,
+     "n_targets": 12024,
+     "weight_sum": 11932.999999999996
+    }
+   },
+   "by_family_level_basis": [
+    {
+     "basis": "count",
+     "equal_share": 0.01826866672253415,
+     "family": "census_population",
+     "geography_level": "congressional_district",
+     "loss_share": 0.013640665116819063,
+     "max_weight": 7.336023428611096,
+     "min_weight": 0.12495555621803793,
+     "n_targets": 436,
+     "weight_sum": 325.5481136780037
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "census_population",
+     "geography_level": "state",
+     "loss_share": 0.035571810645595975,
+     "max_weight": 46.362099173632934,
+     "min_weight": 5.599978289241301,
+     "n_targets": 51,
+     "weight_sum": 848.9568328677934
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "cms_medicaid",
+     "geography_level": "state",
+     "loss_share": 0.016301421103203845,
+     "max_weight": 25.81049566277612,
+     "min_weight": 1.7769197816970854,
+     "n_targets": 51,
+     "weight_sum": 389.0497160490629
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.4067292382468784,
+     "family": "irs_soi",
+     "geography_level": "congressional_district",
+     "loss_share": 0.09281594376346836,
+     "max_weight": 5.894276013989179,
+     "min_weight": 0.002503737168727989,
+     "n_targets": 9707,
+     "weight_sum": 2215.1453138589354
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.39378194921645854,
+     "family": "irs_soi",
+     "geography_level": "congressional_district",
+     "loss_share": 0.07399410480299472,
+     "max_weight": 2.5175561468875753,
+     "min_weight": 0.008618522250148825,
+     "n_targets": 9398,
+     "weight_sum": 1765.9433052282716
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.08732087488477332,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.40276591891384944,
+     "max_weight": 83.35942303676308,
+     "min_weight": 0.10953363195887533,
+     "n_targets": 2084,
+     "weight_sum": 9612.41142079793
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.08535154613257354,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.3515518770637806,
+     "max_weight": 31.70267025281795,
+     "min_weight": 0.2314801042458844,
+     "n_targets": 2037,
+     "weight_sum": 8390.137098004187
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.002136931199195508,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.0044181373226822385,
+     "max_weight": 6.215704865802318,
+     "min_weight": 0.4207055714670587,
+     "n_targets": 51,
+     "weight_sum": 105.44326534313429
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.008940121267605728,
+     "max_weight": 13.041642527222903,
+     "min_weight": 0.8627244445845517,
+     "n_targets": 51,
+     "weight_sum": 213.36493417267826
+    }
+   ],
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 1958,
+    "n_district_rows": 19541,
+    "n_groups": 6283,
+    "n_singleton_district_groups": 7
+   },
+   "max": 83.35942303676308,
+   "mean": 0.9999999999999999,
+   "min": 0.002503737168727989,
+   "n_targets": 23866,
+   "row_mapping": "us_acs_local.v1",
+   "weights_sha256": "9834c275c20d90ac6471ba105fd38a1020ff513a5cd439350bff8e0e6c568515"
+  },
+  "equal": {
+   "by_basis": {
+    "amount": {
+     "equal_share": 0.4961870443308472,
+     "loss_share": 0.4961870443308472,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 11842,
+     "weight_sum": 11842.0
+    },
+    "count": {
+     "equal_share": 0.5038129556691527,
+     "loss_share": 0.5038129556691527,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 12024,
+     "weight_sum": 12024.0
+    }
+   },
+   "by_family_level_basis": [
+    {
+     "basis": "count",
+     "equal_share": 0.01826866672253415,
+     "family": "census_population",
+     "geography_level": "congressional_district",
+     "loss_share": 0.01826866672253415,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 436,
+     "weight_sum": 436.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "census_population",
+     "geography_level": "state",
+     "loss_share": 0.002136931199195508,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "cms_medicaid",
+     "geography_level": "state",
+     "loss_share": 0.002136931199195508,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.4067292382468784,
+     "family": "irs_soi",
+     "geography_level": "congressional_district",
+     "loss_share": 0.4067292382468784,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 9707,
+     "weight_sum": 9707.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.39378194921645854,
+     "family": "irs_soi",
+     "geography_level": "congressional_district",
+     "loss_share": 0.39378194921645854,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 9398,
+     "weight_sum": 9398.0
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.08732087488477332,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.08732087488477332,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 2084,
+     "weight_sum": 2084.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.08535154613257354,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.08535154613257354,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 2037,
+     "weight_sum": 2037.0
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.002136931199195508,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.002136931199195508,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.002136931199195508,
+     "max_weight": 1.0,
+     "min_weight": 1.0,
+     "n_targets": 51,
+     "weight_sum": 51.0
+    }
+   ],
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 1958,
+    "n_district_rows": 19541,
+    "n_groups": 6283,
+    "n_singleton_district_groups": 7
+   },
+   "n_targets": 23866,
+   "row_mapping": "us_acs_local.v1"
+  },
+  "family_level_table": [
+   {
+    "acs_local": 0.013640665116819063,
+    "equal": 0.01826866672253415,
+    "family": "census_population",
+    "geography_level": "congressional_district",
+    "n_targets": 436,
+    "national_as_is": 0.0003892485945227309
+   },
+   {
+    "acs_local": 0.035571810645595975,
+    "equal": 0.002136931199195508,
+    "family": "census_population",
+    "geography_level": "state",
+    "n_targets": 51,
+    "national_as_is": 0.00011793639136472839
+   },
+   {
+    "acs_local": 0.016301421103203845,
+    "equal": 0.002136931199195508,
+    "family": "cms_medicaid",
+    "geography_level": "state",
+    "n_targets": 51,
+    "national_as_is": 0.007778820477884125
+   },
+   {
+    "acs_local": 0.1668100485664631,
+    "equal": 0.8005111874633369,
+    "family": "irs_soi",
+    "geography_level": "congressional_district",
+    "n_targets": 19105,
+    "national_as_is": 0.6415331214336584
+   },
+   {
+    "acs_local": 0.75431779597763,
+    "equal": 0.17267242101734687,
+    "family": "irs_soi",
+    "geography_level": "state",
+    "n_targets": 4121,
+    "national_as_is": 0.34398165922100266
+   },
+   {
+    "acs_local": 0.013358258590287966,
+    "equal": 0.004273862398391016,
+    "family": "usda_snap",
+    "geography_level": "state",
+    "n_targets": 102,
+    "national_as_is": 0.006199213881567304
+   }
+  ],
+  "feed": {
+   "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl",
+   "sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+  },
+  "holdout": {
+   "eligible_units": 989,
+   "fraction": 0.1,
+   "held_targets": 2638,
+   "held_units": 118
+  },
+  "n_specs": 26504,
+  "n_state_cd_blocks_trained": 1907,
+  "n_train": 23866,
+  "national_as_is": {
+   "by_basis": {
+    "amount": {
+     "equal_share": 0.5165926422525768,
+     "loss_share": 0.49999999999999994,
+     "max_weight": 36.47299866976726,
+     "min_weight": 0.01799868979226438,
+     "n_targets": 12329,
+     "weight_sum": 11932.999999999998
+    },
+    "count": {
+     "equal_share": 0.4834073577474231,
+     "loss_share": 0.5000000000000001,
+     "max_weight": 15.128090919494138,
+     "min_weight": 0.11045921479672367,
+     "n_targets": 11537,
+     "weight_sum": 11933.000000000002
+    }
+   },
+   "by_family_level_basis": [
+    {
+     "basis": "amount",
+     "equal_share": 0.01826866672253415,
+     "family": "census_population",
+     "geography_level": "congressional_district",
+     "loss_share": 0.0003892485945227309,
+     "max_weight": 0.024322184179978213,
+     "min_weight": 0.01799868979226438,
+     "n_targets": 436,
+     "weight_sum": 9.289806956879495
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.002136931199195508,
+     "family": "census_population",
+     "geography_level": "state",
+     "loss_share": 0.00011793639136472839,
+     "max_weight": 0.15371100243132751,
+     "min_weight": 0.01856642153344284,
+     "n_targets": 51,
+     "weight_sum": 2.8146699163106077
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "cms_medicaid",
+     "geography_level": "state",
+     "loss_share": 0.007778820477884125,
+     "max_weight": 12.31642388322098,
+     "min_weight": 0.8479223926499309,
+     "n_targets": 51,
+     "weight_sum": 185.64932952518254
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.4067292382468784,
+     "family": "irs_soi",
+     "geography_level": "congressional_district",
+     "loss_share": 0.3213339098725092,
+     "max_weight": 7.3265568944524615,
+     "min_weight": 0.039658848721579876,
+     "n_targets": 9707,
+     "weight_sum": 7668.9550930173045
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.39378194921645854,
+     "family": "irs_soi",
+     "geography_level": "congressional_district",
+     "loss_share": 0.3201992115611492,
+     "max_weight": 2.360726752698087,
+     "min_weight": 0.13711067937246327,
+     "n_targets": 9398,
+     "weight_sum": 7641.874383118387
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.08732087488477332,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.17622579775166883,
+     "max_weight": 36.47299866976726,
+     "min_weight": 0.04792523589047584,
+     "n_targets": 2084,
+     "weight_sum": 4205.804889141328
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.08535154613257354,
+     "family": "irs_soi",
+     "geography_level": "state",
+     "loss_share": 0.16775586146933383,
+     "max_weight": 15.128090919494138,
+     "min_weight": 0.11045921479672367,
+     "n_targets": 2037,
+     "weight_sum": 4003.661389827121
+    },
+    {
+     "basis": "amount",
+     "equal_share": 0.002136931199195508,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.0019331073899344453,
+     "max_weight": 2.71961329677261,
+     "min_weight": 0.1840750954060052,
+     "n_targets": 51,
+     "weight_sum": 46.13554096817547
+    },
+    {
+     "basis": "count",
+     "equal_share": 0.002136931199195508,
+     "family": "usda_snap",
+     "geography_level": "state",
+     "loss_share": 0.004266106491632859,
+     "max_weight": 6.223297669187108,
+     "min_weight": 0.41168058501271143,
+     "n_targets": 51,
+     "weight_sum": 101.81489752930982
+    }
+   ],
+   "concept_groups": {
+    "max_district_group_size": 1,
+    "n_district_groups": 19541,
+    "n_district_rows": 19541,
+    "n_groups": 23866,
+    "n_singleton_district_groups": 19541
+   },
+   "n_targets": 23866,
+   "row_mapping": "us_fiscal_ledger_metadata.v1"
+  },
+  "soi_receipt_counts": {
+   "cd_file_state": 302,
+   "congressional_district": 21743,
+   "congressional_district_by_parent_basis": {
+    "cd_file_state_total_bridged": 2562,
+    "historic_table_2": 19181
+   },
+   "historic_table_2_state": 3819,
+   "total": 25864
+  }
+ },
+ "wall_seconds": 23.8
+}

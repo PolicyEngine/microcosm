@@ -39,9 +39,11 @@ Row mappings:
   their basis must agree with their ``ledger_measure_unit``. The Census ladder
   population rows (``pop_state_*``, ``pop_cd_*``), which carry no ledger
   metadata, are counts, as the national release's Census population targets
-  are. Each state's ``pop_cd_*`` rows share one concept budget. ``state_cd``
-  district SOI rows group by their reconciliation block; the per-district
-  provenance that rebase stamps is kept out of the key.
+  are. Each state's ``pop_cd_*`` rows share one concept budget. District SOI
+  rows take the national district key without the metadata that names the
+  district (:data:`ACS_LOCAL_PER_DISTRICT_METADATA`), so the districts of one
+  concept in one state share one budget; each ``state_cd`` reconciliation
+  block must be exactly one group.
 """
 
 from __future__ import annotations
@@ -301,14 +303,31 @@ ACS_LOCAL_POPULATION_PREFIXES: Mapping[str, tuple[str, int]] = {
     STATE: ("pop_state_", 2),
     CONGRESSIONAL_DISTRICT: ("pop_cd_", 4),
 }
-#: The district file's own value of one district row, which the ``state_cd``
-#: rebase (``tools/us_acs_local_cd_surface.py``) stamps on each row before
-#: rescaling it. It differs between the districts of one block, so the
-#: concept key must not read it. The block-level stamps (parent, basis,
-#: factor, file state sum) are equal across a block and may stay.
-ACS_LOCAL_STATE_CD_ROW_PROVENANCE = frozenset({"state_cd_cd_file_value"})
+#: Per-row metadata that differs between the districts of one concept in one
+#: state, so the ACS local concept key must not read it:
+#:
+#: - ``ledger_fact_label`` and ``ledger_layout_groupby_value_label``: the
+#:   human-readable labels the ledger compiler (``ledger_targets.py``) stamps
+#:   on every row, which name the district ("WV congressional district 1").
+#:   :data:`US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS` does not list them,
+#:   so under the national mapping every compiled district row is its own
+#:   group; the national mapping is kept as it is here.
+#: - ``state_cd_cd_file_value``: the district file's own value of the row,
+#:   which the ``state_cd`` rebase (``tools/us_acs_local_cd_surface.py``)
+#:   stamps before rescaling it. The rebase's block-level stamps (parent,
+#:   basis, factor, file state sum) are equal across a block and may stay.
+#:
+#: :func:`validate_acs_local_concept_groups` refuses a surface where any other
+#: per-district key splits a reconciliation block.
+ACS_LOCAL_PER_DISTRICT_METADATA = frozenset(
+    {
+        "ledger_fact_label",
+        "ledger_layout_groupby_value_label",
+        "state_cd_cd_file_value",
+    }
+)
 US_ACS_LOCAL_CONCEPT_METADATA_EXCLUSIONS = (
-    US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS | ACS_LOCAL_STATE_CD_ROW_PROVENANCE
+    US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS | ACS_LOCAL_PER_DISTRICT_METADATA
 )
 #: The ledger's unit for a measure, and the basis that unit implies.
 LEDGER_MEASURE_UNIT_BASIS: Mapping[str, str] = {
@@ -586,13 +605,19 @@ def parse_target_family_loss_multipliers(entries: Iterable[str]) -> dict[str, fl
     return multipliers
 
 
+def target_row_name(spec) -> str:
+    """A spec's diagnostic row name, ``name@period``."""
+
+    return f"{spec.name}@{spec.period}"
+
+
 def target_loss_weights_sha256(names: Sequence[str], weights: np.ndarray) -> str:
     """Content digest of a row-aligned loss-weight vector.
 
-    The canonical form is the national release's loss vector: one
-    ``{"row_name", "weight_hex"}`` object per row, in row order, as compact
-    sorted-key JSON. Any change to a name, a weight bit or the row order
-    changes it.
+    The canonical form is the national release's ``loss_vector_sha256``: one
+    ``{"row_name", "weight_hex"}`` object per row (row names as
+    :func:`target_row_name` gives them), in row order, as compact sorted-key
+    JSON. Any change to a name, a weight bit or the row order changes it.
     """
 
     weights = np.asarray(weights, dtype=np.float64)
