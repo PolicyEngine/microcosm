@@ -31,8 +31,9 @@ package; each is separately resumable):
                 training targets (adam, mass conserved, hard weight-ratio cap,
                 optional L2 penalty --l2-lambda of form --l2-basis under
                 --mass-parametrization; resumable with --resume; each
-                target's loss weighted as the national release weights it,
-                by ``microcosm.build.us_runtime.target_loss_weights``, with
+                target's loss weighted with the national release's formula
+                under the ACS local row mapping, by
+                ``microcosm.build.us_runtime.target_loss_weights``, with
                 ``--target-family-loss-multiplier``), score the held-out
                 district targets against the pro-rata baseline, record ESS
                 over rows and distinct households, and write the calibrated
@@ -2398,10 +2399,13 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
     """The lineage's weight-concentration entry, true to the solve it describes.
 
-    Only the historical solve (no penalty, projection mass parametrization)
-    keeps the reviewed entry. Any other solve, including an unpenalized softmax
-    one, records its own settings instead: its concentration is measured, but
-    whether it is acceptable is a separate review this register cannot claim.
+    Only the historical solve (no penalty, projection mass parametrization,
+    every target weighted equally) keeps the reviewed entry. A summary from
+    before the loss weights records no ``target_loss``, which reads as equal
+    weights. Any other solve, including an unpenalized softmax one or any
+    loss-weighted one, records its own settings instead: its concentration is
+    measured, but whether it is acceptable is a separate review this register
+    cannot claim.
     """
 
     ess = diagnostics.get("effective_sample_size")
@@ -2411,9 +2415,11 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     parametrization = diagnostics.get(
         "mass_parametrization", HISTORICAL_PENALTY["mass_parametrization"]
     )
+    target_loss = diagnostics.get("target_loss")
     if (
         l2_lambda == 0.0
         and parametrization == HISTORICAL_PENALTY["mass_parametrization"]
+        and target_loss is None
     ):
         return {
             "id": "low_effective_sample_size_lambda_zero",
@@ -2437,7 +2443,15 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
             f"l2_basis="
             f"{diagnostics.get('l2_basis', HISTORICAL_PENALTY['l2_basis'])!r} and "
             f"mass_parametrization={parametrization!r}; chi-square distance "
-            f"from the design weights {diagnostics.get('chi_square_distance')}."
+            f"from the design weights {diagnostics.get('chi_square_distance')}"
+            + (
+                "; target loss weights "
+                f"{target_loss.get('weighting')!r} under row mapping "
+                f"{target_loss.get('row_mapping')!r} with family multipliers "
+                f"{target_loss.get('family_multipliers') or {}}."
+                if isinstance(target_loss, dict)
+                else "; every target weighted equally."
+            )
         ),
         "calibration_blocker": False,
     }

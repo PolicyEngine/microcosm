@@ -4,11 +4,13 @@ Invariants, each for every input Hypothesis draws:
 
 1. The move is pure: the shared module returns, bit for bit, what the
    national release's helpers returned before it (a verbatim copy in
-   ``test_support``), on random registries with district and non-district
-   rows, and on Route A's 5,694 real targets, where it also reproduces the
-   weights and the loss basis hash the release recorded.
-2. Weights are finite, positive and of mean 1.
-3. Each value basis present carries an equal share of the total weight.
+   ``test_support``). That holds on random registries whose district rows
+   form multi-row concept groups, on a fixed grouped registry, for invalid
+   multipliers, and on Route A's 5,694 real targets. On Route A it also
+   reproduces the weights and the loss basis hash the release recorded.
+2. Weights are finite, positive and of mean 1 (multipliers in [0.05, 20]).
+3. Without family multipliers, each value basis present carries an equal
+   share of the total weight.
 4. The rows of one concept group sum to the group's largest value weight,
    keep their proportions, and every row of a basis is then scaled alike.
 5. A family multiplier scales its family relative to every other row by
@@ -30,7 +32,7 @@ import sys
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import target_loss_weights as lw
@@ -74,47 +76,79 @@ _VALUES = st.one_of(
 def _registries(draw, max_rows: int = 30) -> TargetRegistry:
     """Mixed registries: national-style rows and district rows that group.
 
-    District rows draw their concept metadata from small pools, so several
-    land in one group; per-row metadata (district ids, ledger ids and the
-    district label the compiler stamps) varies by row.
+    District rows each pick one of a few drawn concepts and one of two
+    states, so several land in one national concept group. Per-row metadata
+    the national key excludes (district ids, ledger ids) varies by row.
+    ``ledger_fact_label``, which the national key reads, is usually absent
+    and otherwise per-row, so some draws split what would be one group.
     """
 
+    concepts = draw(
+        st.lists(
+            st.fixed_dictionaries(
+                {
+                    "entity": st.sampled_from(["household", "tax_unit"]),
+                    "period": st.sampled_from([2024, 2025]),
+                    "family": st.sampled_from(_FAMILIES),
+                    "filter": st.sampled_from([None, "is_tax_filer"]),
+                    "mode": st.sampled_from(_MEASURE_MODES),
+                    "measure": st.sampled_from(_SOURCE_MEASURES),
+                    "filing_status": st.sampled_from([None, "All", "Single"]),
+                }
+            ),
+            min_size=1,
+            max_size=3,
+        )
+    )
     specs = []
     for index in range(draw(st.integers(1, max_rows))):
         metadata: dict[str, str] = {}
-        mode = draw(st.sampled_from(_MEASURE_MODES))
-        if mode is not None:
-            metadata["measure_mode"] = mode
-        measure = draw(st.sampled_from(_SOURCE_MEASURES))
-        if measure is not None:
-            metadata["source_measure_id"] = measure
+        value = draw(_VALUES)
         if draw(st.booleans()):
-            state = draw(st.sampled_from(_STATES))
+            concept = draw(st.sampled_from(concepts))
+            state = draw(st.sampled_from(_STATES[:2]))
             district = f"{state}{index:02d}"
+            for key, field in (
+                ("measure_mode", "mode"),
+                ("source_measure_id", "measure"),
+                ("filing_status", "filing_status"),
+            ):
+                if concept[field] is not None:
+                    metadata[key] = concept[field]
             metadata.update(
                 ledger_geography_level="congressional_district",
                 state_fips=state,
                 congressional_district_geoid=district,
                 ledger_geography_id=f"5001900US{district}",
                 ledger_source_record_id=f"record.{index}",
-                ledger_fact_label=f"District {district} label",
             )
-            if draw(st.booleans()):
-                metadata["filing_status"] = draw(st.sampled_from(["All", "Single"]))
+            if draw(st.integers(0, 4)) == 0:
+                metadata["ledger_fact_label"] = f"District {district} label"
+            entity, period = concept["entity"], concept["period"]
+            family, row_filter = concept["family"], concept["filter"]
         else:
+            mode = draw(st.sampled_from(_MEASURE_MODES))
+            if mode is not None:
+                metadata["measure_mode"] = mode
+            measure = draw(st.sampled_from(_SOURCE_MEASURES))
+            if measure is not None:
+                metadata["source_measure_id"] = measure
             level = draw(st.sampled_from([None, "state", "national"]))
             if level is not None:
                 metadata["ledger_geography_level"] = level
-        value = draw(_VALUES)
+            entity = draw(st.sampled_from(["household", "tax_unit"]))
+            period = draw(st.sampled_from([2024, 2025]))
+            family = draw(st.sampled_from(_FAMILIES))
+            row_filter = draw(st.sampled_from([None, None, "is_tax_filer"]))
         specs.append(
             TargetSpec(
                 name=f"target_{index}",
-                entity=draw(st.sampled_from(["household", "tax_unit"])),
+                entity=entity,
                 measure=f"target_{index}",
                 value=value,
-                period=draw(st.sampled_from([2024, 2025])),
-                family=draw(st.sampled_from(_FAMILIES)),
-                filter=draw(st.sampled_from([None, None, "is_tax_filer"])),
+                period=period,
+                family=family,
+                filter=row_filter,
                 source="hypothesis",
                 signed=value < 0,
                 metadata=metadata,
@@ -162,6 +196,10 @@ def test_shared_weights_equal_the_pre_move_helpers_bit_for_bit(registry, data) -
     )
     expected = before._fiscal_target_loss_weights(registry, multipliers or None)
     observed = lw.fiscal_target_loss_weights(registry, multipliers or None)
+    groups = lw.concept_budget_groups(
+        [lw.fiscal_target_concept_budget_key(spec) for spec in registry.specs]
+    )
+    event(f"largest concept group: {min(max(map(len, groups)), 3)}+ rows")
     assert observed.dtype == np.float64
     assert np.array_equal(observed, expected)
     assert np.array_equal(
@@ -179,6 +217,107 @@ def test_shared_weights_equal_the_pre_move_helpers_bit_for_bit(registry, data) -
         assert lw.fiscal_target_concept_budget_key(
             spec
         ) == before._fiscal_target_concept_budget_key(spec)
+
+
+def _grouped_registry() -> TargetRegistry:
+    """National rows plus three districts of each of two concepts in one state."""
+
+    def district(name, geoid, value, measure, mode):
+        return TargetSpec(
+            name=name,
+            entity="tax_unit",
+            measure=name,
+            value=value,
+            period=2024,
+            family="irs_soi",
+            source="fixture",
+            metadata={
+                "source_measure_id": measure,
+                "measure_mode": mode,
+                "ledger_geography_level": "congressional_district",
+                "ledger_geography_id": f"5001900US{geoid}",
+                "congressional_district_geoid": geoid,
+                "state_fips": geoid[:2],
+            },
+        )
+
+    rows = [
+        TargetSpec(
+            "agi_total", "tax_unit", 9.1e11, "agi", source="f", family="irs_soi"
+        ),
+        TargetSpec(
+            "snap_households",
+            "household",
+            3.2e6,
+            "snap",
+            source="f",
+            family="usda_snap",
+            metadata={"measure_mode": "indicator_sum"},
+        ),
+    ]
+    for geoid, agi, returns in (
+        ("0601", 3.3e10, 3.1e5),
+        ("0602", 5.7e10, 3.9e5),
+        ("0603", 1.9e10, 2.2e5),
+    ):
+        rows.append(district(f"agi_{geoid}", geoid, agi, "agi_amount", "sum"))
+        rows.append(
+            district(f"returns_{geoid}", geoid, returns, "returns", "indicator_sum")
+        )
+    return TargetRegistry(rows, country="us")
+
+
+@pytest.mark.parametrize("multipliers", [None, {"irs_soi": 3.0, "usda_snap": 0.5}])
+def test_grouped_national_districts_equal_the_pre_move_helpers(multipliers) -> None:
+    """The concept-budget rescale of multi-row groups, bit for bit."""
+
+    registry = _grouped_registry()
+    groups = lw.concept_budget_groups(
+        [lw.fiscal_target_concept_budget_key(spec) for spec in registry.specs]
+    )
+    assert sorted(len(group) for group in groups) == [1, 1, 3, 3]
+    assert np.array_equal(
+        lw.fiscal_target_loss_weights(registry, multipliers),
+        before._fiscal_target_loss_weights(registry, multipliers),
+    )
+    assert np.array_equal(
+        lw.fiscal_target_concept_budget_weights(registry),
+        before._fiscal_target_concept_budget_weights(registry),
+    )
+
+
+@pytest.mark.parametrize("multiplier", [0.0, -1.0, 1e308])
+def test_unchecked_multipliers_behave_as_before(multiplier) -> None:
+    """The shared core adds no checks the national helper lacked."""
+
+    registry = _grouped_registry()
+    with np.errstate(all="ignore"):
+        expected = before._fiscal_target_loss_weights(registry, {"irs_soi": multiplier})
+        observed = lw.fiscal_target_loss_weights(registry, {"irs_soi": multiplier})
+    np.testing.assert_array_equal(observed, expected)
+
+
+def test_the_national_cli_parses_family_multipliers_as_before() -> None:
+    release = _load_release_tool()
+    base = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+    assert release._parse_args(base).target_family_loss_multipliers == {}
+    args = release._parse_args(
+        [
+            *base,
+            "--target-family-loss-multiplier",
+            "usda_snap=8",
+            "--target-family-loss-multiplier",
+            "irs_soi=0.5",
+        ]
+    )
+    assert args.target_family_loss_multipliers == {"usda_snap": 8.0, "irs_soi": 0.5}
+    for bad in (["usda_snap"], ["usda_snap=0"], ["a=2", "a=3"]):
+        argv = list(base)
+        for entry in bad:
+            argv += ["--target-family-loss-multiplier", entry]
+        with pytest.raises(SystemExit) as raised:
+            release._parse_args(argv)
+        assert raised.value.code == 2
 
 
 def test_moved_constants_are_the_pre_move_constants() -> None:
@@ -412,15 +551,12 @@ def test_a_larger_singleton_magnitude_never_gets_less_weight(rows) -> None:
         assert (np.diff(weights[order]) >= -1e-12 * weights[order][1:]).all()
 
 
-def test_the_formula_refuses_misaligned_inputs_and_bad_multipliers() -> None:
+def test_the_formula_refuses_misaligned_inputs() -> None:
     with pytest.raises(ValueError, match="not row-aligned"):
         lw.target_loss_weights_from_rows([1.0, 2.0], ["count"], [0, 1], ["a", "b"])
-    for multiplier in (0.0, -1.0, math.nan, math.inf):
-        with pytest.raises(ValueError, match="positive and finite"):
-            lw.target_loss_weights_from_rows(
-                [1.0], ["count"], [0], ["a"], {"a": multiplier}
-            )
     assert lw.target_loss_weights_from_rows([], [], [], []).shape == (0,)
+    with pytest.raises(ValueError, match="no training targets"):
+        lw.us_acs_local_target_loss_weights([], {"usda_snap": 2.0})
 
 
 # ---------------------------------------------------------------------------
@@ -704,6 +840,15 @@ def test_a_district_group_holds_its_budget_however_many_districts() -> None:
         (_population("pop_cd_06", "congressional_district"), "pop_cd_<4 FIPS"),
         (_population("pop_state_0601", "state"), "pop_state_<2 FIPS"),
         (_population("pop_cd_0601", "state"), "pop_state_<2 FIPS"),
+        (_population("pop_cd_06AL", "congressional_district"), "pop_cd_<4 FIPS"),
+        (
+            _ledger(
+                "irs_soi.cd0601.tax_filer_individual_count",
+                unit="usd",
+                source_measure_id="tax_filer_individual_count",
+            ),
+            "basis override 'count' disagrees",
+        ),
     ],
 )
 def test_acs_local_mapping_refuses_what_it_cannot_classify(spec, message) -> None:
@@ -742,8 +887,17 @@ def test_a_split_or_pooled_state_cd_block_is_refused() -> None:
         dataclasses.replace(row, metadata={**row.metadata, "district_note": row.name})
         for row in rows
     ]
-    with pytest.raises(ValueError, match="split across concept groups"):
+    with pytest.raises(ValueError, match="land in more than one concept group"):
         lw.us_acs_local_target_loss_weights(leaking)
+    # A block whose rows differ in concept identity but share a parent is
+    # split too (the parent, not the metadata, says they are one block).
+    other_measure = dataclasses.replace(
+        rows[1], metadata={**rows[1].metadata, "source_measure_id": "other"}
+    )
+    with pytest.raises(ValueError, match="split across concept groups"):
+        lw.validate_acs_local_concept_groups(
+            [rows[0], other_measure], ["amount", "amount"], [("k1",), ("k2",)]
+        )
     # Two blocks under one key would pool their budgets.
     keys = [("k",), ("k",)]
     pooled = [
@@ -768,3 +922,63 @@ def test_acs_local_weights_do_not_depend_on_row_order(order) -> None:
     weights = lw.us_acs_local_target_loss_weights(surface)
     shuffled = lw.us_acs_local_target_loss_weights([surface[i] for i in order])
     np.testing.assert_allclose(shuffled, weights[list(order)], rtol=1e-12)
+
+
+def test_a_measure_the_national_rule_misfiles_takes_its_reviewed_basis() -> None:
+    """``tax_filer_individual_count`` counts people; the national rule says amount."""
+
+    row = _ledger(
+        "irs_soi.cd0601.tax_filer_individual_count",
+        unit="count",
+        measure_mode="sum",
+        ledger_geography_level="congressional_district",
+        congressional_district_geoid="0601",
+    )
+    assert lw.fiscal_target_value_basis(row) == "amount"
+    assert lw.acs_local_target_value_basis(row) == "count"
+    assert "tax_filer_individual_count" in lw.ACS_LOCAL_LEDGER_BASIS_OVERRIDES
+
+
+def _raw_district(name, district, value, **metadata):
+    """A district-file row as ``--soi-mode full`` or ``totals`` keeps it."""
+
+    return _ledger(
+        name,
+        value=value,
+        ledger_geography_level="congressional_district",
+        state_fips=district[:2],
+        congressional_district_geoid=district,
+        ledger_geography_id=f"5001800US{district}",
+        ledger_layout_record_set_spec_id="irs_soi.congressional_district_2022",
+        ledger_layout_groupby_value_label=f"CA congressional district {district}",
+        ledger_fact_label=f"California district {district} {name}",
+        source_measure_id="adjusted_gross_income",
+        **metadata,
+    )
+
+
+def test_district_rows_outside_state_cd_group_by_concept_or_are_refused() -> None:
+    rows = [
+        _raw_district(f"irs_soi.cd{d}.agi", d, v)
+        for d, v in (("0601", 4e10), ("0602", 6e10), ("0603", 2e10))
+    ]
+    keys = {lw.acs_local_target_concept_budget_key(row) for row in rows}
+    assert len(keys) == 1
+    weights = lw.us_acs_local_target_loss_weights(rows)
+    np.testing.assert_allclose(
+        weights / weights.sum(), np.sqrt([4, 6, 2]) / np.sqrt([4, 6, 2]).sum()
+    )
+    # A per-district key the mapping does not know splits the concept; the
+    # guard refuses it rather than falling back to one row per group.
+    leaking = [
+        dataclasses.replace(row, metadata={**row.metadata, "district_note": row.name})
+        for row in rows
+    ]
+    with pytest.raises(ValueError, match="land in more than one concept group"):
+        lw.us_acs_local_target_loss_weights(leaking)
+    # Different concepts of one state stay apart.
+    other = _raw_district("irs_soi.cd0601.eitc", "0601", 1e8)
+    other = dataclasses.replace(
+        other, metadata={**other.metadata, "source_measure_id": "eitc_amount"}
+    )
+    assert lw.acs_local_target_concept_budget_key(other) not in keys

@@ -14,13 +14,22 @@ Surfaces:
 1. ``release_20260923``: the 4,459 targets of the published 09-23 release
    (``--soi-mode state``, the default), every one trained. Its specs are the
    ``target_registry.json`` rebuilt from that release's feed by
-   ``experiments/us-acs-local-l2-basis-20260928/registry.py`` (receipt: all
-   4,459 names and values equal the checkpoint's).
+   ``experiments/us-acs-local-l2-basis-20260928/registry.py`` on branch
+   ``acs-local-weighted-lambda-frontier`` (microcosm#1105, commit 430491e2c).
+   Its receipt, copied here as ``registry_20260923.receipt.json``, records
+   that all 4,459 names and values equal the checkpoint's.
 2. ``state_cd_pinned_feed``: ``--soi-mode state_cd`` compiled by the tool's
    own ``state_admin_surface`` from the feed ``chronicle_feed.json`` pins,
    plus the 09-23 release's 487 ladder population specs, with the default 10%
    district holdout assigned by the tool's ``assign_target_roles``; only the
    training rows are weighted, as in the calibrate stage.
+3. ``soi_modes``: a classification receipt for every ``--soi-mode``
+   (``state``, ``totals``, ``full``, ``state_cd``) compiled from the pinned
+   feed with the same population specs, before any holdout. For each it
+   records that the ACS local mapping classifies every row, how many rows
+   take a basis override, the concept groups, and that a per-district key
+   injected into every district row is refused wherever district ledger
+   rows exist.
 
 Engine-free. Run from the repository root::
 
@@ -178,6 +187,49 @@ def state_cd_surface(tool, feed: Path, population_specs, fraction: float):
     }
 
 
+def mode_receipt(tool, lw, feed: Path, mode: str, population_specs) -> dict:
+    """Does the ACS local mapping classify and group one SOI mode's surface?"""
+
+    import dataclasses
+
+    surface = tool.state_admin_surface(feed, FAMILIES, soi_mode=mode)
+    specs = [*surface.registry.specs, *population_specs]
+    weights = lw.us_acs_local_target_loss_weights(specs)
+    distribution = lw.target_loss_weight_distribution(
+        specs, weights, row_mapping=lw.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING
+    )
+    district_ledger_rows = sum(
+        1
+        for spec in specs
+        if spec.metadata.get("ledger_geography_level") == "congressional_district"
+    )
+    leaky = [
+        dataclasses.replace(
+            spec, metadata={**spec.metadata, "district_display_name": spec.name}
+        )
+        if spec.metadata.get("ledger_geography_level") == "congressional_district"
+        else spec
+        for spec in specs
+    ]
+    try:
+        lw.us_acs_local_target_loss_weights(leaky)
+        injected_key_refused = False
+    except ValueError:
+        injected_key_refused = True
+    return {
+        "n_specs": len(specs),
+        "n_district_ledger_rows": district_ledger_rows,
+        "n_basis_overrides": sum(
+            1
+            for spec in specs
+            if spec.metadata.get("source_measure_id")
+            in lw.ACS_LOCAL_LEDGER_BASIS_OVERRIDES
+        ),
+        "concept_groups": distribution["concept_groups"],
+        "injected_per_district_key_refused": injected_key_refused,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
@@ -195,6 +247,12 @@ def main(argv: list[str] | None = None) -> int:
             f"{args.registry} is {registry_sha}, not the rebuilt 09-23 registry."
         )
     release_specs = TargetRegistry.from_json(args.registry).specs
+    dirty = subprocess.run(
+        ["git", "-C", str(REPO), "status", "--porcelain", "--untracked-files=no"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
     results: dict = {
         "head": subprocess.run(
             ["git", "-C", str(REPO), "rev-parse", "HEAD"],
@@ -202,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             text=True,
             check=True,
         ).stdout.strip(),
+        "tree_clean": not dirty,
         "release_20260923": {
             "registry": {"path": str(args.registry), "sha256": registry_sha},
             "n_train": len(release_specs),
@@ -251,6 +310,12 @@ def main(argv: list[str] | None = None) -> int:
             "| national-as-is:",
             result["national_as_is"]["concept_groups"],
         )
+        results["soi_modes"] = {
+            mode: mode_receipt(tool, lw, args.feed, mode, population)
+            for mode in tool.SOI_MODES
+        }
+        for mode, receipt in results["soi_modes"].items():
+            print(mode, receipt)
     results["wall_seconds"] = round(time.time() - started, 1)
     (HERE / "results.json").write_text(json.dumps(results, indent=1, sort_keys=True))
     print(f"\nwrote {HERE / 'results.json'} in {results['wall_seconds']} s")

@@ -13,7 +13,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import shlex
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -339,8 +338,18 @@ def test_every_calibrate_output_records_the_weights(calibrate_run) -> None:
     distribution = recorded["distribution"]
     assert distribution["row_mapping"] == "us_acs_local.v1"
     assert distribution["by_basis"]["count"]["loss_share"] == pytest.approx(0.5)
+    medicaid = next(
+        cell
+        for cell in distribution["by_family_level_basis"]
+        if cell["family"] == "cms_medicaid"
+    )
+    assert medicaid["equal_share"] == pytest.approx(1 / len(train))
+    assert medicaid["loss_share"] == pytest.approx(
+        weights[[s.family == "cms_medicaid" for s in train]].sum() / weights.sum()
+    )
     # Trained district groups: the CA AGI block (the NY block is held out)
-    # and one pop_cd group per state, MD's a single at-large district.
+    # and one pop_cd group per state; the fixture's only MD district is a
+    # group of one.
     assert distribution["concept_groups"] == {
         "n_groups": 14,
         "n_district_rows": 7,
@@ -364,6 +373,7 @@ def test_every_calibrate_output_records_the_weights(calibrate_run) -> None:
     assert build["target_loss_cap"] == 1.0
     assert build["target_loss_row_mapping"] == "us_acs_local.v1"
     assert build["target_loss_weights_sha256"] == digest
+    assert build["target_loss_distribution"] == distribution
     assert diagnostics["options"]["target_loss_weights"]["kind"] == "provided"
     by_name = {
         target["target_name"]: target["target_loss_weight"]
@@ -480,61 +490,30 @@ def test_the_refresh_recipe_rebuilds_the_recorded_multipliers() -> None:
     }
 
 
-def _release_tool_tests():
-    """The package-stage helpers of ``test_us_acs_local_release_tool.py``."""
+def test_a_weighted_solve_does_not_claim_the_reviewed_concentration() -> None:
+    """Finalize's ESS entry is reviewed only for the equal-weight solve."""
 
-    spec = importlib.util.spec_from_file_location(
-        "acs_local_release_tool_tests",
-        _TEST_PATHS.tests / "engine_free" / "us" / "test_us_acs_local_release_tool.py",
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_the_package_manifest_records_the_loss_weights(tmp_path, monkeypatch) -> None:
-    from microcosm.data import stored_inputs
-
-    helpers = _release_tool_tests()
-    # The stored-input contract stand-in that file's autouse fixture installs.
-    monkeypatch.setattr(
-        stored_inputs, "installed_us_engine", lambda: helpers._PACKAGE_ENGINE
-    )
-    monkeypatch.setattr(
-        stored_inputs,
-        "require_h5_stored_inputs",
-        lambda path, *, engine: {
-            "register_sha256": stored_inputs.register_sha256(),
-            "registered_non_variables": [],
-        },
-    )
-    module = helpers._load_tool_module()
-    args = helpers._package_evidence_args(
-        module,
-        tmp_path,
-        monkeypatch,
-        hours_report={"passed": True, "failures": [], "detail": {}},
-    )
-    summary_path = args.checkpoint_dir / "calibration_summary.json"
-    summary = json.loads(summary_path.read_text())
-    target_loss = {
-        "weighting": lw.US_FISCAL_TARGET_LOSS_WEIGHTING,
-        "row_mapping": "us_acs_local.v1",
-        "family_multipliers": {"usda_snap": 4.0},
-        "n_targets": 3,
-        "weights_sha256": "0" * 64,
+    module = _load_tool_module()
+    base = {
+        "effective_sample_size": 14_000,
+        "ess_fraction": 0.009,
+        "households": 1_588_854,
+        "max_weight_ratio": 5.0,
+        "l2_lambda": 0.0,
+        "mass_parametrization": "projection",
     }
-    summary["target_loss"] = target_loss
-    summary_path.write_text(json.dumps(summary))
-
-    result = module.do_package(args)
-
-    manifest = json.loads(
-        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    historical = module._ess_concentration_limitation(base)
+    assert historical["status"] == "reviewed_concentration"
+    weighted = module._ess_concentration_limitation(
+        {
+            **base,
+            "target_loss": {
+                "weighting": lw.US_FISCAL_TARGET_LOSS_WEIGHTING,
+                "row_mapping": "us_acs_local.v1",
+                "family_multipliers": {"usda_snap": 2.0},
+            },
+        }
     )
-    assert manifest["calibration"]["target_loss"] == target_loss
-    recipe = shlex.split(manifest["refresh_recipe"]["release"])
-    assert recipe[recipe.index("--target-family-loss-multiplier") + 1] == (
-        "usda_snap=4.0"
-    )
+    assert weighted["status"] == "recorded_concentration"
+    assert "us_acs_local.v1" in weighted["reason"]
+    assert "usda_snap" in weighted["reason"]

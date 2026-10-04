@@ -1948,6 +1948,43 @@ def test_package_manifest_records_the_penalty_settings(
     assert recipe[recipe.index("--mass-parametrization") + 1] == "softmax"
 
 
+def test_package_manifest_records_the_loss_weights(tmp_path: Path, monkeypatch) -> None:
+    """The package stage carries the loss-weight stamp and its multipliers."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    target_loss = {
+        "weighting": (
+            "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_"
+            "target_scale_cap_100pct"
+        ),
+        "row_mapping": "us_acs_local.v1",
+        "family_multipliers": {"usda_snap": 4.0},
+        "n_targets": 3,
+        "weights_sha256": "0" * 64,
+    }
+    summary["target_loss"] = target_loss
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["target_loss"] == target_loss
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--target-family-loss-multiplier") + 1] == (
+        "usda_snap=4.0"
+    )
+
+
 def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
     """The recipe names every penalty setting, so a default change cannot move it."""
 

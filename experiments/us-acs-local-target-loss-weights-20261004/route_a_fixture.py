@@ -38,6 +38,7 @@ DIAGNOSTICS = Path(
     f"{RELEASE_ID}/releases/{RELEASE_ID}/calibration_diagnostics.json"
 )
 BUILD_COMMIT = "4b57d15a287c4a1729bad362a2f6d57c4de9059e"
+DIAGNOSTICS_SHA256 = "64b55a02aaf573964cffee44d4a86bd63f33dc30c7f5012e4345348eecc06f80"
 FIXTURE = (
     REPO / "packages/microcosm-build/tests/fixtures/us_route_a_target_loss_weights.json"
 )
@@ -52,6 +53,8 @@ def main() -> int:
     from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
 
     raw = DIAGNOSTICS.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != DIAGNOSTICS_SHA256:
+        raise SystemExit(f"{DIAGNOSTICS} is not Route A's diagnostics.")
     diagnostics = json.loads(raw)
     targets = diagnostics["targets"]
     levels = {target["metadata"].get("ledger_geography_level") for target in targets}

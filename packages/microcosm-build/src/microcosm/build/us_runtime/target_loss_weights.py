@@ -15,16 +15,17 @@ The formula (:data:`US_FISCAL_TARGET_LOSS_WEIGHTING`):
    mean over the target's basis.
 3. **Concept budget.** Targets that share a concept-budget key form a group,
    whose weights are rescaled to sum to the largest member's weight, keeping
-   their proportions. Both mappings make the congressional-district targets
-   of one concept in one state a group, so adding district geography cannot
-   multiply a concept's weight. Every other target is its own group.
+   their proportions. The aim is that the congressional-district targets of
+   one concept in one state form one group, so adding district geography
+   cannot multiply a concept's weight. Every other target is its own group.
 4. **Basis budget.** Each basis present is rescaled to carry an equal share
    of the total weight (half each when both are present).
 5. Normalize to mean 1.
 6. **Family multipliers** (optional, ``FAMILY=MULTIPLIER``). Each named
    family's weights are multiplied, in sorted family order, and the result is
    renormalized to mean 1. A multiplier that names no target's family is an
-   error.
+   error. :func:`parse_target_family_loss_multipliers` admits only positive
+   finite multipliers.
 
 Row mappings:
 
@@ -32,18 +33,26 @@ Row mappings:
   target metadata: ``measure_mode`` and ``source_measure_id`` for the basis,
   and ``ledger_geography_level``, ``state_fips``, the filter and the other
   semantic metadata for the concept key. It is the national release's
-  mapping, moved here unchanged.
+  mapping, moved here unchanged. Its district key does read two labels the
+  ledger compiler stamps on every row, ``ledger_fact_label`` and
+  ``ledger_layout_groupby_value_label``, which name the district, so each
+  compiled district row is its own group under it (measured in
+  ``experiments/us-acs-local-target-loss-weights-20261004/``).
 - :data:`US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING` classifies every row of the
-  ACS local-area surface explicitly and refuses any row it cannot classify.
-  Ledger-compiled rows (SNAP, Medicaid, SOI) take the national mapping, and
-  their basis must agree with their ``ledger_measure_unit``. The Census ladder
+  ACS local-area surface explicitly and refuses any row it cannot classify:
+  a row must be a ledger-compiled row (any family; on the surface, SNAP,
+  Medicaid and SOI) or a Census ladder population row. Ledger rows take the
+  national basis rule, which must agree with their ``ledger_measure_unit``
+  unless :data:`ACS_LOCAL_LEDGER_BASIS_OVERRIDES` names the measure. The Census ladder
   population rows (``pop_state_*``, ``pop_cd_*``), which carry no ledger
   metadata, are counts, as the national release's Census population targets
   are. Each state's ``pop_cd_*`` rows share one concept budget. District SOI
   rows take the national district key without the metadata that names the
   district (:data:`ACS_LOCAL_PER_DISTRICT_METADATA`), so the districts of one
-  concept in one state share one budget; each ``state_cd`` reconciliation
-  block must be exactly one group.
+  concept in one state share one budget. :func:`validate_acs_local_concept_groups`
+  refuses a surface whose district rows of one concept in one state land in
+  more than one group, or whose ``state_cd`` reconciliation blocks are not
+  exactly one group each.
 """
 
 from __future__ import annotations
@@ -64,7 +73,9 @@ US_FISCAL_TARGET_LOSS_WEIGHTING = (
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 #: Metadata that identifies a target's place, record or reconciliation rather
 #: than its concept. The concept-budget key of a congressional-district target
-#: ignores it, so the districts of one concept in one state share one key.
+#: ignores it, so that the districts of one concept in one state share one
+#: key. It does not list the compiler's per-row labels (see the module
+#: docstring and :data:`ACS_LOCAL_PER_DISTRICT_METADATA`).
 US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS = frozenset(
     {
         "congressional_district_geoid",
@@ -122,8 +133,11 @@ def target_loss_weights_from_rows(
 ) -> np.ndarray:
     """Steps 2-6 of the formula, over row-aligned per-target inputs.
 
-    Returns float64 weights, row-aligned with the inputs, positive and of
-    mean 1 whenever there is at least one row.
+    Returns float64 weights, row-aligned with the inputs. With at least one
+    row they are positive and of mean 1, given positive finite multipliers
+    whose products stay within float64 range (the CLI parser admits only
+    positive finite ones; this function, like the national helper it came
+    from, does not check them).
     """
 
     n_rows = len(values)
@@ -151,11 +165,6 @@ def target_loss_weights_from_rows(
         return weights
     family_array = np.asarray(list(families), dtype=object)
     for family, multiplier in sorted(family_multipliers.items()):
-        if not math.isfinite(multiplier) or multiplier <= 0.0:
-            raise ValueError(
-                f"Target family loss multiplier for {family!r} must be positive "
-                f"and finite, got {multiplier!r}."
-            )
         mask = family_array == family
         if not mask.any():
             raise ValueError(
@@ -329,6 +338,18 @@ ACS_LOCAL_PER_DISTRICT_METADATA = frozenset(
 US_ACS_LOCAL_CONCEPT_METADATA_EXCLUSIONS = (
     US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS | ACS_LOCAL_PER_DISTRICT_METADATA
 )
+#: Ledger measures whose national basis rule disagrees with their ledger unit,
+#: and the basis the ACS local mapping gives them, with the reason. Any other
+#: disagreement is refused.
+ACS_LOCAL_LEDGER_BASIS_OVERRIDES: Mapping[str, tuple[str, str]] = {
+    "tax_filer_individual_count": (
+        COUNT_BASIS,
+        "Individuals on returns (ledger unit count). The national rule files it "
+        "as an amount: its measure_mode is sum and its id has no 'return'. Only "
+        "district rows carry it (the compiler drops it at state and national "
+        "geography), on the --soi-mode full and totals surfaces.",
+    ),
+}
 #: The ledger's unit for a measure, and the basis that unit implies.
 LEDGER_MEASURE_UNIT_BASIS: Mapping[str, str] = {
     "count": COUNT_BASIS,
@@ -398,6 +419,14 @@ def acs_local_target_value_basis(spec) -> str:
             f"{spec.name}: a ledger row needs {missing} to take the national "
             "loss basis."
         )
+    override = ACS_LOCAL_LEDGER_BASIS_OVERRIDES.get(metadata["source_measure_id"])
+    if override is not None:
+        if override[0] != expected:
+            raise ValueError(
+                f"{spec.name}: the basis override {override[0]!r} disagrees "
+                f"with its ledger_measure_unit {unit!r}."
+            )
+        return override[0]
     basis = fiscal_target_value_basis(spec)
     if basis != expected:
         raise ValueError(
@@ -438,6 +467,49 @@ def acs_local_target_concept_budget_key(spec) -> tuple[object, ...]:
     )
 
 
+#: The metadata that tells two district SOI concepts of one state apart: the
+#: measure, its source file, its AGI band, filing status, return universe and
+#: domain, and every ledger filter. Rows equal on all of these (and on family,
+#: entity, period, filter and state) are the districts of one concept.
+DISTRICT_CONCEPT_IDENTITY_KEYS = (
+    "source_measure_id",
+    "ledger_layout_record_set_spec_id",
+    "measure_mode",
+    "agi_lower_bound",
+    "agi_upper_bound",
+    "filing_status",
+    "taxable_only",
+    "itemized_only",
+    "ledger_domain",
+    "soi_return_universe",
+)
+
+
+def district_concept_identity(spec) -> tuple:
+    """What makes a district ledger row the concept it is, without the place.
+
+    Independent of the concept key, so the validator can check the key
+    against it: every district row of one identity must share one key.
+    """
+
+    metadata = spec.metadata
+    return (
+        spec.family,
+        spec.entity,
+        spec.period,
+        spec.filter or "",
+        str(metadata.get("state_fips")),
+        *(str(metadata.get(key, "")) for key in DISTRICT_CONCEPT_IDENTITY_KEYS),
+        tuple(
+            sorted(
+                (key, value)
+                for key, value in metadata.items()
+                if key.startswith("ledger_filter_")
+            )
+        ),
+    )
+
+
 def validate_acs_local_concept_groups(
     specs: Sequence[Any],
     bases: Sequence[str],
@@ -445,17 +517,21 @@ def validate_acs_local_concept_groups(
 ) -> None:
     """Refuse an ACS local grouping that is not the promised one.
 
-    Each ``state_cd`` reconciliation block (the district rows sharing one
-    ``state_cd_parent_target_name``) must be exactly one concept group: a
-    per-district metadata key leaking into the key would split it into one
-    group per district, and two blocks sharing a key would pool budgets.
-    Each district group must lie in one state.
+    - The district ledger rows of one concept in one state
+      (:func:`district_concept_identity`) must share one concept group: a
+      per-district metadata key reaching the key would split them into one
+      group per district, whatever the SOI mode.
+    - Each ``state_cd`` reconciliation block (the district rows sharing one
+      ``state_cd_parent_target_name``) must be exactly one concept group, and
+      no group may hold two blocks.
+    - Each district group must lie in one state.
     """
 
     del bases
     group_of_parent: dict[str, set[Hashable]] = {}
     parent_of_group: dict[Hashable, set[str]] = {}
     states_of_group: dict[Hashable, set[str]] = {}
+    groups_of_identity: dict[tuple, set[Hashable]] = {}
     for spec, key in zip(specs, concept_budget_keys, strict=True):
         population = acs_local_population_geography(spec)
         if population is not None:
@@ -467,10 +543,23 @@ def validate_acs_local_concept_groups(
         if metadata.get("ledger_geography_level") != CONGRESSIONAL_DISTRICT:
             continue
         states_of_group.setdefault(key, set()).add(str(metadata.get("state_fips")))
+        groups_of_identity.setdefault(district_concept_identity(spec), set()).add(key)
         parent = metadata.get("state_cd_parent_target_name")
         if parent:
             group_of_parent.setdefault(str(parent), set()).add(key)
             parent_of_group.setdefault(key, set()).add(str(parent))
+    scattered = [
+        (identity, keys)
+        for identity, keys in groups_of_identity.items()
+        if len(keys) > 1
+    ]
+    if scattered:
+        identity, keys = scattered[0]
+        raise ValueError(
+            f"{len(scattered)} district concept(s) land in more than one concept "
+            f"group, e.g. {identity[:6]} in {len(keys)} groups; a per-district "
+            "metadata key is reaching the concept key."
+        )
     split = {parent: keys for parent, keys in group_of_parent.items() if len(keys) > 1}
     if split:
         parent, keys = next(iter(sorted(split.items())))
@@ -566,6 +655,12 @@ def us_acs_local_target_loss_weights(
 ) -> np.ndarray:
     """The ACS local release's weights for its training target specs."""
 
+    specs = tuple(specs)
+    if family_multipliers and not specs:
+        raise ValueError(
+            f"--target-family-loss-multiplier families {sorted(family_multipliers)} "
+            "match no compiled target: there are no training targets."
+        )
     return target_loss_weights(
         specs,
         family_multipliers,
