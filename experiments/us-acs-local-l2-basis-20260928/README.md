@@ -401,7 +401,12 @@ tested. If the build keeps #1104's default (no multiplier), the rule's λ is
     its own, since importing it through `microcosm.build.us_runtime` needs
     the whole build stack. Loaded either way, it gives the same weights. The
     containers rebuild the weights from `target_registry.json`, which they
-    check against `registry.py`'s receipt.
+    check against `registry.py`'s receipt. #1104's later review fixes
+    changed the file's bytes but not these weights: `check_weights.py`
+    rebuilds every `w_` run's training and yardstick weights with the
+    current module and compares both digests with the run's receipt
+    (`results/weights_check.json`: 46 runs, 7 distinct weightings, no
+    mismatch).
   - Gate: before fanning out, the release-settings run had to show its
     epoch-0 loss equal to the weighted loss of the starting weights
     recomputed outside the solver (5e-6 relative) and its final loss equal
@@ -443,6 +448,5 @@ tested. If the build keeps #1104's default (no multiplier), the rule's λ is
   the softmax cap loop with an exact projection; projection runs are not
   affected. The population multiplier was chosen after the first pass, only
   ×4 and ×8 were run, and only ×8 has held-out folds. The weights came from
-  #1104 before it merged; they are valid for main only while main's
-  `target_loss_weights.py` gives the same loss vector (digest
-  `ba36f887…` on the full surface).
+  #1104 before it merged; they hold for main only while
+  `check_weights.py` passes against main's module.
