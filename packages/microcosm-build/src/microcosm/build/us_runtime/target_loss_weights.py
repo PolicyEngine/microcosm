@@ -347,7 +347,8 @@ ACS_LOCAL_LEDGER_BASIS_OVERRIDES: Mapping[str, tuple[str, str]] = {
         "Individuals on returns (ledger unit count). The national rule files it "
         "as an amount: its measure_mode is sum and its id has no 'return'. Only "
         "district rows carry it (the compiler drops it at state and national "
-        "geography), on the --soi-mode full and totals surfaces.",
+        "geography); on the pinned feed only the --soi-mode full surface has "
+        "them (445 rows).",
     ),
 }
 #: The ledger's unit for a measure, and the basis that unit implies.

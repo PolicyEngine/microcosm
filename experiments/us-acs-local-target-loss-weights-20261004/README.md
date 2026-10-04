@@ -33,7 +33,7 @@ The ACS local mapping accepts two kinds of row and refuses any other:
   - The one reviewed exception is `tax_filer_individual_count`, a count of
     people. The national rule files it as an amount, and
     `ACS_LOCAL_LEDGER_BASIS_OVERRIDES` maps it to a count. Only district rows
-    carry it, on the `full` and `totals` surfaces.
+    carry it; on the pinned feed only the `full` surface has them (445).
   - Any other disagreement is refused.
 - **Ladder population rows** (`pop_state_SS`, `pop_cd_SSDD`) carry only
   `geography_level`, so the national rule alone would file them as amounts.
