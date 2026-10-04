@@ -62,6 +62,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
+from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
@@ -548,6 +549,7 @@ def _evaluate_support(
         "etb_services_support_bounds.json",
         "uc_deduction_support_bounds.json",
         "nts_bus_travel_support_bounds.json",
+        "was_lisa_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -947,15 +949,27 @@ def _evaluate_zero_weight_strata(
 def _evaluate_weight_ess(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    weights = _household_weights(_uk_gate_surface(context.frame).household)
-    return uk_weight_ess_gate(weights, **dict(parameters))
+    household = _uk_gate_surface(context.frame).household
+    family_weights, family_fold = uk_support_family_weights(household)
+    return uk_weight_ess_gate(
+        _household_weights(household),
+        family_weights=family_weights,
+        family_fold=family_fold,
+        **dict(parameters),
+    )
 
 
 def _evaluate_weight_ratio(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    weights = _household_weights(_uk_gate_surface(context.frame).household)
-    return uk_weight_ratio_gate(weights, **dict(parameters))
+    household = _uk_gate_surface(context.frame).household
+    family_weights, family_fold = uk_support_family_weights(household)
+    return uk_weight_ratio_gate(
+        _household_weights(household),
+        family_weights=family_weights,
+        family_fold=family_fold,
+        **dict(parameters),
+    )
 
 
 def _evaluate_geography_ladder(
@@ -1599,8 +1613,15 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_abs_realization_deviation",
                 "allow_cap_bound",
                 "stocks",
+                # microcosm#1049 student_loan_plans stage-health check.
+                "maximum_stock_relative_deviation",
                 "maximum_relative_mass_imbalance",
                 "spi_prior_mass_share",
+                # microcosm#1069 c6 spi_support_channel stage-health check.
+                "pension_age_spi_prior_mass_share",
+                # microcosm#1069 c7 pension_credit_take_up stage-health check.
+                "maximum_take_up_deviation",
+                "minimum_entitled_units",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -1621,15 +1642,24 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_relative_composition_error",
                 "maximum_pair_relative_error",
                 "minimum_pair_count",
+                # #1045 cgt_support_split stage-health check: the split rule's
+                # declared constants and the conservation tolerance.
+                "clone_split_factor",
+                "headroom",
+                "maximum_copy_weight",
+                "maximum_relative_mass_deviation",
                 # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
                 # reserved bands and the donors each must carry.
                 "band_lower_bounds",
                 "donors_per_band",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
-                # design weights, with the published gas-connected share.
+                # prior weights, with the published gas-connected share, and
+                # a converged (not truncated) terminal residual (#1012).
                 "margins",
                 "margins_period_value",
                 "maximum_connected_share_deviation",
+                "convergence_window_sweeps",
+                "maximum_residual_change_over_window",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",

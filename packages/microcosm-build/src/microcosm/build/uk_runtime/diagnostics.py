@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import math
-import uuid
 from collections.abc import Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -24,6 +23,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from pydantic import ValidationError
 
 from microcosm.calibrate import (
     TargetRegistry,
@@ -31,6 +31,16 @@ from microcosm.calibrate import (
     effective_sample_size,
 )
 from microcosm.calibrate.solve import CalibrationResult
+from microcosm.diagnostics import (
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
+    CalibrationDiagnosticsV8,
+    DiagnosticsWriteOutcome,
+    failed_diagnostics_outcome,
+)
+from microcosm.diagnostics import (
+    write_calibration_diagnostics as write_typed_calibration_diagnostics,
+)
 from microcosm.frame import Frame
 
 __all__ = [
@@ -46,20 +56,6 @@ __all__ = [
     "uk_zero_weight_strata",
     "write_uk_calibration_diagnostics",
 ]
-
-#: UK-only extension version nested inside the shared calibration diagnostics.
-UK_DIAGNOSTICS_SCHEMA_VERSION = 1
-
-#: Stable vocabulary used by the UK target registry.
-#: ``"la"`` is accepted only as an input adapter and is serialized as
-#: ``"local_authority"``.
-UK_TARGET_GEOGRAPHY_LEVELS: tuple[str, ...] = (
-    "national",
-    "region",
-    "country",
-    "local_authority",
-    "constituency",
-)
 
 _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
     "household_is_spi_synthetic",
@@ -476,6 +472,88 @@ def uk_weight_summary(
     }
 
 
+#: Lineage columns that identify a support-split family: every copy the split
+#: created shares its root's source household, support channel, support clone
+#: index and clone flag. These are the geography identity kernel's inputs
+#: (microcosm#932) less the copy flag and index, so on the national spine only
+#: the split creates rows that agree on all four; on a K-expanded frame the
+#: geographic clone index (:func:`uk_support_family_geographic_clone_column`)
+#: joins the key, so each geographic clone folds only its own copies
+#: (microcosm#1045).
+UK_SUPPORT_FAMILY_KEY_COLUMNS = (
+    "source_household_id",
+    "household_support_channel",
+    "household_support_clone_index",
+    "household_is_capital_gains_clone",
+)
+UK_SUPPORT_COPY_FLAG_COLUMN = "household_is_cgt_support_copy"
+
+
+def uk_support_family_geographic_clone_column() -> str:
+    """The household geographic clone-index column ``uk.full.expand`` writes."""
+
+    from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
+
+    return ladder_clone_index_column("household")
+
+
+def uk_support_family_weights(
+    household: pd.DataFrame,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fold shipped household weights over support-split families.
+
+    Each root and the copies ``cgt_support_split`` made of it (and, on the
+    clone side, its clone and the copies' clones) sum to one weight, so the
+    max-to-median ratio and the ESS fraction read the quantity the June
+    certification measured on a frame without copies, not the number of
+    copies. The key is the explicit lineage the geography identity keys on,
+    less the copy flag and index: on a geographically expanded frame the
+    clone-index column is part of it, so the K clones of a household stay
+    apart and only their own copies fold onto each. A table without the copy
+    flag, or with no copy, folds to itself. A table with copies but without
+    the family key columns refuses.
+    """
+
+    weights = pd.to_numeric(household["household_weight"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    copies = (
+        household[UK_SUPPORT_COPY_FLAG_COLUMN].fillna(False).to_numpy(dtype=bool)
+        if UK_SUPPORT_COPY_FLAG_COLUMN in household.columns
+        else np.zeros(len(household), dtype=bool)
+    )
+    if not copies.any():
+        return weights.copy(), {
+            "basis": "rows",
+            "families": int(len(household)),
+            "support_copy_rows": 0,
+            "rows_folded": 0,
+        }
+    missing = [c for c in UK_SUPPORT_FAMILY_KEY_COLUMNS if c not in household.columns]
+    if missing:
+        raise ValueError(
+            "Family-folded weights need the spine lineage column(s) "
+            f"{missing} once the household table carries support copies."
+        )
+    geographic_clone_column = uk_support_family_geographic_clone_column()
+    key_columns = list(UK_SUPPORT_FAMILY_KEY_COLUMNS)
+    if geographic_clone_column in household.columns:
+        key_columns.append(geographic_clone_column)
+    key = household.loc[:, key_columns]
+    if key.isna().any().any():
+        raise ValueError("Family-folded weights refuse null lineage values.")
+    family = key.groupby(key_columns, sort=True).ngroup()
+    folded = pd.Series(weights, index=household.index).groupby(family.to_numpy()).sum()
+    return folded.to_numpy(dtype=np.float64), {
+        "basis": "support_family_fold",
+        "key_columns": key_columns,
+        "geographic_clone_index_in_key": geographic_clone_column in key_columns,
+        "families": int(folded.size),
+        "support_copy_rows": int(copies.sum()),
+        "rows_folded": int(len(household) - folded.size),
+    }
+
+
 def uk_fit_by_family(
     diagnostics: pd.DataFrame,
     *,
@@ -874,7 +952,10 @@ def uk_calibration_diagnostics_payload(
     if rotated_holdout is not None:
         uk_diagnostics["rotated_holdout"] = dict(rotated_holdout)
     payload["uk_diagnostics"] = uk_diagnostics
-    return payload
+    return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
+        mode="python",
+        exclude_defaults=True,
+    )
 
 
 def write_uk_calibration_diagnostics(
@@ -888,12 +969,12 @@ def write_uk_calibration_diagnostics(
     build: dict[str, Any] | None = None,
     local_area_support: pd.DataFrame | None = None,
     rotated_holdout: Mapping[str, object] | None = None,
-) -> Path:
-    """Atomically write strict shared-plus-UK diagnostics."""
+) -> DiagnosticsWriteOutcome:
+    """Validate and write shared-plus-UK diagnostics through the canonical writer."""
 
     output = Path(path)
-    encoded = json.dumps(
-        uk_calibration_diagnostics_payload(
+    try:
+        payload = uk_calibration_diagnostics_payload(
             result,
             frame,
             target_geography_levels=target_geography_levels,
@@ -902,14 +983,14 @@ def write_uk_calibration_diagnostics(
             build=build,
             local_area_support=local_area_support,
             rotated_holdout=rotated_holdout,
-        ),
-        indent=1,
-        allow_nan=False,
-    )
-    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        temporary.write_text(encoded, encoding="utf-8")
-        temporary.replace(output)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return output
+        )
+        diagnostics = CalibrationDiagnosticsV8.model_validate(payload)
+    except ValidationError as error:
+        return failed_diagnostics_outcome(
+            error,
+            error_code="validation_error",
+            path=output,
+        )
+    except Exception as error:  # diagnostics must not escape without validation
+        return failed_diagnostics_outcome(error, path=output)
+    return write_typed_calibration_diagnostics(diagnostics, output)

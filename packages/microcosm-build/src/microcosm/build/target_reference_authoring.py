@@ -790,6 +790,7 @@ def target_references_resource(
                     in {
                         "monthly_window_average",
                         "monthly_window_sum_average",
+                        "monthly_window_count_x_mean",
                         "linear_combination",
                         "scaled_by_ratio",
                         "calendar_year_window",

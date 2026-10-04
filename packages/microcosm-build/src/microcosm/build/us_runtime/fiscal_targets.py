@@ -2112,9 +2112,7 @@ def _soi_state_agi_band_rows(
     collapses to one row; one id with two different rows raises.
     """
 
-    groups: dict[
-        tuple[str, str, str, str], dict[str, tuple[float, float, float]]
-    ] = {}
+    groups: dict[tuple[str, str, str, str], dict[str, tuple[float, float, float]]] = {}
     for fact in facts:
         if _soi_state_agi_band_status(fact, _measure_id(fact)) is None:
             continue
@@ -2190,16 +2188,12 @@ def _latest_complete_state_agi_band_vintage(
 
     by_period: dict[tuple[int, int], list[tuple[str, str]]] = {}
     for vintage in vintages:
-        by_period.setdefault(_period_key_from_value(vintage[0])[:2], []).append(
-            vintage
-        )
+        by_period.setdefault(_period_key_from_value(vintage[0])[:2], []).append(vintage)
     for period_key in sorted(by_period, reverse=True):
         complete = []
         for vintage in sorted(by_period[period_key]):
             group = (*key, *vintage)
-            partition = _state_agi_band_partition_total(
-                group, band_rows.get(group, {})
-            )
+            partition = _state_agi_band_partition_total(group, band_rows.get(group, {}))
             if partition:
                 complete.append((vintage, partition))
         if len(complete) > 1:

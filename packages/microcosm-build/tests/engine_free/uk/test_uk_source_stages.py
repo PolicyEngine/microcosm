@@ -1,0 +1,1070 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from microcosm.build.country_spec import country_stage_plan, load_country_spec
+from microcosm.build.source_manifest import (
+    FORBIDDEN_SOURCE_DEPENDENCIES,
+    SourceManifest,
+)
+from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.frame import Frame
+from microcosm.graph import compile_graph
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+ROOT = _TEST_PATHS.repository
+UK_PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build/uk"
+CANONICAL_SOURCE_STAGES = UK_PACKAGE / "source_stages.json"
+E3_STAGE_NAMES = [
+    "frs_employment",
+    "frs_council_tax",
+    "frs_disability",
+    "frs_education",
+    "frs_legacy_proxies",
+    "frs_education_grant_split",
+]
+POST_FRS_SPINE_STAGE_NAMES = [
+    "age_tail",
+    # #791: the relationship grid runs right after the final age is fixed.
+    "frs_relationships",
+]
+E4_STAGE_NAMES = [
+    "frs_take_up",
+    "frs_person_draws",
+    "frs_household_draws",
+    "frs_brma",
+]
+E5_STAGE_NAMES = [
+    "was_wealth",
+    # #1003: the Lifetime ISA holdings read the was_wealth household draws.
+    "was_lisa",
+    "regional_property_uprating",
+]
+E6_STAGE_NAMES = [
+    "nts_bus_travel",
+    "lcfs_consumption",
+    "etb_vat",
+    "etb_services",
+]
+E7_STAGE_NAMES = [
+    "frs_hmrc_spine_leaves",
+    "spi_support_channel",
+    "spi_income_band_donors",
+    "hmrc_spi_income_spine",
+]
+HOUSING_SHELL_STAGE_NAMES = [
+    "spi_housing_shell",
+]
+UC_REPORTER_REDRAW_STAGE_NAMES = [
+    "uc_reporter_redraw",
+]
+UC_COHERENCE_STAGE_NAMES = [
+    "uc_capital_coherence",
+]
+PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
+    "pension_credit_take_up",
+]
+E9_STAGE_NAMES = [
+    "uc_deduction_attributes",
+]
+E8_STAGE_NAMES = [
+    "cgt_support_split",
+    "cgt_incidence_clone",
+    "hmrc_cgt_gains_spine",
+    "hmrc_cgt_asset_type_spine",
+    "cgt_incidence_anchor",
+    "salary_sacrifice",
+    "student_loans",
+]
+UK_SOURCE_STAGE_NAMES = [
+    "frs_spine",
+    *POST_FRS_SPINE_STAGE_NAMES,
+    *E3_STAGE_NAMES,
+    *E4_STAGE_NAMES,
+    # The SPI block runs before the income-conditioned donor imputations, so
+    # E5 and E6 impute onto the SPI rows from their SPI incomes.
+    *E7_STAGE_NAMES,
+    *HOUSING_SHELL_STAGE_NAMES,
+    *E5_STAGE_NAMES,
+    *E6_STAGE_NAMES,
+    *UC_REPORTER_REDRAW_STAGE_NAMES,
+    *UC_COHERENCE_STAGE_NAMES,
+    *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+    *E9_STAGE_NAMES,
+    *E8_STAGE_NAMES,
+]
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _identity(frame: Frame) -> Frame:
+    return frame
+
+
+def _uk_graph_stage_names(spec) -> list[str]:
+    manifest_stages = {stage.stage for stage in spec.sources.stages}
+    return [
+        node_id
+        for node_id in compile_graph(uk_spine_graph(spec)).order
+        if node_id in manifest_stages
+    ]
+
+
+def _assert_no_forbidden_dependency(value: object) -> None:
+    text = json.dumps(value, sort_keys=True).lower()
+    for dependency in FORBIDDEN_SOURCE_DEPENDENCIES:
+        assert dependency not in text
+
+
+class TestUKSourceStagesManifest:
+    def test_source_stages_json_loads_as_shared_manifest(self) -> None:
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+
+        assert manifest.country == "uk"
+        assert manifest.version == 1
+        assert [stage.stage for stage in manifest.stages] == UK_SOURCE_STAGE_NAMES
+
+    def test_country_spec_declares_uk_source_stages(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.sources is not None
+        assert [stage.stage for stage in spec.sources.stages] == UK_SOURCE_STAGE_NAMES
+
+    def test_e7_block_sits_between_e4_and_e5(self) -> None:
+        # The SPI support rows must exist before the income-conditioned donor
+        # imputations run, or they inherit their FRS parent's draws.
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+
+        assert names[names.index("frs_brma") + 1 : names.index("was_wealth")] == [
+            *E7_STAGE_NAMES,
+            *HOUSING_SHELL_STAGE_NAMES,
+        ]
+
+    def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
+        # uc_reporter_redraw stays after the donor stages: its engine screen
+        # reads the WAS capital proxy where the FRS capital answer is missing.
+        # The CGT block opens with the support split (microcosm#1045).
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+
+        assert names[
+            names.index("hmrc_spi_income_spine") + 1 : names.index("cgt_support_split")
+        ] == [
+            *HOUSING_SHELL_STAGE_NAMES,
+            *E5_STAGE_NAMES,
+            *E6_STAGE_NAMES,
+            *UC_REPORTER_REDRAW_STAGE_NAMES,
+            *UC_COHERENCE_STAGE_NAMES,
+            *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+            *E9_STAGE_NAMES,
+        ]
+
+    def test_age_tail_runs_immediately_after_frs_spine(self) -> None:
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        spine = [stage["stage"] for stage in canonical["stages"]]
+
+        assert spine[1] == "age_tail"
+
+    def test_age_tail_position_owns_the_only_later_age_rewrite_guard(self) -> None:
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+        stages = list(manifest.stages)
+        names = [stage.stage for stage in stages]
+        age_tail_index = names.index("age_tail")
+
+        assert age_tail_index == names.index("frs_spine") + 1
+        for stage in stages[age_tail_index + 1 :]:
+            assert "age" not in stage.outputs, stage.stage
+            assert "age" not in stage.rewrites, stage.stage
+
+    def test_e8_block_is_final_and_all_stages_are_canonical(self) -> None:
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+        start = names.index(E8_STAGE_NAMES[0])
+        assert names[start:] == E8_STAGE_NAMES
+        assert "frs_hmrc_retained_leaves" not in names
+        assert "hmrc_spi_income" not in names
+
+    def test_country_stage_plan_assembles_spine_plan(self) -> None:
+        spec = load_country_spec("uk")
+        implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
+        graph_stage_names = _uk_graph_stage_names(spec)
+        plan = country_stage_plan(
+            spec,
+            implementations,
+            stage_names=tuple(graph_stage_names),
+        )
+
+        assert [stage.name for stage in plan.stages] == graph_stage_names
+
+    @pytest.mark.parametrize(
+        "implementations, match",
+        [
+            ({"frs_spine": _identity}, "missing"),
+            (
+                {
+                    "frs_spine": _identity,
+                    "frs_employment": _identity,
+                    "frs_council_tax": _identity,
+                    "frs_disability": _identity,
+                    "frs_education": _identity,
+                    "frs_legacy_proxies": _identity,
+                    "frs_education_grant_split": _identity,
+                    "frs_take_up": _identity,
+                    "frs_person_draws": _identity,
+                    "frs_household_draws": _identity,
+                    "frs_brma": _identity,
+                    "was_wealth": _identity,
+                    "was_lisa": _identity,
+                    "nts_bus_travel": _identity,
+                    "regional_property_uprating": _identity,
+                    "lcfs_consumption": _identity,
+                    "etb_vat": _identity,
+                    "etb_services": _identity,
+                    "frs_hmrc_spine_leaves": _identity,
+                    "spi_support_channel": _identity,
+                    "spi_income_band_donors": _identity,
+                    "hmrc_spi_income_spine": _identity,
+                    "spi_housing_shell": _identity,
+                    "uc_reporter_redraw": _identity,
+                    "uc_capital_coherence": _identity,
+                    "pension_credit_take_up": _identity,
+                    "uc_deduction_attributes": _identity,
+                    "cgt_support_split": _identity,
+                    "cgt_incidence_clone": _identity,
+                    "hmrc_cgt_gains_spine": _identity,
+                    "hmrc_cgt_asset_type_spine": _identity,
+                    "cgt_incidence_anchor": _identity,
+                    "salary_sacrifice": _identity,
+                    "student_loans": _identity,
+                    "age_tail": _identity,
+                    "frs_relationships": _identity,
+                    "hmrc_spi_income_fallback": _identity,
+                },
+                "Unknown stage implementation",
+            ),
+        ],
+    )
+    def test_country_stage_plan_refuses_missing_or_unknown_uk_stage(
+        self,
+        implementations,
+        match: str,
+    ) -> None:
+        spec = load_country_spec("uk")
+
+        with pytest.raises(ValueError, match=match):
+            country_stage_plan(spec, implementations)
+
+
+class TestDeclaredOutputsAreWrittenColumns:
+    """Declared outputs must name columns the stages actually write.
+
+    Outputs are load-bearing (``country_stage_plan`` compiles them into
+    ``StagePlan.produces``), and the licensed-data acceptance for this
+    migration caught a declared output that was an SPI *concept* rather
+    than a persisted column — harmless while nothing read the field,
+    refused at full rung once it did. This pins every declared output to
+    a named runtime written-column constant so the class cannot recur
+    without a licensed build to find it (microcosm#690 review).
+    """
+
+    def test_stage1_outputs_are_exactly_the_retained_leaf_columns(self) -> None:
+        from microcosm.build.uk_runtime.frs_hmrc_source import (
+            FRS_HMRC_RETAINED_LEAF_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        stage1 = stages["frs_hmrc_spine_leaves"]
+        assert stage1.outputs == (
+            *FRS_HMRC_RETAINED_LEAF_COLUMNS,
+            "employer_pension_contributions",
+        )
+
+    def test_e3_outputs_are_backed_by_runtime_written_columns(self) -> None:
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_ETB_SERVICES_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.etb_vat import (
+            UK_ETB_VAT_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_ETB_VAT_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_brma import FRS_BRMA_OUTPUT_COLUMNS
+        from microcosm.build.uk_runtime.frs_council_tax import (
+            FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_disability import (
+            FRS_DISABILITY_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_education import (
+            FRS_EDUCATION_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_education_grants import (
+            FRS_EDUCATION_GRANT_OUTPUT_COLUMNS,
+            FRS_EDUCATION_GRANT_REWRITES,
+        )
+        from microcosm.build.uk_runtime.frs_employment import (
+            FRS_EMPLOYMENT_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_household_draws import (
+            FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_legacy_proxies import (
+            FRS_LEGACY_PROXY_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_person_draws import (
+            FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS,
+            FRS_PERSON_DRAW_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_take_up import (
+            FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
+            FRS_TAKE_UP_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.regional_uprating import (
+            UK_REGIONAL_PROPERTY_REWRITES,
+        )
+        from microcosm.build.uk_runtime.uc_deduction_attributes import (
+            UC_DEDUCTION_NONNEGATIVE_OUTPUT_COLUMNS,
+            UC_DEDUCTION_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.was_lisa import (
+            UK_WAS_LISA_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_LISA_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        assert stages["frs_employment"].outputs == FRS_EMPLOYMENT_OUTPUT_COLUMNS
+        assert stages["frs_council_tax"].outputs == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
+        assert stages["frs_disability"].outputs == FRS_DISABILITY_OUTPUT_COLUMNS
+        assert stages["frs_education"].outputs == FRS_EDUCATION_OUTPUT_COLUMNS
+        assert stages["frs_legacy_proxies"].outputs == FRS_LEGACY_PROXY_OUTPUT_COLUMNS
+        assert (
+            stages["frs_education_grant_split"].outputs
+            == FRS_EDUCATION_GRANT_OUTPUT_COLUMNS
+        )
+        assert (
+            stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
+        )
+        assert stages["frs_take_up"].outputs == FRS_TAKE_UP_OUTPUT_COLUMNS
+        assert (
+            stages["frs_take_up"].nonnegative_outputs
+            == FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["frs_person_draws"].outputs == FRS_PERSON_DRAW_OUTPUT_COLUMNS
+        assert (
+            stages["frs_person_draws"].nonnegative_outputs
+            == FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert (
+            stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
+        )
+        assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_OUTPUT_COLUMNS
+        assert (
+            stages["was_wealth"].nonnegative_outputs
+            == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["was_lisa"].outputs == UK_WAS_LISA_OUTPUT_COLUMNS
+        assert (
+            stages["was_lisa"].nonnegative_outputs
+            == UK_WAS_LISA_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["uc_deduction_attributes"].outputs == UC_DEDUCTION_OUTPUT_COLUMNS
+        assert (
+            stages["uc_deduction_attributes"].nonnegative_outputs
+            == UC_DEDUCTION_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["regional_property_uprating"].outputs == ()
+        assert (
+            stages["regional_property_uprating"].rewrites
+            == UK_REGIONAL_PROPERTY_REWRITES
+        )
+        assert stages["lcfs_consumption"].outputs == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        assert (
+            stages["lcfs_consumption"].nonnegative_outputs
+            == UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["etb_vat"].outputs == UK_ETB_VAT_OUTPUT_COLUMNS
+        assert (
+            stages["etb_vat"].nonnegative_outputs
+            == UK_ETB_VAT_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["etb_services"].outputs == UK_ETB_SERVICES_OUTPUT_COLUMNS
+        assert (
+            stages["etb_services"].nonnegative_outputs
+            == UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+
+    def test_e7_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
+        from microcosm.build.uk_runtime.spi_spine import (
+            UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS,
+            UK_SPI_INCOME_SPINE_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS,
+            UK_SPI_INCOME_SPINE_REWRITE_COLUMNS,
+            UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        assert (
+            stages["frs_hmrc_spine_leaves"].outputs
+            == UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS
+        )
+        assert (
+            stages["spi_support_channel"].outputs
+            == UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS
+        )
+        income = stages["hmrc_spi_income_spine"]
+        assert income.outputs == UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS
+        assert income.nonnegative_outputs == (
+            UK_SPI_INCOME_SPINE_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert income.rewrites == UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
+        assert not (set(income.outputs) & set(income.rewrites))
+
+    def test_e8_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
+        from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+        from microcosm.build.uk_runtime.cgt_support import (
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+        )
+        from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
+
+        stages = load_country_spec("uk").sources.stage_map()
+
+        assert stages["cgt_incidence_clone"].outputs == (
+            HOUSEHOLD_IS_CGT_CLONE,
+            "capital_gains",
+        )
+        assert stages["cgt_incidence_clone"].rewrites == ("capital_gains",)
+        assert stages["cgt_support_split"].outputs == (
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+        )
+        assert stages["cgt_support_split"].rewrites == ()
+        assert stages["hmrc_cgt_gains_spine"].outputs == ("capital_gains",)
+        assert stages["hmrc_cgt_gains_spine"].rewrites == ("capital_gains",)
+        assert stages["salary_sacrifice"].outputs == (
+            SALSAC_OUTPUT,
+            "employee_pension_contributions",
+            "employment_income",
+        )
+        assert stages["student_loans"].outputs == ("student_loan_plan",)
+
+
+class TestE3ManifestLockstep:
+    def test_e3_raw_tab_pins_match_spine_artifacts(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        spine_pins = {
+            artifact["table"]: (
+                artifact["locator"],
+                artifact["sha256"],
+                artifact["size_bytes"],
+            )
+            for artifact in stages["frs_spine"].artifacts
+        }
+
+        for stage_name in E3_STAGE_NAMES:
+            for artifact in stages[stage_name].artifacts:
+                assert (
+                    artifact["locator"],
+                    artifact["sha256"],
+                    artifact["size_bytes"],
+                ) == spine_pins[artifact["table"]]
+
+    def test_e3_operation_kinds_are_declared_in_order(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        assert [op.kind for op in stages["frs_employment"].operations] == [
+            "read_tables",
+            "map_coded_amounts",
+        ]
+        assert [op.kind for op in stages["frs_council_tax"].operations] == [
+            "read_tables",
+            "impute_cell_means",
+        ]
+        assert [op.kind for op in stages["frs_disability"].operations] == [
+            "derive",
+            "derive",
+        ]
+        assert [op.kind for op in stages["frs_education"].operations] == [
+            "read_tables",
+            "derive",
+            "impute_cell_means",
+        ]
+        assert [op.kind for op in stages["frs_legacy_proxies"].operations] == [
+            "read_tables",
+            "materialize_rules_engine_predictors",
+            "derive",
+        ]
+        assert [op.kind for op in stages["frs_education_grant_split"].operations] == [
+            "materialize_rules_engine_predictors",
+            "materialize_rules_engine_predictors",
+            "derive",
+        ]
+        assert [op.kind for op in stages["frs_take_up"].operations] == [
+            "aggregate_person_to_benunit",
+            "aggregate_person_to_benunit",
+            "assign_binary_with_anchored_residual",
+            "assign_binary_from_rate",
+            "assign_binary_with_anchored_residual",
+            "assign_binary_with_anchored_residual",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_banded_rates",
+            "assign_clipped_normal",
+        ]
+        assert [op.kind for op in stages["frs_person_draws"].operations] == [
+            "assign_binary_from_rate",
+            "assign_binary_from_banded_rates",
+            "assign_uniform_draw",
+            "assign_period_constant",
+        ]
+        assert [op.kind for op in stages["frs_household_draws"].operations] == [
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+        ]
+        assert [op.kind for op in stages["frs_brma"].operations] == [
+            "materialize_rules_engine_predictors",
+            "sample_categorical_from_count_table",
+        ]
+        assert [op.kind for op in stages["was_wealth"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "fold_into",
+            "support_clip",
+            "allocate_within_group_waterfall",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["was_lisa"].operations] == [
+            "clean_was_lisa_donor",
+            "materialize_rules_engine_predictors",
+            "impute_lifetime_isa_ownership",
+            "impute_lifetime_isa_balance",
+            "support_clip",
+            "cap_lifetime_isa_to_financial_wealth",
+            "aggregate_person_to_household",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["regional_property_uprating"].operations] == [
+            "uprate_to_regional_reference",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["nts_bus_travel"].operations] == [
+            "clean_nts_travel_tables",
+            "materialize_rules_engine_predictors",
+            "impute_bus_use_band",
+            "assign_trips_from_band_means",
+            "assign_bus_pass_eligibility",
+            "support_clip",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["lcfs_consumption"].operations] == [
+            "derive",
+            "uprate_donor_columns",
+            "iterative_proportional_fit",
+            "assign_binary_from_rate",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "support_clip",
+            "iterative_proportional_fit",
+            "price_domestic_energy",
+            "price_bus_journeys",
+            "fold_into",
+            "zero_when_false",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["etb_vat"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf",
+            "support_clip",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["etb_services"].operations] == [
+            "derive",
+            "uprate_donor_columns",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "support_clip",
+            "price_bus_support",
+            "compute_ratio",
+            "allocate_per_capita_from_cell_table",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
+            "retain_adjudicated_frs_hmrc_leaves",
+            "draw_employer_pension_contributions_from_rate_bands",
+        ]
+        assert [op.kind for op in stages["spi_support_channel"].operations] == [
+            "stack_zero_weight_donors",
+            "gate_zero_weight_strata",
+            "allocate_zero_weight_prior_mass",
+        ]
+        assert [op.kind for op in stages["hmrc_spi_income_spine"].operations] == [
+            "verify_pinned_hmrc_source_pair",
+            "strict_read_private_table",
+            "draw_spi_donor_ages_by_population",
+            "fit_weighted_qrf_stage1",
+            "resample_band_donor_leaves",
+            "fit_weighted_qrf_stage2",
+            "zero_pension_age_reports_below_state_pension_age",
+            "redraw_columns_from_fitted_qrf",
+            "materialize_hmrc_income_bands_fail_closed",
+            "classify_hmrc_income_facts_with_reviewed_fences",
+            "gate_distributional_effective_mass",
+        ]
+        assert [op.kind for op in stages["uc_reporter_redraw"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "aggregate_person_to_benunit",
+            "redraw_spi_reported_uc",
+        ]
+        assert [op.kind for op in stages["uc_capital_coherence"].operations] == [
+            "aggregate_person_to_benunit",
+            "redraw_spi_reporter_capital",
+            "derive",
+        ]
+        assert [op.kind for op in stages["uc_deduction_attributes"].operations] == [
+            "assign_uniform_draw",
+            "assign_uniform_draw",
+            "map_uniform_to_banded_rate",
+            "map_uniform_to_categorical",
+        ]
+        assert [op.kind for op in stages["cgt_incidence_clone"].operations] == [
+            "clone_records",
+            "draw_capital_gains_prior_from_banded_quantiles",
+        ]
+        assert [op.kind for op in stages["cgt_support_split"].operations] == [
+            "split_top_wealth_support_households"
+        ]
+        assert [op.kind for op in stages["spi_income_band_donors"].operations] == [
+            "stack_income_band_donor_households"
+        ]
+        assert stages["spi_income_band_donors"].outputs == (
+            "household_is_spi_income_band_donor",
+            "spi_income_band_donor_lower_bound",
+            "person_is_spi_income_band_carrier",
+        )
+        # The reserved copies join the synthetic channel, so the stage
+        # rewrites the support channel's lineage cells on its new rows.
+        assert stages["spi_income_band_donors"].rewrites == (
+            "household_is_spi_synthetic",
+            "person_support_channel",
+            "person_support_clone_index",
+            "person_source_id",
+            "benunit_support_channel",
+            "benunit_support_clone_index",
+            "benunit_source_id",
+            "household_support_channel",
+            "household_support_clone_index",
+            "household_source_id",
+        )
+        assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
+            "verify_vendored_fact_resource",
+            "taxable_income_proxy",
+            "rake_allocation_targets",
+            "rank_preserving_allocation",
+            "within_band_draws",
+            "sub_aea_remainder",
+            "record_mass_conservation_receipt",
+            "classify_cgt_band_facts_with_reviewed_fence",
+        ]
+        assert [op.kind for op in stages["salary_sacrifice"].operations] == [
+            "fit_weighted_qrf",
+            "convert_donors_to_target_stock",
+        ]
+        assert [op.kind for op in stages["student_loans"].operations] == [
+            "assign_student_loan_plan_cohorts",
+            "top_up_to_stock",
+            "top_up_to_stock",
+        ]
+
+    def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
+        from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
+        from microcosm.build.uk_runtime.frs_education_grants import (
+            DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES,
+            FRS_EDUCATION_GRANT_REWRITES,
+            UK_EDUCATION_GRANT_CAPACITY_PREDICTORS,
+        )
+        from microcosm.build.uk_runtime.frs_legacy_proxies import (
+            UK_LEGACY_PROXY_PREDICTORS,
+        )
+        from microcosm.build.uk_runtime.frs_take_up import (
+            UK_TAKE_UP_ANCHOR_AGGREGATES,
+        )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
+            UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            UK_LCFS_CONSUMPTION_PREDICTORS,
+        )
+        from microcosm.build.uk_runtime.uc_reporter_redraw import (
+            UC_REPORTER_AGGREGATES,
+            UC_REPORTER_PREDICTORS,
+            UC_REPORTER_SCREEN_VARIABLES,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_ENGINE_PREDICTORS,
+            UK_WAS_WEALTH_PREDICTORS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        legacy_predictors = (
+            stages["frs_legacy_proxies"].operations[1].parameters["predictors"]
+        )
+        grant_predictors = (
+            stages["frs_education_grant_split"].operations[0].parameters["predictors"]
+        )
+        dsa_predictors = (
+            stages["frs_education_grant_split"].operations[1].parameters["predictors"]
+        )
+        assert tuple(legacy_predictors) == UK_LEGACY_PROXY_PREDICTORS
+        assert tuple(grant_predictors) == UK_EDUCATION_GRANT_CAPACITY_PREDICTORS
+        assert tuple(dsa_predictors) == (
+            DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES
+        )
+        assert (
+            stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
+        )
+        assert (
+            stages["frs_take_up"].operations[0].parameters["aggregates"]
+            == UK_TAKE_UP_ANCHOR_AGGREGATES
+        )
+        reporter = stages["uc_reporter_redraw"]
+        assert (
+            tuple(reporter.operations[1].parameters["predictors"])
+            == UC_REPORTER_SCREEN_VARIABLES
+        )
+        assert reporter.operations[2].parameters["aggregates"] == UC_REPORTER_AGGREGATES
+        assert (
+            tuple(reporter.operations[3].parameters["predictors"])
+            == UC_REPORTER_PREDICTORS
+        )
+        assert (
+            tuple(stages["frs_brma"].operations[0].parameters["predictors"])
+            == UK_BRMA_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[1].parameters["predictors"])
+            == UK_WAS_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[2].parameters["predictors"])
+            == UK_WAS_WEALTH_PREDICTORS
+        )
+        lcfs = stages["lcfs_consumption"]
+        lcfs_ops = {op.kind: op for op in lcfs.operations}
+        assert "bridge_donor_column_via_qrf" not in lcfs_ops
+        assert (
+            tuple(
+                lcfs_ops["materialize_rules_engine_predictors"].parameters["predictors"]
+            )
+            == UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
+            == UK_LCFS_CONSUMPTION_PREDICTORS
+        )
+        assert (
+            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
+            == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS[:-1]
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[1].parameters["predictors"])
+            == UK_ETB_VAT_PREDICTORS
+        )
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_EDUCATION_COUNTS,
+            UK_ETB_SERVICES_ENGINE_VARIABLES,
+        )
+
+        assert (
+            tuple(stages["etb_services"].operations[2].parameters["predictors"])
+            == UK_ETB_SERVICES_ENGINE_VARIABLES
+        )
+        assert set(
+            stages["etb_services"].operations[2].parameters["derived_predictors"]
+        ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
+        assert (
+            tuple(stages["etb_services"].operations[3].parameters["targets"])
+            == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
+        )
+        rate_keys = [
+            op.parameters["rate_key"]
+            for stage_name in (
+                "frs_take_up",
+                "frs_person_draws",
+                "frs_household_draws",
+            )
+            for op in stages[stage_name].operations
+            if "rate_key" in op.parameters
+        ]
+        assert rate_keys == [
+            "child_benefit",
+            "child_benefit_opts_out_rate",
+            "pension_credit",
+            "universal_credit",
+            "tax_free_childcare",
+            "extended_childcare",
+            "universal_childcare",
+            "targeted_childcare",
+            "marriage_allowance",
+            "tv_ownership_rate",
+            "tv_licence_evasion_rate",
+            "first_time_buyer_rate",
+            "property_purchase_rate",
+        ]
+        scp_bands = stages["frs_person_draws"].operations[1].parameters["bands"]
+        assert [band["rate_key"] for band in scp_bands] == [
+            "scp_under_6",
+            "scp_6_plus",
+        ]
+
+    def test_every_e4_stochastic_operation_declares_integer_seed(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        for stage_name in E4_STAGE_NAMES:
+            for operation in stages[stage_name].operations:
+                if operation.kind in {
+                    "assign_binary_with_anchored_residual",
+                    "assign_binary_from_rate",
+                    "assign_binary_from_banded_rates",
+                    "assign_uniform_draw",
+                    "assign_clipped_normal",
+                    "sample_categorical_from_count_table",
+                }:
+                    assert isinstance(operation.parameters.get("seed"), int)
+
+    def test_e5_debt_segment_predictors_lockstep(self) -> None:
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_DEBT_SEGMENT_PREDICTORS,
+            UK_WAS_WEALTH_PREDICTORS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        qrf = stages["was_wealth"].operations[2]
+
+        assert qrf.kind == "fit_weighted_qrf_chain"
+        assert tuple(qrf.parameters["debt_segment_predictors"]) == (
+            UK_WAS_DEBT_SEGMENT_PREDICTORS
+        )
+        # The extra predictor belongs to the debt segment only: the shared
+        # base list, and so E5's first three segments, are unchanged.
+        assert not set(UK_WAS_DEBT_SEGMENT_PREDICTORS) & set(
+            qrf.parameters["predictors"]
+        )
+        assert tuple(qrf.parameters["predictors"]) == UK_WAS_WEALTH_PREDICTORS
+
+    def test_e5_qrf_operation_declares_integer_seed(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        qrf = stages["was_wealth"].operations[2]
+
+        assert qrf.kind == "fit_weighted_qrf_chain"
+        assert qrf.parameters["seed"] == 0
+
+    def test_e6_declared_seed_lockstep(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        lcfs_seeded = {
+            op.kind: op.parameters["seed"]
+            for op in stages["lcfs_consumption"].operations
+            if "seed" in op.parameters
+        }
+        assert lcfs_seeded == {
+            "assign_binary_from_rate": 0,
+            "fit_weighted_qrf_chain": 0,
+            "price_domestic_energy": 0,
+        }
+        assert stages["etb_vat"].operations[2].parameters["seed"] == 0
+        assert stages["etb_services"].operations[3].parameters["seed"] == 0
+
+    def test_e7_declared_seed_lockstep(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
+        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 42
+        # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
+        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 44
+        assert stages["hmrc_spi_income_spine"].operations[5].parameters["seed"] == 43
+        # The donor age draw and the State Pension age guard take no seed of
+        # their own: ages draw on the stage-1 seed, the guard is deterministic
+        # (microcosm#1069).
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[2].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[6].parameters
+        assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
+        assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
+        assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
+
+    def test_e8_declared_seed_lockstep(self) -> None:
+        stages = load_country_spec("uk").sources.stage_map()
+
+        assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
+        # The support split is deterministic: no seed, no salt (microcosm#1045).
+        assert "seed" not in stages["cgt_support_split"].operations[0].parameters
+        assert "salt" not in stages["cgt_support_split"].operations[0].parameters
+        assert (
+            stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
+        )
+        assert stages["salary_sacrifice"].operations[0].parameters["seed"] == 42
+        assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 2024
+        assert [
+            operation.parameters["seed"]
+            for operation in stages["student_loans"].operations[1:]
+        ] == [42, 42]
+
+    def test_e9_declared_seed_lockstep(self) -> None:
+        from microcosm.build.uk_runtime.uc_deduction_attributes import (
+            UK_UC_DEDUCTION_ATTRIBUTES_DECLARED_SEEDS,
+        )
+
+        stage = load_country_spec("uk").sources.stage_map()["uc_deduction_attributes"]
+        declared = {
+            operation.parameters["output"]: operation.parameters["seed"]
+            for operation in stage.operations
+            if operation.kind == "assign_uniform_draw"
+        }
+
+        assert declared == UK_UC_DEDUCTION_ATTRIBUTES_DECLARED_SEEDS
+
+    def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
+        spec = load_country_spec("uk")
+        implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
+
+        driver_stage_names = tuple(_uk_graph_stage_names(spec))
+        plan = country_stage_plan(spec, implementations, stage_names=driver_stage_names)
+
+        assert [stage.name for stage in plan.stages] == list(driver_stage_names)
+
+    def test_internal_disability_carriers_stay_out_of_export_registers(self) -> None:
+        from microcosm.build.uk_runtime.frs_disability import (
+            UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.release_input_coverage import (
+            uk_release_input_coverage_required_columns,
+        )
+        from microcosm.build.uk_runtime.terminal_gates import (
+            UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        )
+
+        gates = _load_json(UK_PACKAGE / "gates.json")
+        export_gate = next(
+            gate for gate in gates["gates"] if gate["id"] == "uk_export_surface"
+        )
+        allowed_extra = set(export_gate["parameters"]["allowed_extra_columns"])
+        allowed_extra.update(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+        required = uk_release_input_coverage_required_columns()
+
+        for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS:
+            assert f"person.{column}" not in allowed_extra
+            assert column not in required
+
+    def test_stage2_outputs_are_backed_by_runtime_written_columns(self) -> None:
+        from microcosm.build.uk_runtime.spi_support import (
+            SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
+            SPI_HMRC_QRF_AUXILIARY_COLUMNS,
+            SPI_INCOME_IMPUTATION_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        stage2 = stages["hmrc_spi_income_spine"]
+        written = (
+            set(SPI_INCOME_IMPUTATION_COLUMNS)
+            | set(SPI_HMRC_QRF_AUXILIARY_COLUMNS)
+            | set(SPI_HMRC_DERIVED_AUXILIARY_COLUMNS)
+        )
+        # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
+        # by the stage even though the QRF output surface excludes it.
+        written.add("employment_income")
+        unbacked = [name for name in stage2.outputs if name not in written]
+        assert unbacked == [], (
+            "Declared outputs with no named runtime written-column constant "
+            f"backing them: {unbacked}. Either the manifest declares a "
+            "concept instead of a persisted column, or the runtime constant "
+            "moved without the manifest following."
+        )
+
+
+def test_every_column_writing_stage_declares_the_receipt_its_module_records() -> None:
+    """One source of truth per stage: the manifest's receipt reason is the
+    module constant the transform appends (the gate matches on the string)."""
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_MASS_CONSERVATION_REASON
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.regional_uprating import (
+        UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.was_lisa import (
+        UK_WAS_LISA_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+    )
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stages = spec.sources.stage_map()
+    expected = {
+        "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+        "was_lisa": UK_WAS_LISA_MASS_CONSERVATION_REASON,
+        "regional_property_uprating": (
+            UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
+        ),
+        "lcfs_consumption": UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+        "etb_vat": UK_ETB_VAT_MASS_CONSERVATION_REASON,
+        "etb_services": UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+    }
+    for stage_name, reason in expected.items():
+        receipts = [
+            op
+            for op in stages[stage_name].operations
+            if op.kind == "record_mass_conservation_receipt"
+        ]
+        assert len(receipts) == 1, stage_name
+        assert receipts[0].parameters["reason"] == reason, stage_name
+        assert receipts[0].parameters["entity"] == "household", stage_name
+        assert receipts[0].parameters["declared_factor"] == 1.0, stage_name
+    assert len(set(expected.values())) == len(expected)

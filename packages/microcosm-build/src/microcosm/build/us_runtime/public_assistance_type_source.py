@@ -30,6 +30,7 @@ from typing import BinaryIO
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.asec_sources import ASEC_DEFAULT_POOL_INCOME_YEARS
 from microcosm.build.us_runtime.education_assistance_source import (
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
     AsecEducationArchive,
@@ -81,7 +82,7 @@ class AsecPublicAssistanceTypeAudit:
     paw_positive_tanf_rows: int
 
 
-#: One exact audit pin per pooled income year, measured from the archives
+#: One exact audit pin per pinned income year, measured from the archives
 #: pinned in :data:`ASEC_EDUCATION_ASSISTANCE_ARCHIVES`.  All values are
 #: integers, so drift detection is exact.
 ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS: dict[int, AsecPublicAssistanceTypeAudit] = {
@@ -107,6 +108,13 @@ ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS: dict[int, AsecPublicAssistanceTypeAudit]
             paw_type_counts=(141_415, 406, 289, 15),
             paw_positive_rows=710,
             paw_positive_tanf_rows=421,
+        ),
+        AsecPublicAssistanceTypeAudit(
+            income_year=2025,
+            rows=134_729,
+            paw_type_counts=(134_163, 317, 223, 26),
+            paw_positive_rows=566,
+            paw_positive_tanf_rows=343,
         ),
     )
 }
@@ -232,7 +240,7 @@ def _load_one_source(
 def load_asec_public_assistance_type_sources(
     paths: Mapping[int, str | Path] | None = None,
     *,
-    income_years: tuple[int, ...] = ASEC_PUBLIC_ASSISTANCE_TYPE_INCOME_YEARS,
+    income_years: tuple[int, ...] = ASEC_DEFAULT_POOL_INCOME_YEARS,
 ) -> pd.DataFrame:
     """Load and audit-verify the pooled public-assistance-type sidecar.
 

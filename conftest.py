@@ -11,24 +11,57 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
 _ROOT = str(Path(__file__).resolve().parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from tools.ci_test_plan import (  # noqa: E402
+    TEST_GROUPS,
+    TestGroup,
+    group_name_for_collection_path,
+)
 
-def pytest_collection_modifyitems(config, items):
-    engine_markers = {
-        "requires_us": "policyengine_us",
-        "requires_uk": "policyengine_uk",
-    }
-    for marker_name, module_name in engine_markers.items():
-        if importlib.util.find_spec(module_name) is not None:
+
+def pytest_addoption(parser) -> None:
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="collect tests under tests/integration/",
+    )
+
+
+def _test_group(path: Path) -> TestGroup | None:
+    """Return registry metadata for the group containing a collection path."""
+
+    group = group_name_for_collection_path(path)
+    return TEST_GROUPS.get(group) if group is not None else None
+
+
+def pytest_ignore_collect(collection_path: Path, config) -> bool | None:
+    """Exclude unavailable test environments before importing their modules."""
+
+    group = _test_group(Path(collection_path))
+    if group is None:
+        return None
+    if group.integration and not config.getoption("--run-integration"):
+        return True
+    if (
+        group.engine_module is not None
+        and importlib.util.find_spec(group.engine_module) is None
+    ):
+        return True
+    return None
+
+
+def pytest_collection_modifyitems(items) -> None:
+    """Expose directory-derived country requirements as pytest markers."""
+
+    for item in items:
+        group = _test_group(Path(item.path))
+        if group is None:
             continue
-        skip = pytest.mark.skip(
-            reason=f"requires {module_name.replace('_', '-')} extra"
-        )
-        for item in items:
-            if item.get_closest_marker(marker_name):
-                item.add_marker(skip)
+        if group.integration:
+            item.add_marker("integration")
+        if group.engine_module is not None:
+            item.add_marker(f"requires_{group.country}")

@@ -15,10 +15,10 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.cgt_structure import (
-    HOUSEHOLD_IS_CGT_BAND_DONOR,
     HOUSEHOLD_IS_CGT_CLONE,
     _assert_closed_world_operations,
 )
+from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -43,9 +43,9 @@ SALSAC_QRF_ESTIMATORS = 100
 SALSAC_CONVERSION_SEED = 2024
 SALSAC_CONVERSION_SALT = "salary_sacrifice_conversion"
 SALSAC_MASS_CHANGE_REASON = (
-    "Salary-sacrifice support stage rewrites pension columns only; household "
-    "rows and typed household weights pass through and total household mass "
-    "is conserved."
+    "Salary-sacrifice support stage rewrites pension columns and converted "
+    "records' pay; household rows and typed household weights pass through and "
+    "total household mass is conserved."
 )
 
 
@@ -121,7 +121,7 @@ class UKSalarySacrificeStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return (SALSAC_OUTPUT, "employee_pension_contributions")
+        return (SALSAC_OUTPUT, "employee_pension_contributions", "employment_income")
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -160,9 +160,9 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     clones = person_households.map(
         households.get(HOUSEHOLD_IS_CGT_CLONE, pd.Series(False, index=households.index))
     ).fillna(False)
-    donors = person_households.map(
+    support_copies = person_households.map(
         households.get(
-            HOUSEHOLD_IS_CGT_BAND_DONOR,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
             pd.Series(False, index=households.index),
         )
     ).fillna(False)
@@ -170,7 +170,10 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     if asked.isna().any():
         raise ValueError("salary_sacrifice_asked contains non-numeric values.")
     training_mask = (
-        channels.eq("frs") & ~clones.astype(bool) & ~donors.astype(bool) & asked.eq(1)
+        channels.eq("frs")
+        & ~clones.astype(bool)
+        & ~support_copies.astype(bool)
+        & asked.eq(1)
     )
     if not training_mask.any():
         raise ValueError("Salary-sacrifice QRF has no eligible asked FRS rows.")
@@ -230,9 +233,19 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     converted = donor_pool & (draws < rate)
     moved_amount = float(employee[converted].sum())
     final_ss[converted] = employee[converted]
+    # Sacrificed pay leaves the contract: the engine reads employment_income
+    # after sacrifice, so a converted record's pay drops by the amount that
+    # becomes salary sacrifice. Without this the converted contribution left
+    # taxable pay and NI unchanged while losing its net-pay relief
+    # (microcosm#1069 c9).
+    employment_income = employment_income.copy()
+    employment_income[converted] = np.maximum(
+        employment_income[converted] - employee[converted], 0.0
+    )
     employee[converted] = 0.0
     person[SALSAC_OUTPUT] = final_ss
     person["employee_pension_contributions"] = employee
+    person["employment_income"] = employment_income
     post_headcount = float(person_weights[final_ss > 0.0].sum())
     converted_mass = float(person_weights[converted].sum())
     total = frame.weights_for("household").total
@@ -296,7 +309,7 @@ def _assert_salary_sacrifice_stage_parameters(
                 {
                     "training_population": (
                         "support_channel == frs and not capital-gains clone and "
-                        "not CGT band donor and salary_sacrifice_asked == 1"
+                        "not CGT support copy and salary_sacrifice_asked == 1"
                     ),
                     "target_population": "salary_sacrifice_asked != 1 frame-wide",
                     "predictors": list(SALSAC_PREDICTORS),
@@ -323,7 +336,8 @@ def _assert_salary_sacrifice_stage_parameters(
                     "rate_cap": SALSAC_RATE_CAP,
                     "move": (
                         "full employee_pension_contributions to "
-                        "pension_contributions_via_salary_sacrifice; source zeroed"
+                        "pension_contributions_via_salary_sacrifice; source zeroed; "
+                        "employment_income lowered by the amount sacrificed"
                     ),
                     "seed": SALSAC_CONVERSION_SEED,
                     "salt": SALSAC_CONVERSION_SALT,

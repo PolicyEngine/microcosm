@@ -41,6 +41,21 @@ PLAN_SALTS = {
     "PLAN_2": "student_loan_plan_2",
 }
 PLAN_2025_STOCKS = {"PLAN_2": 8_940_000.0, "PLAN_5": 10_000.0}
+#: How a plan's shortfall against the SLC stock is realised (microcosm#1049):
+#: eligible persons are walked in ascending identity-keyed uniform order, a
+#: person is taken when their weight fits inside the remaining shortfall and
+#: skipped when it would overshoot, and after the walk the skipped person
+#: nearest the remainder is taken if that brings the realised mass nearer the
+#: shortfall. The Bernoulli draw it replaces realised a shortfall of about one
+#: person's weight as zero or two rows, off by around 100 percent either way.
+TOP_UP_IDENTITY_UNIFORM_ORDER = "identity_uniform_order_walk"
+TOP_UP_REALIZATION_BOUND = (
+    "the realised top-up sits within the weight of the lightest person the walk "
+    "skipped of the shortfall, so the plan's final England count sits within that "
+    "weight of the stock; a pool lighter than the shortfall is taken whole and "
+    "receipted as exhausted, and a plan already at or above its stock is left as "
+    "reported"
+)
 STUDENT_LOANS_MASS_CHANGE_REASON = (
     "Student-loan plan assignment writes an enum column only; household rows "
     "and typed household weights pass through and total household mass is "
@@ -60,18 +75,35 @@ def load_slc_liable_stocks() -> Mapping[str, Any]:
 
 @dataclass(frozen=True)
 class UKStudentLoanPlanReceipt:
+    """One plan's top-up: what the walk was asked for and what it realised.
+
+    ``realization_gap`` is the realised top-up minus the shortfall, in people;
+    when the walk skipped anyone it is smaller in size than
+    ``lightest_skipped_weight``. ``pool_exhausted`` marks a pool lighter than
+    the shortfall, taken whole. ``stock_attainment`` is the final England
+    count over the stock.
+    """
+
     plan: str
     stock: float
     reported_count: float
     reported_england_count: float
     shortfall: float
+    eligible_rows: int
     eligible_mass: float
-    rate: float
     topped_up_rows: int
     topped_up_mass: float
-    expected_topped_up_mass: float
-    realization_deviation: float
+    rows_skipped_for_weight: int
+    lightest_skipped_weight: float | None
+    realization_gap: float
+    pool_exhausted: bool
     final_england_count: float
+    stock_attainment: float | None
+    #: Where the walk's taken rows sit in the spine's lineage: rows and mass
+    #: by household support channel, on CGT support copies and on incidence
+    #: clones. The walk prefers light rows, and after microcosm#1045 the
+    #: lightest rows are the support split's copies, so the receipt shows it.
+    topped_up_lineage: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -79,13 +111,17 @@ class UKStudentLoanPlanReceipt:
             "reported_count": self.reported_count,
             "reported_england_count": self.reported_england_count,
             "shortfall": self.shortfall,
+            "eligible_rows": self.eligible_rows,
             "eligible_mass": self.eligible_mass,
-            "rate": self.rate,
             "topped_up_rows": self.topped_up_rows,
             "topped_up_mass": self.topped_up_mass,
-            "expected_topped_up_mass": self.expected_topped_up_mass,
-            "realization_deviation": self.realization_deviation,
+            "rows_skipped_for_weight": self.rows_skipped_for_weight,
+            "lightest_skipped_weight": self.lightest_skipped_weight,
+            "realization_gap": self.realization_gap,
+            "pool_exhausted": self.pool_exhausted,
             "final_england_count": self.final_england_count,
+            "stock_attainment": self.stock_attainment,
+            "topped_up_lineage": dict(self.topped_up_lineage),
         }
 
 
@@ -143,7 +179,14 @@ def assign_student_loan_plans(
     stocks: Mapping[str, Any],
     year: int,
 ) -> UKStudentLoansResult:
-    """Assign reported cohorts, then top up PLAN_5 before PLAN_2."""
+    """Assign reported cohorts, then top up PLAN_5 before PLAN_2.
+
+    Each top-up realises the plan's shortfall against the SLC liable stock by
+    the identity-keyed greedy walk in :func:`_walk_top_up`, so the realised
+    mass sits within one skipped person's weight of the shortfall rather than
+    being a Bernoulli draw whose outcome for a shortfall of about one weight
+    is zero or two rows (microcosm#1049).
+    """
 
     validate_uk_national_frame(frame)
     person = frame.table("person").copy()
@@ -182,6 +225,7 @@ def assign_student_loan_plans(
     person_weights = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )
+    person_lineage = _person_lineage(person, household)
     start_year = year - age + 18
     has_repayments = repayments > 0.0
     plan = np.full(len(person), "NONE", dtype=object)
@@ -201,14 +245,28 @@ def assign_student_loan_plans(
             & _plan_age_cohort_eligibility(plan_name, age=age, start_year=start_year)
         )
         eligible_mass = float(person_weights[eligible].sum())
-        rate = min(1.0, shortfall / eligible_mass) if eligible_mass > 0.0 else 0.0
-        draws = stable_identity_uniforms(
+        eligible_index = np.flatnonzero(eligible)
+        walk_key = stable_identity_uniforms(
             person["person_id"].to_numpy(),
             seed=STUDENT_LOAN_SEED,
             salt=PLAN_SALTS[plan_name],
         )
-        topped_up = eligible & (draws < rate)
+        order = eligible_index[
+            np.lexsort(
+                (
+                    person["person_id"].to_numpy()[eligible_index],
+                    walk_key[eligible_index],
+                )
+            )
+        ]
+        taken, skipped_rows, lightest_skipped = _walk_top_up(
+            person_weights, order, shortfall
+        )
+        topped_up = np.zeros(len(person), dtype=bool)
+        topped_up[taken] = True
         plan[topped_up] = plan_name
+        topped_up_mass = float(person_weights[topped_up].sum())
+        final_england = float(person_weights[(plan == plan_name) & is_england].sum())
         receipts[plan_name] = UKStudentLoanPlanReceipt(
             plan=plan_name,
             stock=stock,
@@ -217,20 +275,19 @@ def assign_student_loan_plans(
                 person_weights[(reported_plan == plan_name) & is_england].sum()
             ),
             shortfall=shortfall,
+            eligible_rows=int(eligible_index.size),
             eligible_mass=eligible_mass,
-            rate=rate,
-            topped_up_rows=int(topped_up.sum()),
-            topped_up_mass=float(person_weights[topped_up].sum()),
-            expected_topped_up_mass=rate * eligible_mass,
-            realization_deviation=(
-                (float(person_weights[topped_up].sum()) - rate * eligible_mass)
-                / (rate * eligible_mass)
-                if rate * eligible_mass > 0.0
-                else 0.0
+            topped_up_rows=int(taken.size),
+            topped_up_mass=topped_up_mass,
+            rows_skipped_for_weight=skipped_rows,
+            lightest_skipped_weight=lightest_skipped,
+            realization_gap=topped_up_mass - shortfall,
+            pool_exhausted=bool(
+                shortfall > 0.0 and skipped_rows == 0 and topped_up_mass < shortfall
             ),
-            final_england_count=float(
-                person_weights[(plan == plan_name) & is_england].sum()
-            ),
+            final_england_count=final_england,
+            stock_attainment=final_england / stock if stock > 0.0 else None,
+            topped_up_lineage=_topped_up_lineage(person_lineage, taken, person_weights),
         )
     unknown = sorted(set(plan) - set(STUDENT_LOAN_ENUM_DOMAIN))
     if unknown:
@@ -259,6 +316,104 @@ def assign_student_loan_plans(
         calibration_year=year,
         plans=receipts,
     )
+
+
+#: Household lineage columns the top-up receipt reports the taken rows on,
+#: when the frame carries them: the SPI support channel, the CGT support
+#: split's copy flag and the incidence clone flag.
+_LINEAGE_CHANNEL_COLUMN = "household_support_channel"
+_LINEAGE_SUPPORT_COPY_COLUMN = "household_is_cgt_support_copy"
+_LINEAGE_CLONE_COLUMN = "household_is_capital_gains_clone"
+
+
+def _person_lineage(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
+    """Map each person's household lineage columns, absent ones left out."""
+
+    by_household = household.set_index("household_id")
+    lineage = pd.DataFrame(index=person.index)
+    for column in (
+        _LINEAGE_CHANNEL_COLUMN,
+        _LINEAGE_SUPPORT_COPY_COLUMN,
+        _LINEAGE_CLONE_COLUMN,
+    ):
+        if column in by_household.columns:
+            mapped = person["person_household_id"].map(by_household[column])
+            if mapped.isna().any():
+                raise ValueError(
+                    f"Student-loan people must all map to a household {column!r}."
+                )
+            lineage[column] = mapped.to_numpy()
+    return lineage
+
+
+def _topped_up_lineage(
+    lineage: pd.DataFrame, taken: np.ndarray, person_weights: np.ndarray
+) -> dict[str, object]:
+    """Rows and mass the walk took, by support channel, copy and clone flag."""
+
+    taken = np.asarray(taken, dtype=int)
+    weights = person_weights[taken]
+    receipt: dict[str, object] = {"columns": list(lineage.columns)}
+    if _LINEAGE_CHANNEL_COLUMN in lineage.columns:
+        channels = np.asarray(
+            [_enum_name(value) for value in lineage[_LINEAGE_CHANNEL_COLUMN]],
+            dtype=object,
+        )[taken]
+        receipt["rows_by_channel"] = {
+            str(channel): int((channels == channel).sum())
+            for channel in sorted(set(channels.tolist()))
+        }
+        receipt["mass_by_channel"] = {
+            str(channel): float(weights[channels == channel].sum())
+            for channel in sorted(set(channels.tolist()))
+        }
+    for key, column in (
+        ("support_copy", _LINEAGE_SUPPORT_COPY_COLUMN),
+        ("clone", _LINEAGE_CLONE_COLUMN),
+    ):
+        if column in lineage.columns:
+            flags = lineage[column].to_numpy(dtype=bool)[taken]
+            receipt[f"{key}_rows"] = int(flags.sum())
+            receipt[f"{key}_mass"] = float(weights[flags].sum())
+    return receipt
+
+
+def _walk_top_up(
+    weights: np.ndarray, order: np.ndarray, shortfall: float
+) -> tuple[np.ndarray, int, float | None]:
+    """Greedy weight-fitting walk towards a shortfall (microcosm#1049).
+
+    Along ``order`` a person is taken when their weight fits inside the
+    remaining shortfall and skipped when it would overshoot; after the walk
+    the skipped person nearest the remainder is taken if that brings the
+    realised mass nearer the shortfall, as the gas-connection walk does. Every
+    skipped person outweighs the remainder at the time they were passed, so
+    the realised mass ends within the lightest skipped weight of the
+    shortfall. Returns the taken positions, the number of persons skipped and
+    left out, and the lightest skipped weight (``None`` when nobody was
+    skipped, which is when the pool was lighter than the shortfall).
+    """
+
+    remaining = float(shortfall)
+    taken: list[int] = []
+    skipped: list[int] = []
+    for index in order:
+        if remaining <= 0.0:
+            break
+        weight = float(weights[index])
+        if weight <= remaining:
+            taken.append(int(index))
+            remaining -= weight
+        else:
+            skipped.append(int(index))
+    if remaining > 0.0 and skipped:
+        nearest = min(skipped, key=lambda i: abs(float(weights[i]) - remaining))
+        if abs(float(weights[nearest]) - remaining) < remaining:
+            taken.append(nearest)
+            skipped.remove(nearest)
+            remaining -= float(weights[nearest])
+    lightest = min((float(weights[i]) for i in skipped), default=None)
+    return np.asarray(taken, dtype=int), len(skipped), lightest
 
 
 def _plan_age_cohort_eligibility(
@@ -345,6 +500,8 @@ def _assert_student_loans_stage_parameters(
                     "highest_education": "TERTIARY",
                     "seed": STUDENT_LOAN_SEED,
                     "salt": PLAN_SALTS["PLAN_5"],
+                    "realization": TOP_UP_IDENTITY_UNIFORM_ORDER,
+                    "realization_bound": TOP_UP_REALIZATION_BOUND,
                 },
             ),
             (
@@ -363,6 +520,8 @@ def _assert_student_loans_stage_parameters(
                     "highest_education": "TERTIARY",
                     "seed": STUDENT_LOAN_SEED,
                     "salt": PLAN_SALTS["PLAN_2"],
+                    "realization": TOP_UP_IDENTITY_UNIFORM_ORDER,
+                    "realization_bound": TOP_UP_REALIZATION_BOUND,
                     "reason": STUDENT_LOANS_MASS_CHANGE_REASON,
                 },
             ),

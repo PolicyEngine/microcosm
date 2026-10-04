@@ -1,0 +1,149 @@
+"""The committed spine acceptance receipt binds to the production plan.
+
+microcosm#771: the previous acceptance evidence quietly described a 24-stage
+build after the plan had grown to 25. This binder makes that class of drift a
+CI failure. The #828/#832/#685 insertions and the #785 and SPI-first reorders are
+deliberately pending their licensed re-mints, so the historical receipt stays truthful while the
+test composes only those reviewed transformations. Each transformation pins
+the receipt state it expects and must be deleted when that re-mint lands.
+"""
+
+from __future__ import annotations
+
+import json
+from importlib.resources import files
+
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.graph import compile_graph
+
+
+def _receipt() -> dict:
+    return json.loads(
+        files("microcosm.build.uk")
+        .joinpath("spine_candidate_acceptance.json")
+        .read_text()
+    )
+
+
+def _production_graph_stage_names() -> tuple[str, ...]:
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    declared = {stage.stage for stage in spec.sources.stages}
+    compiled = compile_graph(uk_spine_graph(spec))
+    return tuple(node_id for node_id in compiled.order if node_id in declared)
+
+
+def _apply_pending_roster_transformations(
+    accepted_roster: tuple[str, ...],
+) -> tuple[str, ...]:
+    roster = list(accepted_roster)
+
+    # #832 I5: both UC insertions are one pending receipt transformation.
+    assert "uc_reporter_redraw" not in roster
+    assert "uc_capital_coherence" not in roster
+    cgt_index = roster.index("cgt_incidence_clone")
+    roster[cgt_index:cgt_index] = [
+        "uc_reporter_redraw",
+        "uc_capital_coherence",
+    ]
+
+    # #685 (E9) re-mint pending: the UC deduction attributes stage runs
+    # directly after the capital-coherence stage.
+    assert "uc_deduction_attributes" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_deduction_attributes")
+
+    # #785 L3: the historical receipt still has age_tail at the spine tail.
+    assert roster[-1] == "age_tail"
+    roster.remove("age_tail")
+    roster.insert(1, "age_tail")
+
+    # #791 re-mint pending: the relationship-grid stage runs right after the
+    # final age is fixed.
+    assert "frs_relationships" not in roster
+    roster.insert(roster.index("age_tail") + 1, "frs_relationships")
+
+    # #725 re-mint pending: the asset-type stage classifies the redrawn
+    # gains right after the amounts stage.
+    assert "hmrc_cgt_asset_type_spine" not in roster
+    roster.insert(roster.index("hmrc_cgt_gains_spine") + 1, "hmrc_cgt_asset_type_spine")
+
+    # #970 re-mint pending: the incidence anchor moves non-liable clone mass
+    # back to the originals right after the asset-type stage.
+    assert "cgt_incidence_anchor" not in roster
+    roster.insert(roster.index("hmrc_cgt_asset_type_spine") + 1, "cgt_incidence_anchor")
+    # #1045 re-mint pending: the band-donor stack is retired and the support
+    # split runs right before the incidence clone.
+    assert "cgt_support_split" not in roster
+    roster.remove("cgt_band_donors")
+    roster.insert(roster.index("cgt_incidence_clone"), "cgt_support_split")
+    # #930 re-mint pending: the NTS bus-travel stage imputes the journeys the
+    # consumption stage prices, so it runs right before lcfs_consumption.
+    assert "nts_bus_travel" not in roster
+    roster.insert(roster.index("lcfs_consumption"), "nts_bus_travel")
+    # PolicyEngine/chronicle#280 lane re-mint pending: the reserved income band donors run
+    # right after the support channel and before the income draw.
+    assert "spi_income_band_donors" not in roster
+    roster.insert(roster.index("spi_support_channel") + 1, "spi_income_band_donors")
+    # SPI-first re-mint pending: the SPI block moves from after etb_services to
+    # right after frs_brma, so the donor imputations see the SPI rows.
+    spi_block = [
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "spi_income_band_donors",
+        "hmrc_spi_income_spine",
+    ]
+    start = roster.index("frs_hmrc_spine_leaves")
+    assert roster[start : start + len(spi_block)] == spi_block
+    assert roster[start - 1] == "etb_services"
+    del roster[start : start + len(spi_block)]
+    brma = roster.index("frs_brma")
+    roster[brma + 1 : brma + 1] = spi_block
+    # SPI housing shell re-mint pending: the SPI households' housing is imputed
+    # from their own incomes right after the SPI income chain.
+    assert "spi_housing_shell" not in roster
+    roster.insert(roster.index("hmrc_spi_income_spine") + 1, "spi_housing_shell")
+    # #1003 re-mint pending: the Lifetime ISA holdings read the was_wealth
+    # household draws, so they run right after was_wealth.
+    assert "was_lisa" not in roster
+    roster.insert(roster.index("was_wealth") + 1, "was_lisa")
+    # microcosm#1069 re-mint pending: the Pension Credit take-up redraw reads
+    # the post-SPI incomes, so it runs right after UC capital coherence.
+    assert "pension_credit_take_up" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "pension_credit_take_up")
+    return tuple(roster)
+
+
+def test_receipt_roster_is_the_production_plan():
+    receipt = _receipt()
+    accepted_roster = tuple(receipt["candidate"]["stage_roster"])
+    production_roster = _production_graph_stage_names()
+
+    assert _apply_pending_roster_transformations(accepted_roster) == production_roster
+    assert receipt["candidate"]["stage_count"] == len(accepted_roster)
+
+
+def test_receipt_identity_and_verdicts_are_the_accepted_ones():
+    receipt = _receipt()
+    assert len(receipt["candidate"]["sha256"]) == 64
+    assert int(receipt["candidate"]["entity_row_counts"]["household"]) == 52846
+    assert receipt["twin"]["payload_identical"] is True
+    ladder = receipt["identity_ladder"]
+    assert set(ladder) == {"e4", "e5", "e6", "e7", "e8"}
+    for check, row in ladder.items():
+        assert row["identical_under_permutation"] is True, check
+        assert row["matches_stored_columns"] is True, check
+    # The historical spine-i receipt remains truthful. The #785 L3 re-mint
+    # flips both fields to stage_time_disaggregated and deletes the matching
+    # pending roster transformation above.
+    assert ladder["e6"]["nhs_age_basis"] == "stage_time_top_coded"
+    assert ladder["e8"]["donor_age_basis"] == "stage_time_top_coded"
+    parity = receipt["strict_parity"]
+    assert parity["verdict"] == "signed_parity"
+    assert parity["unsigned_differences"] == 0
+    assert parity["strict_failure"] is False
+    assert parity["share_band"]["effective"] == parity["share_band"]["contract"]
+    battery = receipt["spine_battery"]
+    assert battery["blocked_at_phase"] is None
+    assert battery["statuses"] == {"passed": 14}
+    assert len(battery["report_sha256"]) == 64

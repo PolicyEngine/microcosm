@@ -28,11 +28,17 @@ from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.cgt_asset_type import (
+    CGT_ASSET_TYPE_COLUMN,
     CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     CGT_ASSET_TYPE_RESIDENTIAL,
+    HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS,
     HMRCCGTAssetTypeFacts,
+    HMRCCGTBADRBand,
     HMRCCGTTable7Type,
     UKCGTAssetTypeStageTransform,
+    UKCGTBADRParameters,
+    assign_uk_cgt_asset_types,
+    uk_cgt_badr_parameters,
 )
 from microcosm.build.uk_runtime.cgt_imputation import (
     UKCGTPolicyParameters,
@@ -40,10 +46,10 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     uk_cgt_spine_stage_transform,
 )
 from microcosm.build.uk_runtime.cgt_structure import (
-    UKCGTBandDonorStageTransform,
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
+from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -71,7 +77,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
-from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS, uk_spine_graph
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -94,6 +100,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.pension_credit_take_up import (
+    UKPensionCreditTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -102,6 +111,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 )
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
+)
+from microcosm.build.uk_runtime.spi_housing_shell import (
+    UKSPIHousingShellStageTransform,
 )
 from microcosm.build.uk_runtime.spi_income import SPI_DONOR_REQUIRED_COLUMNS
 from microcosm.build.uk_runtime.spi_spine import (
@@ -120,6 +132,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -141,11 +154,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 33
+UK_FIXTURE_STAGE_COUNT = 36
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 33-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 36-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -480,6 +493,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "DEDUC1": 2.0,
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
+                "JOBSECT": 1 + household_id % 2,
             }
         )
         pensions.append(
@@ -504,6 +518,18 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PENAMT": 4.0,
             }
         )
+        if household_id % 2 == 0:
+            # An occupational scheme for the employer contribution draw
+            # (microcosm#1069 c9); the FRS spine reads only personal pensions.
+            penprov.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "STEMPPEN": 2,
+                    "PENAMT": 0.0,
+                }
+            )
         oddjobs.append(
             {
                 "SERNUM": household_id,
@@ -573,10 +599,80 @@ def _write_frs_raw(root: Path) -> dict[str, dict[str, object]]:
     return artifacts
 
 
+def _was_person_donor() -> pd.DataFrame:
+    """Synthetic WAS round-8 persons of the 64 synthetic WAS households.
+
+    Mixed-case raw names as in the deposit. Adults and dependent children per
+    household follow the household tab's NumAdultR8/NumCh18R8; Lifetime ISA
+    holders are younger adults with small values (below the households' gross
+    financial wealth, which WAS counts them in), one banded value, one
+    ONS-imputed holder, one ONS-imputed non-holder, one self-employment
+    sentinel and one holder in an age band the product rules exclude (recoded
+    by the stage's credibility rule).
+    """
+
+    rows: list[dict[str, float]] = []
+    for household in range(_DONOR_ROWS):
+        adults = 1 + household % 3
+        children = household % 3
+        for person in range(adults + children):
+            adult = person < adults
+            band = (
+                4 + (household * 3 + person * 5) % 14
+                if adult
+                else 1 + (household + person) % 3
+            )
+            holder = adult and person == 0 and household % 2 == 0 and 4 <= band <= 9
+            impossible = adult and person == 0 and household == 5
+            if impossible:
+                band = 13
+            value = float(5 + household % 20) if (holder or impossible) else 0.0
+            banded = holder and household == 10
+            rows.append(
+                {
+                    "CASER8": float(household + 1),
+                    "PersonR8": float(person + 1),
+                    "IsDepR8": 2.0 if adult else 1.0,
+                    "DVAge17R8": float(band),
+                    "SexR8": float(1 + (household + person) % 2),
+                    # Household 3's first adult carries a sentinel earnings code,
+                    # which the stage recodes to zero and receipts.
+                    "DVGIEmpR8": (
+                        (
+                            -8.0
+                            if household == 3 and person == 0
+                            else 15_000.0 + 1_000.0 * ((household * 7 + person) % 40)
+                        )
+                        if adult
+                        else -9.0
+                    ),
+                    "fisa_binary3r8_i": 1.0 if value > 0 else (0.0 if adult else -9.0),
+                    "fisa_binary3r8_iflag": (
+                        1.0 if (holder and household == 14) or household == 7 else 0.0
+                    ),
+                    "FLISAVR8": (-8.0 if banded else value) if value > 0 else -9.0,
+                    "flisavr8_iflag": 1.0 if banded else 0.0,
+                    "FLISABR8": 1.0 if banded else -9.0,
+                    "flisabr8_iflag": 0.0,
+                    "DVFLISAvR8": value,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _was_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
+    lisa_totals = (
+        _was_person_donor()
+        .groupby("CASER8")["DVFLISAvR8"]
+        .sum()
+        .reindex(rows + 1.0, fill_value=0.0)
+        .to_numpy()
+    )
     return pd.DataFrame(
         {
+            "CASER8": rows + 1.0,
+            "DVFLISAVR8_aggr": lisa_totals,
             "R8xshhwgt": 1.0 + rows % 7 / 10.0,
             "DVLUKValR8_sum": 10.0 + rows,
             "DVPropertyR8": 20_000.0 + rows * 500.0,
@@ -1029,15 +1125,28 @@ _FIXTURE_TABLE7_ROWS: tuple[tuple[str, str, float, float], ...] = (
 )
 
 
+#: Share of each Table 4.1 band's non-residential pool the synthetic BADR
+#: facts claim, at the pool's own mean gain so the band solve has zero slope.
+_FIXTURE_BADR_POOL_SHARE = 0.25
+
+
 def _cgt_asset_type_facts(
-    frame: Frame, parameters: UKCGTPolicyParameters
+    frame: Frame,
+    parameters: UKCGTPolicyParameters,
+    badr_parameters: UKCGTBADRParameters,
 ) -> HMRCCGTAssetTypeFacts:
-    """Synthetic Table 7/8 facts sized to the fixture frame after the redraw.
+    """Synthetic Table 4.1/7/8 facts sized to the fixture frame after the redraw.
 
     The residential targets are a fixed share of the liable mass and of the
     liable gains, so their mean is the population mean and the logistic
     solve is always attainable on the tiny fixture; the data-only payload
-    the graph side reads is then exactly these numbers.
+    the graph side reads is then exactly these numbers. The Table 4.1 bands
+    are sized in a second pass: the stage runs once with every band at zero
+    (so no claim is drawn) to learn the residential flags, which are drawn
+    first on their own seed and are therefore the same in the real run; each
+    band then claims a fixed share of its non-residential pool at the pool's
+    own mean gain, and the open top band the same share at the lifetime
+    limit. A band with no pool carries zero and is skipped.
     """
 
     person = frame.table("person")
@@ -1068,30 +1177,84 @@ def _cgt_asset_type_facts(
         CGT_ASSET_TYPE_RESIDENTIAL,
         *CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     }
-    return HMRCCGTAssetTypeFacts(
-        table8a_taxpayers_total=count,
-        table8a_gains_total=total_gains,
-        table8a_disposals_total=1.1 * count,
-        table8a_tax_total=0.2 * total_gains,
-        table8b_individuals_taxpayers=count,
-        table8b_individuals_gains=total_gains,
-        table8b_all_taxpayers=count,
-        table8b_all_gains=total_gains,
-        table7_types=rows,
-        table7_total_gains=sum(row.gains for row in rows),
-        table7_total_disposals=sum(row.disposals for row in rows),
-        resource="synthetic-cgt-asset-type.json",
-        resource_sha256="synthetic",
-        source_commit="synthetic",
+
+    def facts_with(bands: tuple[HMRCCGTBADRBand, ...]) -> HMRCCGTAssetTypeFacts:
+        return HMRCCGTAssetTypeFacts(
+            table8a_taxpayers_total=count,
+            table8a_gains_total=total_gains,
+            table8a_disposals_total=1.1 * count,
+            table8a_tax_total=0.2 * total_gains,
+            table8b_individuals_taxpayers=count,
+            table8b_individuals_gains=total_gains,
+            table8b_all_taxpayers=count,
+            table8b_all_gains=total_gains,
+            table7_types=rows,
+            table7_total_gains=sum(row.gains for row in rows),
+            table7_total_disposals=sum(row.disposals for row in rows),
+            table4_bands=bands,
+            table4_individuals_taxpayers=sum(band.taxpayers for band in bands),
+            table4_individuals_gains=sum(band.gains for band in bands),
+            table4_individuals_tax=0.0,
+            table4_trusts_gains=0.0,
+            table4_trusts_tax=0.0,
+            table4_all_taxpayers=sum(band.taxpayers for band in bands),
+            table4_all_gains=sum(band.gains for band in bands),
+            table4_all_tax=0.0,
+            resource="synthetic-cgt-asset-type.json",
+            resource_sha256="synthetic",
+            source_commit="synthetic",
+        )
+
+    lowers = HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS
+    uppers = (*lowers[1:], None)
+    empty = tuple(
+        HMRCCGTBADRBand(
+            lower_bound=lower, upper_bound=upper, taxpayers=0.0, gains=0.0, tax=None
+        )
+        for lower, upper in zip(lowers, uppers, strict=True)
     )
+    classified, _ = assign_uk_cgt_asset_types(
+        frame, facts_with(empty), parameters, badr_parameters
+    )
+    residential = (
+        classified.table("person")[CGT_ASSET_TYPE_COLUMN].to_numpy()
+        == CGT_ASSET_TYPE_RESIDENTIAL
+    )
+    pool = liable & ~residential
+    limit = float(badr_parameters.lifetime_limit)
+    bands = []
+    for lower, upper in zip(lowers, uppers, strict=True):
+        in_band = (
+            pool & (gains >= lower) & (gains < (np.inf if upper is None else upper))
+        )
+        mass = _FIXTURE_BADR_POOL_SHARE * float(person_weight[in_band].sum())
+        band_gains = (
+            mass * limit
+            if upper is None
+            else _FIXTURE_BADR_POOL_SHARE
+            * float((person_weight[in_band] * gains[in_band]).sum())
+        )
+        bands.append(
+            HMRCCGTBADRBand(
+                lower_bound=lower,
+                upper_bound=upper,
+                taxpayers=mass,
+                gains=band_gains,
+                tax=None,
+            )
+        )
+    return facts_with(tuple(bands))
 
 
 def _cgt_asset_type_facts_payload(facts: HMRCCGTAssetTypeFacts) -> dict[str, object]:
     return {
         **{
-            key: value for key, value in facts.__dict__.items() if key != "table7_types"
+            key: value
+            for key, value in facts.__dict__.items()
+            if key not in ("table7_types", "table4_bands")
         },
         "table7_types": [dict(row.__dict__) for row in facts.table7_types],
+        "table4_bands": [dict(band.__dict__) for band in facts.table4_bands],
     }
 
 
@@ -1115,8 +1278,6 @@ def _fixture_stages(
     assert spec.sources is not None
     stages: list[SourceStageSpec] = []
     for committed in spec.sources.stages:
-        if committed.stage in UK_SPINE_EXCLUSIONS:
-            continue
         artifacts = [
             dict(frs_artifacts[str(artifact["table"])])
             if artifact.get("table") in frs_artifacts
@@ -1129,6 +1290,10 @@ def _fixture_stages(
         if stage.stage == "was_wealth":
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
+            )
+        elif stage.stage == "was_lisa":
+            stage = _replace_operation(
+                stage, "impute_lifetime_isa_balance", n_estimators=_QRF_ESTIMATORS
             )
         elif stage.stage == "nts_bus_travel":
             stage = _replace_operation(
@@ -1290,6 +1455,7 @@ def _build_implementations(
     stages: Mapping[str, SourceStageSpec],
     raw_dir: Path,
     was: pd.DataFrame,
+    was_person: pd.DataFrame,
     nts_household: pd.DataFrame,
     nts_individual: pd.DataFrame,
     nts_trip: pd.DataFrame,
@@ -1302,6 +1468,7 @@ def _build_implementations(
     income_targets: HMRCIncomeTargetSet,
     cgt_distribution: HMRCCapitalGainsJointDistribution,
     cgt_parameters: UKCGTPolicyParameters,
+    cgt_badr_parameters: UKCGTBADRParameters,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
     engine = PolicyEngineUKEngine()
@@ -1362,6 +1529,12 @@ def _build_implementations(
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was
         ),
+        "was_lisa": UKWASLISAStageTransform(
+            stage=stages["was_lisa"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
+        ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(
             stage=stages["nts_bus_travel"],
             engine=engine,
@@ -1409,20 +1582,28 @@ def _build_implementations(
             donor_table=spi_donor,
             source_targets=income_targets,
         ),
+        "spi_housing_shell": UKSPIHousingShellStageTransform(
+            stage=stages["spi_housing_shell"], n_estimators=_QRF_ESTIMATORS
+        ),
         "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
             stage=stages["uc_reporter_redraw"], engine=engine
         ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
+        "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
+            stage=stages["pension_credit_take_up"], engine=engine
+        ),
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
+        "cgt_support_split": UKCGTSupportSplitStageTransform(
+            stage=stages["cgt_support_split"],
+            distribution=cgt_distribution,
+            parameters=cgt_parameters,
+        ),
         "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
             stage=stages["cgt_incidence_clone"]
-        ),
-        "cgt_band_donors": UKCGTBandDonorStageTransform(
-            stage=stages["cgt_band_donors"]
         ),
         "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
             stages["hmrc_cgt_gains_spine"],
@@ -1433,6 +1614,7 @@ def _build_implementations(
             stage=stages["hmrc_cgt_asset_type_spine"],
             facts=cgt_asset_type_facts,
             parameters=cgt_parameters,
+            badr_parameters=cgt_badr_parameters,
         ),
         "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
             stage=stages["cgt_incidence_anchor"], parameters=cgt_parameters
@@ -1452,7 +1634,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 33-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 36-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1522,11 +1704,13 @@ def generate(output: Path) -> None:
     stage_map = {stage.stage: stage for stage in stages}
 
     was = _was_donor()
+    was_person = _was_person_donor()
     nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
+    _write_csv(sources / "was_person.csv", was_person)
     _write_csv(sources / "nts_household.csv", nts_household)
     _write_csv(sources / "nts_individual.csv", nts_individual)
     _write_csv(sources / "nts_trip.csv", nts_trip)
@@ -1540,6 +1724,7 @@ def generate(output: Path) -> None:
     income_targets = _hmrc_income_targets(Path("synthetic-hmrc.ods"))
     cgt_distribution = _cgt_distribution()
     cgt_parameters = uk_cgt_policy_parameters("2024")
+    cgt_badr_parameters = uk_cgt_badr_parameters("2024")
     _write_json(
         sources / "hmrc_income_targets.json", _hmrc_target_payload(income_targets)
     )
@@ -1552,6 +1737,7 @@ def generate(output: Path) -> None:
         stages=stage_map,
         raw_dir=raw_dir,
         was=was,
+        was_person=was_person,
         nts_household=nts_household,
         nts_individual=nts_individual,
         nts_trip=nts_trip,
@@ -1564,6 +1750,7 @@ def generate(output: Path) -> None:
         income_targets=income_targets,
         cgt_distribution=cgt_distribution,
         cgt_parameters=cgt_parameters,
+        cgt_badr_parameters=cgt_badr_parameters,
     )
     # The asset-type facts are sized to the frame the amounts redraw leaves,
     # so run the oracle up to that stage once, derive them, and only then
@@ -1576,7 +1763,9 @@ def generate(output: Path) -> None:
         prefix,
         {name: impl for name, impl in implementations.items() if name in prefix_names},
     )
-    cgt_asset_type_facts = _cgt_asset_type_facts(after_redraw, cgt_parameters)
+    cgt_asset_type_facts = _cgt_asset_type_facts(
+        after_redraw, cgt_parameters, cgt_badr_parameters
+    )
     _write_json(
         sources / "cgt_asset_type_facts.json",
         _cgt_asset_type_facts_payload(cgt_asset_type_facts),
@@ -1607,6 +1796,7 @@ def generate(output: Path) -> None:
         "inputs": {
             "frs_raw": "frs_raw",
             "was": "was.csv",
+            "was_person": "was_person.csv",
             "nts_household": "nts_household.csv",
             "nts_individual": "nts_individual.csv",
             "nts_trip": "nts_trip.csv",
@@ -1621,6 +1811,7 @@ def generate(output: Path) -> None:
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
         },
         "cgt_parameters": cgt_parameters.__dict__,
+        "cgt_badr_parameters": cgt_badr_parameters.__dict__,
     }
     _write_json(sources / "fixture.json", descriptor)
 

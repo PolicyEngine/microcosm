@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import warnings
+from collections.abc import Mapping
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -49,8 +50,66 @@ _UC_CALIBRATION_VARIABLES = frozenset(
 _CGT_CALIBRATION_VARIABLES = {
     "cgt_calibration_gains": "capital_gains",
     "cgt_calibration_tax": "capital_gains_tax",
+    # The BADR/Investors' Relief qualifying gain the asset-type stage writes
+    # (microcosm#1014); banded and filtered on for the Table 4.1 rows.
+    "cgt_calibration_badr_gains": "capital_gains_badr",
+    # Derived, not a policyengine-uk variable: see _cgt_taxable_income.
+    "cgt_calibration_taxable_income": "cgt_taxable_income",
 }
-_CGT_DATED_MEASURE = re.compile(r"^cgt_(20[0-9]{2})_(gains|tax)$")
+_CGT_DATED_MEASURE = re.compile(
+    r"^cgt_(20[0-9]{2})_(gains|tax|badr_gains|taxable_income)$"
+)
+
+#: The taxable income policyengine-uk's ``capital_gains_tax`` sets the CGT
+#: rate bands on, which the engine computes inline and exposes as no
+#: variable; HMRC's Table 3 bands individuals on the same concept
+#: (microcosm#1014). Derived from these engine variables at the measure year.
+_CGT_TAXABLE_INCOME = "cgt_taxable_income"
+_CGT_TAXABLE_INCOME_COMPONENTS = (
+    "adjusted_net_income",
+    "allowances",
+    "gift_aid",
+    "personal_pension_contributions",
+    "pension_contributions_relief",
+)
+_CGT_TAXABLE_INCOME_DEFINITION = (
+    "max(0, adjusted_net_income - max(0, allowances - gift_aid - "
+    "min(personal_pension_contributions, pension_contributions_relief))), as "
+    "policyengine-uk's capital_gains_tax computes the taxable income it stacks "
+    "gains on"
+)
+
+
+def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
+    """The engine CGT formula's taxable income from its component arrays."""
+
+    values = {
+        name: np.asarray(parts[name], dtype=float)
+        for name in _CGT_TAXABLE_INCOME_COMPONENTS
+    }
+    band_extension = np.minimum(
+        values["personal_pension_contributions"],
+        values["pension_contributions_relief"],
+    )
+    allowances = np.maximum(
+        0.0, values["allowances"] - values["gift_aid"] - band_extension
+    )
+    return np.maximum(0.0, values["adjusted_net_income"] - allowances)
+
+
+#: Every binding key that names a measured variable: a dated CGT measure in
+#: any of them must carry its own measurement period (microcosm#1014 bands
+#: and filters on dated measures, not only gates and values).
+_BINDING_VARIABLE_KEYS = ("gated_variable", "value_variable", "groupby_variable")
+
+
+def _binding_variable_names(binding: Mapping[str, Any]) -> list[str]:
+    names = [str(binding.get(key, "")) for key in _BINDING_VARIABLE_KEYS]
+    for key in ("filters", "household_conditions"):
+        for predicate in binding.get(key, ()) or ():
+            if isinstance(predicate, Mapping):
+                names.append(str(predicate.get("variable", "")))
+    return [name for name in names if name]
 
 
 def _cgt_model_measure(variable: str, default_year: int) -> tuple[str, int] | None:
@@ -119,6 +178,18 @@ def compute_uk_measure_input(
             frame, simulation, entity, model_variable, measure_year
         )
         return values, f"engine_period:{measure_year}:{model_variable}:{route}"
+
+    if variable == _CGT_TAXABLE_INCOME:
+        if entity != "person":
+            raise KeyError(f"CGT taxable income is person-only: {entity}")
+        parts = {
+            name: compute_uk_measure_input(frame, simulation, "person", name, year)[0]
+            for name in _CGT_TAXABLE_INCOME_COMPONENTS
+        }
+        return (
+            cgt_taxable_income_from_components(parts),
+            "engine_components:capital_gains_tax_taxable_income",
+        )
 
     if variable in UC_TARGET_VARIABLES:
         if entity != "benunit":
@@ -298,6 +369,10 @@ class UKMeasureResolver:
             if frame is None:
                 frame, _provenance = load_uk_national_frame(source_path)
         self.frame = frame
+        self._factory = factory
+        self._source_path = source_path
+        self._counterfactuals: dict[tuple[str, str | None], Any] = {}
+        self._counterfactual_measures: dict[str, dict[str, Any]] = {}
         reserved = {
             str(name)
             for name in frame.table("person")
@@ -314,8 +389,7 @@ class UKMeasureResolver:
         bound_cgt_periods = {}
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
-            for key in ("gated_variable", "value_variable"):
-                name = str(binding.get(key, ""))
+            for name in _binding_variable_names(binding):
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
@@ -333,13 +407,19 @@ class UKMeasureResolver:
             "source_path": str(source_path),
             "policyengine_uk_version": _policyengine_uk_version(policyengine_uk),
             "cgt_period_contract": {
-                "version": "uk-cgt-measurement-v2",
+                "version": "uk-cgt-measurement-v3",
                 "input_period": getattr(frame, "metadata", {}).get("time_period"),
                 "calibration_period": self.year,
                 "default_engine_period": self.year,
                 "bound_measurements": bound_cgt_periods,
                 "dated_measures": {
-                    "naming": "cgt_<disposal_year>_<gains|tax>",
+                    "naming": (
+                        "cgt_<disposal_year>_<gains|tax|badr_gains|taxable_income>"
+                    ),
+                    "derived_measures": {
+                        _CGT_TAXABLE_INCOME: _CGT_TAXABLE_INCOME_DEFINITION
+                    },
+                    "scanned_binding_keys": list(_BINDING_VARIABLE_KEYS),
                     "period": "explicit_disposal_year_in_variable_name",
                     "policy_threshold_period": "binding.measurement_period",
                 },
@@ -382,6 +462,10 @@ class UKMeasureResolver:
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
+        if variable == _CGT_TAXABLE_INCOME:
+            return entity == "person" and all(
+                self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
+            )
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False
@@ -424,8 +508,95 @@ class UKMeasureResolver:
             self._uc_paid_measures_used.add(variable)
         return result
 
+    def counterfactual_delta(
+        self, binding: Mapping[str, Any], period: int | str
+    ) -> tuple[np.ndarray, str]:
+        """A binding's per-row output delta under its input substitution.
+
+        One extra simulation per (zeroed input, folded-into) pair, from the same
+        source at the measurement year: the zeroed input is set to zero and its
+        amount added to the folded-into input (salary sacrifice returned to
+        pay, uk-data's recipe), and the output's delta against this resolver's
+        baseline comes back for the binding's entity (microcosm#1069 c11).
+        Banded deltas are refused: their band test compares adjusted net income
+        with after-allowance thresholds and ignores the Scottish bands.
+        """
+
+        self.validate_period(period)
+        if binding.get("band"):
+            raise ValueError(
+                "banded counterfactual measures are deferred: the band test "
+                "compares adjusted net income with after-allowance thresholds "
+                "and ignores the Scottish bands (microcosm#1069 c11)"
+            )
+        if binding.get("kind") != "input_substitution_counterfactual":
+            raise ValueError(f"unsupported counterfactual kind {binding.get('kind')!r}")
+        zeroed = str(binding["zeroed_input"])
+        folded = binding.get("folded_into")
+        folded = None if folded is None else str(folded)
+        output = str(binding["output_variable"])
+        entity = str(binding.get("from_entity") or "person")
+        direction = str(binding.get("output_delta", "counterfactual_minus_baseline"))
+        if direction not in (
+            "counterfactual_minus_baseline",
+            "baseline_minus_counterfactual",
+        ):
+            raise ValueError(f"unsupported output_delta {direction!r}")
+        counterfactual = self._counterfactual_simulation(zeroed, folded)
+        baseline_values, _ = compute_uk_measure_input(
+            self.frame, self.simulation, entity, output, self.year
+        )
+        counterfactual_values, _ = compute_uk_measure_input(
+            self.frame, counterfactual, entity, output, self.year
+        )
+        delta = np.asarray(counterfactual_values, dtype=float) - np.asarray(
+            baseline_values, dtype=float
+        )
+        if direction == "baseline_minus_counterfactual":
+            delta = -delta
+        metric = str(binding.get("metric_name") or output)
+        self._counterfactual_measures[metric] = {
+            "entity": entity,
+            "zeroed_input": zeroed,
+            "folded_into": folded,
+            "output_variable": output,
+            "output_delta": direction,
+            "rows_nonzero": int(np.count_nonzero(delta)),
+        }
+        route = (
+            f"policyengine-uk counterfactual: {zeroed} set to zero"
+            + (f" and folded into {folded}" if folded else "")
+            + f"; {entity}.{output} {direction}"
+        )
+        return delta, route
+
+    def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
+        key = (zeroed, folded)
+        if key in self._counterfactuals:
+            return self._counterfactuals[key]
+        simulation = self._factory(dataset=str(self._source_path))
+        amount = np.asarray(self.simulation.calculate(zeroed, self.year), dtype=float)
+        if not np.isfinite(amount).all():
+            raise ValueError(f"{zeroed} must be finite to substitute it.")
+        if folded is not None:
+            base = np.asarray(self.simulation.calculate(folded, self.year), dtype=float)
+            if base.shape != amount.shape:
+                raise ValueError(
+                    f"{zeroed} and {folded} must share an entity to fold one into the other."
+                )
+            simulation.set_input(folded, self.year, base + amount)
+        simulation.set_input(zeroed, self.year, np.zeros_like(amount))
+        self._counterfactuals[key] = simulation
+        return simulation
+
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        counterfactual_measures = getattr(self, "_counterfactual_measures", None)
+        if counterfactual_measures:
+            receipt["counterfactual_measures"] = {
+                name: dict(entry)
+                for name, entry in sorted(counterfactual_measures.items())
+            }
         if self._uc_tcl_measures_used:
             receipt["uc_tcl_comparison_contract"] = {
                 **uc_tcl_comparison_contract(self.year),

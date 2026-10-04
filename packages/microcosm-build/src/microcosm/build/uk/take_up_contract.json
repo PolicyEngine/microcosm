@@ -54,8 +54,38 @@
       "source": {
         "source": "Income-related benefits: estimates of take-up, financial year 2019 to 2020",
         "agency": "DWP",
-        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline.",
+        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline. Since microcosm#1069 (R9) this is only frs_take_up's early draw on FRS incomes, which the intermediate engine simulations read; pension_credit_take_up replaces it after the SPI income chain with the FYE 2024 component rates.",
         "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_guarantee_credit",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.69
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Guarantee Credit: 69% in FYE 2024 (all Pension Credit 62%). Applied by pension_credit_take_up as the share of the component's entitled benefit units who claim, reporters first (microcosm#1069 R9).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_savings_credit_only",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.37
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Savings Credit only: 37% in FYE 2024 (all Pension Credit 62%). Applied by pension_credit_take_up as the share of the component's entitled benefit units who claim, reporters first (microcosm#1069 R9).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
         "status": "sourced_administrative"
       }
     },

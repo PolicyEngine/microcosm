@@ -7,7 +7,8 @@ population probability, so ten thousand synthetic households carry an
 expected two such people and the built spine carries none; HMRC's Table 2.5
 puts ten thousand taxpayers and over twenty billion pounds of liabilities
 there. This stage reserves rows for every Table 2.5 band from GBP 200,000 the
-way ``cgt_band_donors`` reserves rows for the HMRC gain bands: whole FRS
+way the retired ``cgt_band_donors`` stage reserved rows for the HMRC gain
+bands (``cgt_support_split`` replaced it in microcosm#1045): whole FRS
 households copied into the SPI channel, one carrier adult each, drawn by the
 tape's own propensity for the band given region, sex and age, at the band's
 published taxpayer count over the donors per band. The income stage then
