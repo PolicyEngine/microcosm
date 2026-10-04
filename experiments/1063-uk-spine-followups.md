@@ -334,6 +334,10 @@ approved 2026-10-02 and the graph was reviewed at 2026-09-29, so the gate refuse
 force. Path-tiered CI had not selected the file before round 2 widened the diff. The test now reviews
 at the latest approval across the committed registers, inside every live window.
 
+Certifier rerun from 5720b80dd on the same artifacts, 2026-10-04 16:55Z: all 20 gates pass and the signed
+certification composes (`shippable: true`; spine, calibration-seam and release-cut parts, 31 entries;
+candidate aa31bdf6…): `final/microcosm_uk_2024_25.release_certification.rerun.json`.
+
 ## Still owed
 
 - The access-fund period rule in the spine (`ACCSSPD` 5 on sernum 14443), owed before the
