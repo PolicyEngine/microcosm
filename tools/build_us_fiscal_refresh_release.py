@@ -43,7 +43,7 @@ import subprocess
 import sys
 import time
 import tomllib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
@@ -252,6 +252,10 @@ from microcosm.build.us_runtime.h5_io import (
     refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
+)
+from microcosm.build.us_runtime.immigration import (
+    us_immigration_controls,
+    us_immigration_humanitarian_draw_mask,
 )
 from microcosm.build.us_runtime.input_mass import us_input_mass_totals
 from microcosm.build.us_runtime.l0_refit_export import (
@@ -556,14 +560,18 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 11: target-frame checkpoint columns now preserve nullable booleans as
 # canonical bool values plus an explicit uint8 null mask. Older checkpoints
 # cannot attest this lossless physical representation.
-# 12: the identity now carries staged_frame_sha256, a digest of the staged
-# frame handed to the materializer (microcosm#1018), so a staging change that
+# 12: the identity carries staged_frame_sha256, a digest of the staged frame
+# handed to the materializer (microcosm#1018), so a staging change that
 # forgets this bump can no longer reuse stale target columns. Checkpoints
 # written without the digest cannot attest their staged frame.
 # 13: the base simulation runs over household batches and its compilation
 # carries a batching receipt (microcosm#956), so checkpoints written by the
 # whole-pool base pass miss too.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 13
+# 14: source-aware humanitarian-stock targets materialize from the paired
+# immigration labels and native ASEC/ACS origin/arrival evidence
+# (microcosm#767); earlier checkpoints cannot attest those per-draw
+# calibration columns or mask semantics.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 14
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -2502,6 +2510,96 @@ def _selection_mass_protection_specs(
             )
         )
     return tuple(specs)
+
+
+def _humanitarian_immigration_stock_specs(
+    *,
+    time_period: int = PERIOD,
+) -> tuple[TargetSpec, ...]:
+    """Return one positive calibration target per manifest humanitarian draw.
+
+    These are builder-owned preservation targets, not Ledger fiscal facts, so
+    the caller adds them only after the fiscal target-parity gate has checked
+    the feed registry. Values and citations come directly from the same
+    immigration source-stage manifest that assigns the person labels.
+    """
+
+    specs: list[TargetSpec] = []
+    for draw in us_immigration_controls().humanitarian:
+        if draw.target <= 0:
+            continue
+        measure = f"humanitarian_immigration_stock.{draw.label.replace(':', '.')}"
+        metadata = {
+            "materializer": "humanitarian_immigration_stock",
+            "measure_mode": "indicator_sum",
+            "target_role": "humanitarian_immigration_stock",
+            "humanitarian_draw": draw.label,
+            "humanitarian_category": draw.category,
+            "humanitarian_status": draw.status,
+            "issue": "PolicyEngine/microcosm#767",
+        }
+        if draw.origin is not None:
+            metadata["humanitarian_origin"] = draw.origin
+        specs.append(
+            TargetSpec(
+                name=measure,
+                entity="household",
+                value=draw.target,
+                measure=measure,
+                period=time_period,
+                source=draw.source,
+                family="humanitarian_immigration_stock",
+                metadata=metadata,
+            )
+        )
+    return tuple(specs)
+
+
+def _materialize_humanitarian_immigration_stock_targets(
+    *,
+    frame: Frame,
+    household: MutableMapping[str, np.ndarray],
+    target_specs: Sequence[TargetSpec],
+    time_period: int = PERIOD,
+) -> None:
+    """Collapse source-aware humanitarian person indicators to households.
+
+    Every mask is person-local (emitted status plus that person's own source
+    evidence), so the base pass may run this per household batch.
+    """
+
+    humanitarian_specs = [
+        spec
+        for spec in target_specs
+        if spec.metadata.get("materializer") == "humanitarian_immigration_stock"
+    ]
+    if not humanitarian_specs:
+        return
+    controls = us_immigration_controls()
+    draws = {draw.label: draw for draw in controls.humanitarian}
+    if len(draws) != len(controls.humanitarian):
+        raise RuntimeError("Humanitarian immigration controls have duplicate draws.")
+    for spec in humanitarian_specs:
+        draw_label = spec.metadata.get("humanitarian_draw")
+        if draw_label not in draws:
+            raise RuntimeError(
+                f"Humanitarian target {spec.name!r} refers to unknown manifest "
+                f"draw {draw_label!r}."
+            )
+        mask = np.asarray(
+            us_immigration_humanitarian_draw_mask(
+                frame,
+                draws[draw_label],
+                time_period=time_period,
+            ),
+            dtype=bool,
+        )
+        if mask.shape != (frame.n("person"),):
+            raise RuntimeError(
+                f"Humanitarian draw {draw_label!r} returned mask shape "
+                f"{mask.shape}; expected {(frame.n('person'),)}."
+            )
+        household[spec.measure] = _collapse_person(frame, mask.astype(np.float64))
 
 
 # The byte framing of _staged_frame_sha256. It is the first field hashed, so a
@@ -6236,6 +6334,12 @@ def _base_simulation_household_columns(
         system=system,
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
+    )
+    _materialize_humanitarian_immigration_stock_targets(
+        frame=frame,
+        household=columns,
+        target_specs=target_specs,
+        time_period=PERIOD,
     )
     population_age_target_specs = [
         spec
@@ -12466,7 +12570,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in target_parity_gate.failures
             )
         )
-    target_specs = target_registry.specs
+    target_specs = (
+        *target_registry.specs,
+        *_humanitarian_immigration_stock_specs(time_period=PERIOD),
+    )
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
     # microcosm#507/#508): the band targets come from the same ledger-fed
@@ -13062,7 +13169,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    immigration_gate = us_immigration_composition_gate(base_frame)
+    immigration_gate = us_immigration_composition_gate(base_frame, time_period=PERIOD)
     if not immigration_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14656,6 +14763,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    # Calibration can redistribute person stocks even though the persisted
+    # labels remain structurally valid. Re-evaluate the composition contract
+    # at delivered weights and use this final verdict in every terminal gate
+    # and release artifact below.
+    final_immigration_gate = us_immigration_composition_gate(
+        export_frame, time_period=PERIOD
+    )
     result = _without_calibrated_frames(
         result,
         export_frame=export_frame if ladder_outcome is not None else None,
@@ -14943,7 +15057,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             health_input_gate,
             base_population_gate,
             incumbent_diagnostics,
-            immigration_gate,
+            final_immigration_gate,
             enforced_input_mass_reference_gate,
             degenerate_input_gate,
             ecps_parity_gate=enforced_ecps_parity_gate,
@@ -15006,7 +15120,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         target_profile_gate=target_profile_gate,
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
-        immigration_gate=immigration_gate,
+        immigration_gate=final_immigration_gate,
         input_mass_reference_gate=input_mass_reference_gate,
         hours_worked_gate=hours_worked_gate,
         snap_take_up_gate=snap_take_up_gate,
@@ -15737,7 +15851,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         health_input_gate=health_input_gate,
         base_population_gate=base_population_gate,
         incumbent_diagnostics=incumbent_diagnostics,
-        immigration_gate=immigration_gate,
+        immigration_gate=final_immigration_gate,
         input_mass_reference_gate=enforced_input_mass_reference_gate,
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=enforced_ecps_parity_gate,

@@ -707,9 +707,15 @@ def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
+    asec_source, acs_source = _humanitarian_weighted_source_frames(
+        asec_count=10,
+        acs_count=120,
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
     stack = pool_tool.assemble_stacked_spine(
-        _many_household_source_frame(),
-        _many_household_source_frame(measured_offset=1_000.0),
+        asec_source,
+        acs_source,
         sample_fraction=0.10,
         sample_seed=578,
     )
@@ -938,7 +944,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
     assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 10
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4
     assert "materializer_version" not in manifest["pool_h5"]
@@ -2251,7 +2257,7 @@ def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
         manifest = pool_tool._read_json_object(
             cold_store.checkpoint_manifest_path(stage)
         )
-        assert manifest["materializer_version"] == 7
+        assert manifest["materializer_version"] == 8
         loaded = pool_tool.load_frame_checkpoint(path).frame
         if stage == "assembled":
             assert "fixture_declared_boolean" not in loaded.person
@@ -2272,11 +2278,11 @@ def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
     assert resumed.frame.person["fixture_declared_boolean"].isna().sum() == 1
 
 
-def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
+def test_simulated_v8_checkpoint_accepts_both_string_encodings_without_rewrite(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """V7 authenticates both physical string encodings as one logical frame."""
+    """V8 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -2288,7 +2294,7 @@ def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
     canonical_v2_bytes = checkpoint_path.read_bytes()
     canonical_identity = loaded.metadata["identity"]
-    assert loaded.metadata["materializer_version"] == 7
+    assert loaded.metadata["materializer_version"] == 8
     assert any(
         column["dtype"] == str(CANONICAL_STRING_DTYPE)
         for columns in loaded.metadata["frame_schema"]["entities"].values()
@@ -2319,7 +2325,7 @@ def test_simulated_v7_checkpoint_accepts_both_string_encodings_without_rewrite(
     banked_v2_bytes = checkpoint_path.read_bytes()
     assert banked_v2_bytes != canonical_v2_bytes
     assert legacy_metadata["identity"] == canonical_identity
-    assert legacy_metadata["materializer_version"] == 7
+    assert legacy_metadata["materializer_version"] == 8
     assert any(
         column["dtype"] == "object"
         for columns in legacy_metadata["frame_schema"]["entities"].values()
@@ -2694,7 +2700,7 @@ def test_tail_support_contract_identity_mutation_rebuilds_pool_checkpoints(
     assert changed_store.load_deepest() is None
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7))
 def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2727,9 +2733,9 @@ def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
             assert manifest["identity"]["materializer_version"] == legacy_version
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-    assert current_store.base_identity["materializer_version"] == 7
+    assert current_store.base_identity["materializer_version"] == 8
     assert current_store.load_deepest() is None
 
     output = capsys.readouterr().out

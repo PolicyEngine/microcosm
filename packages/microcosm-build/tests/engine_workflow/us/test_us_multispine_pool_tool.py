@@ -9,6 +9,7 @@ from test_support.microcosm_build.us_multispine_pool_tool import *
     [
         ("success", 0, "iterating"),
         ("red", 1, "failed"),
+        ("immigration_red", 1, "failed"),
         ("error", None, "failed"),
     ],
 )
@@ -71,6 +72,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "simulate",
             "completeness",
             "battery",
+            "immigration",
             "publish",
         ]
         # Exported rows must never embed host-absolute paths; pytest tmp
@@ -89,6 +91,28 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         manifest = json.loads(
             (tmp_path / "stacked-pool.manifest.json").read_text(encoding="utf-8")
         )
+        if terminal == "immigration_red":
+            assert manifest["status"] == "gate_failed"
+            assert manifest["simulation_ready"] is False
+            assert manifest["terminal_gates"]["passed"] is False
+            assert (
+                manifest["terminal_gates"]["gates"]["fixture_battery"]["passed"] is True
+            )
+            assert manifest["terminal_gates"]["gates"]["fixture_immigration"] == {
+                "passed": False,
+                "failures": ["fixture immigration terminal failure"],
+                "details": {},
+            }
+            assert row.gate_verdicts["fixture_battery"]["verdict"] == "passed"
+            assert row.gate_verdicts["fixture_immigration"]["verdict"] == "failed"
+            immigration_receipt = json.loads(
+                _receipt_file_from_reference(
+                    row.gate_verdicts["fixture_immigration"]["receipt"]
+                ).read_text(encoding="utf-8")
+            )
+            assert immigration_receipt["terminal_gates"]["gates"][
+                "fixture_immigration"
+            ]["failures"] == ["fixture immigration terminal failure"]
         assert manifest["schema_version"] == pool_tool.POOL_MANIFEST_SCHEMA_VERSION
         assert manifest["pipeline"] == "us-stacked-pool"
         assert manifest["pool_h5"]["materializer_version"] == (
@@ -157,13 +181,14 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "materialize_multispine_agreement_outputs",
             "stacked_completeness_gate",
             "by_origin_battery",
+            "us_immigration_composition_gate",
         ]
         assert manifest["sampling"] == {
             **manifest["sampling"],
             "sample_fraction": 0.01,
             "fraction_token": "f001",
             "sample_seed": 578,
-            "realized_households": {"asec": 1, "acs": 1},
+            "realized_households": {"asec": 1, "acs": 12},
         }
 
 
@@ -338,7 +363,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "ffbb93ed5ae22a95536ae475d6912a42628568609b442360dc1cd3bcf26772cd",
+            "spec_sha256": "4ae5e2e6499b169266510f43698dcbe90709a7be10fa2ba00a72781777888a30",
         },
     }
 
@@ -636,6 +661,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     assert set(row.gate_verdicts) == {
         "fixture_completeness",
         "fixture_battery",
+        "fixture_immigration",
         "pipeline_error",
     }
     terminal_path = _receipt_file_from_reference(
@@ -901,6 +927,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
         "materialize_multispine_agreement_outputs",
         "stacked_completeness_gate",
         "by_origin_battery",
+        "us_immigration_composition_gate",
     ]
     assert pool_code["late_producer_schedule"] == pool_tool._json_ready(
         pool_tool.us_late_producer_schedule_receipt()
@@ -1154,7 +1181,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     assert "checkpoint base identity is stale" in capsys.readouterr().out
 
 
-def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
+def test_pool_envelope_v8_preserves_stacked_bank_identity_but_rejects_v7(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1187,7 +1214,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         legacy.setattr(
             pool_tool,
             "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
-            6,
+            7,
         )
         assert identity() == current_identity
         legacy_store = pool_tool._PoolStageCheckpointStore(
@@ -1208,7 +1235,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         )
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert identity() == current_identity
     current_store = pool_tool._PoolStageCheckpointStore(
         checkpoint_root,
@@ -1359,12 +1386,14 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "simulate",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     assert simulated_resume_order == [
         "build_stacked_pool",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     assert transferred_resume_order == [
@@ -1375,6 +1404,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "simulate",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     assert assembled_resume_order == [
@@ -1389,6 +1419,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "simulate",
         "completeness",
         "battery",
+        "immigration",
         "publish",
     ]
     final_rows = [
