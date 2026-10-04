@@ -59,8 +59,14 @@ KERNEL = (
     "microcosm-diagnostics",
     "microcosm-calibrate",
 )
-#: Workspace packages the shared target-loss weighting imports beyond KERNEL.
-SHARED_WEIGHTS_PACKAGES: tuple[str, ...] = ()
+#: The shared target-loss weighting's source. It imports only numpy and the
+#: standard library, so the image carries this one file and ``sweep.py`` loads
+#: it on its own (``SHARED_WEIGHTS_FILE_ENV``) rather than installing the
+#: build package whose ``us_runtime`` ``__init__`` needs the whole build stack.
+SHARED_WEIGHTS_FILE = (
+    "packages/microcosm-build/src/microcosm/build/us_runtime/target_loss_weights.py"
+)
+SHARED_WEIGHTS_CONTAINER_PATH = "/opt/shared/target_loss_weights.py"
 VOLUME_ROOT = "/sweep"
 CPUS = 8
 
@@ -77,8 +83,8 @@ def _head() -> str:
 def _kernel_clean() -> bool:
     status = subprocess.run(
         ["git", "-C", str(REPO), "status", "--porcelain", "--"]
-        + [f"packages/{name}/src" for name in (*KERNEL, *SHARED_WEIGHTS_PACKAGES)]
-        + [str(HERE / "sweep.py")],
+        + [f"packages/{name}/src" for name in KERNEL]
+        + [SHARED_WEIGHTS_FILE, str(HERE / "sweep.py")],
         capture_output=True,
         text=True,
         check=True,
@@ -108,20 +114,23 @@ image = (
             "OPENBLAS_NUM_THREADS": str(CPUS),
             "MICROCOSM_GIT_SHA": GIT_SHA,
             "MICROCOSM_REPO": "/opt/none",
+            "MICROCOSM_TARGET_LOSS_WEIGHTS_FILE": SHARED_WEIGHTS_CONTAINER_PATH,
         }
     )
 )
 if REPO is not None:
-    for name in (*KERNEL, *SHARED_WEIGHTS_PACKAGES):
+    for name in KERNEL:
         image = image.add_local_dir(
             str(REPO / "packages" / name), f"/opt/kernel/{name}", copy=True
         )
-    image = image.run_commands(
-        "python -m pip install --no-deps "
-        + " ".join(
-            f"/opt/kernel/{name}" for name in (*KERNEL, *SHARED_WEIGHTS_PACKAGES)
+    image = (
+        image.run_commands(
+            "python -m pip install --no-deps "
+            + " ".join(f"/opt/kernel/{name}" for name in KERNEL)
         )
-    ).add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
+        .add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
+        .add_local_file(str(REPO / SHARED_WEIGHTS_FILE), SHARED_WEIGHTS_CONTAINER_PATH)
+    )
 
 app = modal.App("microcosm-acs-l2-basis-sweep", image=image)
 volume = modal.Volume.from_name("microcosm-acs-l2-basis-sweep", create_if_missing=True)

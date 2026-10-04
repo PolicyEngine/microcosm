@@ -127,9 +127,18 @@ REGISTRY_RECEIPT_FILE = "target_registry.receipt.json"
 #: targets like the national release, through the shared module both builds
 #: call (``SHARED_TARGET_LOSS_WEIGHTS``).
 TARGET_WEIGHTINGS = ("equal", "shared")
-#: ``module:function`` of the shared target-loss weighting. It takes a
-#: ``TargetRegistry`` and returns one positive weight per spec.
-SHARED_TARGET_LOSS_WEIGHTS = "SET_WHEN_THE_SHARED_MODULE_MERGES:function"
+#: ``module:function`` of the shared target-loss weighting the ACS local
+#: build calls: it takes the training ``TargetSpec``s and returns one positive
+#: weight per spec, row-aligned (``us_acs_local.v1`` row mapping, no family
+#: multipliers, as the tool's default).
+SHARED_TARGET_LOSS_WEIGHTS = (
+    "microcosm.build.us_runtime.target_loss_weights:us_acs_local_target_loss_weights"
+)
+#: Set by the Modal image: the shared module's source file, loaded on its own.
+#: Importing it as a package module runs ``microcosm.build.us_runtime``'s
+#: package ``__init__``, which needs the whole build stack; the module itself
+#: imports only numpy and the standard library.
+SHARED_WEIGHTS_FILE_ENV = "MICROCOSM_TARGET_LOSS_WEIGHTS_FILE"
 KERNEL_MODULES = (
     "microcosm.calibrate.solve",
     "microcosm.calibrate.matrix",
@@ -494,32 +503,53 @@ def training_rows(inputs: Inputs, holdout_fold: int | None) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+def shared_weight_module():
+    """The shared target-loss weighting module.
+
+    Imported by name, or, when ``SHARED_WEIGHTS_FILE_ENV`` names its source
+    file (the Modal image), executed from that file alone. Either way it is
+    the committed module at the launch's HEAD; the metrics record its path and
+    sha256.
+    """
+
+    import importlib
+    import importlib.util
+
+    module_name, _, _ = SHARED_TARGET_LOSS_WEIGHTS.partition(":")
+    path = os.environ.get(SHARED_WEIGHTS_FILE_ENV)
+    if not path:
+        return importlib.import_module(module_name)
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load the shared weighting from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def shared_weight_function():
     """The shared module and its weighting function."""
 
-    import importlib
-
-    module_name, _, function_name = SHARED_TARGET_LOSS_WEIGHTS.partition(":")
-    module = importlib.import_module(module_name)
+    module = shared_weight_module()
+    _, _, function_name = SHARED_TARGET_LOSS_WEIGHTS.partition(":")
     return module, getattr(module, function_name)
 
 
 def target_loss_weights_for(inputs: Inputs, rows: np.ndarray) -> np.ndarray:
     """The shared weighting of the specs at ``rows``, in that order.
 
-    The function sees exactly the registry a build calibrating on ``rows``
-    would hand ``calibrate``, so a holdout run's training rows are weighted
-    among themselves.
+    The function sees exactly the specs a build calibrating on ``rows`` would
+    weight, so a holdout run's training rows are weighted among themselves.
     """
-
-    from microcosm.calibrate import TargetRegistry
 
     if inputs.registry is None:
         raise SystemExit("a weighted run needs the rebuilt target registry")
     _, function = shared_weight_function()
     specs = inputs.registry.specs
-    registry = TargetRegistry([specs[int(i)] for i in rows], country="us")
-    weights = np.asarray(function(registry), dtype=np.float64)
+    weights = np.asarray(function([specs[int(i)] for i in rows]), dtype=np.float64)
     if weights.shape != (len(rows),):
         raise SystemExit(
             f"the shared weighting returned shape {weights.shape} for {len(rows)} specs"
@@ -530,7 +560,12 @@ def target_loss_weights_for(inputs: Inputs, rows: np.ndarray) -> np.ndarray:
 
 
 def loss_vector_sha256(names: Sequence[str], weights: np.ndarray) -> str:
-    """Content address of a weight vector, as the national build records it."""
+    """Content address of a weight vector, as the builds record it.
+
+    The national ``loss_vector_sha256`` form: one ``{"row_name",
+    "weight_hex"}`` object per row, in row order, compact sorted-key JSON.
+    Row names are ``name@period`` (the shared module's ``target_row_name``).
+    """
 
     vector = [
         {"row_name": str(name), "weight_hex": float(weight).hex()}
@@ -543,7 +578,16 @@ def loss_vector_sha256(names: Sequence[str], weights: np.ndarray) -> str:
     ).hexdigest()
 
 
-def weight_summary(weights: np.ndarray, meta: pd.DataFrame, rows: np.ndarray) -> dict:
+def row_names(inputs: Inputs, rows: np.ndarray) -> list[str]:
+    """``name@period`` of the targets at ``rows`` (every target is 2024's)."""
+
+    names = inputs.meta["name"].to_numpy()
+    return [f"{names[int(i)]}@2024" for i in rows]
+
+
+def weight_summary(
+    weights: np.ndarray, meta: pd.DataFrame, rows: np.ndarray, names: Sequence[str]
+) -> dict:
     """How a weight vector over ``rows`` divides the loss among the targets."""
 
     subset = meta.iloc[rows]
@@ -564,7 +608,6 @@ def weight_summary(weights: np.ndarray, meta: pd.DataFrame, rows: np.ndarray) ->
         return out
 
     order = np.argsort(-weights, kind="stable")
-    names = subset["name"].to_numpy()
     return {
         "n": int(weights.size),
         "sum": total,
@@ -625,16 +668,36 @@ def loss_weights_block(
     module, function = shared_weight_function()
     full_rows = np.arange(inputs.matrix.shape[0], dtype=np.int64)
     receipt = inputs.registry_receipt or {}
+    specs = inputs.registry.specs
+    train_names = row_names(inputs, train)
+    full_names = row_names(inputs, full_rows)
+    # The shared module's own digest and summary, beside the harness's.
+    module_digest = module.target_loss_weights_sha256(
+        [module.target_row_name(specs[int(i)]) for i in train], weights.train
+    )
+    if module_digest != loss_vector_sha256(train_names, weights.train):
+        raise SystemExit("the harness's weight digest differs from the module's")
     return {
         "target_weighting": spec.target_weighting,
         "function": SHARED_TARGET_LOSS_WEIGHTS,
         "function_qualname": getattr(function, "__qualname__", None),
+        "row_mapping": module.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
+        "formula": module.US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "family_multipliers": {},
         "module_file": getattr(module, "__file__", None),
+        "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV)),
         "module_sha256": sha256(Path(module.__file__)),
         "registry_sha256": receipt.get("verified_registry_sha256"),
         "registry_compile_head": receipt.get("compile_head"),
-        "train": weight_summary(weights.train, inputs.meta, train),
-        "full_surface": weight_summary(weights.full, inputs.meta, full_rows),
+        "train": weight_summary(weights.train, inputs.meta, train, train_names),
+        "full_surface": weight_summary(
+            weights.full, inputs.meta, full_rows, full_names
+        ),
+        "train_distribution": module.target_loss_weight_distribution(
+            [specs[int(i)] for i in train],
+            weights.train,
+            row_mapping=module.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+        ),
     }
 
 

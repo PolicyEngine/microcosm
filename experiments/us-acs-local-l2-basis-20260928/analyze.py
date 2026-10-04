@@ -874,7 +874,7 @@ def weighting_shift(weighted: pd.DataFrame) -> tuple[str, pd.DataFrame | None]:
     weights = np.load(weights_path)["target_loss_weights_full"]
     meta = pd.read_parquet(DEFAULT_CHECKPOINT / "targets_meta.parquet")
     expected = payload["target_loss_weights"]["full_surface"]["loss_vector_sha256"]
-    actual = loss_vector_sha256(meta["name"].to_numpy(), weights)
+    actual = loss_vector_sha256([f"{name}@2024" for name in meta["name"]], weights)
     if actual != expected:
         raise SystemExit(f"w_release_repro target weights hash {actual} != {expected}")
     per_target = meta[

@@ -43,6 +43,7 @@ from sweep import (  # noqa: E402
     load_inputs,
     loss_vector_sha256,
     loss_weights_for,
+    row_names,
     sha256,
     training_rows,
 )
@@ -138,7 +139,7 @@ def main() -> None:
         "function": SHARED_TARGET_LOSS_WEIGHTS,
         "registry_sha256": inputs.registry_receipt["verified_registry_sha256"],
         "full_surface_loss_vector_sha256": loss_vector_sha256(
-            inputs.meta["name"].to_numpy(), full.full
+            row_names(inputs, all_rows), full.full
         ),
         "runs": runs,
     }
