@@ -14,6 +14,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.atomic_area_support import (
+    without_uk_native_alias_columns,
+)
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
@@ -35,6 +38,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
 )
 from microcosm.calibrate import TargetRegistry
+from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import validate_uc_claimant_input
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
@@ -342,6 +346,34 @@ def compute_uc_paid_diagnostic_masks(
     return masks
 
 
+def _engine_scratch_frame(frame: Any) -> tuple[Any, tuple[str, ...]]:
+    """The frame a scratch-mode engine loads, and the columns it leaves behind.
+
+    The nation-native alias codes of the derived geography layers
+    (microcosm#931) are NA outside their own nation by design and are never
+    engine inputs; the single-year dataset policyengine-uk loads refuses any
+    NaN column, so they leave here exactly as they leave at the export
+    boundary. A frame carrying none of them is returned as is.
+    """
+
+    household = frame.table("household")
+    kept = without_uk_native_alias_columns(household)
+    if kept is household:
+        return frame, ()
+    dropped = tuple(c for c in household.columns if c not in kept.columns)
+    tables = {name: frame.table(name) for name in frame.entities}
+    tables["household"] = kept
+    engine_frame = Frame(
+        {**tables, **{name: frame.link(name) for name in frame.links}},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return engine_frame, dropped
+
+
 class UKMeasureResolver:
     """B2 measure provider backed by a policyengine-uk Microsimulation."""
 
@@ -366,14 +398,17 @@ class UKMeasureResolver:
                 raise ValueError("scratch-mode UKMeasureResolver requires a frame.")
             scratch_dir.mkdir(parents=True, exist_ok=True)
             source_path = scratch_dir / "simulation-input.h5"
-            write_uk_national_frame(frame, source_path)
+            engine_frame, dropped = _engine_scratch_frame(frame)
+            write_uk_national_frame(engine_frame, source_path)
             mode = "scratch_frame_export"
         else:
+            dropped = ()
             source_path = Path(simulation_source)
             mode = "direct_h5"
             if frame is None:
                 frame, _provenance = load_uk_national_frame(source_path)
         self.frame = frame
+        self._engine_scratch_dropped_columns = tuple(dropped)
         self._factory = factory
         self._source_path = source_path
         self._counterfactuals: dict[tuple[str, str | None], Any] = {}
@@ -596,6 +631,10 @@ class UKMeasureResolver:
 
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        if getattr(self, "_engine_scratch_dropped_columns", ()):
+            receipt["engine_scratch_dropped_columns"] = list(
+                self._engine_scratch_dropped_columns
+            )
         counterfactual_measures = getattr(self, "_counterfactual_measures", None)
         if counterfactual_measures:
             receipt["counterfactual_measures"] = {

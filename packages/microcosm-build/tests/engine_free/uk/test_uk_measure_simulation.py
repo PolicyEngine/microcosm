@@ -1060,3 +1060,126 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         )
     with pytest.raises(ValueError, match="does not match target period"):
         resolver.counterfactual_delta(_relief_binding("income_tax"), 2024)
+
+
+def _toy_uk_frame_with_native_aliases():
+    """A validated UK national frame as the atomic geography path leaves it:
+    the nation-native alias codes are NA outside their own nation."""
+    from microcosm.build.uk_runtime import uk_national_frame
+    from microcosm.frame import MassChangeRecord, WeightKind
+
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([100, 200, 300], dtype=np.int64),
+            "household_weight": [1.0, 1.0, 1.0],
+            "region": pd.array(
+                ["LONDON", "SCOTLAND", "NORTHERN_IRELAND"], dtype="string"
+            ),
+            "oa_code": pd.array(
+                ["E00000001", "S00090001", "N00000101"], dtype="string"
+            ),
+            "output_area_code": pd.array(
+                ["E00000001", "S00090001", None], dtype="string"
+            ),
+            "data_zone_code": pd.array(
+                [None, "S01006506", "N00000101"], dtype="string"
+            ),
+            "intermediate_zone_code": pd.array(
+                [None, "S02001236", None], dtype="string"
+            ),
+            "super_data_zone_code": pd.array([None, None, "N21000001"], dtype="string"),
+            "district_electoral_area_code": pd.array(
+                [None, None, "N10000101"], dtype="string"
+            ),
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype=np.int64),
+            "person_benunit_id": np.asarray([10, 20, 30], dtype=np.int64),
+            "person_household_id": np.asarray([100, 200, 300], dtype=np.int64),
+            "age": [40, 41, 42],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.asarray([10, 20, 30], dtype=np.int64)})
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2025",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(MassChangeRecord("household", 3.0, 3.0, 1.0, "toy"),),
+    )
+
+
+def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
+    monkeypatch, tmp_path: Path
+):
+    """microcosm#931 derives nation-native alias codes that are NA outside
+    their own nation; policyengine-uk refuses a dataset with any NaN column,
+    so the scratch export the engine loads drops them like the release export
+    does. The first K=25 dense build from main (2026-10-04) failed on exactly
+    this at ``uk.full.measures``."""
+    loaded = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            loaded.append(dataset)
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    frame = _toy_uk_frame_with_native_aliases()
+    before = frame.table("household").copy(deep=True)
+    resolver = UKMeasureResolver(
+        simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
+    )
+    written = pd.read_hdf(tmp_path / "simulation-input.h5", "household")
+    aliases = [
+        "output_area_code",
+        "data_zone_code",
+        "intermediate_zone_code",
+        "super_data_zone_code",
+        "district_electoral_area_code",
+    ]
+    assert not set(aliases) & set(written.columns)
+    assert not written.isna().any().any()
+    assert written["oa_code"].tolist() == ["E00000001", "S00090001", "N00000101"]
+    assert written["household_id"].tolist() == [100, 200, 300]
+    # The resolver's own frame is untouched; only the engine's copy changed.
+    pd.testing.assert_frame_equal(frame.table("household"), before)
+    assert resolver.frame is frame
+    assert loaded == [str(tmp_path / "simulation-input.h5")]
+    receipt = resolver.receipt()
+    assert receipt["mode"] == "scratch_frame_export"
+    assert receipt["engine_scratch_dropped_columns"] == aliases
+
+
+def test_scratch_engine_input_without_aliases_is_the_frame_itself(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            __version__="9.9.9",
+            Microsimulation=lambda *, dataset: SimpleNamespace(
+                tax_benefit_system=SimpleNamespace(variables={})
+            ),
+        ),
+    )
+    writes = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "write_uk_national_frame",
+        lambda frame, path: writes.append(frame) or path,
+    )
+    frame = FrameStub()
+    resolver = UKMeasureResolver(
+        simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
+    )
+    assert writes == [frame]
+    assert "engine_scratch_dropped_columns" not in resolver.receipt()

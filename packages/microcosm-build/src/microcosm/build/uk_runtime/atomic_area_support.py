@@ -42,6 +42,23 @@ UK_NATIVE_ALIAS_COLUMNS = (
     "super_data_zone_code",
     "district_electoral_area_code",
 )
+
+
+def without_uk_native_alias_columns(household):
+    """The household table without the nation-native alias columns.
+
+    The aliases are NA outside their own nation by design, so no single-year
+    dataset may carry them: not the release export and not the scratch
+    dataset a measure engine loads (policyengine-uk refuses any NaN column).
+    Returns the same object when the table carries none of them.
+    """
+
+    aliases = [c for c in UK_NATIVE_ALIAS_COLUMNS if c in household.columns]
+    if not aliases:
+        return household
+    return household.drop(columns=aliases)
+
+
 _INPUT_COLUMNS = (
     "oa_code",
     "population",
