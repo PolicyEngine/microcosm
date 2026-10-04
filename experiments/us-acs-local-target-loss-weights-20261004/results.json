@@ -1,5 +1,5 @@
 {
- "head": "2d56c32b99455ab00ffef18b653cddd1bfaeb8ed",
+ "head": "f5f380677971e421a039b70b4706ba5d186f12a6",
  "release_20260923": {
   "acs_local": {
    "by_basis": {
@@ -375,6 +375,60 @@
   "registry": {
    "path": "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/checkpoint/target_registry.json",
    "sha256": "fd25c6002cae0c991842c81399d43a3840f12cba0294021ca8ff6718e22a209f"
+  }
+ },
+ "soi_modes": {
+  "full": {
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 3176,
+    "n_district_rows": 24776,
+    "n_groups": 9953,
+    "n_singleton_district_groups": 672
+   },
+   "injected_per_district_key_refused": true,
+   "n_basis_overrides": 445,
+   "n_district_ledger_rows": 24340,
+   "n_specs": 31553
+  },
+  "state": {
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 51,
+    "n_district_rows": 436,
+    "n_groups": 4074,
+    "n_singleton_district_groups": 7
+   },
+   "injected_per_district_key_refused": false,
+   "n_basis_overrides": 0,
+   "n_district_ledger_rows": 0,
+   "n_specs": 4459
+  },
+  "state_cd": {
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 2240,
+    "n_district_rows": 22179,
+    "n_groups": 6565,
+    "n_singleton_district_groups": 7
+   },
+   "injected_per_district_key_refused": true,
+   "n_basis_overrides": 0,
+   "n_district_ledger_rows": 21743,
+   "n_specs": 26504
+  },
+  "totals": {
+   "concept_groups": {
+    "max_district_group_size": 52,
+    "n_district_groups": 118,
+    "n_district_rows": 890,
+    "n_groups": 475,
+    "n_singleton_district_groups": 28
+   },
+   "injected_per_district_key_refused": true,
+   "n_basis_overrides": 0,
+   "n_district_ledger_rows": 454,
+   "n_specs": 1247
   }
  },
  "state_cd_pinned_feed": {
@@ -846,5 +900,6 @@
    "total": 25864
   }
  },
- "wall_seconds": 28.4
+ "tree_clean": true,
+ "wall_seconds": 112.2
 }
