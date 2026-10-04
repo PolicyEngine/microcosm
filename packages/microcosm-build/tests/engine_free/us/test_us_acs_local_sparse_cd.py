@@ -903,17 +903,17 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     receipt = surface.soi_receipt
     soi = [spec for spec in specs if spec.family == "irs_soi"]
     assert receipt["counts"] == {
-        "historic_table_2_state": 3819,
+        "historic_table_2_state": 4227,
         "cd_file_state": 302,
         "congressional_district": 21743,
         "congressional_district_by_parent_basis": {
             "historic_table_2": 19181,
             "cd_file_state_total_bridged": 2562,
         },
-        "total": 25864,
+        "total": 26272,
     }
-    assert len(soi) == 25864
-    assert len(specs) == 25864 + 102 + 51
+    assert len(soi) == 26272
+    assert len(specs) == 26272 + 102 + 51
     reconciliation = module.cd_surface.state_parent_reconciliation(soi)
     assert len(reconciliation) == 2189
     assert all(block["ok"] for block in reconciliation)

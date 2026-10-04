@@ -293,3 +293,21 @@ incomes; no clone selection; feasibility conditions are per-cell and necessary
 only; the AGI aging factor 1.1203460 was supplied by the caller and matches the
 "x1.1203 over 2022->2024" CBO AGI default documented in
 `us_runtime/fiscal_targets.py`.
+
+## Feed re-pin receipts (`feed-repin/`)
+
+The 2026-10-04 re-pin of the US Chronicle feed to `51aa40f` (Chronicle
+`c5e5bf8` plus only the TY2023 state AGI package; see
+`docs/us-chronicle-feed-repin.md`):
+
+- `extend_scope.py` adds the 51 TY2023 `state_agi` pairs to
+  `us/chronicle_feed_scope.json` for a given commit; `apply_pin.py` writes the
+  pin and the parity generator's feed name from the builder's receipt.
+- `compare_feeds.py` joins the old and new feeds on source cell and compiles
+  both as the release does. `compare.json` is its report: all 39,158 old cells
+  present with equal values and no changed field, 1,020 cells added (all
+  `irs_soi.ty2023.historic_table_2.state_agi`), and no non-band target added,
+  removed or changed in value or metadata; state bands 306 (TY2022) -> 408
+  (TY2023).
+- `measure_surface.py` measures the release surface the feed-gated test pins:
+  33,250 targets, 6,102 `national_state` (408 of them state bands).
