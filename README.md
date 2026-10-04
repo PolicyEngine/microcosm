@@ -334,7 +334,11 @@ calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
 opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
-for what each mode contains and where the build records it.
+for what each mode contains and where the build records it. Its
+`--l2-basis chi_square` and `--mass-parametrization softmax` options (defaults:
+the historical `record` and `projection`) penalize distance from the design
+weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
+for the algebra, the evidence and the measured frontier.
 
 National and ACS local-area builds now use the same typed schema-8 calibration
 diagnostics writer. The local builder adds its Census population marginals to a

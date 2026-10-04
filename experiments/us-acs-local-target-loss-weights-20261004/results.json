@@ -1,5 +1,5 @@
 {
- "head": "ab2888e4c6fc5f807989b8aef4520f57ad78d07a",
+ "head": "2d56c32b99455ab00ffef18b653cddd1bfaeb8ed",
  "release_20260923": {
   "acs_local": {
    "by_basis": {
@@ -111,7 +111,7 @@
    "min": 0.026382541553434134,
    "n_targets": 4459,
    "row_mapping": "us_acs_local.v1",
-   "weights_sha256": "6911ebfe62aed5222272f69713293859887deb55e41e9f0e026957664181fe61"
+   "weights_sha256": "ba36f887407181dc6641596b4a200e6b18017cd815d7806ac4f523da3204f1d1"
   },
   "equal": {
    "by_basis": {
@@ -510,7 +510,7 @@
    "min": 0.002503737168727989,
    "n_targets": 23866,
    "row_mapping": "us_acs_local.v1",
-   "weights_sha256": "9834c275c20d90ac6471ba105fd38a1020ff513a5cd439350bff8e0e6c568515"
+   "weights_sha256": "e9c85d0d53832c8a7e1d48a6ba6a5a9ddac9d54ba6e85c094f7b5e289274a34d"
   },
   "equal": {
    "by_basis": {
@@ -846,5 +846,5 @@
    "total": 25864
   }
  },
- "wall_seconds": 23.8
+ "wall_seconds": 28.4
 }

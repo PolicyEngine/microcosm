@@ -28,10 +28,11 @@ package; each is separately resumable):
                 rung.
                 Heavy stage; a crash in calibrate never re-runs the microsim.
   calibrate   : epoch-batched warm-start calibrate on the checkpoint's
-                training targets (adam, mass conserved, hard weight-ratio cap;
-                resumable with --resume; each target's loss weighted as the
-                national release weights it, by
-                ``microcosm.build.us_runtime.target_loss_weights``, with
+                training targets (adam, mass conserved, hard weight-ratio cap,
+                optional L2 penalty --l2-lambda of form --l2-basis under
+                --mass-parametrization; resumable with --resume; each
+                target's loss weighted as the national release weights it,
+                by ``microcosm.build.us_runtime.target_loss_weights``, with
                 ``--target-family-loss-multiplier``), score the held-out
                 district targets against the pro-rata baseline, record ESS
                 over rows and distinct households, and write the calibrated
@@ -138,6 +139,19 @@ DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: ``state`` mode excludes them, which is what Build O's switch did.
 CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
 
+#: The kernel's ``l2_basis`` and ``mass_parametrization`` values
+#: (``microcosm.calibrate.L2_BASES`` / ``MASS_PARAMETRIZATIONS``), spelled here
+#: so parsing arguments never imports torch; a test pins them equal.
+L2_BASIS_CHOICES = ("chi_square", "record")
+MASS_PARAMETRIZATION_CHOICES = ("projection", "softmax")
+#: The penalty settings every solve had before they were options: a solver
+#: stamp or summary that lacks them was solved with these.
+HISTORICAL_PENALTY = {
+    "l2_lambda": 0.0,
+    "l2_basis": "record",
+    "mass_parametrization": "projection",
+}
+
 
 def _require_soi_mode(soi_mode: str) -> str:
     if soi_mode not in SOI_MODES:
@@ -149,7 +163,10 @@ def _require_soi_mode(soi_mode: str) -> str:
 
 
 def release_refresh_recipe(
-    soi_mode: str, cd_holdout_fraction: float | None = None
+    soi_mode: str,
+    cd_holdout_fraction: float | None = None,
+    penalty: dict | None = None,
+    target_family_loss_multipliers: dict | None = None,
 ) -> str:
     """The one-command release refresh, pinned to the SOI surface it built.
 
@@ -157,7 +174,12 @@ def release_refresh_recipe(
     the recorded surface even if the parser default changes again, and, for
     every ``state_cd`` build, ``--cd-holdout-fraction`` at the recorded value
     (0 included, full precision), since ``state_cd`` otherwise defaults to a
-    10% holdout.
+    10% holdout. It names ``--l2-lambda``, ``--l2-basis`` and
+    ``--mass-parametrization`` at the recorded ``penalty`` (a legacy summary
+    that records none reads as the historical solve) for the same reason: the
+    recipe rebuilds the recorded solve even after a default changes. Each
+    recorded target family loss multiplier is one
+    ``--target-family-loss-multiplier`` (none by default, as recorded).
     """
 
     _require_soi_mode(soi_mode)
@@ -166,12 +188,34 @@ def release_refresh_recipe(
         if soi_mode == SOI_MODE_STATE_CD and cd_holdout_fraction is not None
         else ""
     )
+    flags = {
+        "l2_lambda": "--l2-lambda",
+        "l2_basis": "--l2-basis",
+        "mass_parametrization": "--mass-parametrization",
+    }
+    recorded = {
+        key: HISTORICAL_PENALTY[key]
+        if (penalty or {}).get(key) is None
+        else (penalty or {})[key]
+        for key in flags
+    }
+    solve = "".join(
+        f"{flag} {float(recorded[key])!r} "
+        if key == "l2_lambda"
+        else f"{flag} {recorded[key]} "
+        for key, flag in flags.items()
+    )
+    solve += "".join(
+        f"--target-family-loss-multiplier {family}={float(multiplier)!r} "
+        for family, multiplier in sorted((target_family_loss_multipliers or {}).items())
+    )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
         "--staging-h5 <run>/acs_multispine_staging.h5 "
         "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
         f"--soi-mode {soi_mode} "
         f"{holdout}"
+        f"{solve}"
         "--ladder build/us/us_puma_ladder_2020.npz "
         "--checkpoint-dir <run>/checkpoints "
         "--out-h5 <run>/populace_us_2024_acs_local.h5 "
@@ -1500,6 +1544,8 @@ def _solver_settings(args, target_loss: dict) -> dict:
         "max_weight_ratio": args.max_weight_ratio,
         "target_loss_cap": args.target_loss_cap,
         "l2_lambda": args.l2_lambda,
+        "l2_basis": args.l2_basis,
+        "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "epoch_batch": args.epoch_batch,
         "target_loss": target_loss,
@@ -1536,6 +1582,26 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
         ),
     }
     return weights, stamp
+
+
+def _stamped_settings(settings: dict | None) -> dict | None:
+    """A recorded solver stamp, with the penalty keys it predates filled in.
+
+    A stamp written before ``l2_basis`` and ``mass_parametrization`` existed
+    was solved with their historical values, so it compares equal to a request
+    for those values and to nothing else.
+    """
+
+    if settings is None:
+        return None
+    return {
+        **{
+            key: value
+            for key, value in HISTORICAL_PENALTY.items()
+            if key != "l2_lambda"
+        },
+        **settings,
+    }
 
 
 def _weights_digest(weights) -> str:
@@ -1714,6 +1780,8 @@ def calibrate_surface(
     warm: np.ndarray | None = None,
     done: int = 0,
     on_batch=None,
+    l2_basis: str = HISTORICAL_PENALTY["l2_basis"],
+    mass_parametrization: str = HISTORICAL_PENALTY["mass_parametrization"],
 ):
     """Epoch-batched warm-start calibration of ``target_set``.
 
@@ -1744,6 +1812,8 @@ def calibrate_surface(
             max_weight_ratio=max_weight_ratio,
             target_loss_cap=target_loss_cap,
             l2_lambda=l2_lambda,
+            l2_basis=l2_basis,
+            mass_parametrization=mass_parametrization,
             seed=seed,
             target_loss_weights=target_loss_weights,
             warm_start_weights=warm,
@@ -1870,7 +1940,7 @@ def do_calibrate(args) -> None:
             if "solver_settings" in saved
             else None
         )
-        if saved_stamp != stamp or saved_settings != settings:
+        if saved_stamp != stamp or _stamped_settings(saved_settings) != settings:
             raise SystemExit(
                 "weights_latest.npz was calibrated for a different "
                 "materialization (staging, surface, holdout or sample) or "
@@ -1889,7 +1959,7 @@ def do_calibrate(args) -> None:
         previous = _load_json(summary_path)
         if (
             previous.get("run_identity_sha256") == stamp
-            and previous.get("solver_settings") == settings
+            and _stamped_settings(previous.get("solver_settings")) == settings
             and previous.get("weights_sha256") == _weights_digest(warm)
         ):
             log(
@@ -1936,6 +2006,8 @@ def do_calibrate(args) -> None:
         max_weight_ratio=args.max_weight_ratio,
         target_loss_cap=args.target_loss_cap,
         l2_lambda=args.l2_lambda,
+        l2_basis=args.l2_basis,
+        mass_parametrization=args.mass_parametrization,
         seed=args.seed,
         target_loss_weights=loss_weights,
         warm=warm,
@@ -1968,12 +2040,19 @@ def do_calibrate(args) -> None:
         "target_loss_cap": args.target_loss_cap,
         "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
+        "l2_basis": args.l2_basis,
+        "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
         "final_loss": round(result.final_loss, 6),
         "fraction_within_10pct": round(result.fraction_within_10pct, 4),
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
+        "chi_square_distance": round(result.chi_square_distance, 6),
+        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
+        "softmax_cap_rounds_exhausted_epochs": (
+            result.options.get("iterate_selection_receipt") or {}
+        ).get("softmax_cap_rounds_exhausted_epochs"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -2316,6 +2395,54 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
     return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
 
 
+def _ess_concentration_limitation(diagnostics: dict) -> dict:
+    """The lineage's weight-concentration entry, true to the solve it describes.
+
+    Only the historical solve (no penalty, projection mass parametrization)
+    keeps the reviewed entry. Any other solve, including an unpenalized softmax
+    one, records its own settings instead: its concentration is measured, but
+    whether it is acceptable is a separate review this register cannot claim.
+    """
+
+    ess = diagnostics.get("effective_sample_size")
+    ess_fraction = diagnostics.get("ess_fraction", 0.0)
+    households = diagnostics.get("households") or 0
+    l2_lambda = float(diagnostics.get("l2_lambda") or 0.0)
+    parametrization = diagnostics.get(
+        "mass_parametrization", HISTORICAL_PENALTY["mass_parametrization"]
+    )
+    if (
+        l2_lambda == 0.0
+        and parametrization == HISTORICAL_PENALTY["mass_parametrization"]
+    ):
+        return {
+            "id": "low_effective_sample_size_lambda_zero",
+            "status": "reviewed_concentration",
+            "reason": (
+                f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
+                "households under the hard 5x weight cap with l2_lambda=0 "
+                "(kept for consistency with the certified default and the "
+                "Build L doctrine; no new calibration knobs per "
+                "microcosm#492)."
+            ),
+            "calibration_blocker": False,
+        }
+    return {
+        "id": "effective_sample_size_under_nondefault_solve",
+        "status": "recorded_concentration",
+        "reason": (
+            f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
+            f"households with max_weight_ratio="
+            f"{diagnostics.get('max_weight_ratio')}, l2_lambda={l2_lambda:g}, "
+            f"l2_basis="
+            f"{diagnostics.get('l2_basis', HISTORICAL_PENALTY['l2_basis'])!r} and "
+            f"mass_parametrization={parametrization!r}; chi-square distance "
+            f"from the design weights {diagnostics.get('chi_square_distance')}."
+        ),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
@@ -2329,9 +2456,6 @@ def finalize_reviewed_limitations(
     duplicates.
     """
 
-    ess = diagnostics.get("effective_sample_size")
-    ess_fraction = diagnostics.get("ess_fraction", 0.0)
-    households = diagnostics.get("households") or 0
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
@@ -2396,18 +2520,7 @@ def finalize_reviewed_limitations(
             ),
             "calibration_blocker": False,
         },
-        {
-            "id": "low_effective_sample_size_lambda_zero",
-            "status": "reviewed_concentration",
-            "reason": (
-                f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
-                "households under the hard 5x weight cap with l2_lambda=0 "
-                "(kept for consistency with the certified default and the "
-                "Build L doctrine; no new calibration knobs per "
-                "microcosm#492)."
-            ),
-            "calibration_blocker": False,
-        },
+        _ess_concentration_limitation(diagnostics),
         {
             "id": "donor_sparse_selection_training_set",
             "status": "reviewed_construction",
@@ -3109,7 +3222,12 @@ def do_package(args) -> dict:
         ),
         "staging": LEGACY_STAGING_REFRESH_RECIPE,
         "release": release_refresh_recipe(
-            soi_mode, (identity.get("cd_holdout") or {}).get("fraction")
+            soi_mode,
+            (identity.get("cd_holdout") or {}).get("fraction"),
+            penalty={key: diagnostics.get(key) for key in HISTORICAL_PENALTY},
+            target_family_loss_multipliers=(diagnostics.get("target_loss") or {}).get(
+                "family_multipliers"
+            ),
         ),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
@@ -3139,8 +3257,10 @@ def do_package(args) -> dict:
             or ["acs_2024_1yr", "asec_puf"],
             "donor_release": donor_release,
         },
+        # A summary from before the penalty settings were recorded was solved
+        # with the historical ones, the only solve that existed then.
         "calibration": {
-            key: diagnostics.get(key)
+            key: diagnostics.get(key, HISTORICAL_PENALTY.get(key))
             for key in (
                 "families",
                 "geographies",
@@ -3148,12 +3268,16 @@ def do_package(args) -> dict:
                 "epochs",
                 "max_weight_ratio",
                 "l2_lambda",
+                "l2_basis",
+                "mass_parametrization",
                 "seed",
                 "target_loss",
                 "final_loss",
                 "fraction_within_10pct",
                 "effective_sample_size",
                 "ess_fraction",
+                "chi_square_distance",
+                "softmax_cap_rounds_exhausted_epochs",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -3428,6 +3552,32 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--l2-lambda", type=float, default=0.0)
+    parser.add_argument(
+        "--l2-basis",
+        choices=L2_BASIS_CHOICES,
+        default=HISTORICAL_PENALTY["l2_basis"],
+        help=(
+            "Form of the --l2-lambda penalty (microcosm.calibrate l2_basis). "
+            "'record' (default) is the historical mean((w / d) ** 2); "
+            "'chi_square' is GREG's design-weighted chi-square distance "
+            "sum(d * (w / d - 1) ** 2) / sum(d), which pulls toward the "
+            "design weights d themselves."
+        ),
+    )
+    parser.add_argument(
+        "--mass-parametrization",
+        choices=MASS_PARAMETRIZATION_CHOICES,
+        default=HISTORICAL_PENALTY["mass_parametrization"],
+        help=(
+            "How the mass-conserving Adam solve holds the total "
+            "(microcosm.calibrate mass_parametrization). 'projection' "
+            "(default) is the historical per-step uniform shift; 'softmax' "
+            "optimizes total * softmax(log_w). At the ACS release's scale "
+            "softmax's per-step cap rounds run out on most epochs, so it "
+            "optimizes past the cap until the closing projection; the summary "
+            "records the count (docs/calibration-l2-basis.md)."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--batch", type=int, default=5_000)

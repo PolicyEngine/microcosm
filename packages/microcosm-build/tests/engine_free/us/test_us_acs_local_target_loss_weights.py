@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -243,6 +245,8 @@ def _args(tmp_path, **overrides):
         max_weight_ratio=5.0,
         target_loss_cap=1.0,
         l2_lambda=0.0,
+        l2_basis="record",
+        mass_parametrization="projection",
         seed=0,
         families="snap,medicaid,soi",
         geographies="state,cd",
@@ -457,3 +461,80 @@ def test_a_misaligned_target_set_is_refused(calibrate_run, monkeypatch) -> None:
     monkeypatch.setattr(module.cd_surface, "calibration_target_set", reversed_set)
     with pytest.raises(SystemExit, match="not row-aligned with the training specs"):
         calibrate_run.run()
+
+
+def test_the_refresh_recipe_rebuilds_the_recorded_multipliers() -> None:
+    module = _load_tool_module()
+    plain = shlex.split(module.release_refresh_recipe("state"))
+    assert "--target-family-loss-multiplier" not in plain
+    assert module._parse_args(plain[3:]).target_family_loss_multipliers == {}
+    recipe = shlex.split(
+        module.release_refresh_recipe(
+            "state",
+            target_family_loss_multipliers={"usda_snap": 4.0, "cms_medicaid": 0.5},
+        )
+    )
+    assert module._parse_args(recipe[3:]).target_family_loss_multipliers == {
+        "cms_medicaid": 0.5,
+        "usda_snap": 4.0,
+    }
+
+
+def _release_tool_tests():
+    """The package-stage helpers of ``test_us_acs_local_release_tool.py``."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_release_tool_tests",
+        _TEST_PATHS.tests / "engine_free" / "us" / "test_us_acs_local_release_tool.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_package_manifest_records_the_loss_weights(tmp_path, monkeypatch) -> None:
+    from microcosm.data import stored_inputs
+
+    helpers = _release_tool_tests()
+    # The stored-input contract stand-in that file's autouse fixture installs.
+    monkeypatch.setattr(
+        stored_inputs, "installed_us_engine", lambda: helpers._PACKAGE_ENGINE
+    )
+    monkeypatch.setattr(
+        stored_inputs,
+        "require_h5_stored_inputs",
+        lambda path, *, engine: {
+            "register_sha256": stored_inputs.register_sha256(),
+            "registered_non_variables": [],
+        },
+    )
+    module = helpers._load_tool_module()
+    args = helpers._package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    target_loss = {
+        "weighting": lw.US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "row_mapping": "us_acs_local.v1",
+        "family_multipliers": {"usda_snap": 4.0},
+        "n_targets": 3,
+        "weights_sha256": "0" * 64,
+    }
+    summary["target_loss"] = target_loss
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["target_loss"] == target_loss
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--target-family-loss-multiplier") + 1] == (
+        "usda_snap=4.0"
+    )
