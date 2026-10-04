@@ -667,13 +667,21 @@ def test_committed_exclusion_registers_load() -> None:
     # the concentration threshold. The gate fails any of them as stale the
     # day a build brings the column inside the fence, which the 2 October
     # final build did for adult_ema (+74% against the reference): its entry
-    # is retired.
-    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
+    # is retired. The 3 October final build's certifier earned three more,
+    # signed 2026-10-04: the FRS access-fund outlier at the weight bound
+    # (expiring with the owed period rule) and the SPI channel's two
+    # legacy-benefit leaves.
+    assert set(input_mass["efrs-post-calibration"]) == {
+        "access_fund",
+        "dfe_education_spending",
+        "jsa_income_reported",
+        "working_tax_credit_reported",
+    }
     assert set(qrf_tail) == {"charitable_investment_gifts"}
     for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
         assert record.approved_by == "juaristi22"
-        assert record.approved_on == "2026-10-02"
-        assert record.expires_on == "2027-04-02"
+        assert record.approved_on in {"2026-10-02", "2026-10-04"}
+        assert record.expires_on in {"2027-04-02", "2027-01-04", "2027-04-04"}
         assert "microcosm#1063" in record.adjudication
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()

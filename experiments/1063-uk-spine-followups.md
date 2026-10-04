@@ -50,8 +50,14 @@ The arms, in order:
   (1,079; bound 1,151), projection entrants 6,715 (6,711; bound 73,000), 1,090 targets.
 - B (b561270df, WAS and identities): all 28 spine gates pass including the new
   `uk_stage_was_wealth_coherence`: zero mortgage debt off mortgaged tenure, zero main-residence value
-  off owner tenures, zero owners without one, zero identity violations. The rule drops the donor's
-  off-tenure mortgage mass, £127bn of £1,266bn (10.1%), all other-property mortgages. Mortgaged
+  off owner tenures, zero owners without one, zero identity violations. (Superseded after review
+  round 1: Arm B's rule dropped the donor's off-tenure mortgage mass, £127bn of £1,266bn, all
+  other-property mortgages. Since 558325016 only the main-residence mortgage is tenure-stratified and
+  the other-property mortgage, `HMortGR8` less `TotMortR8`, is drawn on every tenure; on the final
+  build's spine the donor holds £127.3bn of mortgage debt off the mortgaged tenure, £111.6bn of it
+  other-property mortgages, and the recipient frame holds £273.1bn on 1,386 households, with zero
+  main-residence mortgage off the mortgaged tenure and zero `mortgage_debt` identity violations.)
+  Mortgaged
   households owing more than their home: 5.4% against the donor's 2.7% (26% on the 2026-09-30 build).
   Renters with property wealth: private 16.5% against the donor's 10.3%, social 4.6% against 1.1%
   (10.7% before). The calibration stopped before an H5 on
@@ -73,7 +79,7 @@ The arms, in order:
   under the bound on every arm and the solver moves a point among them), and the stale
   `hmrc/state_pension_income_band_50_000_to_70_000@2025` exclusion back inside the bound (24.9%; the
   pensions branch retired it at b19f14d98, so the stack does not carry it).
-  On the calibrated weights (review item 4, `scripts/residential_readout.py` on the C2 solution): the
+  On the calibrated weights (review item 4, `tools/uk_residential_readout.py` on the C2 solution): the
   two bound national totals hold (count 202,628 against 202,630, gains £12.246bn against £12.242bn),
   and within them the solver moves mass between bands: £250–500k 3,680 → 4,256 taxpayers, £500k–1m
   2,004 → 2,173 (gains £1.25bn → £1.67bn), £1–2m 730 → 552 (£0.94bn → £0.77bn), £2–5m 427 → 274
@@ -295,9 +301,32 @@ Certifier rerun from the gate-fix head (1e58ecb3a) on the same artifacts, 2026-1
 `uk_input_mass_parity` alone fails, on the three columns above (`final/certify2.err`,
 `microcosm_uk_2024_25.release_cut_gates.rerun.json`).
 
+The access-fund record, checked against the FRS 2024-25 variable listing (review round 2, item 7):
+`ACCSSPD` 5 is "Calendar month", and £1,035.62 a week is exactly £4,500 a calendar month
+(1,035.616438 × 365/7 ÷ 12). A £4,500 access fund a month is not a plausible award; £4,500 a year sits
+beside the next FRS values (£4,803, £4,654, £3,602). So the record is an annual or termly award under
+the wrong period code, a data fix for the spine's period handling rather than an outlier fence, and
+the household's weight is the calibration's: on the 30 September main build the same record sat at
+design weight (ratio 1.00) because its incidence clone drew £2,355 of gains, under the exempt amount,
+and the anchor returned the clone's mass; on this build the Table 3 redraw's positional stream, shifted
+by the 1,920 inserted donor households, gives the clone £3,776, a liable South East gainer with a
+residential arm, and the calibration takes the household and both copies to the 10x bound.
+
+Ruling 2026-10-04 (in session): the deferrals needed to build and publish the national dataset are
+signed. `input_mass_reviewed_exclusions.json` gains `access_fund` (expiring 2027-01-04, with the
+period rule owed), `jsa_income_reported` and `working_tax_credit_reported` (2027-04-04), each entry
+carrying the diagnosis above; the certifier reruns on the same artifacts from the signed head.
+
 ## Still owed
 
-- The certifier's three input-mass findings on the second run (above): her rulings.
+- The access-fund period rule in the spine (`ACCSSPD` 5 on sernum 14443), owed before the
+  `access_fund` exclusion expires on 2027-01-04.
+- Follow-ups outside this PR: key the Table 3 redraw's within-band draws and the other positional
+  draws by identity, so an upstream row insertion no longer moves a thin UC cell or an incidence
+  clone across the exempt amount (review round 2, item 8); the SPI channel's treatment of the
+  legacy-benefit leaves (`jsa_income_reported`, `working_tax_credit_reported`); running
+  `salary_sacrifice` before the capital-gains stages, which would retire the pre-conversion pay
+  carrier.
 - Her calls: Child Benefit opt-out pool order (fully charged first, then the taper, as built; or one
   pool over every charged family); `other_residential_property_value` (WAS `DVHseVal`) excludes
   buy-to-let (`DVBltVal`), which sits in the drawn remainder; the Table 8a rows stay fenced

@@ -92,12 +92,33 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
 # The committed per-reference register (microcosm#1063 c9): the policy payloads
 # sealed into the input-mass evidence digest.
 UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "access_fund": {
+        "reason": "One FRS household carries 98% of the candidate's access-fund mass (GBP 1.01bn against the incumbent's GBP 160m, +535%): sernum 14443's 19-year-old reports an access fund of GBP 4,500 with FRS period code 5 (calendar month), which the FRS weeklyises to GBP 1,035.62 (ACCSSAMT) and the spine annualises to GBP 54,037, eleven times the next largest FRS value; the calibration takes the household and its two capital-gains copies to the 10x weight bound. The value is almost certainly an annual or termly award under the wrong period code; the input stays on the release surface until the period rule is settled in the spine, and the exclusion expires with it.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1063 (PR #1089 release-cut certifier on the 2026-10-03 final build; ruling 2026-10-04 in session: the deferrals needed to build and publish the national dataset are signed, each with its diagnosis)",
+        "approved_on": "2026-10-04",
+        "expires_on": "2027-01-04",
+    },
     "dfe_education_spending": {
         "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
         "approved_by": "juaristi22",
         "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
         "approved_on": "2026-10-02",
         "expires_on": "2027-04-02",
+    },
+    "jsa_income_reported": {
+        "reason": "The candidate carries GBP 272m of reported income-based JSA against the incumbent's GBP 23m (+1,058%): the enhanced-FRS reference holds only the FRS respondents' amounts, while the spine's SPI synthetic channel receives this legacy-benefit leaf from the stage-2 QRF at FRS rates (76 of the 196 nonzero rows and most of the mass) and a few rows sit at the calibration's weight bound. Neither is new to this build: the 2026-09-30 main candidate stood at +428% on the same column. The comparison measures the SPI channel's imputation of a legacy benefit, which is a design question for the channel, not a mass the candidate lost or invented.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1063 (PR #1089 release-cut certifier on the 2026-10-03 final build; ruling 2026-10-04 in session: the deferrals needed to build and publish the national dataset are signed, each with its diagnosis)",
+        "approved_on": "2026-10-04",
+        "expires_on": "2027-04-04",
+    },
+    "working_tax_credit_reported": {
+        "reason": "The candidate carries GBP 625m of reported Working Tax Credit against the incumbent's GBP 74m (+747%): the enhanced-FRS reference holds only the FRS respondents' amounts, while the spine's SPI synthetic channel receives this legacy-benefit leaf from the stage-2 QRF at FRS rates (274 of the 372 nonzero rows) and a few rows sit at the calibration's weight bound. The 2026-09-30 main candidate stood at +421% on the same column. Tax credits closed in April 2025, so the SPI channel's treatment of the leaf is a design question for the channel, not a mass the candidate lost or invented.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1063 (PR #1089 release-cut certifier on the 2026-10-03 final build; ruling 2026-10-04 in session: the deferrals needed to build and publish the national dataset are signed, each with its diagnosis)",
+        "approved_on": "2026-10-04",
+        "expires_on": "2027-04-04",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -139,7 +160,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
+    "8829fb83db6a16482be80cbe1b1da125608448b5a34b9cbb0561aac32a870447"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
