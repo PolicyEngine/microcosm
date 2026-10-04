@@ -40,10 +40,10 @@ from microcosm.build.gate_battery import (
     BlockingMode,
     EvidenceContext,
     GateBatteryRun,
+    canonical_report_bytes,
     gate_signing_key_env,
 )
 from microcosm.build.gates import FitWeightRecord
-from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
@@ -635,8 +635,13 @@ def _verify_part_signature(
         raise UKReleaseCertificationError(f"{part_name}: signature absent.")
     unsigned = json.loads(json.dumps(payload))
     unsigned["attestation"]["signature"] = None
+    # The parts are gate-battery reports, signed over the battery's
+    # canonical bytes; a verifier that canonicalised them any other way
+    # would refuse every real report (the logbook form renders 1.0 as 1,
+    # so the two agree only on reports without such floats, which is why
+    # synthetic fixtures never showed the difference; microcosm#1063).
     recomputed = hmac.new(
-        signing_key, canonical_json_bytes(unsigned), hashlib.sha256
+        signing_key, canonical_report_bytes(unsigned), hashlib.sha256
     ).hexdigest()
     if not hmac.compare_digest(recomputed, signature):
         raise UKReleaseCertificationError(
@@ -993,7 +998,7 @@ def _sign_certification(payload: dict[str, Any], signing_key: bytes) -> None:
     }
     payload["attestation"] = attestation
     attestation["signature"] = hmac.new(
-        signing_key, canonical_json_bytes(payload), hashlib.sha256
+        signing_key, canonical_report_bytes(payload), hashlib.sha256
     ).hexdigest()
 
 

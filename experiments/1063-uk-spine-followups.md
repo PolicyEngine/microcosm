@@ -317,6 +317,23 @@ signed. `input_mass_reviewed_exclusions.json` gains `access_fund` (expiring 2027
 period rule owed), `jsa_income_reported` and `working_tax_credit_reported` (2027-04-04), each entry
 carrying the diagnosis above; the certifier reruns on the same artifacts from the signed head.
 
+Certifier rerun from the signed head (427bec73f), 2026-10-04 16:23Z: all 20 gates pass. The run then
+stopped composing the certificate: "spine: signature does not authenticate under the release signing
+key". Not the key (every report, this run's own included, carries the same key fingerprint) but the
+canonical bytes: the gate battery signs its reports over `json.dumps(sort_keys, compact)` while the
+certifier verified the parts, and signed the certificate, over the logbook's #628 form, which renders
+`1.0` as `1` and `1e-05` as `0.00001`. The two agree on the float-free synthetic fixtures and on no real
+report, so the first certification to reach composition was the first to see it. The certifier now
+verifies and signs over the battery's canonical bytes (`canonical_report_bytes`, the form the data
+contract's verifier already uses), with a regression test that puts such floats in a part. A latent
+defect on main, reached here for the first time.
+
+The engine-free lane's remaining failure, `test_uk_national_graph.py`'s seam-scope test, is the
+committed target-fit register against the test's fixed review date: the South East deferral is
+approved 2026-10-02 and the graph was reviewed at 2026-09-29, so the gate refused it as not yet in
+force. Path-tiered CI had not selected the file before round 2 widened the diff. The test now reviews
+at the latest approval across the committed registers, inside every live window.
+
 ## Still owed
 
 - The access-fund period rule in the spine (`ACCSSPD` 5 on sernum 14443), owed before the

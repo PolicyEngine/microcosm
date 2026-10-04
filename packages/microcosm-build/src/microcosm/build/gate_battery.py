@@ -73,6 +73,7 @@ __all__ = [
     "GATE_BATTERY_PRODUCER",
     "GATE_BATTERY_SCHEMA_VERSION",
     "GATE_BATTERY_SIGNATURE_ALGORITHM",
+    "canonical_report_bytes",
     "GateBatteryBlockedError",
     "GateBatteryRun",
     "GateBinding",
@@ -119,6 +120,19 @@ def _canonical_json_bytes(value: object) -> bytes:
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
+
+
+def canonical_report_bytes(value: object) -> bytes:
+    """The bytes a gate-battery report is signed over.
+
+    Sorted keys, no whitespace, Python's JSON number rendering. Every
+    verifier of a battery signature must canonicalise with this function
+    and no other: the logbook's #628 form renders ``1.0`` as ``1`` and
+    ``1e-05`` as ``0.00001``, so it agrees with this one only on payloads
+    without such floats.
+    """
+
+    return _canonical_json_bytes(value)
 
 
 def _canonical_sha256(value: object) -> str:
