@@ -2615,9 +2615,16 @@ def _latest_dynamic_target_references(
             target_period=target_period,
         )
         if reference is not None:
+            key = _dynamic_target_key(fact)
+            if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true":
+                # Every vintage of a state AGI band reaches the registry:
+                # _rebase_soi_state_agi_bands picks one vintage per state and
+                # measure by partition completeness, which per-band latest
+                # selection cannot see (microcosm#940).
+                key = (*key, str(_period_value(fact)))
             candidates.append(
                 (
-                    _dynamic_target_key(fact),
+                    key,
                     _period_key(fact),
                     _numeric_value(fact),
                     _source_record_id(fact),

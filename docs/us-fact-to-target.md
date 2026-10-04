@@ -143,16 +143,27 @@ binds them:
   The control may be older than the bands (TY2023 bands on the TY2022 state
   total): the newest published shares scale onto the level the state total
   binds at, rather than binding a second, differently aged level.
-- **One vintage.** Per state and measure only the newest vintage's bands
-  bind, so the TY2022 package's summed `500k_plus` row never binds beside
-  TY2023's split rows. A gap in a partition drops that state's bands; an
-  overlap raises.
+- **One vintage.** Every vintage of a state band reaches the pass; per state
+  and measure the pass binds the newest vintage whose published partition is
+  complete and drops the rest, so the TY2022 package's summed `500k_plus` row
+  never binds beside TY2023's split rows, and a gapped newest vintage falls
+  back to the last complete one. Overlapping bands, or one source record id
+  re-emitted with different values, raise.
+- **The floor holds at every period.** A state band below $100k, or for a
+  single filing status, is refused even in its own tax year, so a same-year
+  vintage can never bind raw sub-floor levels.
 - **Receipts.** Every rebased row carries `state_agi_band_share`,
   `uprating_factor` and the control's record id.
-- **Release gate.** `irs_state_agi_top_tail` in
-  `US_FISCAL_TARGET_COVERAGE_REQUIREMENTS` requires a $1M+ AGI row for all 51
-  states, so a feed without the split bands fails the release rather than
-  shipping without the constraint.
+- **Release gate.** `irs_state_agi_top_tail` and
+  `irs_state_agi_top_tail_returns` in `US_FISCAL_TARGET_COVERAGE_REQUIREMENTS`
+  require a $1M+ AGI row and a $1M+ return-count row for all 51 states, so a
+  feed without the split bands, or a state whose partition or total is
+  missing for either measure, fails the release rather than shipping without
+  the constraint. Together the two rows pin each state's AGI above $1M.
+- **Period contract.** Without aging, a band rebased onto an older state
+  total holds that total's period's dollars; `find_period_contract_violations`
+  reads `uprating_to_period` for rebased rows, the same period target aging
+  ages them from.
 - **Agreement with Table 1.1.** On the pinned feed the states' $500k–$1M and
   $1M+ rows sum to 98–99% of Table 1.1's TY2023 classes aged the same way;
   Table 1.1 also counts returns filed from other areas and Puerto Rico

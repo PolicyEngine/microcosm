@@ -732,15 +732,34 @@ def test_period_contract_reads_the_period_a_rebased_band_sits_at() -> None:
     """Without aging, TY2023 AGI bands rebased onto a TY2022 state total hold
     2022-level dollars: at a 2023 build they violate the period contract like
     the state total they are shares of, and at a 2022 build neither does."""
+    from dataclasses import replace
+
     from microcosm.build.us_runtime.target_aging import (
         find_period_contract_violations,
     )
+    from microcosm.calibrate import TargetRegistry
 
-    registry = _compile(
+    compiled = _compile(
         [
             *_partition("CO", 2023, CO_2023),
             *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
         ]
+    )
+    # _compile waives the contract at its 2024 build; remove the waivers to
+    # ask the contract afresh at other build periods.
+    registry = TargetRegistry(
+        [
+            replace(
+                spec,
+                metadata={
+                    key: value
+                    for key, value in spec.metadata.items()
+                    if key != "period_contract_waiver"
+                },
+            )
+            for spec in compiled.specs
+        ],
+        country="us",
     )
     agi_bands = {
         name
