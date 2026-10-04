@@ -810,7 +810,9 @@ def test_the_report_names_the_commit_the_probe_loaded_from(
     assert {key: source[key] for key in LOAD_STATE_FIELDS} == probe_tool._TOOL_SOURCE
     assert source["commit"] != LATER_HEAD
     assert source["commit_at_write"] == LATER_HEAD
-    assert source["moved_since_load"] is True
+    # Outside a git checkout there is no load state to compare with.
+    expected = True if source["commit"] is not None else None
+    assert source["moved_since_load"] is expected
 
     def sha256(path) -> str:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -821,10 +823,12 @@ def test_the_report_names_the_commit_the_probe_loaded_from(
     assert source["tools"] == {
         "tools/build_us_fiscal_refresh_release.py": {
             "sha256": sha256(builder.__file__),
+            "file": builder.__file__,
             "hashed": "at write",
         },
         "tools/sample_us_export_households.py": {
             "sha256": sha256(probe.sampler.__file__),
+            "file": probe.sampler.__file__,
             "hashed": "at write",
         },
     }

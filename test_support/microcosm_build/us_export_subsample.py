@@ -403,8 +403,14 @@ def sample_synthetic(
 #: The commit git reports once :func:`move_head_after_load` has run.
 LATER_HEAD = "f" * 40
 
-#: The fields a tool records about the repository state it loaded from.
-LOAD_STATE_FIELDS = ("commit", "dirty", "changes_sha256", "sha256")
+#: The fields a tool records about the state it loaded from.
+LOAD_STATE_FIELDS = (
+    "commit",
+    "dirty",
+    "changes_sha256",
+    "sha256",
+    "installed_distributions",
+)
 
 
 def move_head_after_load(monkeypatch) -> None:
@@ -413,12 +419,17 @@ def move_head_after_load(monkeypatch) -> None:
     real_run = subprocess.run
 
     def run(args, *rest, **options):
-        args = list(args)
-        if args[:1] == ["git"]:
-            out = LATER_HEAD + "\n" if "rev-parse" in args else ""
+        command = list(args) if isinstance(args, list | tuple) else None
+        if command and command[0] == "git":
+            if "--show-object-format" in command:
+                out = "sha1\n"
+            elif "rev-parse" in command:
+                out = LATER_HEAD + "\n"
+            else:  # ls-tree, diff-index, ls-files: nothing differs
+                out = ""
             if not options.get("text"):
                 out = out.encode()
-            return subprocess.CompletedProcess(args, 0, out, out[:0])
+            return subprocess.CompletedProcess(command, 0, out, out[:0])
         return real_run(args, *rest, **options)
 
     monkeypatch.setattr(subprocess, "run", run)

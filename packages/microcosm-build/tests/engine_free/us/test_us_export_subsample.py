@@ -363,7 +363,9 @@ def test_the_receipt_names_the_commit_the_sampler_loaded_from(
     assert source["commit_at_write"] == LATER_HEAD
     assert source["dirty_at_write"] is False
     assert source["changes_sha256_at_write"] is None
-    assert source["moved_since_load"] is True
+    # Outside a git checkout there is no load state to compare with.
+    expected = True if source["commit"] is not None else None
+    assert source["moved_since_load"] is expected
     tool = Path(sampler.__file__).read_bytes()
     assert source["sha256"] == hashlib.sha256(tool).hexdigest()
 

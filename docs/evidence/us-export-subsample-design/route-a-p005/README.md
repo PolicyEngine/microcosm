@@ -42,7 +42,7 @@ then. The commits above are the ones the run script logged at launch, with
 
 A tool file is read when Python starts it, but the release tool, the sampler
 (for the probe) and the editable microcosm packages are imported later, from
-whatever the worktree holds then. So every commit made while a tool ran
+whatever the worktree holds then. So every change made while a tool ran
 matters. The worktree's reflog shows only commits in those windows, with no
 checkout or reset:
 
@@ -55,33 +55,92 @@ checkout or reset:
   the probe file, read at launch, and tests (`git diff --stat cf23a8edc
   19df6bc8a -- tools packages`).
 
-So every committed module this run loaded came from the logged commits.
+So every module this run loaded from a commit came from the logged commits.
+Git does not record uncommitted edits made and undone within a window, so it
+cannot rule those out; the differential rerun below checks the smoke's
+results directly.
 
-What differs from the merged tools:
+### What differs from the merged tools
 
-- Sampler, `5f72575a9` to `d4c6ac85e`: one comment. The subsample is what the
-  merged sampler draws. `packages/` did not change in this range, so neither
-  did the probes' binding inputs, which decide certainty.
-- Probe, `cf23a8edc` to `d4c6ac85e` (`0a80bc884`, `7999e6535`, `dd283c1ab`;
-  only the probe file and tests changed):
-  - The steps after the smoke gate (reform-count check, row map, result
-    lookup, reference comparison) lose a probe only its standard error or
-    comparison when they fail.
-  - The `load` stage is split into `identify`, `load` and `design`.
-  - The take-all rule counts sampled non-carrier households with any effect
-    instead of summing their effects.
-  - `--census` with a receipt is refused.
-  - Receipt probe records are read defensively.
-  - A malformed reference smoke file costs only the comparison.
+Sampler, `5f72575a9` to `d4c6ac85e`: one comment. The package sources
+(`packages/*/src`) did not change in this range either, so neither did the
+probes' binding inputs, which decide certainty. The subsample is what the
+merged sampler draws.
 
-  None of these fires on a well-formed reference, a complete receipt and no
-  `--census`, which is this run. The new take-all count applies to two
-  probes, whose effects equal the full-size build's bit for bit.
+Probe, `cf23a8edc` to `d4c6ac85e` (`0a80bc884`, `7999e6535`, `dd283c1ab`;
+only the probe file and tests changed). Each change, and whether it touches
+this run:
 
-Both tools now record the commit at load with their own sha256. When they
-write, they check HEAD and the tree's cleanliness again and flag any change
-since load (`moved_since_load`). The probe also records the sha256 of the
-release tool and sampler it ran.
+| Change | Before | After | In this run |
+|---|---|---|---|
+| Reform count differs from the probe count, or the household row map fails | the smoke stage raises, filed as a release failure, and the gate verdicts are lost | every probe keeps its gate verdict, with no standard error ("analysis not run") | count matched, row map built |
+| A probe has no result in the gate | the stage raises | a probe-integrity error for that probe, and no smoke row for it | every probe has a result |
+| A reference comparison raises | the stage raises | only that probe's comparison is lost | every comparison ran |
+| The reference smoke file is malformed | the stage raises | `reference_error` on the stage, and no probe is compared | well formed |
+| Receipt probe records | read by key: a receipt without probe records makes the stage raise | read defensively; a missing record costs only take-all detection | complete |
+| `--census` with a receipt | the receipt wins silently | refused | not used |
+| The `load` stage | one stage, every failure filed as probe integrity | `identify` and `design` (probe integrity) and `load` (the release's own loader: a failure the release would hit too, filed as a release failure); the design verdict moves to stage `design` | all three completed; the report layout differs |
+| Take-all exactness | no drawn household with an effect, and the non-carrier effects sum to zero | no drawn household with an effect, and no sampled non-carrier household with any effect | see below |
+
+So on this run the merged probe differs only in the report's stage layout and
+possibly the take-all rule. Both authoritative take-all probes,
+`form_4952_election_neutralization` and `keogh_distribution_neutralization`,
+had no drawn effect household and a summed non-carrier effect of exactly zero,
+and their effects equal the full-size build's bit for bit. The report predates
+the household count, so it cannot show that no sampled non-carrier household
+carried an effect; the rerun below does.
+
+### Differential rerun with the merged probe
+
+`merged-smoke/` reruns the smoke on the same subsample with the merged probe
+(`d4c6ac85e`, from a clean checkout), on the same interpreter and installed
+libraries as the run. The editable microcosm packages matched `d4c6ac85e`'s
+`packages/*/src` at the start and the end of the rerun. It ran 2026-10-04
+00:39 to 03:07 EDT.
+
+```bash
+python tools/probe_us_post_export.py \
+  --export <run>/subsample/populace_us_2024.h5 --out <run>/probe-merged-smoke \
+  --reference-release-dir <release>/releases/<id> --release-id probe-of-<id> \
+  --stages reform_coverage_smoke
+python docs/evidence/us-export-subsample-design/scripts/compare_probe_smoke.py \
+  route-a-p005/probe_report.json route-a-p005/merged-smoke/probe_report.json
+```
+
+- **The merged probe reproduces the run's smoke exactly.** For all 41 probes
+  these agree to the bit: the effect, the gate's pass/fail, the authority,
+  the standard error, the effective households, and the drawn and certainty
+  effect-household counts. All 41 verdicts and every comparison with the
+  full-size build are identical too.
+- **The take-all rule changes nothing here.** Both authoritative take-all
+  probes, `form_4952_election_neutralization` and
+  `keogh_distribution_neutralization`, have 0 sampled non-carrier households
+  with an effect, so they stay authoritative under the merged rule.
+  `obbba_casualty_loss_limit` (take-all, with 22 drawn and 34 non-carrier
+  effect households) stays informational.
+- **Its report names its code correctly:** `d4c6ac85e`, clean.
+- **Cost:** 6,516 CPU-s for the smoke (the run took 6,264), a 12.4 GiB stage
+  peak and a 13.4 GiB process peak.
+
+### What the tools record now
+
+As they load, both tools record four things:
+- HEAD;
+- whether the working tree under `tools/` or `packages/` differs from HEAD's
+  tree in any file's bytes or mode;
+- a sha256 of those differences, untracked files included;
+- the sha256 of their own bytes, read before their heavy imports.
+
+They also record a digest of every installed distribution's name and
+version. When they write a receipt or report, they read the state again and
+set `moved_since_load` if it changed, so an edit within an already dirty
+tree counts.
+
+The working tree is compared with HEAD by content, not with the index, so
+staging, or rewriting a file with the same bytes, is not a change. The probe
+also records the sha256 of the release tool and sampler it ran, taken from
+the bytes it executed. The comparison is of the two moments only: an edit
+made and undone between them is not seen.
 
 ## Result
 
@@ -193,8 +252,10 @@ overstate the work, and CPU seconds are the better measure.
 | QRF tail (source and subsample) | 92 | 15 | 1.3 |
 | Take-up participation | 31 | 12 | 0.9 |
 
-The process peaked at 20.9 GiB (psutil, sampled every 0.5 s). `passes.jsonl`
-records RSS before and at peak for each of the batched scorer's 99 passes:
+The process peaked at 20.9 GiB (`ru_maxrss`, the operating system's record of
+its lifetime peak). The stage and pass figures are psutil RSS, sampled every
+0.5 s. `passes.jsonl` records RSS before and at peak for each of the batched
+scorer's 99 passes:
 
 - 0.8 GiB before the smoke's baseline pass, and 7.4 GiB after it;
 - 12.2 GiB by the end of the smoke, and 20.8 GiB by the end of validation;

@@ -88,8 +88,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import pandas as pd
+# This file's bytes, read before the heavy imports below, for tool_source:
+# Python read them milliseconds earlier to compile what is running.
+_SOURCE_AT_LOAD = Path(__file__).read_bytes()
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 #: Bump with any change to the draw, the weights or the receipt layout.
 SAMPLE_RECEIPT_SCHEMA_VERSION = 2
@@ -849,88 +853,156 @@ def _library_versions() -> dict[str, str | None]:
 WATCHED_PATHS = ("tools", "packages")
 
 
-def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str | None]:
-    """The repository's state under :data:`WATCHED_PATHS`: HEAD, whether the
-    working tree differs from it there (tracked changes or untracked files),
-    and a sha256 of those differences (``None`` when there are none).
-    ``(None, None, None)`` outside a git checkout or without git.
+def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | None:
+    """A working-tree path's git mode, git blob id and sha256 (``None`` if it
+    does not exist). Files are read in chunks, so a large one does not raise
+    the process's peak memory; a directory (an untracked nested repository)
+    is not descended."""
+    import stat
 
-    The digest covers ``git diff --binary HEAD`` and every untracked,
-    unignored file's path and bytes, so it changes with any edit to a dirty
-    tree, not only with a change between clean and dirty. Git runs with
-    ``--no-optional-locks``: these reads never take the index lock that a
-    concurrent commit in the same worktree needs.
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return ("unreadable", "", f"errno {error.errno}")
+    if stat.S_ISDIR(info.st_mode):
+        return ("040000", "", "directory, not descended")
+    blob = hashlib.new(object_format)
+    plain = hashlib.sha256()
+    try:
+        if stat.S_ISLNK(info.st_mode):
+            mode, chunks = "120000", [os.fsencode(os.readlink(path))]
+            size = len(chunks[0])
+        else:
+            mode = "100755" if info.st_mode & stat.S_IXUSR else "100644"
+            size, chunks = info.st_size, None
+        blob.update(f"blob {size}\0".encode())
+        if chunks is None:
+            with path.open("rb") as handle:
+                while chunk := handle.read(1 << 20):
+                    blob.update(chunk)
+                    plain.update(chunk)
+        else:
+            for chunk in chunks:
+                blob.update(chunk)
+                plain.update(chunk)
+    except OSError as error:
+        return ("unreadable", "", f"errno {error.errno}")
+    return (mode, blob.hexdigest(), plain.hexdigest())
+
+
+def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str | None]:
+    """The repository's state under :data:`WATCHED_PATHS`: HEAD; whether any
+    file there differs from HEAD's tree in bytes or mode (an edit, a deletion,
+    or an untracked, unignored file); and a sha256 of those differences,
+    ``None`` when there are none. ``(None, None, None)`` outside a git
+    checkout or without git.
+
+    The working tree is compared with HEAD's tree by content, not with the
+    index: staging a change, or staging and then undoing one, changes
+    nothing here, and a file rewritten with the same bytes is no change.
+    HEAD is resolved once and every read uses that commit. Only plumbing
+    runs (``rev-parse``, ``ls-tree``, ``diff-index --name-only``,
+    ``ls-files``), and none of it writes the index, so these reads never hold
+    the lock a concurrent ``git add`` in the same worktree needs. No diff
+    text is hashed, so the user's diff configuration cannot change the
+    digest. A file changing while it is read can make the state count it as
+    different, never as unchanged when its bytes differ.
     """
     root = Path(__file__).resolve().parents[1] if root is None else Path(root)
 
-    def git(*args: str, text: bool = True):
-        return subprocess.run(
+    def git(*args: str) -> list[bytes]:
+        out = subprocess.run(
             ["git", "--no-optional-locks", "-C", str(root), *args],
             capture_output=True,
-            text=text,
             check=True,
         ).stdout
+        return [item for item in out.split(b"\0") if item]
 
     try:
-        head = git("rev-parse", "HEAD").strip()
-        status = git(
-            "status", "--porcelain", "--untracked-files=all", "--", *WATCHED_PATHS
+        head = git("rev-parse", "--verify", "-z", "HEAD")[0].strip().decode("ascii")
+        object_format = (
+            git("rev-parse", "--show-object-format")[0].strip().decode("ascii")
         )
-        if not status.strip():
-            return head, False, None
-        digest = hashlib.sha256(
+        committed: dict[bytes, tuple[str, str]] = {}
+        for entry in git("ls-tree", "-r", "-z", head, "--", *WATCHED_PATHS):
+            meta, _, path = entry.partition(b"\t")
+            mode, _kind, oid = meta.split(b" ")
+            committed[path] = (mode.decode("ascii"), oid.decode("ascii"))
+        candidates = set(
             git(
-                "diff",
-                "--binary",
-                "--no-color",
-                "--no-ext-diff",
-                "--no-textconv",
-                "HEAD",
+                "diff-index",
+                "--name-only",
+                "-z",
+                "--no-renames",
+                head,
                 "--",
                 *WATCHED_PATHS,
-                text=False,
             )
         )
-        untracked = git(
-            "ls-files",
-            "-z",
-            "--others",
-            "--exclude-standard",
-            "--",
-            *WATCHED_PATHS,
-            text=False,
+        candidates.update(
+            git(
+                "ls-files", "-z", "--others", "--exclude-standard", "--", *WATCHED_PATHS
+            )
         )
-        for name in sorted(filter(None, untracked.split(b"\0"))):
-            digest.update(b"\0untracked\0" + name + b"\0")
-            try:
-                digest.update(
-                    hashlib.sha256((root / os.fsdecode(name)).read_bytes()).digest()
-                )
-            except OSError as error:
-                digest.update(f"unreadable {error.errno}".encode())
-    except (OSError, subprocess.CalledProcessError):
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        IndexError,
+        UnicodeDecodeError,
+        ValueError,
+    ):
         return None, None, None
+    digest = hashlib.sha256()
+    differences = 0
+    for path in sorted(candidates):
+        entry = _worktree_entry(root / os.fsdecode(path), object_format)
+        if entry is None:
+            if path not in committed:
+                continue  # staged, then deleted: absent from HEAD and from disk
+            record = b"deleted"
+        elif committed.get(path) == entry[:2]:
+            continue  # the committed bytes and mode
+        else:
+            record = f"{entry[0]} {entry[2]}".encode()
+        differences += 1
+        digest.update(path + b"\0" + record + b"\0")
+    if not differences:
+        return head, False, None
     return head, True, digest.hexdigest()
 
 
-def _tool_commit() -> dict[str, object]:
-    """The repository state this file was loaded from (:func:`_git_state`)
-    and this file's sha256, read as the module body runs. ``git show
-    <commit>:tools/sample_us_export_households.py`` hashes to it when the
-    tree was clean."""
+def _installed_distributions() -> dict[str, object]:
+    """Every installed distribution as a count and a sha256 of its sorted
+    ``name==version`` lines: equal digests mean the same installed set."""
+    import importlib.metadata as metadata
+
+    lines = sorted(
+        {
+            f"{str(dist.metadata['Name'] or '').lower()}=={dist.version}"
+            for dist in metadata.distributions()
+        }
+    )
+    return {
+        "count": len(lines),
+        "sha256": hashlib.sha256("\n".join(lines).encode()).hexdigest(),
+    }
+
+
+def _load_state(source: bytes) -> dict[str, object]:
+    """The repository state, the installed distributions and this file's
+    sha256 (of ``source``, its bytes read before the heavy imports), for
+    ``_TOOL_SOURCE``. ``git show <commit>:<this file>`` hashes to the sha256
+    when the tree was clean."""
     commit, dirty, changes = _git_state()
     return {
         "commit": commit,
         "dirty": dirty,
         "changes_sha256": changes,
-        "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "sha256": hashlib.sha256(source).hexdigest(),
+        "installed_distributions": _installed_distributions(),
     }
-
-
-# Read once, as this file loads: the worktree's HEAD can move while a long
-# draw runs. The microcosm packages are imported later, from whatever the tree
-# holds then; _tool_source_record compares the two moments.
-_TOOL_SOURCE = _tool_commit()
 
 
 def _moved(commit, changes) -> bool | None:
@@ -941,16 +1013,21 @@ def _moved(commit, changes) -> bool | None:
     return (commit, changes) != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["changes_sha256"])
 
 
+# Comparing two moments cannot show what happened between them: an edit made
+# and undone in between is invisible. Libraries outside the repository are
+# covered by the installed-distributions digest.
+# Read once, as this file loads: the worktree's HEAD can move while a long
+# draw runs. The microcosm packages are imported later, from whatever the tree
+# holds then; _tool_source_record compares the two moments.
+_TOOL_SOURCE = _load_state(_SOURCE_AT_LOAD)
+
+
 def _tool_source_record() -> dict[str, object]:
     """``_TOOL_SOURCE`` and the repository state when the receipt is written.
 
-    ``moved_since_load`` is true when HEAD or the working-tree differences
-    under :data:`WATCHED_PATHS` changed since this file loaded; the microcosm
+    ``moved_since_load`` is true when HEAD or the differences from it under
+    :data:`WATCHED_PATHS` changed since this file loaded; the microcosm
     packages imported in between may then come from either state.
-    Equal endpoints show the tree under :data:`WATCHED_PATHS` was the same when
-    this file loaded and when the record was written, not that it never
-    changed in between: an edit made and undone between the two is invisible.
-    Installed libraries outside the repository are recorded by version only.
     """
     commit, dirty, changes = _git_state()
     return {
