@@ -1,27 +1,35 @@
 # microcosm#1095 receipts: the unblocked uk-data ports
 
-Plan: `repos/microcosm-1095-ports-plan.md` (approved 2026-10-02). Branch `uk-data-ports-1095`,
-stacked on `uk-spine-followups-1063` (#1089), rebased onto its head `45014f48c` without conflicts.
-The tracker is #1095 (uk-data items up to uk-data#519).
+Plan: `repos/microcosm-1095-ports-plan.md` (approved 2026-10-02). Branch `uk-data-ports-1095`. It was
+stacked on `uk-spine-followups-1063` (#1089). After #1089 merged (`48fa06166`, 2026-10-04) it targets
+main and is rebased onto it. The rebase replayed every commit; the only conflicts were the generated
+coverage manifest and H2 fixture, which were regenerated after each replayed commit, and each commit's
+other changes are line-for-line those of its pre-rebase original. The tracker is #1095 (uk-data items
+up to uk-data#519).
 
-Commits, in order (hashes after the rebase):
+Commits, in order (hashes on main):
 
-- f5fffc55f C4a: the DWP and OBR table 4.9 benefit rows bind the households their publisher counts.
-- 7acd6f7aa C4b: `obr.pip` binds the engine's `pip + dla`.
-- 7c44e7f49 C5: Scottish Adult and Child Disability Payment codes on the FRS spine (uk-data#500).
-- d90450ae6 C1: FRS-reported dividends kept (uk-data#498).
-- 6444dc8f6 C2: SPI draws only for FRS claimants and partners (uk-data#504).
-- 22bfc7e81 C3a: council tax before council tax reduction (uk-data#496/#499).
-- 856de4abe C3b: the Scottish water and sewerage charge paid (uk-data#499).
-- 0fb1e1179 C6: the `spi_benefit_coherence` stage and its gate (uk-data#514).
-- d55f317da C7: SPI benefit-unit capital conditioned on investment income (uk-data#495).
-- 606f13793 C8a: the WAS predictors measured alike on donor and recipient (uk-data#486/#495).
-- f07c779af C8b: buy-to-let as other residential property (uk-data#501).
-- 9b9243078 C9a: the ETB adult and child counts by FRS family role (uk-data#486).
-- 9c7394086 C9b: the constituency UC child bands on the national UC composition (uk-data#486).
-- a4fb0e303 C10: the South East £12,570 to £15,000 income-tax deferral retired, because the ports
+- 1d1c10da3 C4a: the DWP and OBR table 4.9 benefit rows bind the households their publisher counts.
+- 3c1b33f34 C4b: `obr.pip` binds the engine's `pip + dla`.
+- 04ea9943b C5: Scottish Adult and Child Disability Payment codes on the FRS spine (uk-data#500).
+- 90621f74a C1: FRS-reported dividends kept (uk-data#498).
+- f0c30271d C2: SPI draws only for FRS claimants and partners (uk-data#504).
+- 07e5b0f9c C3a: council tax before council tax reduction (uk-data#496/#499).
+- 746940855 C3b: the Scottish water and sewerage charge paid (uk-data#499).
+- 790f36ffd C6: the `spi_benefit_coherence` stage and its gate (uk-data#514).
+- c58fc84d3 C7: SPI benefit-unit capital conditioned on investment income (uk-data#495).
+- adfcc079e C8a: the WAS predictors measured alike on donor and recipient (uk-data#486/#495).
+- 49d26eceb C8b: buy-to-let as other residential property (uk-data#501).
+- 39af74a21 C9a: the ETB adult and child counts by FRS family role (uk-data#486).
+- 8ede090d8 C9b: the constituency UC child bands on the national UC composition (uk-data#486).
+- 7efa9d00b C10: the South East £12,570 to £15,000 income-tax deferral retired, because the ports
   make it stale.
-- C11: this note.
+- 1a4f934ce C11: the first version of this note.
+- eaf7e80cf R1: income-related ESA zeroed on SPI rows (review round 1, item 3).
+- d89a3ddfe R2: the Scottish water charge at the reduction scheme's combined maximum (item 4).
+- 894a33c19 R2 test: the FRS mapping test's Scottish water value.
+- a0c678c21 R3: the three input-mass exclusions the ports make stale, retired.
+- R4: this update of the note.
 
 C4c, the Housing Benefit pension-age spending row, was dropped. The DWP forecast-table facts carry
 one `measure_id` per year (`expenditure_2024`, `expenditure_2025`), and `calendar_year_window`
@@ -33,9 +41,42 @@ or a ruling to bind FY2025-26 alone.
 - Buy-to-let (`DVBltValR8_sum`) goes into `other_residential_property_value`.
 - Scottish council tax follows two rules. The netting is uk-data#499's: the gross `CWATAMT1` +
   `CSEWAMT1`, in full for non-recipients and at 65% for reduction recipients. The charge paid is the
-  gross charges less the status discount, at 65% for reduction recipients.
+  gross charges less the status discount, at 65% for reduction recipients. Review round 1 refines the
+  charge to the scheme's own formula (below).
 - `obr.pip` binds PIP + DLA over England and Wales.
 - The full SPI benefit-coherence stage, including the UC take-up redraw.
+
+## Review round 1 (2026-10-04)
+
+- **Income-related ESA (R1).** policyengine-uk pays `esa_income_reported` as the award, screened
+  only by a capital test, so an SPI row keeping its stage-2 draw was paid its twin's award whatever
+  its new incomes.
+  - On the A8 spine at design weights, SPI rows held 0.15m of the 0.53m income-related ESA
+    reporters (29%) and £1.45bn of reports; 56% of their benefit units had incomes above £12,570 and
+    43% above £20,000.
+  - `spi_benefit_coherence` now zeroes it with income-based JSA and Income Support, as uk-data#514
+    does.
+  - Contributory ESA keeps its draw: it is open to new claims and not income-tested, its incapacity
+    test follows the person, its SPI draw sits at half the FRS rate per working-age adult, and 9.9%
+    of its SPI reporters by weight earn above the permitted-work limit (41% on the uk-data build
+    where #514 zeroes it).
+- **Scottish water (R2).** The Scottish Government's charging principles for 2021-27 (Annex A) set
+  a reduction recipient's water reduction at R = 35 × (A/B) − D points of the gross charge, unless
+  negative, on top of the status discount D; A is the council tax reduction and B the council tax
+  before it.
+  - The combined reduction is max(D, 35% × A/B). C3b had stacked the 35% on the discount, so a
+    single person on full reduction paid 48.75% of the gross charge instead of 65%; 207 of the 245
+    Scottish recipients on the raw tab carry the 25% discount.
+  - Every recipient takes the full-reduction case, A/B = 1. 86% of Scotland's 458,120 recipients
+    receive full reduction (Council Tax Reduction in Scotland 2024-25, March 2025; average award
+    £16.55 a week), while none of the 234 Scottish recipients with a recorded `CTREBAMT` on the FRS
+    2024-25 tab pays nothing after it (19% of English recipients do), and their amounts have a
+    median of £6 a week. The recorded amount cannot carry the share.
+  - On the raw tab, recipients pay 0.649 of the gross charges instead of 0.511. The netting of
+    `CTANNUAL` keeps 0.65.
+- **Input-mass register (R3).** See Verification.
+- **VAT.** No change here; see Fit by arm.
+
 
 ## Builds
 
@@ -46,10 +87,15 @@ Every arm is a licensed local build in the detached measurement tree `repos/popu
 artifact 825406f. Nothing is released from an arm, and the engine is policyengine-uk at the repo's
 pin.
 
-The arms are cumulative and ran on the pre-rebase chain on `747313ae7`. A0 is the control: #1089 at
-`747313ae7`, calibrate-only on #1089's own stack-2 spine. A1 recalibrates that spine with C4, since
-C4 only changes targets. A2 to A7 each build their own spine. A8 builds the rebased PR head
-`9c7394086`, which adds #1089's three new commits.
+The arms are cumulative. A0 to A7 ran on the pre-rebase chain on `747313ae7`. A0 is the control:
+#1089 at `747313ae7`, calibrate-only on #1089's own stack-2 spine. A1 recalibrates that spine with
+C4, since C4 only changes targets. A2 to A7 each build their own spine. A8 built the head rebased on
+#1089's `45014f48c` (`9c7394086`, the ports without C10 and C11, which touch no spine code).
+
+A9 builds `d89a3ddfe`: every port and both review fixes, on main. The commits after it (the test pin,
+the input-mass register and this note) touch no spine or calibration code, so A9 measures the code
+at the PR head. The control for A9 is main's own final #1089 build at `64c460b66`
+(`runs/uk-national-1063-64c460b66`), whose spine and calibration code main carries unchanged.
 
 Figures from the spines are at design weights. Counts resting on fewer than 10 records are
 suppressed.
@@ -89,14 +135,27 @@ calibrated-seam battery; arms A3 to A7 wrote their evidence bundle but no H5.
     it, so the battery passes on the code this PR proposes.
   - `obr.vat` is at +24.998% against the 25% bound, and `obr.council_tax` at −9.9%.
 
+- **A9, the review head on main.** Loss 0.29242 to 0.00715; 99.0% within 10%, the best of the
+  arms, with 12 targets outside 10%; ESS 4,828. All 7 gates pass.
+  - Against main's own build (loss 0.00713, 98.4% within 10%, 19 targets outside 10%, ESS 4,973):
+    the South East £12,570 to £15,000 cell is at +11.5% (+30.3% on main, deferred there), and
+    `obr.council_tax` at −9.9% (−11.1%).
+  - `obr.vat` is at +24.4% (+23.1% on main): 0.6 points inside the bound.
+  - Zeroing income-related ESA on SPI rows lowers the design `obr.esa` from £5.73bn (A8) to £4.80bn
+    and the design `dwp.esa_income_claimants` from 404k to 313k. Calibration restores both: +0.4%
+    and −0.1%. `dwp.esa_claimants` lands at +11.9% (+9.3% at A8, +11.0% on main), inside the gate
+    bound.
+
 `obr.vat` sits 1.6 to 2.4 points nearer its bound from A3 on than at A0. Design VAT falls from
 £227bn (A0) to £224bn (A3) and £222bn (A7), while calibrated VAT rises from £218bn to £223bn and
 £221bn. The closeness therefore comes from how calibration trades VAT against the income rows once
 FRS dividends stand as reported.
 
-At the rebased head VAT passes by 0.002 points (+24.998%), so any later spine change can tip it.
-The overshoot itself predates the ports: design VAT is 25% to 28% over the OBR line in every arm,
-the control included.
+At A8 VAT passed by 0.002 points (+24.998%); at A9 it passes by 0.6 points (+24.4%), against
++23.1% on main without the ports. The overshoot itself predates the ports: design VAT is 25% to 28%
+over the OBR line in every arm and on main. Its level comes from the engine, which divides household
+VAT by `microdata_vat_coverage`, 0.383 since 2010, where this dataset's consumption implies about
+0.46 (PolicyEngine/policyengine-uk#1996, filed from #1063, where María ruled VAT an engine fix).
 
 ## Spine receipts by commit
 
@@ -140,27 +199,49 @@ the control included.
 - **C9a and C9b.** In 1.8% of households the engine's age-18 adult count differs from the FRS
   family roles. Those households now feed the WAS and ETB predictors and the constituency UC bands
   the role counts. The national UC family-type measurement is byte-identical by construction.
+- **R1 (A9).** No SPI row reports income-related ESA; on A8 the SPI rows carried 258 such records,
+  £1.45bn at design weights. The FRS rows are unchanged (860 records, £3.58bn), and contributory ESA
+  keeps its SPI draws (187 records, £0.58bn).
+- **R2 (A9).** The mean Scottish water and sewerage charge at design weights rises from £465 (A4 to
+  A8) to £474. On the raw tab the mean annual charge of a reduction recipient rises from £238 to
+  £300 at FRS grossing weights.
 
 ## Verification
 
-Stacked microcosm PRs get no CI, so this local evidence is the record. The pinned feed was set
-throughout.
+On main the PR gets CI. Locally, with the pinned feed set:
 
-- **Touched surface:** 74 test files and 1,452 tests: every test the commits change; every test
-  importing a touched runtime module or its test-support helper; H2 parity; and the integration-uk
-  lane. The incumbent-name guard ran too.
-  - 1,440 passed, 7 skipped and 5 failed.
-  - One failure, the E6 receipt fixture without `is_uc_claimant`, is fixed in C9a.
-  - The other four fail identically on #1089's head `45014f48c`:
-    - the national target-references regeneration;
-    - the national compile parity, whose regenerated resources are byte-identical on both trees;
-    - the national graph test's `uk_target_fit`;
-    - the UC payment registry count of 81 against 83.
-- `tools/ci_test_plan.py verify`, the coverage-manifest `--check`, and the WAS and LISA
-  support-bounds `--check` on the licensed tabs all pass.
-- C10 is checked by the terminal-gate, country-spec, battery-binding and data-contract tests: 303
-  passed in the binding and contract lanes. The gate digests are unchanged (`repin_digests --check`:
-  0 of 12 moved).
+- **Touched surface on the rebased head (`d89a3ddfe`):** 95 test files, 2,047 tests. They are every
+  test the commits change, every test importing a touched runtime module, test-support helper or
+  tool, H2 parity, and the tests where #1089's later commits meet these: the national graph, target
+  references, UC family, battery bindings, identity stability, terminal gates, release certification
+  and weighted integrity.
+  - 2,038 passed, 6 skipped and 3 failed.
+  - `test_household_and_benunit_mapping_values_are_ported` pinned the Scottish water value at the
+    stacked rule. It is fixed in 894a33c19, and it was CI's only engine-free failure.
+  - `test_engine_is_reported_unavailable_without_the_uk_extra` needs a venv without the UK extra:
+    an environment failure.
+  - `test_committed_surfaces_regenerate_from_pinned_feed[national]` fails on main as it does here.
+    The committed `target_references.json` (bf7549…) no longer regenerates (e8f829…). Neither the
+    file nor its generator has changed since #1089's `2fe7d8bbb`, and CI skips the test because it
+    has no licensed feed.
+  - The other three failures listed on the old base pass on main, after #1089's later commits:
+    national compile parity, the national graph's `uk_target_fit`, and the UC payment registry.
+- **Gate digests:** `repin_digests --check` reports 0 of 12 moved after the rebase. R1 moves 5, for
+  the gate's new zeroed column, and re-pins them in the same commit.
+- **Input-mass register (R3).**
+  - I ran the release-cut `input_mass_parity` gate with the certifier's own functions on A9's spine
+    at its calibrated weights, against the v1.56.16 reference. The script is
+    `data/ukds/acceptance/1095-uk-data-ports/scripts/input_mass_check.py`, and it reproduces the
+    certifier's verdict on main's `64c460b66` build exactly.
+  - The gate fails only on three stale exclusions, all inside the 452% fence:
+    - income-based JSA at £97.7m (+316%);
+    - Working Tax Credit at £149.6m (+103%);
+    - the access fund at £258.6m (+62%).
+  - With R3's register the gate passes, with `dfe_education_spending` its only exclusion.
+  - The other columns the ports touch stay inside the fence: income-related ESA +5.0%, Income
+    Support −71.6%, AFCS −78.9%, and `other_residential_property_value` −31.1% (−73.5% on main).
+- `tools/build_uk_release_input_coverage_manifest.py --check` and `tools/ci_test_plan.py verify`:
+  ok.
 
 ## Signature drafts
 
