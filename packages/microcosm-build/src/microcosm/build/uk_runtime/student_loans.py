@@ -320,10 +320,12 @@ def assign_student_loan_plans(
 
 #: Household lineage columns the top-up receipt reports the taken rows on,
 #: when the frame carries them: the SPI support channel, the CGT support
-#: split's copy flag and the incidence clone flag.
+#: split's copy flag, the incidence clone flag and the residential split's
+#: arm flag (microcosm#1063).
 _LINEAGE_CHANNEL_COLUMN = "household_support_channel"
 _LINEAGE_SUPPORT_COPY_COLUMN = "household_is_cgt_support_copy"
 _LINEAGE_CLONE_COLUMN = "household_is_capital_gains_clone"
+_LINEAGE_RESIDENTIAL_ARM_COLUMN = "household_is_cgt_residential_clone"
 
 
 def _person_lineage(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
@@ -335,6 +337,7 @@ def _person_lineage(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFra
         _LINEAGE_CHANNEL_COLUMN,
         _LINEAGE_SUPPORT_COPY_COLUMN,
         _LINEAGE_CLONE_COLUMN,
+        _LINEAGE_RESIDENTIAL_ARM_COLUMN,
     ):
         if column in by_household.columns:
             mapped = person["person_household_id"].map(by_household[column])
@@ -370,6 +373,7 @@ def _topped_up_lineage(
     for key, column in (
         ("support_copy", _LINEAGE_SUPPORT_COPY_COLUMN),
         ("clone", _LINEAGE_CLONE_COLUMN),
+        ("residential_arm", _LINEAGE_RESIDENTIAL_ARM_COLUMN),
     ):
         if column in lineage.columns:
             flags = lineage[column].to_numpy(dtype=bool)[taken]

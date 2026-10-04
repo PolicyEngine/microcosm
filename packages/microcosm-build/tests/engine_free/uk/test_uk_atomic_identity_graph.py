@@ -87,6 +87,9 @@ def lineage_frame(rows=LINEAGE):
             "household_is_capital_gains_clone": np.asarray([r[4] for r in rows]),
             "household_is_cgt_support_copy": np.asarray([r[5] != 0 for r in rows]),
             "cgt_support_copy_index": np.asarray([r[5] for r in rows], dtype=np.int64),
+            # microcosm#1063: a residential arm index (0 on every row here).
+            "household_is_cgt_residential_clone": np.zeros(len(rows), dtype=bool),
+            "cgt_residential_clone_index": np.zeros(len(rows), dtype=np.int64),
         }
     )
     person = pd.DataFrame(
@@ -324,5 +327,7 @@ def test_identity_inputs_are_the_declared_lineage_columns():
         "household_is_cgt_support_copy",
         "cgt_support_copy_index",
         "household_is_capital_gains_clone",
+        "household_is_cgt_residential_clone",
+        "cgt_residential_clone_index",
         CLONE,
     )

@@ -49,6 +49,7 @@ from .atomic_area_support import UK_NATIVE_ALIAS_COLUMNS
 from .geography_ladder import uk_geography_ladder_gate
 from .graph_population import context_frame, population_columns, population_slices
 from .national_frame import (
+    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _read_uk_national_tables,
     _write_uk_single_year_tables,
     uk_household_weight_kind,
@@ -85,6 +86,11 @@ def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
     aliases = [c for c in UK_NATIVE_ALIAS_COLUMNS if c in renamed["household"]]
     if aliases:
         renamed["household"] = renamed["household"].drop(columns=aliases)
+    # The reviewed export exclusions leave at the same boundary (microcosm#1063 c9).
+    for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items():
+        dropped = [c for c in columns if c in renamed[entity]]
+        if dropped:
+            renamed[entity] = renamed[entity].drop(columns=dropped)
     return renamed
 
 

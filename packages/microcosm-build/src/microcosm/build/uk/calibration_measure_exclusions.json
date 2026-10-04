@@ -155,6 +155,24 @@
       "expires_on": "2026-11-26"
     },
     {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
+      "reason": "Single-row support: one FRS household (a disabled single council tenant, design weight 760 against the published 1,654) is the only row whose UC award falls in this band on every main-based spine, so the cell is a scaling of one row rather than a composition the spine carries. On the #1063 stack its award moved GBP 678 lower, out of the band and into the 27,600-28,800 band that is already excluded for the same class (uk-data#452), when the stages drawn after the SPI income band donors read their rows in a new order; the cell then sits at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever, as the sibling entries say.",
+      "tracking": "uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1063 (the stack arm of 2026-10-02 on the review of #1089; same class as the 2026-08-26 microcosm#757 dispositions)",
+      "approved_on": "2026-10-02",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
+      "reason": "Two-household support: two FRS households (design weights 1,025 and 1,999 against the published 2,761, with their incidence clones) are the only rows whose UC award falls in this band on every main-based spine. On the #1063 stack both awards moved out of the band when the stages drawn after the WAS wealth chain read their rows in a new order, and the cell sits at -100% with final estimate 0.0; the same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
+      "tracking": "uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1063 (the stack arm of 2026-10-02 on the review of #1089; same class as the 2026-08-26 microcosm#757 dispositions)",
+      "approved_on": "2026-10-02",
+      "expires_on": "2026-11-26"
+    },
+    {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
       "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
       "tracking": "uk-data#452",
@@ -339,18 +357,18 @@
       "reason": "The spine carries 3.4M plan-2 borrowers liable against the SLC 9.7M (-65% at initialization on spine-m; -52% after the solve): student-loan borrower coverage in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
       "tracking": "microcosm#868",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
-      "approved_on": "2026-09-03",
-      "expires_on": "2026-10-03"
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups",
+      "approved_on": "2026-10-02",
+      "expires_on": "2026-11-03"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
       "reason": "The spine carries 1.4M plan-2 borrowers above threshold against the SLC 4.5M (-69% at initialization on spine-m; -43% after the solve): student-loan borrower coverage in the frame. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
       "tracking": "microcosm#868",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
-      "approved_on": "2026-09-03",
-      "expires_on": "2026-10-03"
+      "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md); renewed one month on 2026-10-02 by juaristi22 in session (microcosm#1063 stack): the plan-2 borrower coverage gap stays with microcosm#868 and is not corrected by the spine follow-ups",
+      "approved_on": "2026-10-02",
+      "expires_on": "2026-11-03"
     },
     {
       "name": "dwp.jsa_claimants",

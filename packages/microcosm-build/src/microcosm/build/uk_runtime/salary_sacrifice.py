@@ -32,6 +32,15 @@ QRF: Any | None = None
 
 SALSAC_PREDICTORS = ("age", "employment_income")
 SALSAC_OUTPUT = "pension_contributions_via_salary_sacrifice"
+#: A converted record's employment income before the conversion, zero for
+#: everyone the stage does not convert (microcosm#1063). The conversion
+#: rewrites a converted record's pay and employee contribution in place after
+#: the capital-gains stages have banded on them, which left the income those
+#: stages saw unreconstructible from the artifact (the E8 identity receipt on
+#: the 2 October spine). The carrier makes the rewrite reversible; it is an
+#: internal column and leaves at the release boundary
+#: (``UK_RELEASE_EXPORT_DROPPED_COLUMNS``).
+SALSAC_PRE_CONVERSION_PAY_COLUMN = "salary_sacrifice_pre_conversion_pay"
 SALSAC_STAGE_TARGET = 5_400_000.0
 SALSAC_HMRC_ANCHOR = 7_700_000.0
 SALSAC_ABOVE_2000_ANCHOR = 3_300_000.0
@@ -42,6 +51,14 @@ SALSAC_QRF_SEED = 42
 SALSAC_QRF_ESTIMATORS = 100
 SALSAC_CONVERSION_SEED = 2024
 SALSAC_CONVERSION_SALT = "salary_sacrifice_conversion"
+#: Whom the QRF predicts for. Salary sacrifice is pay given up for a pension
+#: contribution, so a person not asked the question who has no employment
+#: income has none: the prediction covers the people not asked who are paid,
+#: and everyone else not asked is zero (microcosm#1063).
+SALSAC_TARGET_POPULATION = (
+    "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people "
+    "not asked who have no employment income are set to zero"
+)
 SALSAC_MASS_CHANGE_REASON = (
     "Salary-sacrifice support stage rewrites pension columns and converted "
     "records' pay; household rows and typed household weights pass through and "
@@ -66,6 +83,8 @@ class UKSalarySacrificeResult:
     frame: Frame
     training_rows: int
     prediction_rows: int
+    not_asked_without_pay_rows: int
+    not_asked_without_pay_mass: float
     pre_headcount: float
     post_headcount: float
     shortfall: float
@@ -84,6 +103,11 @@ class UKSalarySacrificeResult:
             "qrf": {
                 "training_rows": self.training_rows,
                 "prediction_rows": self.prediction_rows,
+                "target_population": SALSAC_TARGET_POPULATION,
+                # People not asked who have no employment income: set to
+                # zero, never predicted for.
+                "not_asked_without_pay_rows": self.not_asked_without_pay_rows,
+                "not_asked_without_pay_mass": self.not_asked_without_pay_mass,
                 "seed": SALSAC_QRF_SEED,
             },
             "headcount_receipt": {
@@ -100,6 +124,7 @@ class UKSalarySacrificeResult:
                 "moved_amount": self.moved_amount,
                 "expected_converted_mass": self.expected_converted_mass,
                 "realization_deviation": self.realization_deviation,
+                "pre_conversion_pay_column": SALSAC_PRE_CONVERSION_PAY_COLUMN,
             },
         }
 
@@ -121,7 +146,12 @@ class UKSalarySacrificeStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return (SALSAC_OUTPUT, "employee_pension_contributions", "employment_income")
+        return (
+            SALSAC_OUTPUT,
+            "employee_pension_contributions",
+            "employment_income",
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -177,12 +207,18 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     )
     if not training_mask.any():
         raise ValueError("Salary-sacrifice QRF has no eligible asked FRS rows.")
-    predict_mask = ~asked.eq(1)
     numeric = person.loc[:, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].apply(
         pd.to_numeric, errors="coerce"
     )
     if not np.isfinite(numeric.to_numpy(dtype=float)).all():
         raise ValueError("Salary-sacrifice QRF columns must be finite numeric values.")
+    # The prediction population is the people not asked who are paid; a
+    # person not asked with no employment income sacrifices none of it.
+    not_asked = ~asked.eq(1)
+    paid = numeric["employment_income"].gt(0.0)
+    predict_mask = not_asked & paid
+    without_pay = not_asked & ~paid
+    person.loc[without_pay, SALSAC_OUTPUT] = 0.0
     household_weights = pd.Series(
         frame.weights_for("household").values,
         index=household["household_id"],
@@ -238,6 +274,11 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     # becomes salary sacrifice. Without this the converted contribution left
     # taxable pay and NI unchanged while losing its net-pay relief
     # (microcosm#1069 c9).
+    # The converted record's pay before the conversion stays on its carrier
+    # (zero elsewhere), so the rewrite is reversible for the receipts of the
+    # stages that banded on it.
+    pre_conversion_pay = np.zeros(len(person), dtype=float)
+    pre_conversion_pay[converted] = employment_income[converted]
     employment_income = employment_income.copy()
     employment_income[converted] = np.maximum(
         employment_income[converted] - employee[converted], 0.0
@@ -246,6 +287,7 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     person[SALSAC_OUTPUT] = final_ss
     person["employee_pension_contributions"] = employee
     person["employment_income"] = employment_income
+    person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = pre_conversion_pay
     post_headcount = float(person_weights[final_ss > 0.0].sum())
     converted_mass = float(person_weights[converted].sum())
     total = frame.weights_for("household").total
@@ -270,6 +312,8 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
         frame=result_frame,
         training_rows=int(training_mask.sum()),
         prediction_rows=int(predict_mask.sum()),
+        not_asked_without_pay_rows=int(without_pay.sum()),
+        not_asked_without_pay_mass=float(person_weights[without_pay.to_numpy()].sum()),
         pre_headcount=pre_headcount,
         post_headcount=post_headcount,
         shortfall=shortfall,
@@ -311,7 +355,7 @@ def _assert_salary_sacrifice_stage_parameters(
                         "support_channel == frs and not capital-gains clone and "
                         "not CGT support copy and salary_sacrifice_asked == 1"
                     ),
-                    "target_population": "salary_sacrifice_asked != 1 frame-wide",
+                    "target_population": SALSAC_TARGET_POPULATION,
                     "predictors": list(SALSAC_PREDICTORS),
                     "targets": [SALSAC_OUTPUT],
                     "weights": "household_weight",
@@ -337,7 +381,9 @@ def _assert_salary_sacrifice_stage_parameters(
                     "move": (
                         "full employee_pension_contributions to "
                         "pension_contributions_via_salary_sacrifice; source zeroed; "
-                        "employment_income lowered by the amount sacrificed"
+                        "employment_income lowered by the amount sacrificed; the "
+                        "converted record's pay before the conversion kept on "
+                        "salary_sacrifice_pre_conversion_pay (zero elsewhere)"
                     ),
                     "seed": SALSAC_CONVERSION_SEED,
                     "salt": SALSAC_CONVERSION_SALT,

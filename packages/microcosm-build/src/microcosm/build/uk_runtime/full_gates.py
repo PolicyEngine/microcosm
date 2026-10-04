@@ -20,7 +20,9 @@ from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.uk_runtime.calibration_run import uk_aggregate_admin_totals
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
+from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
+from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.artifacts import OrderedProblem, OrderedSolution
 from microcosm.calibrate.solve import CalibrationResult, _build_diagnostics
@@ -255,11 +257,9 @@ def build_full_gate_context(
                 "matrix_target_count": len(problem.names),
             },
             "parity_evidence": SimpleNamespace(
-                candidate_columns={
-                    f"{entity}.{column}"
-                    for entity in frame.entities
-                    for column in frame.table(entity).columns
-                },
+                candidate_columns=uk_export_candidate_columns(
+                    uk_release_export_frame(frame)
+                ),
                 reference_columns={
                     f"{entity}.{name}"
                     for name, entity in reference.input_entities.items()

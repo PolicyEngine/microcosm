@@ -62,6 +62,7 @@ __all__ = [
     "uk_default_degenerate_reviewed_exclusions",
     "uk_default_target_fit_reviewed_exclusions",
     "uk_degenerate_release_surface_gate",
+    "uk_export_candidate_columns",
     "uk_export_surface_gate",
     "uk_input_mass_parity_gate",
     "uk_qrf_tail_concentration_gate",
@@ -73,7 +74,7 @@ __all__ = [
     "uk_cgt_projection_entrants_gate",
 ]
 
-UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024"
+UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024_25"
 # The label names the pinned reference artifact exactly: the 2024-25 line's
 # published enhanced_frs_2024_25.h5 (no separate "recalibrated" variant
 # exists at this vintage; the June report strings keep their own label).
@@ -180,6 +181,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # #1045: the CGT support split's family copy count.
     "household.cgt_support_copies",
     "household.cgt_support_copy_index",
+    # #1063: the residential split's arm flag and index.
+    "household.household_is_cgt_residential_clone",
+    "household.cgt_residential_clone_index",
     "household.clone_index",
     "household.constituency_code_oa",
     "household.consumer_debt",
@@ -235,6 +239,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.capital_gains_asset_type",
     "person.capital_gains_badr",
     "person.capital_gains_residential_property",
+    "person.cgt_residential_probability",
     "person.bus_in_london_trips",
     "person.bus_pass_eligible",
     "person.care_hours",
@@ -275,6 +280,57 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
     "person.person_is_spi_income_band_carrier",
+    # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
+    # enhanced-FRS incumbent never carried is allow-listed rather than
+    # dropped, so the release candidate ships the spine's own surface. The
+    # certifier rehearsal R5 on the 2026-09-30 build named them: the source
+    # and support-channel lineage of the three entities, the council tax
+    # family (#934), the reported-benefit inputs the take-up stages read
+    # (the five internal disability carriers are not among them: they leave
+    # at the release boundary, UK_RELEASE_EXPORT_DROPPED_COLUMNS),
+    # the SPI channel's hmrc_spi_* leaves (#717), the FRS education and
+    # housing fields, the two raw FRS codes the spine fences
+    # (ossben_identifiable_subset, srp_regular_code5) and
+    # other_investment_income. Only incapacity_benefit_reported is dropped
+    # (UK_REVIEWED_EXPORT_EXCLUSIONS).
+    "benunit.benunit_source_id",
+    "benunit.benunit_support_channel",
+    "benunit.benunit_support_clone_index",
+    "benunit.dependent_children",
+    "household.council_tax_rebate",
+    "household.council_tax_reported",
+    "household.council_tax_single_adult_raw",
+    "household.household_source_id",
+    "household.household_support_channel",
+    "household.household_support_clone_index",
+    "household.num_bedrooms",
+    "household.source_household_id",
+    "household.source_household_key",
+    "household.source_year",
+    "household.subrent",
+    "person.disabled_students_allowance_eligible_expenses",
+    "person.free_school_breakfasts",
+    "person.hmrc_spi_assessable_income",
+    "person.hmrc_spi_employed_income",
+    "person.hmrc_spi_employment_benefits",
+    "person.hmrc_spi_employment_expenses",
+    "person.hmrc_spi_incapacity_benefit_income",
+    "person.hmrc_spi_miscellaneous_employment_income",
+    "person.hmrc_spi_other_income",
+    "person.hmrc_spi_other_social_security_income",
+    "person.hmrc_spi_pay",
+    "person.hmrc_spi_state_pension_income",
+    "person.hmrc_spi_taxable_termination_pay",
+    "person.hmrc_spi_total_earned_income",
+    "person.hmrc_spi_total_investment_income",
+    "person.hmrc_spi_unemployment_benefit_income",
+    "person.is_in_approved_training",
+    "person.ossben_identifiable_subset",
+    "person.other_investment_income",
+    "person.person_source_id",
+    "person.person_support_channel",
+    "person.person_support_clone_index",
+    "person.srp_regular_code5",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -316,6 +372,27 @@ def uk_default_target_fit_reviewed_exclusions() -> Mapping[str, UKReviewedExclus
             None, resource=UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE
         )
     )
+
+
+def uk_export_candidate_columns(frame: Any) -> set[str]:
+    """The ``entity.column`` surface a frame exports, as the gate reads it.
+
+    Structural id columns are not exported content (microcosm#1063 c9: the
+    certifier rehearsal listed every id as an unreviewed extra), and the
+    frame's household weights live beside the tables, so the surface carries
+    ``household.household_weight`` explicitly, as the enhanced-FRS reference
+    does.
+    """
+
+    columns: set[str] = set()
+    for entity in frame.entities:
+        structural = _STRUCTURAL_COLUMNS.get(str(entity), frozenset())
+        for column in frame.table(entity).columns:
+            if column in structural:
+                continue
+            columns.add(f"{entity}.{column}")
+    columns.add(f"household.{_WEIGHT_COLUMN}")
+    return columns
 
 
 def _entity_tables(dataset: Any) -> tuple[tuple[str, pd.DataFrame], ...]:

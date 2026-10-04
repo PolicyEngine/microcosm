@@ -69,6 +69,9 @@ UC_COHERENCE_STAGE_NAMES = [
 PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
     "pension_credit_take_up",
 ]
+CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
+    "child_benefit_take_up",
+]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -76,8 +79,11 @@ E8_STAGE_NAMES = [
     "cgt_support_split",
     "cgt_incidence_clone",
     "hmrc_cgt_gains_spine",
-    "hmrc_cgt_asset_type_spine",
     "cgt_incidence_anchor",
+    # microcosm#1063: the residential split carries the flag as weight and
+    # the asset-type stage types its arms, so both run after the anchor.
+    "cgt_residential_split",
+    "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -95,6 +101,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+    *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -164,6 +171,7 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+            *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -236,12 +244,14 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
                     "pension_credit_take_up": _identity,
+                    "child_benefit_take_up": _identity,
                     "uc_deduction_attributes": _identity,
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,
                     "hmrc_cgt_gains_spine": _identity,
-                    "hmrc_cgt_asset_type_spine": _identity,
                     "cgt_incidence_anchor": _identity,
+                    "cgt_residential_split": _identity,
+                    "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
@@ -448,7 +458,10 @@ class TestDeclaredOutputsAreWrittenColumns:
             CGT_SUPPORT_COPY_INDEX_COLUMN,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY,
         )
-        from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
 
         stages = load_country_spec("uk").sources.stage_map()
 
@@ -469,6 +482,7 @@ class TestDeclaredOutputsAreWrittenColumns:
             SALSAC_OUTPUT,
             "employee_pension_contributions",
             "employment_income",
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
         assert stages["student_loans"].outputs == ("student_loan_plan",)
 
@@ -869,9 +883,15 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
-    def test_e5_debt_segment_predictors_lockstep(self) -> None:
+    def test_e5_tenure_strata_and_derived_totals_lockstep(self) -> None:
         from microcosm.build.uk_runtime.was_wealth import (
-            UK_WAS_DEBT_SEGMENT_PREDICTORS,
+            UK_WAS_DERIVED_TOTALS,
+            UK_WAS_DRAWN_ONLY_COLUMNS,
+            UK_WAS_INTERNAL_COMPONENT_COLUMNS,
+            UK_WAS_NET_FINANCIAL_LIABILITIES,
+            UK_WAS_STRATIFIED_TARGETS,
+            UK_WAS_TENURE_PREDICTORS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_PREDICTORS,
         )
 
@@ -880,15 +900,35 @@ class TestE3ManifestLockstep:
         qrf = stages["was_wealth"].operations[2]
 
         assert qrf.kind == "fit_weighted_qrf_chain"
-        assert tuple(qrf.parameters["debt_segment_predictors"]) == (
-            UK_WAS_DEBT_SEGMENT_PREDICTORS
-        )
-        # The extra predictor belongs to the debt segment only: the shared
-        # base list, and so E5's first three segments, are unchanged.
-        assert not set(UK_WAS_DEBT_SEGMENT_PREDICTORS) & set(
-            qrf.parameters["predictors"]
-        )
         assert tuple(qrf.parameters["predictors"]) == UK_WAS_WEALTH_PREDICTORS
+        # Tenure enters every segment as the four-way flags (microcosm#1063);
+        # the engine's is_renting, which omits housing-association renters, is
+        # no predictor of the stage.
+        assert set(UK_WAS_TENURE_PREDICTORS) <= set(qrf.parameters["predictors"])
+        assert "is_renting" not in qrf.parameters["predictors"]
+        assert "debt_segment_predictors" not in qrf.parameters
+        assert {
+            target: tuple(categories)
+            for target, categories in qrf.parameters["stratified_targets"].items()
+        } == dict(UK_WAS_STRATIFIED_TARGETS)
+        declared = {
+            total: tuple(components)
+            for total, components in qrf.parameters["derived_totals"].items()
+        }
+        assert declared.pop("net_financial_wealth") == (
+            "gross_financial_wealth",
+            *(f"-{column}" for column in UK_WAS_NET_FINANCIAL_LIABILITIES),
+        )
+        assert declared == dict(UK_WAS_DERIVED_TOTALS)
+        assert tuple(qrf.parameters["internal_components"]) == (
+            UK_WAS_INTERNAL_COMPONENT_COLUMNS
+        )
+        # The chain order names every output and every drawn-only column (the
+        # internal components, the dropped share-like component and the
+        # main-residence mortgage) exactly once.
+        assert sorted(qrf.parameters["chain_order"]) == sorted(
+            {*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS}
+        )
 
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
         spec = load_country_spec("uk")
