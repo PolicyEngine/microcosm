@@ -229,7 +229,7 @@
     },
     {
      "kind": "map_columns",
-     "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, at 0.65 where CTREB is 1, and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095)"
+     "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme's 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095)"
     },
     {
      "kind": "map_coded_amounts",

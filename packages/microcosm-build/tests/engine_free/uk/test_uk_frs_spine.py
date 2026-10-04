@@ -2529,7 +2529,8 @@ class TestScottishWaterAndSewerage:
 
     CWATAMT/CSEWAMT survive as headers in this vintage but carry no data; the
     gross successors CWATAMT1/CSEWAMT1 carry the charge, less the household's
-    status discount, and a council tax reduction recipient pays 65% of it
+    status discount, and the Water Charges Reduction Scheme tops a council tax
+    reduction recipient's discount up to 35% of the gross charges
     (uk-data#499, microcosm#1095).
     """
 
@@ -2566,10 +2567,25 @@ class TestScottishWaterAndSewerage:
         frame = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0, CTDISC=2, CT25D50D=1)
         assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(9.0)
 
-    def test_reduction_recipient_pays_the_scheme_share(self) -> None:
-        frame = self._frame(CWATAMT1=4.0, CSEWAMT1=5.0, CTDISC=1, CT25D50D=1, CTREB=1)
+    @pytest.mark.parametrize(
+        ("ctdisc", "code", "paid_share"),
+        [
+            # No discount: the scheme's full 35% reduction.
+            (2, "", SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE),
+            # The single-person 25% is topped up to 35%, not stacked under it.
+            (1, 1, SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE),
+            # A 50% discount already exceeds the scheme's maximum.
+            (1, 2, 0.5),
+        ],
+    )
+    def test_reduction_recipient_pays_the_larger_of_discount_and_scheme(
+        self, ctdisc, code, paid_share
+    ) -> None:
+        frame = self._frame(
+            CWATAMT1=4.0, CSEWAMT1=5.0, CTDISC=ctdisc, CT25D50D=code, CTREB=1
+        )
         assert scottish_water_and_sewerage_weekly(frame).iloc[0] == pytest.approx(
-            9.0 * 0.75 * SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE
+            9.0 * paid_share
         )
 
     def test_recorded_water_without_a_gross_bill_cell_is_paid_as_recorded(

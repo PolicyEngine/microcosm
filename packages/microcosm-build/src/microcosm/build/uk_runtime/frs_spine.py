@@ -952,11 +952,19 @@ def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
     return np.maximum(_number(frame, column), 0)
 
 
-#: Share of the gross Scottish water and sewerage charges a council tax
-#: reduction recipient (CTREB 1) pays: the Water Charges Reduction Scheme's
-#: maximum 35% reduction, the share DWP's CTANNUAL also carries for them
-#: (uk-data#499, microcosm#1095).
-SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE = 0.65
+#: The Water Charges Reduction Scheme's maximum reduction, 2021-27. A council
+#: tax reduction recipient's charges fall by R = 35 x (A/B) - D percentage
+#: points of the gross charge, unless R < 0, on top of the council tax status
+#: discount D, where A is the reduction and B the council tax before it, after
+#: discounts (Scottish Government, "Water services - charging principles: 2021
+#: to 2027", Annex A): the combined reduction is the larger of D and 35% x A/B.
+SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM = 0.35
+#: Share of the gross charges a full council tax reduction recipient without a
+#: status discount pays, and the share DWP's CTANNUAL carries for every
+#: recipient, which ``frs_council_tax`` nets (uk-data#499, microcosm#1095).
+SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE = (
+    1.0 - SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM
+)
 #: FRS 2024-25 CT25D50D codes to the status discount they record, for
 #: households with CTDISC 1 (SN 9563 variable listing).
 FRS_STATUS_DISCOUNT_BY_CODE = {1: 0.25, 2: 0.5}
@@ -987,13 +995,24 @@ def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
 
     The household pays the gross charges less the status discount its council
     tax records, which applies to the water and sewerage charges too (25% or
-    50%: ``CTDISC`` 1 with ``CT25D50D`` 1 or 2), and a council tax reduction
-    recipient (``CTREB`` 1) pays
-    ``SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE`` of that (uk-data#499,
-    microcosm#1095). ``CWATAMTD`` ("Deriv Council Tax water charge -Scot") is
-    not that amount: on the 2024-25 tab it sits at a median 0.83 of the gross
-    water charge for undiscounted non-recipients and 0.87 for undiscounted
-    recipients, so it is read only where no gross water cell exists.
+    50%: ``CTDISC`` 1 with ``CT25D50D`` 1 or 2). For a council tax reduction
+    recipient (``CTREB`` 1) the Water Charges Reduction Scheme tops that
+    discount up to ``SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM`` of the gross
+    charges, so a recipient pays the gross charges less the larger of its
+    discount and 35% (uk-data#499, microcosm#1095). ``CWATAMTD`` ("Deriv
+    Council Tax water charge -Scot") is not that amount: on the 2024-25 tab it
+    sits at a median 0.83 of the gross water charge for undiscounted
+    non-recipients and 0.87 for undiscounted recipients, so it is read only
+    where no gross water cell exists.
+
+    The scheme's 35% tapers with the share A/B of the council tax the
+    reduction covers, but every recipient here takes the full-reduction case,
+    A/B = 1. 86% of Scotland's recipients receive full council tax reduction
+    (Council Tax Reduction in Scotland 2024-25, March 2025, average award
+    GBP 16.55 a week), while none of the 234 Scottish recipients with a
+    recorded ``CTREBAMT`` on the 2024-25 tab pays nothing after it (19% of
+    English recipients do) and their recorded amounts have a median of GBP 6 a
+    week, so the recorded amount cannot carry the share.
 
     Every value is weeklyised (all the amount cells sit in the FRS "weekly
     variables" listing), so callers apply ``WEEKS_IN_YEAR`` themselves.
@@ -1030,12 +1049,12 @@ def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
         .where(_number(household, "ctdisc") == 1, 0.0)
         .fillna(0.0)
     )
-    share = np.where(
+    reduction = np.where(
         _number(household, "ctreb") == 1,
-        SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
-        1.0,
+        np.maximum(discount, SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM),
+        discount,
     )
-    paid = (water_gross + sewerage_gross) * (1.0 - discount) * share
+    paid = (water_gross + sewerage_gross) * (1.0 - reduction)
     return pd.Series(
         np.where(billed, paid, _positive(household, "cwatamtd")), index=household.index
     )
