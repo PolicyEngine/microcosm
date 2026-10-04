@@ -1,9 +1,17 @@
-| Configuration | National ESS | CD ESS median / min | CDs < 50 | CDs < ¼ of prior | MA ESS | Weighted loss | Train within 10% | Trained CD populations > 10% off / worst | Held-out weighted error, fold 0 / 1 | Held-out within 10%, fold 0 / 1 |
+| Configuration | National ESS | CD ESS median / min | CDs < 50 | CDs < ¼ of prior | MA ESS | Weighted loss (default weights) | Train within 10% | Trained CD populations > 10% off / worst | Held-out weighted error, fold 0 / 1 | Held-out within 10%, fold 0 / 1 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Release settings: share 0.5, projection, λ 0 | 13,707 | 34 / 11 | 351 | 28 | 478 | 0.0097 | 97.2% | 11 / 33% | 0.0786 / 0.0783 | 62.3% / 63.9% |
 | Share 0.5, projection, chi-square λ 0.01 | 17,758 | 40 / 16 | 320 | 0 | 546 | 0.0113 | 96.5% | 38 / 45% | – / – | – / – |
 | Share 0.5, projection, chi-square λ 0.03 | 19,618 | 44 / 19 | 302 | 0 | 580 | 0.0134 | 95.5% | 73 / 46% | 0.0723 / 0.0719 | 64.0% / 65.9% |
 | Share 0.5, projection, chi-square λ 0.1 | 21,751 | 49 / 28 | 240 | 0 | 609 | 0.0192 | 92.3% | 135 / 50% | 0.0713 / 0.0704 | 64.3% / 66.3% |
+| Share 0.5, projection, chi-square λ 0.2 | 23,363 | 52 / 31 | 178 | 0 | 645 | 0.0268 | 89.2% | 171 / 51% | 0.0750 / 0.0735 | 63.1% / 64.6% |
+| Share 0.5, projection, chi-square λ 0.3 | 24,816 | 55 / 34 | 125 | 0 | 684 | 0.0350 | 85.7% | 182 / 52% | 0.0803 / 0.0771 | 59.6% / 63.1% |
+| Population ×4: share 0.5, projection, λ 0 | 14,201 | 34 / 11 | 348 | 21 | 483 | 0.0111 | 97.2% | 0 / 0% | – / – | – / – |
+| Population ×4: projection, chi-square λ 0.03 | 19,711 | 44 / 20 | 301 | 0 | 576 | 0.0141 | 96.7% | 8 / 32% | – / – | – / – |
+| Population ×4: projection, chi-square λ 0.1 | 21,904 | 49 / 27 | 245 | 0 | 608 | 0.0205 | 93.6% | 55 / 41% | – / – | – / – |
+| Population ×8: share 0.5, projection, λ 0 | 14,114 | 34 / 12 | 348 | 18 | 472 | 0.0121 | 96.8% | 0 / 0% | 0.0719 / 0.0722 | 64.8% / 67.2% |
+| Population ×8: projection, chi-square λ 0.03 | 19,874 | 44 / 22 | 301 | 0 | 574 | 0.0153 | 96.4% | 3 / 15% | 0.0706 / 0.0702 | 64.9% / 68.2% |
+| Population ×8: projection, chi-square λ 0.1 | 22,146 | 49 / 27 | 233 | 0 | 609 | 0.0222 | 93.7% | 24 / 36% | 0.0734 / 0.0714 | 62.7% / 67.7% |
 | Share 0.5, softmax, no penalty | 14,424 | 36 / 11 | 343 | 17 | 497 | 0.0093 | 97.2% | 13 / 35% | 0.0833 / 0.0823 | 60.1% / 63.2% |
 | Share 0.5, softmax, chi-square λ 0.01 | 18,167 | 41 / 16 | 307 | 0 | 560 | 0.0113 | 96.6% | 36 / 46% | – / – | – / – |
 | Share 0.5, softmax, chi-square λ 0.03 | 20,387 | 46 / 20 | 278 | 0 | 605 | 0.0139 | 95.3% | 73 / 45% | 0.0739 / 0.0732 | 62.9% / 65.7% |

@@ -678,7 +678,7 @@ def weighted_key_config_table(frame: pd.DataFrame) -> str:
         "CDs < 50",
         "CDs < ¼ of prior",
         "MA ESS",
-        "Weighted loss",
+        "Weighted loss (default weights)",
         "Train within 10%",
         "Trained CD populations > 10% off / worst",
         "Held-out weighted error, fold 0 / 1",
@@ -1056,16 +1056,18 @@ def weighted_chart(weighted: pd.DataFrame, equal: pd.DataFrame, path: Path) -> N
                 markeredgewidth=2,
                 label=name,
             )
-            for r in (group.iloc[0], group.iloc[-1]):
-                ax.annotate(
-                    f"λ={r.l2_lambda:g}",
-                    (r.within_10pct, r[key]),
-                    textcoords="offset points",
-                    xytext=(6, -12) if r.l2_lambda == 0 else (-8, 8),
-                    ha="left" if r.l2_lambda == 0 else "right",
-                    fontsize=8,
-                    color=muted,
-                )
+            # Label each path's largest λ; every path starts at λ = 0 on the
+            # right, which the title states.
+            r = group.iloc[-1]
+            ax.annotate(
+                f"λ={r.l2_lambda:g}",
+                (r.within_10pct, r[key]),
+                textcoords="offset points",
+                xytext=(-8, 8),
+                ha="right",
+                fontsize=8,
+                color=color,
+            )
         ax.set_yscale("log")
         ax.set_xlabel("Training targets within 10% (unweighted count)", color=muted)
         ax.set_ylabel(label, color=muted)
@@ -1077,7 +1079,7 @@ def weighted_chart(weighted: pd.DataFrame, equal: pd.DataFrame, path: Path) -> N
     axes[0].legend(frameon=False, fontsize=9, labelcolor=ink)
     fig.suptitle(
         "ACS local release on the weighted loss: ESS vs fit under a chi-square "
-        "penalty (800 epochs; λ rises right to left)",
+        "penalty (800 epochs; each path starts at λ = 0 on the right)",
         color=ink,
         fontsize=11,
     )
