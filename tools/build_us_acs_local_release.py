@@ -30,10 +30,14 @@ package; each is separately resumable):
   calibrate   : epoch-batched warm-start calibrate on the checkpoint's
                 training targets (adam, mass conserved, hard weight-ratio cap,
                 optional L2 penalty --l2-lambda of form --l2-basis under
-                --mass-parametrization; resumable with --resume), score the held-out district targets
-                against the pro-rata baseline, record ESS over rows and
-                distinct households, and write the calibrated weights onto a
-                copy of the staging H5.
+                --mass-parametrization; resumable with --resume; each
+                target's loss weighted with the national release's formula
+                under the ACS local row mapping, by
+                ``microcosm.build.us_runtime.target_loss_weights``, with
+                ``--target-family-loss-multiplier``), score the held-out
+                district targets against the pro-rata baseline, record ESS
+                over rows and distinct households, and write the calibrated
+                weights onto a copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
@@ -74,6 +78,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -162,6 +167,7 @@ def release_refresh_recipe(
     soi_mode: str,
     cd_holdout_fraction: float | None = None,
     penalty: dict | None = None,
+    target_family_loss_multipliers: dict | None = None,
 ) -> str:
     """The one-command release refresh, pinned to the SOI surface it built.
 
@@ -172,7 +178,9 @@ def release_refresh_recipe(
     10% holdout. It names ``--l2-lambda``, ``--l2-basis`` and
     ``--mass-parametrization`` at the recorded ``penalty`` (a legacy summary
     that records none reads as the historical solve) for the same reason: the
-    recipe rebuilds the recorded solve even after a default changes.
+    recipe rebuilds the recorded solve even after a default changes. Each
+    recorded target family loss multiplier is one
+    ``--target-family-loss-multiplier`` (none by default, as recorded).
     """
 
     _require_soi_mode(soi_mode)
@@ -197,6 +205,10 @@ def release_refresh_recipe(
         if key == "l2_lambda"
         else f"{flag} {recorded[key]} "
         for key, flag in flags.items()
+    )
+    solve += "".join(
+        f"--target-family-loss-multiplier {family}={float(multiplier)!r} "
+        for family, multiplier in sorted((target_family_loss_multipliers or {}).items())
     )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
@@ -1518,8 +1530,13 @@ SOLVER_LEARNING_RATE = 0.02
 SOLVER_MASS = "conserve"
 
 
-def _solver_settings(args) -> dict:
-    """The calibrate-stage settings a resume or reuse must share."""
+def _solver_settings(args, target_loss: dict) -> dict:
+    """The calibrate-stage settings a resume or reuse must share.
+
+    ``target_loss`` is the stamp :func:`release_target_loss_weights` returns,
+    so weights calibrated under another loss weighting, or under none (a run
+    from before the weights), are never warm-started from.
+    """
 
     return {
         "method": SOLVER_METHOD,
@@ -1532,7 +1549,40 @@ def _solver_settings(args) -> dict:
         "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "epoch_batch": args.epoch_batch,
+        "target_loss": target_loss,
     }
+
+
+def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
+    """The loss weights of the training targets, and the stamp describing them.
+
+    The national release's formula under the ACS local row mapping
+    (:data:`loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING`), over the
+    training specs only, row-aligned with the calibration TargetSet. The
+    stamp names the formula, the mapping and the multipliers and digests the
+    (name, weight) vector.
+    """
+
+    multipliers = dict(args.target_family_loss_multipliers)
+    try:
+        weights = loss_weighting.us_acs_local_target_loss_weights(
+            train_specs, multipliers
+        )
+    except ValueError as error:
+        raise SystemExit(f"Target loss weights: {error}") from error
+    stamp = {
+        "weighting": loss_weighting.US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "row_mapping": loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING.mapping_id,
+        "family_multipliers": {
+            family: float(multiplier)
+            for family, multiplier in sorted(multipliers.items())
+        },
+        "n_targets": len(train_specs),
+        "weights_sha256": loss_weighting.target_loss_weights_sha256(
+            [loss_weighting.target_row_name(spec) for spec in train_specs], weights
+        ),
+    }
+    return weights, stamp
 
 
 def _stamped_settings(settings: dict | None) -> dict | None:
@@ -1727,6 +1777,7 @@ def calibrate_surface(
     target_loss_cap: float,
     l2_lambda: float,
     seed: int,
+    target_loss_weights: np.ndarray | None = None,
     warm: np.ndarray | None = None,
     done: int = 0,
     on_batch=None,
@@ -1738,7 +1789,10 @@ def calibrate_surface(
     ``target_set`` comes from ``cd_surface.calibration_target_set``, which
     builds only the training targets, each a callable row of the checkpoint
     CSR. Each batch calls the kernel's ``calibrate``, which compiles those
-    rows into its own CSR constraint matrix. Returns ``(result, epochs_done)``.
+    rows into its own CSR constraint matrix. ``target_loss_weights`` is
+    row-aligned with ``target_set``; ``do_calibrate`` always passes the
+    release weights (:func:`release_target_loss_weights`), and ``None`` (equal
+    weights) is for harnesses. Returns ``(result, epochs_done)``.
     """
 
     from microcosm.calibrate import calibrate
@@ -1762,6 +1816,7 @@ def calibrate_surface(
             l2_basis=l2_basis,
             mass_parametrization=mass_parametrization,
             seed=seed,
+            target_loss_weights=target_loss_weights,
             warm_start_weights=warm,
         )
         done += this_batch
@@ -1844,14 +1899,34 @@ def do_calibrate(args) -> None:
     target_set = cd_surface.calibration_target_set(
         roles, matrix, n_households, specs=registry.specs
     )
+    train_specs = [registry.specs[index] for index in cd_surface.train_rows(roles)]
+    if [target.name for target in target_set] != [spec.name for spec in train_specs]:
+        raise SystemExit(
+            "The calibration TargetSet is not row-aligned with the training "
+            "specs, so their loss weights would attach to the wrong targets."
+        )
+    loss_weights, target_loss = release_target_loss_weights(args, train_specs)
+    loss_distribution = loss_weighting.target_loss_weight_distribution(
+        train_specs,
+        loss_weights,
+        row_mapping=loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+    )
     log(
         f"calibrate: households={n_households}, targets={len(target_set)} "
         f"trained + {len(roles) - len(target_set)} held out, "
         f"nnz={matrix.nnz:,}, design_total={design_weights.sum():,.0f}"
     )
+    log(
+        "target loss shares: "
+        + ", ".join(
+            f"{cell['family']}/{cell['geography_level']}/{cell['basis']} "
+            f"{cell['loss_share']:.1%} (equal {cell['equal_share']:.1%})"
+            for cell in loss_distribution["by_family_level_basis"]
+        )
+    )
 
     stamp = _run_identity_digest(identity)
-    settings = _solver_settings(args)
+    settings = _solver_settings(args, target_loss)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
@@ -1935,6 +2010,7 @@ def do_calibrate(args) -> None:
         l2_basis=args.l2_basis,
         mass_parametrization=args.mass_parametrization,
         seed=args.seed,
+        target_loss_weights=loss_weights,
         warm=warm,
         done=done,
         on_batch=save,
@@ -1963,6 +2039,7 @@ def do_calibrate(args) -> None:
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
         "target_loss_cap": args.target_loss_cap,
+        "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "l2_basis": args.l2_basis,
         "mass_parametrization": args.mass_parametrization,
@@ -2015,6 +2092,14 @@ def do_calibrate(args) -> None:
             "mass_conserved_ratio": summary["mass_conserved_ratio"],
             "n_holdout_targets": summary["n_holdout_targets"],
             "sampling_rung": (identity.get("sampling") or {}).get("rung"),
+            # The fields the calibration dashboard reads, as the national
+            # release names them, plus the ACS local row mapping and digest.
+            "target_loss_weighting": target_loss["weighting"],
+            "target_loss_family_multipliers": target_loss["family_multipliers"] or None,
+            "target_loss_cap": args.target_loss_cap,
+            "target_loss_row_mapping": target_loss["row_mapping"],
+            "target_loss_weights_sha256": target_loss["weights_sha256"],
+            "target_loss_distribution": loss_distribution,
         },
     )
     summary["calibration_diagnostics"] = (
@@ -2314,10 +2399,13 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
     """The lineage's weight-concentration entry, true to the solve it describes.
 
-    Only the historical solve (no penalty, projection mass parametrization)
-    keeps the reviewed entry. Any other solve, including an unpenalized softmax
-    one, records its own settings instead: its concentration is measured, but
-    whether it is acceptable is a separate review this register cannot claim.
+    Only the historical solve (no penalty, projection mass parametrization,
+    every target weighted equally) keeps the reviewed entry. A summary from
+    before the loss weights records no ``target_loss``, which reads as equal
+    weights. Any other solve, including an unpenalized softmax one or any
+    loss-weighted one, records its own settings instead: its concentration is
+    measured, but whether it is acceptable is a separate review this register
+    cannot claim.
     """
 
     ess = diagnostics.get("effective_sample_size")
@@ -2327,9 +2415,11 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     parametrization = diagnostics.get(
         "mass_parametrization", HISTORICAL_PENALTY["mass_parametrization"]
     )
+    target_loss = diagnostics.get("target_loss")
     if (
         l2_lambda == 0.0
         and parametrization == HISTORICAL_PENALTY["mass_parametrization"]
+        and target_loss is None
     ):
         return {
             "id": "low_effective_sample_size_lambda_zero",
@@ -2353,7 +2443,15 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
             f"l2_basis="
             f"{diagnostics.get('l2_basis', HISTORICAL_PENALTY['l2_basis'])!r} and "
             f"mass_parametrization={parametrization!r}; chi-square distance "
-            f"from the design weights {diagnostics.get('chi_square_distance')}."
+            f"from the design weights {diagnostics.get('chi_square_distance')}"
+            + (
+                "; target loss weights "
+                f"{target_loss.get('weighting')!r} under row mapping "
+                f"{target_loss.get('row_mapping')!r} with family multipliers "
+                f"{target_loss.get('family_multipliers') or {}}."
+                if isinstance(target_loss, dict)
+                else "; every target weighted equally."
+            )
         ),
         "calibration_blocker": False,
     }
@@ -3141,6 +3239,9 @@ def do_package(args) -> dict:
             soi_mode,
             (identity.get("cd_holdout") or {}).get("fraction"),
             penalty={key: diagnostics.get(key) for key in HISTORICAL_PENALTY},
+            target_family_loss_multipliers=(diagnostics.get("target_loss") or {}).get(
+                "family_multipliers"
+            ),
         ),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
@@ -3184,6 +3285,7 @@ def do_package(args) -> dict:
                 "l2_basis",
                 "mass_parametrization",
                 "seed",
+                "target_loss",
                 "final_loss",
                 "fraction_within_10pct",
                 "effective_sample_size",
@@ -3450,6 +3552,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
+    parser.add_argument(
+        "--target-family-loss-multiplier",
+        action="append",
+        default=[],
+        metavar="FAMILY=MULTIPLIER",
+        help=(
+            "Multiply the loss weight of every training target in FAMILY "
+            "(e.g. usda_snap=2) on top of the national release's weighting, "
+            "then renormalize to mean 1 (repeatable). Calibrate fails if FAMILY "
+            "matches no training target. Recorded in the solver settings, the "
+            "calibration summary and the diagnostics."
+        ),
+    )
     parser.add_argument("--l2-lambda", type=float, default=0.0)
     parser.add_argument(
         "--l2-basis",
@@ -3523,6 +3638,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    try:
+        args.target_family_loss_multipliers = (
+            loss_weighting.parse_target_family_loss_multipliers(
+                args.target_family_loss_multiplier
+            )
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     stages = (
         ["materialize", "calibrate", "qa", "finalize", "package"]
