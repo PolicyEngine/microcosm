@@ -720,7 +720,9 @@ def loss_weights_block(
         "formula": module.US_FISCAL_TARGET_LOSS_WEIGHTING,
         "family_multipliers": dict(spec.family_loss_multipliers),
         "module_file": getattr(module, "__file__", None),
-        "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV)),
+        "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV))
+        and Path(module.__file__).resolve()
+        == Path(os.environ[SHARED_WEIGHTS_FILE_ENV]).resolve(),
         "module_sha256": sha256(Path(module.__file__)),
         "registry_sha256": receipt.get("verified_registry_sha256"),
         "registry_compile_head": receipt.get("compile_head"),
@@ -1175,10 +1177,23 @@ def run_calibration(
     options: dict | None = None
     result_block: dict | None = None
     spec_json = json.dumps(dataclasses.asdict(spec), sort_keys=True)
+    # The weights' content, not just the spec: a resumed weighted run must
+    # continue under the same weights (module, registry and multipliers).
+    loss_digest = (
+        loss_vector_sha256(row_names(inputs, train), loss_weights.train)
+        if loss_weights.weighted
+        else ""
+    )
     if resume and resume_path.exists():
         saved = np.load(resume_path, allow_pickle=False)
         if str(saved["spec_json"]) != spec_json:
             raise SystemExit(f"{resume_path} belongs to a different run spec")
+        saved_digest = str(saved["loss_digest"]) if "loss_digest" in saved.files else ""
+        if saved_digest != loss_digest:
+            raise SystemExit(
+                f"{resume_path} was solved under other target-loss weights "
+                f"({saved_digest or 'none recorded'} != {loss_digest or 'none'})"
+            )
         warm = np.asarray(saved["weights"], dtype=np.float64)
         done = int(saved["epochs_done"])
         batches = json.loads(str(saved["batches_json"]))
@@ -1290,6 +1305,7 @@ def run_calibration(
             weights=warm,
             epochs_done=np.int64(done),
             spec_json=np.str_(spec_json),
+            loss_digest=np.str_(loss_digest),
             batches_json=np.str_(json.dumps(jsonable(batches))),
             options_json=np.str_(json.dumps(options)),
             result_json=np.str_(json.dumps(jsonable(result_block))),

@@ -193,8 +193,16 @@ def weighted_columns(payload: dict) -> dict:
     out = {
         "target_weighting": _weighting(payload),
         "pop_multiplier": float(multipliers.get("census_population", 1.0)),
+        # Training fit on the default full-surface weights. Second-pass runs
+        # record it; a first-pass full-surface run without multipliers trained
+        # on exactly those weights (sweep.loss_weights_for returns
+        # LossWeights(full, full)), so its final loss is it. A first-pass
+        # holdout run trained on its fold's own weights and has none.
         "yardstick_loss": yardstick.get(
-            "weighted_mean_capped_scaled_error", payload["result"]["final_loss"]
+            "weighted_mean_capped_scaled_error",
+            payload["result"]["final_loss"]
+            if payload["spec"].get("holdout_fold") is None and not multipliers
+            else None,
         ),
         "train_cds_off_10pct": int(
             round(
@@ -719,10 +727,11 @@ def weighted_markdown(frame: pd.DataFrame) -> str:
         ("State ESS median", "state_ess_median", ",.0f"),
         ("CD ESS median / min", None, None),
         ("MA ESS", "ma_ess", ",.0f"),
-        ("Weighted loss", "final_loss", ".4f"),
+        ("Weighted loss (default weights)", "yardstick_loss", ".4f"),
+        ("Training objective (with multipliers)", "final_loss", ".4f"),
         ("Unweighted loss", "unweighted_loss", ".4f"),
         ("Within 10%", "within_10pct", ".1%"),
-        ("Weighted within 10%", "weighted_within_10pct", ".1%"),
+        ("Weighted within 10% (training weights)", "weighted_within_10pct", ".1%"),
         ("SOI within 10%", "within_10pct_soi", ".1%"),
         ("SNAP", "within_10pct_snap", ".0%"),
         ("Medicaid", "within_10pct_medicaid", ".0%"),
@@ -765,7 +774,7 @@ def weighted_markdown(frame: pd.DataFrame) -> str:
             ("Prior ACS share", "prior_acs_share", ".3g"),
             ("λ", "l2_lambda", "g"),
             ("National ESS", "kish_ess", ",.0f"),
-            ("Weighted loss", "final_loss", ".4f"),
+            ("Training objective", "final_loss", ".4f"),
             ("Held-out weighted error", "holdout_weighted_capped_error", ".4f"),
             ("Held-out capped error", "holdout_mean_capped_error", ".4f"),
             ("Held-out within 10%", "holdout_within_10pct", ".1%"),

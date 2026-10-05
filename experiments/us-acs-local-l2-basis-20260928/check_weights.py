@@ -10,8 +10,12 @@ For every ``results/runs/w_*.json``, it rebuilds the run's training weights
 the way ``sweep.py`` did (the run's training rows and family multipliers) and
 its full-surface yardstick, with whichever module ``sweep.py`` loads now:
 the package import, or the file named by ``MICROCOSM_TARGET_LOSS_WEIGHTS_FILE``.
-It compares both loss-vector digests with the run's receipt. It writes
-``results/weights_check.json`` and exits non-zero on any mismatch.
+It compares both loss-vector digests with the run's receipt. It also checks
+each receipt's own consistency block: the solver's epoch-0 loss within 1e-5
+of the weighted loss of the starting weights recomputed outside it, and its
+final loss equal to the recomputed weighted loss of its returned weights.
+The launch gate checked those only on the first pass's first run. It writes
+``results/weights_check.json`` and exits non-zero on any failure.
 
 Run: ``uv run python experiments/us-acs-local-l2-basis-20260928/check_weights.py``
 """
@@ -41,6 +45,8 @@ from sweep import (  # noqa: E402
 
 RUNS = HERE / "results" / "runs"
 OUT = HERE / "results" / "weights_check.json"
+#: float32 solver against float64 recomputation; observed at most 9.3e-6.
+EPOCH0_RTOL = 1e-5
 
 
 def main() -> int:
@@ -63,7 +69,15 @@ def main() -> int:
                 loss_vector_sha256(full_names, weights.full),
             )
         train_digest, full_digest = cache[key]
+        consistency = payload["consistency"]
+        epoch0 = consistency.get("recomputed_design_loss_relative_to_epoch0")
+        final = consistency.get("recomputed_minus_result_final_loss")
         row = {
+            "epoch0_relative": epoch0,
+            "final_difference": final,
+            "consistent": epoch0 is not None
+            and abs(epoch0) < EPOCH0_RTOL
+            and final == 0.0,
             "run_id": spec.run_id,
             "train_matches": train_digest == recorded["train"]["loss_vector_sha256"],
             "full_matches": full_digest
@@ -71,7 +85,7 @@ def main() -> int:
             "recorded_module_sha256": recorded["module_sha256"],
         }
         checked.append(row)
-        if not (row["train_matches"] and row["full_matches"]):
+        if not (row["train_matches"] and row["full_matches"] and row["consistent"]):
             mismatches.append(
                 {
                     **row,
@@ -90,6 +104,10 @@ def main() -> int:
         "registry_sha256": inputs.registry_receipt["verified_registry_sha256"],
         "n_runs": len(checked),
         "n_distinct_weightings": len(cache),
+        "max_abs_epoch0_relative": max(abs(row["epoch0_relative"]) for row in checked),
+        "max_abs_final_difference": max(
+            abs(row["final_difference"]) for row in checked
+        ),
         "n_mismatches": len(mismatches),
         "mismatches": mismatches,
     }

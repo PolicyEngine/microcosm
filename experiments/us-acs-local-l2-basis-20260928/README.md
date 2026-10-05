@@ -193,9 +193,10 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
    with many districts (at λ 0.1: California 27 of 52, Texas 18 of 38,
    Florida 14 of 28, Pennsylvania 10 of 17, New York 10 of 26); state
    populations stay within 3.8%. Held-out district populations are predicted
-   poorly in every configuration (held-out capped error 0.095-0.112), and they
-   carry 1.7% of the held-out weighted loss, so the held-out measure does not
-   see this cost.
+   poorly in every configuration: at share 0.5 their held-out capped error is
+   0.095-0.126 in every configuration held out, weighted or equal-weight. They
+   carry 0.8-1.9% of the held-out weighted loss, so the held-out measure does
+   not see this cost.
 4. **Multiplying the population family by 8 buys it back and is the best
    held-out configuration.** `--target-family-loss-multiplier
    census_population=8` (in the training weights; scoring keeps the default
@@ -203,21 +204,33 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
    equal-weight share, and state population to 24.7%. At λ 0 it leaves no
    district beyond 10% and already cuts held-out weighted error by 8%
    (0.0721). At λ 0.03 it gives 0.0704, the lowest of every configuration
-   held out, weighted or equal-weight (on each fold separately too), with ESS 19,874, Massachusetts 574, the smallest district 22, no district
+   held out, weighted or equal-weight, on each fold separately too. Its margin
+   over the next best, default weights at λ 0.1, is small: 0.9% on fold 0 and
+   0.3% on fold 1, the latter inside the rerun noise. It has ESS 19,874,
+   Massachusetts 574, the smallest district 22, no district
    below a quarter of its starting ESS on any of its three solves, and 3
    districts beyond 10% (worst 15%): better district fit than the release
    settings on the weighted loss (11, worst 33%). Most of the held-out gain is
-   on SOI (95% of the yardstick): its held-out capped error falls from 0.132
-   to 0.119 here and at default λ 0.1 alike. Held-out district error falls
+   on SOI, which carries 92-96% of the held-out weighted loss: its held-out
+   capped error falls from 0.132 to 0.119 here and at default λ 0.1 alike. Held-out district error falls
    most with the multiplier: 0.111 to 0.095, against 0.106 at default λ 0.03
    and 0.111 at λ 0.1. At λ 0.1 the multiplier
    leaves 24 districts beyond 10% and held-out error rises to 0.0724.
    ×4 sits between (λ 0.03: 8 districts beyond 10%, worst 32%).
-5. **Training on the weighted loss is no better out of sample without the
-   multiplier.** The equal-weight pick (projection λ 0.03, trained on the
-   equal loss) scores 0.0724 on the weighted held-out yardstick, against
-   0.0721 for the same settings trained on the weighted loss, and it keeps
-   every district population (`results/cross_scores.json`).
+5. **Whether training on the weighted loss helps out of sample depends on
+   λ.** On the weighted held-out yardstick, against the same settings trained
+   on the equal loss (`results/cross_scores.json`):
+   - At λ 0 the weighted solve is worse on both folds (0.0786 / 0.0783
+     against 0.0779 / 0.0766).
+   - At λ 0.03 the folds split (0.0723 / 0.0719 against 0.0734 / 0.0715;
+     the mean is 0.5% lower).
+   - At its own optimum, λ 0.1, the weighted solve (0.0713 / 0.0704) is below
+     every equal-weight configuration held out on both folds (the best are
+     0.0734 on fold 0 and 0.0715 on fold 1), by 1.6-2.9%.
+
+   λ is in units of each loss, so equal λ is not an equal setting across the
+   two losses. The equal-weight solves keep trained district populations
+   within 0.7% at λ 0 and 0.03, which the weighted ones do not.
 6. **Share 0.9 behaves as on the equal loss.** ESS 81,714 (93,524 there),
    held-out weighted error 36-41% above the release settings, and the
    relative gate fails on every solve (318-371 districts). That remains the
@@ -309,21 +322,35 @@ rule weighs it.
 `--l2-basis chi_square --l2-lambda 0.03` (projection, the λ d797 names) and
 `--target-family-loss-multiplier census_population=8`.
 
-- It has the lowest held-out weighted error of everything tested, 10.2% and
-  10.4% below the release settings on the two folds.
-- ESS 19,874 against 13,707, Massachusetts 574 against 478, the smallest
-  district 22 against 11.
+- It has the lowest held-out weighted error of every configuration with
+  held-out folds, 10.2% and 10.4% below the release settings on the two folds.
+- Against the release settings: ESS 19,874 against 13,707, Massachusetts 574
+  against 478, the smallest district 22 against 11.
+- Against the rule's pick (λ 0.1, no multiplier) it gives up about 9% of
+  national ESS: 19,874 against 21,751; Massachusetts 574 against 609; 301
+  districts under ESS 50 against 240; the smallest district 22 against 28. In
+  exchange it has 132 fewer district misses (3 against 135) and slightly
+  lower held-out error (0.0704 against 0.0708, inside the noise on fold 1).
+- Against the equal-weight pick (λ 0.03 on the equal loss; ESS 20,690, no
+  district misses) it gives up 4% of ESS for held-out error of 0.0704
+  against 0.0724.
 - It passes d797's gate on every solve, and it misfits 3 district
   populations (worst 15%) against the release settings' 11 (worst 33%).
-- Its λ is d797's; the multiplier is the new call.
+- Its λ is d797's; the multiplier is the new call (d952).
 
 The multiplier was tried after the first pass showed the district cost, so it
-was not chosen under the pre-registered rule. Only ×4 and ×8 were run, and
-only ×8 has held-out folds; a value between, or a district-only lever, was not
-tested. If the build keeps #1104's default (no multiplier), the rule's λ is
-0.1, with the district cost above.
+was not chosen under the pre-registered rule. Several things were not tested:
+- only ×4 and ×8 were run, and only ×8 has held-out folds;
+- no value between them, no λ between 0.03 and 0.1 with ×8, and no λ below
+  0.03 with it;
+- no softmax or share-0.9 run with a multiplier;
+- no district-only lever (the family multiplier also raises state population
+  to 24.7% of the loss).
 
+If the build keeps #1104's default (no multiplier), the rule's λ is 0.1, with
+the district cost above.
 
+## How it was run
 
 - **Inputs.** The release's calibration checkpoint was a 28.7 GB dense
   float32 frame. The sparse copy used here (`target_matrix.npz`, 4,459 ×
@@ -407,11 +434,14 @@ tested. If the build keeps #1104's default (no multiplier), the rule's λ is
     current module and compares both digests with the run's receipt
     (`results/weights_check.json`: 46 runs, 7 distinct weightings, no
     mismatch against main's module after #1104 merged as e34712cc8).
-  - Gate: before fanning out, the release-settings run had to show its
-    epoch-0 loss equal to the weighted loss of the starting weights
-    recomputed outside the solver (5e-6 relative) and its final loss equal
-    to the recomputed weighted loss of its returned weights (exact). Every
-    `w_` run records both checks; all are within 1e-5 and exact.
+  - Gate: before the first pass fanned out, its release-settings run had to
+    show its epoch-0 loss equal to the weighted loss of the starting weights
+    recomputed outside the solver (observed 5e-6 relative; the gate's
+    tolerance is 1e-4), and its final loss equal to the recomputed weighted
+    loss of its returned weights (exact). The second pass reused that cached
+    run, so its launch did not gate. Every `w_` run records both checks, and
+    `check_weights.py` asserts them on all 46 receipts: epoch-0 within 1e-5
+    (at most 9.3e-6) and final differences exactly 0.
   - Held-out scoring weights each held-out target by its full-surface
     weight under the default weighting, the same yardstick for every run.
     Training weights are recomputed on each fold's training rows, as a
@@ -438,10 +468,12 @@ tested. If the build keeps #1104's default (no multiplier), the rule's λ is
   ESS. A solve on cloned rows needs a rebuilt target matrix. The support-mix
   bake-off (#1067) compares clones and ACS rows in the solve.
 - **Epochs.** 800 epochs, like the release; longer solves were not run.
-- **One run per configuration.** Apart from the two reruns, each configuration
+- **One run per configuration.** Apart from the four reruns (two `dup_` on
+  the equal loss, two `w_dup_hold_` on the weighted one), each configuration
   was solved once, so differences smaller than the run-to-run variation above
-  (notably the held-out margins and the softmax-versus-projection comparison
-  at λ = 0.03) are not resolved.
+  are not resolved. That includes the held-out margins, the
+  softmax-versus-projection comparison at λ = 0.03, and the fold-1 margin
+  between the weighted recommendation and λ 0.1.
 - **Not measured.** Poverty and program estimates were not recomputed, since
   the engine was not run. ESS is the proxy for their precision.
 - **Weighted grid.** The softmax runs predate microcosm#1096, which replaces
@@ -450,3 +482,14 @@ tested. If the build keeps #1104's default (no multiplier), the rule's λ is
   ×4 and ×8 were run, and only ×8 has held-out folds. The weights came from
   #1104 before it merged; they hold for main only while
   `check_weights.py` passes against main's module.
+- **One target surface.** Everything here is the 09-23 release's
+  `--soi-mode state` surface: 4,459 targets, with no district SOI rows. Under
+  `--soi-mode state_cd`, #1104 gives district SOI 16.7% of the loss and the
+  population families other shares, so neither the λ nor the multiplier
+  carries over without a rerun on that surface.
+- **Registry metadata.** `registry.py` compiles the specs with this branch's
+  code, as a rebuilt release would, not with the release's head 767312d60.
+  Names and values are anchored to the release: they match its checkpoint bit
+  for bit. The metadata the weighting reads (measure mode, units, ledger
+  geography, roles) was not compared with a compile at 767312d60. The
+  receipt records the compiling head.

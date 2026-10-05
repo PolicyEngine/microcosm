@@ -184,7 +184,8 @@ recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-2026092
   weighting gives each state's district populations one shared budget, and at
   0.1 it leaves 135 of 436 trained district populations more than 10% off.
   `l2_lambda = 0.03` with `--target-family-loss-multiplier
-  census_population=8` has lower held-out error still and misfits 3.
+  census_population=8` misfits 3 and has slightly lower held-out error (by
+  0.6%). The multiplier was chosen after the first pass of runs.
 
 ## Using it
 
