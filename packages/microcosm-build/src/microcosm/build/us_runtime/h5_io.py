@@ -74,6 +74,7 @@ __all__ = [
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
+    "US_MULTISPINE_POOL_RELEASE_BLOCKING_DEFAULTED_TAKE_UP",
     "US_STACKED_POOL_OPERATOR_ORDER",
     "identify_us_multispine_pool_manifest",
     "load_authenticated_us_multispine_pool_for_release",
@@ -83,6 +84,7 @@ __all__ = [
     "load_simulation_ready_us_multispine_pool_manifest",
     "read_nullable_us_h5_metadata",
     "require_authenticated_us_multispine_pool_h5",
+    "us_multispine_pool_defaulted_take_up_failures",
     "us_multispine_pool_release_receipt",
     "write_nullable_us_h5",
 ]
@@ -2050,6 +2052,62 @@ def _stacked_late_transition_binding(
     return dag, derived_authority, observed_sha256
 
 
+#: Take-up variables whose engine-defaulted cells block a pool release
+#: (microcosm#1019, #1051 review). The pool's seed stage gives a missing
+#: ``takes_up_snap_if_eligible`` cell the installed engine's default, which is
+#: universal take-up, because its spine-blind take-up contract has no SNAP
+#: seed yet (the legacy ACS local lane seeds it in ``acs_local_take_up``).
+US_MULTISPINE_POOL_RELEASE_BLOCKING_DEFAULTED_TAKE_UP: tuple[str, ...] = (
+    "takes_up_snap_if_eligible",
+)
+
+
+def us_multispine_pool_defaulted_take_up_failures(
+    manifest: Mapping[str, object],
+) -> list[str]:
+    """Release-blocking engine-defaulted take-up recorded by the seed stage.
+
+    ``build_us_multispine_pool.py`` records, per take-up variable, how many
+    cells its seed stage filled with the engine default
+    (``stage_receipts.seed.programs.<variable>.defaulted_rows``). For each
+    variable in :data:`US_MULTISPINE_POOL_RELEASE_BLOCKING_DEFAULTED_TAKE_UP`
+    a positive count fails: those units would take the program up whenever
+    eligible. The check reads receipt counts only, so it stays spine-blind.
+    A ``programs`` block that omits a blocking variable, or a malformed
+    count, also fails. A seed receipt with no ``programs`` block at all (not
+    written by the seed stage) records no take-up provenance and is not
+    evaluated. Returns one line per failure; empty means releasable.
+    """
+
+    stage_receipts = manifest.get("stage_receipts")
+    seed = stage_receipts.get("seed") if isinstance(stage_receipts, Mapping) else None
+    programs = seed.get("programs") if isinstance(seed, Mapping) else None
+    if programs is None:
+        return []
+    if not isinstance(programs, Mapping):
+        return ["stage_receipts.seed.programs is not an object."]
+    failures: list[str] = []
+    for variable in US_MULTISPINE_POOL_RELEASE_BLOCKING_DEFAULTED_TAKE_UP:
+        entry = programs.get(variable)
+        if not isinstance(entry, Mapping):
+            failures.append(f"the seed receipt records no {variable!r} provenance.")
+            continue
+        defaulted = entry.get("defaulted_rows")
+        if isinstance(defaulted, bool) or not isinstance(defaulted, int):
+            failures.append(
+                f"{variable!r} defaulted_rows is not an integer: {defaulted!r}."
+            )
+        elif defaulted < 0:
+            failures.append(f"{variable!r} defaulted_rows is negative: {defaulted}.")
+        elif defaulted > 0:
+            failures.append(
+                f"{defaulted} {variable!r} cell(s) carry the engine default "
+                "(universal take-up among eligible units); a receipt-anchored "
+                "seed must replace it before release (microcosm#1019)."
+            )
+    return failures
+
+
 def load_simulation_ready_us_multispine_pool(
     path: str | Path,
     *,
@@ -2158,6 +2216,14 @@ def _load_us_multispine_pool(
             f"US multispine pool manifest {manifest_path} has no passing "
             "agreement-gate verdict."
         )
+    if not scoring_only:
+        # Release boundary (both release loaders; scoring evidence is exempt).
+        take_up_failures = us_multispine_pool_defaulted_take_up_failures(manifest)
+        if take_up_failures:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} is not releasable: "
+                + " ".join(take_up_failures)
+            )
 
     pool_path = authenticated_pool_h5.path
     metadata = read_nullable_us_h5_metadata(pool_path)
