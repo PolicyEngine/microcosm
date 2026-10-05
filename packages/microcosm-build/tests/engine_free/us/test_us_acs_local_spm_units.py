@@ -81,8 +81,9 @@ def _person(serialno: str, sporder: int, relationship: int, **overrides) -> dict
 #: B  reference, unmarried partner, nonrelative child (6), foster child (10)
 #: C  one noninstitutional group-quarters person
 #: D  married reference couple and a 19-year-old roommate with no income
-#: E  reference, same-sex unmarried partner, and two other nonrelatives (16
-#:    and 45): the review's case, possibly the partner's child and relative
+#: E  reference, same-sex unmarried partner (38), and two other nonrelatives:
+#:    16 (22 years from the partner: plausibly their child, kept) and 45 (7
+#:    years: not a generation apart, split despite the partner)
 #: F  reference and an other nonrelative (50), no partner
 _HOUSEHOLDS = [
     _household("A", 4, WGTP=10),
@@ -169,7 +170,7 @@ def test_loader_keeps_one_spm_unit_per_household(loader_frame) -> None:
 # --- the rule ----------------------------------------------------------------
 
 
-def test_roommates_and_unpartnered_other_nonrelatives_get_their_own_unit(
+def test_roommates_and_other_nonrelatives_get_their_own_unit_by_the_rule(
     split,
 ) -> None:
     frame, _receipt = split
@@ -184,9 +185,10 @@ def test_roommates_and_unpartnered_other_nonrelatives_get_their_own_unit(
         [(3, 1)],  # group quarters: already one person
         [(4, 1), (4, 2)],  # the married reference couple
         [(4, 3)],  # the 19-year-old roommate, even with no income
-        # Household E: with an unmarried partner present, the 16-year-old
-        # and the 45-year-old other nonrelatives stay (the review's case).
-        [(5, 1), (5, 2), (5, 3), (5, 4)],
+        # Household E: the 16-year-old, a generation from the 38-year-old
+        # partner, stays; the 45-year-old, 7 years from them, gets a unit.
+        [(5, 1), (5, 2), (5, 3)],
+        [(5, 4)],
         [(6, 1)],  # household F's reference person
         [(6, 2)],  # other nonrelative, 50, no partner in the household
     ]
@@ -200,29 +202,77 @@ def test_partners_child_coded_36_stays_with_the_partner(split) -> None:
     person = frame.table("person")
     household_e = person[person["person_household_id"] == 5]
     assert household_e["RELSHIPP"].tolist() == [20, 24, 36, 36]
-    assert household_e["person_spm_unit_id"].nunique() == 1
+    assert household_e["person_spm_unit_id"].nunique() == 2
     child = household_e[household_e["AGEP"] == 16]
     partner = household_e[household_e["RELSHIPP"] == 24]
+    adult = household_e[household_e["AGEP"] == 45]
     assert child["person_spm_unit_id"].iloc[0] == partner["person_spm_unit_id"].iloc[0]
+    assert adult["person_spm_unit_id"].iloc[0] != partner["person_spm_unit_id"].iloc[0]
 
 
-def test_mover_mask_keeps_other_nonrelatives_with_a_partner() -> None:
+def test_the_review_cases_follow_the_generational_rule(tmp_path) -> None:
+    """microcosm#1061 review (C2): G is the counterexample, an independent
+    30-year-old coded 36 beside a 32-year-old partner, who now gets a unit
+    of their own; the partner's 16-year-old (P) and a 60-year-old coded 36
+    beside a 35-year-old partner (Q, plausibly the partner's parent) stay."""
+
+    households = [
+        _household("G", 3, WGTP=10),
+        _household("P", 3, WGTP=20),
+        _household("Q", 3, WGTP=30),
+    ]
+    persons = [
+        _person("G", 1, 20),
+        _person("G", 2, 22, AGEP=32),
+        _person("G", 3, 36, AGEP=30),
+        _person("P", 1, 20),
+        _person("P", 2, 24, AGEP=38),
+        _person("P", 3, 36, AGEP=16, WAGP=0),
+        _person("Q", 1, 20),
+        _person("Q", 2, 24, AGEP=35),
+        _person("Q", 3, 36, AGEP=60, WAGP=0),
+    ]
+    loader, _ = build_acs_pums_unit_frame(_source(tmp_path, households, persons))
+    frame, receipt = split_acs_adult_nonrelative_spm_units(loader)
+    assert _members(frame, "spm_unit") == [
+        [(1, 1), (1, 2)],  # G: reference and partner
+        [(1, 3)],  # G: the independent 30-year-old, split despite the partner
+        [(2, 1), (2, 2), (2, 3)],  # P: the partner's 16-year-old stays
+        [(3, 1), (3, 2), (3, 3)],  # Q: the partner's plausible parent stays
+    ]
+    other = receipt["other_nonrelatives"]
+    assert other["generation_gap_years"] == 15
+    assert other["kept_as_partner_child_or_parent"] == 2
+    assert other["split_despite_partner"] == 1
+    assert other["moved_without_partner"] == 0
+    assert other["weighted"]["split_despite_partner"] == 10.0
+    assert other["weighted"]["kept_as_partner_child_or_parent"] == 50.0
+    assert "sibling or cousin" in other["proxy"]
+    pooled = _pooled(frame)
+    gate = acs_local_spm_unit_signal_gate(pooled, receipt=receipt)
+    assert gate.passed, gate.failures
+
+
+def test_mover_mask_applies_the_generational_partner_rule() -> None:
     person = pd.DataFrame(
         {
-            "person_household_id": [1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5],
-            "RELSHIPP": [20, 22, 36, 20, 24, 36, 20, 36, 20, 34, 36, 20, 22, 34],
-            "AGEP": [40, 38, 16, 40, 38, 45, 40, 45, 40, 30, 17, 40, 38, 30],
+            "person_household_id": [1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5]
+            + [6, 6, 6, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9],
+            "RELSHIPP": [20, 22, 36, 20, 24, 36, 20, 36, 20, 34, 36, 20, 22, 34]
+            + [20, 22, 36, 20, 24, 36, 20, 22, 24, 36, 36, 20, 22, 36],
+            "AGEP": [40, 38, 16, 40, 38, 45, 40, 45, 40, 30, 17, 40, 38, 30]
+            + [40, 32, 30, 40, 35, 60, 40, 25, 50, 36, 65, 40, 35, 50],
         }
     )
     assert acs_spm_unit_mover_mask(person).tolist() == [
-        # A partner's 16-year-old coded 36 stays (the review's case).
+        # A partner's 16-year-old coded 36 stays: 22 years from the partner.
         False,
         False,
         False,
-        # An adult coded 36 with a same-sex partner present stays.
+        # An adult coded 36 seven years from a same-sex partner moves.
         False,
         False,
-        False,
+        True,
         # An adult coded 36 with no partner present moves.
         False,
         True,
@@ -235,6 +285,27 @@ def test_mover_mask_keeps_other_nonrelatives_with_a_partner() -> None:
         False,
         False,
         True,
+        # The review's counterexample: an independent 30-year-old coded 36
+        # beside a 32-year-old partner moves.
+        False,
+        False,
+        True,
+        # A 60-year-old coded 36 beside a 35-year-old partner (plausibly the
+        # partner's parent) stays.
+        False,
+        False,
+        False,
+        # Two partners: the closest-aged one decides. 36 is 11 years from the
+        # 25-year-old (moves); 65 is 15 from the 50-year-old (stays).
+        False,
+        False,
+        False,
+        True,
+        False,
+        # Exactly 15 years apart is a generation: stays.
+        False,
+        False,
+        False,
     ]
     with pytest.raises(ValueError, match="'person_household_id' is absent"):
         acs_spm_unit_mover_mask(person.drop(columns=["person_household_id"]))
@@ -291,7 +362,7 @@ def test_tax_units_nest_and_other_units_are_unchanged(loader_frame, split) -> No
 def test_ids_are_dense_sorted_and_deterministic(loader_frame, split) -> None:
     frame, receipt = split
     ids = frame.table("spm_unit")["spm_unit_id"].tolist()
-    assert ids == list(range(1, 11))
+    assert ids == list(range(1, 12))
     again, again_receipt = split_acs_adult_nonrelative_spm_units(loader_frame)
     assert again.table("person")["person_spm_unit_id"].tolist() == (
         frame.table("person")["person_spm_unit_id"].tolist()
@@ -317,46 +388,63 @@ def test_receipt_counts_the_split(split) -> None:
     assert receipt["partner_relationship_codes"] == [22, 24]
     assert receipt["min_age"] == 15
     assert receipt["acs_households"] == 6
-    assert receipt["households_affected"] == 3
-    assert receipt["persons_moved"] == receipt["units_created"] == 4
-    assert receipt["persons_moved_by_relationship"] == {"34": 2, "36": 2}
+    assert receipt["households_affected"] == 4
+    assert receipt["persons_moved"] == receipt["units_created"] == 5
+    assert receipt["persons_moved_by_relationship"] == {"34": 2, "36": 3}
     assert receipt["nonrelatives_under_min_age_kept"] == 2
-    assert (receipt["spm_units_before"], receipt["spm_units_after"]) == (6, 10)
+    assert (receipt["spm_units_before"], receipt["spm_units_after"]) == (6, 11)
     weighted = receipt["weighted"]
-    # Households A (10), D (30) and F (50); movers weigh 10 + 10 + 30 + 50.
-    assert weighted["households_affected"] == 90.0
-    assert weighted["persons_moved"] == 100.0
+    # Households A (10), D (30), E (40) and F (50); movers weigh
+    # 10 + 10 + 30 + 40 + 50.
+    assert weighted["households_affected"] == 130.0
+    assert weighted["persons_moved"] == 140.0
     # Persons: 4x10 + 4x20 + 1x7 + 3x30 + 4x40 + 2x50 = 477 over 157 household
-    # weight before, and 257 unit weight after.
+    # weight before, and 297 unit weight after.
     assert weighted["persons_per_spm_unit"]["before"] == pytest.approx(477 / 157)
-    assert weighted["persons_per_spm_unit"]["after"] == pytest.approx(477 / 257)
+    assert weighted["persons_per_spm_unit"]["after"] == pytest.approx(477 / 297)
     assert weighted["single_person_spm_unit_share"]["before"] == pytest.approx(7 / 157)
     # Single-person units: A's two movers (10 each), C (7), D's roommate (30),
-    # F's reference person and mover (50 each).
-    assert weighted["single_person_spm_unit_share"]["after"] == pytest.approx(157 / 257)
+    # E's 45-year-old (40), F's reference person and mover (50 each).
+    assert weighted["single_person_spm_unit_share"]["after"] == pytest.approx(197 / 297)
     assert weighted["spm_units_per_household"] == {
         "before": 1.0,
-        "after": pytest.approx(257 / 157),
+        "after": pytest.approx(297 / 157),
     }
 
 
 def test_receipt_sizes_the_code_36_ambiguity(split) -> None:
-    """E's two 36s stay for the partner; A's and F's adult 36s move, and A's
-    shares its household with a roommate, so it may be the roommate's child."""
+    """E's 16-year-old stays as the partner's plausible child and E's
+    45-year-old is split despite the partner; A's and F's adult 36s move with
+    no partner, and A's shares its household with a roommate, so it may be the
+    roommate's child."""
 
     _frame, receipt = split
     other = receipt["other_nonrelatives"]
-    assert other["kept_with_partner"] == 2
-    assert other["moved"] == 2
+    assert other["generation_gap_years"] == 15
+    assert other["kept_as_partner_child_or_parent"] == 1
+    assert other["split_despite_partner"] == 1
+    assert other["moved_without_partner"] == 2
+    assert other["moved"] == 3
     assert other["moved_from_roommate_households"] == 1
     assert other["weighted"] == {
-        "kept_with_partner": 80.0,
-        "moved": 60.0,
+        "kept_as_partner_child_or_parent": 40.0,
+        "split_despite_partner": 40.0,
+        "moved_without_partner": 60.0,
+        "moved": 100.0,
         "moved_from_roommate_households": 10.0,
     }
+    assert "sibling or cousin" in other["proxy"]
+    assert "a generation apart is kept" in other["proxy"]
     assert "roommate's own child" in other["ambiguity"]
     sensitivity = receipt["sensitivity"]
     assert sensitivity["rule"] == {
+        "persons_per_spm_unit": pytest.approx(477 / 297),
+        "single_person_spm_unit_share": pytest.approx(197 / 297),
+        "spm_units_per_household": pytest.approx(297 / 157),
+    }
+    # 34 and 36 with the partner-kin rule (the previous rule): E's 45-year-old
+    # stays with the partner too.
+    assert sensitivity["roommates_and_other_nonrelatives_with_partner_kin_rule"] == {
         "persons_per_spm_unit": pytest.approx(477 / 257),
         "single_person_spm_unit_share": pytest.approx(157 / 257),
         "spm_units_per_household": pytest.approx(257 / 157),
@@ -367,7 +455,7 @@ def test_receipt_sizes_the_code_36_ambiguity(split) -> None:
         "single_person_spm_unit_share": pytest.approx(47 / 197),
         "spm_units_per_household": pytest.approx(197 / 157),
     }
-    # 34 and every 36 (the pre-review rule): E's 16- and 45-year-old move too.
+    # 34 and every 36 (the first rule): E's 16-year-old moves too.
     assert sensitivity["roommates_and_every_other_nonrelative"] == {
         "persons_per_spm_unit": pytest.approx(477 / 337),
         "single_person_spm_unit_share": pytest.approx(237 / 337),
@@ -483,47 +571,41 @@ def test_gate_passes_the_split_pool(pooled, split) -> None:
     assert gate.passed, gate.failures
     assert gate.details["acs_person_rows"] == 18
     assert gate.details["adult_nonrelatives"] == 6
-    assert gate.details["movers"] == 4
-    assert gate.details["other_nonrelatives_kept_with_partner"] == 2
-    assert gate.details["other_nonrelatives_moved"] == 2
+    assert gate.details["movers"] == 5
+    assert gate.details["generation_gap_years"] == 15
+    assert gate.details["other_nonrelatives_kept_as_partner_child_or_parent"] == 1
+    assert gate.details["other_nonrelatives_split_despite_partner"] == 1
+    assert gate.details["other_nonrelatives_moved"] == 3
     assert gate.details["other_nonrelatives_moved_from_roommate_households"] == 1
-    assert gate.details["acs_spm_units"] == 10
+    assert gate.details["acs_spm_units"] == 11
     assert gate.details["acs_households"] == 6
-    assert gate.details["weighted_persons_per_spm_unit"] == pytest.approx(477 / 257)
-    assert gate.details["weighted_spm_units_per_household"] == pytest.approx(257 / 157)
+    assert gate.details["weighted_persons_per_spm_unit"] == pytest.approx(477 / 297)
+    assert gate.details["weighted_spm_units_per_household"] == pytest.approx(297 / 157)
 
 
 def test_gate_fails_the_unsplit_loader_partition(loader_frame, split) -> None:
     gate = acs_local_spm_unit_signal_gate(_pooled(loader_frame), receipt=split[1])
     assert not gate.passed
-    assert any(
-        "4 adult roommate(s) or unpartnered other nonrelative(s)" in failure
-        for failure in gate.failures
-    ), gate.failures
+    # Each clause of the rule fails on its own.
+    for clause in (
+        "2 adult roommate(s) (RELSHIPP 34, 15 or over) share",
+        "2 other nonrelative(s) (RELSHIPP 36, 15 or over) in a household with "
+        "no unmarried partner",
+        "1 other nonrelative(s) (RELSHIPP 36, 15 or over) within 15 years of "
+        "every unmarried partner's age",
+    ):
+        assert any(clause in failure for failure in gate.failures), (
+            clause,
+            gate.failures,
+        )
     assert any("not one unit per mover" in f for f in gate.failures)
 
 
-def test_gate_fails_a_partners_child_split_from_the_partner(pooled, split) -> None:
-    """The pre-review rule's partition (every 36 aged 15+ alone) no longer
-    passes: the gate reads the partner clause itself."""
-
-    person = pooled.table("person").copy()
-    acs = person[TAG].eq(ACS_2024_1YR_SPINE)
-    household = person.loc[acs & (person["RELSHIPP"] == 24), "person_household_id"]
-    others = (
-        acs
-        & (person["RELSHIPP"] == 36)
-        & (person["AGEP"] >= 15)
-        & person["person_household_id"].isin(household)
-    )
-    assert int(others.sum()) == 2
-    # The pre-review rule gave each of them a unit of their own.
-    fresh = person["person_spm_unit_id"].max() + np.arange(1, 3)
-    person.loc[others, "person_spm_unit_id"] = fresh
+def _with_spm_membership(pooled: Frame, person: pd.DataFrame) -> Frame:
     spm_units = pd.DataFrame(
         {"spm_unit_id": np.sort(person["person_spm_unit_id"].unique())}
     )
-    frame = Frame(
+    return Frame(
         {
             **{e: pooled.table(e) for e in pooled.entities},
             "person": person,
@@ -533,11 +615,61 @@ def test_gate_fails_a_partners_child_split_from_the_partner(pooled, split) -> No
         {entity: pooled.weights_for(entity) for entity in pooled.weighted_entities},
         pooled.strata,
     )
-    gate = acs_local_spm_unit_signal_gate(frame, receipt=split[1])
+
+
+def _household_e_other(pooled: Frame, age: int) -> pd.Series:
+    person = pooled.table("person")
+    acs = person[TAG].eq(ACS_2024_1YR_SPINE)
+    household = person.loc[acs & (person["RELSHIPP"] == 24), "person_household_id"]
+    return (
+        acs
+        & (person["RELSHIPP"] == 36)
+        & (person["AGEP"] == age)
+        & person["person_household_id"].isin(household)
+    )
+
+
+def test_gate_fails_a_partners_child_split_from_the_partner(pooled, split) -> None:
+    """The first rule's partition (every 36 aged 15+ alone) no longer passes:
+    the gate reads the generational clause itself."""
+
+    person = pooled.table("person").copy()
+    child = _household_e_other(pooled, 16)
+    assert int(child.sum()) == 1
+    person.loc[child, "person_spm_unit_id"] = person["person_spm_unit_id"].max() + 1
+    gate = acs_local_spm_unit_signal_gate(
+        _with_spm_membership(pooled, person), receipt=split[1]
+    )
     assert not gate.passed
     assert any(
-        "2 other nonrelative(s) (RELSHIPP 36, 15 or over) in a household with an "
-        "unmarried partner" in failure
+        "1 other nonrelative(s) (RELSHIPP 36, 15 or over) at least 15 years from "
+        "an unmarried partner's age" in failure
+        for failure in gate.failures
+    ), gate.failures
+    assert any("not one unit per mover" in f for f in gate.failures)
+
+
+def test_gate_fails_the_partner_kin_partition(pooled, split) -> None:
+    """microcosm#1061 review (C2): the partner-kin rule's partition, which
+    kept E's 45-year-old with the partner, fails the generational clause."""
+
+    person = pooled.table("person").copy()
+    adult = _household_e_other(pooled, 45)
+    assert int(adult.sum()) == 1
+    household = person.loc[adult, "person_household_id"].iloc[0]
+    reference = (person["person_household_id"] == household) & (
+        person["RELSHIPP"] == 20
+    )
+    person.loc[adult, "person_spm_unit_id"] = person.loc[
+        reference, "person_spm_unit_id"
+    ].iloc[0]
+    gate = acs_local_spm_unit_signal_gate(
+        _with_spm_membership(pooled, person), receipt=split[1]
+    )
+    assert not gate.passed
+    assert any(
+        "1 other nonrelative(s) (RELSHIPP 36, 15 or over) within 15 years of "
+        "every unmarried partner's age share an SPM unit" in failure
         for failure in gate.failures
     ), gate.failures
     assert any("not one unit per mover" in f for f in gate.failures)
@@ -549,18 +681,43 @@ def test_gate_fails_a_partners_child_split_from_the_partner(pooled, split) -> No
         (None, "no ACS SPM-unit receipt"),
         ({"issue": "microcosm#1022"}, "not microcosm#1023's"),
         ({"method": "household"}, "records method 'household'"),
+        (
+            {"method": "roommates_and_unpartnered_other_nonrelatives_own_spm_unit"},
+            "records method 'roommates_and_unpartnered",
+        ),
         ({"persons_moved": 2, "units_created": 2}, "moved 2 person"),
         ({"units_created": "3"}, "counts are not integers"),
-        ({"other_nonrelatives": {"kept_with_partner": 0}}, "keeps 0 other"),
+        (
+            {
+                "other_nonrelatives": {
+                    "kept_as_partner_child_or_parent": 0,
+                    "split_despite_partner": 1,
+                }
+            },
+            "keeps 0 other nonrelative(s) as a partner's child or parent",
+        ),
+        (
+            {
+                "other_nonrelatives": {
+                    "kept_as_partner_child_or_parent": 1,
+                    "split_despite_partner": 0,
+                }
+            },
+            "splits 0 other nonrelative(s) despite a partner",
+        ),
+        ({"other_nonrelatives": {"kept_with_partner": 2}}, "keeps None other"),
         ({"other_nonrelatives": None}, "keeps None other"),
     ],
     ids=[
         "missing",
         "wrong-issue",
         "wrong-method",
+        "partner-kin-method",
         "stale-count",
         "untyped",
         "stale-kept",
+        "stale-split",
+        "partner-kin-receipt",
         "pre-review",
     ],
 )
