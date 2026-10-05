@@ -191,6 +191,7 @@ from .rowwise_staging import (
     stage_sample,
     staging_delivery,
     staging_epoch_every,
+    start_telemetry_emitter,
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
@@ -2369,26 +2370,26 @@ def _close_national_attempt(
 def _national_main(args: argparse.Namespace) -> int:
     """The national role's envelope: the seam's attempt id and pipeline, the graph build."""
     posture = posture_of(args)
-    national_role.require_bound_input(args)
-    if args.dry_run:
-        return national_role.national_dry_run(
-            args,
-            operation_inventory=lambda: prepare_national_build(
-                args
-            ).national.operation_inventory(),
-        )
-    # Argument refusals cost nothing, the occupied output directory included;
-    # the credential check reaches the Hub, so it runs last, still before any
-    # input is read.
-    refuse_occupied_national_output(args)
-    preflight_staged_dataset(args)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    digest = preflight_digest(posture.pipeline)
+    build_id = new_uk_calibration_attempt_id(timestamp=started_ts)
+    emitter = start_telemetry_emitter(
+        args,
+        build_id=build_id,
+        run_kind="dry_run" if args.dry_run else "calibration",
+    )
+    emitter.transition_stage(
+        "preflight",
+        message="Validating UK national build inputs and configuration.",
+    )
+    try:
+        digest = preflight_digest(posture.pipeline)
+    except BaseException as error:
+        fail_staging_telemetry(None, error)
+        raise
     state = AttemptState(
-        # The attempt id is minted before telemetry opens so the staging run
-        # id and the Logbook row agree, as the seam minted it.
-        build_id=new_uk_calibration_attempt_id(timestamp=started_ts),
+        # The staging run id and Logbook row use the same attempt id.
+        build_id=build_id,
         identity_digest=digest,
         input_pins_digest=digest,
         phases_reached=["attempt_started"],
@@ -2399,8 +2400,31 @@ def _national_main(args: argparse.Namespace) -> int:
             }
         },
     )
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    if args.dry_run:
+        try:
+            status = national_role.national_dry_run(
+                args,
+                operation_inventory=lambda: prepare_national_build(
+                    args
+                ).national.operation_inventory(),
+            )
+        except BaseException as error:
+            fail_staging_telemetry(None, error)
+            raise
+        finalize_staging_telemetry(args, None)
+        return status
+
+    try:
+        national_role.require_bound_input(args)
+        # These checks must precede input loading. The emitter is already
+        # running so a refusal is visible as a failed attempt.
+        refuse_occupied_national_output(args)
+        preflight_staged_dataset(args)
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    except BaseException as error:
+        fail_staging_telemetry(None, error)
+        raise
     attempt = {
         "state": state,
         "started_at": started_at,
@@ -2514,22 +2538,29 @@ def main(argv: list[str] | None = None) -> int:
         return _national_main(args)
     if args.candidate_clone_counts is not None and not args.dry_run:
         raise ValueError("--candidate-clone-counts is valid only with --dry-run.")
-    if args.dry_run:
-        # Dry runs plan without solving or writing and record no Logbook
-        # row on any path, so they need no chain configuration.
-        return _dry_run(args)
-    # Argument refusals above cost nothing; the credential check reaches the
-    # Hub, so it runs last, still before any input is read.
-    preflight_staged_dataset(args)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    digest = preflight_digest(posture.pipeline)
+    build_id = new_candidate_build_id(
+        seed=args.seed,
+        timestamp=started_ts,
+        rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+    )
+    emitter = start_telemetry_emitter(
+        args,
+        build_id=build_id,
+        run_kind="dry_run" if args.dry_run else "calibration",
+    )
+    emitter.transition_stage(
+        "preflight",
+        message="Validating UK dense build inputs and configuration.",
+    )
+    try:
+        digest = preflight_digest(posture.pipeline)
+    except BaseException as error:
+        fail_staging_telemetry(None, error)
+        raise
     state = AttemptState(
-        build_id=new_candidate_build_id(
-            seed=args.seed,
-            timestamp=started_ts,
-            rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
-        ),
+        build_id=build_id,
         identity_digest=digest,
         input_pins_digest=digest,
         phases_reached=["attempt_started"],
@@ -2540,11 +2571,26 @@ def main(argv: list[str] | None = None) -> int:
             }
         },
     )
-    # Logbook chain configuration is validated before any terminal work: a
-    # malformed or conflicting head refuses the run with no row and no side
-    # effects.
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    if args.dry_run:
+        # Dry runs plan without solving or writing and record no Logbook row,
+        # but their hosted telemetry still has a complete lifecycle.
+        try:
+            status = _dry_run(args)
+        except BaseException as error:
+            fail_staging_telemetry(None, error)
+            raise
+        finalize_staging_telemetry(args, None)
+        return status
+
+    try:
+        # The credential and chain checks still precede input loading, while
+        # the emitter records their failures.
+        preflight_staged_dataset(args)
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    except BaseException as error:
+        fail_staging_telemetry(None, error)
+        raise
     attempt = {
         "state": state,
         "started_at": started_at,

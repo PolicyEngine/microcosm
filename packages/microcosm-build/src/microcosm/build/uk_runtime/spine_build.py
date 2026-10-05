@@ -1259,17 +1259,14 @@ def _exception_chain_contains(error: BaseException, text: str) -> bool:
 
 
 def _create_staging_telemetry(
-    args: argparse.Namespace, *, state: AttemptState
+    args: argparse.Namespace,
+    *,
+    state: AttemptState,
+    emitter: LocalTelemetryEmitter | None = None,
 ) -> StagingTelemetryV2 | None:
     global _ACTIVE_EMITTER
     run_id = args.staging_run_id or state.build_id
-    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
-        run_id=run_id,
-        country_code="GB",
-        pipeline=_PIPELINE,
-        candidate_id=args.staging_candidate_id or state.build_id,
-        run_kind="smoke" if args.smoke else "spine",
-    )
+    _ACTIVE_EMITTER = emitter or _start_telemetry_emitter(args, state=state)
     if args.no_staging:
         return None
     local_dir = args.staging_dir or args.spine_h5.parent / "staging"
@@ -1288,6 +1285,29 @@ def _create_staging_telemetry(
         upload_interval_seconds=args.staging_upload_interval_seconds,
         emitter=_ACTIVE_EMITTER,
     )
+
+
+def _start_telemetry_emitter(
+    args: argparse.Namespace, *, state: AttemptState
+) -> LocalTelemetryEmitter:
+    global _ACTIVE_EMITTER
+    run_id = args.staging_run_id or state.build_id
+    if (
+        _ACTIVE_EMITTER is not None
+        and _ACTIVE_EMITTER.available
+        and _ACTIVE_EMITTER.run.run_id == run_id
+    ):
+        return _ACTIVE_EMITTER
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.close()
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=_PIPELINE,
+        candidate_id=args.staging_candidate_id or state.build_id,
+        run_kind="smoke" if args.smoke else "spine",
+    )
+    return _ACTIVE_EMITTER
 
 
 def _telemetry_sample(
@@ -1745,12 +1765,11 @@ def main(argv: list[str] | None = None) -> int:
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    digest = preflight_digest(_PIPELINE)
+    predecessor = None
     state = AttemptState(
         build_id=_new_build_id(started_ts),
-        identity_digest=digest,
-        input_pins_digest=digest,
+        identity_digest="unresolved-preflight-digest",
+        input_pins_digest="unresolved-preflight-digest",
         phases_reached=["attempt_started"],
         gate_verdicts={
             "pipeline": {
@@ -1763,7 +1782,12 @@ def main(argv: list[str] | None = None) -> int:
     spool_dir = args.spine_h5.parent / "logbook-spool"
     telemetry: StagingTelemetryV2 | None = None
     spine_battery: GateBatteryRun | None = None
+    emitter = _start_telemetry_emitter(args, state=state)
     try:
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        digest = preflight_digest(_PIPELINE)
+        state.identity_digest = digest
+        state.input_pins_digest = digest
         _validate_args(args)
         # A crash between the H5 write and the sidecar writes must never
         # leave a stale sidecar beside a fresh H5 (adversarial-review
@@ -1781,7 +1805,7 @@ def main(argv: list[str] | None = None) -> int:
             stale_outputs.append(args.emit_nonzero_shares)
         for stale in stale_outputs:
             stale.unlink(missing_ok=True)
-        telemetry = _create_staging_telemetry(args, state=state)
+        telemetry = _create_staging_telemetry(args, state=state, emitter=emitter)
         if telemetry is not None:
             initial_sample = _telemetry_sample(args, None)
             if initial_sample is not None:

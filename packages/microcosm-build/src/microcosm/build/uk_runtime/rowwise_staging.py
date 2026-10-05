@@ -64,6 +64,7 @@ __all__ = [
     "preflight_staged_dataset",
     "publish_staged_files",
     "replace_manifest",
+    "start_telemetry_emitter",
     "stage",
     "stage_dataset",
     "staged_dataset_mode",
@@ -193,16 +194,9 @@ def _require_write_credential(storage: HuggingFaceDatasetStorage, *, hint: str) 
 def create_staging_telemetry(
     args: argparse.Namespace, *, build_id: str
 ) -> StagingTelemetryV2 | None:
-    global _ACTIVE_EMITTER
     posture = posture_of(args)
     run_id = args.staging_run_id or build_id
-    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
-        run_id=run_id,
-        country_code="GB",
-        pipeline=posture.pipeline,
-        candidate_id=args.staging_candidate_id or build_id,
-        run_kind="calibration",
-    )
+    emitter = start_telemetry_emitter(args, build_id=build_id)
     if args.no_staging:
         return None
     local_only = bool(args.staging_local_only)
@@ -220,8 +214,37 @@ def create_staging_telemetry(
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
         api=None if local_only else _hub_api(),
-        emitter=_ACTIVE_EMITTER,
+        emitter=emitter,
     )
+
+
+def start_telemetry_emitter(
+    args: argparse.Namespace,
+    *,
+    build_id: str,
+    run_kind: str = "calibration",
+) -> LocalTelemetryEmitter:
+    """Start or reuse the process-local emitter for one UK build attempt."""
+
+    global _ACTIVE_EMITTER
+    posture = posture_of(args)
+    run_id = args.staging_run_id or build_id
+    if (
+        _ACTIVE_EMITTER is not None
+        and _ACTIVE_EMITTER.available
+        and _ACTIVE_EMITTER.run.run_id == run_id
+    ):
+        return _ACTIVE_EMITTER
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.close()
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=posture.pipeline,
+        candidate_id=args.staging_candidate_id or build_id,
+        run_kind=run_kind,
+    )
+    return _ACTIVE_EMITTER
 
 
 _create_staging_telemetry = create_staging_telemetry

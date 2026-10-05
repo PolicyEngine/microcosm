@@ -1935,6 +1935,56 @@ def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
         tool._validate_args(args)
 
 
+def test_driver_reports_validation_failure_through_early_emitter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    hmrc_ods = tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"
+    hmrc_ods.write_text("synthetic\n", encoding="utf-8")
+    events = []
+
+    class FakeEmitter:
+        available = True
+
+        def __init__(self, run_id: str) -> None:
+            self.run = SimpleNamespace(run_id=run_id)
+
+        def close(self) -> None:
+            events.append(("close",))
+
+        def fail(self, error: BaseException) -> None:
+            events.append(("failed", str(error)))
+
+    def start_emitter(**run):
+        events.append(("started", run["run_id"]))
+        return FakeEmitter(run["run_id"])
+
+    monkeypatch.setattr(tool, "start_local_telemetry_emitter_service", start_emitter)
+    monkeypatch.setattr(tool, "preflight_digest", lambda pipeline: "0" * 64)
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+
+    status = tool.main(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "missing-put2223uk.tab"),
+            "--hmrc-ods",
+            str(hmrc_ods),
+            "--no-staging",
+        ]
+    )
+
+    assert status == 1
+    assert events[0][0] == "started"
+    assert events[1][0] == "failed"
+    assert "--spi-tab must be an existing file" in events[1][1]
+
+
 def test_driver_refuses_misnamed_spi_tab(tmp_path: Path) -> None:
     tool = _load_tool()
     raw_dir = tmp_path / "raw"

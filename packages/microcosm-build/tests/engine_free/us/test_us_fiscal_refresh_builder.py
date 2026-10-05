@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -92,6 +93,72 @@ def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> N
         "target_materialization_cache_dir",
         "legacy_pe_flat_h5",
     }
+
+
+def test_telemetry_attempt_id_is_available_before_release_inputs_are_loaded() -> None:
+    builder = _load_builder_module()
+    timestamp = datetime(2026, 10, 5, 12, 30, tzinfo=UTC)
+
+    assert (
+        builder._telemetry_run_id(
+            SimpleNamespace(staging_run_id="staged-attempt", release_id="release"),
+            timestamp=timestamp,
+        )
+        == "staged-attempt"
+    )
+    assert (
+        builder._telemetry_run_id(
+            SimpleNamespace(staging_run_id=None, release_id="release"),
+            timestamp=timestamp,
+        )
+        == "release"
+    )
+    generated = builder._telemetry_run_id(
+        SimpleNamespace(staging_run_id=None, release_id=None),
+        timestamp=timestamp,
+    )
+    assert generated.startswith("populace-us-build-20261005T123000Z-")
+    assert len(generated.rsplit("-", 1)[-1]) == 8
+
+
+def test_us_emitter_starts_before_dirty_worktree_refusal(monkeypatch) -> None:
+    builder = _load_builder_module()
+    calls = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            calls.append(("stage", stage_id, details))
+
+        def fail(self, error, **details):
+            calls.append(("failed", type(error).__name__, details))
+
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+        ),
+    )
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", lambda args, argv: None)
+    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
+
+    def start_emitter(**run):
+        calls.append(("started", run))
+        return FakeEmitter()
+
+    monkeypatch.setattr(builder, "start_local_telemetry_emitter_service", start_emitter)
+
+    with pytest.raises(SystemExit, match="dirty git worktree"):
+        builder.main([])
+
+    assert calls[0][0] == "started"
+    assert calls[0][1]["run_id"] == "observed-run"
+    assert calls[1][0:2] == ("stage", "preflight")
+    assert calls[2][0:2] == ("failed", "SystemExit")
 
 
 @pytest.mark.parametrize(

@@ -43,6 +43,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
@@ -11092,6 +11093,25 @@ def _default_release_id(
     return f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
 
 
+def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
+    """Choose an attempt id before release inputs have been loaded.
+
+    An explicit staging id remains authoritative, and an explicit release id
+    is already stable enough to identify the attempt. Builds that derive their
+    release id from the input digest need a separate attempt id so telemetry can
+    start before downloading or hashing that input.
+    """
+
+    if args.staging_run_id:
+        return str(args.staging_run_id)
+    if args.release_id:
+        return str(args.release_id)
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"populace-us-build-{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
 def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
     if not release_id.startswith("populace-us-"):
         raise ValueError(
@@ -12027,13 +12047,14 @@ def _staging_telemetry(
     *,
     release_root: Path,
     release_id: str,
+    run_id: str | None = None,
     emitter: LocalTelemetryEmitter | None = None,
 ) -> _BuildTelemetry | None:
     global _ACTIVE_TELEMETRY
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
     _ACTIVE_TELEMETRY = None
-    run_id = args.staging_run_id or release_id
+    run_id = run_id or args.staging_run_id or release_id
     if args.no_staging:
         if emitter is None:
             return None
@@ -12238,6 +12259,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _ACTIVE_EMITTER = None
     _ACTIVE_TELEMETRY = None
     args = _parse_args(argv)
+    build_started = time.perf_counter()
+    attempt_started_at = datetime.now(UTC)
+    run_id = _telemetry_run_id(args, timestamp=attempt_started_at)
+    is_dry_run = args.dry_run_gates_report is not None
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="US",
+        pipeline="us_fiscal_refresh",
+        candidate_id=args.release_id,
+        release_id=args.release_id if not is_dry_run else None,
+        run_kind="dry_run" if is_dry_run else "release",
+    )
+    _ACTIVE_EMITTER.transition_stage(
+        "preflight",
+        message="Validating release inputs and configuration.",
+    )
     # --dry-run-gates-report: runs this build up to target materialization and
     # returns the report's exit code from the stop point below (_ReleaseDryRun).
     dry_run = _ReleaseDryRun.start(args, argv)
@@ -12252,7 +12289,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.evidence_release
         else ()
     )
-    build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
     if args.release_id:
@@ -12341,19 +12377,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         build_timestamp=build_timestamp,
     )
     _assert_us_release_id(release_id, evidence_release=args.evidence_release)
-    run_id = args.staging_run_id or release_id
-    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
-        run_id=run_id,
-        country_code="US",
-        pipeline="us_fiscal_refresh",
-        candidate_id=release_id,
-        release_id=release_id if dry_run is None else None,
-        run_kind="release" if dry_run is None else "dry_run",
-    )
-    _ACTIVE_EMITTER.transition_stage(
-        "preflight",
-        message="Validating release inputs and configuration.",
-    )
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
         # The immutable release id is the dataset's exact-count name. Keep the
@@ -12556,6 +12579,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args,
             release_root=release_root,
             release_id=release_id,
+            run_id=run_id,
             emitter=_ACTIVE_EMITTER,
         )
     else:
