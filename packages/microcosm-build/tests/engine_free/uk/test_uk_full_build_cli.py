@@ -500,6 +500,80 @@ def test_dry_run_has_no_files_or_kernel_execution(tmp_path, monkeypatch, capsys)
     assert not args.out.exists()
 
 
+def test_dense_dry_run_starts_and_finishes_hosted_telemetry(tmp_path, monkeypatch):
+    args = arguments(tmp_path, "--dry-run")
+    events = []
+
+    class FakeEmitter:
+        def transition_stage(self, stage_id, **details):
+            events.append(("stage", stage_id, details))
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli,
+        "start_telemetry_emitter",
+        lambda requested, *, build_id, run_kind: (
+            events.append(("start", build_id, run_kind)) or FakeEmitter()
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "_dry_run", lambda requested: events.append(("plan",)) or 0
+    )
+    monkeypatch.setattr(
+        cli,
+        "finalize_staging_telemetry",
+        lambda requested, telemetry: events.append(("complete", telemetry)),
+    )
+
+    assert cli.main([]) == 0
+    assert [event[0] for event in events] == ["start", "stage", "plan", "complete"]
+    assert events[0][2] == "dry_run"
+
+
+def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypatch):
+    args = arguments(tmp_path)
+    events = []
+
+    class FakeEmitter:
+        def transition_stage(self, stage_id, **details):
+            events.append(("stage", stage_id, details))
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli,
+        "start_telemetry_emitter",
+        lambda requested, *, build_id, run_kind: (
+            events.append(("start", build_id, run_kind)) or FakeEmitter()
+        ),
+    )
+
+    def refuse_preflight(requested):
+        events.append(("preflight",))
+        raise RuntimeError("staging credential unavailable")
+
+    monkeypatch.setattr(cli, "preflight_staged_dataset", refuse_preflight)
+    monkeypatch.setattr(
+        cli,
+        "fail_staging_telemetry",
+        lambda telemetry, error: events.append(("failed", telemetry, str(error))),
+    )
+    monkeypatch.setattr(
+        cli,
+        "create_staging_telemetry",
+        lambda *args, **kwargs: pytest.fail("preflight failure reached staging setup"),
+    )
+
+    with pytest.raises(RuntimeError, match="staging credential unavailable"):
+        cli.main([])
+    assert [event[0] for event in events] == [
+        "start",
+        "stage",
+        "preflight",
+        "failed",
+    ]
+    assert events[-1][1] is None
+
+
 def test_rejected_output_inside_source_never_writes_failure_sidecar(
     tmp_path, monkeypatch
 ):
