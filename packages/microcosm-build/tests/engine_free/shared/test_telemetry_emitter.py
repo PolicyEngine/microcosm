@@ -58,6 +58,19 @@ def test_development_collector_must_be_on_loopback() -> None:
             raise AssertionError("non-loopback development collector was accepted")
 
 
+def test_production_collector_cannot_be_replaced_by_environment(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv(
+        "MICROCOSM_TELEMETRY_COLLECTOR_URL",
+        "https://untrusted.example",
+    )
+
+    delivery = CollectorDelivery(EventSpool(tmp_path / "events.sqlite3"))
+
+    assert delivery.collector_url == service_module.PRODUCTION_COLLECTOR_URL
+
+
 def test_token_bearing_http_post_does_not_follow_redirects() -> None:
     paths: list[str] = []
 
