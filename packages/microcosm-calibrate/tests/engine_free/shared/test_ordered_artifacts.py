@@ -174,5 +174,6 @@ def test_compiled_rows_guard_the_axis_without_iterating_the_id_column(monkeypatc
     np.testing.assert_array_equal(
         recompiled.matrix.toarray(), problem().matrix.toarray()
     )
+    # A frame on another axis (same length, valid ascending ids) is refused.
     with pytest.raises(ValueError, match="exact ordered entity axis"):
-        targets.targets[0].measure(frame_for((20, 10)))
+        targets.targets[0].measure(frame_for((10, 30)))
