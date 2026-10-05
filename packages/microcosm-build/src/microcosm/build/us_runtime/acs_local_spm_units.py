@@ -24,18 +24,27 @@ The rule
 - **Roommates move.** A person with ``RELSHIPP`` 34 (roommate or housemate)
   aged 15 or over (``AGEP``) leaves the reference person's unit and forms an
   SPM unit of their own.
-- **Other nonrelatives move only when no partner lives there.** A person
-  with ``RELSHIPP`` 36 (other nonrelative) aged 15 or over forms an SPM unit
-  of their own only when the household holds no unmarried partner
-  (``RELSHIPP`` 22 or 24). The ACS records relationship to the householder
-  only, so an unmarried partner's child or other relative is coded 36
-  (Census ACS brief ACSBR-005), and the Census SPM unit includes cohabitors
-  and their relatives. With a partner present, a 36 of any age therefore
-  stays with the reference person and the partner (microcosm#1061 review).
+- **Other nonrelatives move unless they are a generation from a partner.**
+  A person with ``RELSHIPP`` 36 (other nonrelative) aged 15 or over forms an
+  SPM unit of their own, except in a household with an unmarried partner
+  (``RELSHIPP`` 22 or 24) when their age differs from the partner's (the
+  closest-aged partner's, if there are several) by at least
+  ``_GENERATION_GAP_YEARS`` (15) years. The ACS records relationship to the
+  householder only, so an unmarried partner's child or parent is coded 36
+  (Census ACS brief ACSBR-005), and the Census SPM unit keeps cohabitors and
+  their children with the couple; a generation's age gap makes a 36 plausibly
+  the partner's child or parent, so they stay. A 36 close to the partner's
+  age, such as an independent 30-year-old beside a 32-year-old partner, gets
+  their own unit (microcosm#1061 review, C2).
+- **The generational rule is a proxy.** Age cannot tell kin from non-kin: a
+  partner's sibling or cousin near the partner's age is split, and an
+  unrelated adult a generation apart is kept. The receipt counts the 36s on
+  each side of the threshold, and the sensitivity block reports the unit
+  sizes under the alternatives.
 - **Kept with the reference person.** Every relative (``RELSHIPP`` 21, 23,
   25-33), unmarried partners (22, 24; cohabitors are in the Census unit),
   foster children (35; cared for by the family), nonrelatives under 15, and
-  other nonrelatives (36) in a household with an unmarried partner.
+  other nonrelatives (36) a generation from an unmarried partner's age.
 - **One unit per mover.** ``RELSHIPP`` relates each person to the reference
   person only, so a couple, or a parent and child, among the nonrelatives is
   not identifiable. Grouping every adult nonrelative of a household into one
@@ -44,11 +53,13 @@ The rule
 - **The remaining ambiguity is counted, not guessed.** A 36 moved out of a
   household that also holds a roommate (34) may be the roommate's own child
   or relative, which ``RELSHIPP`` cannot link; they keep a unit of their own.
-  The receipt counts the 36s kept for a partner, the 36s moved, and the 36s
-  moved from a household with a roommate, and carries a sensitivity block:
-  the weighted persons per unit, single-person share and units per household
-  under the rule, under "34 only" and under "34 and every 36", all on the
-  same frame.
+  The receipt counts the 36s kept as a partner's plausible child or parent,
+  split despite a partner, moved from a household with no partner, and moved
+  from a household with a roommate, and carries a sensitivity block: the
+  weighted persons per unit, single-person share and units per household
+  under the rule, under "34 only", under "34 and every 36", and under "34 and
+  36 with the partner-kin rule" (every 36 kept when a partner is present),
+  all on the same frame.
 - **Nonrelatives under 15 stay.** A roommate's child is not identifiable
   either (the loader gives nonrelatives no parent pointer), and microunit
   claims a nonrelative under 15 as a dependent of the reference person's tax
@@ -99,7 +110,9 @@ __all__ = [
 
 ACS_LOCAL_SPM_UNIT_ISSUE = "microcosm#1023"
 ACS_LOCAL_SPM_UNIT_GATE_NAME = "acs_local_spm_unit_signal"
-ACS_LOCAL_SPM_UNIT_METHOD = "roommates_and_unpartnered_other_nonrelatives_own_spm_unit"
+ACS_LOCAL_SPM_UNIT_METHOD = (
+    "roommates_and_other_nonrelatives_own_spm_unit_except_partner_generation"
+)
 #: ACS ``RELSHIPP`` codes that can leave the reference person's SPM unit at
 #: 15 or over: 34 roommate or housemate, 36 other nonrelative.
 ACS_ADULT_NONRELATIVE_RELATIONSHIPS: tuple[int, ...] = (34, 36)
@@ -109,6 +122,11 @@ ACS_OTHER_NONRELATIVE_RELATIONSHIP = 36
 #: with one may be the partner's child or relative, whom the Census SPM unit
 #: keeps with the cohabiting couple (microcosm#1061 review).
 ACS_UNMARRIED_PARTNER_RELATIONSHIPS: tuple[int, ...] = (22, 24)
+#: A 36 aged 15+ in a partner's household stays with the reference person only
+#: when their age differs from the closest-aged partner's by at least this
+#: many years: a generation apart, so plausibly the partner's child or parent
+#: (microcosm#1061 review, C2). A proxy: age cannot tell kin from non-kin.
+_GENERATION_GAP_YEARS = 15
 #: The Census SPM unit keeps co-resident unrelated children, and the ACS asks
 #: its adult items from 15; below it a nonrelative stays with the family.
 ACS_ADULT_NONRELATIVE_MIN_AGE = 15
@@ -124,13 +142,22 @@ _TAX_MEMBERSHIP = "person_tax_unit_id"
 _SPM_ID = "spm_unit_id"
 _KEPT_WITH_REFERENCE = (
     "relatives (RELSHIPP 21, 23, 25-33), unmarried partners (22, 24), foster "
-    "children (35), nonrelatives under 15, and other nonrelatives (36) in a "
-    "household with an unmarried partner"
+    "children (35), nonrelatives under 15, and other nonrelatives (36) whose "
+    "age differs from an unmarried partner's by at least "
+    f"{_GENERATION_GAP_YEARS} years (plausibly the partner's child or parent)"
 )
 _MOVED = (
     "roommates and housemates (RELSHIPP 34) aged 15 or over, and other "
-    "nonrelatives (36) aged 15 or over in a household with no unmarried "
-    "partner (22, 24)"
+    "nonrelatives (36) aged 15 or over unless their age differs from an "
+    f"unmarried partner's (22, 24) by at least {_GENERATION_GAP_YEARS} years"
+)
+_GENERATIONAL_PROXY = (
+    "RELSHIPP relates each person to the reference person only, so a 36 is "
+    "kept with an unmarried partner only when a generation's age gap "
+    f"({_GENERATION_GAP_YEARS}+ years from the closest-aged partner) makes them "
+    "plausibly the partner's child or parent. A partner's sibling or cousin "
+    "near the partner's age is split, and an unrelated adult a generation "
+    "apart is kept."
 )
 _AMBIGUITY = (
     "A 36 moved from a household that also holds a roommate (34) may be the "
@@ -159,9 +186,11 @@ def acs_spm_unit_mover_mask(person: pd.DataFrame) -> np.ndarray:
     """Whether each ACS row leaves the reference person's SPM unit.
 
     True for a roommate (``RELSHIPP`` 34) aged 15 or over, and for an other
-    nonrelative (36) aged 15 or over whose household holds no unmarried
-    partner (22, 24). Reads ``RELSHIPP``, ``AGEP`` and the household
-    membership; raises ``ValueError`` when any is absent or blank.
+    nonrelative (36) aged 15 or over unless their household holds an
+    unmarried partner (22, 24) whose age differs from theirs by at least
+    ``_GENERATION_GAP_YEARS`` (the closest-aged partner, if several). Reads
+    ``RELSHIPP``, ``AGEP`` and the household membership; raises
+    ``ValueError`` when any is absent or blank.
     """
 
     return _rule_masks(person)["moved"]
@@ -178,14 +207,14 @@ def _rule_masks(person: pd.DataFrame) -> dict[str, np.ndarray]:
     adult = age >= ACS_ADULT_NONRELATIVE_MIN_AGE
     roommate = adult & (relationship == ACS_ROOMMATE_RELATIONSHIP)
     other = adult & (relationship == ACS_OTHER_NONRELATIVE_RELATIONSHIP)
-    with_partner = np.isin(
-        household,
-        household[np.isin(relationship, ACS_UNMARRIED_PARTNER_RELATIONSHIPS)],
-    )
+    partner = np.isin(relationship, ACS_UNMARRIED_PARTNER_RELATIONSHIPS)
+    with_partner = np.isin(household, household[partner])
     with_roommate = np.isin(
         household, household[relationship == ACS_ROOMMATE_RELATIONSHIP]
     )
-    other_moved = other & ~with_partner
+    gap = _closest_partner_age_gap(household, age, partner, other & with_partner)
+    kept = other & with_partner & (gap >= _GENERATION_GAP_YEARS)
+    other_moved = other & ~kept
     return {
         "relationship": relationship,
         "age": age,
@@ -193,15 +222,49 @@ def _rule_masks(person: pd.DataFrame) -> dict[str, np.ndarray]:
         "moved": roommate | other_moved,
         "roommate": roommate,
         "other": other,
-        "other_kept_with_partner": other & with_partner,
+        "other_partner_age_gap": gap,
+        "other_kept_as_partner_child_or_parent": kept,
+        "other_split_despite_partner": other & with_partner & ~kept,
+        "other_moved_without_partner": other & ~with_partner,
         "other_moved": other_moved,
         "other_moved_with_roommate": other_moved & with_roommate,
         "roommates_and_every_other": roommate | other,
+        "roommates_and_other_partner_kin": roommate | (other & ~with_partner),
         "under_age_nonrelative": np.isin(
             relationship, ACS_ADULT_NONRELATIVE_RELATIONSHIPS
         )
         & ~adult,
     }
+
+
+def _closest_partner_age_gap(
+    household: np.ndarray,
+    age: np.ndarray,
+    partner: np.ndarray,
+    selected: np.ndarray,
+) -> np.ndarray:
+    """Each selected row's age gap to the closest-aged partner in its household.
+
+    ``inf`` for rows not selected or with no partner in the household.
+    """
+
+    gap = np.full(len(age), np.inf)
+    if not (selected.any() and partner.any()):
+        return gap
+    candidates = pd.DataFrame(
+        {
+            "row": np.flatnonzero(selected),
+            "household": household[selected],
+            "age": age[selected],
+        }
+    )
+    partners = pd.DataFrame(
+        {"household": household[partner], "partner_age": age[partner]}
+    )
+    paired = candidates.merge(partners, on="household", how="inner")
+    closest = (paired["age"] - paired["partner_age"]).abs().groupby(paired["row"]).min()
+    gap[closest.index.to_numpy()] = closest.to_numpy(dtype=np.float64)
+    return gap
 
 
 def _partition(
@@ -310,7 +373,20 @@ def split_acs_adult_nonrelative_spm_units(
     household_weight = households_before["unit_weight"]
     other = {
         name: masks[f"other_{name}"]
-        for name in ("kept_with_partner", "moved", "moved_with_roommate")
+        for name in (
+            "kept_as_partner_child_or_parent",
+            "split_despite_partner",
+            "moved_without_partner",
+            "moved",
+            "moved_with_roommate",
+        )
+    }
+    other_keys = {
+        "kept_as_partner_child_or_parent": "kept_as_partner_child_or_parent",
+        "split_despite_partner": "split_despite_partner",
+        "moved_without_partner": "moved_without_partner",
+        "moved": "moved",
+        "moved_with_roommate": "moved_from_roommate_households",
     }
     receipt: dict[str, Any] = {
         "issue": ACS_LOCAL_SPM_UNIT_ISSUE,
@@ -330,16 +406,13 @@ def split_acs_adult_nonrelative_spm_units(
         "nonrelatives_under_min_age_kept": int(masks["under_age_nonrelative"].sum()),
         # microcosm#1061 review: the code-36 ambiguity, sized.
         "other_nonrelatives": {
-            "kept_with_partner": int(other["kept_with_partner"].sum()),
-            "moved": int(other["moved"].sum()),
-            "moved_from_roommate_households": int(other["moved_with_roommate"].sum()),
+            "generation_gap_years": _GENERATION_GAP_YEARS,
+            **{key: int(other[name].sum()) for name, key in other_keys.items()},
             "weighted": {
-                "kept_with_partner": float(weights[other["kept_with_partner"]].sum()),
-                "moved": float(weights[other["moved"]].sum()),
-                "moved_from_roommate_households": float(
-                    weights[other["moved_with_roommate"]].sum()
-                ),
+                key: float(weights[other[name]].sum())
+                for name, key in other_keys.items()
             },
+            "proxy": _GENERATIONAL_PROXY,
             "ambiguity": _AMBIGUITY,
         },
         "sensitivity": {
@@ -357,6 +430,16 @@ def split_acs_adult_nonrelative_spm_units(
                 _partition(household, line, masks["roommates_and_every_other"]),
                 weights,
                 household_weight,
+            ),
+            # The previous rule: every 36 kept whenever a partner is present.
+            "roommates_and_other_nonrelatives_with_partner_kin_rule": (
+                _rule_summary(
+                    _partition(
+                        household, line, masks["roommates_and_other_partner_kin"]
+                    ),
+                    weights,
+                    household_weight,
+                )
             ),
         },
         "units_created": int(len(np.unique(after)) - len(np.unique(before))),
@@ -394,18 +477,23 @@ def acs_local_spm_unit_signal_gate(
     """Require the Census adult-nonrelative SPM partition on the ACS rows.
 
     The expectation is the rule, read clause by clause from ``RELSHIPP``,
-    ``AGEP`` and the household. Fails when an ACS SPM unit holds a mover (a
-    roommate, 34, aged 15 or over, or an other nonrelative, 36, aged 15 or
-    over with no unmarried partner, 22/24, in the household) together with
-    the reference person; when a 36 aged 15 or over in a household with an
-    unmarried partner is outside the reference person's unit; when the ACS
-    partition is not exactly the rule (each mover alone, everyone else in the
-    household's reference unit); when an ACS SPM unit holds a non-ACS row;
-    when an ACS tax unit spans two SPM units; or when ``receipt`` (the
-    staging receipt) is missing, from another method, or moved or kept a
-    different number of people than the frame shows. Details report the
-    weighted ACS persons per SPM unit, single-person share and units per
-    household, and the code-36 counts.
+    ``AGEP`` and the household, and each clause fails on its own:
+
+    1. a roommate (34) aged 15 or over shares the reference person's unit;
+    2. an other nonrelative (36) aged 15 or over in a household with no
+       unmarried partner (22/24) shares it;
+    3. a 36 aged 15 or over within ``_GENERATION_GAP_YEARS`` of every
+       partner's age shares it (split despite a partner);
+    4. a 36 aged 15 or over at least that far from a partner's age (kept as
+       the partner's plausible child or parent) is outside it.
+
+    It also fails when the ACS partition is not exactly the rule (each mover
+    alone, everyone else in the household's reference unit); when an ACS SPM
+    unit holds a non-ACS row; when an ACS tax unit spans two SPM units; or
+    when ``receipt`` (the staging receipt) is missing, from another method,
+    or moved, kept or split a different number of people than the frame
+    shows. Details report the weighted ACS persons per SPM unit,
+    single-person share and units per household, and the code-36 counts.
     """
 
     person = frame.table("person")
@@ -437,26 +525,45 @@ def acs_local_spm_unit_signal_gate(
     except ValueError as exc:
         return _gate([f"{ACS_2024_1YR_SPINE}: {exc}"], details)
     relationship, moved = masks["relationship"], masks["moved"]
-    kept = masks["other_kept_with_partner"]
+    kept = masks["other_kept_as_partner_child_or_parent"]
+    split_despite_partner = masks["other_split_despite_partner"]
 
     spm = rows[_SPM_MEMBERSHIP].to_numpy()
     household = rows[_HOUSEHOLD_MEMBERSHIP].to_numpy()
     reference_units = pd.unique(spm[relationship == _REFERENCE_PERSON])
-    shared = int((moved & np.isin(spm, reference_units)).sum())
-    if shared:
-        failures.append(
-            f"{ACS_2024_1YR_SPINE}: {shared} adult roommate(s) or unpartnered "
-            "other nonrelative(s) (RELSHIPP 34, or 36 with no 22/24 in the "
-            "household, 15 or over) share an SPM unit with the reference person."
-        )
-    split_from_partner = int((kept & ~np.isin(spm, reference_units)).sum())
-    if split_from_partner:
-        failures.append(
-            f"{ACS_2024_1YR_SPINE}: {split_from_partner} other nonrelative(s) "
-            "(RELSHIPP 36, 15 or over) in a household with an unmarried partner "
-            "(22/24) are outside the reference person's SPM unit; the Census "
-            "unit keeps cohabitors' children and relatives."
-        )
+    in_reference = np.isin(spm, reference_units)
+    clauses = (
+        (
+            masks["roommate"] & in_reference,
+            "adult roommate(s) (RELSHIPP 34, 15 or over) share an SPM unit with "
+            "the reference person.",
+        ),
+        (
+            masks["other_moved_without_partner"] & in_reference,
+            "other nonrelative(s) (RELSHIPP 36, 15 or over) in a household with "
+            "no unmarried partner (22/24) share an SPM unit with the reference "
+            "person.",
+        ),
+        (
+            split_despite_partner & in_reference,
+            "other nonrelative(s) (RELSHIPP 36, 15 or over) within "
+            f"{_GENERATION_GAP_YEARS} years of every unmarried partner's age "
+            "share an SPM unit with the reference person; the generational "
+            "rule gives them a unit of their own.",
+        ),
+        (
+            kept & ~in_reference,
+            "other nonrelative(s) (RELSHIPP 36, 15 or over) at least "
+            f"{_GENERATION_GAP_YEARS} years from an unmarried partner's age "
+            "(plausibly the partner's child or parent) are outside the "
+            "reference person's SPM unit; the Census unit keeps cohabitors' "
+            "children.",
+        ),
+    )
+    for mask, message in clauses:
+        count = int(mask.sum())
+        if count:
+            failures.append(f"{ACS_2024_1YR_SPINE}: {count} {message}")
     member = np.where(moved, rows[_PERSON_ID].to_numpy(), -1)
     expected = len(pd.MultiIndex.from_arrays([household, member]).unique())
     actual = len(pd.unique(spm))
@@ -480,7 +587,10 @@ def acs_local_spm_unit_signal_gate(
             "more than one SPM unit."
         )
     failures += _receipt_failures(
-        receipt, persons_moved=int(moved.sum()), kept_with_partner=int(kept.sum())
+        receipt,
+        persons_moved=int(moved.sum()),
+        kept=int(kept.sum()),
+        split_despite_partner=int(split_despite_partner.sum()),
     )
 
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)[acs]
@@ -491,7 +601,11 @@ def acs_local_spm_unit_signal_gate(
             "acs_person_rows": int(acs.sum()),
             "adult_nonrelatives": int(masks["roommates_and_every_other"].sum()),
             "movers": int(moved.sum()),
-            "other_nonrelatives_kept_with_partner": int(kept.sum()),
+            "generation_gap_years": _GENERATION_GAP_YEARS,
+            "other_nonrelatives_kept_as_partner_child_or_parent": int(kept.sum()),
+            "other_nonrelatives_split_despite_partner": int(
+                split_despite_partner.sum()
+            ),
             "other_nonrelatives_moved": int(masks["other_moved"].sum()),
             "other_nonrelatives_moved_from_roommate_households": int(
                 masks["other_moved_with_roommate"].sum()
@@ -509,7 +623,11 @@ def acs_local_spm_unit_signal_gate(
 
 
 def _receipt_failures(
-    receipt: Mapping[str, Any] | None, *, persons_moved: int, kept_with_partner: int
+    receipt: Mapping[str, Any] | None,
+    *,
+    persons_moved: int,
+    kept: int,
+    split_despite_partner: int,
 ) -> list[str]:
     if not isinstance(receipt, Mapping):
         return ["The staging summary carries no ACS SPM-unit receipt."]
@@ -534,15 +652,25 @@ def _receipt_failures(
             "each needing one."
         )
     other = receipt.get("other_nonrelatives")
-    recorded_kept = (
-        other.get("kept_with_partner") if isinstance(other, Mapping) else None
-    )
-    if type(recorded_kept) is not int or recorded_kept != kept_with_partner:
-        failures.append(
-            f"The ACS SPM-unit receipt keeps {recorded_kept!r} other "
-            "nonrelative(s) with an unmarried partner; the frame holds "
-            f"{kept_with_partner}."
-        )
+    for key, expected, wording in (
+        (
+            "kept_as_partner_child_or_parent",
+            kept,
+            "keeps {recorded!r} other nonrelative(s) as a partner's child or parent",
+        ),
+        (
+            "split_despite_partner",
+            split_despite_partner,
+            "splits {recorded!r} other nonrelative(s) despite a partner",
+        ),
+    ):
+        recorded = other.get(key) if isinstance(other, Mapping) else None
+        if type(recorded) is not int or recorded != expected:
+            failures.append(
+                "The ACS SPM-unit receipt "
+                + wording.format(recorded=recorded)
+                + f"; the frame holds {expected}."
+            )
     return failures
 
 

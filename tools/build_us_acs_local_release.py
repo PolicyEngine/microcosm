@@ -94,6 +94,7 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     ACS_LOCAL_IMMIGRATION_COLUMNS,
     ACS_LOCAL_IMMIGRATION_GATE_NAME,
     ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_receipt_failures,
     acs_local_immigration_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_income import (
@@ -1987,13 +1988,156 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
     return composition
 
 
-def do_qa(args) -> None:
-    """Chunked engine probe: per-spine SSI incidence on the calibrated artifact.
+#: Engine variables the QA probe reads to report SNAP take-up among
+#: engine-eligible SPM units (microcosm#1051 review). Informational only.
+_QA_SNAP_VARIABLES: tuple[str, ...] = (
+    "is_snap_eligible",
+    "takes_up_snap_if_eligible",
+    "snap",
+    "has_usda_elderly_disabled",
+    "spm_unit_count_children",
+    "snap_earned_income",
+)
+#: Household types of the SNAP take-up table. They overlap (a unit with
+#: children and earnings is in both); ``childless_adults`` units have neither
+#: children nor an elderly or disabled member.
+_QA_SNAP_HOUSEHOLD_TYPES: tuple[str, ...] = (
+    "elderly_or_disabled",
+    "with_children",
+    "childless_adults",
+    "with_earnings",
+)
+_QA_SNAP_UNIT_COLUMNS: tuple[str, ...] = (
+    "spine",
+    "state",
+    "weight",
+    "takes_up",
+    "receives",
+    *_QA_SNAP_HOUSEHOLD_TYPES,
+)
 
-    Loads the packaged artifact bytes PLAIN — no private projection or fill —
-    so the probe doubles as the proof that ordinary
-    ``USSingleYearDataset``/``Microsimulation`` consumers can load the file
-    (the engine-pass contract was applied at export).
+
+def _qa_snap_eligible_units(
+    sub_frame,
+    values,
+    *,
+    household_weights: np.ndarray,
+    position_by_id: pd.Series,
+) -> pd.DataFrame:
+    """One row per engine-eligible SPM unit of a QA chunk.
+
+    Each row carries the unit's spine, state, household weight, stored
+    take-up flag, whether its modeled ``snap`` is positive, and the
+    household-type flags of :data:`_QA_SNAP_HOUSEHOLD_TYPES`.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    person = sub_frame.table("person")
+    spm_unit = sub_frame.table("spm_unit")
+    unit_household = (
+        pd.Series(
+            person["person_household_id"].to_numpy(),
+            index=person["person_spm_unit_id"].to_numpy(),
+        )
+        .groupby(level=0)
+        .first()
+        .reindex(spm_unit["spm_unit_id"].to_numpy())
+    )
+    if unit_household.isna().any():
+        raise ValueError("QA: an SPM unit has no member person.")
+    household_ids = unit_household.to_numpy()
+    positions = position_by_id.reindex(household_ids).to_numpy()
+    state = (
+        pd.Series(
+            np.asarray(values["state_code_str"]).astype(str),
+            index=sub_frame.table("household")["household_id"].to_numpy(),
+        )
+        .reindex(household_ids)
+        .to_numpy()
+    )
+    tag = spine_column("spm_unit")
+    spine = (
+        spm_unit[tag].astype(str).to_numpy()
+        if tag in spm_unit
+        else np.full(len(spm_unit), "unknown")
+    )
+    children = np.asarray(values["spm_unit_count_children"], dtype=np.float64) > 0
+    elderly_or_disabled = np.asarray(values["has_usda_elderly_disabled"], dtype=bool)
+    units = pd.DataFrame(
+        {
+            "spine": spine,
+            "state": state,
+            "weight": household_weights[positions.astype(np.int64)],
+            "takes_up": np.asarray(values["takes_up_snap_if_eligible"], dtype=bool),
+            "receives": np.asarray(values["snap"], dtype=np.float64) > 0,
+            "elderly_or_disabled": elderly_or_disabled,
+            "with_children": children,
+            "childless_adults": ~children & ~elderly_or_disabled,
+            "with_earnings": (
+                np.asarray(values["snap_earned_income"], dtype=np.float64) > 0
+            ),
+        },
+        columns=list(_QA_SNAP_UNIT_COLUMNS),
+    )
+    eligible = np.asarray(values["is_snap_eligible"], dtype=np.float64) > 0
+    return units.loc[eligible].reset_index(drop=True)
+
+
+def snap_take_up_among_eligible(units: pd.DataFrame) -> dict[str, object]:
+    """Weighted SNAP take-up among engine-eligible SPM units (informational).
+
+    ``units`` holds one row per eligible unit (:func:`_qa_snap_eligible_units`).
+    ``take_up_rate`` is the eligible weight whose stored
+    ``takes_up_snap_if_eligible`` is true over all eligible weight, the
+    quantity FNS participation rates measure; ``receiving_rate`` counts a
+    positive modeled benefit instead. Reported overall, by household type,
+    by spine (and type), and by state. Never graded (microcosm#1051 review).
+    """
+
+    def cell(rows: pd.DataFrame) -> dict[str, object]:
+        weights = rows["weight"].to_numpy(dtype=np.float64)
+        weight = float(weights.sum())
+        taking_up = float(weights[rows["takes_up"].to_numpy(dtype=bool)].sum())
+        receiving = float(weights[rows["receives"].to_numpy(dtype=bool)].sum())
+        return {
+            "eligible_units": int(len(rows)),
+            "eligible_weight": weight,
+            "take_up_weight": taking_up,
+            "take_up_rate": taking_up / weight if weight > 0 else None,
+            "receiving_weight": receiving,
+            "receiving_rate": receiving / weight if weight > 0 else None,
+        }
+
+    def by_type(rows: pd.DataFrame) -> dict[str, object]:
+        return {
+            kind: cell(rows.loc[rows[kind].to_numpy(dtype=bool)])
+            for kind in _QA_SNAP_HOUSEHOLD_TYPES
+        }
+
+    return {
+        "graded": False,
+        "all": cell(units),
+        "by_household_type": by_type(units),
+        "by_spine": {
+            str(spine): {"all": cell(rows), "by_household_type": by_type(rows)}
+            for spine, rows in units.groupby("spine", sort=True)
+        },
+        "by_state": {
+            str(state): cell(rows) for state, rows in units.groupby("state", sort=True)
+        },
+    }
+
+
+def do_qa(args) -> None:
+    """Chunked engine probe on the calibrated artifact.
+
+    Records per-spine SSI incidence and, informationally, SNAP take-up among
+    engine-eligible SPM units by spine, state and household type
+    (microcosm#1051 review). Loads the packaged artifact bytes PLAIN — no
+    private projection or fill — so the probe doubles as the proof that
+    ordinary ``USSingleYearDataset``/``Microsimulation`` consumers can load
+    the file (the engine-pass contract was applied at export).
     """
 
     from microcosm.build.us_runtime.base_pool import spine_column
@@ -2014,14 +2158,23 @@ def do_qa(args) -> None:
 
     adapter = PolicyEngineUSEngine()
     per_spine: dict[str, dict[str, float]] = {}
+    snap_units: list[pd.DataFrame] = []
     n_chunks = (n_households + args.hh_chunk - 1) // args.hh_chunk
     for chunk_index, low in enumerate(range(0, n_households, args.hh_chunk)):
         high = min(low + args.hh_chunk, n_households)
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
-        ssi = np.asarray(
-            adapter.materialize(sub_frame, ["ssi"], PERIOD)["ssi"],
-            dtype=np.float64,
+        values = adapter.materialize(
+            sub_frame, ["ssi", *_QA_SNAP_VARIABLES, "state_code_str"], PERIOD
+        )
+        ssi = np.asarray(values["ssi"], dtype=np.float64)
+        snap_units.append(
+            _qa_snap_eligible_units(
+                sub_frame,
+                values,
+                household_weights=household_weights,
+                position_by_id=position_by_id,
+            )
         )
         sub_person_household = sub_frame.table("person")[
             "person_household_id"
@@ -2045,7 +2198,7 @@ def do_qa(args) -> None:
             entry["ssi_dollars"] += float(
                 (ssi[recipients] * person_weight[recipients]).sum()
             )
-        del sub_frame
+        del sub_frame, values
         gc.collect()
         log(f"qa chunk {chunk_index + 1}/{n_chunks}")
 
@@ -2062,11 +2215,30 @@ def do_qa(args) -> None:
         "artifact_sha256": _sha256(args.out_h5),
         "plain_consumption": True,
         "per_spine": per_spine,
+        "snap_take_up_among_eligible": {
+            "issue": "microcosm#1051 review",
+            "definition": (
+                "SPM units with is_snap_eligible for the period (PolicyEngine "
+                "reads a monthly boolean at a year period as its last month); "
+                "take_up_rate = weighted share of those units whose stored "
+                "takes_up_snap_if_eligible is true; receiving_rate = weighted "
+                "share with positive modeled snap. Household types overlap; "
+                "childless_adults have no children and no elderly or "
+                "disabled member."
+            ),
+            **snap_take_up_among_eligible(
+                pd.concat(snap_units, ignore_index=True)
+                if snap_units
+                else pd.DataFrame(columns=list(_QA_SNAP_UNIT_COLUMNS))
+            ),
+        },
         "note": (
             "microcosm#403 re-measure: per-spine SSI incidence and intensity, "
             "computed by loading the packaged artifact bytes PLAIN (no "
             "private projection or fill) — the probe doubles as the "
-            "consumer-loadability proof. Recorded as evidence, not gated."
+            "consumer-loadability proof. SNAP take-up among engine-eligible "
+            "units is reported alongside (microcosm#1051 review). Recorded "
+            "as evidence, not gated."
         ),
     }
     (args.checkpoint_dir / "spine_qa.json").write_text(json.dumps(payload, indent=2))
@@ -2320,16 +2492,25 @@ def finalize_reviewed_limitations(
                 "housing-subsidy indicators have no ACS field, so the ACS "
                 "residual (likely undocumented) pool can only be as large or "
                 "larger than the ASEC method would find for the same people. "
-                "The Pew worker and Higher Ed student controls are scaled by "
-                "the ACS rows' share of staging person weight. "
-                "years_since_us_entry is years since entry (age for the "
-                "US-born), not years in qualified status, which neither "
-                "survey measures (policyengine-us#9658)."
+                "The ACS rows target the Pew worker and Higher Ed student "
+                "controls less the donor rows' pooled delivered counts, "
+                "floored at zero, so the pooled file meets each control "
+                "whenever the ACS rows have the capacity. "
+                "years_since_us_entry is an arrival-based status-duration "
+                "proxy: the period minus the measured arrival year (age for "
+                "the US-born). 8 U.S.C. 1613(a) starts the five-year clock at "
+                "entry with qualified status, which neither survey measures, "
+                "so for people who obtained qualified status after arriving "
+                "the proxy runs long and can clear the five-year bar early "
+                "(policyengine-us#9658)."
             ),
             "treatment": (
                 "Gated by acs_local_immigration_signal; the staging summary's "
                 "acs_local_immigration receipt records the mapping, the "
-                "scaled controls and an assignment digest."
+                "per-status control, donor delivered, residual, ACS assigned "
+                "and pooled counts, the adjustment-lag sensitivity of the "
+                "entry clock, and an assignment digest. Packaging refuses a "
+                "receipt whose targets are not the donor residual."
             ),
             "calibration_blocker": False,
         },
@@ -2518,20 +2699,25 @@ def finalize_reviewed_limitations(
                 "housemate (RELSHIPP 34) aged 15 or over an SPM unit of their "
                 "own, per the Census SPM unit definition (related people, "
                 "co-resident unrelated children cared for by the family, and "
-                "cohabiting partners and their children and relatives). An "
-                "other nonrelative (36) aged 15 or over gets their own unit "
-                "only when the household has no unmarried partner (22 or "
-                "24): the ACS records relationship to the householder only, "
-                "so a partner's child or relative is coded 36, and with a "
-                "partner present a 36 stays with the reference person and "
-                "the partner (microcosm#1061 review). RELSHIPP relates each "
-                "person to the reference person only, so a couple or a "
-                "parent and child among the nonrelatives is not "
+                "cohabiting partners and their children). An other "
+                "nonrelative (36) aged 15 or over gets their own unit unless "
+                "the household has an unmarried partner (22 or 24) whose age "
+                "differs from theirs by at least 15 years (the closest-aged "
+                "partner, if several): the ACS records relationship to the "
+                "householder only, so a partner's child or parent is coded "
+                "36, and a generation's age gap makes a 36 plausibly one "
+                "(microcosm#1061 review, C2). This generational rule is a "
+                "proxy: a partner's sibling or cousin near the partner's age "
+                "is split, and an unrelated adult a generation apart is kept; "
+                "the staging receipt counts the 36s on each side. RELSHIPP "
+                "relates each person to the reference person only, so a "
+                "couple or a parent and child among the nonrelatives is not "
                 "identifiable: each mover is a one-person unit, and a 36 "
                 "moved from a household that also holds a roommate, who may "
                 "be the roommate's child, is counted in the staging receipt, "
-                "with the unit-size sensitivity under the 34-only and "
-                "34-and-every-36 rules. Nonrelatives under 15 stay in the "
+                "with the unit-size sensitivity under the 34-only, "
+                "34-and-every-36 and 34-and-36-with-partner-kin rules. "
+                "Nonrelatives under 15 stay in the "
                 "reference person's unit, whose tax unit claims them. "
                 "Unmarried partners (22, 24), foster children (35) and every "
                 "relative stay with the reference person. New units take the "
@@ -2722,7 +2908,10 @@ def _require_local_immigration(staging_summary: dict) -> dict:
     Staging runs the ACS local immigration stage and its gate before writing
     the H5. A summary without both is a pre-#1020 staging run, whose ACS
     persons would all be default-filled citizens with a valid SSN and whose
-    entry clocks would all be the engine default of 5 years.
+    entry clocks would all be the engine default of 5 years. A receipt whose
+    worker and student targets are not the donor residual
+    (:func:`acs_local_immigration_receipt_failures`) predates the #1052
+    review and is refused too.
     """
 
     receipt = staging_summary.get("acs_local_immigration")
@@ -2740,6 +2929,15 @@ def _require_local_immigration(staging_summary: dict) -> dict:
             "engine as a citizen with a valid SSN and every years_since_us_entry "
             "as the engine default. Re-run staging "
             "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    failures = acs_local_immigration_receipt_failures(receipt)
+    if failures:
+        raise SystemExit(
+            "The staging summary's ACS local immigration receipt does not "
+            "target the donor residual (microcosm#1052 review): "
+            + "; ".join(failures)
+            + ". Re-run staging (tools/build_us_acs_multispine_base.py) with "
+            "the current builder."
         )
     return receipt
 
@@ -2859,12 +3057,13 @@ def _require_local_spm_units(staging_summary: dict) -> dict:
     """The staging ACS SPM-unit receipt (microcosm#1023), or refuse it.
 
     Staging gives every ACS roommate (``RELSHIPP`` 34) aged 15 or over, and
-    every other nonrelative (36) aged 15 or over in a household with no
-    unmarried partner (22/24), an SPM unit of their own, per the Census SPM
-    unit definition, and gates the partition before writing the H5. A summary
-    without a passing receipt and gate, or with an earlier method, is a
-    pre-change staging run: whole-household ACS SPM units, or a partner's
-    child or relative split from the partner.
+    every other nonrelative (36) aged 15 or over unless an unmarried partner
+    (22/24) in the household is a generation (15+ years) from their age, an
+    SPM unit of their own, per the Census SPM unit definition, and gates the
+    partition before writing the H5. A summary without a passing receipt and
+    gate, or with an earlier method, is a pre-change staging run:
+    whole-household ACS SPM units, a partner's child split from the partner,
+    or an independent adult merged into a partner's household.
     """
 
     receipt = staging_summary.get("acs_local_spm_units")
@@ -3352,8 +3551,10 @@ def do_finalize(args) -> None:
                 f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
                 "acs_local_ssi_medicaid_take_up). ACS SPM units are not the "
                 "loader's whole households: staging gives each ACS roommate "
-                "and other nonrelative aged 15 or over an SPM unit of their "
-                "own before the transfer, gated by acs_local_spm_unit_signal "
+                "and other nonrelative aged 15 or over (except a 36 a "
+                "generation from an unmarried partner's age) an SPM unit of "
+                "their own before the transfer, gated by "
+                "acs_local_spm_unit_signal "
                 f"({ACS_LOCAL_SPM_UNIT_ISSUE}; reviewed limitation "
                 "acs_spm_unit_adult_nonrelatives). ACS receives_snap is not "
                 "the transfer's either: staging replaces it with native "
