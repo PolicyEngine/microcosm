@@ -393,6 +393,14 @@ def uprating_receipt() -> dict:
     }
 
 
+#: The synthetic approval window. Release validation compares it with the
+#: real date, so a real-looking month-long window made every test that
+#: assembles this candidate fail once it lapsed (2026-10-04). The window is
+#: synthetic, so it does not lapse; expiry itself is tested with explicit
+#: dates (test_assembler_rejects_expired_or_missing_measure_approval).
+SYNTHETIC_APPROVAL = {"approved_on": "2026-09-03", "expires_on": "2099-12-31"}
+
+
 def measure_exclusions() -> dict:
     return {
         "obr.housing_benefit": {
@@ -400,8 +408,7 @@ def measure_exclusions() -> dict:
             "tracking": "microcosm#869",
             "approved_by": "synthetic_reviewer",
             "adjudication": "synthetic decision",
-            "approved_on": "2026-09-03",
-            "expires_on": "2026-10-03",
+            **SYNTHETIC_APPROVAL,
         }
     }
 

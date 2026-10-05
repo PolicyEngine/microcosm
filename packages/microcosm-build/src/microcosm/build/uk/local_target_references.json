@@ -48,6 +48,9 @@
       },
       "mhclg": {
         "label": "Ministry of Housing, Communities and Local Government"
+      },
+      "dfc_ni": {
+        "label": "Department for Communities (Northern Ireland)"
       }
     },
     "categories": {
@@ -206,6 +209,30 @@
       "hmrc.income_tax_liabilities_statistics": {
         "provider_id": "hmrc",
         "label": "Income Tax liabilities statistics"
+      },
+      "dwp.state_pension": {
+        "provider_id": "dwp",
+        "label": "State Pension"
+      },
+      "dfc_ni.state_pension": {
+        "provider_id": "dfc_ni",
+        "label": "State Pension"
+      },
+      "dwp.pension_credit": {
+        "provider_id": "dwp",
+        "label": "Pension Credit"
+      },
+      "dfc_ni.pension_credit": {
+        "provider_id": "dfc_ni",
+        "label": "Pension Credit"
+      },
+      "dwp.workplace_pensions": {
+        "provider_id": "dwp",
+        "label": "Workplace pensions"
+      },
+      "dwp.attendance_allowance": {
+        "provider_id": "dwp",
+        "label": "Attendance Allowance"
       }
     },
     "target_categories": {

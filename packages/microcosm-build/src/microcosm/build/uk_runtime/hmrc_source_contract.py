@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.hmrc_replay import (
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS,
+    SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_DOCUMENTATION_URL,
     SPI_DONOR_DOI,
     SPI_DONOR_FILENAME,
@@ -96,17 +97,19 @@ _STAGE2_REVIEWED_ABSENT_PREDICTORS = {
 
 _EXPECTED_OPERATION_KINDS = (
     "retain_adjudicated_frs_hmrc_leaves",
-    "derive",
+    # Employer pension contributions from ASHE rate bands (microcosm#1069 c9).
+    "draw_employer_pension_contributions_from_rate_bands",
     "stack_zero_weight_donors",
     "gate_zero_weight_strata",
     "allocate_zero_weight_prior_mass",
     "stack_income_band_donor_households",
     "verify_pinned_hmrc_source_pair",
     "strict_read_private_table",
+    "draw_spi_donor_ages_by_population",
     "fit_weighted_qrf_stage1",
     "resample_band_donor_leaves",
     "fit_weighted_qrf_stage2",
-    "redraw_columns_from_fitted_qrf",
+    "zero_pension_age_reports_below_state_pension_age",
     "materialize_hmrc_income_bands_fail_closed",
     "classify_hmrc_income_facts_with_reviewed_fences",
     "gate_distributional_effective_mass",
@@ -141,7 +144,21 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "artifact roles",
         tuple(sorted(artifacts)),
-        ("published_fact_surface", "qrf_donor"),
+        ("donor_age_populations", "published_fact_surface", "qrf_donor"),
+    )
+    # The ONS single-year populations the donor age draw reads (microcosm#1069).
+    ages = artifacts.get("donor_age_populations", {})
+    _expect(
+        failures,
+        "donor_age_populations.resource",
+        ages.get("resource"),
+        SPI_DONOR_AGE_POPULATION_RESOURCE,
+    )
+    _expect(
+        failures,
+        "donor_age_populations.runtime_sha256_required",
+        ages.get("runtime_sha256_required"),
+        True,
     )
     donor = artifacts.get("qrf_donor", {})
     _expect(failures, "qrf_donor.filename", donor.get("filename"), SPI_DONOR_FILENAME)

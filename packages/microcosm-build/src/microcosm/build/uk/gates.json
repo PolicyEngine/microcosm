@@ -99,6 +99,7 @@
           "num_vehicles",
           "other_residential_property_value",
           "owned_land",
+          "private_pension_wealth",
           "property_wealth",
           "savings",
           "stocks_and_shares_isa",
@@ -116,6 +117,7 @@
           "num_vehicles": 0,
           "other_residential_property_value": 0,
           "owned_land": 0,
+          "private_pension_wealth": 0,
           "property_wealth": 0,
           "savings": 0,
           "stocks_and_shares_isa": 0,
@@ -133,13 +135,27 @@
           "num_vehicles": 0,
           "other_residential_property_value": 0,
           "owned_land": 0,
+          "private_pension_wealth": 0,
           "property_wealth": 0,
           "savings": 0,
           "stocks_and_shares_isa": 0,
           "student_loan_balance": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. private_pension_wealth joined the gated columns with microcosm#1063 (it had been an output without an allowance); the derived totals are clipped like every other column, and a clipped total would also break its identity in the wealth_coherence gate."
+    },
+    {
+      "id": "uk_stage_was_wealth_coherence",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "was_wealth",
+        "check": "wealth_coherence",
+        "maximum_owner_share_without_main_residence_excess": 0.005
+      },
+      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry a main-residence mortgage off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw; mortgage_debt itself is the main-residence mortgage plus the mortgages on other property, held on any tenure. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, mortgage_debt, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the mortgage mass held off the mortgaged tenure on each side) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
     },
     {
       "id": "uk_stage_was_lisa_support",
@@ -229,6 +245,7 @@
       "parameters": {
         "stage": "lcfs_consumption",
         "check": "support_clip",
+        "donor_floor": 0.0,
         "columns": [
           "alcohol_and_tobacco_consumption",
           "bus_fare_spending",
@@ -418,11 +435,12 @@
         "stage": "spi_support_channel",
         "check": "spi_support_channel",
         "spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.2,
         "absolute_tolerance": 0.0,
         "household_weight_kind": "importance",
         "minimum_spi_households": 1
       },
-      "notes": "Stage-time mass gate over the SPI support-channel receipt."
+      "notes": "Stage-time mass gate over the SPI support-channel receipt: the channel's prior share of households without a member at or over State Pension age, and its share of those with one (microcosm#1069)."
     },
     {
       "id": "uk_stage_hmrc_spi_income_spine_identity",
@@ -439,6 +457,66 @@
         "minimum_target_count": 1
       },
       "notes": "Stage-time SPI redraw identity gate over the HMRC SPI income spine receipt."
+    },
+    {
+      "id": "uk_stage_spi_benefit_coherence",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "spi_benefit_coherence",
+        "check": "spi_benefit_coherence",
+        "zeroed_columns": [
+          "jsa_contrib_reported",
+          "jsa_income_reported",
+          "esa_income_reported",
+          "income_support_reported",
+          "working_tax_credit_reported",
+          "child_tax_credit_reported",
+          "sda_reported",
+          "ssmg_reported"
+        ],
+        "restored_columns": [
+          "iidb_reported",
+          "afcs_reported",
+          "bsp_reported"
+        ]
+      },
+      "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
+    },
+    {
+      "id": "uk_stage_pension_credit_take_up",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "pension_credit_take_up",
+        "check": "pension_credit_take_up",
+        "maximum_take_up_deviation": 0.05,
+        "minimum_entitled_units": 1
+      },
+      "notes": "Stage-time gate over the Pension Credit take-up receipt (microcosm#1069 R9): each component band (Guarantee Credit, Savings Credit only) realizes its DWP FYE 2024 caseload take-up within 0.05 at the stage's weights, or at least the rate where its reporters alone exceed it. The terminal take-up signal gate no longer measures would_claim_pc, whose rate is a share of the entitled units the engine finds, not of every benefit unit."
+    },
+    {
+      "id": "uk_stage_child_benefit_take_up",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "child_benefit_take_up",
+        "check": "child_benefit_take_up",
+        "maximum_claim_rate_deviation": 0.02,
+        "maximum_age_claim_rate_deviation": 0.05,
+        "minimum_age_child_rows": 200,
+        "maximum_opt_out_share_deviation": 0.01,
+        "minimum_eligible_family_units": 1
+      },
+      "notes": "Stage-time gate over the Child Benefit take-up receipt (microcosm#1063): the share of eligible children claimed for is within 0.02 of HMRC's published claim rates by single year of age (Table 15, May 2025) at the frame's age mix, and within 0.05 at each age with at least 200 child rows whose solved rate was not clipped (clipped ages are reported); the opted-out share of claiming families is within 0.01 of the published opted-out share of registered families (August 2025), or below it only where the charged families are exhausted. The terminal take-up signal gate no longer measures would_claim_child_benefit or child_benefit_opts_out, whose rates are shares of eligible children and of claiming families, not of every benefit unit."
     },
     {
       "id": "uk_stage_cgt_incidence_clone_mass",
@@ -478,7 +556,11 @@
       "parameters": {
         "stage": "spi_income_band_donors",
         "check": "spi_income_band_donor_support",
-        "donors_per_band": 120,
+        "minimum_donors_per_band": 120,
+        "maximum_donor_weight": 250.0,
+        "minimum_funding_factor": 0.5,
+        "maximum_band_taxpayer_deviation": 0.5,
+        "maximum_relative_mass_deviation": 1e-09,
         "band_lower_bounds": [
           200000,
           500000,
@@ -486,7 +568,7 @@
           2000000
         ]
       },
-      "notes": "Stage-time support gate for spi_income_band_donors (PolicyEngine/chronicle#280 lane): every HMRC Table 2.5 band from GBP 200,000 carries its reserved donor households at positive band-exact weight with one carrier each, and the bands are exactly the declared four."
+      "notes": "Stage-time support gate for spi_income_band_donors (PolicyEngine/chronicle#280 lane; mass-conserving since microcosm#1063): every HMRC Table 2.5 band from GBP 200,000 carries reserved donor households with one carrier each at equal positive weight no greater than the declared maximum, and the bands are exactly the declared four. The donors' mass is reallocated from the households of each donor's region: total household mass is conserved to the declared deviation and no region's incumbents are scaled below the declared funding factor. At full scale every band seats its planned count (never fewer than the minimum) and carries its published taxpayers to the declared deviation; a full-sample build must be at full scale, and a small frame records its seating and mass scales instead."
     },
     {
       "id": "uk_stage_hmrc_cgt_gains_spine_summary",
@@ -502,6 +584,22 @@
       "notes": "Stage-time CGT redraw summary gate wired through the existing UKCGTImputationSummary receipt rather than fabricating a terminal support verdict."
     },
     {
+      "id": "uk_stage_cgt_residential_split_mass",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_residential_split",
+        "check": "cgt_residential_split",
+        "maximum_relative_mass_deviation": 1e-09,
+        "maximum_solve_relative_error": 1e-06,
+        "maximum_identity_relative_error": 1e-09,
+        "maximum_liable_gainers_per_household": 3
+      },
+      "notes": "Stage-time gate over the CGT residential split receipt (microcosm#1063). The split carries the solved residential probability as weight: every household with liable gainers becomes arms whose weights are products of p and 1 - p, one arm per subset of residential gainers, the arm with no residential gainer keeping the household's ids. Total household mass is conserved to the declared deviation; the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis within the solve tolerance; the residential count and gains at design weights equal the solved expectations in every HMRC gain band to the identity tolerance (an arithmetic identity, not a realisation); every arm weight is its declared product; the arms created match the households by liable gainers; and no household carries more liable gainers than the declared maximum. The details carry the arm-weight distribution and the share of the residential gains on the largest arm stakes."
+    },
+    {
       "id": "uk_stage_hmrc_cgt_asset_type_spine_summary",
       "gate": "stage_health",
       "phase": "transferred",
@@ -510,11 +608,9 @@
       "parameters": {
         "stage": "hmrc_cgt_asset_type_spine",
         "check": "cgt_asset_type_summary",
-        "maximum_relative_deviation": 0.05,
-        "maximum_gains_sigma": 3.0,
         "maximum_solve_relative_error": 1e-06
       },
-      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725, #1014): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Each Table 4.1 2024-25 BADR band is held to deterministic bounds only: its solve to the band's published claimant count and qualifying gains (the open top band to the published gains over the lifetime limit), its realised count within the band pool's largest weight, its realised qualifying gains within that weight times (2 max gain - min gain) of the band pool below the limit and exactly the limit times the realised count in the top band; every BADR invariant (claimants outside the non-residential liable pool, qualifying gains above the net gain or the limit or outside the band, residential overlap, sub-AEA claimants) must be zero and the restricted main-type fit must have converged. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the residential totals and the Table 4.1 bands."
+      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725, #1014): the residential arms the cgt_residential_split stage left carry the Table 8a 2024-25 totals on the individuals basis at design weights within the solve tolerance (microcosm#1063 carries the solved residential probability as weight, so nothing is drawn here and no walk bound applies), and every gain band row of the residential receipt is finite and sums to the receipt. Each Table 4.1 2024-25 BADR band is held to deterministic bounds only: its solve to the band's published claimant count and qualifying gains (the open top band to the published gains over the lifetime limit), its realised count within the band pool's largest weight, its realised qualifying gains within that weight times (2 max gain - min gain) of the band pool below the limit and exactly the limit times the realised count in the top band; every BADR invariant (claimants outside the non-residential liable pool, qualifying gains above the net gain or the limit or outside the band, residential overlap, sub-AEA claimants) must be zero and the main-type fits (one per claimant status since microcosm#1063) must have converged. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the residential totals and the Table 4.1 bands."
     },
     {
       "id": "uk_stage_cgt_incidence_anchor_composition",
@@ -756,6 +852,8 @@
           "household.cash_isa",
           "household.cgt_support_copies",
           "household.cgt_support_copy_index",
+          "household.household_is_cgt_residential_clone",
+          "household.cgt_residential_clone_index",
           "household.clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",
@@ -796,6 +894,7 @@
           "person.capital_gains_asset_type",
           "person.capital_gains_badr",
           "person.capital_gains_residential_property",
+          "person.cgt_residential_probability",
           "person.bus_in_london_trips",
           "person.bus_pass_eligible",
           "person.care_hours",
@@ -835,7 +934,45 @@
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",
-          "person.person_is_spi_income_band_carrier"
+          "person.person_is_spi_income_band_carrier",
+          "benunit.benunit_source_id",
+          "benunit.benunit_support_channel",
+          "benunit.benunit_support_clone_index",
+          "benunit.dependent_children",
+          "household.council_tax_rebate",
+          "household.council_tax_reported",
+          "household.council_tax_single_adult_raw",
+          "household.household_source_id",
+          "household.household_support_channel",
+          "household.household_support_clone_index",
+          "household.num_bedrooms",
+          "household.source_household_id",
+          "household.source_household_key",
+          "household.source_year",
+          "household.subrent",
+          "person.disabled_students_allowance_eligible_expenses",
+          "person.free_school_breakfasts",
+          "person.hmrc_spi_assessable_income",
+          "person.hmrc_spi_employed_income",
+          "person.hmrc_spi_employment_benefits",
+          "person.hmrc_spi_employment_expenses",
+          "person.hmrc_spi_incapacity_benefit_income",
+          "person.hmrc_spi_miscellaneous_employment_income",
+          "person.hmrc_spi_other_income",
+          "person.hmrc_spi_other_social_security_income",
+          "person.hmrc_spi_pay",
+          "person.hmrc_spi_state_pension_income",
+          "person.hmrc_spi_taxable_termination_pay",
+          "person.hmrc_spi_total_earned_income",
+          "person.hmrc_spi_total_investment_income",
+          "person.hmrc_spi_unemployment_benefit_income",
+          "person.is_in_approved_training",
+          "person.ossben_identifiable_subset",
+          "person.other_investment_income",
+          "person.person_source_id",
+          "person.person_support_channel",
+          "person.person_support_clone_index",
+          "person.srp_regular_code5"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."
@@ -851,7 +988,7 @@
       "parameters": {
         "maximum_share_deviation": 0.05
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063). would_claim_uc is drawn for FRS benefit units by frs_take_up and redrawn for SPI-channel units by spi_benefit_coherence on the same rule (microcosm#1095), so the gate measures both channels at the contract rate."
     },
     {
       "id": "uk_brma_enum_domain",

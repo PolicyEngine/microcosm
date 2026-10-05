@@ -1,13 +1,13 @@
 {
-  "source_fact_feed": "chronicle-uk-505e0e72-consumer-facts",
+  "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1174,
-  "contract_target_count": 295,
-  "active_reference_count": 1152,
+  "candidate_count": 1253,
+  "contract_target_count": 340,
+  "active_reference_count": 1230,
   "status_counts": {
-    "active": 1152,
+    "active": 1230,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 15
+    "signed_excluded": 16
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -98,10 +98,6 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "obr.state_pension": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
     "obr.statutory_maternity_pay": {
       "geography_level": "country",
       "geography_id": "K02000001"
@@ -143,10 +139,6 @@
       "geography_id": "K02000001"
     },
     "hmrc.salary_sacrifice.nics_relief_employer": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
-    "hmrc.salary_sacrifice.users_total": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -3823,11 +3815,272 @@
           "geography_id": "N92000002"
         }
       ]
+    },
+    "dwp.state_pension.recipients": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.amount": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dfc_ni.state_pension.recipients": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
+    },
+    "dfc_ni.state_pension.amount": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
+    },
+    "dwp.state_pension.recipients_male_66_69_new": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_66_69_new": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_male_70_74_new": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_male_70_74_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_70_74_new": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_70_74_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_male_75_79_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_75_79_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_male_80_84_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_80_84_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_male_85_89_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_85_89_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_male_90_plus_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_female_90_plus_pre_2016": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_new_by_english_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_new_scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "dwp.state_pension.recipients_new_wales": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.state_pension.recipients_pre_2016_by_english_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_pre_2016_scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "dwp.state_pension.recipients_pre_2016_wales": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.state_pension.recipients_new_by_weekly_amount": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.state_pension.recipients_pre_2016_by_weekly_amount": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_couple": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_single": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_savings_only_couple": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_savings_only_single": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_both_couple": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_both_single": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_65_69": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_70_74": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_75_79": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_80_84": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_85_89": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_90_plus": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dfc_ni.pension_credit.benefit_units": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
+    },
+    "dwp.workplace_pension.employer_contributions": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.attendance_allowance.recipients_england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.attendance_allowance.recipients_wales": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.hb.households_pension_age": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.households_pension_age_social_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.households_pension_age_private_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dfi_ni.bus.passenger_receipts",
+    "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
@@ -4019,7 +4272,10 @@
     {
       "name": "hmrc.salary_sacrifice.nics_relief_employer",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.hmrc.national_insurance.class_1.rates.employer",
+      "factor": "1.08695652173913",
+      "value_before_uprating": "3400000000.0"
     },
     {
       "name": "hmrc/employment_income_income_band_100_000_to_150_000",
@@ -4961,104 +5217,104 @@
       "name": "hmrc/state_pension_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.40545146588758",
       "value_before_uprating": "847000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.3177581555065",
       "value_before_uprating": "20000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.17805597511069",
       "value_before_uprating": "11800000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.10550752002256",
       "value_before_uprating": "22200000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.31679769037857",
       "value_before_uprating": "265000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.1322753899205",
       "value_before_uprating": "24900000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.35286608982867",
       "value_before_uprating": "179000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.26808076472352",
       "value_before_uprating": "12300000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.35286608982867",
       "value_before_uprating": "96000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.26808076472352",
       "value_before_uprating": "6020000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.37479397259497",
       "value_before_uprating": "4660000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.37005014580437",
       "value_before_uprating": "43000000.0"
     },
     {
       "name": "hmrc/state_pension_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-      "factor": "1.12950699043414",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+      "factor": "1.37479397259497",
       "value_before_uprating": "1890000000.0"
     },
     {
@@ -10778,6 +11034,11 @@
       "index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
       "factor": "1.21312442637997",
       "value_before_uprating": "522000000.0"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.it_relief_total",
+      "from": "2024",
+      "to": "2025"
     }
   ],
   "targets": {
@@ -11096,21 +11357,6 @@
         }
       ]
     },
-    "obr.state_pension": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.state_pension",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 144133374882.29138,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_567e55f9f73df2808c1c4be8"
-        }
-      ]
-    },
     "obr.statutory_maternity_pay": {
       "status": "active",
       "candidates": [
@@ -11207,8 +11453,8 @@
         {
           "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 1600000000.0,
           "resolved_fact_period": "2024",
@@ -11222,8 +11468,8 @@
         {
           "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 5500000000.0,
           "resolved_fact_period": "2024",
@@ -11237,8 +11483,8 @@
         {
           "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 1800000000.0,
           "resolved_fact_period": "2024",
@@ -11252,8 +11498,8 @@
         {
           "name": "hmrc.salary_sacrifice.nics_relief_employee",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 1000000000.0,
           "resolved_fact_period": "2024",
@@ -11267,27 +11513,17 @@
         {
           "name": "hmrc.salary_sacrifice.nics_relief_employer",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 3400000000.0,
+          "resolved_value": 3695652173.9130435,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479"
-        }
-      ]
-    },
-    "hmrc.salary_sacrifice.users_total": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "hmrc.salary_sacrifice.users_total",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "resolved_period": 2025,
-          "resolved_value": 7700000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_06d585b8684b5fe0ce25f6ec"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.hmrc.national_insurance.class_1.rates.employer",
+            "factor": "1.08695652173913",
+            "value_before_uprating": "3400000000.0"
+          }
         }
       ]
     },
@@ -13142,12 +13378,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 956692420.897719,
+          "resolved_value": 1190417391.6067786,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d63e1a96cab57582f482b8c2",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.40545146588758",
             "value_before_uprating": "847000000.0"
           }
         },
@@ -13157,12 +13393,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 22590139.808682855,
+          "resolved_value": 26355163.11013001,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_9a20bd62d4d5984865242929",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.3177581555065",
             "value_before_uprating": "20000000.0"
           }
         },
@@ -13172,12 +13408,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13328182487.122885,
+          "resolved_value": 13901060506.30619,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_45083c1383ea711226aebd1b",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.17805597511069",
             "value_before_uprating": "11800000000.0"
           }
         },
@@ -13187,12 +13423,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 25075055187.63797,
+          "resolved_value": 24542266944.500935,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_310febb949c686fad2b71a94",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.10550752002256",
             "value_before_uprating": "22200000000.0"
           }
         },
@@ -13202,12 +13438,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 299319352.46504784,
+          "resolved_value": 348951387.9503221,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e79668076aadc063559585e9",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.31679769037857",
             "value_before_uprating": "265000000.0"
           }
         },
@@ -13217,12 +13453,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 28124724061.810158,
+          "resolved_value": 28193657209.02049,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3d18e138c32f6581d6dafdd7",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.1322753899205",
             "value_before_uprating": "24900000000.0"
           }
         },
@@ -13232,12 +13468,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 202181751.28771156,
+          "resolved_value": 242163030.07933253,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e1dda799099ac0f4f439700d",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.35286608982867",
             "value_before_uprating": "179000000.0"
           }
         },
@@ -13247,12 +13483,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 13892935982.339956,
+          "resolved_value": 15597393406.099285,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_151045b793ac454ab29260fc",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.26808076472352",
             "value_before_uprating": "12300000000.0"
           }
         },
@@ -13262,12 +13498,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 108432671.0816777,
+          "resolved_value": 129875144.62355264,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c95154893499181b7f3a8903",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.35286608982867",
             "value_before_uprating": "96000000.0"
           }
         },
@@ -13277,12 +13513,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 6799632082.41354,
+          "resolved_value": 7633846203.635585,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bc4cee7d39f5e1c311464a55",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.26808076472352",
             "value_before_uprating": "6020000000.0"
           }
         },
@@ -13292,12 +13528,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 5263502575.423105,
+          "resolved_value": 6406539912.292578,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_7f09c940c0fbc3cc42b9e510",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.37479397259497",
             "value_before_uprating": "4660000000.0"
           }
         },
@@ -13307,12 +13543,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 48568800.58866814,
+          "resolved_value": 58912156.269587904,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d265dfcd4ba09d10053a78a4",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.37005014580437",
             "value_before_uprating": "43000000.0"
           }
         },
@@ -13322,12 +13558,12 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2134768211.9205298,
+          "resolved_value": 2598360608.2045007,
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_41c1df25454fdf413d5765d7",
           "uprating": {
-            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
-            "factor": "1.12950699043414",
+            "index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
+            "factor": "1.37479397259497",
             "value_before_uprating": "1890000000.0"
           }
         }
@@ -27781,6 +28017,1176 @@
           }
         }
       ]
+    },
+    "dwp.state_pension.recipients": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 12052874.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2e868eab6a5afc6f73ccfae"
+        }
+      ]
+    },
+    "dwp.state_pension.amount": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.amount",
+          "status": "active",
+          "matched_fact_count_overall": 8,
+          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_in_source_window": 8,
+          "resolved_period": 2025,
+          "resolved_value": 138623908111.01526,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_040841c571b5743340438be9",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "factor": "1.00984637199515",
+            "value_before_uprating": "137272274234.284"
+          }
+        }
+      ]
+    },
+    "dfc_ni.state_pension.recipients": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfc_ni.state_pension.recipients",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 330147.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d4760fdd674487fca8e784e2"
+        }
+      ]
+    },
+    "dfc_ni.state_pension.amount": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfc_ni.state_pension.amount",
+          "status": "active",
+          "matched_fact_count_overall": 8,
+          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_in_source_window": 8,
+          "resolved_period": 2025,
+          "resolved_value": 3710881810.1898503,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7d24b9929753d6b31c53cce4",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "factor": "1.0098105097383",
+            "value_before_uprating": "3674829856.1"
+          }
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_66_69_new": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_66_69_new",
+          "status": "active",
+          "matched_fact_count_overall": 16,
+          "matched_fact_count_at_or_before_period": 16,
+          "matched_fact_count_in_source_window": 16,
+          "resolved_period": 2025,
+          "resolved_value": 1323018.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f90d42d3b41d1cd122e1bc96"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_66_69_new": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_66_69_new",
+          "status": "active",
+          "matched_fact_count_overall": 16,
+          "matched_fact_count_at_or_before_period": 16,
+          "matched_fact_count_in_source_window": 16,
+          "resolved_period": 2025,
+          "resolved_value": 1388613.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c5cbedb94e282e12f237204e"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_70_74_new": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_70_74_new",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 1222116.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1d6c387978c7dcb31a3eb2f9"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_70_74_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_70_74_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 194617.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d2f0b8ce001fffdaf3af3d1c"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_70_74_new": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_70_74_new",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 717078.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f23bd5308686d3879b58097"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_70_74_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_70_74_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 822163.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2b52033f8fc2c92f545c5472"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_75_79_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_75_79_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 1333148.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1e0302e9fb24b411cf7acaa"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_75_79_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_75_79_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 1502398.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b0e7ea9a1c711aa2cd974913"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_80_84_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_80_84_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 823789.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_414a97d3cb5a8e56646dc9fb"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_80_84_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_80_84_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 1016169.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ad548b86aefde2661cc4ffff"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_85_89_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_85_89_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 452540.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_deab1a4a30a55e76ed713c27"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_85_89_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_85_89_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_in_source_window": 20,
+          "resolved_period": 2025,
+          "resolved_value": 644697.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7bfbbc2af979ffaa9db09fe5"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_male_90_plus_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_male_90_plus_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 207357.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_65392f782c463d5c4458c188"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_female_90_plus_pre_2016": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_female_90_plus_pre_2016",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 404408.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_32834cf0a5aa400ad3ea6632"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_new_by_english_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 221933.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3849cd7f9fb2c0a11406df09"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 542356.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3598d15875dc7df98a20123d"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 406034.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7290dcc14753b1a54e005cf"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 363537.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a1a24b040c70a32bd4e354e6"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 416229.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9e4621361253499530e31b54"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 457239.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_70971f09dfaeab499d7aeb7e"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 421776.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_79d46ff506d2db6cd18e2148"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 658266.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_abd2497289e3331cb7e82012"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_english_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 464841.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9f36f3a7a1a4d6d7ebaecbde"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_new_scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_new_scotland",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 445194.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9b8e48df3e64a1e63372634"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_new_wales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_new_wales",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 253534.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b82917f7a577c897f0d3dd60"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_pre_2016_by_english_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 324237.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1db0810df0a5b05c1fd0914a"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 835347.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c8a6ef7647ae7caef2c80667"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 631830.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_139a07b36899bf4ace64291d"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 586131.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_011954008b768323576d61c8"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 682017.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7d63e0a74e6de675a11ed6f"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 782615.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ecd6638d3a14dcee4ef46782"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 593093.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b670e556716dbd64f9fe8178"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1134987.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b4d062de5c11bbac34b30be6"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 806881.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5a45e1cc548ab80887ffe67f"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_pre_2016_scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_scotland",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 621000.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0c208e973105fa7c8029b17f"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_pre_2016_wales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_wales",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 403793.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5c95cf4efb7008b1f359e9ec"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_new_by_weekly_amount": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.under_20_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 2401.3333333333335,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dc5561861c73ee31f86bfae3"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.100_00_to_under_150_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 124804.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffb27f4d7915353defe32986"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.150_00_to_under_200_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 661720.6666666666,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_86da47003654aefcff806052"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.20_00_to_under_40_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 2481.3333333333335,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8cfd09ae2cadbb3594d4dad5"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.200_00_to_under_250_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 3390794.6666666665,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d31686dffeaa07295af35f7b"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.250_00_to_under_300_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 433550.3333333333,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a97b5dcb7950ad4cab590462"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.300_00_and_over__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 64770.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_234575a44d456803d36f9ec4"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "signed_row": {
+            "dimension": "grouped_amount_of_benefit",
+            "value": "\u00a340.00 to under \u00a360.00"
+          },
+          "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the nearest of them restate above \u00a360 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 24329.333333333332,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_405455404e78ca1ca8915baa"
+        },
+        {
+          "name": "dwp.state_pension.recipients_new_by_weekly_amount.80_00_to_under_100_00__new_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 31134.333333333332,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e76e2f663aa361fe4df2dc36"
+        }
+      ]
+    },
+    "dwp.state_pension.recipients_pre_2016_by_weekly_amount": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.under_20_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 12621.333333333334,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a9ffc9a251267e97840eeb90"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.100_00_to_under_150_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 880177.3333333334,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0a3f30c5e7b17728baa6576a"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.150_00_to_under_200_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1589409.6666666667,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d3e4db18223e8507eeaaab8f"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.20_00_to_under_40_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 8063.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e18cb71ca3b17102c67c509a"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.200_00_to_under_250_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 2730401.3333333335,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8ff59898eaacc667e5d3a895"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.250_00_to_under_300_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1338030.3333333333,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_49fe17b08fad3d6420f9e283"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.300_00_and_over__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 737995.6666666666,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_473df488b16a42cd28c857d0"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.40_00_to_under_60_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 12135.666666666666,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1e158bc3779f81fcac6382ac"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.60_00_to_under_80_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 17155.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3c529dd5476ae78f33fdba1b"
+        },
+        {
+          "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.80_00_to_under_100_00__pre_2016_state_pension",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "matched_fact_count_in_source_window": 3,
+          "resolved_period": 2025,
+          "resolved_value": 23048.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_01743bfc73ac3ee49e3fa953"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1390586.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1959918af196c44861e31167"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_couple": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 96794.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_091a1b6931243d1d3f5b35c1"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_single": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_guarantee_only_single",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 715624.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_122348c34ab5eb4857e379e0"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_savings_only_couple": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_savings_only_couple",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 22458.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_48eceb66dbc0a8badeed5d21"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_savings_only_single": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_savings_only_single",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 142408.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4bba18fa22663b03e2c56da8"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_both_couple": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_both_couple",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 47246.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_53774b182677de4df96ecd2b"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_both_single": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_both_single",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 366055.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_35b6b695fc790496848d8a94"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_65_69": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_65_69",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 179022.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c6e9a9036eab7716e57dd68b"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_70_74": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_70_74",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 282852.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8c9b2a912de0a21e93b5e8d"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_75_79": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_75_79",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 367571.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6e88be95734a1e2312fb284d"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_80_84": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_80_84",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 261310.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f92bbdf9046d27d8c45149a0"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_85_89": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_85_89",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 177613.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cf3443a3e0be02b52bf5651f"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_90_plus": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_90_plus",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 122210.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_92e1c482a72763db14b6264d"
+        }
+      ]
+    },
+    "dfc_ni.pension_credit.benefit_units": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfc_ni.pension_credit.benefit_units",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 60195.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_31088d4513e7b7e4b21233d7"
+        }
+      ]
+    },
+    "dwp.workplace_pension.employer_contributions": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.workplace_pension.employer_contributions",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 104200000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_084d676d6e9bd618bb35e125"
+        }
+      ]
+    },
+    "dwp.attendance_allowance.recipients_england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.attendance_allowance.recipients_england",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1597003.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_70b671884790c8bf52c7fbb6"
+        }
+      ]
+    },
+    "dwp.attendance_allowance.recipients_wales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.attendance_allowance.recipients_wales",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 124117.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_22a183260c3229f9cf14a1a3"
+        }
+      ]
+    },
+    "dwp.hb.households_pension_age": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_pension_age",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1107464.1666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f65e5ab6439a1308e1ce27a"
+        }
+      ]
+    },
+    "dwp.hb.households_pension_age_social_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_pension_age_social_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 890663.5833333334,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5688aae2091cc34caf9ef695"
+        }
+      ]
+    },
+    "dwp.hb.households_pension_age_private_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_pension_age_private_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 216778.66666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f46445e7e639bfd9fea6921b"
+        }
+      ]
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.salary_sacrifice.it_relief_total",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 8800000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ab19a7f36038519a7f359742"
+        }
+      ]
     }
   },
   "fanout_family_outcomes": [
@@ -27826,6 +29232,12 @@
       "status": "active_region_tier_fanout",
       "active_reference_count": 108,
       "signed_rationale": "The nine ONS population-by-age-band targets fan out over the twelve-area region tier (nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level), one reference per area, each scoped on the spine by a household-region predicate and placed at the region grain of the cross-grain rule (microcosm#905). The former single UK-wide row per band is retired: the tier sums to it within the same publication."
+    },
+    {
+      "family": "dwp_state_pension",
+      "status": "active_english_region_and_amount_band_fanout",
+      "active_reference_count": 37,
+      "signed_rationale": "The State Pension recipients by type fan out over the nine English regions (Scotland and Wales are their own rows, since DWP publishes no Northern Ireland cell for a twelve-area tier) and over DWP's weekly amount bands, whose 'all' margin is a total row the detail measure pin leaves out; the empty new State Pension \u00a340-\u00a360 band is signed out (microcosm#1069)."
     }
   ],
   "signed_exclusion_rationales": [
@@ -27840,6 +29252,13 @@
       "target_id": "ons.population.scotland_households_3plus_children",
       "status": "signed_excluded",
       "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
+    },
+    {
+      "family": "dwp_state_pension",
+      "target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+      "row": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
+      "status": "signed_excluded",
+      "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the nearest of them restate above \u00a360 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
     },
     {
       "family": "hmrc_cgt",

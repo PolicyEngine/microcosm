@@ -14,6 +14,7 @@ legitimately produces different draws, as with every seeded stage.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -34,6 +35,8 @@ from microcosm.build.uk_runtime.spi_support import (
     support_channel_column,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
+    UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS,
+    benunit_financial_investment_income,
     frs_uc_couple_mask,
 )
 from microcosm.frame import Frame
@@ -42,6 +45,32 @@ UC_CAPITAL_REDRAW_OUTPUT = "frs_benunit_capital"
 UC_CAPITAL_REDRAW_SEED = 0
 UC_CAPITAL_REDRAW_SALT = UC_CAPITAL_REDRAW_OUTPUT
 UC_CAPITAL_COHERENCE_OUTPUT_COLUMNS = ("uc_reported_capital",)
+#: Every SPI benefit unit is redrawn: the channel's incomes are SPI draws,
+#: so a copied FRS capital answer no longer belongs to the unit (uk-data#495,
+#: microcosm#1095). Donors are the base units with an available answer.
+UC_CAPITAL_REDRAW_ROWS = "spi_channel"
+UC_CAPITAL_REDRAW_DONOR_ROWS = "base_frs_with_available_capital"
+UC_CAPITAL_REPORTER_STATUS = "universal_credit_reported_anchor"
+UC_CAPITAL_INVESTMENT_INCOME = (
+    " + ".join(UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS)
+    + ", summed over benefit-unit members"
+)
+#: Upper edges of the investment-income bands: none, then up to the income
+#: GBP 6,000, 16,000, 50,000 and 200,000 of capital yield at 4%, then above.
+UC_CAPITAL_INCOME_BAND_EDGES = (0.0, 240.0, 640.0, 2_000.0, 8_000.0)
+UC_CAPITAL_IMPLIED_YIELD = 0.04
+UC_CAPITAL_MINIMUM_CELL_DONORS = 20
+#: The declared order in which a cell short of donors widens; reporter status
+#: is never coarsened.
+UC_CAPITAL_COARSENING = (
+    "merge dependent-children bands",
+    "drop couple status",
+    "merge adjacent investment-income bands",
+    "reporter status only",
+)
+_UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
+#: The UC capital limits the receipt measures the redraw against.
+_UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
 
 
 @dataclass(frozen=True)
@@ -52,6 +81,11 @@ class UKUCCapitalCoherenceResult:
     post_fill_reporter_count: int
     redrawn_spi_reporter_count: int
     refreshed_would_claim_count: int
+    redrawn_spi_benefit_units: int = 0
+    coarsening_levels: Mapping[str, int] = field(default_factory=dict)
+    capital_against_investment_income: Mapping[str, object] = field(
+        default_factory=dict
+    )
 
     def evidence(self) -> dict[str, object]:
         """Return JSON-safe stage evidence."""
@@ -60,9 +94,15 @@ class UKUCCapitalCoherenceResult:
             "stage": "uc_capital_coherence",
             "post_fill_reporter_count": self.post_fill_reporter_count,
             "redrawn_spi_reporter_count": self.redrawn_spi_reporter_count,
+            "redrawn_spi_benefit_units": self.redrawn_spi_benefit_units,
             "refreshed_would_claim_count": self.refreshed_would_claim_count,
             "redraw_seed": UC_CAPITAL_REDRAW_SEED,
             "redraw_salt": UC_CAPITAL_REDRAW_SALT,
+            "minimum_cell_donors": UC_CAPITAL_MINIMUM_CELL_DONORS,
+            "coarsening_levels": dict(self.coarsening_levels),
+            "capital_against_investment_income": dict(
+                self.capital_against_investment_income
+            ),
         }
 
 
@@ -71,11 +111,14 @@ class UKUCCapitalCoherenceStageTransform:
     """Redraw SPI reporter capital and refresh UC take-up after SPI income."""
 
     stage: SourceStageSpec
+    #: Synthetic fixtures too small for the declared donor floor pass a lower
+    #: one; every build runs the declared ``UC_CAPITAL_MINIMUM_CELL_DONORS``.
+    minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS
     last_result: UKUCCapitalCoherenceResult | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         _assert_stage_parameters(self.stage)
-        result = cohere_uc_capital(frame)
+        result = cohere_uc_capital(frame, minimum_cell_donors=self.minimum_cell_donors)
         object.__setattr__(self, "last_result", result)
         return result.frame
 
@@ -91,7 +134,9 @@ class UKUCCapitalCoherenceStageTransform:
         return {"evidence": self.last_result.evidence()}
 
 
-def cohere_uc_capital(frame: Frame) -> UKUCCapitalCoherenceResult:
+def cohere_uc_capital(
+    frame: Frame, *, minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS
+) -> UKUCCapitalCoherenceResult:
     """Make late SPI UC receipt, FRS capital, and take-up flags coherent."""
 
     validate_uk_national_frame(frame)
@@ -100,7 +145,12 @@ def cohere_uc_capital(frame: Frame) -> UKUCCapitalCoherenceResult:
     household = frame.table("household").copy()
     _require_columns(
         person,
-        ("person_benunit_id", "person_household_id", "universal_credit_reported"),
+        (
+            "person_benunit_id",
+            "person_household_id",
+            "universal_credit_reported",
+            *UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS,
+        ),
         label="person",
     )
     _require_columns(
@@ -138,18 +188,33 @@ def cohere_uc_capital(frame: Frame) -> UKUCCapitalCoherenceResult:
     spi = channel.eq(SPI_SYNTHETIC_SUPPORT_CHANNEL).to_numpy(dtype=bool)
     if np.any(~(base | spi)):
         raise ValueError("UC capital coherence requires only FRS and SPI channels.")
-    redraw = spi & reporter
+    investment = benunit_financial_investment_income(person, benunit)
+    weights = _household_to_benunit_weights(
+        benunit,
+        person=person,
+        household=household,
+        household_weights=frame.weights_for("household").values,
+    )
+    receipt_before = _capital_against_investment_income(
+        capital, investment, weights, base=base, spi=spi, reporter=reporter
+    )
+    redraw = spi
+    levels: dict[str, int] = dict.fromkeys(_UC_CAPITAL_LEVELS, 0)
     if redraw.any():
-        _redraw_spi_reporter_capital(
+        levels = _redraw_spi_capital(
             benunit,
             person=person,
-            household=household,
-            household_weights=frame.weights_for("household").values,
+            weights=weights,
             reporter=reporter,
             base=base,
             redraw=redraw,
             capital=capital,
+            investment=investment,
+            minimum_cell_donors=minimum_cell_donors,
         )
+    receipt_after = _capital_against_investment_income(
+        capital, investment, weights, base=base, spi=spi, reporter=reporter
+    )
 
     previous_would_claim = _boolean_values(benunit["would_claim_uc"])
     refreshed_would_claim = previous_would_claim | reporter
@@ -170,8 +235,14 @@ def cohere_uc_capital(frame: Frame) -> UKUCCapitalCoherenceResult:
     return UKUCCapitalCoherenceResult(
         frame=result_frame,
         post_fill_reporter_count=int(reporter.sum()),
-        redrawn_spi_reporter_count=int(redraw.sum()),
+        redrawn_spi_reporter_count=int((redraw & reporter).sum()),
         refreshed_would_claim_count=int((~previous_would_claim & reporter).sum()),
+        redrawn_spi_benefit_units=int(redraw.sum()),
+        coarsening_levels=levels,
+        capital_against_investment_income={
+            "before": receipt_before,
+            "after": receipt_after,
+        },
     )
 
 
@@ -185,50 +256,102 @@ def _post_fill_reporter_anchor(
     return benunit["benunit_id"].isin(reporter_ids).to_numpy(dtype=bool)
 
 
-def _redraw_spi_reporter_capital(
+def _redraw_spi_capital(
     benunit: pd.DataFrame,
     *,
     person: pd.DataFrame,
-    household: pd.DataFrame,
-    household_weights: np.ndarray,
+    weights: np.ndarray,
     reporter: np.ndarray,
     base: np.ndarray,
     redraw: np.ndarray,
     capital: np.ndarray,
-) -> None:
-    weights = _household_to_benunit_weights(
-        benunit,
-        person=person,
-        household=household,
-        household_weights=household_weights,
-    )
+    investment: np.ndarray,
+    minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS,
+) -> dict[str, int]:
+    """Redraw ``redraw`` units' capital from base donors in their cell.
+
+    A cell is reporter status x investment-income band x couple x
+    dependent-children band. A cell with fewer than ``minimum_cell_donors``
+    donors widens in the declared ``UC_CAPITAL_COARSENING`` order; reporter
+    status is never coarsened, and an empty reporter-status pool refuses.
+    Returns the number of redrawn units drawn at each level.
+    """
+
+    if not isinstance(minimum_cell_donors, int) or minimum_cell_donors <= 0:
+        raise ValueError("minimum_cell_donors must be a positive integer.")
     child_band = _dependent_children_band(benunit["dependent_children"])
     couple = frs_uc_couple_mask(person, benunit)
+    income_band = _investment_income_band(investment)
+    last_band = len(UC_CAPITAL_INCOME_BAND_EDGES)
     # Domain-validated upstream: every non-sentinel value is >= 0.
-    available = capital >= 0.0
-    donor = base & reporter & available & (weights > 0.0)
+    donor = base & (capital >= 0.0) & (weights > 0.0)
     target_ids = benunit["benunit_id"].to_numpy()
     draws = stable_identity_uniforms(
         target_ids,
         seed=UC_CAPITAL_REDRAW_SEED,
         salt=UC_CAPITAL_REDRAW_SALT,
     )
-
-    for band, is_couple in sorted(
-        set(zip(child_band[redraw], couple[redraw], strict=True))
-    ):
-        target_cell = redraw & (child_band == band) & (couple == is_couple)
-        donor_cell = donor & (child_band == band) & (couple == is_couple)
+    source_capital = capital.copy()
+    levels = dict.fromkeys(_UC_CAPITAL_LEVELS, 0)
+    cells = sorted(
+        set(
+            zip(
+                reporter[redraw],
+                income_band[redraw],
+                couple[redraw],
+                child_band[redraw],
+                strict=True,
+            )
+        )
+    )
+    for is_reporter, band, is_couple, children in cells:
+        target_cell = (
+            redraw
+            & (reporter == is_reporter)
+            & (income_band == band)
+            & (couple == is_couple)
+            & (child_band == children)
+        )
+        same_status = donor & (reporter == is_reporter)
+        candidates = [
+            (
+                "exact_cell",
+                same_status
+                & (income_band == band)
+                & (couple == is_couple)
+                & (child_band == children),
+            ),
+            (
+                UC_CAPITAL_COARSENING[0],
+                same_status & (income_band == band) & (couple == is_couple),
+            ),
+            (UC_CAPITAL_COARSENING[1], same_status & (income_band == band)),
+            *(
+                (
+                    UC_CAPITAL_COARSENING[2],
+                    same_status & (np.abs(income_band - band) <= width),
+                )
+                for width in range(1, last_band + 1)
+            ),
+            (UC_CAPITAL_COARSENING[3], same_status),
+        ]
+        level, donor_cell = next(
+            (
+                (name, pool)
+                for name, pool in candidates
+                if int(pool.sum()) >= minimum_cell_donors
+            ),
+            candidates[-1],
+        )
         if not donor_cell.any():
-            label = "3+" if band == 3 else str(band)
             raise ValueError(
-                "UC capital redraw has no positive-weight base-FRS reporter "
-                f"donors for dependent_children={label}, couple={is_couple}."
+                "UC capital redraw has no positive-weight base-FRS donors with "
+                f"available capital for UC reporter status {bool(is_reporter)}."
             )
         donor_rows = pd.DataFrame(
             {
                 "benunit_id": target_ids[donor_cell],
-                "capital": capital[donor_cell],
+                "capital": source_capital[donor_cell],
                 "weight": weights[donor_cell],
             }
         ).sort_values(["capital", "benunit_id"], kind="mergesort")
@@ -237,6 +360,48 @@ def _redraw_spi_reporter_capital(
         cdf = np.cumsum(donor_weights) / float(donor_weights.sum())
         selected = np.searchsorted(cdf, draws[target_cell], side="right")
         capital[target_cell] = donor_values[np.minimum(selected, len(cdf) - 1)]
+        levels[level] += int(target_cell.sum())
+    return levels
+
+
+def _investment_income_band(investment: np.ndarray) -> np.ndarray:
+    """Band 0 for no investment income, then one band per declared edge."""
+
+    values = np.asarray(investment, dtype=float)
+    if not np.isfinite(values).all() or (values < 0.0).any():
+        raise ValueError("investment income must be finite and nonnegative.")
+    return np.searchsorted(
+        np.asarray(UC_CAPITAL_INCOME_BAND_EDGES), values, side="left"
+    ).astype(np.int8)
+
+
+def _capital_against_investment_income(
+    capital: np.ndarray,
+    investment: np.ndarray,
+    weights: np.ndarray,
+    *,
+    base: np.ndarray,
+    spi: np.ndarray,
+    reporter: np.ndarray,
+) -> dict[str, object]:
+    """Units whose investment income implies capital above a UC limit they lack."""
+
+    implied = np.asarray(investment, dtype=float) / UC_CAPITAL_IMPLIED_YIELD
+    receipt: dict[str, object] = {}
+    for limit in _UC_CAPITAL_RECEIPT_LIMITS:
+        incoherent = (implied > limit) & (capital <= limit)
+        receipt[f"implied_above_{int(limit)}_capital_at_or_below"] = {
+            name: {
+                "benefit_units": int((rows & incoherent).sum()),
+                "weighted_benefit_units": float(weights[rows & incoherent].sum()),
+            }
+            for name, rows in (("frs", base), ("spi", spi))
+        }
+    upper = _UC_CAPITAL_RECEIPT_LIMITS[-1]
+    receipt[f"spi_reporters_capital_above_{int(upper)}"] = int(
+        (spi & reporter & (capital > upper)).sum()
+    )
+    return receipt
 
 
 def _household_to_benunit_weights(
@@ -305,15 +470,23 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
     parameters = redraw[0].parameters
     expected = {
         "output": UC_CAPITAL_REDRAW_OUTPUT,
+        "rows": UC_CAPITAL_REDRAW_ROWS,
+        "donor_rows": UC_CAPITAL_REDRAW_DONOR_ROWS,
+        "reporter_status": UC_CAPITAL_REPORTER_STATUS,
+        "investment_income": UC_CAPITAL_INVESTMENT_INCOME,
+        "investment_income_band_edges": list(UC_CAPITAL_INCOME_BAND_EDGES),
+        "minimum_cell_donors": UC_CAPITAL_MINIMUM_CELL_DONORS,
+        "coarsening": list(UC_CAPITAL_COARSENING),
         "seed": UC_CAPITAL_REDRAW_SEED,
         "salt": UC_CAPITAL_REDRAW_SALT,
         "couple_status": "is_uc_couple",
     }
     actual = {key: parameters.get(key) for key in expected}
     if actual != expected:
+        drifted = sorted(key for key in expected if actual[key] != expected[key])
         raise ValueError(
-            "uc_capital_coherence redraw parameters drifted: "
-            f"expected {expected}, got {actual}."
+            "uc_capital_coherence redraw parameters drifted on "
+            f"{drifted}: expected {expected}, got {actual}."
         )
 
 

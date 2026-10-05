@@ -19,7 +19,7 @@ the nonsmooth L1 selection path. It returns a
 are :class:`~microcosm.frame.WeightKind.CALIBRATED`, per-target diagnostics, and
 the loss trajectory.
 
-Six declared options, each a real feature (and each its own test):
+Declared options, each a real feature (and each its own test):
 
 - ``mass="free"`` (default) lets the total weight move to fit the targets;
   ``mass="conserve"`` projects every step's weights back to the input total, so
@@ -51,6 +51,23 @@ Six declared options, each a real feature (and each its own test):
   This penalty is only implemented by ``method="adam"``. In the two-stage
   :func:`calibrate_l0_refit` path it applies to both stages unless
   ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
+- ``l2_basis`` selects the penalty's functional form. ``"record"`` (default)
+  is the record-weighted ``mean(r ** 2)`` above, ``r = w / anchor``. Under
+  ``mass="conserve"`` its target-free minimizer is ``w ∝ anchor ** 2``, and
+  ``r = 0`` is each record's cheapest value, so it spreads weight without
+  anchoring to the design. ``"chi_square"`` is GREG's anchor-weighted
+  chi-square distance ``sum(anchor * (r - 1) ** 2) / sum(anchor)``
+  (``= sum((w - anchor) ** 2 / anchor) / sum(anchor)``): zero exactly at
+  ``w = anchor`` and nonnegative everywhere. With no targets and no binding
+  cap its minimizer is ``w = anchor`` under ``mass="free"`` and the anchor
+  rescaled to the input total under ``mass="conserve"`` (the anchor itself
+  when it is the initial weights), so ``l2_lambda`` trades target fit against
+  distance from the design weights: penalized ("ridge") calibration, the soft
+  form of GREG.
+- ``mass_parametrization`` selects how ``mass="conserve"`` holds the total
+  under Adam: the historical per-step uniform log shift (``"projection"``,
+  default) or ``w = total * softmax(log_w)`` (``"softmax"``), whose gradient
+  already has its mass-constraint component removed.
 
 An explicit exact-k frozen refit requires the selected records' aligned marginal
 inclusion probabilities ``q_i`` and benchmarks them with Horvitz--Thompson
@@ -99,6 +116,7 @@ __all__ = [
     "rebuild_calibration_result",
     "refit_l0_selection",
     "default_target_loss_scales",
+    "chi_square_distance",
     "effective_sample_size",
     "relative_error_loss",
     "CalibrationResult",
@@ -106,6 +124,12 @@ __all__ = [
     "TargetDiagnostic",
     "FREE_MASS",
     "CONSERVE_MASS",
+    "L2_BASIS_RECORD",
+    "L2_BASIS_CHI_SQUARE",
+    "L2_BASES",
+    "MASS_PARAMETRIZATION_PROJECTION",
+    "MASS_PARAMETRIZATION_SOFTMAX",
+    "MASS_PARAMETRIZATIONS",
 ]
 
 #: ``mass="free"`` — the total weight may move to fit the targets (the default).
@@ -114,6 +138,56 @@ FREE_MASS = "free"
 #: ``mass="conserve"`` — project the weights to the input total every step, so
 #: the calibrated population conserves the starting mass exactly.
 CONSERVE_MASS = "conserve"
+
+#: ``l2_basis="record"`` — the historical record-weighted penalty
+#: ``mean((w / anchor) ** 2)`` (the default). Its mass-conserved, target-free
+#: minimizer is ``w ∝ anchor ** 2``; ``w -> 0`` is each record's cheapest value.
+L2_BASIS_RECORD = "record"
+
+#: ``l2_basis="chi_square"`` — the anchor-weighted chi-square distance
+#: ``sum(anchor * (w / anchor - 1) ** 2) / sum(anchor)``, GREG's distance
+#: function. Zero exactly at ``w = anchor``; its target-free minimizer is
+#: ``w ∝ anchor``, and a record's collapse toward zero costs ``anchor_i``.
+L2_BASIS_CHI_SQUARE = "chi_square"
+
+L2_BASES = frozenset({L2_BASIS_RECORD, L2_BASIS_CHI_SQUARE})
+
+#: ``mass_parametrization="projection"`` (the default) — the historical
+#: ``mass="conserve"`` scheme: Adam steps the log-weights, then every step
+#: clamps them to the ratio cap and shifts them uniformly back to the input
+#: total. Adam divides each coordinate's gradient by its running RMS (plus
+#: ``eps``) before that shift. When every record's gradient has the same sign
+#: and is well above ``eps``, the steps are all about ``lr`` and the shift
+#: cancels them, so the iterate can stall away from the constrained optimum;
+#: every target missing on the same side produces that. Measured on small
+#: problems in docs/calibration-l2-basis.md; how much it matters at a given
+#: scale is an empirical question that document answers for the ACS release.
+MASS_PARAMETRIZATION_PROJECTION = "projection"
+
+#: ``mass_parametrization="softmax"`` — ``w = total * softmax(log_w)``, so
+#: the input total holds by construction and autograd hands Adam the
+#: gradient with its component along the mass constraint already removed.
+#: For a smooth objective that reduced gradient vanishes at the constrained
+#: optimum, which the projection scheme's full gradient does not; with the
+#: capped-MAPE kink Adam still oscillates there on the scale of ``lr``, as it
+#: does under ``mass="free"``. The ratio cap is a per-step clamp, alternated
+#: with the softmax-invariant renormalization (``_SOFTMAX_CAP_ROUNDS``), plus
+#: the closing float64 projection.
+MASS_PARAMETRIZATION_SOFTMAX = "softmax"
+
+MASS_PARAMETRIZATIONS = frozenset(
+    {MASS_PARAMETRIZATION_PROJECTION, MASS_PARAMETRIZATION_SOFTMAX}
+)
+
+#: Upper bound on the per-step renormalize/clamp rounds under the softmax
+#: parametrization. Each renormalization lifts the capped records back over
+#: the cap by the capped records' share of the excess, so the excess shrinks
+#: geometrically without reaching exactly zero; the rounds stop when no
+#: record exceeds its bound in float32. A step that exhausts the rounds ends
+#: on a clamp, so its next forward pass renormalizes slightly past the cap;
+#: such epochs are counted in ``options["iterate_selection_receipt"]`` and the
+#: closing float64 projection makes the returned vector exact regardless.
+_SOFTMAX_CAP_ROUNDS = 32
 
 #: Threshold below which a weight counts as pruned (a "zero") when reporting the
 #: non-zero record count for the L0 path. Relative to the *initial* mean weight.
@@ -317,6 +391,20 @@ class CalibrationResult:
         k = max(1, math.ceil(0.01 * weights.size))
         return float(np.sort(weights)[-k:].sum() / total)
 
+    @property
+    def chi_square_distance(self) -> float:
+        """Chi-square distance of the calibrated weights from the input weights.
+
+        ``sum(d * (w / d - 1) ** 2) / sum(d)`` with ``d`` the input weights —
+        the quantity ``l2_basis="chi_square"`` penalizes under the default
+        ``"initial"`` anchor, reported for every solve whatever its penalty.
+        It is zero only when calibration returned the input weights. Under
+        ``mass="conserve"`` it equals ``sum(w ** 2 / d) / sum(d) - 1``: the
+        calibration's weighting effect relative to the input weights, minus
+        one. See :func:`chi_square_distance` for zero input weights.
+        """
+        return chi_square_distance(self.weights, self.initial_weights)
+
 
 @dataclass(frozen=True)
 class L0RefitResult:
@@ -436,6 +524,11 @@ class L0RefitResult:
     def top_1pct_weight_share(self) -> float:
         """Weight share of the post-L0 refit's heaviest 1% of records."""
         return self.refit.top_1pct_weight_share
+
+    @property
+    def chi_square_distance(self) -> float:
+        """Chi-square distance of the post-L0 refit from its own input weights."""
+        return self.refit.chi_square_distance
 
     @property
     def options(self) -> Mapping[str, object]:
@@ -562,6 +655,53 @@ def effective_sample_size(weights: np.ndarray) -> float:
     if denominator == 0.0:
         return 0.0
     return float(weights.sum() ** 2 / denominator)
+
+
+def chi_square_distance(weights: np.ndarray, anchor: np.ndarray) -> float:
+    """Anchor-weighted chi-square distance ``sum(d * (w / d - 1) ** 2) / sum(d)``.
+
+    The float64 reference form of the ``l2_basis="chi_square"`` penalty, with
+    ``d = anchor``; equivalently ``sum((w - d) ** 2 / d) / sum(d)``. It is
+    zero exactly when ``w == d`` and positive otherwise. When
+    ``sum(w) == sum(d)`` it equals ``sum(w ** 2 / d) / sum(d) - 1``, the
+    weighting effect of ``w`` relative to ``d`` minus one; with a uniform
+    ``d`` that is ``n / effective_sample_size(w) - 1``.
+
+    A record with ``d == 0`` contributes nothing when its weight is also zero
+    and makes the distance infinite otherwise (no finite rescaling of a zero
+    anchor reaches a positive weight).
+
+    Args:
+        weights: Non-negative, finite weight values.
+        anchor: Non-negative, finite anchor values aligned to ``weights``,
+            with a positive total.
+
+    Returns:
+        The distance, ``>= 0`` (``inf`` as above).
+
+    Raises:
+        ValueError: If the vectors are misaligned, any value is negative or
+            non-finite, or the anchor total is not positive.
+    """
+    weights = np.asarray(weights, dtype=np.float64)
+    anchor = np.asarray(anchor, dtype=np.float64)
+    if weights.shape != anchor.shape:
+        raise ValueError(
+            f"weights shape {weights.shape} must match anchor shape {anchor.shape}."
+        )
+    for label, values in (("weights", weights), ("anchor", anchor)):
+        if not np.isfinite(values).all() or (values < 0.0).any():
+            raise ValueError(
+                f"chi_square_distance requires finite, non-negative {label}."
+            )
+    total = float(anchor.sum())
+    if total <= 0.0:
+        raise ValueError("chi_square_distance requires a positive anchor total.")
+    supported = anchor > 0.0
+    if (weights[~supported] > 0.0).any():
+        return math.inf
+    residual = weights[supported] - anchor[supported]
+    return float(np.sum(residual * residual / anchor[supported]) / total)
 
 
 def _relative_error_loss(
@@ -764,6 +904,55 @@ def _prepare_warm_start_weights(
     return prepared
 
 
+def _l2_penalty(
+    pre_gate_weights: torch.Tensor,
+    anchor: torch.Tensor,
+    anchor_share: torch.Tensor | None,
+    basis: str,
+) -> torch.Tensor:
+    """The L2 concentration penalty on the pre-gate weights.
+
+    ``"record"``: ``mean((pre_gate_weights / anchor) ** 2)`` — the historical
+    form, kept as the same torch expression so default runs are bit-identical.
+    ``"chi_square"``: ``sum(anchor_share * (pre_gate_weights / anchor - 1) ** 2)``
+    with ``anchor_share = anchor / sum(anchor)`` precomputed in float64, i.e.
+    the anchor-weighted chi-square distance of :func:`chi_square_distance`.
+
+    Under the projection parametrization the caller passes a fresh
+    ``torch.exp(log_w)``: its own autograd node, exactly as the historical
+    inline expression was. Reusing the loss path's ``exp`` would change the
+    order of the gradient accumulation into ``log_w`` and so the bits.
+    """
+    if basis == L2_BASIS_RECORD:
+        return ((pre_gate_weights / anchor) ** 2).mean()
+    if basis == L2_BASIS_CHI_SQUARE:
+        if anchor_share is None:  # pragma: no cover - set up with the anchor
+            raise RuntimeError("the chi-square L2 basis needs the anchor shares.")
+        return (anchor_share * (pre_gate_weights / anchor - 1.0) ** 2).sum()
+    raise ValueError(f"l2_basis must be one of {sorted(L2_BASES)}, got {basis!r}.")
+
+
+def _renormalize_softmax_log_weights_(
+    log_w: torch.Tensor, total: float, log_upper: torch.Tensor | None
+) -> bool:
+    """Shift ``log_w`` so ``exp(log_w)`` sums to ``total``; clamp to the cap.
+
+    In place, under ``no_grad``. The shift leaves ``total * softmax(log_w)``
+    unchanged (softmax is shift-invariant); it only keeps ``exp(log_w)`` equal
+    to the realized weights, so the cap comparison is in weight units. Each
+    clamp lowers the normalizer, so the next shift lifts every record,
+    including the capped ones, by a shrinking amount. Returns ``True`` when
+    the rounds ran out with a record still over its bound after the last
+    shift (the vector then ends on a clamp; see ``_SOFTMAX_CAP_ROUNDS``).
+    """
+    for _ in range(_SOFTMAX_CAP_ROUNDS):
+        log_w.add_(math.log(total) - float(torch.logsumexp(log_w, dim=0).item()))
+        if log_upper is None or not bool((log_w > log_upper).any().item()):
+            return False
+        log_w.clamp_(max=log_upper)
+    return True
+
+
 def _optimize(
     matrix: torch.Tensor,
     targets: torch.Tensor,
@@ -782,6 +971,8 @@ def _optimize(
     l2_lambda: float,
     l2_anchor: str = "initial",
     l2_anchor_weights: np.ndarray | None = None,
+    l2_basis: str = L2_BASIS_RECORD,
+    mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
     target_records: int | None,
     init_mean: float,
     temperature: float,
@@ -822,6 +1013,15 @@ def _optimize(
     # exactly what the reported non-zero count means.
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
     log_w = torch.tensor(np.log(start), dtype=torch.float32, requires_grad=True)
+    softmax_mass = mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX
+    softmax_cap_exhausted_epochs = 0
+    if softmax_mass and (
+        not conserve_mass or l0_lambda > 0.0 or target_records is not None
+    ):
+        # calibrate() refuses these combinations first; this guards the seam.
+        raise ValueError(
+            "mass_parametrization='softmax' requires mass='conserve' without L0 gates."
+        )
 
     gates: HardConcrete | None = None
     params: list[torch.Tensor] = [log_w]
@@ -851,12 +1051,16 @@ def _optimize(
         # The L2 penalty's reference vector. "initial" divides by each record's
         # own starting weight; "uniform" divides by the shared mean weight; an
         # explicit vector (e.g. the pre-selection design weights during a
-        # refit) overrides both. Under mass conservation the penalty's
+        # refit) overrides both. Under mass conservation the record basis's
         # constrained optimum is w_i ∝ anchor_i², so anchoring on
         # heterogeneous starting weights (e.g. a refit whose start is a
         # concentrated selection vector) pulls toward MORE concentration; the
         # uniform anchor makes the penalty a direct 1/ESS control regardless
         # of the starting distribution.
+        #
+        # The chi-square basis instead weights each record's (r - 1)² by its
+        # anchor share; its constrained optimum is w_i ∝ anchor_i, so the
+        # "initial" anchor pulls toward the design weights themselves.
         if l2_anchor_weights is not None:
             anchor = np.asarray(l2_anchor_weights, dtype=np.float64)
         elif l2_anchor == "initial":
@@ -864,8 +1068,14 @@ def _optimize(
         else:
             anchor = np.full_like(w0, w0.mean())
         w0_t = torch.tensor(anchor, dtype=torch.float32)
+        anchor_share_t = (
+            torch.tensor(anchor / anchor.sum(), dtype=torch.float32)
+            if l2_basis == L2_BASIS_CHI_SQUARE
+            else None
+        )
     else:
         w0_t = None
+        anchor_share_t = None
 
     retain_best = gates is None and not conserve_mass and l2_lambda == 0.0
     best_loss = float("inf")
@@ -874,7 +1084,10 @@ def _optimize(
     trajectory = np.empty(epochs, dtype=np.float64)
     for epoch in range(epochs):
         optimizer.zero_grad()
-        weights = torch.exp(log_w)
+        if softmax_mass:
+            weights = total0 * torch.softmax(log_w, dim=0)
+        else:
+            weights = torch.exp(log_w)
         if gates is not None:
             weights = weights * gates()
         estimate = _apply_constraint(matrix, weights)
@@ -892,11 +1105,13 @@ def _optimize(
         )
         # Penalize latent pre-gate weights. Under L0, a nearly closed gate
         # should not be able to hide a very large exp(log_w).
-        l2_penalty = (
-            ((torch.exp(log_w) / w0_t) ** 2).mean()
-            if w0_t is not None
-            else torch.zeros((), dtype=torch.float32)
-        )
+        if w0_t is None:
+            l2_penalty = torch.zeros((), dtype=torch.float32)
+        elif softmax_mass:
+            # No gates under softmax: the realized weights are the pre-gate ones.
+            l2_penalty = _l2_penalty(weights, w0_t, anchor_share_t, l2_basis)
+        else:
+            l2_penalty = _l2_penalty(torch.exp(log_w), w0_t, anchor_share_t, l2_basis)
         total_loss = loss + penalty + l2_lambda * l2_penalty
         trajectory[epoch] = float(loss.item())
         if retain_best and trajectory[epoch] < best_loss:
@@ -915,6 +1130,16 @@ def _optimize(
             )
         total_loss.backward()
         optimizer.step()
+
+        if softmax_mass:
+            # The softmax weights sum to the input total whatever log_w is, so
+            # there is no mass shift for Adam's normalized step to fight; only
+            # the ratio cap needs a per-step clamp.
+            with torch.no_grad():
+                softmax_cap_exhausted_epochs += _renormalize_softmax_log_weights_(
+                    log_w, total0, None if upper is None else torch.log(upper)
+                )
+            continue
 
         # Hard projections, applied to the realized weights every step so the
         # guarantees hold on the returned vector, not just in expectation.
@@ -938,9 +1163,16 @@ def _optimize(
                         # hard so it can never be violated mid-run.
                         log_w.clamp_(max=torch.log(upper))
 
+    if softmax_mass and selection_receipt is not None:
+        selection_receipt["softmax_cap_rounds_exhausted_epochs"] = (
+            softmax_cap_exhausted_epochs
+        )
     gate_open_probabilities: np.ndarray | None = None
     with torch.no_grad():
-        weights = torch.exp(log_w)
+        if softmax_mass:
+            weights = total0 * torch.softmax(log_w, dim=0)
+        else:
+            weights = torch.exp(log_w)
         if best_log_w is not None:
             closing_loss = _relative_error_loss(
                 _apply_constraint(matrix, weights),
@@ -950,6 +1182,8 @@ def _optimize(
                 target_loss_cap,
             )
             if float(closing_loss.item()) > best_loss:
+                # retain_best requires free mass, so never under softmax.
+                assert not softmax_mass, "best-iterate retention under softmax"
                 weights = torch.exp(best_log_w)
                 selected_epoch = best_epoch
                 selected_loss = best_loss
@@ -1135,6 +1369,7 @@ def _search_l0_lambda_for_budget(
     l2_lambda: float,
     l2_anchor: str = "initial",
     l2_anchor_weights: np.ndarray | None = None,
+    l2_basis: str = L2_BASIS_RECORD,
     init_mean: float,
     temperature: float,
     seed: int,
@@ -1205,6 +1440,8 @@ def _search_l0_lambda_for_budget(
             temperature: Passed through to :func:`_optimize`.
         l2_lambda: Fixed soft concentration penalty passed through to
             :func:`_optimize`; the budget search varies only ``l0_lambda``.
+            ``l2_anchor``, ``l2_anchor_weights`` and ``l2_basis`` pass
+            through with it.
         seed: Reseeded before every evaluation for a deterministic response.
         prune_atol: Threshold counting a weight as non-zero (a survivor).
         initial_lambda: A user-supplied ``l0_lambda`` to evaluate first as a warm
@@ -1260,6 +1497,7 @@ def _search_l0_lambda_for_budget(
             "l2_lambda": l2_lambda,
             "l2_anchor": l2_anchor,
             "l2_anchor_weights": l2_anchor_weights,
+            "l2_basis": l2_basis,
             "target_records": target_records,
             "init_mean": init_mean,
             "temperature": temperature,
@@ -1585,6 +1823,17 @@ def _project_to_total(
     return weights
 
 
+def _l2_penalty_label(basis: str, anchor: str) -> str:
+    """The ``options["l2_penalty"]`` provenance label for a basis and anchor.
+
+    ``anchor`` is ``"initial"``, ``"uniform"`` or ``"explicit_anchor"``. The
+    record labels are the historical strings, unchanged.
+    """
+    if basis == L2_BASIS_CHI_SQUARE:
+        return f"chi_square_{anchor}_pre_gate_weight_distance"
+    return f"mean_{anchor}_pre_gate_weight_ratio_squared"
+
+
 def calibrate(
     frame: Frame,
     targets: TargetSet,
@@ -1596,6 +1845,7 @@ def calibrate(
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
     mass_reason: str | None = None,
+    mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
     max_weight_ratio: float | None = None,
     target_records: int | None = None,
     l0_lambda: float = 0.0,
@@ -1603,6 +1853,7 @@ def calibrate(
     l2_lambda: float = 0.0,
     l2_anchor: str = "initial",
     l2_anchor_weights: np.ndarray | None = None,
+    l2_basis: str = L2_BASIS_RECORD,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -1650,6 +1901,26 @@ def calibrate(
             (which target families moved the mass) instead of the generic
             default. Must be ``None`` under :data:`CONSERVE_MASS`, which
             appends no record.
+        mass_parametrization: How ``method="adam"`` holds the total under
+            :data:`CONSERVE_MASS`. :data:`MASS_PARAMETRIZATION_PROJECTION`
+            (``"projection"``, default) is the historical scheme, unchanged
+            bit for bit: step the log-weights, then shift them uniformly back
+            to the input total. Adam normalizes each coordinate's gradient
+            before that shift, so when every record's gradient shares a sign
+            and sits well above Adam's ``eps`` (every target missing on the
+            same side does that) the shift cancels the step and the solve can
+            stall away from the constrained optimum.
+            :data:`MASS_PARAMETRIZATION_SOFTMAX` (``"softmax"``) optimizes
+            ``w = total * softmax(log_w)`` instead: the total holds by
+            construction and Adam sees the gradient with its mass-constraint
+            component removed. It requires ``mass="conserve"`` and no L0
+            gates. Recorded in ``options["mass_parametrization"]`` whatever
+            the mass mode, like ``l2_basis`` whatever ``l2_lambda``; a softmax
+            solve also counts, in ``options["iterate_selection_receipt"]``,
+            the epochs whose cap rounds ran out. On the ACS local release
+            (1.6M records, a 5x cap) that is most epochs, which then optimize
+            past the cap until the closing projection; prefer
+            ``"projection"`` at that scale (docs/calibration-l2-basis.md).
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
         target_records: If given, enable L0 pruning with **budget control**: the
@@ -1675,7 +1946,8 @@ def calibrate(
             zero. ``l1_lambda`` must be zero unless ``method="prox"``.
         l2_lambda: Experimental soft concentration penalty strength. ``0.0``
             (default) preserves the unpenalized path. Positive values add
-            ``l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)`` to the
+            ``l2_lambda`` times the ``l2_basis`` penalty, by default
+            ``mean((pre_gate_weight / initial_weight) ** 2)``, to the
             optimization loss while leaving ``max_weight_ratio`` as the hard
             per-record cap. When L0 gates are active, this is a latent pre-gate
             penalty on ``exp(log_w)``, not the realized gated returned weight;
@@ -1698,6 +1970,18 @@ def calibrate(
             cannot express, e.g. the pre-selection *design* weights during a
             post-L0 refit. When supplied, ``l2_anchor`` becomes a free-form
             provenance label recorded in options (e.g. ``"design"``).
+        l2_basis: The L2 penalty's functional form, with ``r = w / anchor``.
+            :data:`L2_BASIS_RECORD` (``"record"``, default) is the historical
+            record-weighted ``mean(r ** 2)`` above, unchanged bit for bit.
+            :data:`L2_BASIS_CHI_SQUARE` (``"chi_square"``) is GREG's
+            anchor-weighted chi-square distance
+            ``sum(anchor * (r - 1) ** 2) / sum(anchor)``: zero exactly at
+            ``w = anchor``, it pulls toward the anchor itself (target-free
+            optimum ``w ∝ anchor`` under ``mass="conserve"``, ``w = anchor``
+            under ``mass="free"``) and makes a record's collapse toward zero
+            cost its anchor share, where the record basis pulls toward
+            ``w ∝ anchor ** 2`` and makes ``r = 0`` free of penalty. Recorded
+            in ``options["l2_basis"]``; only consulted when ``l2_lambda > 0``.
         gate_initialization: Optional informed L0 prior and protected-record
             mask, aligned to the weight entity. Requires an Adam L0 solve;
             protected gates remain open throughout training and selection.
@@ -1743,7 +2027,10 @@ def calibrate(
             a positive integer, if ``l1_lambda`` or ``l2_lambda`` is negative or
             non-finite, if ``l1_lambda`` is used outside ``method="prox"``, if
             ``method="prox"`` is combined with L0/budget pruning or
-            ``l2_lambda``, or if no targets compile (from the matrix build).
+            ``l2_lambda``, if ``l2_basis`` is unknown, if
+            ``mass_parametrization`` is unknown or is ``"softmax"`` outside
+            an Adam ``mass="conserve"`` solve without L0 gates, or if no
+            targets compile (from the matrix build).
     """
     if method == "apg":
         warnings.warn(
@@ -1800,6 +2087,26 @@ def calibrate(
     if not math.isfinite(l2_lambda) or l2_lambda < 0.0:
         raise ValueError(
             f"l2_lambda must be finite and non-negative, got {l2_lambda!r}."
+        )
+    if l2_basis not in L2_BASES:
+        raise ValueError(
+            f"l2_basis must be one of {sorted(L2_BASES)}, got {l2_basis!r}."
+        )
+    if mass_parametrization not in MASS_PARAMETRIZATIONS:
+        raise ValueError(
+            f"mass_parametrization must be one of {sorted(MASS_PARAMETRIZATIONS)}, "
+            f"got {mass_parametrization!r}."
+        )
+    if mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX and (
+        method != "adam"
+        or mass != CONSERVE_MASS
+        or l0_lambda > 0.0
+        or target_records is not None
+    ):
+        raise ValueError(
+            "mass_parametrization='softmax' reparametrizes the Adam solve's "
+            "conserved total: it requires method='adam', mass='conserve', and "
+            "no L0 gates (l0_lambda=0, target_records=None)."
         )
     if l2_anchor_weights is None:
         if l2_anchor not in ("initial", "uniform"):
@@ -1998,6 +2305,7 @@ def calibrate(
             l2_lambda=l2_lambda,
             l2_anchor=l2_anchor,
             l2_anchor_weights=l2_anchor_weights,
+            l2_basis=l2_basis,
             init_mean=init_mean,
             temperature=temperature,
             seed=seed,
@@ -2033,6 +2341,8 @@ def calibrate(
             l2_lambda=l2_lambda,
             l2_anchor=l2_anchor,
             l2_anchor_weights=l2_anchor_weights,
+            l2_basis=l2_basis,
+            mass_parametrization=mass_parametrization,
             target_records=target_records,
             init_mean=init_mean,
             temperature=temperature,
@@ -2123,6 +2433,7 @@ def calibrate(
             "iterate_selection_receipt": iterate_selection_receipt,
             "mass": mass,
             "mass_reason": mass_reason,
+            "mass_parametrization": mass_parametrization,
             "max_weight_ratio": max_weight_ratio,
             "target_records": target_records,
             "l1_lambda": l1_lambda,
@@ -2130,12 +2441,10 @@ def calibrate(
             "l2_lambda": l2_lambda,
             "l2_anchor": l2_anchor,
             "l2_anchor_weights_supplied": l2_anchor_weights is not None,
-            "l2_penalty": (
-                "mean_explicit_anchor_pre_gate_weight_ratio_squared"
-                if l2_anchor_weights is not None
-                else "mean_initial_pre_gate_weight_ratio_squared"
-                if l2_anchor == "initial"
-                else "mean_uniform_pre_gate_weight_ratio_squared"
+            "l2_basis": l2_basis,
+            "l2_penalty": _l2_penalty_label(
+                l2_basis,
+                "explicit_anchor" if l2_anchor_weights is not None else l2_anchor,
             ),
             "seed": seed,
             "target_loss_weights": _target_loss_weight_options(target_loss_weights_np),
@@ -2392,9 +2701,11 @@ def refit_l0_selection(
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
     mass_reason: str | None = None,
+    mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
     max_weight_ratio: float | None = None,
     l2_lambda: float = 0.0,
     l2_anchor: str = "initial",
+    l2_basis: str = L2_BASIS_RECORD,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -2441,6 +2752,11 @@ def refit_l0_selection(
     real design weights rather than a uniform reset. On the explicit exact-k
     path, the starting weights and design anchor instead use the original-frame
     design weights after the same normalized Horvitz--Thompson projection.
+    ``l2_basis`` selects the refit penalty's form (see :func:`calibrate`);
+    ``"chi_square"`` with the ``"design"`` anchor pulls the shipped weights
+    toward the survivors' design weights themselves rather than their square.
+    ``mass_parametrization`` applies to the refit, which has no gates (see
+    :func:`calibrate`).
     """
     if l2_anchor not in ("initial", "uniform", "design"):
         raise ValueError(
@@ -2567,12 +2883,14 @@ def refit_l0_selection(
         learning_rate=learning_rate,
         mass=mass,
         mass_reason=mass_reason,
+        mass_parametrization=mass_parametrization,
         max_weight_ratio=max_weight_ratio,
         target_records=None,
         l0_lambda=0.0,
         l2_lambda=l2_lambda,
         l2_anchor=l2_anchor,
         l2_anchor_weights=refit_l2_anchor_weights,
+        l2_basis=l2_basis,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,
@@ -2607,6 +2925,9 @@ def calibrate_l0_refit(
     refit_l2_lambda: float | None = None,
     l2_anchor: str = "initial",
     refit_l2_anchor: str | None = None,
+    l2_basis: str = L2_BASIS_RECORD,
+    refit_l2_basis: str | None = None,
+    refit_mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
     init_mean: float = 0.999,
     temperature: float = 0.25,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
@@ -2634,7 +2955,11 @@ def calibrate_l0_refit(
     ``refit_l2_anchor`` follow the same inherit-or-override pattern; note the
     refit starts from the selection stage's concentrated weights, so a
     penalized refit whose goal is spreading the shipped weights should anchor
-    ``"uniform"`` (see :func:`refit_l0_selection`).
+    ``"uniform"`` (see :func:`refit_l0_selection`). ``l2_basis`` /
+    ``refit_l2_basis`` follow the same pattern for the penalty's form.
+    ``refit_mass_parametrization`` applies to the refit stage only: the
+    selection stage has L0 gates, which the softmax parametrization does not
+    support.
     """
     if target_records is None and not (math.isfinite(l0_lambda) and l0_lambda > 0.0):
         raise ValueError(
@@ -2666,6 +2991,26 @@ def calibrate_l0_refit(
             "refit_l2_anchor must be 'initial', 'uniform', 'design', or None, "
             f"got {refit_l2_anchor!r}."
         )
+    if l2_basis not in L2_BASES:
+        raise ValueError(
+            f"l2_basis must be one of {sorted(L2_BASES)}, got {l2_basis!r}."
+        )
+    if refit_l2_basis is not None and refit_l2_basis not in L2_BASES:
+        # Same early check: an invalid refit basis must not cost a selection run.
+        raise ValueError(
+            f"refit_l2_basis must be one of {sorted(L2_BASES)} or None, got "
+            f"{refit_l2_basis!r}."
+        )
+    if refit_mass_parametrization not in MASS_PARAMETRIZATIONS or (
+        refit_mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX
+        and mass != CONSERVE_MASS
+    ):
+        raise ValueError(
+            "refit_mass_parametrization must be one of "
+            f"{sorted(MASS_PARAMETRIZATIONS)}, and 'softmax' requires "
+            f"mass='conserve'; got {refit_mass_parametrization!r} with "
+            f"mass={mass!r}."
+        )
     selection = calibrate(
         frame,
         targets,
@@ -2681,6 +3026,7 @@ def calibrate_l0_refit(
         # At a fresh selection the frame's initial weights ARE the design
         # prior, so the "design" anchor is exactly the "initial" anchor.
         l2_anchor="initial" if l2_anchor == "design" else l2_anchor,
+        l2_basis=l2_basis,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,
@@ -2701,9 +3047,11 @@ def calibrate_l0_refit(
             learning_rate if refit_learning_rate is None else refit_learning_rate
         ),
         mass=mass,
+        mass_parametrization=refit_mass_parametrization,
         max_weight_ratio=max_weight_ratio,
         l2_lambda=l2_lambda if refit_l2_lambda is None else refit_l2_lambda,
         l2_anchor=l2_anchor if refit_l2_anchor is None else refit_l2_anchor,
+        l2_basis=l2_basis if refit_l2_basis is None else refit_l2_basis,
         init_mean=init_mean,
         temperature=temperature,
         budget_iters=budget_iters,

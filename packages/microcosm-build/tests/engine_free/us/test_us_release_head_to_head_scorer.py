@@ -19,6 +19,7 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "candidate_worker_identity_attestation",
     }
 
+
 def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -88,6 +89,7 @@ def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
         (candidate, pin, attestation),
     ]
 
+
 def test_pool_scorecard_preserves_worker_authentication_receipts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -150,6 +152,7 @@ def test_pool_scorecard_preserves_worker_authentication_receipts(
     assert loaded.identity["worker_execution_authentication"] == authentication
     assert loaded.loader["worker_execution_authentication"] == authentication
 
+
 def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> None:
     module = _load_head_to_head_module()
     dense_25pct_households = 918_350
@@ -168,6 +171,7 @@ def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> N
     assert planned < 1024**3
     assert planned < module.MAX_RSS_BYTES
     assert one_dense_copy > module.MAX_RSS_BYTES
+
 
 def test_canonical_battery_contract_matches_production_registries() -> None:
     module = _load_head_to_head_module()
@@ -192,6 +196,7 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
     )
     for row in contract.values():
         assert row["metric_legs"] == list(module._metric_legs(row["metric"]))
+
 
 def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     module = _load_head_to_head_module()
@@ -240,6 +245,7 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
             row["status"] == "inapplicable" for row in payload["comparisons"].values()
         )
 
+
 def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
     module = _load_head_to_head_module()
     comparisons = _complete_battery_comparisons(module)
@@ -261,6 +267,7 @@ def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
 
     with pytest.raises(ValueError, match="omits computed leg"):
         module._battery_payload_from_pool_receipt(terminal_gates)
+
 
 def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
     module = _load_head_to_head_module()
@@ -295,6 +302,7 @@ def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
             assert receipt["raw_origin_row_counts"] == {"acs": 1, "asec": 1}
             assert receipt["origin_row_counts"] == {"asec": 1}
 
+
 def test_scored_column_contract_refuses_silently_missing_columns() -> None:
     module = _load_head_to_head_module()
     registry = _tiny_registry()
@@ -321,6 +329,7 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
         module._assert_identical_scored_contracts(
             {"incumbent": contract, "candidate": contract[:-1]}
         )
+
 
 def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     monkeypatch, tmp_path
@@ -393,6 +402,7 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     markdown = first[1].read_text()
     assert "US release replacement scorecard" in markdown
     assert "empty ACS side" in markdown
+
 
 def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
     """Chunked materialize-and-score must reproduce a one-shot score_targets
@@ -499,6 +509,7 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
             == attribution_row["final_loss_contribution"]
         )
 
+
 def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> None:
     """A shorter tail changes counts without changing the compiled contract."""
 
@@ -593,6 +604,7 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
             digested_compilation
         )
 
+
 def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
     module = _load_head_to_head_module()
     fixture_spec = importlib.util.spec_from_file_location(
@@ -626,6 +638,7 @@ def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
     assert len(ledger.simulations) == 1
     assert ledger.simulations[0].dataset is None
 
+
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
     module = _load_head_to_head_module()
     _patch_release_seams(module, monkeypatch)
@@ -656,6 +669,7 @@ def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
             maximum_microsim_batch_size=None,
         )
 
+
 def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
     """A Hugging Face cache snapshot is an .h5-named symlink to an
     extensionless blob; the scorer must keep the snapshot name so the
@@ -676,6 +690,7 @@ def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
     assert kept.suffix == ".h5"
     with pytest.raises(FileNotFoundError):
         module._resolved_artifact_path(tmp_path / "missing.h5")
+
 
 def test_live_incumbent_identity_annotation() -> None:
     module = _load_head_to_head_module()

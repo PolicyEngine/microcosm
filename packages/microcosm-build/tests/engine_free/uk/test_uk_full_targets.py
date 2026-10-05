@@ -187,26 +187,26 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 505e0e7 feed re-pinned by microcosm#1045 (Chronicle
-    # #287/#288, the HMRC CGT Table 4 facts).
+    # The identity is the 825406f feed re-pinned by microcosm#1069
+    # (PolicyEngine/chronicle#302 via #305, the UK pension facts).
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("4a45c543553617d606ebf8ea11254b48c1e6e115c97840dd8757beafbac035d9")
+        == ("28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("3dc9ed05ba00d30609c295cb7d34ebcd98476778bebf1da9a1e7f2e64b97caf7")
+        == ("6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "505e0e72aa7c82b96dc06941d84fa797a629161c"
+        == "825406f98913ab7324c834c3642804e9317a2256"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 287150
+    assert national.fact_row_count == local["fact_row_count"] == 344402
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):

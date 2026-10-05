@@ -120,7 +120,7 @@ from .national_calibration import (
     national_calibration_mass_reason,
 )
 from .national_doctrine import UKNationalSolveDoctrine, uk_national_target_loss_weights
-from .national_frame import load_uk_national_frame
+from .national_frame import load_uk_national_frame, uk_release_export_frame
 from .rowwise_posture import UK_ROWWISE_NATIONAL_POSTURE, UKRowwisePosture
 
 NATIONAL_TARGET_TYPE = ArtifactType("microcosm.uk.national-target-registry", 1)
@@ -992,7 +992,9 @@ class UKNationalReadbackKernel(KernelBase):
         dataset = file_artifact(path)
         written, _provenance = load_uk_national_frame(path)
         failures = []
-        expected = uk_frame_content_identity(frame)
+        # The writer drops the reviewed export exclusions (microcosm#1063 c9),
+        # so the expectation is the export frame, not the raw population.
+        expected = uk_frame_content_identity(uk_release_export_frame(frame))
         actual = uk_frame_content_identity(written)
         if actual != expected:
             failures.append(

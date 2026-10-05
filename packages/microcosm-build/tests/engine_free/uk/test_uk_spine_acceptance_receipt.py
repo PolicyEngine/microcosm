@@ -107,6 +107,27 @@ def _apply_pending_roster_transformations(
     # household draws, so they run right after was_wealth.
     assert "was_lisa" not in roster
     roster.insert(roster.index("was_wealth") + 1, "was_lisa")
+    # microcosm#1069 re-mint pending: the Pension Credit take-up redraw reads
+    # the post-SPI incomes, so it runs right after UC capital coherence.
+    assert "pension_credit_take_up" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "pension_credit_take_up")
+    # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
+    # post-SPI incomes, right after the Pension Credit redraw.
+    assert "child_benefit_take_up" not in roster
+    roster.insert(roster.index("pension_credit_take_up") + 1, "child_benefit_take_up")
+    # microcosm#1095 re-mint pending: the SPI benefit pass runs after the last
+    # UC report writer and before every UC, PC and CB consumer.
+    assert "spi_benefit_coherence" not in roster
+    roster.insert(roster.index("uc_reporter_redraw") + 1, "spi_benefit_coherence")
+    # microcosm#1063 re-mint pending: the residential split carries the flag
+    # as weight after the anchor, and the asset-type stage types its arms.
+    assert "cgt_residential_split" not in roster
+    roster.remove("hmrc_cgt_asset_type_spine")
+    anchor = roster.index("cgt_incidence_anchor")
+    roster[anchor + 1 : anchor + 1] = [
+        "cgt_residential_split",
+        "hmrc_cgt_asset_type_spine",
+    ]
     return tuple(roster)
 
 

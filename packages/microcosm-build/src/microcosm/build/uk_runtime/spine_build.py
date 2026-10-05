@@ -67,11 +67,17 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
     uk_cgt_asset_type_stage_transform,
 )
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
+from microcosm.build.uk_runtime.cgt_residential_split import (
+    UKCGTResidentialSplitStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
+from microcosm.build.uk_runtime.child_benefit_take_up import (
+    UKChildBenefitTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -125,12 +131,18 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.pension_credit_take_up import (
+    UKPensionCreditTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
+)
+from microcosm.build.uk_runtime.spi_benefit_coherence import (
+    UKSPIBenefitCoherenceStageTransform,
 )
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
@@ -698,21 +710,20 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "draw_capital_gains_prior_from_banded_quantiles":
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "stack_income_band_donor_households":
-                    stage_seeds["stack_income_band_donor_households"] = seed
-                elif operation.kind == "resample_band_donor_leaves":
-                    stage_seeds["band_donor_resample"] = seed
+                elif operation.kind in (
+                    "stack_income_band_donor_households",
+                    "resample_band_donor_leaves",
+                ):
+                    # Identity-keyed draws: the seed is declared under the
+                    # salt it is hashed with (microcosm#1063).
+                    stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "impute_spi_housing_shell":
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "price_domestic_energy":
                     stage_seeds["gas_disconnection"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
-                elif operation.kind in (
-                    "assign_residential_property_flag",
-                    "assign_badr_qualifying_gains",
-                    "assign_main_asset_type",
-                ):
+                elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
                 elif operation.kind == "convert_donors_to_target_stock":
                     stage_seeds[str(operation.parameters["salt"])] = seed
@@ -1516,9 +1527,23 @@ def prepare_uk_spine_execution(
             stage=stages_by_name["uc_reporter_redraw"],
             engine=engine,
         )
+    if "spi_benefit_coherence" in stage_names:
+        implementations["spi_benefit_coherence"] = UKSPIBenefitCoherenceStageTransform(
+            stage=stages_by_name["spi_benefit_coherence"]
+        )
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "pension_credit_take_up" in stage_names:
+        implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
+            stage=stages_by_name["pension_credit_take_up"],
+            engine=engine,
+        )
+    if "child_benefit_take_up" in stage_names:
+        implementations["child_benefit_take_up"] = UKChildBenefitTakeUpStageTransform(
+            stage=stages_by_name["child_benefit_take_up"],
+            engine=engine,
         )
     if "uc_deduction_attributes" in stage_names:
         implementations["uc_deduction_attributes"] = (
@@ -1543,6 +1568,10 @@ def prepare_uk_spine_execution(
             uk_cgt_asset_type_stage_transform(
                 stages_by_name["hmrc_cgt_asset_type_spine"]
             )
+        )
+    if "cgt_residential_split" in stage_names:
+        implementations["cgt_residential_split"] = UKCGTResidentialSplitStageTransform(
+            stage=stages_by_name["cgt_residential_split"]
         )
     if "cgt_incidence_anchor" in stage_names:
         implementations["cgt_incidence_anchor"] = UKCGTIncidenceAnchorStageTransform(

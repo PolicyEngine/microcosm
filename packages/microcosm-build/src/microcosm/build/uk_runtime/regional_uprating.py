@@ -25,7 +25,19 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.frame import Frame
 
-UK_REGIONAL_PROPERTY_REWRITES = ("main_residence_value", "property_wealth")
+#: The property total and the components of it the frame carries. The factor
+#: is read off the main residence and applied to the total, so it is applied to
+#: every component too: the total stays the sum of its parts (microcosm#1063).
+UK_REGIONAL_PROPERTY_COMPONENT_REWRITES = (
+    "owned_land",
+    "other_residential_property_value",
+    "non_residential_property_value",
+)
+UK_REGIONAL_PROPERTY_REWRITES = (
+    "main_residence_value",
+    "property_wealth",
+    *UK_REGIONAL_PROPERTY_COMPONENT_REWRITES,
+)
 
 
 #: The household-mass receipt this stage records (the manifest's
@@ -88,7 +100,9 @@ def uprate_household_property_by_region(
     The factor for a region is its public mean house price over the unweighted
     mean ``main_residence_value`` of FRS-base owners. When the frame carries
     SPI support rows, which are imputed from higher incomes, they are uprated
-    by the same factor but do not enter the mean.
+    by the same factor but do not enter the mean. The factor scales the
+    property total and every component of it the table carries, so an owner's
+    ``property_wealth`` stays the sum of its components after the uprating.
     """
 
     required = {"region", "main_residence_value", "property_wealth"}
@@ -130,6 +144,7 @@ def uprate_household_property_by_region(
         if imputed_mean <= 0:
             continue
         factor = hpi_price / imputed_mean
-        result.loc[owners_mask, "main_residence_value"] *= factor
-        result.loc[owners_mask, "property_wealth"] *= factor
+        for column in UK_REGIONAL_PROPERTY_REWRITES:
+            if column in result.columns:
+                result.loc[owners_mask, column] *= factor
     return result

@@ -344,7 +344,8 @@ def test_malformed_cash_declaration_remains_a_compile_error(
     compilation = compile_cgt(_facts(), target_period=2025)
     assert "hmrc.cgt.liability_total" not in {r.name for r in compilation.registry}
     assert any(
-        "cash diagnostic declaration" in r["reason"] for r in compilation.unsupported
+        "diagnostic declaration 'obr.capital_gains_tax'" in r["reason"]
+        for r in compilation.unsupported
     )
 
 

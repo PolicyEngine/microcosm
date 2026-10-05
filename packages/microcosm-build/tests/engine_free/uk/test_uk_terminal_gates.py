@@ -282,6 +282,75 @@ def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> No
     assert any("unreviewed_extra" in failure for failure in unrelated.failures)
 
 
+def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
+    """microcosm#1063 c9: the certifier rehearsal listed every id column as an
+    unreviewed extra and the frame's weights as a missing reference column."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_REVIEWED_EXPORT_EXCLUSIONS,
+        uk_export_candidate_columns,
+    )
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+                "incapacity_benefit_reported": [0.0, 0.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame({"household_id": [1, 2], "region": ["LONDON"] * 2}),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    assert uk_export_candidate_columns(frame) == {
+        "person.age",
+        "person.incapacity_benefit_reported",
+        "household.region",
+        "household.household_weight",
+    }
+    exported = uk_release_export_frame(frame)
+    assert uk_export_candidate_columns(exported) == {
+        "person.age",
+        "household.region",
+        "household.household_weight",
+    }
+    assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
+    assert exported.mass_log == frame.mass_log
+    # The boundary drops the reviewed export exclusions, the internal
+    # disability carriers and the salary-sacrifice pre-conversion pay
+    # carrier, and nothing else.
+    from microcosm.build.uk_runtime.frs_disability import (
+        UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.salary_sacrifice import (
+        SALSAC_PRE_CONVERSION_PAY_COLUMN,
+    )
+
+    dropped = {
+        f"{entity}.{column}"
+        for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
+        for column in columns
+    }
+    assert dropped == (
+        set(UK_REVIEWED_EXPORT_EXCLUSIONS)
+        | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
+        | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
+    )
+    # A frame without the column passes through untouched.
+    assert uk_release_export_frame(exported) is exported
+
+
 def _target_fit_exclusion(
     *,
     approved_on: str = "2026-08-30",
@@ -394,18 +463,18 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # calibration-competition residuals are deferred for four weeks. The SE
     # 12,570-15,000 income-tax deferral is retired in turn (microcosm#1012):
     # with the SPI households' housing imputed from their own incomes the row
-    # fits at +24.5 %, back inside the bound.
-    assert set(register) == {
-        "hmrc/state_pension_income_band_50_000_to_70_000@2025",
-    }
-    for name in sorted(register):
-        record = register[name]
-        assert record.approved_by == "juaristi22"
-        assert record.adjudication.startswith(
-            "PolicyEngine/microcosm#1006 (issue comment 5812206367"
-        )
-        assert record.approved_on == "2026-09-23"
-        assert record.expires_on == "2026-10-21"
+    # fits at +24.5 %, back inside the bound. The state-pension 50-70k
+    # deferral (ruling D6) is retired in turn (microcosm#1069): with the SPI
+    # channel's State Pension at 66 repaired the row fits at +23.0 % to +24.0 %
+    # across the c5-fix and c6 arms, back inside the bound. The SE
+    # 12,570-15,000 cell was deferred again on the microcosm#1063 stack
+    # (2026-10-02, four weeks): its design-weight value sat on the target and
+    # the solver's pull, the same as main's, crossed the bound at +32.0 %. It
+    # is retired with the microcosm#1095 ports: with FRS respondents keeping
+    # their reported dividends and SPI draws going to claimants and partners
+    # only, the cell fits at +11.7 % on the rebased head, and the gate fails
+    # the deferral as stale.
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -430,7 +499,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **empty_tail,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 23),
+        now=date(2026, 10, 2),
     )
 
     assert not fit.passed
@@ -452,7 +521,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     fit = uk_target_fit_gate(
         {name: relative_error},
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 23),
+        now=date(2026, 10, 2),
     )
 
     assert fit.passed is passes
@@ -467,7 +536,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
         reviewed_exclusions=register,
-        now=date(2026, 9, 23),
+        now=date(2026, 10, 2),
     )
     assert not fit.passed
     assert fit.details["failing_targets"] == {"hmrc.cgt.liability_total@2025": 0.30}

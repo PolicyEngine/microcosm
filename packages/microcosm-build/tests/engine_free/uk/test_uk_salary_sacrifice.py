@@ -15,8 +15,10 @@ from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
     SALSAC_OUTPUT,
+    SALSAC_PRE_CONVERSION_PAY_COLUMN,
     SALSAC_RATE_CAP,
     SALSAC_STAGE_TARGET,
+    UKSalarySacrificeStageTransform,
     _assert_salary_sacrifice_stage_parameters,
     impute_salary_sacrifice,
     load_salary_sacrifice_anchor,
@@ -54,6 +56,7 @@ def _frame(
     clones=None,
     donors=None,
     weights=None,
+    employment_income=None,
 ):
     n = len(asked)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -66,7 +69,11 @@ def _frame(
             "person_benunit_id": ids,
             "person_household_id": ids,
             "age": np.linspace(25, 55, n),
-            "employment_income": np.full(n, 30_000.0),
+            "employment_income": (
+                np.full(n, 30_000.0)
+                if employment_income is None
+                else np.asarray(employment_income, dtype=float)
+            ),
             "salary_sacrifice_asked": asked,
             SALSAC_OUTPUT: salary_sacrifice_values,
             "employee_pension_contributions": employee_pension,
@@ -135,6 +142,44 @@ def test_qrf_preserves_asked_rows_and_excludes_nonbase_training_rows(
     assert result.prediction_rows == 1
 
 
+def test_qrf_predicts_only_for_people_not_asked_who_are_paid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given people not asked the question, with and without employment
+    # income, one of them carrying a stale amount.
+    _FakeQRF.training_frames = []
+    _Fitted.value = 900.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 1, 0, 0, 0],
+        salary_sacrifice_values=[10.0, 20.0, 0.0, 0.0, 55.0],
+        employee_pension=[0.0] * 5,
+        employment_income=[30_000.0, 0.0, 25_000.0, 0.0, 0.0],
+        weights=np.asarray([1.0, 1.0, 1.0, 2.0, 3.0]),
+    )
+
+    result = impute_salary_sacrifice(frame)
+
+    # Then the paid person not asked is predicted for, the unpaid ones are
+    # zero, and an asked person keeps what they reported whatever their pay.
+    assert result.frame.table("person")[SALSAC_OUTPUT].tolist() == [
+        10.0,
+        20.0,
+        900.0,
+        0.0,
+        0.0,
+    ]
+    assert result.prediction_rows == 1
+    assert result.not_asked_without_pay_rows == 2
+    assert result.not_asked_without_pay_mass == 5.0
+    qrf = result.evidence()["qrf"]
+    assert qrf["not_asked_without_pay_rows"] == 2
+    assert qrf["not_asked_without_pay_mass"] == 5.0
+    assert "employment_income > 0" in qrf["target_population"]
+    # The headcount the conversion tops up starts from true users only.
+    assert result.pre_headcount == 3.0
+
+
 def test_conversion_moves_full_pension_zeros_source_and_records_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -159,9 +204,24 @@ def test_conversion_moves_full_pension_zeros_source_and_records_cap(
     assert result.moved_amount == pytest.approx(
         person.loc[converted, SALSAC_OUTPUT].sum()
     )
+    # Sacrificed pay leaves employment_income (microcosm#1069 c9); records the
+    # stage does not convert keep their reported pay.
+    np.testing.assert_allclose(
+        person.loc[converted, "employment_income"],
+        30_000.0 - person.loc[converted, SALSAC_OUTPUT],
+    )
+    assert (person.loc[~converted, "employment_income"] == 30_000.0).all()
+    # The converted record's pay before the conversion stays on the carrier,
+    # zero for everyone else, so the rewrite reverses exactly (microcosm#1063).
+    assert (person.loc[converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 30_000.0).all()
+    assert (person.loc[~converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] == 0.0).all()
+    assert SALSAC_PRE_CONVERSION_PAY_COLUMN in (
+        UKSalarySacrificeStageTransform.output_columns()
+    )
     evidence = result.evidence()["headcount_receipt"]
     assert evidence["target"] == SALSAC_STAGE_TARGET
     assert evidence["converted_rows"] == result.converted_rows
+    assert evidence["pre_conversion_pay_column"] == SALSAC_PRE_CONVERSION_PAY_COLUMN
 
 
 def test_anchor_is_self_consistent() -> None:

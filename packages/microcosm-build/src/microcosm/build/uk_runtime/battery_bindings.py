@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from importlib.resources import files
@@ -332,10 +332,55 @@ def _evaluate_nonnegative_columns(
         table = context.frame.table(entity)
         for column in table.columns:
             column_values.setdefault(str(column), table[column])
+    # A declared column the release boundary drops is checked where it
+    # lives: on the spine frame the certifier supplies. Without that frame
+    # the column stays required and its absence fails, as before.
+    for column, values in _export_dropped_columns_from_spine(
+        context, [column for column in required if column not in column_values]
+    ).items():
+        column_values[column] = values
     return nonnegative_columns_gate(
         column_values,
         required,
     )
+
+
+def _export_dropped_columns_from_spine(
+    context: EvidenceContext, columns: Iterable[str]
+) -> dict[str, Any]:
+    """Columns the release export drops, read from the certifier's spine frame.
+
+    ``UK_RELEASE_EXPORT_DROPPED_COLUMNS`` leave at the release boundary
+    (microcosm#1063 c9 and the salary-sacrifice pre-conversion pay carrier),
+    so a gate that checks every declared stage output cannot find them on
+    the release candidate. The certifier passes the spine frame as the
+    ``spine_frame`` artifact; this returns each requested column that is an
+    export-dropped column present on that frame, keyed by column name. Any
+    other requested column, or any column when no spine frame is supplied,
+    is left to the caller's missing-column path.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    )
+
+    spine_frame = context.artifacts.get("spine_frame")
+    if spine_frame is None:
+        return {}
+    dropped = {
+        column: entity
+        for entity, names in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
+        for column in names
+    }
+    found: dict[str, Any] = {}
+    for column in columns:
+        entity = dropped.get(str(column))
+        if entity is None:
+            continue
+        table = spine_frame.table(entity)
+        if column in table.columns:
+            found[str(column)] = table[column]
+    return found
 
 
 def _evaluate_column_implication(
@@ -1439,6 +1484,26 @@ def _evaluate_tail_concentration(
         reviewed_exclusions=exclusions,
     )
     values, weights, surface = uk_qrf_tail_concentration_columns(context.frame)
+    # Declared QRF outputs the release export drops are checked on the spine
+    # frame the certifier supplies, at the spine's person weights.
+    absent = [str(column) for column in surface.get("absent_columns", ())]
+    on_spine = _export_dropped_columns_from_spine(context, absent)
+    if on_spine:
+        spine_values, spine_weights, spine_surface = uk_qrf_tail_concentration_columns(
+            context.artifacts["spine_frame"], output_columns=tuple(on_spine)
+        )
+        checked_on_spine = list(spine_surface["checked_columns"])
+        for column in checked_on_spine:
+            values[column] = spine_values[column]
+            weights[column] = spine_weights[column]
+        surface = {
+            **surface,
+            "checked_columns": sorted([*surface["checked_columns"], *checked_on_spine]),
+            "absent_columns": [
+                column for column in absent if column not in checked_on_spine
+            ],
+            "export_dropped_checked_on_spine": sorted(checked_on_spine),
+        }
     return uk_qrf_tail_concentration_gate(
         values,
         weights,
@@ -1617,6 +1682,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_stock_relative_deviation",
                 "maximum_relative_mass_imbalance",
                 "spi_prior_mass_share",
+                # microcosm#1069 c6 spi_support_channel stage-health check.
+                "pension_age_spi_prior_mass_share",
+                # microcosm#1069 c7 pension_credit_take_up stage-health check.
+                "maximum_take_up_deviation",
+                "minimum_entitled_units",
+                # microcosm#1095 spi_benefit_coherence stage-health check.
+                "zeroed_columns",
+                "restored_columns",
+                # microcosm#1063 child_benefit_take_up stage-health check.
+                "maximum_claim_rate_deviation",
+                "maximum_age_claim_rate_deviation",
+                "minimum_age_child_rows",
+                "maximum_opt_out_share_deviation",
+                "minimum_eligible_family_units",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -1629,7 +1708,6 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "max_grid_reciprocity_mismatches",
                 "require_partition_closure",
                 # #725 cgt_asset_type_summary stage-health check.
-                "maximum_gains_sigma",
                 "maximum_solve_relative_error",
                 "support_bounds_resource",
                 "minimum_band_rows",
@@ -1643,10 +1721,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "headroom",
                 "maximum_copy_weight",
                 "maximum_relative_mass_deviation",
-                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
-                # reserved bands and the donors each must carry.
+                # #1063 cgt_residential_split stage-health check: the
+                # identities' tolerance and the arm-count ceiling.
+                "maximum_identity_relative_error",
+                "maximum_liable_gainers_per_household",
+                # #1063 c9 lcfs support_clip check: the declared donor floor.
+                "donor_floor",
+                # spi_income_band_donor_support check (PolicyEngine/chronicle#280
+                # lane; mass-conserving since #1063): the reserved bands, the
+                # seating rule's constants and the funding floor.
                 "band_lower_bounds",
-                "donors_per_band",
+                "minimum_donors_per_band",
+                "maximum_donor_weight",
+                "minimum_funding_factor",
+                "maximum_band_taxpayer_deviation",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # prior weights, with the published gas-connected share, and
                 # a converged (not truncated) terminal residual (#1012).
@@ -1660,6 +1748,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "trip_rates_period_value",
                 "maximum_user_share_deviation",
                 "maximum_trip_rate_deviation",
+                # #1063 wealth_coherence check: the reviewed excess of owner
+                # households without a main-residence value over the donor's.
+                "maximum_owner_share_without_main_residence_excess",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
