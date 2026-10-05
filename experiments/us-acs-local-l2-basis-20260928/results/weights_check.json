@@ -1,8 +1,8 @@
 {
  "ok": true,
- "module_file": "/private/tmp/claude-501/-Users-maxghenis-Library-Application-Support-Claude-scratch-workspaces-ee3763f4-e7ea-4177-bcaf-1362266768c1-4457aa9d-2dc0-4bcf-a128-e50adae6be25-scratch-2026-09-22-f8f078/23210e7d-ba4a-4d43-8e04-d5632154febf/scratchpad/tlw_c4fd2e86d.py",
- "module_sha256": "0c2a6a9d59290dcd76611fe6e32fc52d82a1828ef034d71ff420765a85a3ca9e",
- "module_loaded_from_file": true,
+ "module_file": "/Users/maxghenis/PolicyEngine/_worktrees/acs-local-weighted-frontier-20261002/packages/microcosm-build/src/microcosm/build/us_runtime/target_loss_weights.py",
+ "module_sha256": "5cb426635611ff43423e58181b32943cfeb19972893fb14aae9fa82f106c1640",
+ "module_loaded_from_file": false,
  "recorded_module_sha256": [
   "849fbede68e8f5a4c68af26e713dad053213d767ba5f03c12ac1b8685cd33ac7"
  ],

@@ -406,7 +406,7 @@ tested. If the build keeps #1104's default (no multiplier), the rule's λ is
     rebuilds every `w_` run's training and yardstick weights with the
     current module and compares both digests with the run's receipt
     (`results/weights_check.json`: 46 runs, 7 distinct weightings, no
-    mismatch).
+    mismatch against main's module after #1104 merged as e34712cc8).
   - Gate: before fanning out, the release-settings run had to show its
     epoch-0 loss equal to the weighted loss of the starting weights
     recomputed outside the solver (5e-6 relative) and its final loss equal
