@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import numpy as np
@@ -32,6 +33,7 @@ from test_support.microcosm_build.uk_child_benefit_take_up import (
     _statistics,
     _StubEngine,
 )
+from test_support.paths import paths_for
 
 THRESHOLDS = UKChildBenefitChargeThresholds(
     phase_out_start=60_000.0, phase_out_end=80_000.0
@@ -405,3 +407,17 @@ def test_redraw_keeps_nonclaimants_false_under_either_export_contract(
     after = result.frame.table("benunit").set_index("benunit_id")
     assert after.loc[2:3, "would_claim_child_benefit"].tolist() == [False, False]
     assert after.loc[2:3, "child_benefit_opts_out"].tolist() == [False, False]
+
+
+def test_committed_smoke_fixture_uses_current_child_benefit_contract() -> None:
+    # The integration smoke driver reconstructs this frozen stage descriptor,
+    # separately from the packaged country spec checked above.
+    path = (
+        paths_for("microcosm-graph").tests
+        / "fixtures/parity/uk_spine/sources/fixture.json"
+    )
+    descriptor = json.loads(path.read_text())
+    stage = SourceStageSpec.from_mapping(
+        descriptor["stages"][CHILD_BENEFIT_TAKE_UP_STAGE_NAME]
+    )
+    _assert_stage_parameters(stage)
