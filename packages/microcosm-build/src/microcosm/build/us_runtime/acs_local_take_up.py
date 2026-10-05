@@ -16,7 +16,10 @@ ACS-spine SPM units; donor-spine values and any stored ACS value are kept.
   participation rate of the ``snap_take_up`` manifest stage.
 - TANF uses the take-up contract's seeded Bernoulli draw at its
   administrative rate, with no receipt anchor, exactly as the contract seeds
-  it elsewhere.
+  it elsewhere. Because the draw is independent of the transferred
+  ``receives_tanf``, the receipt cross-tabs the two on ACS units and reports
+  the weighted share of TANF reporters that drew ``False`` (informational,
+  never graded).
 
 Draws come from :func:`~microcosm.build.us_runtime.take_up._stable_unit_draws`,
 which keys a unit without complete source identity on its own ids, so the
@@ -79,6 +82,9 @@ ACS_LOCAL_TAKE_UP_GATE_NAME = "acs_local_take_up_signal"
 _ID_COLUMN = "spm_unit_id"
 #: Reported (on ACS rows, QRF-transferred) SNAP receipt: the survey anchor.
 _REPORTED_SNAP_COLUMN = "receives_snap"
+#: Reported (on ACS rows, QRF-transferred) TANF receipt. It is not an anchor
+#: for the TANF draw; the receipt only cross-tabs it against that draw.
+_REPORTED_TANF_COLUMN = "receives_tanf"
 _SNAP_OPERATION = "derive_snap_take_up"
 _SHARE_BANDS: dict[str, tuple[float, float]] = {
     US_SNAP_TAKE_UP_OUTPUT_COLUMN: _SNAP_TAKE_UP_SHARE_BAND,
@@ -127,6 +133,68 @@ def _filled(values: pd.Series, missing: np.ndarray, assigned: np.ndarray) -> pd.
 def _share(weights: np.ndarray, flags: np.ndarray) -> float:
     total = float(weights.sum())
     return float(weights[flags].sum()) / total if total > 0 else 0.0
+
+
+def _tanf_receipt_crosstab(
+    spm_unit: pd.DataFrame, weights: np.ndarray
+) -> dict[str, object]:
+    """Transferred ``receives_tanf`` by assigned TANF take-up (informational).
+
+    TANF take-up is the contract's Bernoulli draw with no receipt anchor, so
+    a unit with transferred ``receives_tanf`` can draw ``False``. This
+    weighted 2x2 table over the given (ACS) units measures that overlap, and
+    ``receives_tanf_drew_false_share`` is the weighted share of reporters
+    without take-up. Missing receipt cells read as non-reporters. It is
+    recorded for review (microcosm#1051), never graded.
+    """
+    if _REPORTED_TANF_COLUMN not in spm_unit:
+        return {
+            "available": False,
+            "graded": False,
+            "reason": f"spm_unit carries no {_REPORTED_TANF_COLUMN} column",
+        }
+    reports, reports_present = _flags(spm_unit[_REPORTED_TANF_COLUMN])
+    takes_up = _flags(spm_unit[US_TANF_TAKE_UP_OUTPUT_COLUMN])[0]
+    total = float(weights.sum())
+    cells: dict[str, dict[str, object]] = {}
+    for report_label, report_mask in (
+        ("receives_tanf", reports),
+        ("no_receives_tanf", ~reports),
+    ):
+        for take_label, take_mask in (
+            ("takes_up", takes_up),
+            ("no_take_up", ~takes_up),
+        ):
+            cell = report_mask & take_mask
+            weight = float(weights[cell].sum())
+            cells[f"{report_label}__{take_label}"] = {
+                "units": int(cell.sum()),
+                "weight": weight,
+                "weight_share": weight / total if total > 0 else 0.0,
+            }
+    reporter_weight = float(weights[reports].sum())
+    drew_false = reports & ~takes_up
+    return {
+        "available": True,
+        "graded": False,
+        "units": int(len(reports)),
+        "weight": total,
+        "missing_receipt_rows_as_non_reporters": int((~reports_present).sum()),
+        "cells": cells,
+        "receives_tanf_units": int(reports.sum()),
+        "receives_tanf_weight": reporter_weight,
+        "receives_tanf_drew_false_units": int(drew_false.sum()),
+        "receives_tanf_drew_false_share": (
+            float(weights[drew_false].sum()) / reporter_weight
+            if reporter_weight > 0
+            else None
+        ),
+        "note": (
+            "TANF take-up is drawn independently of the transferred "
+            "receives_tanf (the take-up contract has no TANF receipt anchor); "
+            "this table measures the overlap and is not graded."
+        ),
+    }
 
 
 def _assignment_sha256(spm_unit: pd.DataFrame, rows: np.ndarray) -> str:
@@ -274,6 +342,7 @@ def with_acs_local_take_up_inputs(
                     acs_weights,
                     _flags(final.loc[acs, US_TANF_TAKE_UP_OUTPUT_COLUMN])[0],
                 ),
+                "receipt_crosstab": _tanf_receipt_crosstab(final.loc[acs], acs_weights),
             },
         },
         "assigned_sha256": _assignment_sha256(final, acs),
