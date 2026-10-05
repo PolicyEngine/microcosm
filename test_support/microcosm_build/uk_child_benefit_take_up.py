@@ -66,3 +66,54 @@ def _frame():
         weight_kind=WeightKind.IMPORTANCE,
         time_period="2024",
     )
+
+
+def _taper_frame():
+    """A scarce full-charge pool, a taper family and an independent nonclaimant."""
+    frame = _frame()
+    person = frame.table("person").copy()
+    person.loc[person.person_id == 31, "stub_income"] = 70_000.0
+    person = pd.concat(
+        [
+            person,
+            pd.DataFrame(
+                {
+                    "person_id": [51, 52],
+                    "person_benunit_id": [5, 5],
+                    "person_household_id": [5, 5],
+                    "age": [40, 3],
+                    "child_benefit_reported": [0.0, 0.0],
+                    "stub_income": [95_000.0, 0.0],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    benunit = pd.concat(
+        [
+            frame.table("benunit"),
+            pd.DataFrame(
+                {
+                    "benunit_id": [5],
+                    "would_claim_child_benefit": [False],
+                    "child_benefit_opts_out": [True],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    household = pd.concat(
+        [
+            frame.table("household"),
+            pd.DataFrame({"household_id": [5], "region": ["WALES"]}),
+        ],
+        ignore_index=True,
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        household_weights=np.asarray([10.0, 2.0, 20.0, 10.0, 5.0]),
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2026",
+    )

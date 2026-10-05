@@ -364,7 +364,11 @@ def test_export_preserves_registered_claims_only_with_opt_out_aware_engine(
         _frame(),
         engine=_StubEngine(),
         statistics=statistics,
-        thresholds=replace(THRESHOLDS, supports_opt_out=supports_opt_out),
+        thresholds=replace(
+            THRESHOLDS,
+            supports_opt_out=supports_opt_out,
+            opt_out_charge_share=1.0 if supports_opt_out else None,
+        ),
     )
     after = result.frame.table("benunit").set_index("benunit_id")
     assert after["would_claim_child_benefit"].to_dict() == {
@@ -402,7 +406,11 @@ def test_redraw_keeps_nonclaimants_false_under_either_export_contract(
         _frame(),
         engine=_StubEngine(),
         statistics=_statistics({0: 0.0, 1: 0.0, 2: 0.0}),
-        thresholds=replace(THRESHOLDS, supports_opt_out=supports_opt_out),
+        thresholds=replace(
+            THRESHOLDS,
+            supports_opt_out=supports_opt_out,
+            opt_out_charge_share=1.0 if supports_opt_out else None,
+        ),
     )
     after = result.frame.table("benunit").set_index("benunit_id")
     assert after.loc[2:3, "would_claim_child_benefit"].tolist() == [False, False]
@@ -421,3 +429,100 @@ def test_committed_smoke_fixture_uses_current_child_benefit_contract() -> None:
         descriptor["stages"][CHILD_BENEFIT_TAKE_UP_STAGE_NAME]
     )
     _assert_stage_parameters(stage)
+
+
+@pytest.mark.parametrize("supports_opt_out", [False, True])
+def test_new_contract_reports_shortfall_without_paid_taper_spillover(
+    supports_opt_out: bool,
+) -> None:
+    # Weighted claims total 40; the 50% target is 20. Only 2 fully charged
+    # families are eligible under share=1, while 30 sit in the paid taper.
+    thresholds = replace(
+        THRESHOLDS,
+        supports_opt_out=supports_opt_out,
+        opt_out_charge_share=1.0 if supports_opt_out else None,
+    )
+    opt_out, receipt = assign_child_benefit_opt_outs(
+        claims=np.asarray([True, True, True, True, False, False]),
+        reporter=np.asarray([False, False, True, False, False, False]),
+        highest_income=np.asarray([80_000, 70_000, 95_000, 60_000, 95_000, 95_000]),
+        children=np.asarray([2, 1, 1, 1, 1, 0]),
+        weights=np.asarray([2.0, 30.0, 5.0, 3.0, 7.0, 11.0]),
+        draws=np.zeros(6),
+        statistics=replace(_statistics(), families_opted_out=500.0),
+        thresholds=thresholds,
+    )
+    assert opt_out.tolist() == [True, not supports_opt_out, False, False, False, False]
+    assert receipt["target_families"] == 20.0
+    assert receipt["pool_shortfall_families"] == (18.0 if supports_opt_out else 0.0)
+    assert receipt["pool_exhausted"] is supports_opt_out
+    assert receipt["opted_out_children"] == (4.0 if supports_opt_out else 34.0)
+
+
+@pytest.mark.parametrize(
+    ("share", "expected"),
+    [
+        (1.0, [False, False, False, False, False, True, True]),
+        (0.5, [False, False, False, False, True, True, True]),
+        (0.0, [False, False, True, True, True, True, True]),
+        (1.1, [False, False, False, False, False, False, False]),
+    ],
+)
+def test_new_opt_out_pool_matches_positive_charge_share_boundaries(share, expected):
+    income = np.asarray([59_999, 60_000, 60_001, 69_999, 70_000, 80_000, 90_000])
+    opt_out, receipt = assign_child_benefit_opt_outs(
+        claims=np.ones(7, dtype=bool),
+        reporter=np.zeros(7, dtype=bool),
+        highest_income=income,
+        children=np.ones(7),
+        weights=np.ones(7),
+        draws=np.zeros(7),
+        statistics=replace(_statistics(), families_opted_out=990.0),
+        thresholds=replace(
+            THRESHOLDS, supports_opt_out=True, opt_out_charge_share=share
+        ),
+    )
+    assert opt_out.tolist() == expected
+    assert receipt["opt_out_charge_share"] == share
+    assert receipt["pool_shortfall_families"] == pytest.approx(6.93 - sum(expected))
+
+
+@pytest.mark.parametrize("share", [None, float("nan"), float("inf"), "1", True])
+def test_opt_out_capability_requires_a_finite_numeric_share(share):
+    with pytest.raises(ValueError, match="opt_out_charge_share.*finite numeric"):
+        replace(THRESHOLDS, supports_opt_out=True, opt_out_charge_share=share)
+
+
+@pytest.mark.parametrize("end", [60_000.0, 50_000.0])
+@pytest.mark.parametrize("supports_opt_out", [False, True])
+def test_both_contracts_reject_nonpositive_taper_width(end, supports_opt_out):
+    with pytest.raises(ValueError, match="0 < start < end"):
+        replace(THRESHOLDS, phase_out_end=end, supports_opt_out=supports_opt_out)
+
+
+def test_new_contract_preserves_draws_when_full_charge_pool_is_sufficient():
+    arguments = dict(
+        claims=np.ones(4, dtype=bool),
+        reporter=np.zeros(4, dtype=bool),
+        highest_income=np.asarray([80_000, 90_000, 100_000, 70_000]),
+        children=np.ones(4),
+        weights=np.full(4, 10.0),
+        draws=np.asarray([0.05, 0.4, 0.8, 0.0]),
+        statistics=_statistics(),
+    )
+    legacy, legacy_receipt = assign_child_benefit_opt_outs(
+        **arguments, thresholds=THRESHOLDS
+    )
+    modern, modern_receipt = assign_child_benefit_opt_outs(
+        **arguments,
+        thresholds=replace(THRESHOLDS, supports_opt_out=True, opt_out_charge_share=1.0),
+    )
+    assert legacy.tolist() == modern.tolist() == [True, False, False, False]
+    assert legacy_receipt["pools"][0] == modern_receipt["pools"][0]
+    # The new contract removes the paid taper candidate even when its draw
+    # rate would be zero; the unchanged full-charge pool selects identically.
+    assert legacy_receipt["pools"][1]["units"] == 1
+    assert modern_receipt["pools"][1]["units"] == 0
+    assert legacy_receipt["pools"][1]["rate"] == modern_receipt["pools"][1]["rate"] == 0
+    assert modern_receipt["pool_shortfall_families"] == 0.0
+    assert modern_receipt["pool_exhausted"] is False
