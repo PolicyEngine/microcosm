@@ -1786,20 +1786,36 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     from scipy import sparse
 
     import microcosm.calibrate as calibrate_package
+    from microcosm.calibrate import TargetSpec
 
     module = _load_tool_module()
     calls = _recording_calibrate(monkeypatch)
     frame, design, targets = _tiny_calibration_surface()
     identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
     monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    income = TargetSpec(
+        name="income",
+        entity="household",
+        measure="income",
+        value=next(iter(targets)).value,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_measure_id": "adjusted_gross_income_amount",
+            "ledger_measure_unit": "usd",
+            "ledger_geography_level": "state",
+            "state_fips": "06",
+        },
+    )
     monkeypatch.setattr(
         module,
         "load_checkpoint_surface",
         lambda *a, **k: (
             frame,
             design,
-            SimpleNamespace(specs=()),
-            [{"name": "income"}],
+            SimpleNamespace(specs=(income,)),
+            [{"name": "income", "role": "train"}],
             sparse.csr_array((1, len(design)), dtype=np.float32),
         ),
     )
@@ -1872,17 +1888,29 @@ def test_a_stamp_from_before_the_penalty_settings_reads_as_the_historical_solve(
     softmax = module._parse_args(
         _calibrate_stage_argv(tmp_path, "--mass-parametrization", "softmax")
     )
+    target_loss = module.release_target_loss_weights(defaults, [])[1]
     legacy = {
         key: value
-        for key, value in module._solver_settings(defaults).items()
+        for key, value in module._solver_settings(defaults, target_loss).items()
         if key not in ("l2_basis", "mass_parametrization")
     }
-    assert module._stamped_settings(legacy) == module._solver_settings(defaults)
-    assert module._stamped_settings(legacy) != module._solver_settings(softmax)
+    assert module._stamped_settings(legacy) == module._solver_settings(
+        defaults, target_loss
+    )
+    assert module._stamped_settings(legacy) != module._solver_settings(
+        softmax, target_loss
+    )
     assert module._stamped_settings(None) is None
     # A recorded value always wins over the fill.
     recorded = {**legacy, "mass_parametrization": "softmax"}
-    assert module._stamped_settings(recorded) == module._solver_settings(softmax)
+    assert module._stamped_settings(recorded) == module._solver_settings(
+        softmax, target_loss
+    )
+    # The loss weights are not filled: a stamp from before them never matches.
+    unweighted = {k: v for k, v in legacy.items() if k != "target_loss"}
+    assert module._stamped_settings(unweighted) != module._solver_settings(
+        defaults, target_loss
+    )
 
 
 def test_package_manifest_records_the_penalty_settings(
@@ -1918,6 +1946,43 @@ def test_package_manifest_records_the_penalty_settings(
     assert recipe[recipe.index("--l2-lambda") + 1] == "0.003"
     assert recipe[recipe.index("--l2-basis") + 1] == "chi_square"
     assert recipe[recipe.index("--mass-parametrization") + 1] == "softmax"
+
+
+def test_package_manifest_records_the_loss_weights(tmp_path: Path, monkeypatch) -> None:
+    """The package stage carries the loss-weight stamp and its multipliers."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    target_loss = {
+        "weighting": (
+            "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_"
+            "target_scale_cap_100pct"
+        ),
+        "row_mapping": "us_acs_local.v1",
+        "family_multipliers": {"usda_snap": 4.0},
+        "n_targets": 3,
+        "weights_sha256": "0" * 64,
+    }
+    summary["target_loss"] = target_loss
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["target_loss"] == target_loss
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--target-family-loss-multiplier") + 1] == (
+        "usda_snap=4.0"
+    )
 
 
 def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
