@@ -13,12 +13,17 @@ for it (and why) or biases it in a known direction.
 - :func:`reviewed_fill_register_failures` validates a register document without
   the engine: known entities and programs, one entry per column, every
   declared consumer covered by exactly one note, a direction on every
-  ``known_bias`` note and none on a ``harmless`` one, and no entry for a
-  column the release tool never default-fills (``NEVER_DEFAULT_FILLED``).
+  ``known_bias`` note and none on a ``harmless`` one, no entry for a
+  column the release tool never default-fills (``NEVER_DEFAULT_FILLED``), and
+  the program couplings of :data:`REVIEWED_FILL_COUPLINGS`: a program that
+  reads another program's result cannot be harmless where that program is a
+  known bias (microcosm#1071 review).
 - :func:`acs_local_reviewed_fill_consumer_gate` is the release gate. It reads
   the fill manifests the engine passes wrote and fails when a fill the release
   applied has no entry, when an entry's fill value or spines differ from the
-  manifest, or when the register itself fails validation. An entry whose
+  manifest, when the register itself fails validation, or when the
+  policyengine-us the release runs is not the version the register was
+  reviewed against (``reviewed_against``). An entry whose
   column the release did not fill is reported, not failed: which cells are
   missing depends on the data (a capped smoke may hold no group-quarters
   household), and an unused entry cannot hide an unreviewed fill.
@@ -51,6 +56,7 @@ __all__ = [
     "ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME",
     "ACS_LOCAL_REVIEWED_FILL_CONSUMER_REGISTER",
     "REVIEWED_FILL_BIAS_DIRECTIONS",
+    "REVIEWED_FILL_COUPLINGS",
     "REVIEWED_FILL_VERDICTS",
     "ConsumerIndex",
     "acs_local_reviewed_fill_consumer_gate",
@@ -72,6 +78,35 @@ ACS_LOCAL_REVIEWED_FILL_CONSUMER_REGISTER = "acs_local_reviewed_fill_consumers.y
 REVIEWED_FILL_VERDICTS = ("harmless", "known_bias")
 #: Relative to the true value: more eligibility or benefit, less, or both.
 REVIEWED_FILL_BIAS_DIRECTIONS = ("overstates", "understates", "mixed")
+#: Program couplings every entry must honour (microcosm#1071 review), as
+#: ``(upstream, downstream, bars)``. The downstream program reads the upstream
+#: program's result, so where an entry marks the upstream ``known_bias`` and
+#: declares the downstream a consumer, the downstream note must be
+#: ``known_bias`` too. When ``bars`` is set, upstream eligibility bars the
+#: downstream program, so the downstream direction must be the opposite of
+#: the upstream one, or ``mixed``.
+#:
+#: - Medicaid eligibility bars the premium tax credit (``pays_aca_premium``):
+#:   overstated Medicaid eligibility understates the PTC.
+#: - CHIP eligibility bars it too. Its direction is not constrained: a CHIP
+#:   bias that comes from Medicaid (which bars CHIP) leaves the PTC barred by
+#:   Medicaid instead of freeing it.
+#: - SSI and TANF cash are SNAP unearned income, and TANF receipt confers SNAP
+#:   categorical eligibility, so either can move SNAP both ways.
+#:
+#: The engine-tier test checks each coupling is an edge of the engine's
+#: dependency graph and that every column reaching it declares both programs.
+REVIEWED_FILL_COUPLINGS: tuple[tuple[str, str, bool], ...] = (
+    ("medicaid", "aca_ptc", True),
+    ("chip", "aca_ptc", False),
+    ("ssi", "snap", False),
+    ("tanf", "snap", False),
+)
+_OPPOSITE_DIRECTIONS = {
+    "overstates": ("understates", "mixed"),
+    "understates": ("overstates", "mixed"),
+    "mixed": ("mixed",),
+}
 
 _SCHEMA_VERSION = 1
 _ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
@@ -238,6 +273,40 @@ def _note_failures(label: str, notes: object, consumers: list[str], known: set[s
     return failures
 
 
+def _coupling_failures(label: str, notes: list, consumers: list[str]) -> list[str]:
+    """Where an entry breaks :data:`REVIEWED_FILL_COUPLINGS`.
+
+    Called only on notes :func:`_note_failures` accepted.
+    """
+
+    verdicts = {
+        program: (note["verdict"], note.get("direction"))
+        for note in notes
+        for program in note["programs"]
+    }
+    failures: list[str] = []
+    for upstream, downstream, bars in REVIEWED_FILL_COUPLINGS:
+        upstream_verdict, upstream_direction = verdicts.get(upstream, (None, None))
+        if upstream_verdict != "known_bias" or downstream not in consumers:
+            continue
+        verdict, direction = verdicts[downstream]
+        if verdict != "known_bias":
+            failures.append(
+                f"{label}: {upstream} is a known bias and {downstream} reads its "
+                f"result, so {downstream} cannot be harmless (microcosm#1071 "
+                "review)."
+            )
+        elif bars and direction not in _OPPOSITE_DIRECTIONS[upstream_direction]:
+            failures.append(
+                f"{label}: {upstream} eligibility bars {downstream}, so "
+                f"{downstream} must move against {upstream} ({upstream} "
+                f"{upstream_direction}; {downstream} must be one of "
+                f"{_OPPOSITE_DIRECTIONS[upstream_direction]}, not {direction!r}) "
+                "(microcosm#1071 review)."
+            )
+    return failures
+
+
 def reviewed_fill_register_failures(
     document: object,
     *,
@@ -315,7 +384,10 @@ def reviewed_fill_register_failures(
         unknown = sorted(set(consumers) - known)
         if unknown:
             failures.append(f"{label}: unknown consumer program(s) {unknown}.")
-        failures += _note_failures(label, entry["notes"], consumers, known)
+        note_failures = _note_failures(label, entry["notes"], consumers, known)
+        failures += note_failures
+        if not note_failures:
+            failures += _coupling_failures(label, entry["notes"], consumers)
     return failures
 
 
@@ -396,6 +468,14 @@ def acs_local_reviewed_fill_consumer_gate(
     entry or its fill value or spines differ from the entry, and when the
     register fails :func:`reviewed_fill_register_failures`. Entries the
     release did not use are reported in the details, not failed.
+
+    ``installed_engine_version`` is the policyengine-us version the release
+    runs (the installed one, which packaging records as
+    ``built_with_model_package``). The notes hold only for the engine they
+    were reviewed against, so the gate fails when it is missing or differs
+    from ``reviewed_against.policyengine_us`` (microcosm#1071 review): a
+    release on a later engine needs the engine-tier consumer walk re-run and
+    the register re-reviewed, even where that test is skipped.
     """
 
     if document is None:
@@ -433,6 +513,21 @@ def acs_local_reviewed_fill_consumer_gate(
     entries = {entry["column"]: entry for entry in document["entries"]}
     details["reviewed_against"] = dict(document["reviewed_against"])
     details["register_entries"] = len(entries)
+    reviewed_engine = document["reviewed_against"]["policyengine_us"]
+    details["engine_matches_review"] = installed_engine_version == reviewed_engine
+    if installed_engine_version is None:
+        failures.append(
+            "the release reported no policyengine-us version, so its engine "
+            f"cannot be matched to the register's review ({reviewed_engine})."
+        )
+    elif installed_engine_version != reviewed_engine:
+        failures.append(
+            f"the release runs policyengine-us {installed_engine_version} but "
+            f"the register was reviewed against {reviewed_engine}: re-run the "
+            "engine-tier consumer walk (test_us_acs_local_reviewed_fill_consumers"
+            ".py) on the new engine, review every note whose program's rules "
+            "changed, and update reviewed_against."
+        )
     fills_detail: dict[str, object] = {}
     known_bias: dict[str, dict[str, str]] = {}
     for (entity, column), fill in sorted(applied.items()):

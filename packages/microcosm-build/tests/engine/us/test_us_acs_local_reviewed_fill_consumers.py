@@ -9,7 +9,10 @@ walk reaches, or lists one it no longer reaches, so a policyengine-us bump
 cannot silently add a consumer the notes never reviewed. It also checks that
 the program roots are engine variables covering the engine's own CBO
 means-tested transfer list, and that each entry's entity and fill value are
-the engine's.
+the engine's. For the program couplings register validation enforces
+(``REVIEWED_FILL_COUPLINGS``, microcosm#1071 review) it checks that each is an
+edge of the engine's graph and that every column reaching one declares both
+programs, so the engine-free rule covers it.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ import numpy as np
 import pytest
 
 from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    REVIEWED_FILL_COUPLINGS,
     load_reviewed_fill_consumer_register,
     means_tested_consumers,
 )
@@ -33,6 +37,15 @@ _ENTRIES = {entry["column"]: entry for entry in _DOCUMENT["entries"]}
 _PROGRAMS = {
     program: tuple(spec["roots"]) for program, spec in _DOCUMENT["programs"].items()
 }
+#: The engine variable through which each coupling's upstream program reaches
+#: the downstream one (microcosm#1071 review).
+_COUPLING_NODES = {
+    "medicaid": "is_medicaid_eligible",
+    "chip": "is_chip_eligible",
+    "ssi": "ssi",
+    "tanf": "tanf",
+}
+_REACHED: dict[str, frozenset[str]] = {}
 
 
 @pytest.fixture(scope="module")
@@ -99,6 +112,64 @@ def test_each_entry_matches_its_engine_variable(system, column) -> None:
         default = bool(default)
     # fill_reviewed_nulls records repr() of this value in the fill manifests.
     assert repr(default) == entry["fill_value"]
+
+
+def _reached(index, column: str) -> frozenset[str]:
+    """Every variable the static walk reaches from ``column``."""
+
+    if column not in _REACHED:
+        seen = {column}
+        queue = [column]
+        while queue:
+            node = queue.pop()
+            try:
+                receipts = index.consumer_receipts(node)
+            except ValueError:
+                continue
+            for receipt in receipts:
+                if receipt.consumer not in seen:
+                    seen.add(receipt.consumer)
+                    queue.append(receipt.consumer)
+        _REACHED[column] = frozenset(seen)
+    return _REACHED[column]
+
+
+def test_each_program_coupling_is_an_engine_edge(index) -> None:
+    """The couplings register validation enforces exist in the engine."""
+
+    assert {upstream for upstream, _, _ in REVIEWED_FILL_COUPLINGS} == set(
+        _COUPLING_NODES
+    )
+    for upstream, downstream, _bars in REVIEWED_FILL_COUPLINGS:
+        reached = means_tested_consumers(_COUPLING_NODES[upstream], index, _PROGRAMS)
+        assert upstream in reached, (upstream, sorted(reached))
+        assert downstream in reached, (upstream, downstream, sorted(reached))
+
+    def consumers(name):
+        return {receipt.consumer for receipt in index.consumer_receipts(name)}
+
+    # The bars: Medicaid and CHIP eligibility gate the PTC.
+    assert "pays_aca_premium" in consumers("is_medicaid_eligible")
+    assert "pays_aca_premium" in consumers("is_chip_eligible")
+    assert "is_aca_ptc_eligible" in consumers("pays_aca_premium")
+    # SSI and TANF reach SNAP categorical eligibility.
+    assert "meets_snap_categorical_eligibility" in consumers("ssi")
+    assert "meets_snap_categorical_eligibility" in consumers("tanf")
+
+
+@pytest.mark.parametrize("column", sorted(_ENTRIES))
+def test_each_column_reaching_a_coupling_declares_both_programs(index, column) -> None:
+    """So the engine-free coupling rule sees every coupling a column reaches."""
+
+    reached = _reached(index, column)
+    declared = set(_ENTRIES[column]["consumers"])
+    missing = [
+        f"{upstream} -> {downstream}"
+        for upstream, downstream, _bars in REVIEWED_FILL_COUPLINGS
+        if _COUPLING_NODES[upstream] in reached
+        and not {upstream, downstream} <= declared
+    ]
+    assert missing == [], f"{column} reaches {missing} without declaring both."
 
 
 def test_the_key_snap_paths(index) -> None:

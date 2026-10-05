@@ -2279,7 +2279,13 @@ def finalize_reviewed_limitations(
                 "California county general assistance. A zero value counts no "
                 "vehicle equity, so those tests pass more often on ACS rows "
                 "than on donor rows, whose count and value are the SIPP model's "
-                "(sipp_vehicles)."
+                "(sipp_vehicles). Through Illinois AABD it also passes the asset "
+                "test of Illinois's Medicaid buy-in for workers with "
+                "disabilities (HBWD), so modeled Medicaid eligibility is "
+                "overstated there and, because Medicaid eligibility bars the "
+                "premium tax credit (pays_aca_premium), the PTC is understated: "
+                "an otherwise eligible Illinois Marketplace adult it reaches "
+                "loses the whole credit (microcosm#1071 review)."
             ),
             "treatment": (
                 "Reviewed-null fill to 0 for both, recorded in the consumer fill "
@@ -2624,10 +2630,12 @@ def finalize_reviewed_limitations(
                 "Gated by acs_local_reviewed_fill_consumers at finalize and "
                 "package: a fill either engine pass applied without an entry, "
                 "an entry whose fill value or spines differ from the fill "
-                "manifests, and a declared consumer without a note fail; an "
-                "entry the release did not use is reported. The engine-tier "
-                "test recomputes every entry's consumers from the installed "
-                "engine."
+                "manifests, a declared consumer without a note, a Medicaid, "
+                "CHIP, SSI or TANF known bias that leaves the PTC or SNAP "
+                "harmless, and a policyengine-us other than the one the "
+                "register was reviewed against fail; an entry the release did "
+                "not use is reported. The engine-tier test recomputes every "
+                "entry's consumers from the installed engine."
             ),
             "known_bias": register["known_bias"],
             "calibration_blocker": False,
@@ -2942,7 +2950,10 @@ def _reviewed_fill_consumer_gate(
     Every fill an engine pass applied must have an entry in the packaged
     register ``acs_local_reviewed_fill_consumers.yaml`` (or ``document``) whose
     fill value and spines match, and every means-tested consumer the entry
-    declares must carry a harmless or known-bias note. Engine-free.
+    declares must carry a harmless or known-bias note. The installed
+    policyengine-us, the engine the release runs and records as
+    ``built_with_model_package``, must be the register's ``reviewed_against``
+    (microcosm#1071 review). Engine-free otherwise.
     """
 
     return acs_local_reviewed_fill_consumer_gate(

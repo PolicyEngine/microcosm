@@ -131,6 +131,7 @@ def _applied() -> dict:
 
 
 def _gate(manifests=None, document=None, **kwargs):
+    kwargs.setdefault("installed_engine_version", "2.2.1")
     return acs_local_reviewed_fill_consumer_gate(
         _applied() if manifests is None else manifests,
         document=_register() if document is None else document,
@@ -427,6 +428,157 @@ def test_the_register_is_validated(mutate, expected) -> None:
     assert not _gate(document=document).passed
 
 
+@pytest.mark.parametrize(
+    ("installed", "expected"),
+    [
+        ("2.3.0", "the release runs policyengine-us 2.3.0 but the register was "),
+        ("unknown", "the release runs policyengine-us unknown but the register "),
+        (None, "the release reported no policyengine-us version"),
+    ],
+)
+def test_the_gate_fails_on_an_engine_other_than_the_reviewed_one(
+    installed, expected
+) -> None:
+    """microcosm#1071 review: the notes hold for the reviewed engine only, so
+    finalize and package refuse another, even when the engine tier is skipped."""
+
+    gate = _gate(installed_engine_version=installed)
+
+    assert not gate.passed
+    assert any(failure.startswith(expected) for failure in gate.failures), gate.failures
+    assert gate.details["engine_matches_review"] is False
+    assert _gate().details["engine_matches_review"] is True
+
+
+def _note(programs, verdict, direction=None, **extra) -> dict:
+    note = {"programs": list(programs), "verdict": verdict, "note": "Invented."}
+    if direction is not None:
+        note["direction"] = direction
+    note.update(extra)
+    return note
+
+
+def _coupled_register(notes) -> dict:
+    """The small register plus an entry whose consumers are its notes'."""
+
+    document = _register()
+    for program in ("aca_ptc", "chip", "medicaid", "ssi"):
+        document["programs"][program] = {"label": program, "roots": [program]}
+    document["entries"].append(
+        {
+            "entity": "household",
+            "column": "invented_asset",
+            "fill_value": "0",
+            "spines": [_ACS],
+            "rows": "every ACS household",
+            "summary": "An invented asset several programs read.",
+            "consumers": sorted({p for note in notes for p in note["programs"]}),
+            "notes": notes,
+        }
+    )
+    return document
+
+
+@pytest.mark.parametrize(
+    ("notes", "expected"),
+    [
+        (
+            # The #1071 review's case: Medicaid overstated, the PTC harmless.
+            [
+                _note(["medicaid"], "known_bias", "overstates"),
+                _note(["aca_ptc"], "harmless"),
+            ],
+            "medicaid is a known bias and aca_ptc reads its result",
+        ),
+        (
+            [
+                _note(["medicaid"], "known_bias", "overstates"),
+                _note(["aca_ptc"], "known_bias", "overstates", via=["medicaid"]),
+            ],
+            "medicaid eligibility bars aca_ptc, so aca_ptc must move against medicaid "
+            "(medicaid overstates;",
+        ),
+        (
+            [
+                _note(["medicaid"], "known_bias", "mixed"),
+                _note(["aca_ptc"], "known_bias", "understates"),
+            ],
+            "medicaid eligibility bars aca_ptc, so aca_ptc must move against medicaid "
+            "(medicaid mixed;",
+        ),
+        (
+            [
+                _note(["chip"], "known_bias", "overstates"),
+                _note(["aca_ptc"], "harmless"),
+            ],
+            "chip is a known bias and aca_ptc reads its result",
+        ),
+        (
+            [_note(["ssi"], "known_bias", "overstates"), _note(["snap"], "harmless")],
+            "ssi is a known bias and snap reads its result",
+        ),
+        (
+            [_note(["tanf"], "known_bias", "overstates"), _note(["snap"], "harmless")],
+            "tanf is a known bias and snap reads its result",
+        ),
+    ],
+    ids=[
+        "medicaid-ptc-harmless",
+        "medicaid-ptc-same-way",
+        "medicaid-mixed-ptc-one-way",
+        "chip-ptc-harmless",
+        "ssi-snap-harmless",
+        "tanf-snap-harmless",
+    ],
+)
+def test_a_known_bias_cannot_leave_a_program_that_reads_it_harmless(
+    notes, expected
+) -> None:
+    """microcosm#1071 review: the register-wide coupling audit."""
+
+    document = _coupled_register(notes)
+
+    failures = reviewed_fill_register_failures(document)
+
+    assert any(expected in failure for failure in failures), failures
+    assert not _gate(document=document).passed
+
+
+@pytest.mark.parametrize(
+    "notes",
+    [
+        [
+            _note(["medicaid"], "known_bias", "overstates"),
+            _note(["aca_ptc"], "known_bias", "understates", via=["medicaid"]),
+        ],
+        [
+            _note(["medicaid"], "known_bias", "understates"),
+            _note(["aca_ptc"], "known_bias", "mixed", via=["medicaid"]),
+        ],
+        [_note(["medicaid", "aca_ptc"], "known_bias", "mixed")],
+        # CHIP's direction is free: a CHIP loss Medicaid causes leaves the PTC
+        # barred by Medicaid.
+        [
+            _note(["medicaid"], "known_bias", "overstates"),
+            _note(["aca_ptc", "chip"], "known_bias", "understates", via=["medicaid"]),
+        ],
+        [_note(["medicaid", "aca_ptc", "ssi", "snap"], "harmless")],
+        # Only declared consumers are coupled.
+        [_note(["ssi", "tanf"], "known_bias", "overstates")],
+    ],
+    ids=[
+        "opposite",
+        "mixed",
+        "both-mixed",
+        "chip-follows-medicaid",
+        "harmless-upstream",
+        "no-reader",
+    ],
+)
+def test_couplings_that_hold_pass(notes) -> None:
+    assert reviewed_fill_register_failures(_coupled_register(notes)) == []
+
+
 def test_the_digest_binds_content_not_layout() -> None:
     document = _register()
     reordered = dict(reversed(list(document.items())))
@@ -490,12 +642,14 @@ def test_the_committed_register_carries_the_triage_verdicts_for_snap() -> None:
         "net_worth",
         "health_insurance_premiums",
         "real_estate_taxes",
-        "pre_subsidy_rent",
         "tenure_type",
         "spm_unit_tenure_type",
     ):
         assert snap_verdict(column) in {"harmless", "not a consumer"}, column
     assert snap_verdict("household_vehicles_value") == "known_bias"
+    # microcosm#1071 review: residents of noninstitutional group quarters who
+    # pay for shelter lose the shelter deduction at 0 rent.
+    assert snap_verdict("pre_subsidy_rent") == "known_bias"
     energy = entries["spm_unit_energy_subsidy"]
     assert energy["consumers"] == ["liheap"]
     assert energy["notes"][0]["verdict"] == "known_bias"
@@ -505,6 +659,62 @@ def test_the_committed_register_carries_the_triage_verdicts_for_snap() -> None:
         if "tanf" in note["programs"]
     )
     assert (tanf["verdict"], tanf["direction"]) == ("known_bias", "overstates")
+
+
+def _verdicts(entry) -> dict:
+    return {
+        program: (note["verdict"], note.get("direction"), tuple(note.get("via", ())))
+        for note in entry["notes"]
+        for program in note["programs"]
+    }
+
+
+def _committed_entry(column) -> dict:
+    document = load_reviewed_fill_consumer_register()
+    (entry,) = [entry for entry in document["entries"] if entry["column"] == column]
+    return entry
+
+
+def test_the_committed_register_carries_the_ptc_through_illinois_hbwd() -> None:
+    """microcosm#1071 review (critical): a zero vehicle value passes the
+    Illinois HBWD Medicaid buy-in asset test, and Medicaid eligibility bars
+    the PTC, so the PTC is understated, not harmless."""
+
+    entry = _committed_entry("household_vehicles_value")
+    verdicts = _verdicts(entry)
+    assert verdicts["medicaid"][:2] == ("known_bias", "overstates")
+    assert verdicts["aca_ptc"] == ("known_bias", "understates", ("medicaid",))
+    assert verdicts["chip"] == ("known_bias", "understates", ("medicaid",))
+    for program in ("lifeline", "wic"):
+        assert verdicts[program] == (
+            "known_bias",
+            "overstates",
+            ("medicaid", "snap", "tanf"),
+        )
+    text = " ".join(note["note"] for note in entry["notes"])
+    for fragment in ("HBWD", "pays_aca_premium", "is_aca_ptc_eligible"):
+        assert fragment in text, fragment
+
+
+def test_the_committed_register_conditions_group_quarters_rent() -> None:
+    """microcosm#1071 review: 0 rent is right only for group-quarters
+    residents who pay nothing; paying shelter residents lose deductions."""
+
+    entry = _committed_entry("pre_subsidy_rent")
+    verdicts = _verdicts(entry)
+    for program in ("snap", "tanf", "general_assistance", "state_benefits"):
+        assert verdicts[program][:2] == ("known_bias", "understates"), program
+    for program in ("chip", "ctc", "housing_assistance"):
+        assert verdicts[program][0] == "harmless", program
+    snap = next(note for note in entry["notes"] if "snap" in note["programs"])
+    for fragment in (
+        "Conditional on paid shelter",
+        "noninstitutional group quarters",
+        "7 CFR 273.9(d)(6)",
+        "7 CFR 273.1(e)",
+    ):
+        assert fragment in snap["note"], fragment
+    assert "noninstitutional" in entry["summary"]
 
 
 def test_the_committed_register_notes_the_acs_owned_vehicle_count() -> None:

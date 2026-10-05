@@ -60,6 +60,29 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
 )
 
 
+#: The policyengine-us version the reviewed-fill register was reviewed against.
+_REVIEWED_ENGINE = load_reviewed_fill_consumer_register()["reviewed_against"][
+    "policyengine_us"
+]
+
+
+@pytest.fixture(autouse=True)
+def _the_release_runs_the_reviewed_engine(monkeypatch):
+    """The reviewed-fill gate compares the installed policyengine-us with the
+    register's reviewed_against (microcosm#1071 review). The engine-free lane
+    has none installed, so every loaded tool reports the reviewed version; the
+    tests that pin the comparison set another on their module."""
+
+    load = _load_tool_module
+
+    def load_with_the_reviewed_engine():
+        module = load()
+        module._installed_engine_version = lambda: _REVIEWED_ENGINE
+        return module
+
+    monkeypatch.setitem(globals(), "_load_tool_module", load_with_the_reviewed_engine)
+
+
 @pytest.fixture(autouse=True)
 def _stored_input_contract_passes(monkeypatch):
     """The package stage checks the calibrated H5 against the installed
@@ -395,8 +418,11 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         load_reviewed_fill_consumer_register()
     )
     assert register["known_bias"]["household.household_vehicles_value"] == [
+        "aca_ptc",
+        "chip",
         "general_assistance",
         "head_start",
+        "lifeline",
         "medicaid",
         "school_meals",
         "snap",
@@ -4745,6 +4771,59 @@ def test_package_requires_a_current_reviewed_fill_consumer_gate(
     assert not list((args.out / "releases").rglob("*.json"))
 
 
+@pytest.mark.parametrize("engine_version", ["2.3.0", "unknown"])
+def test_do_finalize_hard_fails_on_an_engine_other_than_the_reviewed_one(
+    tmp_path, monkeypatch, engine_version
+) -> None:
+    """microcosm#1071 review: registered fills on another policyengine-us (or
+    none) block simulation readiness, even when the engine tier is skipped."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    fills = [_reviewed_fill("household", "household_vehicles_value")]
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (args.checkpoint_dir / name).write_text(
+            json.dumps({"columns_filled": 1, "fills": fills})
+        )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    monkeypatch.setattr(module, "_installed_engine_version", lambda: engine_version)
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is False
+    assert gate["failures"] == [
+        f"the release runs policyengine-us {engine_version} but the register was "
+        f"reviewed against {_REVIEWED_ENGINE}: re-run the engine-tier consumer "
+        "walk (test_us_acs_local_reviewed_fill_consumers.py) on the new engine, "
+        "review every note whose program's rules changed, and update "
+        "reviewed_against."
+    ]
+    assert gate["detail"]["installed_policyengine_us"] == engine_version
+    assert gate["detail"]["engine_matches_review"] is False
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers" in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+def test_package_refuses_an_engine_other_than_the_reviewed_one(tmp_path, monkeypatch):
+    """microcosm#1071 review: package re-grades against the engine it runs,
+    so a finalize verdict from the reviewed engine cannot carry a later one."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    monkeypatch.setattr(module, "_installed_engine_version", lambda: "2.3.0")
+    with pytest.raises(
+        SystemExit, match="the release runs policyengine-us 2.3.0 but the register"
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
 @requires_pytables
 def test_package_regrades_the_packaged_fill_manifests(tmp_path, monkeypatch):
     """A passing finalize verdict covers the manifests it read; a packaged
@@ -4808,7 +4887,8 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     assert gate["detail"]["register_sha256"] == record["sha256"]
     assert gate["detail"]["known_bias"] == {
         "tax_unit.takes_up_eitc": {
-            "aca_ptc": "overstates",
+            # microcosm#1071 review: the Medicaid changes move it both ways.
+            "aca_ptc": "mixed",
             "chip": "mixed",
             "eitc": "overstates",
             "lifeline": "mixed",
