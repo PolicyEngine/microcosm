@@ -6,13 +6,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import acs_local_immigration
 from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD,
     ACS_LOCAL_IMMIGRATION_GATE_NAME,
     ACS_UNMAPPED_INDICATORS,
+    ADJUSTMENT_LAG_YEARS,
     ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY,
+    FIVE_YEAR_BAR_STATUSES,
     YEARS_SINCE_US_ENTRY_COLUMN,
     _acs_cps_view,
     _acs_draw_keys,
+    acs_local_immigration_receipt_failures,
     acs_local_immigration_signal_gate,
     require_acs_local_immigration_donor,
     with_acs_local_immigration_inputs,
@@ -61,6 +66,9 @@ _ACS_COLUMNS = (*_ACS_BASE, "SPORDER")
 _ASEC_BASE: dict[str, object] = {
     "PRCITSHP": 1,
     "PEINUSYR": 0,
+    "WSAL_VAL": 0.0,
+    "SEMP_VAL": 0.0,
+    "A_HSCOL": 0,
     "ssn_card_type": "CITIZEN",
     "immigration_status_str": "CITIZEN",
     "age": 40.0,
@@ -129,9 +137,12 @@ def _asec_population() -> list[dict[str, object]]:
             }
         ]
         + [
+            # Undocumented workers: the donor already delivers 3.3M of the
+            # 8.3M worker control on the pooled weights.
             {
                 "PRCITSHP": 5,
                 "PEINUSYR": 24,
+                "WSAL_VAL": 20_000.0,
                 "ssn_card_type": "NONE",
                 "immigration_status_str": "UNDOCUMENTED",
             }
@@ -497,29 +508,322 @@ def test_draw_keys_are_unique_across_households_sharing_sporder() -> None:
     assert set(residual) == {"NONE", "NON_CITIZEN_VALID_EAD", "OTHER_NON_CITIZEN"}
 
 
-def test_controls_scale_with_the_acs_person_weight_share() -> None:
+def test_acs_rows_target_the_donor_residual() -> None:
     frame = _frame()
     result, receipt = with_acs_local_immigration_inputs(
         frame, seed=5, time_period=PERIOD
     )
     weights = _person_weights(frame)
     acs = _acs(frame)
-    share = weights[acs].sum() / weights.sum()
     national = _packaged_controls()
     controls = receipt["controls"]
-    assert controls["acs_person_weight_share"] == pytest.approx(share)
+    assert controls["method"] == ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD
     assert controls["acs_person_weight_share"] == pytest.approx(2 / 3)
-    scaled = controls["scaled"]["undocumented_workers"]
-    assert scaled == pytest.approx(national.workers * share)
-    assert controls["scaled"]["undocumented_students"] == pytest.approx(
-        national.students * share
-    )
+    assert controls["donor_status_columns"] == {
+        "worker": "WSAL_VAL > 0 or SEMP_VAL > 0",
+        "student": "A_HSCOL == 2",
+    }
+    workers = controls["statuses"]["undocumented_workers"]
+    assert workers["control"] == national.workers
+    assert workers["donor_delivered"] == pytest.approx(3 * 1.1e6)
+    assert workers["residual"] == pytest.approx(national.workers - 3 * 1.1e6)
+    assert workers["acs_capacity"] == pytest.approx(14 * 0.55e6)
     person = result.table("person")
     worker = (person["WAGP"].fillna(0) > 0).to_numpy()
     remaining = weights[acs & worker & person["ssn_card_type"].eq("NONE").to_numpy()]
-    # The spill stops at the first record that reaches the scaled control.
-    assert scaled - weights[acs].max() < remaining.sum() <= scaled
+    assert workers["acs_assigned"] == pytest.approx(remaining.sum())
+    # The spill stops at the first record that reaches the residual.
+    residual = workers["residual"]
+    assert residual - weights[acs].max() < remaining.sum() <= residual
+    assert workers["pooled_total"] == pytest.approx(3 * 1.1e6 + remaining.sum())
+    assert abs(workers["pooled_total"] - national.workers) < weights[acs].max()
+    students = controls["statuses"]["undocumented_students"]
+    assert students["donor_delivered"] == 0.0
+    assert students["residual"] == national.students
+    assert acs_local_immigration_receipt_failures(receipt) == []
     assert receipt["acs_composition"]["non_citizen_share"] == pytest.approx(0.07)
+
+
+def _custom_controls(monkeypatch, *, workers: float, students: float):
+    national = _packaged_controls()
+    controls = UndocumentedControls(
+        workers=workers,
+        students=students,
+        population_anchor=national.population_anchor,
+        sources=national.sources,
+    )
+    monkeypatch.setattr(acs_local_immigration, "_packaged_controls", lambda: controls)
+    return controls
+
+
+def _residual_review_frame() -> Frame:
+    """The default frame with the last donor NONE worker also in college."""
+
+    asec_rows = _asec_population()
+    asec_rows[-1] = {**asec_rows[-1], "A_HSCOL": 2}
+    return _frame(asec_rows=asec_rows)
+
+
+def test_pooled_counts_meet_the_controls_not_f_plus_a_times_them(monkeypatch):
+    """#1052 review: donor at ``f`` of a control plus ACS at ``A`` pools to
+    ``(f + A) x control`` under the old share-scaled rule; the residual pools
+    to the control.
+
+    Units of u = 0.55M (one ACS person; a donor person is 2u). Workers:
+    control 12u, donor 6u (f = 1/2), ACS share A = 2/3, ACS capacity 14u.
+    Students: control 3u, donor 2u, ACS capacity 2u.
+    """
+
+    u = 0.55e6
+    controls = _custom_controls(monkeypatch, workers=12 * u, students=3 * u)
+    frame = _residual_review_frame()
+    weights = _person_weights(frame)
+    acs = _acs(frame)
+    share = weights[acs].sum() / weights.sum()
+    assert share == pytest.approx(2 / 3)
+    result, receipt = with_acs_local_immigration_inputs(
+        frame, seed=3, time_period=PERIOD
+    )
+    person = result.table("person")
+    none = person["ssn_card_type"].eq("NONE").to_numpy()
+    worker = (person["WAGP"].fillna(0) > 0) | (person["WSAL_VAL"].fillna(0) > 0)
+    student = person["SCHG"].isin([15, 16]) | person["A_HSCOL"].eq(2)
+    pooled_workers = weights[none & worker.to_numpy()].sum()
+    pooled_students = weights[none & student.to_numpy()].sum()
+    assert pooled_workers == controls.workers
+    assert pooled_students == controls.students
+    statuses = receipt["controls"]["statuses"]
+    assert statuses["undocumented_workers"] == {
+        "control": 12 * u,
+        "donor_delivered": 6 * u,
+        "donor_share_of_control": 0.5,
+        "residual": 6 * u,
+        "acs_capacity": 14 * u,
+        "acs_assigned": 6 * u,
+        "pooled_total": 12 * u,
+        "pooled_relative_error": 0.0,
+        "donor_excess": 0.0,
+        "acs_shortfall": 0.0,
+    }
+    assert statuses["undocumented_students"]["residual"] == pytest.approx(u)
+    assert statuses["undocumented_students"]["acs_assigned"] == pytest.approx(u)
+    assert statuses["undocumented_students"]["pooled_total"] == pytest.approx(3 * u)
+
+    # The pre-review rule targeted the ACS rows at A x control.
+    acs_person = frame.table("person").loc[acs]
+    view, entry_year = _acs_cps_view(acs_person, time_period=PERIOD)
+    old = _assign_ssn_card_codes(
+        view,
+        weights[acs],
+        seed=3,
+        controls=UndocumentedControls(
+            workers=share * controls.workers,
+            students=share * controls.students,
+            population_anchor=controls.population_anchor,
+            sources=controls.sources,
+        ),
+        arrival_year=entry_year,
+        time_period=PERIOD,
+        draw_keys=_acs_draw_keys(frame.table("household"), acs_person),
+    )
+    old_acs = weights[acs][(old == 0) & (view["WSAL_VAL"].to_numpy() > 0)].sum()
+    old_pooled = 6 * u + old_acs
+    assert abs(old_pooled - (0.5 + share) * controls.workers) <= u
+    assert old_pooled > controls.workers + u
+
+
+def test_a_donor_over_the_control_leaves_no_acs_residual(monkeypatch) -> None:
+    u = 0.55e6
+    _custom_controls(monkeypatch, workers=4 * u, students=3 * u)
+    result, receipt = with_acs_local_immigration_inputs(
+        _residual_review_frame(), seed=3, time_period=PERIOD
+    )
+    workers = receipt["controls"]["statuses"]["undocumented_workers"]
+    assert workers["residual"] == 0.0
+    assert workers["donor_excess"] == pytest.approx(2 * u)
+    assert workers["acs_assigned"] == 0.0
+    person = result.table("person")
+    acs = _acs(result)
+    acs_workers = acs & (person["WAGP"].fillna(0) > 0).to_numpy()
+    assert not person.loc[acs_workers, "ssn_card_type"].eq("NONE").any()
+    assert acs_local_immigration_receipt_failures(receipt) == []
+
+
+def test_a_residual_over_the_acs_capacity_records_the_shortfall(monkeypatch):
+    u = 0.55e6
+    _custom_controls(monkeypatch, workers=30 * u, students=3 * u)
+    _, receipt = with_acs_local_immigration_inputs(
+        _residual_review_frame(), seed=3, time_period=PERIOD
+    )
+    workers = receipt["controls"]["statuses"]["undocumented_workers"]
+    assert workers["residual"] == pytest.approx(24 * u)
+    assert workers["acs_assigned"] == pytest.approx(14 * u)
+    assert workers["acs_shortfall"] == pytest.approx(10 * u)
+    assert workers["pooled_relative_error"] == pytest.approx(-10 / 30)
+
+
+def test_donor_status_columns_fall_back_to_harmonized_inputs() -> None:
+    frame = _frame()
+    person = frame.table("person").rename(
+        columns={
+            "WSAL_VAL": "employment_income_before_lsr",
+            "SEMP_VAL": "self_employment_income_before_lsr",
+        }
+    )
+    person["is_full_time_college_student"] = person["A_HSCOL"].eq(2)
+    person = person.drop(columns="A_HSCOL")
+    _, receipt = with_acs_local_immigration_inputs(
+        _with_person(frame, person), seed=5, time_period=PERIOD
+    )
+    controls = receipt["controls"]
+    assert controls["donor_status_columns"]["worker"] == (
+        "employment_income_before_lsr > 0 or self_employment_income_before_lsr > 0"
+    )
+    assert controls["donor_status_columns"]["student"].startswith(
+        "is_full_time_college_student (full time only"
+    )
+    assert controls["statuses"]["undocumented_workers"][
+        "donor_delivered"
+    ] == pytest.approx(3 * 1.1e6)
+
+
+def test_a_donor_without_worker_or_student_columns_is_refused() -> None:
+    frame = _frame()
+    person = frame.table("person").drop(columns=["WSAL_VAL"])
+    with pytest.raises(ValueError, match="worker pair"):
+        with_acs_local_immigration_inputs(
+            _with_person(frame, person), seed=0, time_period=PERIOD
+        )
+    donor = _frame(acs_rows=[])
+    with pytest.raises(ValueError, match="student column"):
+        require_acs_local_immigration_donor(
+            _with_person(donor, donor.table("person").drop(columns="A_HSCOL")),
+            time_period=PERIOD,
+        )
+
+
+def _status(control: float, donor: float, assigned: float) -> dict[str, float]:
+    return {
+        "control": control,
+        "donor_delivered": donor,
+        "residual": max(0.0, control - donor),
+        "acs_assigned": assigned,
+        "pooled_total": donor + assigned,
+    }
+
+
+@pytest.mark.parametrize(
+    ("controls", "match"),
+    [
+        (None, "controls.method"),
+        ({"method": "national_rate_times_acs_person_share"}, "controls.method"),
+        ({"method": ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD}, "statuses is missing"),
+        (
+            {
+                "method": ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD,
+                "statuses": {
+                    "undocumented_workers": {
+                        **_status(8.3e6, 3e6, 5e6),
+                        "residual": 8.3e6 * 2 / 3,
+                    },
+                    "undocumented_students": _status(4.08e5, 0.0, 4.08e5),
+                },
+            },
+            "residual",
+        ),
+        (
+            {
+                "method": ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD,
+                "statuses": {
+                    "undocumented_workers": {
+                        **_status(8.3e6, 3e6, 5e6),
+                        "pooled_total": 5e6,
+                    },
+                    "undocumented_students": _status(4.08e5, 0.0, 4.08e5),
+                },
+            },
+            "pooled total",
+        ),
+        (
+            {
+                "method": ACS_LOCAL_IMMIGRATION_CONTROLS_METHOD,
+                "statuses": {"undocumented_workers": _status(8.3e6, 3e6, 5e6)},
+            },
+            "undocumented_students lacks",
+        ),
+    ],
+    ids=[
+        "no-controls",
+        "share-scaled",
+        "no-statuses",
+        "residual-not-residual",
+        "pooled-not-sum",
+        "missing-status",
+    ],
+)
+def test_receipt_failures_name_a_target_that_is_not_the_residual(controls, match):
+    receipt = {"issue": "microcosm#1020"}
+    if controls is not None:
+        receipt["controls"] = controls
+    failures = acs_local_immigration_receipt_failures(receipt)
+    assert failures
+    assert any(match in failure for failure in failures), failures
+
+
+def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
+    """#1052 review: LPRs at 5, 7 and 3 years since arrival flip at lags 1+,
+    3+ and never; the receipt also counts every other bar-status person."""
+
+    acs_rows = _acs_population() + [
+        _noncitizen(YOEP=2019, HINS4=1),
+        {},
+        _noncitizen(YOEP=2017, HINS4=1),
+        {},
+        _noncitizen(YOEP=2021, HINS4=1),
+        {},
+    ]
+    frame = _frame(acs_rows=acs_rows)
+    result, receipt = with_acs_local_immigration_inputs(
+        frame, seed=0, time_period=PERIOD
+    )
+    clock = receipt["entry_clock"]
+    assert clock["label"] == "arrival-based status-duration proxy"
+    assert "1613(a)" in clock["caveat"]
+    assert "clear the bar early" in clock["caveat"]
+    block = clock["adjustment_lag_sensitivity"]
+    assert block["graded"] is False
+    assert block["statuses"] == list(FIVE_YEAR_BAR_STATUSES)
+    assert set(block["flips_by_lag_years"]) == {
+        str(lag) for lag in ADJUSTMENT_LAG_YEARS
+    }
+    person = result.table("person")
+    acs = _acs(result)
+    weights = _person_weights(result)
+    years = person[YEARS].to_numpy()
+    subject = acs & person["immigration_status_str"].isin(FIVE_YEAR_BAR_STATUSES)
+    subject = subject.to_numpy()
+    assert block["bar_status_weight"] == pytest.approx(weights[subject].sum())
+    assert block["within_bar_weight"] == pytest.approx(
+        weights[subject & (years < 5)].sum()
+    )
+    for lag in ADJUSTMENT_LAG_YEARS:
+        expected = subject & (years >= 5) & (years < 5 + lag)
+        entry = block["flips_by_lag_years"][str(lag)]
+        assert entry["persons"] == int(expected.sum())
+        assert entry["weight"] == pytest.approx(weights[expected].sum())
+    # The three added LPRs: rows -6, -4 and -2 of the person table.
+    added = np.flatnonzero(acs)[-6::2]
+    assert (
+        list(person["immigration_status_str"].iloc[added])
+        == ["LEGAL_PERMANENT_RESIDENT"] * 3
+    )
+    assert list(years[added]) == [5.0, 7.0, 3.0]
+    flips = block["flips_by_lag_years"]
+    lag_two_minus_one = flips["2"]["persons"] - flips["1"]["persons"]
+    lag_three_minus_two = flips["3"]["persons"] - flips["2"]["persons"]
+    assert flips["1"]["persons"] >= 1  # the 5-year LPR
+    assert lag_two_minus_one == int(((years == 6) & subject).sum())
+    assert lag_three_minus_two == int(((years == 7) & subject).sum()) >= 1
 
 
 def test_assignment_is_deterministic_in_the_seed() -> None:

@@ -3127,6 +3127,9 @@ def seed_multispine_pool_inputs(
             # take-up. The legacy local lane seeds them in acs_local_take_up;
             # this module must stay spine-blind, so the fix here needs a
             # spine-blind receipt-anchored SNAP seed and a contract change.
+            # Until then the release loaders in h5_io refuse a pool whose
+            # receipt reports such cells
+            # (us_multispine_pool_defaulted_take_up_failures).
             if program.variable not in defaults:
                 raise ValueError(
                     "PolicyEngine exposes no input default for take-up variable "
