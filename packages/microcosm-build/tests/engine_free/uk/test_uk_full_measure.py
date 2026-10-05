@@ -387,3 +387,151 @@ def test_each_engine_block_is_collected_before_the_next_loads(
         local_grains=(),
     )
     assert len(collections) == blocks
+
+
+def _national_problem_fixture(monkeypatch, toy_ladder):
+    """A two-clone frame, one national target materialized from an injected
+    engine input, and the stubs the per-block path needs (the measure
+    inputs carry a person-level and two household-level columns, exactly as
+    the prepared-measures test above)."""
+    frame = clone_uk_dataset_with_ladder_geography(
+        source_frame(),
+        toy_ladder[0],
+        n_clones=2,
+        seed=7,
+        source_year=2023,
+        expected_constituency_vintage="2024_pcon",
+    ).frame
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="national",
+                entity="household",
+                measure="prepared_count",
+                value=33.0,
+                period=2025,
+                family="fixture",
+                source="fixture",
+            )
+        ],
+        country="uk",
+    )
+
+    class Resolver:
+        def __init__(self, *, frame, **kwargs):
+            self.frame = frame
+            self.simulation = object()
+
+        def receipt(self):
+            return {"mode": "stub", "policyengine_uk_version": "test"}
+
+    monkeypatch.setattr(
+        full_measure,
+        "resolve_target_measures",
+        lambda _factory, _registry, provider, **kwargs: SimpleNamespace(
+            receipt={"attached": {}, "provider": {}, "rounds": []},
+            measure_inputs={
+                ("person", "region"): np.zeros(provider.frame.n("person")),
+                ("household", "raw_engine_input"): provider.frame.table("household")[
+                    "household_id"
+                ].to_numpy(),
+                ("household", "ons/corporate_land_value"): np.ones(
+                    provider.frame.n("household")
+                ),
+            },
+        ),
+    )
+
+    def materialize(adapter, _registry, **kwargs):
+        assert "region" in adapter.tables["person"]
+        table = adapter.tables["household"]
+        table["prepared_count"] = table["raw_engine_input"].to_numpy()
+        return SimpleNamespace(
+            skipped=(),
+            report=lambda: {"prepared_count": 1, "skipped_count": 0, "skipped": []},
+        )
+
+    monkeypatch.setattr(full_measure, "materialize_uk_ledger_targets", materialize)
+    return frame, registry, Resolver
+
+
+def test_national_problem_is_compiled_per_block_in_the_pools_household_order(
+    monkeypatch, tmp_path, toy_ladder
+):
+    """The dense kernel's path: each clone block materializes and compiles its
+    own columns; the stitched problem equals the whole-pool problem, column
+    for column, and never materializes the pool (microcosm#932 follow-up)."""
+    frame, registry, resolver_factory = _national_problem_fixture(
+        monkeypatch, toy_ladder
+    )
+    results = {}
+    for blocks in (1, 2):
+        problem, rows, metrics, receipt = full_measure.resolve_uk_full_national_problem(
+            frame,
+            registry,
+            period=2025,
+            scratch_dir=tmp_path / f"scratch-{blocks}",
+            resolver_factory=resolver_factory,
+            blocks=blocks,
+            local_grains=(),
+        )
+        results[blocks] = problem
+        ids = frame.table("household")["household_id"].to_numpy()
+        assert problem.matrix.shape == (1, len(ids))
+        # Each household's contribution sits in its own column, in frame order.
+        np.testing.assert_array_equal(problem.matrix.toarray()[0], ids)
+        np.testing.assert_array_equal(problem.target_vector, [33.0])
+        assert problem.weight_entity == "household"
+        np.testing.assert_array_equal(
+            problem.initial_weights.values, frame.resolve_weights("household").values
+        )
+        assert problem.skipped == ()
+        assert len(rows.targets) == 1
+        assert metrics == {}
+        assert receipt["blocks"] == blocks
+        assert receipt["national_materialization"] == "per_engine_block"
+        assert receipt["target_materialization"] == {
+            "prepared_count": 1,
+            "skipped_count": 0,
+            "skipped": [],
+        }
+        assert receipt["national_inputs"] == 3
+        if blocks == 2:
+            assert receipt["deviation"] == "per_clone_block_engine_resolution"
+    one, two = results[1], results[2]
+    assert (one.matrix != two.matrix).nnz == 0
+    assert one.names == two.names
+    # The pool itself was left untouched by both paths.
+    assert "prepared_count" not in frame.table("household")
+
+
+def test_national_problem_is_none_without_national_targets(
+    monkeypatch, tmp_path, toy_ladder
+):
+    frame, _registry, resolver_factory = _national_problem_fixture(
+        monkeypatch, toy_ladder
+    )
+    monkeypatch.setattr(
+        full_measure,
+        "compute_household_metrics",
+        lambda _simulation, area_type, *, household_ids, **_kwargs: pd.DataFrame(
+            {f"{area_type}_metric": np.ones(len(household_ids))},
+            index=household_ids,
+        ),
+    )
+    problem, rows, metrics, receipt = full_measure.resolve_uk_full_national_problem(
+        frame,
+        TargetRegistry([], country="uk"),
+        period=2025,
+        scratch_dir=tmp_path / "scratch",
+        resolver_factory=resolver_factory,
+        blocks=2,
+        local_grains=("constituency",),
+    )
+    assert problem is None
+    assert len(rows.targets) == 0
+    assert (
+        metrics["constituency"].index.tolist()
+        == frame.table("household")["household_id"].tolist()
+    )
+    assert receipt["national_materialization"] == "per_engine_block"
