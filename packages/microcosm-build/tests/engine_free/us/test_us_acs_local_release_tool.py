@@ -166,6 +166,119 @@ def test_spine_composition_reports_per_spine_weight_and_size() -> None:
     )
 
 
+def test_do_qa_reports_snap_take_up_among_eligible_units(tmp_path, monkeypatch):
+    """#1051 review: informational SNAP take-up by spine, state and type.
+
+    Six one-person households (household = SPM unit), weights 1..6, probed in
+    two chunks. Units 1, 2, 3, 5 and 6 are eligible (weight 17); 1, 3 and 6
+    take up (10), and 1 and 3 receive a positive benefit (4).
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+    from microcosm.frame.adapters import policyengine_us as adapter_module
+
+    module = _load_tool_module()
+    ids = np.arange(1, 7)
+    spines = ["asec_puf"] * 2 + ["acs_2024_1yr"] * 4
+    person = pd.DataFrame({"person_id": ids, spine_column("person"): spines})
+    tables = {"person": person}
+    for entity in US_SCHEMA.entities:
+        if entity != "person":
+            person[f"person_{entity}_id"] = ids
+            tables[entity] = pd.DataFrame({f"{entity}_id": ids})
+    tables["household"]["_state"] = ["CA", "CA", "TX", "TX", "CA", "TX"]
+    tables["spm_unit"] = tables["spm_unit"].assign(
+        **{
+            spine_column("spm_unit"): spines,
+            "takes_up_snap_if_eligible": [True, False, True, True, False, True],
+            "_eligible": [True, True, True, False, True, True],
+            "_snap": [100.0, 0.0, 50.0, 0.0, 0.0, 0.0],
+            "_elderly_or_disabled": [False, True, False, False, False, True],
+            "_children": [0, 0, 2, 1, 0, 0],
+            "_earned": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
+        }
+    )
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(ids.astype(np.float64), WeightKind.CALIBRATED)},
+    )
+    calls: list[tuple[str, ...]] = []
+
+    class _Engine:
+        def materialize(self, sub_frame, variables, period):
+            calls.append(tuple(variables))
+            spm = sub_frame.table("spm_unit")
+            return {
+                "ssi": np.zeros(sub_frame.n("person")),
+                "is_snap_eligible": spm["_eligible"].to_numpy(),
+                "takes_up_snap_if_eligible": spm[
+                    "takes_up_snap_if_eligible"
+                ].to_numpy(),
+                "snap": spm["_snap"].to_numpy(),
+                "has_usda_elderly_disabled": spm["_elderly_or_disabled"].to_numpy(),
+                "spm_unit_count_children": spm["_children"].to_numpy(),
+                "snap_earned_income": spm["_earned"].to_numpy(),
+                "state_code_str": sub_frame.table("household")["_state"].to_numpy(),
+            }
+
+    monkeypatch.setattr(adapter_module, "PolicyEngineUSEngine", _Engine)
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: frame)
+    monkeypatch.setattr(module, "_sha256", lambda *_a, **_k: "artifact-sha")
+    args = SimpleNamespace(
+        out_h5=tmp_path / "calibrated.h5", hh_chunk=4, checkpoint_dir=tmp_path
+    )
+    module.do_qa(args)
+
+    # One engine pass per chunk reads SSI and the SNAP variables together.
+    assert len(calls) == 2
+    assert set(calls[0]) == {"ssi", "state_code_str", *module._QA_SNAP_VARIABLES}
+    payload = json.loads((tmp_path / "spine_qa.json").read_text())
+    assert set(payload["per_spine"]) == {"asec_puf", "acs_2024_1yr"}
+    table = payload["snap_take_up_among_eligible"]
+    assert table["graded"] is False
+
+    def rates(cell):
+        return (
+            cell["eligible_units"],
+            cell["eligible_weight"],
+            pytest.approx(cell["take_up_rate"]),
+        )
+
+    overall = table["all"]
+    assert rates(overall) == (5, 17.0, pytest.approx(10 / 17))
+    assert overall["receiving_rate"] == pytest.approx(4 / 17)
+    assert {k: rates(v) for k, v in table["by_household_type"].items()} == {
+        "elderly_or_disabled": (2, 8.0, pytest.approx(0.75)),
+        "with_children": (1, 3.0, pytest.approx(1.0)),
+        "childless_adults": (2, 6.0, pytest.approx(1 / 6)),
+        "with_earnings": (2, 5.0, pytest.approx(0.6)),
+    }
+    assert rates(table["by_spine"]["asec_puf"]["all"]) == (2, 3.0, pytest.approx(1 / 3))
+    acs = table["by_spine"]["acs_2024_1yr"]
+    assert rates(acs["all"]) == (3, 14.0, pytest.approx(9 / 14))
+    assert rates(acs["by_household_type"]["childless_adults"]) == (
+        1,
+        5.0,
+        pytest.approx(0.0),
+    )
+    assert {k: rates(v) for k, v in table["by_state"].items()} == {
+        "CA": (3, 8.0, pytest.approx(1 / 8)),
+        "TX": (2, 9.0, pytest.approx(1.0)),
+    }
+
+
+def test_snap_take_up_among_eligible_handles_no_eligible_units() -> None:
+    module = _load_tool_module()
+    empty = pd.DataFrame(columns=list(module._QA_SNAP_UNIT_COLUMNS))
+    table = module.snap_take_up_among_eligible(empty)
+    assert table["all"]["eligible_units"] == 0
+    assert table["all"]["take_up_rate"] is None
+    assert table["by_spine"] == {}
+    assert table["by_state"] == {}
+
+
 def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     module = _load_tool_module()
     staging_summary = {
@@ -584,6 +697,30 @@ def test_reviewed_null_fill_refuses_to_default_fill_immigration(tmp_path) -> Non
     assert person["years_since_us_entry"].isna().sum() == 1
 
 
+def _residual_controls(**worker_overrides) -> dict:
+    """A donor-residual controls block (microcosm#1052 review)."""
+
+    def status(control: float, donor: float, assigned: float) -> dict:
+        return {
+            "control": control,
+            "donor_delivered": donor,
+            "residual": max(0.0, control - donor),
+            "acs_assigned": assigned,
+            "pooled_total": donor + assigned,
+        }
+
+    return {
+        "method": "national_control_minus_donor_pooled_delivered",
+        "statuses": {
+            "undocumented_workers": {
+                **status(8.3e6, 3.0e6, 5.3e6),
+                **worker_overrides,
+            },
+            "undocumented_students": status(4.08e5, 1.0e5, 3.08e5),
+        },
+    }
+
+
 def _staging_immigration_summary(**overrides) -> dict:
     """The two entries a current staging run records (microcosm#1020)."""
 
@@ -592,6 +729,7 @@ def _staging_immigration_summary(**overrides) -> dict:
             "issue": "microcosm#1020",
             "seed": 0,
             "assigned_sha256": "b" * 64,
+            "controls": _residual_controls(),
         },
         "acs_local_immigration_gate": {
             "name": "acs_local_immigration_signal",
@@ -617,6 +755,19 @@ def _staging_immigration_summary(**overrides) -> dict:
             acs_local_immigration={"issue": "microcosm#1019", "assigned_sha256": "b"}
         ),
         _staging_immigration_summary(acs_local_immigration={"issue": "microcosm#1020"}),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+            }
+        ),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+                "controls": _residual_controls(residual=8.3e6 * 2 / 3),
+            }
+        ),
     ],
     ids=[
         "pre-1020-staging",
@@ -626,6 +777,8 @@ def _staging_immigration_summary(**overrides) -> dict:
         "gate-truthy-not-true",
         "wrong-issue",
         "no-digest",
+        "pre-1052-review-share-scaled",
+        "targets-not-the-donor-residual",
     ],
 )
 def test_immigration_consumers_refuse_a_staging_run_without_the_stage(summary):
