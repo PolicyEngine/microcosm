@@ -6,6 +6,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 import microcosm.build.telemetry_emitter_service as service_module
 from microcosm.build.telemetry_emitter import (
@@ -65,6 +66,7 @@ def test_token_bearing_http_post_does_not_follow_redirects() -> None:
             paths.append(self.path)
             self.send_response(307)
             self.send_header("Location", "/credential-leak")
+            self.send_header("Content-Length", "0")
             self.end_headers()
 
         def log_message(self, format, *args):
@@ -229,6 +231,95 @@ def test_resource_sampler_has_a_base_install_fallback(monkeypatch) -> None:
         "peak_rss_bytes",
     }
     assert all(value >= 0 for value in sample.values())
+
+
+def test_resource_sampler_keeps_reaped_child_cpu_monotonic(monkeypatch) -> None:
+    state = {"child_alive": True}
+
+    class FakeProcess:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def create_time(self):
+            return float(self.pid)
+
+        def children(self, recursive=False):
+            assert recursive is True
+            if self.pid == 10 and state["child_alive"]:
+                return [FakeProcess(11)]
+            return []
+
+        def cpu_times(self):
+            if self.pid == 10:
+                return SimpleNamespace(
+                    user=10.0,
+                    system=2.0,
+                    children_user=100.0 if not state["child_alive"] else 0.0,
+                    children_system=20.0 if not state["child_alive"] else 0.0,
+                )
+            return SimpleNamespace(
+                user=80.0,
+                system=15.0,
+                children_user=0.0,
+                children_system=0.0,
+            )
+
+        def memory_info(self):
+            return SimpleNamespace(rss=100)
+
+    monkeypatch.setattr(
+        service_module,
+        "psutil",
+        SimpleNamespace(Process=FakeProcess, Error=OSError, STATUS_ZOMBIE="zombie"),
+    )
+    sampler = service_module.ProcessTreeSampler(10)
+
+    before = sampler.sample()
+    state["child_alive"] = False
+    after = sampler.sample()
+
+    assert before["cpu_user_seconds"] == 90.0
+    assert before["cpu_system_seconds"] == 17.0
+    assert after["cpu_user_seconds"] == 110.0
+    assert after["cpu_system_seconds"] == 22.0
+
+
+def test_emitter_startup_timeout_terminates_and_reaps_service(
+    tmp_path, monkeypatch
+) -> None:
+    class FakeProcess:
+        def __init__(self):
+            self.terminated = False
+            self.waited = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            self.waited = True
+            return 0
+
+    process = FakeProcess()
+    monkeypatch.setattr(
+        "microcosm.build.telemetry_emitter.subprocess.Popen",
+        lambda *args, **kwargs: process,
+    )
+
+    emitter = LocalTelemetryEmitter.start(
+        run_id="startup-timeout",
+        country_code="US",
+        pipeline="test-pipeline",
+        collector_url="https://collector.example",
+        spool_path=tmp_path / "events.sqlite3",
+        startup_timeout_seconds=0,
+    )
+
+    assert not emitter.available
+    assert process.terminated
+    assert process.waited
 
 
 class _FakeSampler:
