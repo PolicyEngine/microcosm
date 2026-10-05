@@ -51,7 +51,12 @@ EPOCH0_RTOL = 1e-5
 
 
 def _finite(value) -> bool:
-    return isinstance(value, (int, float)) and math.isfinite(value)
+    # bool is an int subclass, and a JSON false must not pass as 0.0.
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 def main() -> int:

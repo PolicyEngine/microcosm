@@ -143,7 +143,7 @@ summary, so the gate is a finalize-stage check on data it already has.
 ## On the weighted loss
 
 The equal-weight frontier above calibrates with every target counting once,
-so the 3,819 IRS SOI cells carry 85.6% of the loss. microcosm#1104 weights
+so the 3,819 IRS SOI cells carry 85.6% of the loss weight. microcosm#1104 weights
 the ACS local build's targets like the national release, through one shared
 implementation (`microcosm.build.us_runtime.target_loss_weights.
 us_acs_local_target_loss_weights`, row mapping `us_acs_local.v1`, formula
@@ -187,16 +187,16 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
    at 0.03, 0.0708 against 0.0740 at 0.1, 0.0784 against 0.0828 at 0).
 3. **The weighted loss costs district population fit, and the penalty
    multiplies it.** On the equal loss every trained district population is
-   within 0.75% at λ 0 and 0.03. On the weighted loss, 11 of 436 districts
-   miss by more than 10% at λ 0 (worst TX-14 −33%, CA-29 −32%), 73 at
-   λ 0.03 (worst 46%) and 135 at λ 0.1 (worst 50%). The misses sit in states
-   with many districts (at λ 0.1: California 27 of 52, Texas 18 of 38,
-   Florida 14 of 28, Pennsylvania 10 of 17, New York 10 of 26); state
-   populations stay within 3.8%. Held-out district populations are predicted
-   poorly in every configuration: at share 0.5 their fold-mean held-out capped
-   error is 0.095-0.126 in every configuration with both folds, weighted or
-   equal-weight. There they carry 1.1-1.9% of the held-out weighted loss, so
-   the held-out measure does not see this cost.
+   within 0.75% at share 0.5 and λ 0 and 0.03. On the weighted loss, 11 of
+   436 districts miss by more than 10% at λ 0 (worst TX-14 −33%, CA-29
+   −32%), 73 at λ 0.03 (worst 46%) and 135 at λ 0.1 (worst 50%). The misses
+   sit in states with many districts (at λ 0.1: California 27 of 52, Texas
+   18 of 38, Florida 14 of 28, Pennsylvania 10 of 17, New York 10 of 26);
+   state populations stay within 3.8%. Held-out district populations are
+   predicted poorly in every configuration: at share 0.5 their fold-mean
+   held-out capped error is 0.095-0.126 in every configuration with both
+   folds, weighted or equal-weight. At share 0.5 they carry 1.1-1.9% of the
+   held-out weighted loss, so the held-out measure does not see this cost.
 4. **Multiplying the population family by 8 buys it back and is the best
    held-out configuration.** `--target-family-loss-multiplier
    census_population=8` (in the training weights; scoring keeps the default
@@ -345,7 +345,7 @@ was not chosen under the pre-registered rule. Several things were not tested:
   or between 0.03 and 0.1 with ×8;
 - no softmax or share-0.9 run with a multiplier;
 - no district-only lever (the family multiplier also raises state population
-  to 24.7% of the loss).
+  to 24.7% of the loss weight).
 
 If the build keeps #1104's default (no multiplier), the rule's λ is 0.1, with
 the district cost above.
@@ -484,7 +484,7 @@ the district cost above.
   `check_weights.py` passes against main's module.
 - **One target surface.** Everything here is the 09-23 release's
   `--soi-mode state` surface: 4,459 targets, with no district SOI rows. Under
-  `--soi-mode state_cd`, #1104 gives district SOI 16.7% of the loss and the
+  `--soi-mode state_cd`, #1104 gives district SOI 16.7% of the loss weight and the
   population families other shares, so neither the λ nor the multiplier
   carries over without a rerun on that surface.
 - **Registry metadata.** `registry.py` compiles the specs with this branch's
