@@ -23,6 +23,7 @@ Run: ``uv run python experiments/us-acs-local-l2-basis-20260928/check_weights.py
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -49,6 +50,10 @@ OUT = HERE / "results" / "weights_check.json"
 EPOCH0_RTOL = 1e-5
 
 
+def _finite(value) -> bool:
+    return isinstance(value, (int, float)) and math.isfinite(value)
+
+
 def main() -> int:
     inputs = load_inputs(DEFAULT_CHECKPOINT, verify=True, need_registry=True)
     module = shared_weight_module()
@@ -69,14 +74,15 @@ def main() -> int:
                 loss_vector_sha256(full_names, weights.full),
             )
         train_digest, full_digest = cache[key]
-        consistency = payload["consistency"]
+        consistency = payload.get("consistency") or {}
         epoch0 = consistency.get("recomputed_design_loss_relative_to_epoch0")
         final = consistency.get("recomputed_minus_result_final_loss")
         row = {
             "epoch0_relative": epoch0,
             "final_difference": final,
-            "consistent": epoch0 is not None
+            "consistent": _finite(epoch0)
             and abs(epoch0) < EPOCH0_RTOL
+            and _finite(final)
             and final == 0.0,
             "run_id": spec.run_id,
             "train_matches": train_digest == recorded["train"]["loss_vector_sha256"],
@@ -97,16 +103,32 @@ def main() -> int:
         "ok": not mismatches and bool(checked),
         "module_file": module.__file__,
         "module_sha256": sha256(Path(module.__file__)),
-        "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV)),
+        "module_loaded_from_file": bool(os.environ.get(SHARED_WEIGHTS_FILE_ENV))
+        and Path(module.__file__).resolve()
+        == Path(os.environ[SHARED_WEIGHTS_FILE_ENV]).resolve(),
         "recorded_module_sha256": sorted(
             {row["recorded_module_sha256"] for row in checked}
         ),
         "registry_sha256": inputs.registry_receipt["verified_registry_sha256"],
         "n_runs": len(checked),
         "n_distinct_weightings": len(cache),
-        "max_abs_epoch0_relative": max(abs(row["epoch0_relative"]) for row in checked),
+        # Over the receipts that record finite values; the others are in
+        # mismatches already.
+        "max_abs_epoch0_relative": max(
+            (
+                abs(r["epoch0_relative"])
+                for r in checked
+                if _finite(r["epoch0_relative"])
+            ),
+            default=None,
+        ),
         "max_abs_final_difference": max(
-            abs(row["final_difference"]) for row in checked
+            (
+                abs(r["final_difference"])
+                for r in checked
+                if _finite(r["final_difference"])
+            ),
+            default=None,
         ),
         "n_mismatches": len(mismatches),
         "mismatches": mismatches,

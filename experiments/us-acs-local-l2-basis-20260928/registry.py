@@ -61,8 +61,9 @@ SOI_MODE = "state"
 RELEASE_HEAD = "767312d60430893617af57034f62edfb4920dca3"
 REGISTRY_FILENAME = "target_registry.json"
 RECEIPT_FILENAME = "target_registry.receipt.json"
-#: targets.json carries values as JSON floats written from the same specs, so
-#: they must round-trip exactly; anything else means a different compile.
+#: The checkpoint's values are the release's (targets_meta.parquet carries the
+#: 09-23 checkpoint's targets.json values); a recompile of the same feed must
+#: reproduce them bit for bit, and anything else means a different compile.
 VALUE_RTOL = 0.0
 
 

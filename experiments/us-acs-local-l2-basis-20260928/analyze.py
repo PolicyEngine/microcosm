@@ -774,7 +774,7 @@ def weighted_markdown(frame: pd.DataFrame) -> str:
             ("Prior ACS share", "prior_acs_share", ".3g"),
             ("λ", "l2_lambda", "g"),
             ("National ESS", "kish_ess", ",.0f"),
-            ("Training objective", "final_loss", ".4f"),
+            ("Training objective (run's own weights)", "final_loss", ".4f"),
             ("Held-out weighted error", "holdout_weighted_capped_error", ".4f"),
             ("Held-out capped error", "holdout_mean_capped_error", ".4f"),
             ("Held-out within 10%", "holdout_within_10pct", ".1%"),

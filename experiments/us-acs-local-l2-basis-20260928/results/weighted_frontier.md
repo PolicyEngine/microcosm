@@ -35,7 +35,7 @@
 
 ### Rotated holdout (each fold is 20% of targets, never seen by the solve)
 
-| Fold | Population × | Parametrization | Prior ACS share | λ | National ESS | Training objective | Held-out weighted error | Held-out capped error | Held-out within 10% | Held-out SOI within 10% | Held-out CD pop within 10% | Prior: held-out weighted error |
+| Fold | Population × | Parametrization | Prior ACS share | λ | National ESS | Training objective (run's own weights) | Held-out weighted error | Held-out capped error | Held-out within 10% | Held-out SOI within 10% | Held-out CD pop within 10% | Prior: held-out weighted error |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 0 | 1 | projection | 0.5 | 0 | 14,471 | 0.0084 | 0.0786 | 0.1314 | 62.3% | 62.8% | 51.1% | 0.1580 |
 | 0 | 1 | projection | 0.5 | 0.03 | 20,497 | 0.0120 | 0.0723 | 0.1201 | 64.0% | 65.1% | 50.0% | 0.1580 |

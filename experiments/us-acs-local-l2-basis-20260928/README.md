@@ -157,7 +157,7 @@ the checkpoint exactly), and `sweep.py` hands the training specs to the
 shared function. On the full surface the weights run from 0.026 to 20.1, the
 effective number of targets is 1,405, and the loss vector's digest is
 `ba36f887407181dc…` (the figure #1104 records for this surface). Shares of
-the loss (`results/weighting_shift.md`, per target in
+the loss weight (`results/weighting_shift.md`, per target in
 `results/target_loss_weights.csv`):
 
 | Family | Targets | Equal weights | Shared weights |
@@ -187,20 +187,20 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
    at 0.03, 0.0708 against 0.0740 at 0.1, 0.0784 against 0.0828 at 0).
 3. **The weighted loss costs district population fit, and the penalty
    multiplies it.** On the equal loss every trained district population is
-   within 0.7% at λ 0 and 0.03. On the weighted loss, 11 of 436 districts
+   within 0.75% at λ 0 and 0.03. On the weighted loss, 11 of 436 districts
    miss by more than 10% at λ 0 (worst TX-14 −33%, CA-29 −32%), 73 at
    λ 0.03 (worst 46%) and 135 at λ 0.1 (worst 50%). The misses sit in states
    with many districts (at λ 0.1: California 27 of 52, Texas 18 of 38,
    Florida 14 of 28, Pennsylvania 10 of 17, New York 10 of 26); state
    populations stay within 3.8%. Held-out district populations are predicted
-   poorly in every configuration: at share 0.5 their held-out capped error is
-   0.095-0.126 in every configuration held out, weighted or equal-weight. They
-   carry 0.8-1.9% of the held-out weighted loss, so the held-out measure does
-   not see this cost.
+   poorly in every configuration: at share 0.5 their fold-mean held-out capped
+   error is 0.095-0.126 in every configuration with both folds, weighted or
+   equal-weight. There they carry 1.1-1.9% of the held-out weighted loss, so
+   the held-out measure does not see this cost.
 4. **Multiplying the population family by 8 buys it back and is the best
    held-out configuration.** `--target-family-loss-multiplier
    census_population=8` (in the training weights; scoring keeps the default
-   weights) returns district population to 9.5% of the loss, about its
+   weights) returns district population to 9.5% of the loss weight, about its
    equal-weight share, and state population to 24.7%. At λ 0 it leaves no
    district beyond 10% and already cuts held-out weighted error by 8%
    (0.0721). At λ 0.03 it gives 0.0704, the lowest of every configuration
@@ -213,7 +213,7 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
    settings on the weighted loss (11, worst 33%). Most of the held-out gain is
    on SOI, which carries 92-96% of the held-out weighted loss: its held-out
    capped error falls from 0.132 to 0.119 here and at default λ 0.1 alike. Held-out district error falls
-   most with the multiplier: 0.111 to 0.095, against 0.106 at default λ 0.03
+   most with the multiplier: 0.110 to 0.095, against 0.106 at default λ 0.03
    and 0.111 at λ 0.1. At λ 0.1 the multiplier
    leaves 24 districts beyond 10% and held-out error rises to 0.0724.
    ×4 sits between (λ 0.03: 8 districts beyond 10%, worst 32%).
@@ -230,7 +230,7 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
 
    λ is in units of each loss, so equal λ is not an equal setting across the
    two losses. The equal-weight solves keep trained district populations
-   within 0.7% at λ 0 and 0.03, which the weighted ones do not.
+   within 0.75% at λ 0 and 0.03, which the weighted ones do not.
 6. **Share 0.9 behaves as on the equal loss.** ESS 81,714 (93,524 there),
    held-out weighted error 36-41% above the release settings, and the
    relative gate fails on every solve (318-371 districts). That remains the
@@ -341,8 +341,8 @@ rule weighs it.
 The multiplier was tried after the first pass showed the district cost, so it
 was not chosen under the pre-registered rule. Several things were not tested:
 - only ×4 and ×8 were run, and only ×8 has held-out folds;
-- no value between them, no λ between 0.03 and 0.1 with ×8, and no λ below
-  0.03 with it;
+- no value between them, and no λ strictly between 0 and 0.03 (such as 0.01)
+  or between 0.03 and 0.1 with ×8;
 - no softmax or share-0.9 run with a multiplier;
 - no district-only lever (the family multiplier also raises state population
   to 24.7% of the loss).
