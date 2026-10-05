@@ -6,6 +6,7 @@ consumers receive compiled numerical contributions, never injected engine state.
 
 from __future__ import annotations
 
+import gc
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -195,7 +196,12 @@ def resolve_uk_full_measures(
         resolver_receipts.append(
             _without_scratch_paths(dict(resolver.receipt()), scratch_dir)
         )
-        del resolver
+        # A policyengine simulation is a large cyclic object graph; the
+        # collector does not reclaim it on `del`, and the first K=25 build
+        # (2026-10-05) retained all 25 per-clone engines (~140 GB footprint)
+        # until the machine killed it. Collect before the next block loads.
+        del resolution, resolver
+        gc.collect()
         simulation_input = block_scratch / "simulation-input.h5"
         simulation_input.unlink(missing_ok=True)
         try:

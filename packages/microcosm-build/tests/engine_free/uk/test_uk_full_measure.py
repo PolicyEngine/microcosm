@@ -335,3 +335,55 @@ def test_scratch_paths_are_recorded_relative_to_the_scratch_root(monkeypatch, tm
     provider = receipts[0]["resolution"][0]["provider"]
     assert provider["source_path"] == "simulation-input.h5"
     assert str(tmp_path) not in json.dumps(receipts[0])
+
+
+@pytest.mark.parametrize("blocks", [1, 2])
+def test_each_engine_block_is_collected_before_the_next_loads(
+    monkeypatch, tmp_path, toy_ladder, blocks
+):
+    """A policyengine simulation is a large cyclic object graph that `del`
+    alone does not reclaim; the first K=25 build (2026-10-05) retained all 25
+    per-clone engines until the machine killed it. The loop collects after
+    every block, including a single-block run."""
+    frame = source_frame()
+    if blocks == 2:
+        frame = clone_uk_dataset_with_ladder_geography(
+            frame,
+            toy_ladder[0],
+            n_clones=2,
+            seed=7,
+            source_year=2023,
+            expected_constituency_vintage="2024_pcon",
+        ).frame
+    registry = TargetRegistry([], country="uk")
+
+    class Resolver:
+        def __init__(self, *, frame, **kwargs):
+            self.frame = frame
+            self.simulation = object()
+
+        def receipt(self):
+            return {"mode": "stub", "policyengine_uk_version": "test"}
+
+    monkeypatch.setattr(
+        full_measure,
+        "resolve_target_measures",
+        lambda _factory, _registry, provider, **kwargs: SimpleNamespace(
+            receipt={"attached": {}, "provider": {}, "rounds": []},
+            measure_inputs={},
+        ),
+    )
+    collections = []
+    monkeypatch.setattr(
+        full_measure, "gc", SimpleNamespace(collect=lambda: collections.append(1) or 0)
+    )
+    full_measure.resolve_uk_full_measures(
+        frame,
+        registry,
+        period=2025,
+        scratch_dir=tmp_path / "scratch",
+        resolver_factory=Resolver,
+        blocks=blocks,
+        local_grains=(),
+    )
+    assert len(collections) == blocks
