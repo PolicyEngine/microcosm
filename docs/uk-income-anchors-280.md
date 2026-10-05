@@ -255,8 +255,9 @@ FRS parent's income, while its adults' incomes were replaced by SPI draws. A
 was copied from.
 
 With the SPI block first, every row, the FRS base rows included, is imputed
-from its final incomes. On the base rows this includes the SPI stage-1
-dividend redraw.
+from its final incomes. The base rows' incomes are their own reports: the SPI
+stage-1 forest no longer redraws their dividends (uk-data#498,
+microcosm#1095).
 
 Three details follow from the order:
 

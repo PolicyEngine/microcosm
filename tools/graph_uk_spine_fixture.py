@@ -118,6 +118,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
 )
+from microcosm.build.uk_runtime.spi_benefit_coherence import (
+    UKSPIBenefitCoherenceStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -160,11 +163,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 38
+UK_FIXTURE_STAGE_COUNT = 39
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 38-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 39-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -340,6 +343,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BEDROOM6": 1 + household_id % 4,
                 "CTANNUAL": 900.0 + household_id * 10.0,
                 "CTBAND": 1 + household_id % 7,
+                "CTDISC": 1 if household_id % 3 == 0 else 2,
+                "CT25D50D": (
+                    (2 if household_id % 9 == 0 else 1) if household_id % 3 == 0 else ""
+                ),
+                "CTREB": 1 if household_id % 3 or household_id % 7 == 0 else 2,
                 "CTREBAMT": float(household_id % 3),
                 "ADULTH": 1,
                 "HRPNUM": 1,
@@ -609,7 +617,7 @@ def _was_person_donor() -> pd.DataFrame:
     """Synthetic WAS round-8 persons of the 64 synthetic WAS households.
 
     Mixed-case raw names as in the deposit. Adults and dependent children per
-    household follow the household tab's NumAdultR8/NumCh18R8; Lifetime ISA
+    household follow the household tab's NumAdultR8/NumChildR8; Lifetime ISA
     holders are younger adults with small values (below the households' gross
     financial wealth, which WAS counts them in), one banded value, one
     ONS-imputed holder, one ONS-imputed non-holder, one self-employment
@@ -689,6 +697,7 @@ def _was_donor() -> pd.DataFrame:
     # wealth covers the listed assets, and net is gross less the liabilities.
     main_residence = np.where(owner, 100_000.0 + rows * 2_000.0, 0.0)
     other_houses = np.where(position % 3 == 0, 1_000.0 + rows * 50.0, 0.0)
+    buy_to_let = np.where(position % 6 == 1, 40_000.0 + rows * 500.0, 0.0)
     buildings = np.where(position % 4 == 0, 3_000.0 + rows * 60.0, 0.0)
     land = np.where(position % 5 == 0, 10.0 + rows, 0.0)
     other_property = np.where(position % 7 == 0, 500.0 + rows * 5.0, 0.0)
@@ -724,6 +733,7 @@ def _was_donor() -> pd.DataFrame:
             "DVLUKValR8_sum": land,
             "DVPropertyR8": main_residence
             + other_houses
+            + buy_to_let
             + buildings
             + land
             + other_property,
@@ -735,7 +745,7 @@ def _was_donor() -> pd.DataFrame:
             "totalpenr8_aggr": 100.0 + rows * 10.0,
             "dvvaldbt_scaper8_aggr": 40.0 + rows,
             "NumAdultR8": 1 + position % 3,
-            "NumCh18R8": position % 3,
+            "NumChildR8": position % 3,
             "DVGIPPENR8_AGGR": 11.0 + rows,
             "DVGISER8_AGGR": 13.0 + rows,
             "DVGIINVR8_aggr": 15.0 + rows,
@@ -743,7 +753,11 @@ def _was_donor() -> pd.DataFrame:
             "HBedRmR8": 1 + position % 5,
             "GORR8": np.take([8, 11, 12, 1], position % 4),
             "DVPriRntR8": private_rent,
-            "CTAmtR8": 900.0 + rows * 10.0,
+            "DVCTaxAmtAnnualR8": 900.0 + rows * 10.0,
+            # Net rent where the household holds property beyond its home.
+            "DVNetRentAmtAnnualR8_aggr": np.where(
+                (other_houses > 0.0) | (buy_to_let > 0.0), 2_000.0 + rows * 40.0, 0.0
+            ),
             "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
             "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
             "HMortGR8": main_mortgage + other_mortgage,
@@ -753,6 +767,7 @@ def _was_donor() -> pd.DataFrame:
             "HFINWR8_SUM": gross_financial,
             "DVhvalueR8": main_residence,
             "DVHseValR8_sum": other_houses,
+            "DVBltValR8_sum": buy_to_let,
             "DVBlDValR8_sum": buildings,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
             "DVSaValR8_aggr": savings,
@@ -1644,6 +1659,9 @@ def _build_implementations(
         "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
             stage=stages["uc_reporter_redraw"], engine=engine
         ),
+        "spi_benefit_coherence": UKSPIBenefitCoherenceStageTransform(
+            stage=stages["spi_benefit_coherence"], contract=contract
+        ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
@@ -1698,7 +1716,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 38-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 39-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")

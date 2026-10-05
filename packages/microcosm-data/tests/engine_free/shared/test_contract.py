@@ -92,33 +92,12 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
 # The committed per-reference register (microcosm#1063 c9): the policy payloads
 # sealed into the input-mass evidence digest.
 UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
-    "access_fund": {
-        "reason": "One FRS household carries 98% of the candidate's access-fund mass (GBP 1.01bn against the incumbent's GBP 160m, +535%): sernum 14443's 19-year-old reports an access fund of GBP 4,500 with FRS period code 5 (calendar month), which the FRS weeklyises to GBP 1,035.62 (ACCSSAMT) and the spine annualises to GBP 54,037, eleven times the next largest FRS value; the calibration takes the household and its two capital-gains copies to the 10x weight bound. The value is almost certainly an annual or termly award under the wrong period code; the input stays on the release surface until the period rule is settled in the spine, and the exclusion expires with it.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1063 (PR #1089 release-cut certifier on the 2026-10-03 final build; ruling 2026-10-04 in session: the deferrals needed to build and publish the national dataset are signed, each with its diagnosis)",
-        "approved_on": "2026-10-04",
-        "expires_on": "2027-01-04",
-    },
     "dfe_education_spending": {
         "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
         "approved_by": "juaristi22",
         "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
         "approved_on": "2026-10-02",
         "expires_on": "2027-04-02",
-    },
-    "jsa_income_reported": {
-        "reason": "The candidate carries GBP 272m of reported income-based JSA against the incumbent's GBP 23m (+1,058%): the enhanced-FRS reference holds only the FRS respondents' amounts, while the spine's SPI synthetic channel receives this legacy-benefit leaf from the stage-2 QRF at FRS rates (76 of the 196 nonzero rows and most of the mass) and a few rows sit at the calibration's weight bound. Neither is new to this build: the 2026-09-30 main candidate stood at +428% on the same column. The comparison measures the SPI channel's imputation of a legacy benefit, which is a design question for the channel, not a mass the candidate lost or invented.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1063 (PR #1089 release-cut certifier on the 2026-10-03 final build; ruling 2026-10-04 in session: the deferrals needed to build and publish the national dataset are signed, each with its diagnosis)",
-        "approved_on": "2026-10-04",
-        "expires_on": "2027-04-04",
-    },
-    "working_tax_credit_reported": {
-        "reason": "The candidate carries GBP 625m of reported Working Tax Credit against the incumbent's GBP 74m (+747%): the enhanced-FRS reference holds only the FRS respondents' amounts, while the spine's SPI synthetic channel receives this legacy-benefit leaf from the stage-2 QRF at FRS rates (274 of the 372 nonzero rows) and a few rows sit at the calibration's weight bound. The 2026-09-30 main candidate stood at +421% on the same column. Tax credits closed in April 2025, so the SPI channel's treatment of the leaf is a design question for the channel, not a mass the candidate lost or invented.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1063 (PR #1089 release-cut certifier on the 2026-10-03 final build; ruling 2026-10-04 in session: the deferrals needed to build and publish the national dataset are signed, each with its diagnosis)",
-        "approved_on": "2026-10-04",
-        "expires_on": "2027-04-04",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -148,19 +127,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "82a92dfa7ba4e4ce81cfd44d7b89737cf3cce50d69fd2d6bbeeae0ca15a0f8d5"
+    "6e1a3a38efe1e984426d4a40a63f1671434d27c44e89d75abd7290a955af18b0"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c117864fac6df5bb7f37f466c068b8dd9dd032b694cf3d521c51b5dca71b5865"
+    "f0c8e1d4f3e97ff6fd6ff51dff9db6414816785807cec30a5ea9526630af6a65"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7ff71ed911b840c01a1b6395de37a04fdf95498444bd692b32d89f3b1767a128"
+    "c361fe49d7edd364f31a1f30282fe5b9050e779d311ab438ab4aef7e3e95148c"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "8829fb83db6a16482be80cbe1b1da125608448b5a34b9cbb0561aac32a870447"
+    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -211,6 +190,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
@@ -1268,6 +1248,7 @@ def _gate_battery_payload(
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "spi_benefit_coherence",
         "uc_capital_coherence",
         "pension_credit_take_up",
         "child_benefit_take_up",
@@ -1296,6 +1277,7 @@ def _gate_battery_payload(
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",

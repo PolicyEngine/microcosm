@@ -245,6 +245,8 @@ def _recipient_frame(households: int = 64):
                     "self_employment_income": 0.0,
                     "private_pension_income": 0.0,
                     "capital_income": 0.0,
+                    "property_income": 0.0,
+                    "is_uc_claimant": adult,
                 }
             )
             person_id += 1
@@ -263,6 +265,7 @@ def _recipient_frame(households: int = 64):
                 "region": "LONDON" if household % 2 else "WALES",
                 "num_bedrooms": 1 + household % 4,
                 "council_tax": 1_000.0 + 10.0 * household,
+                "council_tax_rebate": 0.0,
                 "household_net_income": 20_000.0 + 1_000.0 * (household % 60),
                 "is_renting": bool(household % 4 == 0),
                 "tenure_type": tenures[household % 4],

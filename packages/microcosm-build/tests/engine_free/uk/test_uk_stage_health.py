@@ -1907,6 +1907,71 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     assert committed["check"] == "pension_credit_take_up"
 
 
+def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
+    gates = json.loads(
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")
+    )
+    entry = next(
+        g for g in gates["gates"] if g["id"] == "uk_stage_spi_benefit_coherence"
+    )
+    assert entry["criticality"] == "release_blocking"
+    assert entry["evidence_absent_blocks"] is True
+    parameters = dict(entry["parameters"])
+
+    def evidence():
+        return {
+            "stage": "spi_benefit_coherence",
+            "zeroed": {
+                column: {"rows_reporting_before": 3, "rows_reporting_after": 0}
+                for column in parameters["zeroed_columns"]
+            },
+            "restored": {
+                column: {"rows_differing_from_twin_after": 0}
+                for column in parameters["restored_columns"]
+            },
+            "benefits_in_own_right": {"mismatches_after": 0, "spi_rows_changed": 2},
+            "universal_credit_take_up": {
+                "reporters_not_claiming": 0,
+                "outside_population_non_reporters_claiming": 0,
+                "spi_claiming_before": 5,
+                "spi_claiming_after": 4,
+            },
+            "base_rows_unchanged": True,
+        }
+
+    def gate(payload):
+        return uk_stage_health_gate(
+            evidence=payload,
+            stage="spi_benefit_coherence",
+            check="spi_benefit_coherence",
+            parameters=parameters,
+        )
+
+    assert _passed(gate(evidence()))
+    broken = []
+    payload = evidence()
+    payload["zeroed"]["sda_reported"]["rows_reporting_after"] = 1
+    broken.append(payload)
+    payload = evidence()
+    del payload["zeroed"]["ssmg_reported"]
+    broken.append(payload)
+    payload = evidence()
+    payload["restored"]["iidb_reported"]["rows_differing_from_twin_after"] = 2
+    broken.append(payload)
+    payload = evidence()
+    payload["benefits_in_own_right"]["mismatches_after"] = 1
+    broken.append(payload)
+    payload = evidence()
+    payload["base_rows_unchanged"] = False
+    broken.append(payload)
+    for key in ("reporters_not_claiming", "outside_population_non_reporters_claiming"):
+        payload = evidence()
+        payload["universal_credit_take_up"][key] = 1
+        broken.append(payload)
+    for payload in broken:
+        assert not gate(payload).passed
+
+
 def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> None:
     parameters = {
         "stage": "child_benefit_take_up",

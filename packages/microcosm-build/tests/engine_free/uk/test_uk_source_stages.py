@@ -63,6 +63,9 @@ HOUSING_SHELL_STAGE_NAMES = [
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
 ]
+SPI_BENEFIT_COHERENCE_STAGE_NAMES = [
+    "spi_benefit_coherence",
+]
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
@@ -99,6 +102,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
+    *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -169,6 +173,7 @@ class TestUKSourceStagesManifest:
             *E5_STAGE_NAMES,
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
+            *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
@@ -242,6 +247,7 @@ class TestUKSourceStagesManifest:
                     "hmrc_spi_income_spine": _identity,
                     "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
+                    "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
                     "pension_credit_take_up": _identity,
                     "child_benefit_take_up": _identity,
@@ -651,7 +657,6 @@ class TestE3ManifestLockstep:
             "resample_band_donor_leaves",
             "fit_weighted_qrf_stage2",
             "zero_pension_age_reports_below_state_pension_age",
-            "redraw_columns_from_fitted_qrf",
             "materialize_hmrc_income_bands_fail_closed",
             "classify_hmrc_income_facts_with_reviewed_fences",
             "gate_distributional_effective_mass",
@@ -726,7 +731,11 @@ class TestE3ManifestLockstep:
         from microcosm.build.uk_runtime.etb_services import (
             UK_ETB_SERVICES_OUTPUT_COLUMNS,
         )
-        from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
+        from microcosm.build.uk_runtime.etb_vat import (
+            UK_ETB_FAMILY_ROLE_COUNTS,
+            UK_ETB_VAT_ENGINE_PREDICTORS,
+            UK_ETB_VAT_PREDICTORS,
+        )
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
         from microcosm.build.uk_runtime.frs_education_grants import (
             DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES,
@@ -819,6 +828,10 @@ class TestE3ManifestLockstep:
         )
         assert (
             tuple(stages["etb_vat"].operations[1].parameters["predictors"])
+            == UK_ETB_VAT_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[2].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
         from microcosm.build.uk_runtime.etb_services import (
@@ -832,7 +845,7 @@ class TestE3ManifestLockstep:
         )
         assert set(
             stages["etb_services"].operations[2].parameters["derived_predictors"]
-        ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
+        ) == {*UK_ETB_SERVICES_EDUCATION_COUNTS, *UK_ETB_FAMILY_ROLE_COUNTS}
         assert (
             tuple(stages["etb_services"].operations[3].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]

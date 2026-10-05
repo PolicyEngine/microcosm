@@ -1015,7 +1015,7 @@ class TestUKCountryPackage:
         # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
         # retired (#901).
         # microcosm#1063 also adds cgt_residential_split after the anchor.
-        assert len(spec.sources.stages) == 38
+        assert len(spec.sources.stages) == 39
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1398,6 +1398,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_spi_benefit_coherence",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
@@ -1504,6 +1505,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_spi_benefit_coherence",
             "uk_stage_pension_credit_take_up",
             "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",

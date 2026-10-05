@@ -128,27 +128,33 @@ MARITAL_MAP = {
     6: "DIVORCED",
 }
 
+# FRS BENEFITS codes summed into each reported amount. Scotland's Adult
+# Disability Payment (117 daily living, 118 mobility) mirrors PIP's components
+# and rates, and Child Disability Payment (121 care, 122 mobility) mirrors DLA's,
+# so each lands in the column of the benefit it replaces (FRS 2024-25 variable
+# listing, UKDS SN 9563; uk-data#500, microcosm#1095). Codes 69 and 70 are
+# benefit recoveries, not income, and stay unmapped.
 BENEFIT_CODES = {
-    "child_benefit": 3,
-    "income_support": 19,
-    "housing_benefit": 94,
-    "attendance_allowance": 12,
-    "dla_sc": 1,
-    "dla_m": 2,
-    "iidb": 15,
-    "carers_allowance": 13,
-    "sda": 10,
-    "afcs": 8,
-    "ssmg": 22,
-    "pension_credit": 4,
-    "child_tax_credit": 91,
-    "working_tax_credit": 90,
-    "state_pension": 5,
-    "winter_fuel_allowance": 62,
-    "incapacity_benefit": 17,
-    "universal_credit": 95,
-    "pip_m": 97,
-    "pip_dl": 96,
+    "child_benefit": (3,),
+    "income_support": (19,),
+    "housing_benefit": (94,),
+    "attendance_allowance": (12,),
+    "dla_sc": (1, 121),
+    "dla_m": (2, 122),
+    "iidb": (15,),
+    "carers_allowance": (13,),
+    "sda": (10,),
+    "afcs": (8,),
+    "ssmg": (22,),
+    "pension_credit": (4,),
+    "child_tax_credit": (91,),
+    "working_tax_credit": (90,),
+    "state_pension": (5,),
+    "winter_fuel_allowance": (62,),
+    "incapacity_benefit": (17,),
+    "universal_credit": (95,),
+    "pip_m": (97, 118),
+    "pip_dl": (96, 117),
 }
 
 # FRS adult HOURTOT: total hours of care provided per week, a banded derived
@@ -649,9 +655,9 @@ def _add_benefits(
     var2 = _number(benefits, "var2")
     amount = _number(benefits, "benamt")
     person_id = benefits.get("person_id", pd.Series(dtype="float64"))
-    for name, code in BENEFIT_CODES.items():
+    for name, codes in BENEFIT_CODES.items():
         pe_person[f"{name}_reported"] = (
-            _sum_to_entity(amount * (benefit == code), person_id, person["person_id"])
+            _sum_to_entity(amount * benefit.isin(codes), person_id, person["person_id"])
             * WEEKS_IN_YEAR
         )
     pe_person["jsa_contrib_reported"] = (
@@ -946,14 +952,40 @@ def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
     return np.maximum(_number(frame, column), 0)
 
 
+#: The Water Charges Reduction Scheme's maximum reduction, 2021-27. A council
+#: tax reduction recipient's charges fall by R = 35 x (A/B) - D percentage
+#: points of the gross charge, unless R < 0, on top of the council tax status
+#: discount D, where A is the reduction and B the council tax before it, after
+#: discounts (Scottish Government, "Water services - charging principles: 2021
+#: to 2027", Annex A): the combined reduction is the larger of D and 35% x A/B.
+SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM = 0.35
+#: Share of the gross charges a full council tax reduction recipient without a
+#: status discount pays, and the share DWP's CTANNUAL carries for every
+#: recipient, which ``frs_council_tax`` nets (uk-data#499, microcosm#1095).
+SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE = (
+    1.0 - SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM
+)
+#: FRS 2024-25 CT25D50D codes to the status discount they record, for
+#: households with CTDISC 1 (SN 9563 variable listing).
+FRS_STATUS_DISCOUNT_BY_CODE = {1: 0.25, 2: 0.5}
+SCOTTISH_WATER_AND_SEWERAGE_RAW_COLUMNS = (
+    "cwatamt1",
+    "csewamt1",
+    "cwatamtd",
+    "ctdisc",
+    "ct25d50d",
+    "ctreb",
+)
+
+
 def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
-    """Weekly Scottish water + sewerage charge, net of the household's discount.
+    """Weekly Scottish water + sewerage charge the household pays.
 
     Scotland is not asked ``WATSEWRT`` — its water and sewerage charges ride on
-    the council tax bill — so the amount must be assembled from the council-tax
+    the council tax bill — so the amount is assembled from the council-tax
     water/sewerage cells.
 
-    FRS 2024-25 retired the two cells the incumbent used.  ``CWATAMT``/
+    FRS 2024-25 retired the two cells the incumbent used. ``CWATAMT``/
     ``CSEWAMT`` ("Wat./Sew. Charge: Final value after discount") are still
     present as headers but carry no data at all in this vintage, and the FRS
     replaced them with the derived ``CWATAMT1``/``CSEWAMT1`` ("Weeklyised gross
@@ -961,46 +993,71 @@ def scottish_water_and_sewerage_weekly(household: pd.DataFrame) -> pd.Series:
     2024-25 as variable was removed from the dataset for 2024-25" — SN 9563
     ``9563_dv_summary_2425.xlsx``).
 
-    The replacements are **gross**, where the retired cells were **after
-    discount**, and the FRS publishes no discounted sewerage counterpart.
-    ``CWATAMTD`` ("Deriv Council Tax water charge -Scot") does carry the
-    discount, so the household's own discount factor is observable as
-    ``CWATAMTD / CWATAMT1`` and applies to the sewerage side of the same bill.
-    That keeps the incumbent's semantics — what the household actually pays —
-    across the vintage change rather than silently switching to a gross basis.
+    The household pays the gross charges less the status discount its council
+    tax records, which applies to the water and sewerage charges too (25% or
+    50%: ``CTDISC`` 1 with ``CT25D50D`` 1 or 2). For a council tax reduction
+    recipient (``CTREB`` 1) the Water Charges Reduction Scheme tops that
+    discount up to ``SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM`` of the gross
+    charges, so a recipient pays the gross charges less the larger of its
+    discount and 35% (uk-data#499, microcosm#1095). ``CWATAMTD`` ("Deriv
+    Council Tax water charge -Scot") is not that amount: on the 2024-25 tab it
+    sits at a median 0.83 of the gross water charge for undiscounted
+    non-recipients and 0.87 for undiscounted recipients, so it is read only
+    where no gross water cell exists.
 
-    Every value is weeklyised (all five cells sit in the FRS "weekly variables"
-    listing), so callers apply ``WEEKS_IN_YEAR`` themselves.
+    The scheme's 35% tapers with the share A/B of the council tax the
+    reduction covers, but every recipient here takes the full-reduction case,
+    A/B = 1. 86% of Scotland's recipients receive full council tax reduction
+    (Council Tax Reduction in Scotland 2024-25, March 2025, average award
+    GBP 16.55 a week), while none of the 234 Scottish recipients with a
+    recorded ``CTREBAMT`` on the 2024-25 tab pays nothing after it (19% of
+    English recipients do) and their recorded amounts have a median of GBP 6 a
+    week, so the recorded amount cannot carry the share.
+
+    Every value is weeklyised (all the amount cells sit in the FRS "weekly
+    variables" listing), so callers apply ``WEEKS_IN_YEAR`` themselves.
 
     On the 2024-25 tab the domain splits cleanly: 1,641 Scottish households
-    carry a positive gross water charge and a well-defined factor in
-    (1/3, 1]; 22 carry a recorded ``CWATAMTD`` with no gross bill cell, and
-    their ``CSEWAMT1`` is zero, so the fallback factor cannot move them; 21
-    carry no council-tax cells at all and fall to zero.
+    carry a positive gross water charge; 22 carry a recorded ``CWATAMTD``
+    with no gross bill cell, and their ``CSEWAMT1`` is zero, so they pay the
+    recorded water charge; 21 carry no council-tax cells at all and fall to
+    zero.
     """
 
-    water = _positive(household, "cwatamtd")
+    missing = sorted(set(SCOTTISH_WATER_AND_SEWERAGE_RAW_COLUMNS) - set(household))
+    if missing:
+        raise KeyError(f"Scottish water assembly needs raw household cells {missing}.")
     water_gross = _positive(household, "cwatamt1")
     sewerage_gross = _positive(household, "csewamt1")
     billed = water_gross > 0
-    # The correctness of the discount fallback rests on the domain claim
-    # above: a household with no gross water bill carries no sewerage gross
-    # either, so the fallback factor of 1.0 can never re-introduce the gross
-    # basis this helper exists to avoid. That claim is a property of the
-    # vintage, not of the code — so it is asserted, and a vintage that breaks
-    # it refuses at build time instead of silently paying gross sewerage.
-    undiscountable = ~billed & (sewerage_gross > 0)
-    if bool(undiscountable.any()):
+    # A household with no gross water bill carries no gross sewerage either,
+    # so its recorded CWATAMTD is the whole charge. That claim is a property
+    # of the vintage, not of the code — so it is asserted, and a vintage that
+    # breaks it refuses at build time instead of mixing the two bases.
+    unbilled_sewerage = ~billed & (sewerage_gross > 0)
+    if bool(unbilled_sewerage.any()):
         raise ValueError(
             "Scottish water assembly: "
-            f"{int(undiscountable.sum())} household(s) carry a gross sewerage "
-            "charge (CSEWAMT1 > 0) with no gross water bill (CWATAMT1 == 0), "
-            "so no discount factor is observable for them. Adding sewerage at "
-            "gross would silently change the charge's after-discount meaning; "
-            "this vintage needs an adjudicated rule for these households."
+            f"{int(unbilled_sewerage.sum())} household(s) carry a gross sewerage "
+            "charge (CSEWAMT1 > 0) with no gross water bill (CWATAMT1 == 0), so "
+            "their charge cannot be assembled on one basis; this vintage needs "
+            "an adjudicated rule for these households."
         )
-    discount = np.where(billed, water / water_gross.where(billed, 1.0), 1.0)
-    return water + sewerage_gross * discount
+    discount = (
+        _number(household, "ct25d50d")
+        .map(FRS_STATUS_DISCOUNT_BY_CODE)
+        .where(_number(household, "ctdisc") == 1, 0.0)
+        .fillna(0.0)
+    )
+    reduction = np.where(
+        _number(household, "ctreb") == 1,
+        np.maximum(discount, SCOTTISH_WATER_CHARGES_REDUCTION_MAXIMUM),
+        discount,
+    )
+    paid = (water_gross + sewerage_gross) * (1.0 - reduction)
+    return pd.Series(
+        np.where(billed, paid, _positive(household, "cwatamtd")), index=household.index
+    )
 
 
 def _reject_nan(frame: pd.DataFrame, entity: str) -> None:

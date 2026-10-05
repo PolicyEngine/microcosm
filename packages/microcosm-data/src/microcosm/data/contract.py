@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "82a92dfa7ba4e4ce81cfd44d7b89737cf3cce50d69fd2d6bbeeae0ca15a0f8d5"
+    "6e1a3a38efe1e984426d4a40a63f1671434d27c44e89d75abd7290a955af18b0"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c117864fac6df5bb7f37f466c068b8dd9dd032b694cf3d521c51b5dca71b5865"
+    "f0c8e1d4f3e97ff6fd6ff51dff9db6414816785807cec30a5ea9526630af6a65"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7ff71ed911b840c01a1b6395de37a04fdf95498444bd692b32d89f3b1767a128"
+    "c361fe49d7edd364f31a1f30282fe5b9050e779d311ab438ab4aef7e3e95148c"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -487,6 +487,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred"),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
@@ -585,6 +586,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_frs_hmrc_spine_leaves_signal",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
+        "uk_stage_spi_benefit_coherence",
         "uk_stage_pension_credit_take_up",
         "uk_stage_child_benefit_take_up",
         "uk_stage_cgt_incidence_clone_mass",
@@ -606,7 +608,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "8829fb83db6a16482be80cbe1b1da125608448b5a34b9cbb0561aac32a870447"
+    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -801,6 +803,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_nts_bus_travel_support",
             "uk_stage_pension_credit_take_up",
             "uk_stage_salary_sacrifice_realization",
+            "uk_stage_spi_benefit_coherence",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
             "uk_stage_uc_deduction_attributes",
@@ -848,10 +851,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "9708ee040b34e8dbecdb88691079f00682ccf9ca20599f07342b4c33c2e56f40"
+            "da12b5be6236783cb7af79279175116548d7c99da283e4e45ef40b3ba3cd3168"
         ),
         "policy_sha256": (
-            "b22f79584c16ab81fbfa131c19c16f5bc5c1e484003c73a695abf3446ff6175b"
+            "447841b7d7e57abf7e64574884b6b3db15ee44f4be09e4863cda066f0005e498"
         ),
     },
     "calibration_seam": {
@@ -864,7 +867,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "4eed0ed4dc6785f7f4611e9af96a84594e73806eccc6eaf6b76f85630b378f35"
+            "e072281905223b9346f77da11dd52c390421b22046292cef92094a3b894ab365"
         ),
         "policy_sha256": (
             "a673ec3efe1be53567ddc12b344e44ab872e05a6ebcea2862b1762952901ce78"

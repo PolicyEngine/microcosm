@@ -459,6 +459,33 @@
       "notes": "Stage-time SPI redraw identity gate over the HMRC SPI income spine receipt."
     },
     {
+      "id": "uk_stage_spi_benefit_coherence",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "spi_benefit_coherence",
+        "check": "spi_benefit_coherence",
+        "zeroed_columns": [
+          "jsa_contrib_reported",
+          "jsa_income_reported",
+          "esa_income_reported",
+          "income_support_reported",
+          "working_tax_credit_reported",
+          "child_tax_credit_reported",
+          "sda_reported",
+          "ssmg_reported"
+        ],
+        "restored_columns": [
+          "iidb_reported",
+          "afcs_reported",
+          "bsp_reported"
+        ]
+      },
+      "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
+    },
+    {
       "id": "uk_stage_pension_credit_take_up",
       "gate": "stage_health",
       "phase": "transferred",
@@ -961,7 +988,7 @@
       "parameters": {
         "maximum_share_deviation": 0.05
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063)."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063). would_claim_uc is drawn for FRS benefit units by frs_take_up and redrawn for SPI-channel units by spi_benefit_coherence on the same rule (microcosm#1095), so the gate measures both channels at the contract rate."
     },
     {
       "id": "uk_brma_enum_domain",

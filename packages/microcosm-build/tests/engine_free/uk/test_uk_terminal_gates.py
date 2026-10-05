@@ -467,18 +467,14 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # deferral (ruling D6) is retired in turn (microcosm#1069): with the SPI
     # channel's State Pension at 66 repaired the row fits at +23.0 % to +24.0 %
     # across the c5-fix and c6 arms, back inside the bound. The SE
-    # 12,570-15,000 cell is deferred again on the microcosm#1063 stack
-    # (2026-10-02, four weeks): its design-weight value sits on the target and
-    # the solver's pull, the same as main's, crosses the bound at +32.0 %.
-    assert set(register) == {
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025"
-    }
-    deferral = register[
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025"
-    ]
-    assert deferral.approved_on == "2026-10-02"
-    assert deferral.expires_on == "2026-11-02"
-    assert "microcosm#1063" in deferral.adjudication
+    # 12,570-15,000 cell was deferred again on the microcosm#1063 stack
+    # (2026-10-02, four weeks): its design-weight value sat on the target and
+    # the solver's pull, the same as main's, crossed the bound at +32.0 %. It
+    # is retired with the microcosm#1095 ports: with FRS respondents keeping
+    # their reported dividends and SPI draws going to claimants and partners
+    # only, the cell fits at +11.7 % on the rebased head, and the gate fails
+    # the deferral as stale.
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with

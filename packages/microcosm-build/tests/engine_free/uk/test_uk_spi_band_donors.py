@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.spi_band_donors import (
     SPI_INCOME_BAND_MINIMUM_DONORS,
     UKSPIIncomeBandDonorStageTransform,
     _assert_band_donor_stage_parameters,
+    age_band_lower_bound,
     income_band_lower_bound,
     load_hmrc_itl_band_taxpayers,
     spi_income_band_donor_operation_parameters,
@@ -146,14 +147,26 @@ def _raw_tape(rows: int = 240, *, seed: int = 0) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def _support_frame(n_households: int = 60, *, reverse: bool = False):
+def _support_frame(
+    n_households: int = 60,
+    *,
+    reverse: bool = False,
+    dependant_age: int = 12,
+    dependant_is_claimant: bool = False,
+):
     ids = np.arange(1, n_households + 1, dtype="int64")
     person = pd.DataFrame(
         {
             "person_id": np.r_[ids, ids + 1_000],
             "person_benunit_id": np.r_[ids, ids],
             "person_household_id": np.r_[ids, ids],
-            "age": np.r_[np.full(n_households, 45), np.full(n_households, 12)],
+            "age": np.r_[
+                np.full(n_households, 45), np.full(n_households, dependant_age)
+            ],
+            "is_uc_claimant": np.r_[
+                np.ones(n_households, dtype=bool),
+                np.full(n_households, dependant_is_claimant, dtype=bool),
+            ],
             "gender": np.r_[
                 np.where(ids % 2 == 0, "MALE", "FEMALE"),
                 np.full(n_households, "FEMALE"),
@@ -393,6 +406,38 @@ def test_stack_is_keyed_on_identity_and_refuses_a_second_stack() -> None:
         _stack_small(first.frame)
 
 
+def test_dependants_aged_16_to_19_are_never_carriers() -> None:
+    """A dependant keeps its twin's values, so it cannot carry a band draw.
+
+    The second member of every household is 17 and the tape favours that age
+    band; only claimants and partners are candidates (uk-data#504,
+    microcosm#1095), so the 17-year-olds are seated only when the frame flags
+    them as claimants or partners.
+    """
+
+    propensity = _propensity()
+    teen_band = int(age_band_lower_bound(np.asarray([17.0]))[0])
+    favoured = (
+        propensity.assign(age_band=teen_band, propensity=1.0)
+        .drop_duplicates(["region", "gender", "age_band", "band"])
+        .reset_index(drop=True)
+    )
+    propensity = pd.concat(
+        [propensity.loc[propensity["age_band"] != teen_band], favoured],
+        ignore_index=True,
+    )
+
+    def carrier_ages(*, dependant_is_claimant: bool) -> pd.Series:
+        frame = _support_frame(
+            200, dependant_age=17, dependant_is_claimant=dependant_is_claimant
+        )
+        person = _stack_small(frame, propensity=propensity).frame.table("person")
+        return person.loc[person[PERSON_IS_SPI_INCOME_BAND_CARRIER], "age"]
+
+    assert carrier_ages(dependant_is_claimant=False).eq(45).all()
+    assert carrier_ages(dependant_is_claimant=True).eq(17).any()
+
+
 def test_stack_follows_weight_times_propensity_not_the_sample() -> None:
     # Given a tape whose band propensities are equal across the two regions,
     # seats follow household weight: the heavier half of the frame is seated
@@ -623,7 +668,7 @@ def test_resample_draw_is_keyed_on_the_carrier_not_on_the_row_order() -> None:
     assert renumbered.sort_index().equals(first.sort_index())
 
 
-def test_resample_refuses_missing_carriers_or_undeclared_band() -> None:
+def test_resample_refuses_missing_carriers_undeclared_band_or_non_recipient() -> None:
     donor = prepare_spi_donor_table(_raw_tape(), seed=1)
     household = pd.DataFrame(
         {
@@ -647,6 +692,18 @@ def test_resample_refuses_missing_carriers_or_undeclared_band() -> None:
             donor,
             household=household,
             spi_people=pd.Series([True]),
+            uprating_factors=dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0),
+            lower_bounds=BANDS,
+            regional_pool_minimum=5,
+            seed=1,
+        )
+    household[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN] = 200_000.0
+    with pytest.raises(ValueError, match="must be SPI recipients"):
+        _resample_band_donor_leaves(
+            person,
+            donor,
+            household=household,
+            spi_people=pd.Series([False]),
             uprating_factors=dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0),
             lower_bounds=BANDS,
             regional_pool_minimum=5,

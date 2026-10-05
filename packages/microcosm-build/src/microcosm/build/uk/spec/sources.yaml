@@ -368,9 +368,9 @@ stages:
     person_table: adult union child
     household_sort: set_index('household_id').sort_index() before positional household reads
   - kind: map_columns
-    scope: 'raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)'
+    scope: 'raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme''s 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095)'
   - kind: map_coded_amounts
-    scope: region, tenure, accommodation, council tax band, benefit-code amount mappings; adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance
+    scope: region, tenure, accommodation, council tax band, benefit-code amount mappings (Scotland's Adult and Child Disability Payment codes 117/118 and 121/122 into the PIP and DLA columns they replace; benefit recovery codes 69 and 70 unmapped); adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance
   - kind: annualize_periodic_amounts
     weeks_in_year: 52.17857142857143
   outputs:
@@ -715,14 +715,14 @@ stages:
     - gvtregno
     - ctband
     - adulth == 1
-    donor_filter: raw ctannual > 0
+    donor_filter: raw ctreb != 1 and ctannual > 0
     missing: raw ctannual < 0 or NaN
-    value: Scottish-water-netted CTANNUAL
+    value: 'council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 365.25/7, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 365.25/7 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean'
   outputs:
   - council_tax
   nonnegative_outputs:
   - council_tax
-  notes: Re-reads raw househol.tab because spine council_tax_reported clips missing values. Scottish Water charges are netted before cell means; no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped.
+  notes: Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped.
 - stage: frs_disability
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.
@@ -1301,7 +1301,7 @@ stages:
     count_rule: max(minimum_donors_per_band, ceil(published band taxpayers / maximum_donor_weight))
     weight_rule: published band taxpayers / band donor count, equal within a band
     expected_band_count: 4
-    candidate_population: raw FRS base channel adults aged 16 and over
+    candidate_population: raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over
     candidate_order: person_id ascending breaks equal draw keys
     draw: 'weighted_without_replacement_identity_keyed: Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first'
     propensity: SPI 2022-23 FACT-weighted band share by region, sex and age band
@@ -1440,6 +1440,7 @@ stages:
   - kind: fit_weighted_qrf_stage1
     training_artifact_role: qrf_donor
     recipient_minimum_age: 16
+    recipient_role_column: is_uc_claimant
     rebase_income_to_build_period: true
     donor_income_period: 2022
     income_uprating_variables:
@@ -1600,7 +1601,7 @@ stages:
     seed: 44
   - kind: fit_weighted_qrf_stage2
     training_population: uk_frs_raw_spine_base_support_channel
-    target_population: spi_synthetic_support_channel
+    target_population: spi_synthetic_support_channel claimants and partners (is_uc_claimant) aged 16 and over
     predictors:
     - age
     - gender
@@ -1680,11 +1681,6 @@ stages:
     - state_pension_reported
     state_pension_age: policyengine-uk gov.dwp.state_pension.age at the build instant
     receipt: rows, weighted people and amounts removed per column and step
-  - kind: redraw_columns_from_fitted_qrf
-    fit: stage1
-    columns:
-    - dividend_income
-    rows: base_support_channel
   - kind: materialize_hmrc_income_bands_fail_closed
     artifact_role: published_fact_surface
     mapped_build_period: 2024
@@ -1964,7 +1960,7 @@ stages:
   - hmrc_spi_pay
   - hmrc_spi_unemployment_benefit_income
   - hmrc_spi_incapacity_benefit_income
-  notes: Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.
+  notes: Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path.
 - stage: spi_housing_shell
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.
@@ -2079,11 +2075,14 @@ stages:
       tenure_code: Ten1R8
       private_rent_code: DVPriRntR8
       main_residence_value: DVhvalueR8
-      other_residential_property_value: DVHseValR8_sum
       non_residential_property_value: DVBlDValR8_sum
       savings: DVSaValR8_aggr
       num_vehicles: vcarnr8
       weight: R8xshhwgt
+      num_adults: NumAdultR8
+      num_children: NumChildR8
+      council_tax: DVCTaxAmtAnnualR8
+      rental_income: DVNetRentAmtAnnualR8_aggr
     derived:
       private_pension_wealth: totalpenr8_aggr - dvvaldbt_scaper8_aggr
       corporate_wealth_excl_isa: DVFESHARESR8_aggr + DVFShUKVR8_aggr + DVFCollVR8_aggr
@@ -2092,15 +2091,14 @@ stages:
       student_loan_balance: Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr
       consumer_debt: max(HFINWR8_SUM - HFINWNTR8_exSLC_Sum, 0)
       tenure_category: 'Ten1R8 1 owned_outright; 2 or 3 owned_with_mortgage; 4 or 5 private_rent when DVPriRntR8 == 1, otherwise social_rent; any other code private_rent, counted in the receipt'
-      other_property_value: DVPropertyR8 - (DVhvalueR8 + DVHseValR8_sum + DVBlDValR8_sum + DVLUKValR8_sum), refused when negative
+      other_residential_property_value: DVHseValR8_sum + DVBltValR8_sum (houses other than the main residence plus buy-to-let property)
+      other_property_value: DVPropertyR8 - (DVhvalueR8 + DVHseValR8_sum + DVBltValR8_sum + DVBlDValR8_sum + DVLUKValR8_sum), refused when negative
       other_financial_assets: HFINWR8_SUM - (DVSaValR8_aggr + DVCISAVR8_aggr + corporate_wealth), refused when negative
       is_renting: DVPriRntR8 == 1
       region: GORR8 via incumbent REGIONS map
   - kind: materialize_rules_engine_predictors
     predictors:
     - household_net_income
-    - num_adults
-    - num_children
     - private_pension_income
     - employment_income
     - self_employment_income
@@ -2118,6 +2116,7 @@ stages:
     - employment_income
     - self_employment_income
     - capital_income
+    - rental_income
     - num_bedrooms
     - council_tax
     - tenure_owned_with_mortgage
@@ -2246,7 +2245,7 @@ stages:
   - mortgage_debt
   - consumer_debt
   notes: 'Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. Tenure enters every chain segment as one four-way category built the same way on both sides (microcosm#1063): the donor''s from Ten1R8 and DVPriRntR8 (owned outright; buying with a mortgage or part rent, part mortgage; rented or rent-free from a private landlord; rented from a council or housing association), the recipient''s from the frame''s tenure_type (council and housing association together), so the stage reads no engine tenure formula. Two columns are structural in tenure and are fitted and drawn inside their stratum only, zero by rule elsewhere: main_residence_value on the owner tenures (every WAS owner has a positive value and no renter has one) and main_residence_mortgage (TotMortR8) on the mortgaged tenure. mortgage_debt is HMortGR8, all of the household''s mortgages, and is derived as the main-residence mortgage plus the mortgages on other property (other_mortgage, HMortGR8 less TotMortR8 on the donor: buy-to-let, second homes and the rest), which are held on every tenure and drawn without a stratum, so an outright owner''s or a renter''s buy-to-let keeps its mortgage beside the property it is secured on (OthMortR8_sum is read for the receipt only); the donor''s conditioning copy carries the same rule, so consumer_debt is fitted on values recipients can hold. Totals are not drawn: property_wealth is the sum of land, the main residence, other houses, buildings and a drawn remainder (buy-to-let, overseas and other property), gross_financial_wealth is savings, the cash ISA, the share-like holdings and a drawn remainder, and net_financial_wealth is gross less consumer debt and the student loan balance - identities the pinned tab satisfies on every row and the cleaning step refuses a donor that breaks. A sum of donor-valued components that leaves the donor''s range for the total gives up the excess from the remainder first, and the receipt counts the rows. Eight chain segments, each with its own child seed: land; the main residence; the other property components; pension and share-like wealth; the financial components, vehicles and the student loan balance; the main-residence mortgage; the other mortgages; consumer debt. HFINWNTR8_exSLC_Sum is net financial wealth excluding student loans, so gross less it is the non-student-loan financial liabilities; UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent''s dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero
-    for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8''s -9 is structural not-applicable so the private-renter reading is unchanged; genuinely negative domains are never recoded.'
+    for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8''s -9 is structural not-applicable so the private-renter reading is unchanged; genuinely negative domains are never recoded. The recipient council_tax predictor is the bill the household pays, council_tax less council_tax_rebate, the quantity the WAS donor records, since the spine''s council_tax is the liability before council tax reduction (uk-data#496/#499, microcosm#1095). The donor council_tax is DVCTaxAmtAnnualR8, the annual amount paid (CTAmtR8 is one instalment), its children are NumChildR8 (NumCh18R8 overlaps NumAdultR8), and the recipient adults and children are the household''s FRS claimants and partners and its other members (is_uc_claimant), which together make the household size on both sides; rental_income is the donor''s net rent DVNetRentAmtAnnualR8_aggr against the household''s property_income (uk-data#486/#495, microcosm#1095).'
 - stage: was_lisa
   survey: Wealth and Assets Survey round 8
   source: Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).
@@ -3228,10 +3227,11 @@ stages:
     fail_loud_on_missing_rate: true
   - kind: materialize_rules_engine_predictors
     predictors:
-    - is_adult
-    - is_child
     - is_SP_age
     - household_net_income
+    derived_predictors:
+      is_adult: count of household members with is_uc_claimant (FRS claimants and partners)
+      is_child: count of household members without is_uc_claimant (dependent children)
   - kind: fit_weighted_qrf
     predictors:
     - is_adult
@@ -3253,7 +3253,7 @@ stages:
   outputs:
   - full_rate_vat_expenditure_rate
   nonnegative_outputs: []
-  notes: 'Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth.'
+  notes: 'Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth. The recipient is_adult and is_child counts are the household''s FRS claimants and partners and its other members (is_uc_claimant), as the donor''s adults and childs count adults and dependent children, not the engine''s age-18 split (uk-data#486, microcosm#1095).'
 - stage: etb_services
   survey: Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table
   source: UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.
@@ -3323,14 +3323,14 @@ stages:
         geography_id: E92000001
   - kind: materialize_rules_engine_predictors
     predictors:
-    - is_adult
-    - is_child
     - is_SP_age
     - dla
     - pip
     - hbai_household_net_income
     - current_education
     derived_predictors:
+      is_adult: count of household members with is_uc_claimant (FRS claimants and partners)
+      is_child: count of household members without is_uc_claimant (dependent children)
       count_primary_education: current_education == PRIMARY
       count_secondary_education: current_education == LOWER_SECONDARY
       count_further_education: current_education in (UPPER_SECONDARY, TERTIARY)
@@ -3573,7 +3573,7 @@ stages:
   - nhs_a_and_e_spending
   - nhs_admitted_patient_spending
   - nhs_outpatient_spending
-  notes: Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the #890 rake to the published net support retired on María's ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing's boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
+  notes: 'Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine''s CPI index, rail support by ORR table 7270''s own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame''s journeys (microcosm#930; the #890 rake to the published net support retired on María''s ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons'' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing''s boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain''s raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table''s native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent''s apparent three-way year mismatch is vacuous on this vintage. The recipient is_adult and is_child counts are the household''s FRS claimants and partners and its other members (is_uc_claimant), as the donor''s adults and childs count adults and dependent children, not the engine''s age-18 split (uk-data#486, microcosm#1095).'
 - stage: uc_reporter_redraw
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.
@@ -3627,6 +3627,74 @@ stages:
   rewrites:
   - universal_credit_reported
   notes: Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. The consumed is_uc_couple predictor counts two retained FRS claimant/partner roles, independently of legal is_married; older dependent children do not become partners. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses.
+- stage: spi_benefit_coherence
+  survey: Family Resources Survey 2024-25
+  source: Family Resources Survey 2024-25 benefit reports carried through the SPI support channel, with the UK take-up contract's Universal Credit rate.
+  grain: person+benunit
+  artifacts: []
+  operations:
+  - kind: zero_spi_channel_reports
+    rows: spi_synthetic_support_channel
+    columns:
+    - jsa_contrib_reported
+    - jsa_income_reported
+    - esa_income_reported
+    - income_support_reported
+    - working_tax_credit_reported
+    - child_tax_credit_reported
+    - sda_reported
+    - ssmg_reported
+    reason: award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry
+  - kind: restore_spi_channel_reports_from_source
+    rows: spi_synthetic_support_channel
+    columns:
+    - iidb_reported
+    - afcs_reported
+    - bsp_reported
+    linkage: person_source_id -> FRS-channel person_id
+    reason: follows an injury, service or a death, not income
+  - kind: derive
+    scope: disability categories and flags re-derived on SPI-channel rows from the final reports with the frs_disability rule at its declared year; the categories, which read only AA, DLA and PIP, asserted unchanged
+  - kind: derive
+    output: receives_benefits_in_own_right
+    formula: universal_credit_reported + jsa_contrib_reported + jsa_income_reported + esa_contrib_reported + esa_income_reported > 0 (frs_education), SPI-channel rows; FRS rows asserted unchanged
+  - kind: aggregate_person_to_benunit
+    method: any_positive
+    consumed_only: true
+    aggregates:
+      universal_credit_reported_anchor: universal_credit_reported
+  - kind: aggregate_person_to_benunit
+    method: any_adult_under_state_pension_age
+    consumed_only: true
+    aggregates:
+      uc_age_eligible: age
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_uc
+    draw: would_claim_uc
+    rate_key: universal_credit
+    anchor: universal_credit_reported_anchor
+    population: uc_age_eligible
+    seed: 0
+    rows: spi_synthetic_support_channel
+  outputs: []
+  rewrites:
+  - jsa_contrib_reported
+  - jsa_income_reported
+  - esa_income_reported
+  - income_support_reported
+  - working_tax_credit_reported
+  - child_tax_credit_reported
+  - sda_reported
+  - ssmg_reported
+  - iidb_reported
+  - afcs_reported
+  - bsp_reported
+  - is_disabled_for_benefits
+  - is_enhanced_disabled_for_benefits
+  - is_severely_disabled_for_benefits
+  - receives_benefits_in_own_right
+  - would_claim_uc
+  notes: 'Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult''s benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit''s entitlement or claim history. This stage zeroes the SPI rows'' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household''s new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in the Universal Credit age population claim as the residual of the contract''s universal_credit rate on draws keyed on the SPI unit''s own identity. Contributory ESA, PIP, DLA, AA, Carer''s Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps.'
 - stage: uc_capital_coherence
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.
@@ -3640,8 +3708,22 @@ stages:
       universal_credit_reported_anchor: universal_credit_reported
   - kind: redraw_spi_reporter_capital
     output: frs_benunit_capital
-    rows: spi_channel_post_fill_reporters
-    donor_rows: base_frs_reporters_with_available_capital
+    rows: spi_channel
+    donor_rows: base_frs_with_available_capital
+    reporter_status: universal_credit_reported_anchor
+    investment_income: savings_interest_income + dividend_income + other_investment_income, summed over benefit-unit members
+    investment_income_band_edges:
+    - 0.0
+    - 240.0
+    - 640.0
+    - 2000.0
+    - 8000.0
+    minimum_cell_donors: 20
+    coarsening:
+    - merge dependent-children bands
+    - drop couple status
+    - merge adjacent investment-income bands
+    - reporter status only
     dependent_children_bands:
     - '0'
     - '1'
@@ -3662,7 +3744,7 @@ stages:
   rewrites:
   - frs_benunit_capital
   - would_claim_uc
-  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh.
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh.
 - stage: pension_credit_take_up
   survey: Family Resources Survey 2024-25
   source: 'DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.'
