@@ -1,6 +1,7 @@
 import json
 import os
 import socket
+import sqlite3
 import tempfile
 import threading
 import time
@@ -12,7 +13,6 @@ import microcosm.build.telemetry_emitter_service as service_module
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     TelemetryRun,
-    _collector_url,
     _safe_details,
     _safe_json,
     _safe_text,
@@ -45,17 +45,17 @@ def _event(stage_id: str = "compile_targets") -> dict[str, object]:
     }
 
 
-def test_collector_url_requires_encrypted_remote_transport() -> None:
-    assert _collector_url(
-        "https://microcosm-telemetry-389282473430.us-central1.run.app/"
-    ) == ("https://microcosm-telemetry-389282473430.us-central1.run.app")
-    assert _collector_url("http://127.0.0.1:8080") == "http://127.0.0.1:8080"
-    try:
-        _collector_url("http://telemetry.example")
-    except ValueError as error:
-        assert "HTTPS" in str(error)
-    else:
-        raise AssertionError("remote HTTP collector URL was accepted")
+def test_development_collector_must_be_on_loopback() -> None:
+    assert service_module._development_collector_url("http://127.0.0.1:8080") == (
+        "http://127.0.0.1:8080"
+    )
+    for value in ("https://collector.example", "http://192.0.2.1:8080"):
+        try:
+            service_module._development_collector_url(value)
+        except ValueError as error:
+            assert "loopback" in str(error)
+        else:
+            raise AssertionError("non-loopback development collector was accepted")
 
 
 def test_token_bearing_http_post_does_not_follow_redirects() -> None:
@@ -173,6 +173,59 @@ def test_event_spool_keeps_repeated_run_producers_separate(tmp_path) -> None:
     assert len(spool.pending_runs()) == 2
 
 
+def test_pre_eligibility_spool_is_not_uploaded_after_upgrade(tmp_path) -> None:
+    path = tmp_path / "events.sqlite3"
+    registration = _registration()
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE telemetry_runs (
+            run_id TEXT NOT NULL,
+            producer_id TEXT NOT NULL,
+            registration_json TEXT NOT NULL,
+            next_sequence INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(run_id, producer_id)
+        );
+        CREATE TABLE telemetry_events (
+            event_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            producer_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, producer_id, sequence)
+        );
+        """
+    )
+    connection.execute(
+        "INSERT INTO telemetry_runs VALUES (?, ?, ?, 2, ?)",
+        (
+            "run-a",
+            "producer-a",
+            json.dumps(registration),
+            "2026-10-02T10:00:00+00:00",
+        ),
+    )
+    connection.execute(
+        "INSERT INTO telemetry_events VALUES (?, ?, ?, 1, ?, ?)",
+        (
+            "old-event",
+            "run-a",
+            "producer-a",
+            json.dumps({"event_id": "old-event"}),
+            "2026-10-02T10:00:00+00:00",
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    spool = EventSpool(path)
+
+    assert spool.has_pending()
+    assert spool.pending_runs() == []
+
+
 def test_collector_delivery_exchanges_hf_token_then_flushes(
     tmp_path, monkeypatch
 ) -> None:
@@ -187,15 +240,27 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
     def fake_post(url, payload, token, *, timeout=5.0):
         requests.append((url, payload, token))
         if url.endswith("/v1/auth/huggingface/exchange"):
-            return 200, {"access_token": "run-token", "expires_in": 900}
+            return 200, {"access_token": "collector-token", "expires_in": 3600}
+        if url.endswith("/v1/runs"):
+            return 201, {"registered": True}
         return 202, {"accepted": 1, "duplicates": 0}
 
     monkeypatch.setattr(service_module, "_http_post", fake_post)
 
-    assert CollectorDelivery("https://collector.example", spool).flush_once()
+    delivery = CollectorDelivery(
+        spool,
+        development_collector_url="http://127.0.0.1:8080",
+    )
+    assert delivery.flush_once()
     assert requests[0][2] == "hf-secret"
-    assert requests[1][2] == "run-token"
-    assert requests[1][1] == {"events": [queued]}
+    assert requests[0][1] == {}
+    assert requests[1] == (
+        "http://127.0.0.1:8080/v1/runs",
+        registration,
+        "collector-token",
+    )
+    assert requests[2][2] == "collector-token"
+    assert requests[2][1] == {"events": [queued]}
     assert not spool.has_pending()
 
 
@@ -204,18 +269,69 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
     registration = _registration()
     spool.register(registration)
     spool.append(registration, _event())
+    requests: list[dict[str, object]] = []
     monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-outsider")
-    monkeypatch.setattr(
-        service_module,
-        "_http_post",
-        lambda *args, **kwargs: (403, {"detail": "not a member"}),
+
+    def reject(url, payload, token, *, timeout=5.0):
+        requests.append(payload)
+        return 403, {"detail": "not a member"}
+
+    monkeypatch.setattr(service_module, "_http_post", reject)
+    delivery = CollectorDelivery(
+        spool,
+        development_collector_url="http://127.0.0.1:8080",
     )
-    delivery = CollectorDelivery("https://collector.example", spool)
 
     assert not delivery.flush_once()
     assert not delivery.flush_once()
     assert spool.has_pending()
+    assert spool.pending_runs() == []
+    assert requests == [{}]
     assert capsys.readouterr().err.count("local-only for this run") == 1
+
+
+def test_identity_provider_outage_keeps_events_eligible_for_retry(
+    tmp_path, monkeypatch
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    registration = _registration()
+    spool.register(registration)
+    spool.append(registration, _event())
+    monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-member")
+    monkeypatch.setattr(
+        service_module,
+        "_http_post",
+        lambda *args, **kwargs: (503, {"detail": "temporarily unavailable"}),
+    )
+
+    assert not CollectorDelivery(spool).flush_once()
+    assert spool.pending_runs() == [registration]
+
+
+def test_missing_credential_never_contacts_collector_and_stays_local_only(
+    tmp_path, monkeypatch
+) -> None:
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    spool.append(registration, _event())
+    monkeypatch.setattr(service_module, "_huggingface_token", lambda: None)
+    monkeypatch.setattr(
+        service_module,
+        "_http_post",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("network request")
+        ),
+    )
+
+    delivery = CollectorDelivery(spool)
+    assert not delivery.flush_once()
+    assert spool.pending_runs() == []
+
+    reopened = EventSpool(spool_path)
+    monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-later")
+    assert reopened.pending_runs() == []
 
 
 def test_resource_sampler_has_a_base_install_fallback(monkeypatch) -> None:
@@ -312,7 +428,7 @@ def test_emitter_startup_timeout_terminates_and_reaps_service(
         run_id="startup-timeout",
         country_code="US",
         pipeline="test-pipeline",
-        collector_url="https://collector.example",
+        development_collector_url="http://127.0.0.1:8080",
         spool_path=tmp_path / "events.sqlite3",
         startup_timeout_seconds=0,
     )
@@ -389,8 +505,11 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
             payload = json.loads(self.rfile.read(length))
             requests.append((self.path, self.headers["Authorization"], payload))
             if self.path.endswith("/v1/auth/huggingface/exchange"):
-                response = {"access_token": "run-token", "expires_in": 900}
+                response = {"access_token": "collector-token", "expires_in": 3600}
                 status = 200
+            elif self.path == "/v1/runs":
+                response = {"registered": True}
+                status = 201
             else:
                 response = {
                     "accepted": len(payload["events"]),
@@ -415,7 +534,7 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
         run_id="subprocess-run",
         country_code="US",
         pipeline="test-pipeline",
-        collector_url=f"http://127.0.0.1:{server.server_port}",
+        development_collector_url=f"http://127.0.0.1:{server.server_port}",
         spool_path=tmp_path / "subprocess.sqlite3",
         heartbeat_seconds=60,
     )
@@ -430,13 +549,16 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
 
     assert requests[0][0] == "/v1/auth/huggingface/exchange"
     assert requests[0][1] == "Bearer hf-ambient-test-token"
+    assert requests[0][2] == {}
+    assert requests[1][0] == "/v1/runs"
+    assert requests[1][1] == "Bearer collector-token"
     ingestion = [request for request in requests if request[0].endswith("/events")]
     assert ingestion
     events = [
         event
         for _, authorization, payload in ingestion
         for event in payload["events"]
-        if authorization == "Bearer run-token"
+        if authorization == "Bearer collector-token"
     ]
     assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
     identity = events[0]["details"]["identity"]

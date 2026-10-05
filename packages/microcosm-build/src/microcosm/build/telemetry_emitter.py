@@ -23,10 +23,7 @@ from importlib import metadata
 from pathlib import Path
 from platform import platform
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
-DEFAULT_COLLECTOR_URL = "https://microcosm-telemetry-389282473430.us-central1.run.app"
-COLLECTOR_URL_ENV = "MICROCOSM_TELEMETRY_COLLECTOR_URL"
 _SENSITIVE_KEY_PARTS = (
     "authorization",
     "credential",
@@ -48,18 +45,6 @@ def _cache_dir() -> Path:
     configured = os.environ.get("XDG_CACHE_HOME", "").strip()
     root = Path(configured).expanduser() if configured else Path.home() / ".cache"
     return root / "microcosm" / "telemetry"
-
-
-def _collector_url(value: str) -> str:
-    parsed = urlsplit(value)
-    local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-    if not parsed.hostname or (
-        parsed.scheme != "https" and not (local and parsed.scheme == "http")
-    ):
-        raise ValueError("collector URL must use HTTPS except on localhost")
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("collector URL must not contain credentials or query data")
-    return value.rstrip("/")
 
 
 def _safe_text(value: str, *, limit: int = 2_000) -> str:
@@ -206,7 +191,7 @@ class LocalTelemetryEmitter:
         candidate_id: str | None = None,
         release_id: str | None = None,
         run_kind: str = "build",
-        collector_url: str | None = None,
+        development_collector_url: str | None = None,
         heartbeat_seconds: float = 60.0,
         startup_timeout_seconds: float = 3.0,
         spool_path: Path | str | None = None,
@@ -221,19 +206,6 @@ class LocalTelemetryEmitter:
             release_id=release_id,
             run_kind=run_kind,
         )
-        raw_url = (
-            collector_url
-            or os.environ.get(COLLECTOR_URL_ENV, "").strip()
-            or DEFAULT_COLLECTOR_URL
-        )
-        try:
-            url = _collector_url(raw_url)
-        except ValueError as error:
-            print(
-                f"warning: Microcosm telemetry is unavailable: {error}.",
-                file=sys.stderr,
-            )
-            return cls(run=run, process=None, socket_path=None, runtime_dir=None)
         if not hasattr(socket, "AF_UNIX"):
             print(
                 "warning: Microcosm telemetry is unavailable because this "
@@ -259,8 +231,6 @@ class LocalTelemetryEmitter:
             str(socket_path),
             "--spool",
             str(queue_path),
-            "--collector-url",
-            url,
             "--registration-json",
             json.dumps(run.as_registration(), separators=(",", ":")),
             "--parent-pid",
@@ -268,6 +238,8 @@ class LocalTelemetryEmitter:
             "--heartbeat-seconds",
             str(heartbeat_seconds),
         ]
+        if development_collector_url is not None:
+            command.extend(["--development-collector-url", development_collector_url])
         process: subprocess.Popen[bytes] | None = None
         try:
             process = subprocess.Popen(
