@@ -186,8 +186,9 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
    Projection is ahead of softmax at every λ held out (0.0721 against 0.0736
    at 0.03, 0.0708 against 0.0740 at 0.1, 0.0784 against 0.0828 at 0).
 3. **The weighted loss costs district population fit, and the penalty
-   multiplies it.** On the equal loss every trained district population is
-   within 0.75% at share 0.5 and λ 0 and 0.03. On the weighted loss, 11 of
+   multiplies it.** On the equal loss, at share 0.5 and λ 0 and 0.03, every
+   trained district population is within 0.75% on the full surface (2% on
+   the holdout folds' trained districts). On the weighted loss, 11 of
    436 districts miss by more than 10% at λ 0 (worst TX-14 −33%, CA-29
    −32%), 73 at λ 0.03 (worst 46%) and 135 at λ 0.1 (worst 50%). The misses
    sit in states with many districts (at λ 0.1: California 27 of 52, Texas
@@ -230,7 +231,8 @@ districts carry 1.51 between them, an at-large district 1.30-1.70.
 
    λ is in units of each loss, so equal λ is not an equal setting across the
    two losses. The equal-weight solves keep trained district populations
-   within 0.75% at λ 0 and 0.03, which the weighted ones do not.
+   within 2% at λ 0 and 0.03 (0.75% on the full surface), which the
+   weighted ones do not.
 6. **Share 0.9 behaves as on the equal loss.** ESS 81,714 (93,524 there),
    held-out weighted error 36-41% above the release settings, and the
    relative gate fails on every solve (318-371 districts). That remains the
