@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from huggingface_hub import get_token
 
@@ -29,6 +30,9 @@ SCHEMA_VERSION = 1
 RETENTION_DAYS = 7
 MAX_QUEUED_BYTES = 100 * 1024 * 1024
 BATCH_SIZE = 100
+PRODUCTION_COLLECTOR_URL = (
+    "https://microcosm-telemetry-389282473430.us-central1.run.app"
+)
 
 
 def _now() -> str:
@@ -40,6 +44,34 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def _collector_origin(value: str, *, allow_loopback_http: bool = False) -> str:
+    parsed = urlsplit(value)
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    valid_scheme = parsed.scheme == "https" or (
+        allow_loopback_http and loopback and parsed.scheme == "http"
+    )
+    if not parsed.hostname or not valid_scheme:
+        raise ValueError("collector URL must be an HTTPS origin")
+    if (
+        parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise ValueError(
+            "collector URL must be an origin without credentials or path data"
+        )
+    return value.rstrip("/")
+
+
+def _development_collector_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("development collector URL must use a loopback address")
+    return _collector_origin(value, allow_loopback_http=True)
 
 
 class EventSpool:
@@ -68,6 +100,8 @@ class EventSpool:
                     producer_id TEXT NOT NULL,
                     registration_json TEXT NOT NULL,
                     next_sequence INTEGER NOT NULL DEFAULT 1,
+                    upload_state TEXT NOT NULL DEFAULT 'pending',
+                    local_only_reason TEXT,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY(run_id, producer_id)
                 );
@@ -86,6 +120,29 @@ class EventSpool:
                     ON telemetry_events(run_id, producer_id, sequence);
                 """
             )
+            columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(telemetry_runs)"
+                ).fetchall()
+            }
+            if "upload_state" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE telemetry_runs ADD COLUMN "
+                    "upload_state TEXT NOT NULL DEFAULT 'pending'"
+                )
+                self._connection.execute(
+                    "UPDATE telemetry_runs SET upload_state = 'local_only'"
+                )
+            if "local_only_reason" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE telemetry_runs ADD COLUMN local_only_reason TEXT"
+                )
+                self._connection.execute(
+                    "UPDATE telemetry_runs SET local_only_reason = "
+                    "'created_before_upload_eligibility' "
+                    "WHERE upload_state = 'local_only'"
+                )
         self.prune()
 
     def register(self, registration: Mapping[str, Any]) -> None:
@@ -181,10 +238,43 @@ class EventSpool:
                 FROM telemetry_runs r
                 JOIN telemetry_events e
                   ON e.run_id = r.run_id AND e.producer_id = r.producer_id
+                WHERE r.upload_state = 'pending'
                 ORDER BY r.updated_at
                 """
             ).fetchall()
         return [json.loads(row["registration_json"]) for row in rows]
+
+    def make_local_only(
+        self,
+        run_id: str,
+        producer_id: str,
+        reason: str,
+    ) -> None:
+        """Permanently exclude one producer's queued events from upload."""
+
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                UPDATE telemetry_runs
+                SET upload_state = 'local_only', local_only_reason = ?, updated_at = ?
+                WHERE run_id = ? AND producer_id = ?
+                """,
+                (reason, _now(), run_id, producer_id),
+            )
+
+    def has_deliverable(self) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT 1
+                FROM telemetry_events e
+                JOIN telemetry_runs r
+                  ON r.run_id = e.run_id AND r.producer_id = e.producer_id
+                WHERE r.upload_state = 'pending'
+                LIMIT 1
+                """
+            ).fetchone()
+        return row is not None
 
     def batch(
         self, run_id: str, producer_id: str, limit: int = BATCH_SIZE
@@ -313,11 +403,20 @@ def _huggingface_token() -> str | None:
 class CollectorDelivery:
     """Authenticate queued runs and deliver idempotent event batches."""
 
-    def __init__(self, collector_url: str, spool: EventSpool) -> None:
-        self.collector_url = collector_url.rstrip("/")
+    def __init__(
+        self,
+        spool: EventSpool,
+        *,
+        development_collector_url: str | None = None,
+    ) -> None:
+        self.collector_url = (
+            _development_collector_url(development_collector_url)
+            if development_collector_url is not None
+            else _collector_origin(PRODUCTION_COLLECTOR_URL)
+        )
         self.spool = spool
-        self._tokens: dict[str, tuple[str, float]] = {}
-        self._denied: set[str] = set()
+        self._session_token: tuple[str, float] | None = None
+        self._registered: set[str] = set()
         self._warned_no_token = False
         self._warned_denied: set[str] = set()
         self._next_attempt_at = 0.0
@@ -328,13 +427,14 @@ class CollectorDelivery:
             return False
         made_progress = False
         for registration in self.spool.pending_runs():
-            run_id = registration["run_id"]
+            run_id = str(registration["run_id"])
             registration_key = f"{run_id}:{registration['producer_id']}"
-            if registration_key in self._denied:
-                continue
-            token = self._run_token(registration)
+            token = self._collector_token(registration)
             if token is None:
                 continue
+            if registration_key not in self._registered:
+                if not self._register(registration, token):
+                    continue
             events = self.spool.batch(run_id, registration["producer_id"])
             if not events:
                 continue
@@ -352,20 +452,19 @@ class CollectorDelivery:
                 made_progress = True
                 self._retry_seconds = 1.0
             elif status == 401:
-                self._tokens.pop(registration_key, None)
+                self._session_token = None
             elif status == 403:
-                self._denied.add(registration_key)
-                self._warn_denied(registration_key)
+                self._make_local_only(registration, "collector_authorization_rejected")
             else:
                 self._defer_retry()
         return made_progress
 
-    def _run_token(self, registration: Mapping[str, Any]) -> str | None:
-        run_id = str(registration["run_id"])
-        registration_key = f"{run_id}:{registration['producer_id']}"
-        cached = self._tokens.get(registration_key)
-        if cached is not None and cached[1] > time.monotonic() + 30:
-            return cached[0]
+    def _collector_token(self, registration: Mapping[str, Any]) -> str | None:
+        if (
+            self._session_token is not None
+            and self._session_token[1] > time.monotonic() + 30
+        ):
+            return self._session_token[0]
         hf_token = _huggingface_token()
         if not hf_token:
             if not self._warned_no_token:
@@ -376,28 +475,62 @@ class CollectorDelivery:
                     flush=True,
                 )
                 self._warned_no_token = True
-            self._next_attempt_at = time.monotonic() + 60.0
+            self._make_local_only(registration, "missing_huggingface_credential")
             return None
         try:
             status, response = _http_post(
                 f"{self.collector_url}/v1/auth/huggingface/exchange",
-                registration,
+                {},
                 hf_token,
             )
         except (OSError, TimeoutError):
             self._defer_retry()
             return None
         if status == 200 and isinstance(response.get("access_token"), str):
-            expires_in = max(60, int(response.get("expires_in", 900)))
+            expires_in = max(60, int(response.get("expires_in", 3600)))
             token = response["access_token"]
-            self._tokens[registration_key] = (token, time.monotonic() + expires_in)
+            self._session_token = (token, time.monotonic() + expires_in)
             return token
         if status in {401, 403}:
-            self._denied.add(registration_key)
-            self._warn_denied(registration_key)
+            self._make_local_only(registration, "huggingface_credential_rejected")
         else:
             self._defer_retry()
         return None
+
+    def _register(self, registration: Mapping[str, Any], token: str) -> bool:
+        registration_key = f"{registration['run_id']}:{registration['producer_id']}"
+        try:
+            status, _ = _http_post(
+                f"{self.collector_url}/v1/runs",
+                registration,
+                token,
+            )
+        except (OSError, TimeoutError):
+            self._defer_retry()
+            return False
+        if status == 201:
+            self._registered.add(registration_key)
+            self._retry_seconds = 1.0
+            return True
+        if status == 401:
+            self._session_token = None
+        elif status in {403, 409}:
+            self._make_local_only(registration, "run_registration_rejected")
+        else:
+            self._defer_retry()
+        return False
+
+    def _make_local_only(
+        self,
+        registration: Mapping[str, Any],
+        reason: str,
+    ) -> None:
+        run_id = str(registration["run_id"])
+        producer_id = str(registration["producer_id"])
+        registration_key = f"{run_id}:{producer_id}"
+        self.spool.make_local_only(run_id, producer_id, reason)
+        if reason != "missing_huggingface_credential":
+            self._warn_denied(registration_key)
 
     def _defer_retry(self) -> None:
         self._next_attempt_at = time.monotonic() + self._retry_seconds
@@ -672,7 +805,7 @@ class EmitterService:
                 self._stop.set()
                 break
         deadline = time.monotonic() + self.drain_seconds
-        while self.spool.has_pending() and time.monotonic() < deadline:
+        while self.spool.has_deliverable() and time.monotonic() < deadline:
             if not self.delivery.flush_once():
                 self._stop.wait(0.5)
 
@@ -681,7 +814,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", type=Path, required=True)
     parser.add_argument("--spool", type=Path, required=True)
-    parser.add_argument("--collector-url", required=True)
+    parser.add_argument("--development-collector-url")
     parser.add_argument("--registration-json", required=True)
     parser.add_argument("--parent-pid", type=int, required=True)
     parser.add_argument("--heartbeat-seconds", type=float, default=60.0)
@@ -696,7 +829,10 @@ def main(argv: list[str] | None = None) -> int:
         socket_path=args.socket,
         registration=registration,
         spool=spool,
-        delivery=CollectorDelivery(args.collector_url, spool),
+        delivery=CollectorDelivery(
+            spool,
+            development_collector_url=args.development_collector_url,
+        ),
         sampler=ProcessTreeSampler(args.parent_pid),
         heartbeat_seconds=args.heartbeat_seconds,
     )
