@@ -268,6 +268,7 @@ class LocalTelemetryEmitter:
             "--heartbeat-seconds",
             str(heartbeat_seconds),
         ]
+        process: subprocess.Popen[bytes] | None = None
         try:
             process = subprocess.Popen(
                 command,
@@ -307,6 +308,8 @@ class LocalTelemetryEmitter:
                 "the build will continue without hosted telemetry.",
                 file=sys.stderr,
             )
+        if process is not None:
+            _terminate_process(process)
         try:
             socket_path.unlink(missing_ok=True)
             runtime_dir.rmdir()
@@ -521,3 +524,17 @@ def _service_ready(socket_path: Path) -> bool:
             return client.recv(16) == b"ok\n"
     except OSError:
         return False
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    """Terminate and reap an emitter service that did not become usable."""
+
+    try:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=1.0)
+    except OSError:
+        pass

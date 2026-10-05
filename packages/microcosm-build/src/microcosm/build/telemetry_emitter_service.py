@@ -472,8 +472,10 @@ class ProcessTreeSampler:
         for process in processes:
             try:
                 cpu = process.cpu_times()
-                user += float(cpu.user)
-                system += float(cpu.system)
+                user += float(cpu.user) + float(getattr(cpu, "children_user", 0.0))
+                system += float(cpu.system) + float(
+                    getattr(cpu, "children_system", 0.0)
+                )
                 rss += int(process.memory_info().rss)
             except (psutil.Error, OSError):
                 continue
@@ -633,6 +635,9 @@ class EmitterService:
         next_heartbeat = time.monotonic() + self.heartbeat_seconds
         while not self._stop.wait(1.0):
             now = time.monotonic()
+            # Sample every worker iteration so short-lived build children are
+            # much less likely to disappear between stage and heartbeat events.
+            self.sampler.sample()
             if now >= next_heartbeat:
                 self.spool.append(
                     self.registration,
