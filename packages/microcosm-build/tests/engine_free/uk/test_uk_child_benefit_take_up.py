@@ -27,24 +27,15 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendor_selections
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
-from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_child_benefit_take_up import (
+    _frame,
+    _statistics,
+    _StubEngine,
+)
 
 THRESHOLDS = UKChildBenefitChargeThresholds(
     phase_out_start=60_000.0, phase_out_end=80_000.0
 )
-
-
-def _statistics(rates: dict[int, float] | None = None) -> UKChildBenefitStatistics:
-    return UKChildBenefitStatistics(
-        claim_rates=rates or {0: 0.7, 1: 0.8, 2: 0.9},
-        all_ages_claim_rate=0.8,
-        families_registered=1_000.0,
-        families_in_payment=900.0,
-        families_opted_out=100.0,
-        children_in_payment=1_500.0,
-        children_opted_out=150.0,
-    )
 
 
 def _families(count: int = 30_000, *, reporter_share: float = 0.3, seed: int = 5):
@@ -214,54 +205,6 @@ def test_statistics_and_thresholds_refuse_unusable_values() -> None:
         UKChildBenefitChargeThresholds(phase_out_start=80_000.0, phase_out_end=60_000.0)
 
 
-class _StubEngine:
-    country = "uk"
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[tuple[str, ...], str]] = []
-
-    def materialize(self, frame, variables, period):
-        self.calls.append((tuple(variables), str(period)))
-        person = frame.table("person")
-        return {
-            "is_child_or_qualifying_young_person_for_child_benefit": (
-                person["age"].to_numpy() < 16
-            ),
-            "adjusted_net_income": person["stub_income"].to_numpy(dtype=float),
-        }
-
-
-def _frame():
-    # Unit 1: a reporter with a child. Unit 2: fully charged, with two
-    # children. Unit 3: a low-income family. Unit 4: no child, reports.
-    person = pd.DataFrame(
-        {
-            "person_id": [11, 12, 21, 22, 23, 31, 32, 41],
-            "person_benunit_id": [1, 1, 2, 2, 2, 3, 3, 4],
-            "person_household_id": [1, 1, 2, 2, 2, 3, 3, 4],
-            "age": [40, 2, 45, 1, 2, 30, 0, 50],
-            "child_benefit_reported": [1_300.0, 0, 0, 0, 0, 0, 0, 900.0],
-            "stub_income": [20_000.0, 0, 95_000.0, 0, 0, 15_000.0, 0, 10_000.0],
-        }
-    )
-    benunit = pd.DataFrame(
-        {
-            "benunit_id": [1, 2, 3, 4],
-            "would_claim_child_benefit": [False, False, True, True],
-            "child_benefit_opts_out": [True, False, True, True],
-        }
-    )
-    household = pd.DataFrame({"household_id": [1, 2, 3, 4], "region": ["WALES"] * 4})
-    return uk_national_frame(
-        person=person,
-        benunit=benunit,
-        household=household,
-        household_weights=np.asarray([10.0, 10.0, 10.0, 10.0]),
-        weight_kind=WeightKind.IMPORTANCE,
-        time_period="2024",
-    )
-
-
 def test_redraw_reads_the_engine_once_and_rewrites_only_the_two_flags() -> None:
     engine = _StubEngine()
     frame = _frame()
@@ -404,3 +347,61 @@ def test_terminal_signal_gate_leaves_the_child_benefit_flags_to_the_stage_gate()
 ):
     outputs = {output for _, output, _ in UK_TAKE_UP_SIGNAL_OUTPUTS}
     assert not outputs & {"would_claim_child_benefit", "child_benefit_opts_out"}
+
+
+@pytest.mark.parametrize("supports_opt_out", [False, True])
+def test_export_preserves_registered_claims_only_with_opt_out_aware_engine(
+    supports_opt_out: bool,
+) -> None:
+    # UK #2140 reads opt-out separately. Older models pay the would-claim
+    # flag directly, so their export must keep the legacy in-payment flag.
+    statistics = replace(
+        _statistics({0: 1.0, 1: 1.0, 2: 1.0}), families_opted_out=500.0
+    )
+    result = redraw_child_benefit_take_up(
+        _frame(),
+        engine=_StubEngine(),
+        statistics=statistics,
+        thresholds=replace(THRESHOLDS, supports_opt_out=supports_opt_out),
+    )
+    after = result.frame.table("benunit").set_index("benunit_id")
+    assert after["would_claim_child_benefit"].to_dict() == {
+        1: True,
+        2: supports_opt_out,
+        3: True,
+        4: True,
+    }
+    assert after["child_benefit_opts_out"].to_dict() == {
+        1: False,
+        2: True,
+        3: False,
+        4: False,
+    }
+    # Draw audit quantities do not depend on the engine/export encoding.
+    assert result.claims["eligible_family_units"] == 3
+    assert result.opt_outs["opted_out_families"] == 10.0
+    assert result.in_payment["families"] == 20.0
+    assert result.in_payment["children"] == 20.0
+    assert result.changed_units["would_claim_child_benefit"] == 1 + supports_opt_out
+    assert result.evidence()["claim_export"] == {
+        "encoding": "registered_claims" if supports_opt_out else "legacy_payment",
+        "supports_opt_out": supports_opt_out,
+        "engine_parameters_source": "caller",
+    }
+
+
+@pytest.mark.parametrize("supports_opt_out", [False, True])
+def test_redraw_keeps_nonclaimants_false_under_either_export_contract(
+    supports_opt_out: bool,
+) -> None:
+    # Only the reporting family claims; independent early opt-out flags on
+    # nonclaimants must not turn them into registered claims.
+    result = redraw_child_benefit_take_up(
+        _frame(),
+        engine=_StubEngine(),
+        statistics=_statistics({0: 0.0, 1: 0.0, 2: 0.0}),
+        thresholds=replace(THRESHOLDS, supports_opt_out=supports_opt_out),
+    )
+    after = result.frame.table("benunit").set_index("benunit_id")
+    assert after.loc[2:3, "would_claim_child_benefit"].tolist() == [False, False]
+    assert after.loc[2:3, "child_benefit_opts_out"].tolist() == [False, False]

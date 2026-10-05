@@ -1,0 +1,1 @@
+Preserve registered Child Benefit claims, including payment opt-outs, for UK models with separate charge-responsive opt-out support. Keep legacy payment flags for older engines and record the selected export contract in stage receipts, so genuine nonclaimants remain distinct from registered opt-outs.
