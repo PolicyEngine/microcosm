@@ -7,6 +7,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import sys
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping
@@ -16,6 +17,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = ROOT / "packages"
+WORKFLOW = ROOT / ".github" / "workflows" / "test.yml"
 API_ROOT = "https://api.github.com"
 
 
@@ -73,12 +75,67 @@ TEST_GROUPS = {
 }
 GROUP_BY_DIRECTORY = {spec.directory: name for name, spec in TEST_GROUPS.items()}
 JOBS = tuple(dict.fromkeys(spec.job for spec in TEST_GROUPS.values()))
+WORKFLOW_INFRASTRUCTURE_JOBS = {
+    "select-countries": "selects the country-specific test categories",
+    "lint": "runs static checks and verifies this test plan",
+    "wheels": "builds and inspects distribution archives",
+}
 
 DOC_PREFIXES = ("docs/",)
 DOC_FILES = {"LICENSE"}
 DOC_SUFFIXES = {".md", ".rst"}
 
 RequestJSON = Callable[[str, str], Any]
+
+_WORKFLOW_JOB = re.compile(r"^  ([A-Za-z0-9][A-Za-z0-9_-]*):(?:\s.*)?$")
+
+
+def workflow_job_names(source: str) -> tuple[str, ...]:
+    """Return top-level job names from the repository's workflow YAML."""
+
+    in_jobs = False
+    names: list[str] = []
+    for line in source.splitlines():
+        if not in_jobs:
+            if line == "jobs:":
+                in_jobs = True
+            continue
+        if line and not line[0].isspace() and not line.startswith("#"):
+            break
+        match = _WORKFLOW_JOB.fullmatch(line)
+        if match is not None:
+            names.append(match.group(1))
+    if not in_jobs:
+        raise ValueError("workflow has no top-level jobs mapping")
+    return tuple(names)
+
+
+def workflow_job_errors(source: str) -> tuple[str, ...]:
+    """Return errors for workflow jobs outside the declared test plan."""
+
+    try:
+        names = workflow_job_names(source)
+    except ValueError as error:
+        return (str(error),)
+
+    errors: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        if name in seen:
+            errors.append(f"{name}: workflow job is declared more than once")
+        seen.add(name)
+
+    expected = set(JOBS) | set(WORKFLOW_INFRASTRUCTURE_JOBS)
+    errors.extend(
+        f"{name}: workflow job has no registered test category or approved "
+        "infrastructure role"
+        for name in sorted(seen - expected)
+    )
+    errors.extend(
+        f"{name}: registered workflow job is missing"
+        for name in sorted(expected - seen)
+    )
+    return tuple(errors)
 
 
 def engine_guard_lines(source: str) -> tuple[int, ...]:
@@ -236,7 +293,7 @@ def verify() -> None:
     if not files:
         raise SystemExit("no test files found below packages/*/tests")
 
-    errors: list[str] = []
+    errors = list(workflow_job_errors(WORKFLOW.read_text(encoding="utf-8")))
     counts = {name: 0 for name in TEST_GROUPS}
     seen_directories: dict[tuple[str, str], str] = {}
     seen_report_categories: dict[tuple[str, str], str] = {}

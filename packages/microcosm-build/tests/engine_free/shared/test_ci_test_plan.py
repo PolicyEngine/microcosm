@@ -128,6 +128,45 @@ def test_registry_directories_are_unique() -> None:
     assert len(directories) == len(set(directories))
 
 
+def test_workflow_jobs_match_registered_test_and_infrastructure_jobs() -> None:
+    source = ci_test_plan.WORKFLOW.read_text(encoding="utf-8")
+
+    assert ci_test_plan.workflow_job_errors(source) == ()
+
+
+def test_workflow_rejects_a_separate_behavioral_test_job() -> None:
+    source = """\
+jobs:
+  engine-free:
+    steps:
+      - run: pytest
+  invented-compatibility-test:
+    steps:
+      - run: node verify.mjs
+"""
+
+    assert (
+        "invented-compatibility-test: workflow job has no registered test "
+        "category or approved infrastructure role"
+        in ci_test_plan.workflow_job_errors(source)
+    )
+
+
+def test_workflow_job_parser_ignores_nested_yaml_keys() -> None:
+    source = """\
+jobs:
+  engine-free:
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - name: Run tests
+        run: pytest
+"""
+
+    assert ci_test_plan.workflow_job_names(source) == ("engine-free",)
+
+
 def test_engine_guard_detection_ignores_strings_but_finds_executable_guards() -> None:
     source = """
 TEXT = '@pytest.mark.requires_uk'

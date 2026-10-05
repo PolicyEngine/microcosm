@@ -28,6 +28,10 @@ from test_support.microcosm_graph.schema import (
     compiled_default_population_graph,
     compiled_graph,
 )
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-graph")
+_ORRERY_VERIFY = _TEST_PATHS.repository / "tools" / "orrery-contract" / "verify.mjs"
 
 
 def _parts(identity):
@@ -245,6 +249,19 @@ def test_direct_graph_compiled_and_saved_schema_paths_are_identical():
         == expected
     )
     assert orrery_document(compiled)["schemaVersion"] == "graph-explorer/v1"
+
+
+def test_public_orrery_parser_accepts_generated_document():
+    result = subprocess.run(
+        ["node", str(_ORRERY_VERIFY)],
+        input=orrery_json(compiled_graph()),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Orrery accepted the Microcosm graph document.\n"
 
 
 def test_cli_requires_an_explicit_input_type_and_matches_direct_output(tmp_path):

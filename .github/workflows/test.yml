@@ -60,6 +60,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/orrery-contract/package-lock.json
       - name: Sync workspace without country engines
         run: uv sync --all-packages --locked
       - name: Run engine-free tests
@@ -143,22 +148,3 @@ jobs:
           python-version: "3.13"
       - name: Build and inspect every shard wheel
         run: tools/build_and_inspect_wheels.sh
-
-  orrery-contract:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.13"
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: tools/orrery-contract/package-lock.json
-      - name: Sync workspace
-        run: uv sync --all-packages --locked
-      - name: Install the exact Orrery contract
-        run: npm ci --ignore-scripts --prefix tools/orrery-contract
-      - name: Parse a Microcosm export with Orrery
-        run: uv run --no-sync python tools/check_orrery_contract.py
