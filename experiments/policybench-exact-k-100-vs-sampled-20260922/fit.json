@@ -1,0 +1,750 @@
+{
+  "national_all": {
+    "targets": 504,
+    "full_file": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.5495913427725235,
+      "uncapped_mape": 3970107.1838869806,
+      "median_abs_rel_error": 0.21828722148747054,
+      "share_within_10pct": 0.32936507936507936,
+      "share_within_25pct": 0.5376984126984127,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 2000256101.8587108
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.25k_to_30k.eitc_total",
+          "relative_error": 390328.0351079955
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 276756.0756521225
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.25k_to_30k.eitc_returns",
+          "relative_error": 10594.082384228706
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.4k_to_5k.eitc_total",
+          "relative_error": 13.63314607263033
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.4k_to_5k.eitc_total",
+          "relative_error": 13.63314607263033
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child.50k_plus.eitc_returns",
+          "relative_error": 7.165926105074979
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child.50k_plus.eitc_total",
+          "relative_error": 5.837730665813172
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 5.817892232765747
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child.under_1.eitc_total",
+          "relative_error": 5.765965119745525
+        }
+      ]
+    },
+    "design1_pps_self_weighted": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.8217276699394914,
+      "uncapped_mape": 18636754.799681842,
+      "median_abs_rel_error": 0.880974003179214,
+      "share_within_10pct": 0.08928571428571429,
+      "share_within_25pct": 0.1865079365079365,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 9391691189.77729
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 1232343.8385038802
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 408.81753222946315
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 102.45557354484914
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 9.349402039121749
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 408.81753222946315
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 102.45557354484914
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 9.349402039121749
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_returns",
+          "relative_error": 8.535450950593736
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.4k_to_5k.eitc_total",
+          "relative_error": 4.830017834206068
+        }
+      ]
+    },
+    "design1b_pps_self_weighted_scaled_to_file_total": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.8434230791697641,
+      "uncapped_mape": 24221001.69026917,
+      "median_abs_rel_error": 0.9348712890910045,
+      "share_within_10pct": 0.12896825396825398,
+      "share_within_25pct": 0.2261904761904762,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 12205782199.189768
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 1601598.7092574474
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 531.6137155411386
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 133.45461232319667
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 12.45045792379445
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 531.6137155411386
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 133.45461232319667
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 12.45045792379445
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_returns",
+          "relative_error": 11.392617593803584
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.4k_to_5k.eitc_total",
+          "relative_error": 6.576902441081939
+        }
+      ]
+    },
+    "design2_pps_post_stratified": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.6501257251453464,
+      "uncapped_mape": 21166819.46435176,
+      "median_abs_rel_error": 0.7036655674902923,
+      "share_within_10pct": 0.2876984126984127,
+      "share_within_25pct": 0.3551587301587302,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 10666676983.536255
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 1399642.875
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 77.21406791159356
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 18.74459513981709
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.50k_plus.eitc_returns",
+          "relative_error": 1.3045940275834988
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 77.21406791159356
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 18.74459513981709
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.50k_plus.eitc_returns",
+          "relative_error": 1.3045940275834988
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.45_to_49.population",
+          "relative_error": 1.2257703981811368
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.net_capital_gain.projected_amount",
+          "relative_error": -1.1533668682625544
+        }
+      ]
+    },
+    "design3_exact_k_refit": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.5872030003777146,
+      "uncapped_mape": 0.5872030003777146,
+      "median_abs_rel_error": 0.7246694051729226,
+      "share_within_10pct": 0.23412698412698413,
+      "share_within_25pct": 0.33134920634920634,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+          "relative_error": 2.0049738540236715
+        },
+        {
+          "target": "irs_soi.ty2022.historic_table_2.us.500k_to_1m.taxable_interest_returns",
+          "relative_error": 1.6511049293192464
+        },
+        {
+          "target": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+          "relative_error": 1.55089637479148
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+          "relative_error": 1.146397331370595
+        },
+        {
+          "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.tax_exempt_interest_returns",
+          "relative_error": 1.0210124404478036
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+          "relative_error": 2.0049738540236715
+        },
+        {
+          "target": "irs_soi.ty2022.historic_table_2.us.500k_to_1m.taxable_interest_returns",
+          "relative_error": 1.6511049293192464
+        },
+        {
+          "target": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+          "relative_error": 1.55089637479148
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+          "relative_error": 1.146397331370595
+        },
+        {
+          "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.tax_exempt_interest_returns",
+          "relative_error": 1.0210124404478036
+        }
+      ]
+    },
+    "design3_exact_k_ht_baseline_before_refit": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 1.0098341154705983,
+      "uncapped_mape": 1.049736394845854,
+      "median_abs_rel_error": 0.9439357051831001,
+      "share_within_10pct": 0.10515873015873016,
+      "share_within_25pct": 0.17063492063492064,
+      "worst_five": [
+        {
+          "target": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+          "relative_error": 16.268896650480645
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.8k_to_9k.eitc_total",
+          "relative_error": 15.438411690183528
+        },
+        {
+          "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.medical_dental_expense_amount",
+          "relative_error": 13.401225305734734
+        },
+        {
+          "target": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+          "relative_error": 12.610542431291783
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+          "relative_error": 12.391672727438168
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+          "relative_error": 16.268896650480645
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.8k_to_9k.eitc_total",
+          "relative_error": 15.438411690183528
+        },
+        {
+          "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.medical_dental_expense_amount",
+          "relative_error": 13.401225305734734
+        },
+        {
+          "target": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+          "relative_error": 12.610542431291783
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+          "relative_error": 12.391672727438168
+        }
+      ]
+    },
+    "design3_l0_gated_weights_full_pool": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 3.092518841053196,
+      "uncapped_mape": 6.816186226484279,
+      "median_abs_rel_error": 1.0,
+      "share_within_10pct": 0.08134920634920635,
+      "share_within_25pct": 0.1130952380952381,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.12k_to_13k.eitc_total",
+          "relative_error": 58.571797143283426
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.under_1.eitc_total",
+          "relative_error": 57.52978176643155
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.19k_to_20k.eitc_total",
+          "relative_error": 56.227592156174595
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.40k_to_45k.eitc_total",
+          "relative_error": 55.82221478732036
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.40k_to_45k.eitc_returns",
+          "relative_error": 54.75970980992123
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.12k_to_13k.eitc_total",
+          "relative_error": 58.571797143283426
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.under_1.eitc_total",
+          "relative_error": 57.52978176643155
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.19k_to_20k.eitc_total",
+          "relative_error": 56.227592156174595
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.40k_to_45k.eitc_total",
+          "relative_error": 55.82221478732036
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.40k_to_45k.eitc_returns",
+          "relative_error": 54.75970980992123
+        }
+      ]
+    }
+  },
+  "headline": {
+    "targets": 32,
+    "full_file": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.06693367307347646,
+      "uncapped_mape": 0.06693367307347646,
+      "median_abs_rel_error": 0.022646140879592894,
+      "share_within_10pct": 0.84375,
+      "share_within_25pct": 0.9375,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -0.5875464825782093
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.80_to_84.population",
+          "relative_error": -0.32699417335512815
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.return_count",
+          "relative_error": 0.2161137122636267
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+          "relative_error": -0.1521082313828723
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+          "relative_error": -0.14870343111230092
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -0.5875464825782093
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.80_to_84.population",
+          "relative_error": -0.32699417335512815
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.return_count",
+          "relative_error": 0.2161137122636267
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+          "relative_error": -0.1521082313828723
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
+          "relative_error": -0.14870343111230092
+        }
+      ]
+    },
+    "design1_pps_self_weighted": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.3864857311652927,
+      "uncapped_mape": 0.3864857311652927,
+      "median_abs_rel_error": 0.42520793239287114,
+      "share_within_10pct": 0.0625,
+      "share_within_25pct": 0.28125,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.6918368455038286
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.6024550673738137
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 0.5775903328169364
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.15_to_19.population",
+          "relative_error": -0.5594016887408155
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.6918368455038286
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.6024550673738137
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 0.5775903328169364
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.15_to_19.population",
+          "relative_error": -0.5594016887408155
+        }
+      ]
+    },
+    "design1b_pps_self_weighted_scaled_to_file_total": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.30872494277706264,
+      "uncapped_mape": 0.30872494277706264,
+      "median_abs_rel_error": 0.2995264953698369,
+      "share_within_10pct": 0.1875,
+      "share_within_25pct": 0.4375,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 1.0502935640463111
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": 0.7360307908203959
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.5994999974349956
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.4833361996284011
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 1.0502935640463111
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": 0.7360307908203959
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.30_to_34.population",
+          "relative_error": -0.5994999974349956
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.0_to_4.population",
+          "relative_error": -0.4833361996284011
+        }
+      ]
+    },
+    "design2_pps_post_stratified": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.04062102141423633,
+      "uncapped_mape": 0.04062102141423633,
+      "median_abs_rel_error": 0.001197238149017645,
+      "share_within_10pct": 0.90625,
+      "share_within_25pct": 0.96875,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+          "relative_error": 0.1407603979043663
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.return_count",
+          "relative_error": 0.11577673983676316
+        },
+        {
+          "target": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment",
+          "relative_error": -0.004871698382781851
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.50_to_54.population",
+          "relative_error": 0.0043632253973349125
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+          "relative_error": 0.1407603979043663
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.return_count",
+          "relative_error": 0.11577673983676316
+        },
+        {
+          "target": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment",
+          "relative_error": -0.004871698382781851
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.50_to_54.population",
+          "relative_error": 0.0043632253973349125
+        }
+      ]
+    },
+    "design3_exact_k_refit": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.1794864278528463,
+      "uncapped_mape": 0.1794864278528463,
+      "median_abs_rel_error": 0.0017647126561101787,
+      "share_within_10pct": 0.71875,
+      "share_within_25pct": 0.78125,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_65_or_older.recipient_count",
+          "relative_error": -0.8608622512847681
+        },
+        {
+          "target": "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount",
+          "relative_error": -0.8145875897377616
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": -0.8029546613904058
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.25_to_29.population",
+          "relative_error": -0.706163467801392
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_65_or_older.recipient_count",
+          "relative_error": -0.8608622512847681
+        },
+        {
+          "target": "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount",
+          "relative_error": -0.8145875897377616
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": -0.8029546613904058
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.25_to_29.population",
+          "relative_error": -0.706163467801392
+        }
+      ]
+    },
+    "design3_exact_k_ht_baseline_before_refit": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.47343426534424415,
+      "uncapped_mape": 0.47343426534424415,
+      "median_abs_rel_error": 0.4324674190806749,
+      "share_within_10pct": 0.09375,
+      "share_within_25pct": 0.28125,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_65_or_older.recipient_count",
+          "relative_error": -0.9860862203738596
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": -0.9802954594816277
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.55_to_59.population",
+          "relative_error": -0.9339924771908727
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.25_to_29.population",
+          "relative_error": -0.8658279007044329
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_65_or_older.recipient_count",
+          "relative_error": -0.9860862203738596
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.75_to_79.population",
+          "relative_error": -0.9802954594816277
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.55_to_59.population",
+          "relative_error": -0.9339924771908727
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.25_to_29.population",
+          "relative_error": -0.8658279007044329
+        }
+      ]
+    },
+    "design3_l0_gated_weights_full_pool": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 1.6031756584239554,
+      "uncapped_mape": 2.0423558480295014,
+      "median_abs_rel_error": 0.5566669845732063,
+      "share_within_10pct": 0.125,
+      "share_within_25pct": 0.34375,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": 21.10398323533679
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_65_or_older.recipient_count",
+          "relative_error": 11.757555539457769
+        },
+        {
+          "target": "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount",
+          "relative_error": 11.192227292582915
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 7.629918934291687
+        },
+        {
+          "target": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment",
+          "relative_error": 1.6449419177594007
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": 21.10398323533679
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_65_or_older.recipient_count",
+          "relative_error": 11.757555539457769
+        },
+        {
+          "target": "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount",
+          "relative_error": 11.192227292582915
+        },
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.age_18_to_64.recipient_count",
+          "relative_error": 7.629918934291687
+        },
+        {
+          "target": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment",
+          "relative_error": 1.6449419177594007
+        }
+      ]
+    }
+  }
+}

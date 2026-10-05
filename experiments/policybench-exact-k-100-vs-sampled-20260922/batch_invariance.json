@@ -1,0 +1,7 @@
+{
+  "window_households": 400,
+  "window": "last 200 households of batch 1 and first 200 of batch 2, re-materialized together in one child",
+  "measure_columns_compared": 505,
+  "cells_differing": 0,
+  "max_abs_difference": 0.0
+}

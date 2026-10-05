@@ -1,0 +1,130 @@
+{
+  "national_all": {
+    "full_file": {
+      "n": 75112,
+      "total": 160159870.92574474,
+      "max_over_mean": 178.03602225972142,
+      "min_over_mean": 3.009280537742465e-07,
+      "top10_share": 0.019085007561434737,
+      "kish_ess": 1760.158426071846,
+      "n_above_5x_own_median": 12263,
+      "n_above_10x_own_median": 7410
+    },
+    "design1_pps_self_weighted": {
+      "n": 100,
+      "total": 123234383.85038804,
+      "max_over_mean": 0.9999999999999998,
+      "min_over_mean": 0.9999999999999998,
+      "top10_share": 0.09999999999999999,
+      "kish_ess": 100.00000000000007,
+      "n_above_5x_own_median": 0,
+      "n_above_10x_own_median": 0,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 0,
+      "n_above_10x_equal_share": 0
+    },
+    "design2_pps_post_stratified": {
+      "n": 100,
+      "total": 189193988.60839844,
+      "max_over_mean": 6.5136488165633795,
+      "min_over_mean": 0.004665527444007631,
+      "top10_share": 0.4716903515614055,
+      "kish_ess": 32.0246732862653,
+      "n_above_5x_own_median": 15,
+      "n_above_10x_own_median": 5,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 8,
+      "n_above_10x_equal_share": 0
+    },
+    "design3_exact_k_ht_baseline_before_refit": {
+      "n": 100,
+      "total": 160159870.92574474,
+      "max_over_mean": 16.46597259585643,
+      "min_over_mean": 2.858938079198158e-05,
+      "top10_share": 0.7849415369864743,
+      "kish_ess": 11.94601480026006,
+      "n_above_5x_own_median": 27,
+      "n_above_10x_own_median": 23,
+      "equal_share": 1601598.7092574474,
+      "n_above_5x_equal_share": 7,
+      "n_above_10x_equal_share": 3
+    },
+    "design3_exact_k_refit": {
+      "n": 100,
+      "total": 120808697.6508767,
+      "max_over_mean": 20.966806606259432,
+      "min_over_mean": 0.00027608892008324453,
+      "top10_share": 0.7309143130172565,
+      "kish_ess": 12.372989047632847,
+      "n_above_5x_own_median": 16,
+      "n_above_10x_own_median": 12,
+      "equal_share": 1601598.7092574474,
+      "n_above_5x_equal_share": 4,
+      "n_above_10x_equal_share": 1
+    }
+  },
+  "headline": {
+    "full_file": {
+      "n": 75112,
+      "total": 160159870.92574474,
+      "max_over_mean": 178.03602225972142,
+      "min_over_mean": 3.009280537742465e-07,
+      "top10_share": 0.019085007561434737,
+      "kish_ess": 1760.158426071846,
+      "n_above_5x_own_median": 12263,
+      "n_above_10x_own_median": 7410
+    },
+    "design1_pps_self_weighted": {
+      "n": 100,
+      "total": 123234383.85038804,
+      "max_over_mean": 0.9999999999999998,
+      "min_over_mean": 0.9999999999999998,
+      "top10_share": 0.09999999999999999,
+      "kish_ess": 100.00000000000007,
+      "n_above_5x_own_median": 0,
+      "n_above_10x_own_median": 0,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 0,
+      "n_above_10x_equal_share": 0
+    },
+    "design2_pps_post_stratified": {
+      "n": 100,
+      "total": 179196095.359375,
+      "max_over_mean": 4.760374372495341,
+      "min_over_mean": 0.0512626918590356,
+      "top10_share": 0.3564732472093905,
+      "kish_ess": 49.33504110390702,
+      "n_above_5x_own_median": 9,
+      "n_above_10x_own_median": 0,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 6,
+      "n_above_10x_equal_share": 0
+    },
+    "design3_exact_k_ht_baseline_before_refit": {
+      "n": 100,
+      "total": 160159870.92574474,
+      "max_over_mean": 11.842278872150764,
+      "min_over_mean": 7.432670330099633e-06,
+      "top10_share": 0.6855467068443739,
+      "kish_ess": 16.469146855525334,
+      "n_above_5x_own_median": 29,
+      "n_above_10x_own_median": 23,
+      "equal_share": 1601598.7092574474,
+      "n_above_5x_equal_share": 7,
+      "n_above_10x_equal_share": 2
+    },
+    "design3_exact_k_refit": {
+      "n": 100,
+      "total": 140718068.8757842,
+      "max_over_mean": 8.39647039956876,
+      "min_over_mean": 8.459575953257315e-05,
+      "top10_share": 0.5544056575198311,
+      "kish_ess": 24.458449331332954,
+      "n_above_5x_own_median": 24,
+      "n_above_10x_own_median": 14,
+      "equal_share": 1601598.7092574474,
+      "n_above_5x_equal_share": 5,
+      "n_above_10x_equal_share": 0
+    }
+  }
+}
