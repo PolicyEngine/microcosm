@@ -45,6 +45,7 @@ from microcosm.calibrate import (
 from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
+    "AmbiguousSoiCapitalGainsControlError",
     "US_FISCAL_MACRO_REALISM_BANDS",
     "US_FISCAL_TARGET_REGISTRY",
     "US_FISCAL_TARGET_SPECS",
@@ -54,6 +55,7 @@ __all__ = [
     "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
     "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
     "US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES",
+    "US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
@@ -853,6 +855,61 @@ US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
 # every vintage.
 US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
 
+# Reviewed source-column concept exclusions (microcosm#1038). Each entry is an
+# IRS column that a Chronicle package publishes under a measure id whose
+# concept the column does not carry, so no fact read from that column
+# compiles, whatever its package, geography or vintage, and a package
+# corrected to read the right column passes untouched. The key is (measure_id,
+# layout.source_column_id) because the IRS column is the definition. The
+# congressional-district documentation guide (22incddocguide.docx) defines:
+#
+# - N18425/A18425 as "State and local income taxes" (Schedule A line 5a) and
+#   N18460/A18460 as "Limited state and local taxes" (line 5e). salt_deduction,
+#   like the Historic Table 2 rows of these measure ids, is the limited line 5e
+#   deduction.
+# - N85530/A85530 as "Additional Medicare tax" (Form 8959 line 24) and
+#   N85770/A85770 as "Total premium tax credit" (Form 8962 line 24; the guide
+#   prints "8926:24"). N85770/A85770 is what the Historic Table 2 rows of
+#   these measure ids read and what assigned_aca_ptc measures. The amount was
+#   dropped before by a hard-coded congressional-district check; the returns
+#   row compiled as premium-tax-credit recipients.
+#
+# Chronicle's congressional_district_2022 package reads these four columns
+# under the limited_state_local_taxes_* and premium_tax_credit_* measure ids;
+# every other measure it shares with Historic Table 2 reads the same column.
+US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS: dict[tuple[str, str], str] = {
+    ("limited_state_local_taxes_returns", "N18425"): (
+        "N18425 counts returns with state and local income taxes (Schedule A "
+        "line 5a), not returns with the limited state and local tax deduction "
+        "(line 5e, N18460). Chronicle's congressional_district_2022 package "
+        "reads it under this measure id: TY2022 US 10,842,580 returns against "
+        "14,777,040 for N18460 in the same file and 14,968,720 in Historic "
+        "Table 2."
+    ),
+    ("limited_state_local_taxes_amount", "A18425"): (
+        "A18425 is state and local income taxes before the $10,000 limit "
+        "(Schedule A line 5a), not the limited deduction (line 5e, A18460) "
+        "salt_deduction measures. Chronicle's congressional_district_2022 "
+        "package reads it under this measure id: TY2022 US $250.4B against "
+        "$121.2B for A18460 in the same file, so on the full surface the "
+        "congressional-district rows summed to 1.98x the national Historic "
+        "Table 2 target."
+    ),
+    ("premium_tax_credit_returns", "N85530"): (
+        "N85530 counts returns with additional Medicare tax (Form 8959 line 24), "
+        "not returns with the premium tax credit (Form 8962 line 24, N85770) "
+        "assigned_aca_ptc measures. Chronicle's congressional_district_2022 "
+        "package reads it under this measure id: TY2022 US 6,848,330 returns "
+        "against 7,713,000 for N85770 in the same file."
+    ),
+    ("premium_tax_credit_amount", "A85530"): (
+        "A85530 is additional Medicare tax (Form 8959 line 24), not the premium "
+        "tax credit (Form 8962 line 24, A85770). Chronicle's "
+        "congressional_district_2022 package reads it under this measure id: "
+        "TY2022 US $14.2B against $53.1B for A85770 in the same file."
+    ),
+}
+
 
 @dataclass(frozen=True)
 class SimpleTaxExpenditureReform:
@@ -1089,6 +1146,9 @@ def us_fiscal_target_exclusion_receipt(
       vintage included (dropped).
     - ``m_chip_state_chip_enrollment``: CMS CHIP enrollment facts for an
       ``_M_CHIP_STATE_FIPS`` state, at every period (dropped).
+    - ``source_column_concept_exclusion``: SOI facts read from an IRS column
+      that ``US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`` lists for their
+      measure id, at every vintage (dropped).
     - ``allowlisted_vintage_bypass``: facts latest-vintage selection activates
       at ``target_period`` that are another vintage of an excluded cell and
       carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
@@ -1107,6 +1167,7 @@ def us_fiscal_target_exclusion_receipt(
         )
     reviewed: set[str] = set()
     all_vintage: set[str] = set()
+    source_column: set[str] = set()
     m_chip: set[str] = set()
     for fact in materialized_facts:
         source_record_id = _source_record_id(fact)
@@ -1116,6 +1177,8 @@ def us_fiscal_target_exclusion_receipt(
             all_vintage.add(source_record_id)
         elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
             reviewed.add(source_record_id)
+        elif _is_source_column_concept_exclusion(fact):
+            source_column.add(source_record_id)
         elif _source_name(fact) == "cms_medicaid":
             reference = _reference_from_ledger_fact(fact, target_period=target_period)
             if reference is not None and _is_m_chip_state_chip_enrollment(
@@ -1142,6 +1205,22 @@ def us_fiscal_target_exclusion_receipt(
                 "scope": "every vintage of each entry",
                 "entries": sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS),
                 "source_record_ids": sorted(all_vintage),
+            },
+            "source_column_concept_exclusion": {
+                "action": "dropped",
+                "scope": "SOI facts read from a listed column under a listed "
+                "measure id, every vintage",
+                "entries": [
+                    {
+                        "measure_id": measure_id,
+                        "source_column_id": source_column_id,
+                        "reason": reason,
+                    }
+                    for (measure_id, source_column_id), reason in sorted(
+                        US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items()
+                    )
+                ],
+                "source_record_ids": sorted(source_column),
             },
             "m_chip_state_chip_enrollment": {
                 "action": "dropped",
@@ -1471,44 +1550,102 @@ class _SoiTotalControl:
     period_key: tuple[int, int, str]
 
 
+#: What an SOI record-set family's ``net_capital_gains_*`` columns count, read
+#: from the published IRS workbooks and documentation guides, TY2020-TY2023
+#: (microcosm#1035):
+#:
+#: - Table 1.4 cols 37/38, "Sales of capital assets reported on Form 1040,
+#:   Schedule D: Taxable net gain", cover Schedule D returns that net to a
+#:   gain. Returns reporting only capital gain distributions on Form 1040
+#:   (col 35) and Schedule D loss returns (col 39) are outside them: Table 1.3
+#:   row 18 "Sales of capital assets net gain" equals col 35 + col 37 exactly.
+#: - Historic Table 2 and the congressional-district file carry N01000/A01000,
+#:   which both documentation guides define as "Number of returns with net
+#:   capital gain (less loss)" / "Net capital gain (less loss) amount" at Form
+#:   1040 line 7: a Schedule D gain, a loss-limited Schedule D loss, or
+#:   distributions only. HT2 US N01000 equals Table 1.4 col 35 + col 37 +
+#:   col 39 within 0.25% in each of TY2020-TY2023, and is 2.36x col 37 in
+#:   TY2022. Its amount, net of losses, is 1.4% below col 38 in TY2022.
+#:
+#: A family absent from this register has no reviewed concept and is never a
+#: capital-gains control. A registered family whose concept is not the
+#: model's supplies shares only (``_soi_capital_gains_share_family``).
+_SOI_SCHEDULE_D_TAXABLE_NET_GAIN = "schedule_d_taxable_net_gain"
+_SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS = "form_1040_line_7_net_gain_or_loss"
+_SOI_CAPITAL_GAINS_FAMILY_CONCEPTS: dict[str, str] = {
+    "table_1_4": _SOI_SCHEDULE_D_TAXABLE_NET_GAIN,
+    "historic_table_2": _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS,
+    "congressional_district": _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS,
+}
+#: The concept ``capital_gains_gross`` measures. It is the positive part of
+#: PE-US ``capital_gains`` (short-term plus long-term, i.e. Schedule D, before
+#: the loss limit); distributions reported without Schedule D are the separate
+#: ``non_sch_d_capital_gains``. Its indicator therefore counts Table 1.4 col 37
+#: returns and its sum is col 38; a line-7 count, which also counts losses and
+#: distributions-only returns, is a different population. (PE-US allows
+#: negative gains, but the Build P release data carries no tax unit with a
+#: net loss, so it could not reach a line-7 count at any level.)
+_SOI_CAPITAL_GAINS_MODEL_CONCEPT = _SOI_SCHEDULE_D_TAXABLE_NET_GAIN
+
+
+class AmbiguousSoiCapitalGainsControlError(ValueError):
+    """Two different concept-matched records tie for one capital-gains control."""
+
+
 def _rebase_stale_soi_capital_gains_distributions(
     registry: TargetRegistry,
     facts: tuple[object, ...],
     *,
     target_period: int | str,
 ) -> TargetRegistry:
-    """Use stale SOI capital-gains rows as shares, not hard old-year totals."""
+    """Use line-7 capital-gains rows as shares of a Table 1.4 level.
+
+    Historic Table 2 and congressional-district rows count Form 1040 line 7
+    (gain or loss), a population ``capital_gains_gross`` cannot measure, so
+    they never ship as levels. Each one ships as its share of its own family's
+    national total at its own period (an HT2 row of the HT2 US row, a
+    congressional-district state or district row of that file's US row),
+    scaled to the concept-matched control of ``_soi_capital_gains_active_totals``
+    at or after that period, and declares the bridge in ``soi_source_concept``
+    / ``soi_control_concept``. Without such a control or family total, the row
+    is dropped. Each family's national all-AGI row retires because the
+    control's own row owns the national concept.
+
+    One factor per family, quantity and period scales a family's state and
+    district rows alike, so the district-to-state hierarchy reconciliation that
+    runs next sees the same proportions. The congressional-district file's
+    states sum exactly to its US row, so on the full surface its states and
+    its districts each sum to the control. Before this, they shipped as
+    line-7 levels, 2.41x the Table 1.4 return count (microcosm#1038).
+    """
 
     controls = _soi_capital_gains_active_totals(
         facts,
         target_period=target_period,
     )
-    stale_national_totals = _soi_capital_gains_stale_national_totals(facts)
+    share_totals = _soi_capital_gains_share_national_totals(facts)
     specs: list[TargetSpec] = []
     for spec in registry.specs:
         kind = _soi_capital_gains_kind(spec)
-        if kind is None or not _is_stale_soi_historic_capital_gains_spec(spec):
+        family = _soi_capital_gains_share_family_from_spec(spec) if kind else None
+        if kind is None or family is None:
             specs.append(spec)
             continue
 
         key = _soi_capital_gains_control_key_from_spec(spec)
         control = controls.get(key)
-        source_total = stale_national_totals.get((*key, spec.metadata["source_period"]))
-        if control is None:
-            specs.append(spec)
-            continue
-        if source_total in (None, 0):
-            continue
-        if not _period_not_before(
+        source_total = share_totals.get((family, *key, spec.metadata["source_period"]))
+        if control is None or not _period_not_before(
             control.period_key, _period_key_from_value(spec.metadata["source_period"])
         ):
-            specs.append(spec)
+            continue
+        if source_total is None or source_total.value == 0:
             continue
 
         if _is_national_all_agi_spec(spec):
             continue
 
-        factor = control.value / source_total
+        factor = control.value / source_total.value
         specs.append(
             replace(
                 spec,
@@ -1525,6 +1662,11 @@ def _rebase_stale_soi_capital_gains_distributions(
                     "uprating_index_source_record_id": control.source_record_id,
                     "uprating_factor": _format_float(factor),
                     "stale_distribution_rebased_to_active_total": "true",
+                    "soi_source_concept": _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS[family],
+                    "soi_control_concept": _SOI_CAPITAL_GAINS_MODEL_CONCEPT,
+                    # The share's denominator: this family's own national
+                    # row, from the same release as the row itself.
+                    "soi_share_total_source_record_id": source_total.source_record_id,
                 },
             )
         )
@@ -1536,13 +1678,26 @@ def _soi_capital_gains_active_totals(
     *,
     target_period: int | str,
 ) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    """The capital-gains control per (measure, filing status, universe).
+
+    Only a national full-AGI fact whose family counts what
+    ``capital_gains_gross`` measures qualifies, so HT2 and
+    congressional-district rows never do, whatever their period stamp. The
+    latest qualifying period not after the build period wins, and the choice
+    depends on the fact set alone: two different candidates at the winning
+    period (different records, or one record with different values or period
+    labels) refuse the compile. Feed order used to break that tie, and the
+    September re-pin, which re-sorted the feed by content hash, handed the
+    returns control to the congressional-district US row (microcosm#1035).
+    """
     controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
+    tied: dict[tuple[str, str, str], set[tuple[str, float, str]]] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
         key = _soi_capital_gains_control_key_from_fact(fact)
         if key is None:
             continue
-        if _is_stale_soi_historic_capital_gains_fact(fact):
+        if _soi_capital_gains_concept(fact) != _SOI_CAPITAL_GAINS_MODEL_CONCEPT:
             continue
         period_key = _period_key(fact)
         if not _not_after_target_period(period_key, target_period_key):
@@ -1556,25 +1711,125 @@ def _soi_capital_gains_active_totals(
             source_record_id=source_record_id,
             period_key=period_key,
         )
+        identity = (source_record_id, candidate.value, candidate.source_period)
         current = controls.get(key)
-        if current is None or _prefer_candidate(
-            candidate.period_key,
-            current.period_key,
-            target_period_key=target_period_key,
-        ):
+        if current is not None and period_key[:2] == current.period_key[:2]:
+            tied[key].add(identity)
+            continue
+        if current is None or period_key[:2] > current.period_key[:2]:
             controls[key] = candidate
+            tied[key] = {identity}
+    ambiguous = {
+        key: sorted(candidates)
+        for key, candidates in tied.items()
+        if len(candidates) > 1
+    }
+    if ambiguous:
+        raise AmbiguousSoiCapitalGainsControlError(
+            "SOI capital-gains control is ambiguous: different candidates tie at "
+            f"the latest period for {ambiguous}. Deduplicate them upstream; "
+            "feed order must not pick a rebase control (microcosm#1035)."
+        )
     return controls
 
 
-def _soi_capital_gains_stale_national_totals(
+def _soi_record_set_family(record_set_id: str) -> str:
+    """An SOI record set's table family, without period or data vintage.
+
+    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
+    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
+    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
+    ``congressional_district``.
+    """
+    parts = record_set_id.split(".")
+    if parts[0] != "irs_soi":
+        return ""
+    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
+    if not rest:
+        return ""
+    family = rest[0]
+    if family.startswith("congressional_district"):
+        return "congressional_district"
+    return family
+
+
+def _soi_capital_gains_concept(fact: object) -> str | None:
+    """The reviewed IRS concept of a capital-gains fact's family, if any."""
+    return _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS.get(
+        _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+    )
+
+
+def _soi_capital_gains_share_family(record_set_id: str) -> str | None:
+    """The family of a capital-gains row that may ship only as a share.
+
+    A registered family whose columns count something other than what
+    ``capital_gains_gross`` measures (Historic Table 2 and the
+    congressional-district file, both Form 1040 line 7) supplies shares, never
+    levels. The model's own family and unregistered families return ``None``.
+    """
+    family = _soi_record_set_family(record_set_id)
+    concept = _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS.get(family)
+    if concept is None or concept == _SOI_CAPITAL_GAINS_MODEL_CONCEPT:
+        return None
+    return family
+
+
+def _soi_capital_gains_share_family_from_spec(spec: TargetSpec) -> str | None:
+    if spec.family != "irs_soi":
+        return None
+    return _soi_capital_gains_share_family(
+        spec.metadata.get("ledger_layout_record_set_id", "")
+    )
+
+
+class AmbiguousSoiCapitalGainsShareTotalError(ValueError):
+    """One share family carries two different national totals for one period."""
+
+
+@dataclass(frozen=True)
+class _SoiShareTotal:
+    value: float
+    source_record_id: str
+
+
+def _soi_capital_gains_share_national_totals(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str], float] = {}
+) -> dict[tuple[str, str, str, str, str], _SoiShareTotal]:
+    """Each share family's national all-AGI total, the denominator of its shares.
+
+    Keyed by (family, measure, filing status, universe, period), so an HT2 row
+    divides by the HT2 US row and a congressional-district row by that file's
+    US row, never by another family's. Two different values under one key
+    refuse the compile instead of letting feed order pick the denominator;
+    equal values under two record ids keep the smaller id, so the named
+    denominator does not depend on feed order either.
+    """
+    totals: dict[tuple[str, str, str, str, str], _SoiShareTotal] = {}
     for fact in facts:
         key = _soi_capital_gains_control_key_from_fact(fact)
-        if key is None or not _is_stale_soi_historic_capital_gains_fact(fact):
+        if key is None:
             continue
-        totals[(*key, str(_period_value(fact)))] = _numeric_value(fact)
+        family = _soi_capital_gains_share_family(
+            _str_at(fact, "layout", "record_set_id")
+        )
+        if family is None:
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        total_key = (family, *key, str(_period_value(fact)))
+        candidate = _SoiShareTotal(_numeric_value(fact), source_record_id)
+        current = totals.get(total_key)
+        if current is not None and current.value != candidate.value:
+            raise AmbiguousSoiCapitalGainsShareTotalError(
+                "SOI capital-gains share family has two national totals for "
+                f"{total_key}: {current.value!r} ({current.source_record_id}) "
+                f"and {candidate.value!r} ({candidate.source_record_id}). "
+                "Deduplicate them upstream."
+            )
+        if current is None or candidate.source_record_id < current.source_record_id:
+            totals[total_key] = candidate
     return totals
 
 
@@ -1590,22 +1845,6 @@ def _soi_capital_gains_kind_from_measure(measure_id: str) -> str | None:
     if measure_id == "net_capital_gains_returns":
         return "returns"
     return None
-
-
-def _is_stale_soi_historic_capital_gains_spec(spec: TargetSpec) -> bool:
-    if spec.family != "irs_soi":
-        return False
-    if _soi_capital_gains_kind(spec) is None:
-        return False
-    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
-
-
-def _is_stale_soi_historic_capital_gains_fact(fact: object) -> bool:
-    if _source_name(fact) != "irs_soi":
-        return False
-    if _soi_capital_gains_kind_from_measure(_measure_id(fact)) is None:
-        return False
-    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
 
 
 def _soi_capital_gains_control_key_from_fact(
@@ -2520,6 +2759,16 @@ def _period_free_source_record_id(source_record_id: str) -> str:
     return _normalized_record_set_id(source_record_id)
 
 
+def _is_source_column_concept_exclusion(fact: object) -> bool:
+    """Whether an SOI fact reads a column its measure id does not mean."""
+    if _source_name(fact) != "irs_soi":
+        return False
+    return (
+        _measure_id(fact),
+        _str_at(fact, "layout", "source_column_id"),
+    ) in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+
+
 def _is_all_vintage_support_exclusion(source_record_id: str) -> bool:
     return _period_free_source_record_id(source_record_id) in (
         _period_free_source_record_ids(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
@@ -2552,18 +2801,6 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
 def _is_soi_congressional_district_record_set(fact: object) -> bool:
     record_set_id = _str_at(fact, "layout", "record_set_id")
     return ".congressional_district_2022." in record_set_id
-
-
-def _is_soi_cd_premium_tax_credit_amount_conflict(
-    fact: object, *, measure_id: str
-) -> bool:
-    # The SOI CD A85530 amount is not the same gross annual PTC control used by
-    # assigned_aca_ptc. Keep Historic Table 2 national/state PTC amount controls
-    # until Ledger has an explicit CD reconciliation for this concept.
-    return (
-        measure_id == "premium_tax_credit_amount"
-        and _is_soi_congressional_district_record_set(fact)
-    )
 
 
 def _is_period_token(value: str) -> bool:
@@ -2632,6 +2869,8 @@ def _reference_from_ledger_fact(
         return None
     if _is_all_vintage_support_exclusion(source_record_id):
         return None
+    if _is_source_column_concept_exclusion(fact):
+        return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
         return _soi_reference_from_fact(
@@ -2688,8 +2927,6 @@ def _soi_reference_from_fact(
         measure_id == "tax_filer_individual_count"
         and geography_level != "congressional_district"
     ):
-        return None
-    if _is_soi_cd_premium_tax_credit_amount_conflict(fact, measure_id=measure_id):
         return None
     variable = SOI_AMOUNT_MEASURE_VARIABLES.get(measure_id)
     is_count = False
