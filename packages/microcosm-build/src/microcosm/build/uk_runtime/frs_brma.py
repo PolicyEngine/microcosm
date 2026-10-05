@@ -59,7 +59,9 @@ class UKFRSBRMAStageTransform:
 
 def load_brma_count_resource() -> Mapping[str, Any]:
     return json.loads(
-        files("microcosm.build.uk").joinpath("brma_private_rented_households.json").read_text()
+        files("microcosm.build.uk")
+        .joinpath("brma_private_rented_households.json")
+        .read_text()
     )
 
 
