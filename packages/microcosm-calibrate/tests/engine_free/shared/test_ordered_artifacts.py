@@ -138,3 +138,41 @@ def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
             np.testing.assert_array_equal(
                 restored.gate_open_probabilities, result.gate_open_probabilities
             )
+
+
+def test_compiled_rows_guard_the_axis_without_iterating_the_id_column(monkeypatch):
+    """Every compiled row checks the frame's entity axis against one shared
+    array with a vectorised comparison. Rebuilding the axis as a Python tuple
+    per row made 22,053 local rows over a 1.6 million-household pool cost
+    ~3.5e10 scalar conversions (the first K=25 UK dense build, 2026-10-05)."""
+    restored = decode_problem(encode_problem(problem(), entity_ids=(10, 20)))
+    targets = restored.to_target_set()
+    axes = {id(target.measure.axis) for target in targets.targets}
+    assert len(axes) == 1
+    assert targets.targets[0].measure.axis.dtype == np.int64
+
+    def frame_for(ids):
+        return Frame(
+            {
+                "person": pd.DataFrame(
+                    {"person_id": [1, 2], "person_household_id": list(ids)}
+                ),
+                "household": pd.DataFrame({"household_id": list(ids)}),
+            },
+            EntitySchema(group_entities=("household",)),
+            {"household": problem().initial_weights},
+            pd.Series(["a", "a"]),
+        )
+
+    def refuse_iteration(self):
+        raise AssertionError("the axis guard must not iterate the id column")
+
+    monkeypatch.setattr(pd.Series, "__iter__", refuse_iteration)
+    recompiled = build_constraint_matrix(
+        frame_for((10, 20)), targets, weight_entity="household"
+    )
+    np.testing.assert_array_equal(
+        recompiled.matrix.toarray(), problem().matrix.toarray()
+    )
+    with pytest.raises(ValueError, match="exact ordered entity axis"):
+        targets.targets[0].measure(frame_for((20, 10)))
