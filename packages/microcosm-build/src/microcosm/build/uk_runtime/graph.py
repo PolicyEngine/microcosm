@@ -877,7 +877,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
-    "pension_credit_take_up": (_Cell("benunit", "would_claim_pc", "bool"),),
+    "pension_credit_take_up": (
+        _Cell("benunit", "would_claim_pc", "bool"),
+        _Cell("benunit", "has_mixed_age_couple_pension_credit_saving", "bool"),
+    ),
     "child_benefit_take_up": (
         _Cell("benunit", "would_claim_child_benefit", "bool"),
         _Cell("benunit", "child_benefit_opts_out", "bool"),

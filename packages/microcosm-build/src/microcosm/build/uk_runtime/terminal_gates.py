@@ -166,6 +166,7 @@ UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
 UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.child_benefit_opts_out",
     "benunit.frs_benunit_capital",
+    "benunit.has_mixed_age_couple_pension_credit_saving",
     "benunit.liable_for_share_of_household_rent",
     "benunit.pension_credit_reported_capital",
     "benunit.uc_deduction_combination",
