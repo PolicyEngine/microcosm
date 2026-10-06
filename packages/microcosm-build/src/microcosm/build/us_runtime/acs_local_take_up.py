@@ -1,4 +1,5 @@
-"""SNAP and TANF take-up for the ACS rows of the retained ACS local lane.
+"""Runtime-owned take-up and default-fill inputs for the ACS rows of the
+retained ACS local lane.
 
 The ACS transfer leaves take-up draws to the runtime, and the local lane runs
 neither ``snap_take_up`` nor ``snap_state_take_up``. Every ACS SPM unit
@@ -8,7 +9,7 @@ the engine default, ``True``: every eligible ACS unit took both programs up
 (microcosm#1019, the take-up counterpart of the #765 hours defect).
 
 This is a fresh-build repair for that lane. It fills only missing cells on
-ACS-spine SPM units; donor-spine values and any stored ACS value are kept.
+ACS-spine rows; donor-spine values and any stored ACS value are kept.
 
 - SNAP follows :mod:`~microcosm.build.us_runtime.snap_take_up`: a unit with
   (QRF-imputed) ``receives_snap`` always takes up, and non-reporters draw at
@@ -21,13 +22,42 @@ ACS-spine SPM units; donor-spine values and any stored ACS value are kept.
   the weighted share of TANF reporters that drew ``False`` (informational,
   never graded).
 
-Draws come from :func:`~microcosm.build.us_runtime.take_up._stable_unit_draws`,
+Three more inputs reached the engine pass missing on every ACS row and took
+an engine default that biases SNAP (microcosm#1022). None needs the engine:
+
+- ``is_snap_abawd_discretionary_exempt`` (person) mirrors the donor's
+  :mod:`~microcosm.build.us_runtime.snap_discretionary_exemption` seeding:
+  a person aged 18-64 is flagged when a stable draw falls below the
+  ``snap_abawd_discretionary_exemption`` manifest rate. ACS persons carry no
+  complete source identity, so the draws key on
+  ``acs_2024_1yr:SERIALNO:SPORDER`` (``SPORDER`` alone repeats in every
+  household). The flag is a cap-based proxy, not an observed exemption
+  assignment: no survey records which people a state exempts, so, like the
+  donor, it is an upper-bound propensity drawn at the statutory cap across
+  all adults 18-64, which the engine intersects with modeled ABAWD coverage.
+  Actual state usage runs below the cap.
+- ``receives_housing_assistance`` (SPM unit) copies the transferred
+  ``takes_up_housing_assistance_if_eligible``; on the donor both come from
+  ``SPM_CAPHOUSESUB > 0`` and are equal by construction
+  (:mod:`~microcosm.build.us_runtime.housing_inputs`). Units in an ACS
+  group-quarters household (``TYPEHUGQ`` 2/3) have no housing unit and get
+  ``False``. Their transferred take-up flag is left alone: forcing it is the
+  transfer-side fix of microcosm#975.
+- ``takes_up_medicare_if_eligible`` (person) is native ACS ``HINS3 == 1``
+  (Medicare coverage at interview), the ACS counterpart of the donor's
+  measured ``MCARE == 1``
+  (:mod:`~microcosm.build.us_runtime.medicare_take_up`): coverage is the
+  take-up signal and the engine applies eligibility. ``HINS3`` covers every
+  person; a blank or a code other than 1/2 reads as not covered, and the
+  receipt and gate count both (unweighted, weighted and at 65+) for review.
+
+SNAP draws come from :func:`~microcosm.build.us_runtime.take_up._stable_unit_draws`,
 which keys a unit without complete source identity on its own ids, so the
 assignment depends only on ``seed``, the frame and its weights. The
 per-state recalibration of the ASEC lane is not applied; the release's state
 SNAP household targets reweight instead. Other ``takes_up_*`` flags on ACS
-rows still ship at the engine default (microcosm#1022) and the gate here does
-not grade them.
+rows (SSI, Medicaid, Head Start, EITC and the rest) still ship at the engine
+default (microcosm#1022) and the gate here does not grade them.
 """
 
 from __future__ import annotations
@@ -41,6 +71,16 @@ from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.medicare_take_up import (
+    US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS,
+)
+from microcosm.build.us_runtime.snap_discretionary_exemption import (
+    _COVERED_AGE_RANGE,
+    US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN,
+    _exemption_rate,
+    _stable_person_draws,
+    us_snap_discretionary_exemption_stage_spec,
+)
 from microcosm.build.us_runtime.snap_take_up import (
     _TAKE_UP_SHARE_BAND as _SNAP_TAKE_UP_SHARE_BAND,
 )
@@ -63,14 +103,18 @@ from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
+    "ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE",
+    "ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS",
     "ACS_LOCAL_TAKE_UP_COLUMNS",
     "ACS_LOCAL_TAKE_UP_GATE_NAME",
+    "US_HOUSING_ASSISTANCE_RECEIPT_COLUMN",
     "US_TANF_TAKE_UP_OUTPUT_COLUMN",
     "acs_local_take_up_signal_gate",
     "with_acs_local_take_up_inputs",
 ]
 
 US_TANF_TAKE_UP_OUTPUT_COLUMN = "takes_up_tanf_if_eligible"
+US_HOUSING_ASSISTANCE_RECEIPT_COLUMN = "receives_housing_assistance"
 
 #: The SPM-unit take-up flags this stage owns on ACS rows.
 ACS_LOCAL_TAKE_UP_COLUMNS: tuple[str, ...] = (
@@ -78,6 +122,18 @@ ACS_LOCAL_TAKE_UP_COLUMNS: tuple[str, ...] = (
     US_TANF_TAKE_UP_OUTPUT_COLUMN,
 )
 ACS_LOCAL_TAKE_UP_GATE_NAME = "acs_local_take_up_signal"
+
+ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE = "microcosm#1022"
+_DISCRETIONARY = US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN
+_HOUSING = US_HOUSING_ASSISTANCE_RECEIPT_COLUMN
+(_MEDICARE,) = US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS
+#: The ``(entity, column)`` inputs this stage fills on ACS rows without the
+#: engine (microcosm#1022).
+ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("person", _DISCRETIONARY),
+    ("spm_unit", _HOUSING),
+    ("person", _MEDICARE),
+)
 
 _ID_COLUMN = "spm_unit_id"
 #: Reported (on ACS rows, QRF-transferred) SNAP receipt: the survey anchor.
@@ -91,6 +147,36 @@ _SHARE_BANDS: dict[str, tuple[float, float]] = {
     US_TANF_TAKE_UP_OUTPUT_COLUMN: US_TAKE_UP_SHARE_BAND[US_TANF_TAKE_UP_OUTPUT_COLUMN],
 }
 
+_AGE_COLUMN = "age"
+_DISCRETIONARY_OPERATION = "derive_snap_abawd_discretionary_exemption"
+#: The weighted exempt share of ACS persons aged 18-64 must stay within these
+#: multiples of the manifest rate ([0.04, 0.12] at the 8% cap).
+_DISCRETIONARY_SHARE_FACTORS = (0.5, 1.5)
+_DRAW_KEY_FORMAT = f"{ACS_2024_1YR_SPINE}:SERIALNO:SPORDER"
+
+#: The transferred SPM-unit flag the housing receipt copies.
+_HOUSING_TAKE_UP = "takes_up_housing_assistance_if_eligible"
+_HOUSEHOLD_KIND = "TYPEHUGQ"
+_HOUSEHOLD_KINDS = (1, 2, 3)
+#: ACS group quarters (institutional, noninstitutional): no housing unit.
+_GROUP_QUARTERS_KINDS = (2, 3)
+
+#: ACS Medicare coverage item (1 yes, 2 no), asked of every person.
+_MEDICARE_COVERAGE = "HINS3"
+_MEDICARE_COVERED = 1
+_MEDICARE_CODES = (1, 2)
+_MEDICARE_AGE = 65
+#: Weighted Medicare take-up among ACS persons 65+ must reach this floor; ACS
+#: coverage runs well above 90% there, so a lower share means a miscoded item.
+_MEDICARE_AGED_SHARE_FLOOR = 0.8
+
+#: What the engine default would do to each column, for gate failures.
+_ENGINE_DEFAULT_EFFECT = {
+    _DISCRETIONARY: "no one is discretionarily exempt",
+    _HOUSING: "no one receives housing assistance",
+    _MEDICARE: "every eligible person enrolls in Medicare",
+}
+
 
 def _flags(values: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """Boolean values with missing cells as ``False``, and the present mask."""
@@ -98,6 +184,10 @@ def _flags(values: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     flags = np.zeros(len(values), dtype=bool)
     flags[present] = values[present].astype(bool).to_numpy(dtype=bool)
     return flags, present
+
+
+def _numeric(values: pd.Series) -> np.ndarray:
+    return pd.to_numeric(values, errors="coerce").to_numpy(dtype=np.float64)
 
 
 def _snap_rate() -> tuple[float, str]:
@@ -111,6 +201,30 @@ def _snap_rate() -> tuple[float, str]:
         )
     rate = _take_up_rate(operations[0])
     return rate, str(operations[0].parameters["take_up_rate"]["source"])
+
+
+def _discretionary_rate() -> tuple[float, str]:
+    """The exemption rate and citation of the donor's manifest stage."""
+    stage = us_snap_discretionary_exemption_stage_spec()
+    operations = [op for op in stage.operations if op.kind == _DISCRETIONARY_OPERATION]
+    if len(operations) != 1:
+        raise ValueError(
+            f"The {stage.stage!r} stage must declare exactly one "
+            f"{_DISCRETIONARY_OPERATION!r} operation; found {len(operations)}."
+        )
+    rate = _exemption_rate(operations[0])
+    return rate, str(operations[0].parameters["exemption_rate"]["source"])
+
+
+def _discretionary_share_band(rate: float) -> tuple[float, float]:
+    low, high = _DISCRETIONARY_SHARE_FACTORS
+    return rate * low, rate * high
+
+
+def _covered_age(age: np.ndarray) -> np.ndarray:
+    """The donor seeding's potentially ABAWD-covered band; a blank age is not."""
+    low, high = _COVERED_AGE_RANGE
+    return (age >= low) & (age <= high)
 
 
 def _tanf_program() -> TakeUpProgram:
@@ -197,30 +311,261 @@ def _tanf_receipt_crosstab(
     }
 
 
-def _assignment_sha256(spm_unit: pd.DataFrame, rows: np.ndarray) -> str:
-    """Digest of the ACS rows' ids and flags, to prove two passes agree."""
-    selected = pd.DataFrame(
-        {
-            _ID_COLUMN: spm_unit.loc[rows, _ID_COLUMN].to_numpy(),
-            **{
-                column: _flags(spm_unit.loc[rows, column])[0]
-                for column in ACS_LOCAL_TAKE_UP_COLUMNS
-            },
+def _hins3_audit(
+    coverage: pd.Series, age: np.ndarray, weights: np.ndarray
+) -> dict[str, object]:
+    """Blank and invalid ``HINS3`` cells among the given persons (informational).
+
+    ``HINS3`` is asked of every person with codes 1/2, so a blank is a loader
+    gap and any other value a miscode. Both read as not covered; the counts
+    are reported for review (microcosm#1022), never a failure.
+    """
+    numeric = pd.to_numeric(coverage, errors="coerce").to_numpy(dtype=np.float64)
+    blank = coverage.isna().to_numpy(dtype=bool)
+    invalid = ~blank & ~np.isin(numeric, _MEDICARE_CODES)
+    aged = age >= _MEDICARE_AGE
+
+    def counts(cells: np.ndarray) -> dict[str, object]:
+        return {
+            "rows": int(cells.sum()),
+            "weight": float(weights[cells].sum()),
+            "rows_65_plus": int((cells & aged).sum()),
+            "weight_65_plus": float(weights[cells & aged].sum()),
         }
+
+    return {
+        "persons": int(len(coverage)),
+        "persons_65_plus": int(aged.sum()),
+        "valid_codes": list(_MEDICARE_CODES),
+        "blank": counts(blank),
+        "invalid": counts(invalid),
+        "treatment": "read as not covered; informational, not graded",
+    }
+
+
+def _acs_person_draw_keys(frame: Frame, rows: np.ndarray) -> pd.Series:
+    """``acs_2024_1yr:SERIALNO:SPORDER`` for the selected persons; unique."""
+    household = frame.table("household")
+    person = frame.table("person")
+    if "SERIALNO" not in household or "SPORDER" not in person:
+        raise ValueError(
+            "ACS local take-up keys the discretionary-exemption draws on household "
+            "SERIALNO and person SPORDER; the frame lacks one of them."
+        )
+    selected = person.loc[rows]
+    serial = selected["person_household_id"].map(
+        household.set_index("household_id")["SERIALNO"]
     )
-    hashed = pd.util.hash_pandas_object(selected, index=False).to_numpy()
-    return hashlib.sha256(hashed.tobytes()).hexdigest()
+    order = pd.to_numeric(selected["SPORDER"], errors="coerce")
+    if serial.isna().any() or order.isna().any():
+        raise ValueError(
+            "Every ACS person drawing a discretionary exemption needs its household "
+            "SERIALNO and its SPORDER."
+        )
+    keys = (
+        f"{ACS_2024_1YR_SPINE}:"
+        + serial.astype(str)
+        + ":"
+        + order.astype(np.int64).astype(str)
+    ).reset_index(drop=True)
+    if keys.duplicated().any():
+        raise ValueError(
+            f"{int(keys.duplicated().sum())} ACS person draw key(s) repeat; "
+            f"{_DRAW_KEY_FORMAT} must identify one person."
+        )
+    return keys
+
+
+def _unit_household_kinds(frame: Frame) -> np.ndarray:
+    """``TYPEHUGQ`` of each SPM unit's household, aligned to the spm_unit table.
+
+    NaN where the household table lacks the column, the unit has no member,
+    or the household carries no code (donor households).
+    """
+    unit_ids = frame.table("spm_unit")[_ID_COLUMN]
+    household = frame.table("household")
+    if _HOUSEHOLD_KIND not in household:
+        return np.full(len(unit_ids), np.nan)
+    person = frame.table("person")
+    unit_household = person.drop_duplicates("person_spm_unit_id").set_index(
+        "person_spm_unit_id"
+    )["person_household_id"]
+    kinds = pd.to_numeric(
+        household.set_index("household_id")[_HOUSEHOLD_KIND], errors="coerce"
+    )
+    return pd.to_numeric(
+        unit_ids.map(unit_household).map(kinds), errors="coerce"
+    ).to_numpy(dtype=np.float64)
+
+
+def _discretionary_fill(
+    frame: Frame, acs_persons: np.ndarray, *, seed: int
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Missing ACS cells, their seeded flags, and the receipt entry."""
+    person = frame.table("person")
+    _, present = _flags(person[_DISCRETIONARY])
+    missing = acs_persons & ~present
+    rate, source = _discretionary_rate()
+    covered = _covered_age(_numeric(person[_AGE_COLUMN]))
+    assigned = np.zeros(len(person), dtype=bool)
+    drawn = missing & covered
+    if missing.any():
+        # Keys for every filled person, so a repeated key is refused even when
+        # the person is outside the covered ages; only the covered draw.
+        keys = _acs_person_draw_keys(frame, missing)
+        draws = _stable_person_draws(
+            pd.DataFrame({"person_id": keys[covered[missing]].to_numpy()}),
+            seed=int(seed),
+        )
+        assigned[drawn] = draws < rate
+    return (
+        missing,
+        assigned,
+        {
+            "source": (
+                "the snap_abawd_discretionary_exemption stage's seeding: age "
+                f"{_COVERED_AGE_RANGE[0]}-{_COVERED_AGE_RANGE[1]} and a stable "
+                "draw below the manifest rate"
+            ),
+            "interpretation": (
+                "cap-based proxy: an upper-bound propensity drawn at the "
+                "statutory cap across all adults "
+                f"{_COVERED_AGE_RANGE[0]}-{_COVERED_AGE_RANGE[1]}, not an "
+                "observed exemption assignment"
+            ),
+            "rate": rate,
+            "rate_source": source,
+            "covered_ages": list(_COVERED_AGE_RANGE),
+            "draw_key": _DRAW_KEY_FORMAT,
+            "filled_rows": int(missing.sum()),
+            "preserved_rows": int((acs_persons & present).sum()),
+            "covered_filled_rows": int(drawn.sum()),
+            "exempt_filled_rows": int(assigned.sum()),
+            "share_band": list(_discretionary_share_band(rate)),
+        },
+    )
+
+
+def _housing_fill(
+    frame: Frame, acs_units: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Missing ACS receipt cells, their copied flags, and the receipt entry."""
+    spm_unit = frame.table("spm_unit")
+    _, present = _flags(spm_unit[_HOUSING])
+    missing = acs_units & ~present
+    take_up, take_up_present = _flags(spm_unit[_HOUSING_TAKE_UP])
+    kinds = _unit_household_kinds(frame)
+    unknown = missing & ~np.isin(kinds, _HOUSEHOLD_KINDS)
+    if unknown.any():
+        raise ValueError(
+            f"{int(unknown.sum())} ACS SPM unit(s) have no household {_HOUSEHOLD_KIND} "
+            "1/2/3; the housing-assistance receipt cannot tell a housing unit from "
+            "group quarters."
+        )
+    group_quarters = np.isin(kinds, _GROUP_QUARTERS_KINDS)
+    uncopied = missing & ~group_quarters & ~take_up_present
+    if uncopied.any():
+        raise ValueError(
+            f"{int(uncopied.sum())} ACS housing-unit SPM unit(s) have no transferred "
+            f"{_HOUSING_TAKE_UP} to copy into {_HOUSING}."
+        )
+    assigned = take_up & ~group_quarters
+    return (
+        missing,
+        assigned,
+        {
+            "source": (
+                f"copy of the transferred {_HOUSING_TAKE_UP} (equal to "
+                f"{_HOUSING} on the donor by construction); False in "
+                f"{_HOUSEHOLD_KIND} 2/3 group quarters"
+            ),
+            "filled_rows": int(missing.sum()),
+            "preserved_rows": int((acs_units & present).sum()),
+            "group_quarters_filled_false": int((missing & group_quarters).sum()),
+            # Group-quarters units whose transferred take-up flag is True: the
+            # transfer-side defect microcosm#975 owns; this receipt stays False.
+            "group_quarters_take_up_true": int(
+                (acs_units & group_quarters & take_up_present & take_up).sum()
+            ),
+        },
+    )
+
+
+def _medicare_fill(
+    frame: Frame, acs_persons: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Missing ACS Medicare cells, their native flags, and the receipt entry."""
+    person = frame.table("person")
+    _, present = _flags(person[_MEDICARE])
+    missing = acs_persons & ~present
+    coverage = _numeric(person[_MEDICARE_COVERAGE])
+    return (
+        missing,
+        coverage == _MEDICARE_COVERED,
+        {
+            "source": (
+                f"ACS {_MEDICARE_COVERAGE} == {_MEDICARE_COVERED} (Medicare "
+                "coverage at interview), as the donor maps ASEC MCARE == 1; "
+                "coverage is the take-up signal and the engine applies "
+                "eligibility"
+            ),
+            "filled_rows": int(missing.sum()),
+            "preserved_rows": int((acs_persons & present).sum()),
+            "blank_coverage_rows_as_false": int((missing & np.isnan(coverage)).sum()),
+            "aged_share_floor": _MEDICARE_AGED_SHARE_FLOOR,
+        },
+    )
+
+
+def _assignment_sha256(
+    spm_unit: pd.DataFrame,
+    units: np.ndarray,
+    person: pd.DataFrame,
+    persons: np.ndarray,
+) -> str:
+    """Digest of the ACS rows' ids and owned flags, to prove two passes agree."""
+    selected = (
+        pd.DataFrame(
+            {
+                _ID_COLUMN: spm_unit.loc[units, _ID_COLUMN].to_numpy(),
+                **{
+                    column: _flags(spm_unit.loc[units, column])[0]
+                    for column in (*ACS_LOCAL_TAKE_UP_COLUMNS, _HOUSING)
+                },
+            }
+        ),
+        pd.DataFrame(
+            {
+                "person_id": person.loc[persons, "person_id"].to_numpy(),
+                **{
+                    column: _flags(person.loc[persons, column])[0]
+                    for column in (_DISCRETIONARY, _MEDICARE)
+                },
+            }
+        ),
+    )
+    digest = hashlib.sha256()
+    for table in selected:
+        hashed = pd.util.hash_pandas_object(table, index=False).to_numpy()
+        digest.update(hashed.tobytes())
+    return digest.hexdigest()
 
 
 def with_acs_local_take_up_inputs(
     frame: Frame, *, seed: int
 ) -> tuple[Frame, dict[str, object]]:
-    """Fill missing ACS-row SNAP and TANF take-up flags; keep every other cell.
+    """Fill missing ACS-row take-up and default-fill inputs; keep every other cell.
 
     Args:
-        frame: The local lane's multispine US frame. Its spm_unit table must
-            carry complete origin tags, both take-up columns and
-            ``receives_snap``.
+        frame: The local lane's multispine US frame. Its spm_unit and person
+            tables must carry complete origin tags; spm_unit both take-up
+            columns, ``receives_snap``, ``receives_housing_assistance`` and
+            the transferred ``takes_up_housing_assistance_if_eligible``;
+            person ``is_snap_abawd_discretionary_exempt``,
+            ``takes_up_medicare_if_eligible``, ``age`` and ACS ``HINS3``.
+            Filling a discretionary cell also needs household ``SERIALNO``
+            and person ``SPORDER``; filling a housing receipt, household
+            ``TYPEHUGQ``.
         seed: The build seed for the draws.
 
     Returns:
@@ -229,14 +574,21 @@ def with_acs_local_take_up_inputs(
 
     Raises:
         ValueError: If the frame is not US-schema, origin tags are missing,
-            or a required column is absent.
+            a required column is absent, or an ACS row lacks what its fill
+            reads (a unique draw key, a group-quarters code, a transferred
+            housing take-up flag).
     """
     if frame.schema != US_SCHEMA:
         raise ValueError("ACS local take-up inputs require the US schema.")
     spm_unit = frame.table("spm_unit")
+    person = frame.table("person")
     tag = spine_column("spm_unit")
-    if tag not in spm_unit or spm_unit[tag].isna().any():
-        raise ValueError(f"ACS local take-up requires complete origin tags: {tag}.")
+    person_tag = spine_column("person")
+    for table, column in ((spm_unit, tag), (person, person_tag)):
+        if column not in table or table[column].isna().any():
+            raise ValueError(
+                f"ACS local take-up requires complete origin tags: {column}."
+            )
     absent = [
         column
         for column in (*ACS_LOCAL_TAKE_UP_COLUMNS, _REPORTED_SNAP_COLUMN)
@@ -247,7 +599,23 @@ def with_acs_local_take_up_inputs(
             f"ACS local take-up requires spm_unit column(s) {absent}; a missing "
             "donor column would reach the engine as universal take-up."
         )
+    absent = [
+        f"{entity}.{column}"
+        for entity, columns in (
+            ("spm_unit", (_HOUSING, _HOUSING_TAKE_UP)),
+            ("person", (_DISCRETIONARY, _MEDICARE, _AGE_COLUMN, _MEDICARE_COVERAGE)),
+        )
+        for column in columns
+        if column not in frame.table(entity)
+    ]
+    if absent:
+        raise ValueError(
+            f"ACS local take-up requires column(s) {absent} for the engine-free "
+            f"fills ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); a missing column would "
+            "reach the engine at its default."
+        )
     acs = spm_unit[tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
+    acs_persons = person[person_tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
     units = _units_with_source_identity(frame, "spm_unit")
     if not np.array_equal(units[_ID_COLUMN].to_numpy(), spm_unit[_ID_COLUMN]):
         raise ValueError("SPM-unit source identity does not align with the table.")
@@ -290,18 +658,36 @@ def with_acs_local_take_up_inputs(
     tanf_assigned = np.asarray(seeded[US_TANF_TAKE_UP_OUTPUT_COLUMN], dtype=bool)
     tanf_missing = acs & ~_flags(spm_unit[US_TANF_TAKE_UP_OUTPUT_COLUMN])[1]
 
+    # microcosm#1022: the engine-free fills.
+    discretionary_missing, discretionary_assigned, discretionary = _discretionary_fill(
+        frame, acs_persons, seed=int(seed)
+    )
+    housing_missing, housing_assigned, housing = _housing_fill(frame, acs)
+    medicare_missing, medicare_assigned, medicare = _medicare_fill(frame, acs_persons)
+
     result = frame
-    if snap_missing.any() or tanf_missing.any():
+    replaced: dict[str, pd.DataFrame] = {}
+    if snap_missing.any() or tanf_missing.any() or housing_missing.any():
         updated = spm_unit.copy()
-        updated[US_SNAP_TAKE_UP_OUTPUT_COLUMN] = _filled(
-            spm_unit[US_SNAP_TAKE_UP_OUTPUT_COLUMN], snap_missing, snap_assigned
-        )
-        updated[US_TANF_TAKE_UP_OUTPUT_COLUMN] = _filled(
-            spm_unit[US_TANF_TAKE_UP_OUTPUT_COLUMN], tanf_missing, tanf_assigned
-        )
+        for column, missing, assigned in (
+            (US_SNAP_TAKE_UP_OUTPUT_COLUMN, snap_missing, snap_assigned),
+            (US_TANF_TAKE_UP_OUTPUT_COLUMN, tanf_missing, tanf_assigned),
+            (_HOUSING, housing_missing, housing_assigned),
+        ):
+            updated[column] = _filled(spm_unit[column], missing, assigned)
+        replaced["spm_unit"] = updated
+    if discretionary_missing.any() or medicare_missing.any():
+        updated = person.copy()
+        for column, missing, assigned in (
+            (_DISCRETIONARY, discretionary_missing, discretionary_assigned),
+            (_MEDICARE, medicare_missing, medicare_assigned),
+        ):
+            updated[column] = _filled(person[column], missing, assigned)
+        replaced["person"] = updated
+    if replaced:
         result = Frame(
             {
-                entity: updated if entity == "spm_unit" else frame.table(entity)
+                entity: replaced[entity] if entity in replaced else frame.table(entity)
                 for entity in frame.entities
             },
             frame.schema,
@@ -311,7 +697,28 @@ def with_acs_local_take_up_inputs(
             metadata=frame.metadata,
         )
     final = result.table("spm_unit")
+    final_person = result.table("person")
     acs_weights = weights[acs]
+    person_weights = np.asarray(
+        result.resolve_weights("person").values, dtype=np.float64
+    )
+    age = _numeric(final_person[_AGE_COLUMN])
+    covered = acs_persons & _covered_age(age)
+    aged = acs_persons & (age >= _MEDICARE_AGE)
+    discretionary["weighted_covered_exempt_share"] = _share(
+        person_weights[covered], _flags(final_person.loc[covered, _DISCRETIONARY])[0]
+    )
+    housing["weighted_receipt_share"] = _share(
+        acs_weights, _flags(final.loc[acs, _HOUSING])[0]
+    )
+    medicare["weighted_aged_take_up_share"] = _share(
+        person_weights[aged], _flags(final_person.loc[aged, _MEDICARE])[0]
+    )
+    medicare["hins3_audit"] = _hins3_audit(
+        final_person.loc[acs_persons, _MEDICARE_COVERAGE],
+        age[acs_persons],
+        person_weights[acs_persons],
+    )
     receipt: dict[str, object] = {
         "issue": "microcosm#1019",
         "seed": int(seed),
@@ -345,30 +752,263 @@ def with_acs_local_take_up_inputs(
                 "receipt_crosstab": _tanf_receipt_crosstab(final.loc[acs], acs_weights),
             },
         },
-        "assigned_sha256": _assignment_sha256(final, acs),
+        "engine_free_fills": {
+            "issue": ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
+            "acs_persons": int(acs_persons.sum()),
+            "columns": {
+                _DISCRETIONARY: discretionary,
+                _HOUSING: housing,
+                _MEDICARE: medicare,
+            },
+        },
+        "assigned_sha256": _assignment_sha256(final, acs, final_person, acs_persons),
     }
     return result, receipt
 
 
+def _flag_entry(
+    values: pd.Series, weights: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    flags, present = _flags(values)
+    return (
+        flags,
+        present,
+        {
+            "missing_rows": int((~present).sum()),
+            "unique_values": len(np.unique(flags[present])),
+            "share": _share(weights, flags),
+        },
+    )
+
+
+def _complete_flags(
+    table: pd.DataFrame,
+    column: str,
+    weights: np.ndarray,
+    *,
+    entity: str,
+    columns: dict[str, object],
+    failures: list[str],
+) -> tuple[np.ndarray, dict[str, object]] | None:
+    """Record one column's completeness and variation; ``None`` if absent."""
+    if column not in table:
+        failures.append(f"missing {column}.")
+        return None
+    flags, present, entry = _flag_entry(table[column], weights)
+    entry["entity"] = entity
+    columns[column] = entry
+    if not present.all():
+        failures.append(
+            f"{column} has missing rows; an engine-default fill means "
+            f"{_ENGINE_DEFAULT_EFFECT[column]}."
+        )
+    if entry["unique_values"] < 2:
+        failures.append(
+            f"{column} is constant; the engine default is the same landmine."
+        )
+    return flags, entry
+
+
+def _engine_free_fill_grades(
+    frame: Frame,
+    *,
+    units: np.ndarray,
+    persons: np.ndarray,
+    unit_weights: np.ndarray,
+    person_weights: np.ndarray,
+    graded: bool,
+    columns: dict[str, object],
+) -> list[str]:
+    """Grade the #1022 columns on one spine's rows; record entries in ``columns``.
+
+    Every spine must carry each column complete and non-constant. Only
+    ``graded`` (ACS) rows are held to the fill's own contract: the exempt
+    share band and age scope, the copied housing receipt, and native
+    ``HINS3`` Medicare coverage. Donor rows are reported only.
+    """
+    person = frame.table("person").loc[persons]
+    spm_unit = frame.table("spm_unit").loc[units]
+    person_weights = person_weights[persons]
+    unit_weights = unit_weights[units]
+    failures: list[str] = []
+    recorded = {"columns": columns, "failures": failures}
+    graded_flags = _complete_flags(
+        person, _DISCRETIONARY, person_weights, entity="person", **recorded
+    )
+    if graded_flags is not None:
+        failures += _grade_discretionary(
+            person, graded_flags[0], person_weights, graded_flags[1], graded=graded
+        )
+    graded_flags = _complete_flags(
+        spm_unit, _HOUSING, unit_weights, entity="spm_unit", **recorded
+    )
+    if graded_flags is not None:
+        failures += _grade_housing(
+            spm_unit,
+            graded_flags[0],
+            _unit_household_kinds(frame)[units],
+            graded_flags[1],
+            graded=graded,
+        )
+    graded_flags = _complete_flags(
+        person, _MEDICARE, person_weights, entity="person", **recorded
+    )
+    if graded_flags is not None:
+        failures += _grade_medicare(
+            person, graded_flags[0], person_weights, graded_flags[1], graded=graded
+        )
+    return failures
+
+
+def _grade_discretionary(
+    person: pd.DataFrame,
+    flags: np.ndarray,
+    weights: np.ndarray,
+    entry: dict[str, object],
+    *,
+    graded: bool,
+) -> list[str]:
+    if _AGE_COLUMN not in person:
+        return [f"missing {_AGE_COLUMN}; the exempt share cannot be scoped."]
+    rate, _ = _discretionary_rate()
+    low, high = _discretionary_share_band(rate)
+    covered = _covered_age(_numeric(person[_AGE_COLUMN]))
+    share = _share(weights[covered], flags[covered])
+    outside = int((flags & ~covered).sum())
+    entry.update(
+        covered_exempt_share=share,
+        share_band=[low, high],
+        exempt_outside_covered_ages=outside,
+    )
+    if not graded:
+        return []
+    failures = []
+    if not (low <= share <= high):
+        failures.append(
+            f"{_DISCRETIONARY} share among ages {_COVERED_AGE_RANGE[0]}-"
+            f"{_COVERED_AGE_RANGE[1]} is {share:.3f}, outside [{low:.3f}, "
+            f"{high:.3f}] around the manifest rate {rate}."
+        )
+    if outside:
+        failures.append(
+            f"{outside} person(s) outside ages {_COVERED_AGE_RANGE[0]}-"
+            f"{_COVERED_AGE_RANGE[1]} carry {_DISCRETIONARY}."
+        )
+    return failures
+
+
+def _grade_housing(
+    spm_unit: pd.DataFrame,
+    flags: np.ndarray,
+    kinds: np.ndarray,
+    entry: dict[str, object],
+    *,
+    graded: bool,
+) -> list[str]:
+    if _HOUSING_TAKE_UP not in spm_unit:
+        return [f"missing {_HOUSING_TAKE_UP}; the housing receipt cannot be checked."]
+    take_up, _ = _flags(spm_unit[_HOUSING_TAKE_UP])
+    group_quarters = np.isin(kinds, _GROUP_QUARTERS_KINDS)
+    disagreeing = int((~group_quarters & (flags != take_up)).sum())
+    gq_receiving = int((group_quarters & flags).sum())
+    unknown = int((~np.isin(kinds, _HOUSEHOLD_KINDS)).sum())
+    entry.update(
+        disagrees_with_take_up=disagreeing,
+        group_quarters_units=int(group_quarters.sum()),
+        group_quarters_receiving=gq_receiving,
+    )
+    if not graded:
+        return []
+    failures = []
+    if unknown:
+        failures.append(
+            f"{unknown} SPM unit(s) have no household {_HOUSEHOLD_KIND} 1/2/3."
+        )
+    if disagreeing:
+        failures.append(
+            f"{_HOUSING} differs from the transferred {_HOUSING_TAKE_UP} on "
+            f"{disagreeing} housing-unit SPM unit(s)."
+        )
+    if gq_receiving:
+        failures.append(
+            f"{gq_receiving} group-quarters SPM unit(s) receive housing assistance."
+        )
+    return failures
+
+
+def _grade_medicare(
+    person: pd.DataFrame,
+    flags: np.ndarray,
+    weights: np.ndarray,
+    entry: dict[str, object],
+    *,
+    graded: bool,
+) -> list[str]:
+    if not graded:
+        return []
+    failures = []
+    if _MEDICARE_COVERAGE not in person:
+        return [f"missing {_MEDICARE_COVERAGE}; Medicare take-up cannot be checked."]
+    native = _numeric(person[_MEDICARE_COVERAGE]) == _MEDICARE_COVERED
+    mismatched = int((flags != native).sum())
+    entry["differs_from_native_coverage"] = mismatched
+    entry["hins3_audit"] = _hins3_audit(
+        person[_MEDICARE_COVERAGE],
+        _numeric(person[_AGE_COLUMN])
+        if _AGE_COLUMN in person
+        else np.full(len(person), np.nan),
+        weights,
+    )
+    if mismatched:
+        failures.append(
+            f"{_MEDICARE} differs from ACS {_MEDICARE_COVERAGE} == "
+            f"{_MEDICARE_COVERED} on {mismatched} person(s)."
+        )
+    if _AGE_COLUMN not in person:
+        return [*failures, f"missing {_AGE_COLUMN}; the aged share cannot be scoped."]
+    aged = _numeric(person[_AGE_COLUMN]) >= _MEDICARE_AGE
+    if aged.any():
+        share = _share(weights[aged], flags[aged])
+        entry["aged_take_up_share"] = share
+        if share < _MEDICARE_AGED_SHARE_FLOOR:
+            failures.append(
+                f"{_MEDICARE} share among ages {_MEDICARE_AGE}+ is {share:.3f}, "
+                f"below {_MEDICARE_AGED_SHARE_FLOOR}."
+            )
+    return failures
+
+
 def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
-    """Require complete, anchored, plausible SNAP and TANF take-up per origin.
+    """Require complete, anchored, plausible ACS-lane runtime inputs per origin.
 
     For each spine, fails when a flag is missing, has missing cells, or is
     constant (the engine-default universal take-up this lane shipped). On the
     ACS spine, whose cells this stage assigns, it also fails when a share
     leaves its plausibility band or (SNAP) a ``receives_snap`` reporter does
-    not take up. Donor-spine shares and anchors are reported but not graded:
-    those cells come from the donor release, whose own take-up gates graded
-    them. Other ``takes_up_*`` columns are not graded (microcosm#1022).
+    not take up. The #1022 columns are held to the same completeness and
+    variation on both spines and, on the ACS spine, to their fills: an
+    exempt share of ages 18-64 around the manifest rate and no one exempt
+    outside them, a housing receipt equal to the transferred take-up flag
+    (``False`` in group quarters), and Medicare take-up equal to ``HINS3 ==
+    1`` with a high share at 65+; blank and invalid ``HINS3`` cells are
+    counted in the ACS detail but not graded. Donor-spine shares and anchors
+    are reported
+    but not graded: those cells come from the donor release, whose own gates
+    graded them. Other ``takes_up_*`` columns are not graded (microcosm#1022).
     """
     spm_unit = frame.table("spm_unit")
+    person = frame.table("person")
     tag = spine_column("spm_unit")
+    person_tag = spine_column("person")
     failures: list[str] = []
     by_spine: dict[str, object] = {}
     if tag not in spm_unit or spm_unit[tag].isna().any():
         failures.append(f"Missing SPM-unit origin tags: {tag}.")
+    elif person_tag not in person or person[person_tag].isna().any():
+        failures.append(f"Missing person origin tags: {person_tag}.")
     else:
         weights = np.asarray(frame.resolve_weights("spm_unit").values, dtype=float)
+        person_weights = np.asarray(frame.resolve_weights("person").values, dtype=float)
         for spine in (ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE):
             selected = spm_unit[tag].eq(spine).to_numpy(dtype=bool)
             # Only the ACS cells are this stage's output; grade their
@@ -428,11 +1068,22 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
                         f"{spine}: {not_taking_up} SPM unit(s) report SNAP receipt "
                         "but carry no take-up; reported recipients must take up."
                     )
-        unknown = set(spm_unit[tag].unique()) - {
-            ASEC_PUF_DONOR_SPINE,
-            ACS_2024_1YR_SPINE,
-        }
-        if unknown:
+            failures += [
+                f"{spine}: {failure}"
+                for failure in _engine_free_fill_grades(
+                    frame,
+                    units=selected,
+                    persons=person[person_tag].eq(spine).to_numpy(dtype=bool),
+                    unit_weights=weights,
+                    person_weights=person_weights,
+                    graded=graded,
+                    columns=columns,
+                )
+            ]
+        known = {ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE}
+        if set(spm_unit[tag].unique()) - known or set(person[person_tag].unique()) - (
+            known
+        ):
             failures.append("Local take-up origin tags contain an unsupported spine.")
     return GateResult(
         name=ACS_LOCAL_TAKE_UP_GATE_NAME,

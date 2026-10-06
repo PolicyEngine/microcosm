@@ -3440,21 +3440,21 @@ def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
 
 
 def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
-    """Pin the ACS-row take-up fill and per-origin take-up gate (#1019)."""
+    """Pin the ACS-row take-up fill and per-origin take-up gate (#1019).
+
+    Each boundary reads exactly two origin tags, spm_unit and person: the
+    engine-free fills (#1022) are person- and SPM-unit-level. Their helpers
+    receive the resulting masks and read no tag themselves.
+    """
 
     source = (_US_RUNTIME / "acs_local_take_up.py").read_text()
     boundaries = (
         "acs_local_take_up_signal_gate",
         "with_acs_local_take_up_inputs",
     )
-    assert (
-        tuple(
-            sorted(
-                caller for caller, _line in _function_callers(source, "spine_column")
-            )
-        )
-        == boundaries
-    )
+    assert tuple(
+        sorted(caller for caller, _line in _function_callers(source, "spine_column"))
+    ) == tuple(sorted(boundaries * 2))
     tree = ast.parse(source)
     remaining = ast.Module(
         body=[
