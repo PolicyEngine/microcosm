@@ -10,8 +10,7 @@ members = ["packages/*"]
 [dependency-groups]
 # openpyxl parses the OMB CBSA delineation workbook and NISRA's published
 # DZ2021-to-PARLCON24 lookup in the US and UK ladder builders.
-# psutil runs tools/route_a/supervise.py in the engine-free Route A driver tests.
-dev = ["ruff>=0.8", "openpyxl>=3.1", "pytest-xdist>=3.8", "psutil>=6.1"]
+dev = ["ruff>=0.8", "openpyxl>=3.1", "pytest-xdist>=3.8"]
 
 [tool.ruff]
 line-length = 88

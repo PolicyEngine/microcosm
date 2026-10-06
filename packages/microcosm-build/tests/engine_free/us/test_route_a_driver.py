@@ -252,6 +252,13 @@ unrelated = "--not-declared"
 
 
 def test_wrapper_secret_reaches_only_child_environment(tmp_path: Path) -> None:
+    """The wrapper hands the credential to the exec'd child's environment only.
+
+    Engine-free and psutil-free: it runs the wrapper directly under ``bash -x``.
+    The same check through the real supervisor, which needs psutil, lives in
+    ``engine_workflow/us/test_route_a_supervisor_secrets.py``.
+    """
+
     wrapper_source = (ROUTE_A_TOOLS / "with_hf_token.sh").read_text(encoding="utf-8")
     assert re.search(r"(?m)^export HF_TOKEN\s*$", wrapper_source)
     assert re.search(r'(?m)^exec "\$@"\s*$', wrapper_source)
@@ -273,12 +280,16 @@ printf '%s\\n' "$ROUTE_A_TEST_SECRET" >&2
     report = tmp_path / "child-report.json"
     child = tmp_path / "child.py"
     child.write_text(
-        """import json, os, sys
-import psutil
+        """import json, os, subprocess, sys
 marker = os.environ["ROUTE_A_TEST_SECRET"]
+argv = subprocess.run(
+    ["ps", "-o", "args=", "-p", str(os.getpid())],
+    capture_output=True, text=True, check=True,
+).stdout
 payload = {
     "token_present": os.environ.get("HF_TOKEN") == marker,
-    "argv_contains_token": any(marker in a for a in psutil.Process().cmdline()),
+    "argv_read": bool(argv.strip()),
+    "argv_contains_token": marker in argv,
     "aliases_present": [key for key in (
         "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGING_FACE_TOKEN_MAX"
     ) if key in os.environ],
@@ -290,68 +301,32 @@ print("dummy release child finished")
 """,
         encoding="utf-8",
     )
-    config = tmp_path / "release-config.json"
-    config.write_text(
-        json.dumps(
-            {
-                "argv": [
-                    "bash",
-                    "-x",
-                    str(ROUTE_A_TOOLS / "with_hf_token.sh"),
-                    str(secret),
-                    sys.executable,
-                    str(child),
-                    str(report),
-                ],
-                "cwd": str(tmp_path),
-                "env": {"PYTHONUNBUFFERED": "1"},
-                "limits": {
-                    "wall_seconds": 60,
-                    "cpu_seconds": 10,
-                    "rss_bytes": 512 * 1024**2,
-                    "output_bytes": 1024**2,
-                    "log_bytes": 1024**2,
-                    "disk_floor_bytes": 0,
-                    "disk_admission_bytes": 0,
-                    "available_ram_admission_bytes": 0,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
     env = {**os.environ, "ROUTE_A_TEST_SECRET": marker, "HF_TOKEN": "stale-value"}
     env.update(dict.fromkeys(_SECRET_ALIASES, "stale-value"))
-    out = tmp_path / "release-sup"
-    # The toy child execs once and has no descendants. Restrict enumeration to
-    # that child so this metadata/config check also works in a sandbox that
-    # denies a machine-wide process listing.
-    supervisor_launcher = (
-        "import psutil, runpy, sys; "
-        "psutil.Process.children = lambda self, recursive=False: []; "
-        "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')"
-    )
-    result = subprocess.run(
+    process = subprocess.Popen(
         [
+            "bash",
+            "-x",
+            str(ROUTE_A_TOOLS / "with_hf_token.sh"),
+            str(secret),
             sys.executable,
-            "-c",
-            supervisor_launcher,
-            str(ROUTE_A_TOOLS / "supervise.py"),
-            str(out),
-            str(config),
+            str(child),
+            str(report),
         ],
         env=env,
-        capture_output=True,
-        check=False,
-        timeout=90,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
-    assert result.returncode == 0, result.stderr.decode()
+    stdout, stderr = process.communicate(timeout=60)
+    assert process.returncode == 0, stderr.decode()
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["token_present"] is True
+    assert payload["argv_read"] is True
     assert payload["argv_contains_token"] is False
     assert payload["aliases_present"] == []
-    assert payload["pid"] == json.loads((out / "PID.json").read_text())["pid"]
-    assert json.loads((out / "RESULT.json").read_text())["status"] == "COMPLETED"
-    assert marker.encode() not in result.stdout + result.stderr
+    # exec, not a fork: the release runs as the wrapper's own process.
+    assert payload["pid"] == process.pid
+    assert marker.encode() not in stdout + stderr
     for path in tmp_path.rglob("*"):
         if path.is_file():
             assert marker.encode() not in path.read_bytes(), path.name
