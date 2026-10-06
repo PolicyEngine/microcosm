@@ -367,6 +367,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 # Interviews from 15 October 2024 (SAS dates, days since
                 # 1 January 1960).
                 "INTDATE": float(23664 + household_id % 120),
+                # Every eleventh household is shared (HHSTAT 2).
+                "HHSTAT": 2 if household_id % 11 == 0 else 1,
             }
         )
         benunits.append(
@@ -376,6 +378,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "FAMTYPB2": 5,
                 "DEPCHLDB": int(has_child),
                 "TOTCAPB4": 100.0 + household_id,
+                "HBOTHAMT": 0.0,
             }
         )
         adult = {
@@ -396,6 +399,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "MARITAL": 1 + household_id % 3,
             "EMPSTATI": 1 + household_id % 8,
             "SAMESIT": 2 if household_id % 2 else 1,
+            "SRENTAMT": "",
+            # CVPAY (below) is board and lodging on odd households, lodging alone
+            # on even ones.
+            "CONVBL": 1 if household_id % 2 else 2,
             **{
                 f"SDEMP{month:02d}": 3 if household_id % 8 in (2, 3) else 1
                 for month in range(1, 13)
@@ -503,6 +510,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "VAR2": variant,
                 "BENAMT": amount,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             }
             for benefit, variant, amount in (
                 (14, 1, 2.0),
@@ -526,6 +534,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "VAR2": 0,
                     "BENAMT": 8.0,
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
+                    "UCHOUSEL": 50.0 if household_id % 2 else "",
                 }
             )
         jobs.append(

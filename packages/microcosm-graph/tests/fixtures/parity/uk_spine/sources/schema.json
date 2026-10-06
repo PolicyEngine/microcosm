@@ -4,7 +4,8 @@
       "benunit_id": "int64",
       "dependent_children": "int64",
       "frs_benunit_capital": "float64",
-      "is_married": "bool"
+      "is_married": "bool",
+      "liable_for_share_of_household_rent": "bool"
     },
     "household": {
       "accommodation_type": "string",
@@ -82,6 +83,8 @@
       "private_pension_income": "float64",
       "private_transfer_income": "float64",
       "property_income": "float64",
+      "rent_paid_as_boarder": "float64",
+      "rent_paid_as_lodger": "float64",
       "salary_sacrifice_asked": "float64",
       "salary_sacrifice_reported": "float64",
       "savings_interest_income": "float64",

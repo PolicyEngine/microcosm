@@ -1042,8 +1042,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "866e2a30f5601e1998a4766697615e4db43f3b582523c62834aea56957b9e624",
-          "size_bytes": 17003,
+          "sha256": "c16fdc0dfbe254127a1decd9ebd796cc0584ecd0cf9c372da6143f5e223227bb",
+          "size_bytes": 17280,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -1122,8 +1122,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "d1333c54fbeee447f44ae3a7640826e33f621b011b8ddb7b72f437ed9e8f2b1a",
-          "size_bytes": 29819,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1238,8 +1238,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "d1333c54fbeee447f44ae3a7640826e33f621b011b8ddb7b72f437ed9e8f2b1a",
-          "size_bytes": 29819,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1281,8 +1281,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "d1333c54fbeee447f44ae3a7640826e33f621b011b8ddb7b72f437ed9e8f2b1a",
-          "size_bytes": 29819,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1292,8 +1292,8 @@
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "6ffa15bac3780a96ff043137e94b5aa7609776b7155506295d785c386f7a081b",
-          "size_bytes": 16973,
+          "sha256": "d79e0f4a8fed6ca6aeda4de928a3ca27f66c12274ac9669806e93e36af9b1844",
+          "size_bytes": 18064,
           "table": "benefits",
           "vintage": "synthetic-h2"
         },
@@ -1499,8 +1499,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "d1333c54fbeee447f44ae3a7640826e33f621b011b8ddb7b72f437ed9e8f2b1a",
-          "size_bytes": 29819,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1610,8 +1610,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "d1333c54fbeee447f44ae3a7640826e33f621b011b8ddb7b72f437ed9e8f2b1a",
-          "size_bytes": 29819,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1632,8 +1632,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "866e2a30f5601e1998a4766697615e4db43f3b582523c62834aea56957b9e624",
-          "size_bytes": 17003,
+          "sha256": "c16fdc0dfbe254127a1decd9ebd796cc0584ecd0cf9c372da6143f5e223227bb",
+          "size_bytes": 17280,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -1835,8 +1835,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "d1333c54fbeee447f44ae3a7640826e33f621b011b8ddb7b72f437ed9e8f2b1a",
-          "size_bytes": 29819,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1846,8 +1846,8 @@
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "6ffa15bac3780a96ff043137e94b5aa7609776b7155506295d785c386f7a081b",
-          "size_bytes": 16973,
+          "sha256": "d79e0f4a8fed6ca6aeda4de928a3ca27f66c12274ac9669806e93e36af9b1844",
+          "size_bytes": 18064,
           "table": "benefits",
           "vintage": "synthetic-h2"
         },
@@ -1857,8 +1857,8 @@
           "locator": "benunit.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2a1dacb6dcdb3c498fc9297f566e1367b7ae5191da5970b0300e3e873ce48f86",
-          "size_bytes": 2094,
+          "sha256": "55354eaa18ef88d1ccc37c906f2321b57bc0c975c51bc445534cf5c0bdae60f0",
+          "size_bytes": 2643,
           "table": "benunit",
           "vintage": "synthetic-h2"
         },
@@ -1901,8 +1901,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "866e2a30f5601e1998a4766697615e4db43f3b582523c62834aea56957b9e624",
-          "size_bytes": 17003,
+          "sha256": "c16fdc0dfbe254127a1decd9ebd796cc0584ecd0cf9c372da6143f5e223227bb",
+          "size_bytes": 17280,
           "table": "househol",
           "vintage": "synthetic-h2"
         },
@@ -1975,6 +1975,8 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [
+        "rent_paid_as_boarder",
+        "rent_paid_as_lodger",
         "age",
         "hours_worked",
         "employment_income",
@@ -2024,7 +2026,7 @@
         },
         {
           "kind": "map_columns",
-          "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme's 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095); is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit's UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486), the claimant derivation already refusing a benefit unit without one or two adult records"
+          "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme's 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095); is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit's UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486), the claimant derivation already refusing a benefit unit without one or two adult records; CVPAY, the rent a boarder or lodger pays the householder, is not the payer's property income but rent_paid_as_boarder where CONVBL is 1 and rent_paid_as_lodger otherwise, and liable_for_share_of_household_rent holds for a later benefit unit of a shared household (HHSTAT 2) with a rent share (SRENTAMT), Housing Benefit (HBOTHAMT) or a linked UC housing element (UCHOUSEL on BENEFIT 95) (pe-uk#2006, uk-data#512)"
         },
         {
           "kind": "map_coded_amounts",
@@ -2061,6 +2063,8 @@
         "is_claimant_or_partner",
         "is_hbai_dependent_child",
         "uc_is_in_startup_period",
+        "rent_paid_as_boarder",
+        "rent_paid_as_lodger",
         "employment_income",
         "self_employment_income",
         "private_pension_income",
@@ -2120,6 +2124,7 @@
         "frs_benunit_capital",
         "is_married",
         "dependent_children",
+        "liable_for_share_of_household_rent",
         "household_id",
         "region",
         "tenure_type",

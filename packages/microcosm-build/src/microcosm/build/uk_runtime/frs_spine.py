@@ -199,6 +199,8 @@ OUTPUT_COLUMNS = (
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    "rent_paid_as_boarder",
+    "rent_paid_as_lodger",
     "employment_income",
     "self_employment_income",
     "private_pension_income",
@@ -258,6 +260,7 @@ OUTPUT_COLUMNS = (
     "frs_benunit_capital",
     "is_married",
     "dependent_children",
+    "liable_for_share_of_household_rent",
     "household_id",
     "region",
     "tenure_type",
@@ -516,6 +519,14 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     # does not promote a dependent child to a partner, and legal marriage
     # alone does not establish that a partner lives in this benefit unit.
     pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
+    pe_benunit["liable_for_share_of_household_rent"] = (
+        frs_liable_for_share_of_household_rent(
+            benunit_raw, person, household, frs["benefits"]
+        )
+    )
+    boarder_rent, lodger_rent = frs_rent_paid_to_householder(person)
+    pe_person["rent_paid_as_boarder"] = boarder_rent
+    pe_person["rent_paid_as_lodger"] = lodger_rent
     # policyengine-uk's person types (pe-uk#1896). Every FRS person is on the
     # adult table or the child table: the adult table holds each benefit
     # unit's head and any partner (uk-data#524), the child table its HBAI
@@ -1046,6 +1057,85 @@ def _frs_benunit_capital(benunit: pd.DataFrame) -> pd.Series:
 
 def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
     return np.maximum(_number(frame, column), 0)
+
+
+#: HOUSEHOL.HHSTAT 2: a shared household (shared on an equal basis, the head
+#: of household unclear or arbitrary).
+FRS_HHSTAT_SHARED = 2
+#: ADULT.CONVBL 1: the payer's rent to the householder includes meals (a
+#: boarder); anything else is lodging alone (a lodger).
+FRS_CONVBL_BOARD_AND_LODGING = 1
+
+
+def frs_liable_for_share_of_household_rent(
+    benunit: pd.DataFrame,
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    benefits: pd.DataFrame,
+) -> np.ndarray:
+    """Whether each benefit unit shares liability for its household's rent.
+
+    In a shared household (HHSTAT 2) each benefit unit after the first is
+    asked the rent it pays (SRENTAMT, on its adults' records) and the Housing
+    Benefit it gets (HBOTHAMT). SRENTAMT is asked after state help with the
+    rent, so a unit whose share Universal Credit meets in full can report
+    zero in both; a linked UC record with a housing element (UCHOUSEL on a
+    BENEFIT 95 record) still makes it liable. A later unit with any of the
+    three is one of the people liable for HHRENT, the whole dwelling's rent,
+    which policyengine-uk splits among them (pe-uk#2006, uk-data#512).
+    Conventional households (HHSTAT 1) are left out: their later units may
+    owe the landlord a share or pay the householder as boarders or lodgers,
+    and the survey does not say which.
+    """
+
+    missing = [
+        f"{table}.{column}"
+        for table, frame, column in (
+            ("househol", household, "hhstat"),
+            ("adult", person, "srentamt"),
+            ("benunit", benunit, "hbothamt"),
+            ("benefits", benefits, "uchousel"),
+        )
+        if column not in frame.columns
+    ]
+    if missing:
+        raise KeyError(f"Shared rent liability needs the FRS columns {missing}.")
+    benunit_id = benunit["benunit_id"].to_numpy()
+    shared = (
+        _number(household, "hhstat")
+        .reindex(benunit["household_id"].to_numpy())
+        .eq(FRS_HHSTAT_SHARED)
+        .to_numpy()
+    )
+    share_paid = (
+        _positive(person, "srentamt")
+        .groupby(person["benunit_id"].to_numpy())
+        .sum()
+        .reindex(benunit_id, fill_value=0.0)
+        .to_numpy()
+    )
+    housing_benefit = _positive(benunit, "hbothamt").to_numpy()
+    with_housing_element = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+        & _number(benefits, "uchousel").gt(0),
+        "benunit_id",
+    ]
+    uc_housing = np.isin(benunit_id, with_housing_element.to_numpy())
+    later_unit = benunit_id % 100 > 1
+    return later_unit & shared & ((share_paid > 0) | (housing_benefit > 0) | uc_housing)
+
+
+def frs_rent_paid_to_householder(person: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Annual rent a boarder and a lodger pays the householder (CVPAY on the payer).
+
+    CONVBL 1 marks board and lodging, a room and at least some meals; anything
+    else is lodging alone (pe-uk#2006's rent_paid_as_boarder and
+    rent_paid_as_lodger, uk-data#506/#511).
+    """
+
+    paid = _positive(person, "cvpay").to_numpy() * WEEKS_IN_YEAR
+    boarder = _number(person, "convbl").eq(FRS_CONVBL_BOARD_AND_LODGING).to_numpy()
+    return np.where(boarder, paid, 0.0), np.where(boarder, 0.0, paid)
 
 
 #: Universal Credit start-up period (UC Regs 2013 reg 63; uk-data#527). The

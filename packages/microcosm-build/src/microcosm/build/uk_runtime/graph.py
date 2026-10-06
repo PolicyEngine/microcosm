@@ -502,6 +502,7 @@ _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
     "is_married": "bool",
     "dependent_children": "int64",
+    "liable_for_share_of_household_rent": "bool",
 }
 _ROOT_HOUSEHOLD_STRING = {
     "region",

@@ -192,6 +192,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         **{f"CHRGAMT{i}": float(i) for i in range(1, 10)},
         # 15 October 2024 as a SAS date (days since 1 January 1960).
         "INTDATE": float(_FIXTURE_INTERVIEW_SAS_DATE),
+        # A conventional household (HHSTAT 1), not a shared one.
+        "HHSTAT": 1,
     }
     household_1 = {
         **household_2,
@@ -241,6 +243,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "EMPSTATI": 5,
         "SAMESIT": 1,
         **{f"SDEMP{month:02d}": 5 for month in range(1, 13)},
+        "SRENTAMT": "",
+        # CVPAY below is rent paid to the householder as a lodger (CONVBL 2).
+        "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
         "FTED": 2,
@@ -326,6 +331,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "FAMTYPB2": 5,
                 "DEPCHLDB": 0,
                 "TOTCAPB4": 222.0,
+                "HBOTHAMT": 0.0,
             },
             {
                 "SERNUM": 1,
@@ -333,6 +339,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "FAMTYPB2": 7,
                 "DEPCHLDB": 1,
                 "TOTCAPB4": 111.0,
+                "HBOTHAMT": 0.0,
             },
         ],
         "househol": [household_2, household_1],
@@ -403,6 +410,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 1,
                 "BENAMT": 2.0,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -412,6 +420,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 2,
                 "BENAMT": 3.0,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -421,6 +430,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 3,
                 "BENAMT": 4.0,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -430,6 +440,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 4,
                 "BENAMT": 5.0,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -439,6 +450,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 0,
                 "BENAMT": 6.0,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -448,6 +460,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 0,
                 "BENAMT": 7.0,
                 "UCSTART": "",
+                "UCHOUSEL": "",
             },
         ],
         "maint": [
@@ -1096,8 +1109,12 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
     assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
-    # ROYYR1 2 only: CVPAY is not income and household 1 does not sub-let.
+    # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
+    # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
+    # does not sub-let.
     assert adult["property_income"] == pytest.approx(2 * WEEKS_IN_YEAR)
+    assert adult["rent_paid_as_lodger"] == pytest.approx(WEEKS_IN_YEAR)
+    assert adult["rent_paid_as_boarder"] == 0
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
     assert adult["private_transfer_income"] == pytest.approx(57 * WEEKS_IN_YEAR)
@@ -1276,6 +1293,93 @@ def test_a_benefit_unit_with_three_adult_records_refuses(tmp_path: Path) -> None
     # single claimant or a couple (uk-data#524).
     with pytest.raises(ValueError, match="one or two claimants per benefit unit"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def _shared_household_tables(
+    *, hhstat: int, srentamt: object = "", hbothamt: float = 0.0, uchousel: object = ""
+) -> dict[str, list[dict[str, object]]]:
+    """Household 2 with a second benefit unit (its own adult) beside the first."""
+
+    tables = _fixture_tables()
+    household_2 = next(row for row in tables["househol"] if row["SERNUM"] == 2)
+    household_2["HHSTAT"] = hhstat
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    tables["adult"].append(
+        {
+            **adult_2,
+            "BENUNIT": 2,
+            "PERSON": 2,
+            "UPERSON": 1,
+            "HRPID": 0,
+            "SRENTAMT": srentamt,
+        }
+    )
+    tables["benunit"].append(
+        {
+            "SERNUM": 2,
+            "BENUNIT": 2,
+            "FAMTYPB2": 5,
+            "DEPCHLDB": 0,
+            "TOTCAPB4": 50.0,
+            "HBOTHAMT": hbothamt,
+        }
+    )
+    tables["benefits"].append(
+        {**_uc_row(2, ""), "BENUNIT": 2, "PERSON": 2, "UCHOUSEL": uchousel}
+    )
+    return tables
+
+
+@pytest.mark.parametrize(
+    ("hhstat", "answers", "liable"),
+    [
+        (2, {"srentamt": 40.0}, True),
+        (2, {"hbothamt": 25.0}, True),
+        (2, {"uchousel": 60.0}, True),
+        (2, {}, False),
+        (1, {"srentamt": 40.0}, False),
+    ],
+)
+def test_a_later_unit_of_a_shared_household_shares_its_rent(
+    tmp_path: Path, hhstat: int, answers: dict, liable: bool
+) -> None:
+    """uk-data#512: shared households only, later units with rent evidence."""
+
+    tables = _shared_household_tables(hhstat=hhstat, **answers)
+    stage = _write_fixture(tmp_path, tables)
+
+    benunit = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("benunit")
+        .set_index("benunit_id")
+    )
+
+    assert benunit["liable_for_share_of_household_rent"].to_dict() == {
+        101: False,
+        201: False,
+        202: liable,
+    }
+
+
+@pytest.mark.parametrize(("convbl", "boarder"), [(1, True), (2, False), ("", False)])
+def test_rent_paid_to_the_householder_splits_on_meals(
+    tmp_path: Path, convbl: object, boarder: bool
+) -> None:
+    tables = _fixture_tables()
+    adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+    adult_1.update({"CVPAY": 80.0, "CONVBL": convbl})
+    stage = _write_fixture(tmp_path, tables)
+
+    adult = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+        .loc[1001]
+    )
+
+    paid = 80.0 * WEEKS_IN_YEAR
+    assert adult["rent_paid_as_boarder"] == pytest.approx(paid if boarder else 0.0)
+    assert adult["rent_paid_as_lodger"] == pytest.approx(0.0 if boarder else paid)
 
 
 @pytest.mark.parametrize("couple_has_children", [False, True])

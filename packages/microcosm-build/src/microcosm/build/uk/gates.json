@@ -838,6 +838,7 @@
         "allowed_extra_columns": [
           "benunit.child_benefit_opts_out",
           "benunit.frs_benunit_capital",
+          "benunit.liable_for_share_of_household_rent",
           "benunit.pension_credit_reported_capital",
           "benunit.uc_deduction_combination",
           "benunit.uc_deduction_random_draw",
@@ -928,6 +929,8 @@
           "person.pip_dl_category",
           "person.pip_m_category",
           "person.receives_benefits_in_own_right",
+          "person.rent_paid_as_boarder",
+          "person.rent_paid_as_lodger",
           "person.relationship_to_head",
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
