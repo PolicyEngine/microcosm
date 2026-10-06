@@ -364,6 +364,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "MORTINT": 7.0,
                 "STRUINS": 8.0,
                 **{f"CHRGAMT{i}": float(i) for i in range(1, 10)},
+                # Interviews from 15 October 2024 (SAS dates, days since
+                # 1 January 1960).
+                "INTDATE": float(23664 + household_id % 120),
             }
         )
         benunits.append(
@@ -392,6 +395,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             **({"R02": 7} if has_child else {}),
             "MARITAL": 1 + household_id % 3,
             "EMPSTATI": 1 + household_id % 8,
+            "SAMESIT": 2 if household_id % 2 else 1,
+            **{
+                f"SDEMP{month:02d}": 3 if household_id % 8 in (2, 3) else 1
+                for month in range(1, 13)
+            },
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
             "FTED": 2,
@@ -494,6 +502,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BENEFIT": benefit,
                 "VAR2": variant,
                 "BENAMT": amount,
+                "UCSTART": "",
             }
             for benefit, variant, amount in (
                 (14, 1, 2.0),
@@ -505,6 +514,20 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 (3, 0, 7.0),
             )
         )
+        if household_id % 3 == 0:
+            # Universal Credit on every third household: a claim linked to a
+            # recent start, one linked to an old start, and one unlinked.
+            benefits.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "BENEFIT": 95,
+                    "VAR2": 0,
+                    "BENAMT": 8.0,
+                    "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
+                }
+            )
         jobs.append(
             {
                 "SERNUM": household_id,
@@ -514,6 +537,14 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
                 "JOBSECT": 1 + household_id % 2,
+                # Self-employed ("working for myself") where EMPSTATI is.
+                "ETYPE": 4 if household_id % 8 in (2, 3) else 1,
+                "JOBTYPE": 1,
+                "SEEND": "",
+                "SEJBLONG": float(household_id % 3)
+                if household_id % 8 in (2, 3)
+                else "",
+                "JOBBUS": 2 if household_id % 2 else 1,
             }
         )
         pensions.append(

@@ -44,7 +44,10 @@ from microcosm.build.uk_runtime.frs_spine import (
     _add_benefits,
     access_fund_annual,
     build_uk_frs_spine_frame,
+    completed_months,
+    parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
+    uc_trade_years,
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -60,6 +63,10 @@ from microcosm.frame import Frame, WeightKind, engine_tables
 # shim over it. Each test still executes its own module copy so per-test
 # monkeypatches never leak through the shared import.
 _TOOL_PATH = Path(spine_build.__file__)
+
+
+#: The fixture households' interview date, 15 October 2024, as a SAS date.
+_FIXTURE_INTERVIEW_SAS_DATE = 23664
 
 
 def _load_tool():
@@ -183,6 +190,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "MORTINT": 7.0,
         "STRUINS": 8.0,
         **{f"CHRGAMT{i}": float(i) for i in range(1, 10)},
+        # 15 October 2024 as a SAS date (days since 1 January 1960).
+        "INTDATE": float(_FIXTURE_INTERVIEW_SAS_DATE),
     }
     household_1 = {
         **household_2,
@@ -230,6 +239,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "R02": 7,
         "MARITAL": 1,
         "EMPSTATI": 5,
+        "SAMESIT": 1,
+        **{f"SDEMP{month:02d}": 5 for month in range(1, 13)},
         "MJOBSECT": 1,
         "SIC": 84,
         "FTED": 2,
@@ -376,6 +387,11 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "DEDUC1": 2.0,
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
+                "ETYPE": 1,
+                "JOBTYPE": 1,
+                "SEEND": "",
+                "SEJBLONG": "",
+                "JOBBUS": 1,
             }
         ],
         "benefits": [
@@ -386,6 +402,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 14,
                 "VAR2": 1,
                 "BENAMT": 2.0,
+                "UCSTART": "",
             },
             {
                 "SERNUM": 1,
@@ -394,6 +411,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 14,
                 "VAR2": 2,
                 "BENAMT": 3.0,
+                "UCSTART": "",
             },
             {
                 "SERNUM": 1,
@@ -402,6 +420,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 16,
                 "VAR2": 3,
                 "BENAMT": 4.0,
+                "UCSTART": "",
             },
             {
                 "SERNUM": 1,
@@ -410,6 +429,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 16,
                 "VAR2": 4,
                 "BENAMT": 5.0,
+                "UCSTART": "",
             },
             {
                 "SERNUM": 1,
@@ -418,6 +438,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 6,
                 "VAR2": 0,
                 "BENAMT": 6.0,
+                "UCSTART": "",
             },
             {
                 "SERNUM": 1,
@@ -426,6 +447,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 3,
                 "VAR2": 0,
                 "BENAMT": 7.0,
+                "UCSTART": "",
             },
         ],
         "maint": [
@@ -961,6 +983,7 @@ def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
         "map_columns",
         "map_coded_amounts",
         "annualize_periodic_amounts",
+        "assign_binary_from_rate",
     }
     assert set(stage.outputs) == set(UKFRSSpineStageTransform.output_columns())
 
@@ -2469,6 +2492,7 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         [stages[name] for name in tool._uk_spine_stage_names(spec)]
     )
 
+    assert declared["frs_spine"] == {"uc_is_in_startup_period": 0}
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
     assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
     assert declared["was_lisa"] == {"has_lifetime_isa": 0, "lifetime_isa_balance": 0}
@@ -2785,6 +2809,127 @@ class TestAccessFundAnnual:
         frame = pd.DataFrame({"accssamt": [10.0]})
         with pytest.raises(KeyError, match="ACCSSPD"):
             access_fund_annual(frame)
+
+
+def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
+    return {
+        "SERNUM": sernum,
+        "BENUNIT": 1,
+        "PERSON": 1,
+        "BENEFIT": 95,
+        "VAR2": 0,
+        "BENAMT": 1.0,
+        "UCSTART": ucstart,
+    }
+
+
+def _self_employed_job(
+    sernum: int, *, years: object, business: bool
+) -> dict[str, object]:
+    return {
+        "SERNUM": sernum,
+        "BENUNIT": 1,
+        "PERSON": 1,
+        "DEDUC1": 0.0,
+        "SPNAMT": 0.0,
+        "SALSAC": "2",
+        "ETYPE": 2 if business else 4,
+        "JOBTYPE": 1,
+        "SEEND": "",
+        "SEJBLONG": years,
+        "JOBBUS": 2 if business else 1,
+    }
+
+
+def _start_up_flags(tmp_path: Path, tables) -> dict[int, bool]:
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    assert person["uc_is_in_startup_period"].dtype == bool
+    return person.set_index("person_id")["uc_is_in_startup_period"].to_dict()
+
+
+class TestUCStartUpPeriod:
+    """The UC start-up period from claim and trade start dates (uk-data#527)."""
+
+    def test_completed_months_counts_whole_calendar_months(self) -> None:
+        later = pd.Series(pd.to_datetime(["2025-03-15", "2025-03-14", "2025-03-31"]))
+        earlier = pd.Series(pd.to_datetime(["2024-03-15", "2024-03-15", "2025-02-28"]))
+
+        assert completed_months(later, earlier).tolist() == [12.0, 11.0, 1.0]
+        missing = pd.Series(pd.to_datetime([None, None, None]))
+        assert np.isnan(completed_months(later, missing)).all()
+
+    def test_claim_start_reads_month_day_year_and_refuses_other_spellings(
+        self,
+    ) -> None:
+        parsed = parse_frs_uc_claim_start(pd.Series(["03/31/2024", " ", None]))
+
+        assert parsed.iloc[0] == pd.Timestamp("2024-03-31")
+        assert parsed.iloc[1:].isna().all()
+        with pytest.raises(ValueError, match="not month/day/year"):
+            parse_frs_uc_claim_start(pd.Series(["2024-03-31"]))
+
+    def test_a_new_engagement_in_a_year_round_trade_does_not_date_it(self) -> None:
+        years = uc_trade_years(
+            np.array([0.0, 0.0, 0.0, 3.0]),
+            describes_business=np.array([False, True, False, False]),
+            self_employed_all_year=np.array([True, True, False, True]),
+        )
+
+        assert np.isnan(years[0])
+        assert years[1:].tolist() == [0.0, 0.0, 3.0]
+
+    def test_a_recent_claim_or_a_new_business_starts_the_period(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        # Household 1: a claim three months before interview; its adult is
+        # self-employed through SEINCAM2, its child is not.
+        tables["benefits"].append(_uc_row(1, "07/15/2024"))
+        # Household 2: a claim two years old, but a business started this year.
+        tables["benefits"].append(_uc_row(2, "09/15/2022"))
+        tables["job"].append(_self_employed_job(2, years=0, business=True))
+
+        flags = _start_up_flags(tmp_path, tables)
+
+        assert flags == {1001: True, 1002: False, 2001: True}
+
+    @pytest.mark.parametrize(("business", "expected"), [(True, True), (False, False)])
+    def test_a_year_round_traders_new_self_employed_job_is_not_a_new_trade(
+        self, tmp_path: Path, business: bool, expected: bool
+    ) -> None:
+        tables = _fixture_tables()
+        adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+        adult_2.update({"EMPSTATI": 3, "SAMESIT": 2})
+        tables["benefits"].append(_uc_row(2, "09/15/2022"))
+        tables["job"].append(_self_employed_job(2, years=0, business=business))
+
+        assert _start_up_flags(tmp_path, tables)[2001] is expected
+
+    @pytest.mark.parametrize(
+        ("linked_start", "expected"), [("07/15/2024", True), ("09/15/2022", False)]
+    )
+    def test_an_unlinked_claim_is_drawn_at_the_linked_share(
+        self, tmp_path: Path, linked_start: str, expected: bool
+    ) -> None:
+        # The one linked self-employed claim sets the share to 1 or 0, so the
+        # unlinked unit's draw is certain either way.
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, linked_start))
+        tables["benefits"].append(_uc_row(2, ""))
+
+        assert _start_up_flags(tmp_path, tables)[2001] is expected
+
+    def test_without_the_raw_date_columns_the_spine_refuses(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        for row in tables["job"]:
+            del row["SEJBLONG"]
+        stage = _write_fixture(tmp_path, tables)
+
+        with pytest.raises(KeyError, match="job.sejblong"):
+            build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:

@@ -491,6 +491,7 @@ _ROOT_PERSON_BOOL = {
     "is_parent",
     "is_blind",
     "is_uc_claimant",
+    "uc_is_in_startup_period",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -993,6 +994,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # #882: the carer take-up flag follows the refilled Carer's Allowance
     # receipt on the SPI-redrawn rows.
     "would_claim_carers_allowance",
+    # uk-data#527: the UC start-up period holds on a redrawn row only while it
+    # stays self-employed.
+    "uc_is_in_startup_period",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,
