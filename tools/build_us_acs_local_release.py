@@ -17,8 +17,9 @@ package; each is separately resumable):
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals`` and ``full``
                 as explicit opt-ins), refuse a staging run that records no
-                passing ACS local immigration stage (microcosm#1020), seed
-                ACS-row SNAP/TANF take-up
+                passing ACS local immigration stage (microcosm#1020) or no
+                passing native ACS work/disability stage (microcosm#1021),
+                seed ACS-row SNAP/TANF take-up
                 (microcosm#1019; the consumer export re-derives the same
                 flags), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
@@ -82,6 +83,14 @@ from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_TAKE_UP_GATE_NAME,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    ACS_LOCAL_DISABILITY_COLUMNS,
+    ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
+    ACS_LOCAL_WORK_DISABILITY_ISSUE,
+    ACS_NATIVE_PROVENANCE,
+    WEEKS_WORKED_EXPORT_BLOCKER,
+    acs_local_work_disability_signal_gate,
 )
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -355,6 +364,17 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             "current builder"
         )
         for column in ACS_LOCAL_IMMIGRATION_COLUMNS
+    },
+    # microcosm#1021: the disability default, False, removes every disability
+    # exemption; staging maps ACS rows natively and the donor release carries
+    # its own, so neither spine should ever reach the fill.
+    **{
+        ("person", column): (
+            "the engine default False removes every disability exemption "
+            f"({ACS_LOCAL_WORK_DISABILITY_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column in ACS_LOCAL_DISABILITY_COLUMNS
     },
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
@@ -1013,8 +1033,10 @@ def do_materialize(args) -> None:
             "reviewed_engine_input_nulls register."
         )
     staging_summary = _load_json(summary_path)
-    # microcosm#1020: refuse a pre-change staging run before hashing or loading.
+    # microcosm#1020/#1021: refuse a pre-change staging run before hashing or
+    # loading.
     _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
@@ -1153,9 +1175,12 @@ def do_calibrate(args) -> None:
     identity = _verify_run_identity(args)
     # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
     _recorded_take_up(identity)
-    # Likewise a checkpoint materialized from a pre-#1020 staging run: the
-    # consumer export at the end of this stage would refuse its summary.
-    _require_local_immigration(_load_json(_staging_summary_path(args)))
+    # Likewise a checkpoint materialized from a pre-#1020 or pre-#1021
+    # staging run: the consumer export at the end of this stage would refuse
+    # its summary.
+    staging_summary = _load_json(_staging_summary_path(args))
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
     registry_path = args.checkpoint_dir / "target_registry.json"
     registry_sha = _sha256(registry_path)
@@ -1351,6 +1376,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     recorded_take_up = _recorded_take_up(identity)
     staging_summary = _load_json(_staging_summary_path(args))
     _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, staging_summary)
     frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
@@ -1375,6 +1401,12 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
             f"{len(staging_ids)} households."
         )
 
+    # TODO(policyengine-us#9660): the staging ACS rows carry native
+    # weeks_worked (microcosm#1021), but the pinned policyengine-us gives it a
+    # formula_2025, so this projection holds it back as formula-owned. Once
+    # #9660 part A1 deletes that formula and the pin/ABI lock are bumped, it
+    # becomes an input and ships; the donor rows then need weeks_worked from
+    # WKSWORK too (US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS).
     projected, dropped = project_input_only(frame, period=PERIOD)
     del frame
     gc.collect()
@@ -1859,6 +1891,36 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_work_disability_inputs",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_DISABILITY_COLUMNS),
+            "reason": (
+                "ACS rows read is_disabled and is_blind from their own "
+                "disability-difficulty items (microcosm#1021), not the ASEC "
+                "transfer: is_disabled is any of DEAR/DEYE/DOUT/DPHY/DREM/DDRS "
+                "== 1, or SSIP > 0 under age 65 (the ASEC eligibility-inputs "
+                "definition), and is_blind is DEYE == 1. An item below its "
+                "minimum question age (5 for DPHY/DREM/DDRS, 15 for DOUT) is "
+                "blank and reads as no difficulty. Native ACS weeks_worked "
+                "(WKWN, under the WKHP universe rules) is carried on the "
+                "staging ACS spine only: the pinned policyengine-us gives "
+                "weeks_worked a formula_2025, so the export holds it back as "
+                f"formula-owned until {WEEKS_WORKED_EXPORT_BLOCKER}. is_veteran "
+                "(ACS MIL == 2) is not exported because policyengine-us "
+                "computes it from veterans_benefits for every year; "
+                "is_incapable_of_self_care stays on the ASEC transfer."
+            ),
+            "treatment": (
+                "Gated by acs_local_work_disability_signal at staging and "
+                "finalize; the staging summary's acs_local_work_disability "
+                "receipt records the definitions, item universes, SSI "
+                "increment, zero transfer-imputed cells and the weeks-worked "
+                "counts."
+            ),
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -1974,6 +2036,42 @@ def _require_local_immigration(staging_summary: dict) -> dict:
     return receipt
 
 
+def _require_local_work_disability(staging_summary: dict) -> dict:
+    """The staging work/disability receipt (microcosm#1021), or refuse it.
+
+    Staging maps ACS ``is_disabled``/``is_blind``/``weeks_worked`` natively
+    before the transfer and gates them before writing the H5. A summary
+    without a passing receipt and gate is a pre-#1021 staging run, whose ACS
+    disability flags were imputed from ASEC donors and whose ACS rows carry
+    no weeks worked.
+    """
+
+    receipt = staging_summary.get("acs_local_work_disability")
+    gate = staging_summary.get("acs_local_work_disability_gate")
+    native = isinstance(receipt, dict) and all(
+        isinstance(receipt.get(column), dict)
+        and receipt[column].get("source") == ACS_NATIVE_PROVENANCE
+        and type(receipt[column].get("imputed_rows")) is int
+        and receipt[column]["imputed_rows"] == 0
+        for column in ACS_LOCAL_DISABILITY_COLUMNS
+    )
+    if (
+        not native
+        or receipt.get("issue") != ACS_LOCAL_WORK_DISABILITY_ISSUE
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing native ACS work/disability "
+            f"stage ({ACS_LOCAL_WORK_DISABILITY_ISSUE}): the ACS rows' "
+            "is_disabled and is_blind would be ASEC-imputed rather than read "
+            "from the ACS difficulty items, and weeks_worked would be absent. "
+            "Re-run staging (tools/build_us_acs_multispine_base.py) with the "
+            "current builder."
+        )
+    return receipt
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -2045,6 +2143,15 @@ def do_finalize(args) -> None:
     # labels that contradict measured ACS CIT citizenship, and a file outside
     # the non-citizen and undocumented-anchor bands.
     immigration_gate = acs_local_immigration_signal_gate(frame)
+    # microcosm#1021: refuse ACS disability flags that are missing, constant,
+    # or not the native ACS difficulty items on the packaged bytes, or a
+    # staging receipt that shows them imputed. weeks_worked is graded at
+    # staging only: the export holds it back until policyengine-us#9660.
+    work_disability_gate = acs_local_work_disability_signal_gate(
+        frame,
+        receipt=staging_summary.get("acs_local_work_disability"),
+        require_weeks_worked=False,
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -2103,6 +2210,12 @@ def do_finalize(args) -> None:
             "detail": dict(immigration_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
+        ACS_LOCAL_WORK_DISABILITY_GATE_NAME: {
+            "passed": bool(work_disability_gate.passed),
+            "failures": list(work_disability_gate.failures),
+            "detail": dict(work_disability_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
             # per-row losses at the same cap); the solve must also have
@@ -2151,7 +2264,14 @@ def do_finalize(args) -> None:
                 "ssn_card_type/immigration_status_str from native ACS fields "
                 "and years_since_us_entry on both spines, gated by "
                 "acs_local_immigration_signal (microcosm#1020; reviewed "
-                "limitation acs_immigration_status_method)."
+                "limitation acs_immigration_status_method). ACS "
+                "is_disabled/is_blind are not transferred: staging reads them "
+                "from the native ACS difficulty items (and SSIP) on every ACS "
+                "row, gated by acs_local_work_disability_signal "
+                "(microcosm#1021; reviewed limitation "
+                "acs_work_disability_inputs). Native ACS weeks_worked is "
+                "staged but held back from the export until "
+                f"{WEEKS_WORKED_EXPORT_BLOCKER}."
             ),
         },
         "spine_composition": {
@@ -2201,6 +2321,7 @@ def do_finalize(args) -> None:
             "acs_local_hours_signal",
             ACS_LOCAL_TAKE_UP_GATE_NAME,
             ACS_LOCAL_IMMIGRATION_GATE_NAME,
+            ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -2445,6 +2566,9 @@ def do_package(args) -> dict:
     # microcosm#1020: nor, before the immigration gate existed, for the
     # packaged immigration labels and years_since_us_entry clock.
     _require_bound_finalize_gate(gates, ACS_LOCAL_IMMIGRATION_GATE_NAME, h5_sha)
+    # microcosm#1021: nor, before the work/disability gate existed, for the
+    # packaged native ACS disability flags.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_WORK_DISABILITY_GATE_NAME, h5_sha)
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report

@@ -326,9 +326,18 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "donor_sparse_selection_training_set",
         "mixed_sub_puma_column_coverage",
         "acs_immigration_status_method",
+        "acs_work_disability_inputs",
     ):
         assert required in by_id, required
         assert by_id[required]["calibration_blocker"] is False
+    # microcosm#1021: native ACS disability is a reviewed method; weeks worked
+    # is staged only, and is_veteran is documented, not exported.
+    work_disability = by_id["acs_work_disability_inputs"]
+    assert work_disability["status"] == "reviewed_modeling_decision"
+    assert set(work_disability["columns"]) == {"is_disabled", "is_blind"}
+    assert "acs_local_work_disability_signal" in work_disability["treatment"]
+    for fragment in ("SSIP > 0 under age 65", "policyengine-us#9660", "MIL == 2"):
+        assert fragment in work_disability["reason"]
     # microcosm#1020: the ACS immigration inputs are a reviewed method, not
     # an engine-default gap.
     immigration = by_id["acs_immigration_status_method"]
@@ -746,6 +755,236 @@ def test_calibrate_refuses_a_pre_1020_staging_before_solving(
         module.do_calibrate(args)
 
 
+def test_disability_inputs_are_never_default_filled() -> None:
+    """microcosm#1021: the engine default False removes every disability
+    exemption, so neither flag may ever be the reviewed-null fill."""
+
+    module = _load_tool_module()
+    for column in ("is_disabled", "is_blind"):
+        assert ("person", column) in module.NEVER_DEFAULT_FILLED
+    # weeks_worked is held back from the export, never filled (#9660).
+    assert ("person", "weeks_worked") not in module.NEVER_DEFAULT_FILLED
+
+
+def test_reviewed_null_fill_refuses_to_default_fill_disability(tmp_path) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(
+        is_disabled=[True, False] * 3 + [None, None],
+        is_blind=[False] * 8,
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "person", "column": "is_disabled", "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(module.DeniedDefaultFillError) as exc:
+        module.fill_reviewed_nulls(frame, summary)
+    message = str(exc.value)
+    assert "person.is_disabled (2 null rows)" in message
+    assert "microcosm#1021" in message
+    assert "is_blind" not in message
+    assert person["is_disabled"].isna().sum() == 2
+
+
+def _staging_work_disability_summary(**overrides) -> dict:
+    """A current staging run's immigration and work/disability entries."""
+
+    native = {"source": "acs_2024_1yr_native", "imputed_rows": 0}
+    summary = _staging_immigration_summary(
+        acs_local_work_disability={
+            "issue": "microcosm#1021",
+            "acs_persons": 4,
+            "is_disabled": dict(native),
+            "is_blind": dict(native),
+        },
+        acs_local_work_disability_gate={
+            "name": "acs_local_work_disability_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+def _work_disability_receipt(**column_overrides) -> dict:
+    receipt = _staging_work_disability_summary()["acs_local_work_disability"]
+    for column, entry in column_overrides.items():
+        receipt[column] = entry
+    return receipt
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_immigration_summary(),
+        _staging_work_disability_summary(acs_local_work_disability_gate=None),
+        _staging_work_disability_summary(acs_local_work_disability=None),
+        _staging_work_disability_summary(
+            acs_local_work_disability_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability_gate={"passed": "true"}
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability={
+                **_work_disability_receipt(),
+                "issue": "microcosm#1020",
+            }
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability=_work_disability_receipt(
+                is_disabled={"source": "acs_transfer", "imputed_rows": 0}
+            )
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability=_work_disability_receipt(
+                is_blind={"source": "acs_2024_1yr_native", "imputed_rows": 12}
+            )
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability=_work_disability_receipt(
+                is_blind={"source": "acs_2024_1yr_native"}
+            )
+        ),
+    ],
+    ids=[
+        "pre-1021-staging",
+        "no-gate",
+        "no-receipt",
+        "gate-failed",
+        "gate-truthy-not-true",
+        "wrong-issue",
+        "not-native",
+        "imputed",
+        "unrecorded-transfer",
+    ],
+)
+def test_work_disability_consumers_refuse_a_staging_run_without_the_stage(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module._require_local_work_disability(summary)
+
+
+def test_work_disability_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_work_disability_summary()
+    assert (
+        module._require_local_work_disability(summary)
+        == summary["acs_local_work_disability"]
+    )
+
+
+def test_materialize_refuses_a_pre_1021_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """A staging run with the #1020 stage but not #1021 is refused before the
+    staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_immigration_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(module, "state_admin_specs", lambda *a, **k: ([], []))
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_1021_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_immigration_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64}},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_pre_1021_staging_before_loading_it(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_immigration_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64}},
+        )
+
+
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
     """Every package-stage input, with the finalize report's hours entry given.
 
@@ -791,6 +1030,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
         },
         "acs_local_immigration_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_work_disability_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -1507,6 +1752,27 @@ def _stub_local_immigration_gate(module, monkeypatch, *, passed=True) -> None:
     )
 
 
+def _stub_local_work_disability_gate(
+    module, monkeypatch, *, passed=True, calls=None
+) -> None:
+    """Make the native ACS work/disability classification pass (or fail); its
+    tests (test_us_acs_local_work_disability.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt, require_weeks_worked=True):
+        if calls is not None:
+            calls.append((receipt, require_weeks_worked))
+        return GateResult(
+            name="acs_local_work_disability_signal",
+            passed=passed,
+            failures=() if passed else ("acs_2024_1yr: is_disabled is constant False",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_work_disability_signal_gate", gate)
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1525,6 +1791,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     _stub_local_hours_gate(module, monkeypatch)
     _stub_local_take_up_gate(module, monkeypatch)
     _stub_local_immigration_gate(module, monkeypatch)
+    _stub_local_work_disability_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -1734,6 +2001,120 @@ def test_do_finalize_immigration_gate_fails_on_default_filled_acs_rows(
     )
 
 
+def test_do_finalize_hard_fails_on_a_failed_work_disability_gate(tmp_path, monkeypatch):
+    """microcosm#1021: a failed work/disability gate blocks simulation
+    readiness and is recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_work_disability_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_work_disability_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_work_disability_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: is_disabled is constant False"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert (
+        "acs_local_work_disability_signal" in summary["simulation_readiness_blockers"]
+    )
+    assert (
+        "acs_local_work_disability_signal"
+        in (report["gates"]["input_coverage"]["note"])
+    )
+
+
+def test_do_finalize_grades_the_staging_receipt_without_weeks(tmp_path, monkeypatch):
+    """Finalize hands the gate the staging receipt and skips weeks_worked,
+    which the consumer export holds back until policyengine-us#9660."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    summary_path = tmp_path / "staging.summary.json"
+    staging = json.loads(summary_path.read_text())
+    receipt = _work_disability_receipt()
+    summary_path.write_text(
+        json.dumps({**staging, "acs_local_work_disability": receipt})
+    )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    calls: list = []
+    _stub_local_work_disability_gate(module, monkeypatch, calls=calls)
+    with pytest.raises(SystemExit):  # consumer_ready: no export in this fixture
+        module.do_finalize(args)
+    assert calls == [(receipt, False)]
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_work_disability_signal"
+    ]
+    assert gate["passed"] is True
+
+
+def test_do_finalize_work_disability_gate_fails_on_imputed_acs_flags(
+    tmp_path, monkeypatch
+):
+    """The pre-#1021 signature on the packaged bytes: ACS flags that are not
+    the native difficulty items (here the engine default False on every ACS
+    row) and a staging summary with no native receipt."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_work_disability_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    blank = [np.nan] * 4
+    person = frame.table("person").assign(
+        **{
+            spine_column("person"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "is_disabled": [False, True, False, True] + [False] * 4,
+            "is_blind": [False, False, True, False] + [False] * 4,
+            "AGEP": blank + [40, 30, 50, 8],
+            "SSIP": blank + [0.0, 0.0, 0.0, np.nan],
+            "DEAR": blank + [2, 1, 2, 2],
+            "DEYE": blank + [2, 2, 1, 2],
+            "DREM": blank + [2, 2, 2, 2],
+            "DPHY": blank + [2, 2, 2, 2],
+            "DDRS": blank + [2, 2, 2, 2],
+            "DOUT": blank + [2, 2, 2, np.nan],
+        }
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_work_disability_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_work_disability_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_work_disability_signal"
+    ]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    failures = gate["failures"]
+    for column in ("is_disabled", "is_blind"):
+        assert (
+            f"acs_2024_1yr: {column} is constant False; a spine with no variation "
+            "carries no disability signal."
+        ) in failures
+    assert (
+        "acs_2024_1yr: 2 person(s) carry a is_disabled that differs from their "
+        "native ACS items; the ACS value must be measured, not imputed."
+    ) in failures
+    assert any("No acs_local_work_disability staging receipt" in f for f in failures)
+    # weeks_worked is not graded at finalize, and the donor flags vary.
+    assert not any("weeks_worked" in failure for failure in failures)
+    assert not any(failure.startswith("asec_puf:") for failure in failures)
+
+
 @requires_pytables
 def test_finalize_binds_the_hours_gate_to_the_calibrated_artifact_bytes(
     tmp_path, monkeypatch
@@ -1845,6 +2226,7 @@ def _package_args_with_hours(
     gate_state,
     take_up_state="passed",
     immigration_state="passed",
+    work_disability_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -1894,6 +2276,19 @@ def _package_args_with_hours(
         immigration_gate["artifact_sha256"] = "0" * 64
     if gates and immigration_state != "missing":
         gates["acs_local_immigration_signal"] = immigration_gate
+    work_disability_gate = {
+        "passed": True,
+        "failures": [],
+        "artifact_sha256": artifact_sha,
+    }
+    if work_disability_state == "failed":
+        work_disability_gate.update(passed=False, failures=["invented imputed flag"])
+    elif work_disability_state == "truthy":
+        work_disability_gate["passed"] = "true"
+    elif work_disability_state == "stale":
+        work_disability_gate["artifact_sha256"] = "0" * 64
+    if gates and work_disability_state != "missing":
+        gates["acs_local_work_disability_signal"] = work_disability_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -1954,6 +2349,36 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     ]
     assert immigration["passed"] is True
     assert immigration["artifact_sha256"] == copied_sha
+    work_disability = json.loads((release_dir / "gate_summary.json").read_text())[
+        "gates"
+    ]["acs_local_work_disability_signal"]
+    assert work_disability["passed"] is True
+    assert work_disability["artifact_sha256"] == copied_sha
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "work_disability_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_work_disability_gate(
+    tmp_path, monkeypatch, work_disability_state
+):
+    """microcosm#1021: a report finalized before the work/disability gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        work_disability_state=work_disability_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_work_disability_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 @requires_pytables

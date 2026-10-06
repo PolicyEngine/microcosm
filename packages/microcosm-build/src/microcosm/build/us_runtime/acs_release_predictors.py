@@ -57,6 +57,7 @@ from microcosm.frame import US_SCHEMA, Frame
 __all__ = [
     "ACS_2024_HOUSEHOLD_ZIP_SHA256",
     "ACS_2024_PERSON_ZIP_SHA256",
+    "ACS_DIFFICULTY_MIN_AGE",
     "ACS_DIFFICULTY_TO_CPS",
     "ACS_OCCP_TO_POCCU2",
     "ACS_RAC1P_TO_CONSUMED_PRDTRACE",
@@ -113,7 +114,10 @@ ACS_DIFFICULTY_TO_CPS: Mapping[str, str] = {
     "DPHY": "PEDISPHY",
     "DREM": "PEDISREM",
 }
-_ACS_DIFFICULTY_MIN_AGE: Mapping[str, int] = {
+#: The age each difficulty item is first asked at. Below it the Census code is
+#: blank (N/A), above it 1 (yes) or 2 (no). Shared with the ACS local lane's
+#: native disability mapping (microcosm#1021).
+ACS_DIFFICULTY_MIN_AGE: Mapping[str, int] = {
     "DEAR": 0,
     "DEYE": 0,
     "DREM": 5,
@@ -731,7 +735,7 @@ def acs_release_predictor_crosswalk_payload() -> dict[str, Any]:
         "disability": {
             source: {
                 "target": ACS_DIFFICULTY_TO_CPS[source],
-                "minimum_question_age": _ACS_DIFFICULTY_MIN_AGE[source],
+                "minimum_question_age": ACS_DIFFICULTY_MIN_AGE[source],
                 "codes": {"1": 1, "2": 2, "below_universe_blank": -1},
             }
             for source in ACS_DIFFICULTY_TO_CPS
@@ -1364,7 +1368,7 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
     age = _required_integral(joined["AGEP"], label="ACS AGEP", minimum=0)
     for source, target in ACS_DIFFICULTY_TO_CPS.items():
         values = pd.to_numeric(joined[source], errors="coerce")
-        in_universe = age.ge(_ACS_DIFFICULTY_MIN_AGE[source])
+        in_universe = age.ge(ACS_DIFFICULTY_MIN_AGE[source])
         invalid = (in_universe & ~values.isin([1, 2])) | (~in_universe & values.notna())
         if invalid.any():
             bad = joined.loc[invalid, ["SERIALNO", "SPORDER", "AGEP", source]]
@@ -1497,8 +1501,8 @@ def _validate_canonical_ssi_reporter_values(
             "canonical raw join."
         )
     by_source = pd.Series(reported.to_numpy(), index=native[source_id_column])
-    pool_aligned = canonical["person_source_id"].map(by_source).to_numpy(
-        dtype=np.float64
+    pool_aligned = (
+        canonical["person_source_id"].map(by_source).to_numpy(dtype=np.float64)
     )
 
     raw_ssip = pd.to_numeric(joined["SSIP"], errors="coerce")

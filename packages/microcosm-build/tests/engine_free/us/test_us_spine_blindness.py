@@ -107,6 +107,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # clock and the per-origin immigration gate (#1020); exact boundary
         # functions are pinned below.
         "acs_local_immigration.py",
+        # Legacy local-lane per-origin native disability and weeks-worked gate
+        # (#1021); the exact boundary function is pinned below.
+        "acs_local_work_disability.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -244,6 +247,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane immigration fill and release gate; outside the
         # registry.
         "acs_local_immigration.py",
+        # Legacy local-lane native disability/weeks mapping and release gate;
+        # outside the registry.
+        "acs_local_work_disability.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
@@ -3472,6 +3478,40 @@ def test_acs_local_immigration_provenance_is_limited_to_reviewed_boundaries() ->
         "acs_local_immigration_signal_gate",
         "with_acs_local_immigration_inputs",
     )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_work_disability_provenance_is_limited_to_reviewed_boundaries() -> (
+    None
+):
+    """Pin the per-origin native disability and weeks-worked gate (#1021).
+
+    The native mapper runs on the ACS-only frame before pooling, so it reads
+    no origin tag; only the release gate does.
+    """
+
+    source = (_US_RUNTIME / "acs_local_work_disability.py").read_text()
+    boundaries = ("acs_local_work_disability_signal_gate",)
     assert (
         tuple(
             sorted(
