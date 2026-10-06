@@ -120,6 +120,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # re-application and per-origin gate (#1022); exact boundary
         # functions are pinned below.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane per-origin ACS SPM-unit partition gate (#1023);
+        # the exact boundary function is pinned below.
+        "acs_local_spm_units.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -269,6 +272,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane SSI/Medicaid take-up assignment and release gate
         # (#1022); outside the registry.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane adult-nonrelative SPM-unit split and release gate
+        # (#1023); outside the registry.
+        "acs_local_spm_units.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
@@ -3641,6 +3647,38 @@ def test_acs_local_ssi_medicaid_take_up_provenance_is_limited_to_reviewed_bounda
         "with_acs_local_ssi_medicaid_take_up",
         "with_recorded_acs_local_ssi_medicaid_take_up",
     )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_spm_units_provenance_is_limited_to_reviewed_boundaries() -> None:
+    """Pin the per-origin ACS SPM-unit partition gate (#1023).
+
+    The split runs on the ACS-only loader frame before pooling, so it reads
+    no origin tag; only the release gate does.
+    """
+
+    source = (_US_RUNTIME / "acs_local_spm_units.py").read_text()
+    boundaries = ("acs_local_spm_unit_signal_gate",)
     assert (
         tuple(
             sorted(
