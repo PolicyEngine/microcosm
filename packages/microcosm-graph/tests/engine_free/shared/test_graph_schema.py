@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
 import pytest
 
+from microcosm.graph import GraphError, compile_graph
 from microcosm.graph.schema import graph_schema, validate_graph_schema
 from test_support.microcosm_graph.schema import (
     compiled_default_population_graph,
@@ -171,6 +173,34 @@ def test_input_bindings_preserve_each_declared_read_role():
         "kind": "materialized_expand_output",
         "rows": "all",
     }
+
+
+@pytest.mark.parametrize(
+    ("expand_cells", "message"),
+    [
+        ((), "does not declare materialized output person.clone"),
+        (
+            (("person", "clone", "float64"),),
+            "declares materialized output person.clone as 'float64'",
+        ),
+    ],
+)
+def test_materialized_expand_binding_matches_the_expand_declaration(
+    expand_cells, message
+):
+    graph = compiled_graph().graph
+    changed = replace(
+        graph,
+        nodes=tuple(
+            replace(node, params={**node.params, "expand_cells": expand_cells})
+            if node.id == "expanded"
+            else node
+            for node in graph.nodes
+        ),
+    )
+
+    with pytest.raises(GraphError, match=message):
+        graph_schema(compile_graph(changed))
 
 
 def test_omitted_population_uses_the_compiler_resolved_version():

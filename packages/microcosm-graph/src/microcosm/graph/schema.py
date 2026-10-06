@@ -22,6 +22,7 @@ from .decl import (
     Owned,
     StructuralDelta,
     compile_graph,
+    declared_expand_cells,
     materialized_expand_coordinates,
 )
 from .serialize import graph_from_json, graph_to_json
@@ -316,6 +317,7 @@ def _input_bindings(
                         ROWS_ALL,
                     )
                 )
+        expanded_dtypes: dict[tuple[str, str], str] = {}
         if "materialized_expand_outputs" in node.params:
             holder = by_id[population]
             if holder.structural is not StructuralDelta.EXPAND:
@@ -323,6 +325,10 @@ def _input_bindings(
                     f"Node {node.id!r} uses materialized_expand_outputs on "
                     f"population {population!r}, which is not an EXPAND version."
                 )
+            expanded_dtypes = {
+                (entity, column): dtype
+                for entity, column, dtype in declared_expand_cells(holder)
+            }
         for entity, column in sorted(materialized_expand_coordinates(node)):
             if compiled.owners.get((population, entity, column)) != node.id:
                 raise GraphError(
@@ -330,6 +336,18 @@ def _input_bindings(
                     f"output {entity}.{column} in population {population!r}."
                 )
             owned = _owned(node, entity, column)
+            expanded_dtype = expanded_dtypes.get((entity, column))
+            if expanded_dtype is None:
+                raise GraphError(
+                    f"EXPAND node {population!r} does not declare materialized "
+                    f"output {entity}.{column} claimed by node {node.id!r}."
+                )
+            if expanded_dtype != owned.dtype:
+                raise GraphError(
+                    f"EXPAND node {population!r} declares materialized output "
+                    f"{entity}.{column} as {expanded_dtype!r}, but claimant "
+                    f"{node.id!r} owns it as {owned.dtype!r}."
+                )
             bindings.append(
                 {
                     "node": node.id,

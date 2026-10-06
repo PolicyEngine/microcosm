@@ -664,6 +664,36 @@ def materialized_expand_coordinates(
     return frozenset(materialized)
 
 
+def declared_expand_cells(node: Node) -> tuple[tuple[str, str, str], ...]:
+    """Return the normative ``(entity, column, dtype)`` EXPAND overlays."""
+
+    raw = node.params.get("expand_cells")
+    if not isinstance(raw, tuple):
+        raise GraphError(f"EXPAND node {node.id!r} needs tuple params['expand_cells'].")
+    cells: list[tuple[str, str, str]] = []
+    for item in raw:
+        if (
+            not isinstance(item, tuple)
+            or len(item) != 3
+            or any(not isinstance(part, str) or not part for part in item)
+        ):
+            raise GraphError(
+                f"EXPAND node {node.id!r} has malformed expand_cells entry {item!r}."
+            )
+        entity, column, dtype = item
+        if "." in entity or "." in column:
+            raise GraphError(
+                f"EXPAND node {node.id!r} params['expand_cells'] entity and "
+                f"column names must be dot-free; got {entity!r}, {column!r}."
+            )
+        if dtype not in DTYPES:
+            raise GraphError(f"Unknown graph dtype token {dtype!r}.")
+        cells.append((entity, column, dtype))
+    if len({(entity, column) for entity, column, _ in cells}) != len(cells):
+        raise GraphError(f"EXPAND node {node.id!r} repeats an expanded cell.")
+    return tuple(cells)
+
+
 @dataclass(frozen=True)
 class Graph:
     """A complete build declaration for one country.
