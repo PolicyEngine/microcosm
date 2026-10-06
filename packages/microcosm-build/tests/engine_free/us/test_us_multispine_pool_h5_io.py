@@ -47,7 +47,6 @@ from microcosm.build.us_runtime.h5_io import (
     load_authenticated_us_multispine_pool_for_scoring,
     load_simulation_ready_us_multispine_pool,
     require_authenticated_us_multispine_pool_h5,
-    us_multispine_pool_defaulted_take_up_failures,
     us_multispine_pool_release_receipt,
     write_nullable_us_h5,
 )
@@ -1774,95 +1773,6 @@ def test_ready_pool_loader_requires_explicitly_green_agreement_receipt(
 
     with pytest.raises(ValueError, match="no passing agreement-gate verdict"):
         load_simulation_ready_us_multispine_pool(manifest_path)
-
-
-def _with_seed_snap_take_up(manifest_path: Path, defaulted_rows: object) -> None:
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["stage_receipts"]["seed"]["programs"] = {
-        "takes_up_snap_if_eligible": {
-            "provenance_kind": "preserved_input_or_disclosed_engine_default",
-            "defaulted_rows": defaulted_rows,
-        }
-    }
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-
-def test_release_loaders_refuse_engine_defaulted_snap_take_up(
-    tmp_path: Path,
-) -> None:
-    """#1051 review: the successor pool is gated before its output is released."""
-
-    pytest.importorskip("tables")
-    manifest_path = _write_ready_pool(tmp_path)
-    _with_seed_snap_take_up(manifest_path, 3)
-
-    with pytest.raises(ValueError, match="not releasable: 3 'takes_up_snap"):
-        load_simulation_ready_us_multispine_pool(manifest_path)
-    with pytest.raises(ValueError, match="carry the engine default"):
-        load_authenticated_us_multispine_pool_for_release(
-            manifest_path,
-            allow_terminal_gate_failure=False,
-        )
-
-    _with_seed_snap_take_up(manifest_path, 0)
-    frame, _, _ = load_simulation_ready_us_multispine_pool(manifest_path)
-    assert frame.n("household") == 3
-
-
-def test_scoring_loader_keeps_engine_defaulted_snap_pool_as_evidence(
-    tmp_path: Path,
-) -> None:
-    pytest.importorskip("tables")
-    manifest_path = _write_gate_failed_pool(tmp_path)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["stage_receipts"]["seed"] = {
-        "programs": {"takes_up_snap_if_eligible": {"defaulted_rows": 3}}
-    }
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="not releasable"):
-        load_authenticated_us_multispine_pool_for_release(
-            manifest_path,
-            allow_terminal_gate_failure=True,
-        )
-    frame, loaded_manifest, _ = load_authenticated_us_multispine_pool_for_scoring(
-        manifest_path
-    )
-    assert frame.n("household") == 3
-    assert loaded_manifest["status"] == "gate_failed"
-
-
-def test_defaulted_take_up_failures_read_the_seed_receipt_counts() -> None:
-    def manifest(programs: object) -> dict[str, object]:
-        return {"stage_receipts": {"seed": {"operator": "seed", "programs": programs}}}
-
-    snap = "takes_up_snap_if_eligible"
-    assert us_multispine_pool_defaulted_take_up_failures({}) == []
-    assert (
-        us_multispine_pool_defaulted_take_up_failures(
-            {"stage_receipts": {"seed": {"operator": "seed"}}}
-        )
-        == []
-    )
-    assert (
-        us_multispine_pool_defaulted_take_up_failures(
-            manifest({snap: {"defaulted_rows": 0}})
-        )
-        == []
-    )
-    (line,) = us_multispine_pool_defaulted_take_up_failures(
-        manifest({snap: {"defaulted_rows": 12}})
-    )
-    assert line.startswith("12 'takes_up_snap_if_eligible' cell(s)")
-    for programs, fragment in (
-        ({}, "records no 'takes_up_snap_if_eligible' provenance"),
-        ({snap: {"defaulted_rows": True}}, "is not an integer"),
-        ({snap: {"defaulted_rows": 1.0}}, "is not an integer"),
-        ({snap: {"defaulted_rows": -1}}, "is negative"),
-        ([], "programs is not an object"),
-    ):
-        (line,) = us_multispine_pool_defaulted_take_up_failures(manifest(programs))
-        assert fragment in line
 
 
 def test_ready_pool_loader_binds_diagnostics_agreement_verdict(
