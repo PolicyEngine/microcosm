@@ -772,3 +772,37 @@ def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):
     context.artifacts["export_readback"].payload = canonical_json(readback)
     with pytest.raises(ValueError, match="H5 readback failed"):
         UKPackageInventoryKernel().run(context)
+
+
+def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
+    """The holdout artifact carries the kernel's binding and, when skipped, a
+    reason; the diagnostics records forbid undeclared fields and state a skipped
+    holdout as the bare marker. The first K=25 build (2026-10-06) reached its
+    terminal gates after 28 hours and the battery refused the graph's marker."""
+    from pydantic import ValidationError
+
+    from microcosm.build.uk_runtime.graph_terminal import diagnostics_rotated_holdout
+    from microcosm.diagnostics.schema import UKSkippedRotatedHoldout
+
+    skipped = {
+        "report_only": True,
+        "skipped": True,
+        "reason": "Explicit development request; no holdout claim.",
+        "graph_binding": {"original_problem_artifact": "a" * 64, "artifacts": {}},
+    }
+    assert diagnostics_rotated_holdout(skipped) == {"skipped": True}
+    UKSkippedRotatedHoldout.model_validate({"skipped": True})
+    with pytest.raises(ValidationError):
+        UKSkippedRotatedHoldout.model_validate(skipped)
+
+    measured = {
+        "report_only": True,
+        "method": "rotated_folds",
+        "n_folds": 5,
+        "fold_losses": [0.1, 0.2, 0.3, 0.4, 0.5],
+        "graph_binding": {"original_problem_artifact": "a" * 64, "artifacts": {}},
+    }
+    shaped = diagnostics_rotated_holdout(measured)
+    assert "graph_binding" not in shaped
+    assert shaped == {k: v for k, v in measured.items() if k != "graph_binding"}
+    assert "graph_binding" in measured  # the artifact's report is left intact

@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, replace
 from importlib import metadata
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -774,7 +775,7 @@ class UKFullGateKernel(KernelBase):
                 },
                 target_registry=target_registry,
                 local_area_support=support_frame,
-                rotated_holdout=holdout,
+                rotated_holdout=diagnostics_rotated_holdout(holdout),
                 build={
                     "build_kind": "uk_full_build",
                     "target_scope": selection["selector"],
@@ -1105,6 +1106,23 @@ def uk_full_holdout_node(
         artifact_outputs=(ArtifactOutput("holdout", FULL_HOLDOUT_TYPE),),
         description="Preserve five rotated local-target holdouts with national constraints fixed in training and unchanged sizing doctrine.",
     )
+
+
+def diagnostics_rotated_holdout(report: Mapping[str, Any]) -> dict[str, Any]:
+    """The graph's holdout report as the diagnostics schema declares it.
+
+    The ``uk.full.holdout`` artifact carries the kernel's own binding
+    (``graph_binding``) and, when the holdout was skipped, the reason. The
+    diagnostics records forbid undeclared fields and state a skipped holdout
+    as the bare marker, so the first K=25 build (2026-10-06) reached its
+    terminal gates after 28 hours and the battery refused the marker with
+    nineteen validation errors. The holdout artifact keeps the full report;
+    the diagnostics receive the schema's shape.
+    """
+
+    if report.get("skipped") is True:
+        return {"skipped": True}
+    return {key: value for key, value in report.items() if key != "graph_binding"}
 
 
 def materialize_uk_terminal_artifacts(
