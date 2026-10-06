@@ -649,7 +649,16 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
       negative amount, so a loss is entered as a positive amount and
       RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
       engine has no property loss input, and a loss is not set against the
-      household's SUBRENT.
+      household's SUBRENT. That matches the law for the year: an individual's
+      UK property loss is carried forward against future profits of the same
+      property business only (ITA 2007 ss. 118-119), not set against other
+      income.
+
+    Because ROYYR1 nets mortgage capital and interest, it sits below the SPI's
+    net income from property (after allowable expenses, before residential
+    finance costs) for landlords with a mortgage. Binding the SPI amounts on
+    this variable (microcosm#1106) therefore leans on reweighting unless the
+    other-property mortgage is added back.
 
     SUBRENT is used as reported. SUBALLOW records whether it is before (1) or
     after (2) allowable expenses, but the FRS records no sub-letting expense
@@ -661,6 +670,16 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
     CVPAY is not included. It is the rent a boarder or lodger pays the
     householder (question CvPay, "How much rent did [name] pay"), recorded on
     the boarder's or lodger's own adult record, so it is not their income.
+    Within the household the payment is a transfer, so household totals are
+    unaffected, but the householder's receipt is not credited to anyone: the
+    householder's benefit unit understates that income.
+
+    SUBRENT and lodger receipts qualify for Rent a Room relief (ITTOIA 2005
+    Part 7 Chapter 1: £7,500 a year, £3,750 if shared) when the room is in the
+    householder's only or main residence. Here they are taxable
+    ``property_income``, so the engine applies only the £1,000 property
+    allowance and overstates tax on them. Routing them to policyengine-uk's
+    ``sublet_income`` needs the engine to apply the relief first.
     """
 
     is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
@@ -877,7 +896,7 @@ def _add_household_columns(
         * WEEKS_IN_YEAR
     ).astype(float)
     pe_household["rent"] = _number(household, "hhrent") * WEEKS_IN_YEAR
-    pe_household["subrent"] = _number(household, "subrent") * WEEKS_IN_YEAR
+    pe_household["subrent"] = _positive(household, "subrent") * WEEKS_IN_YEAR
     pe_household["mortgage_interest_repayment"] = (
         _number(household, "mortint") * WEEKS_IN_YEAR
     )
