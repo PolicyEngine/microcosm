@@ -329,9 +329,31 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "acs_work_disability_inputs",
         "acs_local_ssi_medicaid_take_up",
         "acs_spm_unit_adult_nonrelatives",
+        "acs_snap_receipt_anchor",
     ):
         assert required in by_id, required
         assert by_id[required]["calibration_blocker"] is False
+    # microcosm#1022: the native FS receipt anchor is a reviewed method; PAP
+    # is recorded, not applied.
+    anchor = by_id["acs_snap_receipt_anchor"]
+    assert anchor["status"] == "reviewed_modeling_decision"
+    assert anchor["affected_spines"] == ["acs_2024_1yr"]
+    assert anchor["columns"] == ["receives_snap", "receives_tanf"]
+    assert "acs_local_receipt_anchor_signal" in anchor["treatment"]
+    assert "12.2%" in anchor["treatment"]
+    for fragment in (
+        "microcosm#1022",
+        "household FS",
+        "at least one SPM unit",
+        "reference person's unit is set True",
+        "not forced to report the family's receipt",
+        "group quarters",
+        "SPM_SNAPSUB",
+        "PAP > 0 is not TANF receipt",
+        "microcosm#591",
+    ):
+        assert fragment in anchor["reason"], fragment
+    assert "acs_snap_receipt_anchor" in (by_id["acs_take_up_engine_defaults"]["reason"])
     # microcosm#1023: adult nonrelatives' own SPM units are a reviewed method.
     spm_units = by_id["acs_spm_unit_adult_nonrelatives"]
     assert spm_units["status"] == "reviewed_modeling_decision"
@@ -1458,6 +1480,173 @@ def test_consumer_export_refuses_a_pre_spm_unit_staging_before_loading_it(
 
 
 # ---------------------------------------------------------------------------
+# microcosm#1022: the native ACS SNAP receipt anchor
+# ---------------------------------------------------------------------------
+
+
+def _receipt_anchor_receipt(**overrides) -> dict:
+    receipt = {
+        "issue": "microcosm#1022",
+        "method": "acs_fs_household_receipt_at_least_one_spm_unit",
+        "snap": {"fs_yes_households": 2, "units_anchored": 3},
+        "tanf": {"pap_recipients": 1, "pap_units": 1},
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def _staging_receipt_anchor_summary(**overrides) -> dict:
+    """A current staging run through the native FS receipt anchor."""
+
+    summary = _staging_spm_unit_summary(
+        acs_local_receipt_anchors=_receipt_anchor_receipt(),
+        acs_local_receipt_anchors_gate={
+            "name": "acs_local_receipt_anchor_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_spm_unit_summary(),
+        _staging_receipt_anchor_summary(acs_local_receipt_anchors_gate=None),
+        _staging_receipt_anchor_summary(acs_local_receipt_anchors=None),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors_gate={"passed": "true"}
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(issue="microcosm#1019")
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                method="reference_unit_only"
+            )
+        ),
+        # microcosm#1062 review: staging anchored with the pre-review rule,
+        # which marked every unit of an FS == 1 housing unit, roommates too.
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                method="acs_fs_household_receipt_on_every_spm_unit"
+            )
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(snap=None)
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                snap={"fs_yes_households": 2, "units_anchored": "3"}
+            )
+        ),
+    ],
+    ids=[
+        "pre-anchor-staging",
+        "no-gate",
+        "no-receipt",
+        "failed-gate",
+        "truthy-gate",
+        "wrong-issue",
+        "wrong-method",
+        "pre-review-method",
+        "no-counts",
+        "untyped-count",
+    ],
+)
+def test_receipt_anchor_consumers_refuse_a_staging_run_without_it(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run staging"):
+        module._require_local_receipt_anchors(summary)
+
+
+def test_receipt_anchor_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_receipt_anchor_summary()
+    assert (
+        module._require_local_receipt_anchors(summary)
+        == summary["acs_local_receipt_anchors"]
+    )
+
+
+def test_materialize_refuses_a_pre_anchor_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1022: a staging run whose ACS SNAP reporters are the QRF
+    transfer's is refused before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_spm_unit_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(module, "state_admin_specs", lambda *a, **k: ([], []))
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match=r"SNAP receipt anchor \(microcosm#1022\)"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_anchor_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_spm_unit_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"SNAP receipt anchor \(microcosm#1022\)"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_pre_anchor_staging_before_loading_it(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_spm_unit_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"SNAP receipt anchor \(microcosm#1022\)"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
+        )
+
+
+# ---------------------------------------------------------------------------
 # microcosm#1022: ACS SSI and Medicaid take-up
 # ---------------------------------------------------------------------------
 
@@ -1601,7 +1790,7 @@ def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
         json.dumps(
             {
                 "reviewed_engine_input_nulls": [{"entity": "person"}],
-                **_staging_spm_unit_summary(),
+                **_staging_receipt_anchor_summary(),
             }
         )
     )
@@ -1627,7 +1816,7 @@ def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
     module = _load_tool_module()
     args = module._parse_args(_calibrate_argv(tmp_path))
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps(_staging_spm_unit_summary())
+        json.dumps(_staging_receipt_anchor_summary())
     )
     monkeypatch.setattr(
         module,
@@ -1649,7 +1838,7 @@ def test_consumer_export_refuses_a_checkpoint_without_the_ssi_medicaid_assignmen
     module = _load_tool_module()
     args = module._parse_args(_calibrate_argv(tmp_path))
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps(_staging_spm_unit_summary())
+        json.dumps(_staging_receipt_anchor_summary())
     )
     monkeypatch.setattr(
         module,
@@ -2048,6 +2237,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
         },
         "acs_local_spm_unit_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_receipt_anchor_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -2877,6 +3072,29 @@ def _stub_local_spm_unit_gate(
     monkeypatch.setattr(module, "acs_local_spm_unit_signal_gate", gate)
 
 
+def _stub_local_receipt_anchor_gate(
+    module, monkeypatch, *, passed=True, receipts=None
+) -> None:
+    """Make the ACS receipt-anchor gate pass (or fail); its tests
+    (test_us_acs_local_receipt_anchors.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        if receipts is not None:
+            receipts.append(receipt)
+        return GateResult(
+            name="acs_local_receipt_anchor_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: 2 SPM unit(s) report SNAP receipt",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_receipt_anchor_signal_gate", gate)
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -2900,6 +3118,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     _stub_local_ssi_disability_gate(module, monkeypatch)
     _stub_local_ssi_medicaid_take_up_gate(module, monkeypatch)
     _stub_local_spm_unit_gate(module, monkeypatch)
+    _stub_local_receipt_anchor_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -3373,6 +3592,60 @@ def test_package_requires_a_current_spm_unit_gate(
     assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
+def test_do_finalize_hard_fails_on_a_failed_receipt_anchor_gate(tmp_path, monkeypatch):
+    """microcosm#1022: a failed receipt-anchor gate, graded against the
+    staging receipt, blocks simulation readiness and is recorded bound to the
+    evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    summary_path = tmp_path / "staging.summary.json"
+    staging_summary = json.loads(summary_path.read_text())
+    staging_summary["acs_local_receipt_anchors"] = _receipt_anchor_receipt()
+    summary_path.write_text(json.dumps(staging_summary))
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    receipts: list = []
+    _stub_local_receipt_anchor_gate(
+        module, monkeypatch, passed=False, receipts=receipts
+    )
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_receipt_anchor_signal" in str(exc.value)
+    assert receipts == [_receipt_anchor_receipt()]
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_receipt_anchor_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert "acs_local_receipt_anchor_signal" in summary["simulation_readiness_blockers"]
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "receipt_anchor_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_receipt_anchor_gate(
+    tmp_path, monkeypatch, receipt_anchor_state
+):
+    """microcosm#1022: a report finalized before the receipt-anchor gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        receipt_anchor_state=receipt_anchor_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_receipt_anchor_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
 def _block_evidence_args(module, tmp_path, monkeypatch, *, acs_true_rows: int):
     args = _package_evidence_args(
         module,
@@ -3751,6 +4024,7 @@ def _package_args_with_hours(
     ssi_disability_state="passed",
     ssi_medicaid_state="passed",
     spm_unit_state="passed",
+    receipt_anchor_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -3853,6 +4127,15 @@ def _package_args_with_hours(
         spm_unit_gate["artifact_sha256"] = "0" * 64
     if gates and spm_unit_state != "missing":
         gates["acs_local_spm_unit_signal"] = spm_unit_gate
+    anchor_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if receipt_anchor_state == "failed":
+        anchor_gate.update(passed=False, failures=["invented SNAP reporter"])
+    elif receipt_anchor_state == "truthy":
+        anchor_gate["passed"] = "true"
+    elif receipt_anchor_state == "stale":
+        anchor_gate["artifact_sha256"] = "0" * 64
+    if gates and receipt_anchor_state != "missing":
+        gates["acs_local_receipt_anchor_signal"] = anchor_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {

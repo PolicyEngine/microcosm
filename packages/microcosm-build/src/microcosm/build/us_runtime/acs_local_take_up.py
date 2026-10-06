@@ -12,9 +12,15 @@ This is a fresh-build repair for that lane. It fills only missing cells on
 ACS-spine rows; donor-spine values and any stored ACS value are kept.
 
 - SNAP follows :mod:`~microcosm.build.us_runtime.snap_take_up`: a unit with
-  (QRF-imputed) ``receives_snap`` always takes up, and non-reporters draw at
-  the rate that puts the weighted ACS take-up share on the national FNS
-  participation rate of the ``snap_take_up`` manifest stage.
+  reported ``receives_snap`` always takes up, and non-reporters draw at the
+  rate that puts the weighted ACS take-up share on the national FNS
+  participation rate of the ``snap_take_up`` manifest stage. On ACS rows the
+  reporters are constrained by native household ``FS``: the only SPM unit of
+  an FS == 1 housing unit, or in one with several units the units the QRF
+  names (the reference unit when it names none), which staging writes over
+  the QRF transfer
+  (:mod:`~microcosm.build.us_runtime.acs_local_receipt_anchors`,
+  microcosm#1022).
 - TANF uses the take-up contract's seeded Bernoulli draw at its
   administrative rate, with no receipt anchor, exactly as the contract seeds
   it elsewhere. Because the draw is independent of the transferred
@@ -139,7 +145,8 @@ ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 _ID_COLUMN = "spm_unit_id"
-#: Reported (on ACS rows, QRF-transferred) SNAP receipt: the survey anchor.
+#: Reported SNAP receipt: the survey anchor (on ACS rows, native household
+#: FS from staging, microcosm#1022; the QRF transfer's before it).
 _REPORTED_SNAP_COLUMN = "receives_snap"
 #: Reported (on ACS rows, QRF-transferred) TANF receipt. It is not an anchor
 #: for the TANF draw; the receipt only cross-tabs it against that draw.
