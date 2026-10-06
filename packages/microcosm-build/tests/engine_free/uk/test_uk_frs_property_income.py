@@ -1,4 +1,4 @@
-"""FRS property income on the UK spine (ported from policyengine-uk-data#509).
+"""FRS property income on the UK spine (ported from uk-data#509).
 
 Example tests pin each FRS rule; the seeded property tests check, over random
 households, that the vectorised helper matches a one-person-at-a-time loop,
