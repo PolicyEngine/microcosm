@@ -425,6 +425,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "SMPADJ": 0.5,
             "TUBORR": 500.0,
             "ACCSSAMT": 1.0,
+            "ACCSSPD": 52.0,
             "GRTDIR1": 2.0,
             "GRTDIR2": 3.0,
             "HEARTVAL": 5.0,

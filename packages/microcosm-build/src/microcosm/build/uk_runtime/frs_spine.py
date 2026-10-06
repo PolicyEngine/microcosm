@@ -616,7 +616,7 @@ def _add_person_income(
     pe_person["statutory_sick_pay"] = _number(person, "sspadj") * WEEKS_IN_YEAR
     pe_person["statutory_maternity_pay"] = _number(person, "smpadj") * WEEKS_IN_YEAR
     pe_person["student_loans"] = _positive(person, "tuborr")
-    pe_person["access_fund"] = _positive(person, "accssamt") * WEEKS_IN_YEAR
+    pe_person["access_fund"] = access_fund_annual(person)
     pe_person["education_grants"] = np.maximum(
         _number(person, "grtdir1") + _number(person, "grtdir2"), 0
     )
@@ -1014,6 +1014,57 @@ def _frs_benunit_capital(benunit: pd.DataFrame) -> pd.Series:
 
 def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
     return np.maximum(_number(frame, column), 0)
+
+
+#: FRS period codes (SN 9563 code frame) for an amount reported per calendar
+#: month and per year.
+FRS_PERIOD_CALENDAR_MONTH = 5
+FRS_PERIOD_YEAR = 52
+#: A calendar-month access-fund award is read as annual only when it
+#: annualises to more than this multiple of the largest annual-coded award, so
+#: a large but plausible monthly payment is left as reported.
+ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE = 2.0
+
+
+def access_fund_annual(person: pd.DataFrame) -> pd.Series:
+    """Annual access-fund award, with one period-code repair.
+
+    The FRS weeklyises ``ACCSSAMT`` from the reported amount and its period
+    code ``ACCSSPD``, and the spine annualises it. An access-fund award is paid
+    per academic year or term, and on the 2024-25 tab the calendar-month
+    amounts run up to the size of a whole annual award: read as monthly, one
+    of them annualises to more than ten times every award the survey records
+    as annual (microcosm#1095, from the review of #1100). So a calendar-month
+    award (code 5) that annualises to more than
+    ``ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE`` times the largest award the same
+    tab records as annual (code 52) is read as the annual award: its
+    per-period amount, ``ACCSSAMT`` x 52/12. On the 2024-25 tab that is one
+    award; the next largest monthly amount annualises just above the largest
+    annual award and stays as reported. Every other award stays as the FRS
+    weeklyised it,
+    including the few with no period code on the tab, and a tab with no
+    annual-coded award repairs nothing. A tab without the ``ACCSSPD`` column
+    refuses, since the rule cannot be applied to it.
+    """
+
+    amount = _positive(person, "accssamt")
+    annual = amount * WEEKS_IN_YEAR
+    paid = amount > 0
+    if not bool(paid.any()):
+        return annual
+    if "accsspd" not in person.columns:
+        raise KeyError("FRS access fund needs the period code ACCSSPD beside ACCSSAMT.")
+    period = _raw_number(person, "accsspd")
+    annual_coded = paid & period.eq(FRS_PERIOD_YEAR)
+    if not bool(annual_coded.any()):
+        return annual
+    ceiling = float(annual[annual_coded].max())
+    implausible = (
+        paid
+        & period.eq(FRS_PERIOD_CALENDAR_MONTH)
+        & annual.gt(ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE * ceiling)
+    )
+    return annual.where(~implausible, amount * 52 / 12)
 
 
 #: The Water Charges Reduction Scheme's maximum reduction, 2021-27. A council

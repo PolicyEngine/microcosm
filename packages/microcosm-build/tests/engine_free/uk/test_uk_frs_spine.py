@@ -42,6 +42,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
     _add_benefits,
+    access_fund_annual,
     build_uk_frs_spine_frame,
     scottish_water_and_sewerage_weekly,
     uk_frs_spine_seed_frame,
@@ -264,6 +265,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SMPADJ": 0.5,
         "TUBORR": 500.0,
         "ACCSSAMT": 1.0,
+        "ACCSSPD": 52.0,
         "GRTDIR1": 2.0,
         "GRTDIR2": 3.0,
         # heartval is on the adult tape too; the three school columns are not.
@@ -2702,6 +2704,58 @@ class TestScottishWaterAndSewerage:
             scottish_water_and_sewerage_weekly(absent).iloc[0]
         )
         assert result > 0
+
+
+class TestAccessFundAnnual:
+    """The access-fund award: ACCSSAMT annualised, with the calendar-month repair.
+
+    An access-fund award is paid per academic year or term; a calendar-month
+    award that annualises to more than twice every award the tab records as
+    annual is read as the annual award (microcosm#1095, from the review of
+    #1100).
+    """
+
+    @staticmethod
+    def _frame(rows: list[tuple[float, float]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["accssamt", "accsspd"])
+
+    def test_awards_are_annualised_as_the_frs_weeklyised_them(self) -> None:
+        frame = self._frame([(10.0, 52.0), (5.0, 5.0), (0.0, float("nan"))])
+        assert access_fund_annual(frame).tolist() == pytest.approx(
+            [10.0 * WEEKS_IN_YEAR, 5.0 * WEEKS_IN_YEAR, 0.0]
+        )
+
+    def test_monthly_award_above_every_annual_award_is_read_as_annual(self) -> None:
+        # 100 a week from a calendar-month code is about 433 a month; annualised
+        # it is far above the largest annual-coded award, so it is that award.
+        frame = self._frame([(20.0, 52.0), (100.0, 5.0)])
+        result = access_fund_annual(frame)
+        assert result.iloc[0] == pytest.approx(20.0 * WEEKS_IN_YEAR)
+        assert result.iloc[1] == pytest.approx(100.0 * 52 / 12)
+
+    def test_a_monthly_award_within_twice_the_largest_annual_stays(self) -> None:
+        # Annualised, 30 a week is 1.5 times the largest annual-coded award:
+        # large for a monthly payment, but plausible, so it stays as reported.
+        frame = self._frame([(20.0, 52.0), (30.0, 5.0)])
+        assert access_fund_annual(frame).iloc[1] == pytest.approx(30.0 * WEEKS_IN_YEAR)
+
+    def test_without_an_annual_award_nothing_is_repaired(self) -> None:
+        frame = self._frame([(100.0, 5.0), (3.0, 5.0)])
+        assert access_fund_annual(frame).tolist() == pytest.approx(
+            [100.0 * WEEKS_IN_YEAR, 3.0 * WEEKS_IN_YEAR]
+        )
+
+    def test_an_award_without_a_period_code_stays_as_weeklyised(self) -> None:
+        # The 2024-25 tab carries a few awards with no period code; the FRS
+        # has weeklyised them already, and only a calendar-month code can be
+        # repaired.
+        frame = self._frame([(20.0, 52.0), (100.0, float("nan"))])
+        assert access_fund_annual(frame).iloc[1] == pytest.approx(100.0 * WEEKS_IN_YEAR)
+
+    def test_a_tab_without_the_period_column_refuses(self) -> None:
+        frame = pd.DataFrame({"accssamt": [10.0]})
+        with pytest.raises(KeyError, match="ACCSSPD"):
+            access_fund_annual(frame)
 
 
 def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:
