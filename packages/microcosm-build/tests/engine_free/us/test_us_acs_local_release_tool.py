@@ -14,6 +14,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    load_reviewed_fill_consumer_register,
+    reviewed_fill_register_failures,
+    reviewed_fill_register_sha256,
+)
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -53,6 +58,29 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
         }
     ),
 )
+
+
+#: The policyengine-us version the reviewed-fill register was reviewed against.
+_REVIEWED_ENGINE = load_reviewed_fill_consumer_register()["reviewed_against"][
+    "policyengine_us"
+]
+
+
+@pytest.fixture(autouse=True)
+def _the_release_runs_the_reviewed_engine(monkeypatch):
+    """The reviewed-fill gate compares the installed policyengine-us with the
+    register's reviewed_against (microcosm#1071 review). The engine-free lane
+    has none installed, so every loaded tool reports the reviewed version; the
+    tests that pin the comparison set another on their module."""
+
+    load = _load_tool_module
+
+    def load_with_the_reviewed_engine():
+        module = load()
+        module._installed_engine_version = lambda: _REVIEWED_ENGINE
+        return module
+
+    monkeypatch.setitem(globals(), "_load_tool_module", load_with_the_reviewed_engine)
 
 
 @pytest.fixture(autouse=True)
@@ -496,6 +524,42 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     }
     donor = by_id["donor_sparse_selection_training_set"]
     assert "populace-us-2024-buildo-sparse-rmloss100-x" in donor["reason"]
+    # microcosm#1022: the reviewed default fills that remain carry their
+    # means-tested consumer notes.
+    register = by_id["acs_reviewed_default_fill_consumers"]
+    assert register["status"] == "reviewed_modeling_decision"
+    assert register["calibration_blocker"] is False
+    assert register["register"] == "acs_local_reviewed_fill_consumers.yaml"
+    assert register["register_sha256"] == reviewed_fill_register_sha256(
+        load_reviewed_fill_consumer_register()
+    )
+    assert register["known_bias"]["household.household_vehicles_value"] == [
+        "aca_ptc",
+        "chip",
+        "general_assistance",
+        "head_start",
+        "lifeline",
+        "medicaid",
+        "school_meals",
+        "snap",
+        "state_benefits",
+        "tanf",
+        "wic",
+    ]
+    register_entries = load_reviewed_fill_consumer_register()["entries"]
+    for fragment in (
+        f"{len(register_entries)} entries",
+        "policyengine-us 2.2.1",
+        "spm_unit.spm_unit_energy_subsidy (liheap)",
+        "tax_unit.takes_up_eitc (",
+    ):
+        assert fragment in register["reason"], fragment
+    assert "acs_local_reviewed_fill_consumers" in register["treatment"]
+    assert (
+        "acs_reviewed_default_fill_consumers"
+        in by_id["acs_household_vehicle_value_default"]["treatment"]
+    )
+    assert "acs_reviewed_default_fill_consumers" in defaults
     # Ids are unique after dedupe.
     assert len(by_id) == len(limitations)
 
@@ -2397,6 +2461,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "detail": {},
             "artifact_sha256": artifact_sha,
         },
+        "acs_local_reviewed_fill_consumers": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
     }
     if hours_report is not None:
         gates["acs_local_hours_signal"] = hours_report
@@ -2422,13 +2492,13 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         },
         "consumer_export.json": {"staging_sha256": module._sha256(staging)},
         "held_back_columns.json": {"total": 0},
-        "reviewed_null_fills.json": {"columns_filled": []},
+        "reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
         "materialize_rss.json": {
             "soi_mode": "totals",
             "materialize_peak_rss_gb": 1.0,
             "hh_chunk": 1,
         },
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, payload in evidence.items():
         (ckpt / name).write_text(json.dumps(payload))
@@ -3047,6 +3117,10 @@ def _finalize_args(module, tmp_path: Path):
     # Every checkpoint materialize writes records its SOI mode; package
     # refuses one that does not.
     (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
+    # Both engine passes record their reviewed default fills, which the
+    # reviewed-fill consumer gate grades (microcosm#1022); none applied here.
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (ckpt / name).write_text(json.dumps({"columns_filled": 0, "fills": []}))
     ladder = tmp_path / "ladder.npz"
     ladder.write_bytes(b"ladder-bytes")
     return module._parse_args(
@@ -4144,7 +4218,7 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
             "per_spine": {},
         },
         "consumer_export.json": {"staging_sha256": artifact_sha},
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, value in evidence.items():
         (args.checkpoint_dir / name).write_text(json.dumps(value))
@@ -4183,6 +4257,7 @@ def _package_args_with_hours(
     ssi_medicaid_state="passed",
     spm_unit_state="passed",
     receipt_anchor_state="passed",
+    reviewed_fill_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -4294,6 +4369,15 @@ def _package_args_with_hours(
         anchor_gate["artifact_sha256"] = "0" * 64
     if gates and receipt_anchor_state != "missing":
         gates["acs_local_receipt_anchor_signal"] = anchor_gate
+    fill_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if reviewed_fill_state == "failed":
+        fill_gate.update(passed=False, failures=["invented unregistered fill"])
+    elif reviewed_fill_state == "truthy":
+        fill_gate["passed"] = "true"
+    elif reviewed_fill_state == "stale":
+        fill_gate["artifact_sha256"] = "0" * 64
+    if gates and reviewed_fill_state != "missing":
+        gates["acs_local_reviewed_fill_consumers"] = fill_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -4307,7 +4391,7 @@ def _package_args_with_hours(
             "per_spine": {},
         },
         "consumer_export.json": {"staging_sha256": artifact_sha},
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, value in evidence.items():
         (args.checkpoint_dir / name).write_text(json.dumps(value))
@@ -4640,3 +4724,342 @@ def test_package_rechecks_final_bytes_after_copy_or_reuse(
         assert root_copy.exists(), "the calibrated H5 itself is never removed"
     else:
         assert not root_copy.exists(), "a refused copy is not left at the root"
+
+
+# ---------------------------------------------------------------------------
+# Reviewed-fill consumer register (microcosm#1022, part 6)
+# ---------------------------------------------------------------------------
+
+#: The 79 reviewed default fills of release
+#: populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z
+#: (its consumer_reviewed_null_fills.json), by entity.
+_RELEASE_767312D60_REVIEWED_FILLS = {
+    "person": (
+        "attends_eligible_educational_institution_for_american_opportunity_credit "
+        "child_support_expense child_support_received cps_race "
+        "detailed_occupation_recode disability_benefits educational_assistance "
+        "employment_income_before_lsr fsla_overtime_premium "
+        "has_american_opportunity_credit_1098_t_or_exception "
+        "has_american_opportunity_credit_institution_ein has_never_worked "
+        "health_insurance_premiums hourly_wage immigration_status_str "
+        "is_computer_scientist "
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit "
+        "is_executive_administrative_professional is_farmer_fisher is_hispanic "
+        "is_military is_paid_hourly "
+        "is_pursuing_credential_for_american_opportunity_credit is_self_employed "
+        "is_separated is_snap_abawd_discretionary_exempt is_surviving_spouse "
+        "is_union_member_or_covered keogh_distributions "
+        "meets_ssi_disability_criteria other_health_insurance_premiums "
+        "pre_subsidy_rent previous_year_income_available real_estate_taxes "
+        "roth_401k_contributions_desired roth_ira_contributions_desired "
+        "s_corp_income self_employment_income_before_lsr "
+        "self_employment_income_last_year ssi_reported ssn_card_type "
+        "takes_up_head_start_if_eligible takes_up_medicaid_if_eligible "
+        "takes_up_medicare_if_eligible takes_up_ssi_if_eligible "
+        "tax_exempt_ira_distributions taxable_401k_distributions "
+        "taxable_403b_distributions taxable_sep_distributions tip_income "
+        "traditional_401k_contributions_desired treasury_tipped_occupation_code "
+        "weeks_unemployed workers_compensation"
+    ).split(),
+    "household": (
+        "auto_loan_balance auto_loan_interest block_geoid cbsa_code "
+        "household_vehicles_owned household_vehicles_value net_worth place_fips "
+        "qualified_passenger_vehicle_loan_interest sldl sldu tenure_type "
+        "tract_geoid"
+    ).split(),
+    "tax_unit": (
+        "second_home_mortgage_balance second_home_mortgage_interest "
+        "second_home_mortgage_origination_year "
+        "selected_marketplace_plan_benchmark_ratio takes_up_aca_if_eligible "
+        "takes_up_eitc would_file_taxes_voluntarily"
+    ).split(),
+    "spm_unit": (
+        "receives_housing_assistance spm_unit_energy_subsidy spm_unit_tenure_type "
+        "takes_up_snap_if_eligible takes_up_tanf_if_eligible"
+    ).split(),
+}
+
+
+def _reviewed_fill(entity, column, fill_value="0", spine="acs_2024_1yr") -> dict:
+    return {
+        "entity": entity,
+        "column": column,
+        "filled_rows": 3,
+        "rows": 8,
+        "fill_value": fill_value,
+        "fill_kind": "int",
+        "register_missing_rows": 3,
+        "missing_rows_by_spine": {spine: 3},
+    }
+
+
+def test_the_register_covers_every_remaining_reviewed_fill() -> None:
+    """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
+    them (NEVER_DEFAULT_FILLED), and every other one has a register entry."""
+
+    module = _load_tool_module()
+    document = load_reviewed_fill_consumer_register()
+    assert (
+        reviewed_fill_register_failures(
+            document, never_default_filled=module.NEVER_DEFAULT_FILLED
+        )
+        == []
+    )
+    released = {
+        (entity, column)
+        for entity, columns in _RELEASE_767312D60_REVIEWED_FILLS.items()
+        for column in columns
+    }
+    assert len(released) == 79
+    now_filled = released & set(module.NEVER_DEFAULT_FILLED)
+    registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
+    # 20 are filled natively and 59 are registered. The ACS vehicle count
+    # returned to a reviewed fill after the microcosm#1064 review (VEH counts
+    # vehicles available, not owned): it left NEVER_DEFAULT_FILLED and gained
+    # an entry together, so this still holds.
+    assert registered == released - now_filled
+
+
+def test_do_finalize_hard_fails_on_an_unregistered_reviewed_fill(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1022: a reviewed default fill with no register entry blocks
+    simulation readiness, recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
+        json.dumps(
+            {"columns_filled": 1, "fills": [_reviewed_fill("person", "invented_input")]}
+        )
+    )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_reviewed_fill_consumers" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_reviewed_fill_consumers"]
+    assert gate["passed"] is False
+    assert gate["failures"][0].startswith(
+        "person.invented_input: a reviewed default fill (0) the release applied "
+        "has no entry"
+    )
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers" in summary["simulation_readiness_blockers"]
+    )
+
+
+def test_do_finalize_hard_fails_on_a_manifest_without_its_fills(
+    tmp_path, monkeypatch
+) -> None:
+    """A checkpoint whose engine pass wrote no fill ledger cannot show which
+    defaults it applied, so it cannot pass as reviewed."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    (args.checkpoint_dir / "reviewed_null_fills.json").unlink()
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is False
+    assert gate["failures"][0].startswith("reviewed_null_fills.json records no fills")
+
+
+def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    fills = [
+        _reviewed_fill("person", "weeks_unemployed"),
+        _reviewed_fill("household", "household_vehicles_value"),
+    ]
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (args.checkpoint_dir / name).write_text(
+            json.dumps({"columns_filled": 2, "fills": fills})
+        )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    # consumer_ready still fails: this checkpoint has no QA evidence.
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is True, gate["failures"]
+    detail = gate["detail"]
+    assert detail["applied_fills"] == 2
+    assert detail["register_sha256"] == reviewed_fill_register_sha256(
+        load_reviewed_fill_consumer_register()
+    )
+    assert detail["fills"]["household.household_vehicles_value"]["filled_rows"] == {
+        "reviewed_null_fills.json": 3,
+        "consumer_reviewed_null_fills.json": 3,
+    }
+    assert detail["known_bias"]["household.household_vehicles_value"]["snap"] == (
+        "mixed"
+    )
+    assert "person.weeks_unemployed" not in detail["known_bias"]
+    entries = load_reviewed_fill_consumer_register()["entries"]
+    assert len(detail["unused_entries"]) == len(entries) - 2
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers"
+        not in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "reviewed_fill_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_reviewed_fill_consumer_gate(
+    tmp_path, monkeypatch, reviewed_fill_state
+):
+    """microcosm#1022: a report finalized before the reviewed-fill consumer
+    gate, or failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        reviewed_fill_state=reviewed_fill_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_reviewed_fill_consumers"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@pytest.mark.parametrize("engine_version", ["2.3.0", "unknown"])
+def test_do_finalize_hard_fails_on_an_engine_other_than_the_reviewed_one(
+    tmp_path, monkeypatch, engine_version
+) -> None:
+    """microcosm#1071 review: registered fills on another policyengine-us (or
+    none) block simulation readiness, even when the engine tier is skipped."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    fills = [_reviewed_fill("household", "household_vehicles_value")]
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (args.checkpoint_dir / name).write_text(
+            json.dumps({"columns_filled": 1, "fills": fills})
+        )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    monkeypatch.setattr(module, "_installed_engine_version", lambda: engine_version)
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is False
+    assert gate["failures"] == [
+        f"the release runs policyengine-us {engine_version} but the register was "
+        f"reviewed against {_REVIEWED_ENGINE}: re-run the engine-tier consumer "
+        "walk (test_us_acs_local_reviewed_fill_consumers.py) on the new engine, "
+        "review every note whose program's rules changed, and update "
+        "reviewed_against."
+    ]
+    assert gate["detail"]["installed_policyengine_us"] == engine_version
+    assert gate["detail"]["engine_matches_review"] is False
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers" in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+def test_package_refuses_an_engine_other_than_the_reviewed_one(tmp_path, monkeypatch):
+    """microcosm#1071 review: package re-grades against the engine it runs,
+    so a finalize verdict from the reviewed engine cannot carry a later one."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    monkeypatch.setattr(module, "_installed_engine_version", lambda: "2.3.0")
+    with pytest.raises(
+        SystemExit, match="the release runs policyengine-us 2.3.0 but the register"
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@requires_pytables
+def test_package_regrades_the_packaged_fill_manifests(tmp_path, monkeypatch):
+    """A passing finalize verdict covers the manifests it read; a packaged
+    ledger that gained an unregistered fill since is refused."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
+        json.dumps(
+            {"columns_filled": 1, "fills": [_reviewed_fill("person", "invented_input")]}
+        )
+    )
+    with pytest.raises(
+        SystemExit,
+        match="reviewed default fills without their means-tested consumer notes",
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@requires_pytables
+def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    fills = [_reviewed_fill("tax_unit", "takes_up_eitc", "True")]
+    (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
+        json.dumps({"columns_filled": 1, "fills": fills})
+    )
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    document = load_reviewed_fill_consumer_register()
+    assert "reviewed_fill_consumer_register.json" in result["files"]
+    shipped = json.loads(
+        (release_dir / "reviewed_fill_consumer_register.json").read_text()
+    )
+    assert shipped == document
+    record = json.loads((release_dir / "build_manifest.json").read_text())[
+        "reviewed_fill_consumer_register"
+    ]
+    assert record["sha256"] == reviewed_fill_register_sha256(document)
+    assert record["entries"] == len(document["entries"])
+    assert record["reviewed_against"] == {"policyengine_us": "2.2.1"}
+    assert record["known_bias"]["tax_unit.takes_up_eitc"] == [
+        "aca_ptc",
+        "chip",
+        "eitc",
+        "lifeline",
+        "medicaid",
+        "state_benefits",
+        "wic",
+    ]
+    gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is True
+    assert gate["checked_at_stage"] == "package"
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
+    assert gate["detail"]["register_sha256"] == record["sha256"]
+    assert gate["detail"]["known_bias"] == {
+        "tax_unit.takes_up_eitc": {
+            # microcosm#1071 review: the Medicaid changes move it both ways.
+            "aca_ptc": "mixed",
+            "chip": "mixed",
+            "eitc": "overstates",
+            "lifeline": "mixed",
+            "medicaid": "mixed",
+            "state_benefits": "mixed",
+            "wic": "mixed",
+        }
+    }
