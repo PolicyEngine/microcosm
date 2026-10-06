@@ -16,7 +16,9 @@ package; each is separately resumable):
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals`` and ``full``
-                as explicit opt-ins), seed ACS-row SNAP/TANF take-up
+                as explicit opt-ins), refuse a staging run that records no
+                passing ACS local immigration stage (microcosm#1020), seed
+                ACS-row SNAP/TANF take-up
                 (microcosm#1019; the consumer export re-derives the same
                 flags), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
@@ -68,6 +70,13 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_COLUMNS,
+    ACS_LOCAL_IMMIGRATION_GATE_NAME,
+    ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_receipt_failures,
+    acs_local_immigration_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_TAKE_UP_COLUMNS,
     ACS_LOCAL_TAKE_UP_GATE_NAME,
@@ -323,12 +332,32 @@ class DeniedDefaultFillError(ValueError):
     """NaN in an engine input whose engine default must never be the fill."""
 
 
-#: Runtime-owned take-up draws. Their engine default, ``True``, is universal
-#: take-up, so a missing cell is a build defect even when the staging register
-#: lists the column (microcosm#1019); the ACS take-up stage fills them first.
-NEVER_DEFAULT_FILLED = frozenset(
-    ("spm_unit", column) for column in ACS_LOCAL_TAKE_UP_COLUMNS
-)
+#: Why each runtime-owned input must never take its engine default, and what
+#: fills it instead. A missing cell is a build defect even when the staging
+#: register lists the column.
+_NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
+    # microcosm#1019: the take-up default, True, is universal take-up; this
+    # tool's ACS take-up stage fills them first.
+    **{
+        ("spm_unit", column): (
+            "the engine default is universal take-up (microcosm#1019); run the "
+            "ACS local take-up stage first"
+        )
+        for column in ACS_LOCAL_TAKE_UP_COLUMNS
+    },
+    # microcosm#1020: the immigration defaults are a citizen with a valid SSN
+    # and 5 years since entry; staging's ACS local immigration stage fills
+    # them.
+    **{
+        ("person", column): (
+            "the engine default is a citizen with a valid SSN, 5 years since "
+            f"entry ({ACS_LOCAL_IMMIGRATION_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column in ACS_LOCAL_IMMIGRATION_COLUMNS
+    },
+}
+NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
 
 def project_input_only(base_frame, period: int = PERIOD):
@@ -409,15 +438,14 @@ def fill_reviewed_nulls(
     """
 
     denied = [
-        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null rows)"
+        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null "
+        f"rows): {_NEVER_DEFAULT_FILLED_REASONS[(entity, column)]}"
         for entity, column in sorted(NEVER_DEFAULT_FILLED)
         if column in frame.table(entity) and frame.table(entity)[column].isna().any()
     ]
     if denied:
         raise DeniedDefaultFillError(
-            "Refusing to default-fill runtime-owned take-up input(s) "
-            f"{'; '.join(denied)}: the engine default is universal take-up "
-            "(microcosm#1019). Run the ACS local take-up stage first."
+            f"Refusing to default-fill runtime-owned input(s): {'; '.join(denied)}."
         )
 
     from policyengine_us import CountryTaxBenefitSystem
@@ -984,11 +1012,14 @@ def do_materialize(args) -> None:
             "nullable-artifact engine-pass contract requires its "
             "reviewed_engine_input_nulls register."
         )
+    staging_summary = _load_json(summary_path)
+    # microcosm#1020: refuse a pre-change staging run before hashing or loading.
+    _require_local_immigration(staging_summary)
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, _load_json(summary_path))
+    _require_local_hours(frame, staging_summary)
     frame, take_up = _with_local_take_up(frame, seed=args.seed)
     log(
         f"loaded staging frame households={frame.n('household')} "
@@ -1122,6 +1153,9 @@ def do_calibrate(args) -> None:
     identity = _verify_run_identity(args)
     # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
     _recorded_take_up(identity)
+    # Likewise a checkpoint materialized from a pre-#1020 staging run: the
+    # consumer export at the end of this stage would refuse its summary.
+    _require_local_immigration(_load_json(_staging_summary_path(args)))
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
     registry_path = args.checkpoint_dir / "target_registry.json"
     registry_sha = _sha256(registry_path)
@@ -1315,8 +1349,10 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     from microcosm.frame import Frame, WeightKind, Weights
 
     recorded_take_up = _recorded_take_up(identity)
+    staging_summary = _load_json(_staging_summary_path(args))
+    _require_local_immigration(staging_summary)
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    _require_local_hours(frame, staging_summary)
     frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
     if take_up["assigned_sha256"] != recorded_take_up["assigned_sha256"]:
         raise SystemExit(
@@ -1785,6 +1821,44 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_immigration_status_method",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr", "asec_puf"],
+            "columns": list(ACS_LOCAL_IMMIGRATION_COLUMNS),
+            "reason": (
+                "ACS rows run the ASEC immigration stage's cited residual "
+                "method through a CPS-named view of native ACS fields "
+                "(microcosm#1020): CIT for citizenship, the exact YOEP entry "
+                "year for the PEINUSYR bins, POBP for nativity, and HINS3-7 / "
+                "COW / ESR / MIL / SSP / SSIP / SCHG for the legal-status "
+                "indicators. ACS coverage is at interview (CPS: any time last "
+                "year), and the federal-pension, Social Security reason and "
+                "housing-subsidy indicators have no ACS field, so the ACS "
+                "residual (likely undocumented) pool can only be as large or "
+                "larger than the ASEC method would find for the same people. "
+                "The ACS rows target the Pew worker and Higher Ed student "
+                "controls less the donor rows' pooled delivered counts, "
+                "floored at zero, so the pooled file meets each control "
+                "whenever the ACS rows have the capacity. "
+                "years_since_us_entry is an arrival-based status-duration "
+                "proxy: the period minus the measured arrival year (age for "
+                "the US-born). 8 U.S.C. 1613(a) starts the five-year clock at "
+                "entry with qualified status, which neither survey measures, "
+                "so for people who obtained qualified status after arriving "
+                "the proxy runs long and can clear the five-year bar early "
+                "(policyengine-us#9658)."
+            ),
+            "treatment": (
+                "Gated by acs_local_immigration_signal; the staging summary's "
+                "acs_local_immigration receipt records the mapping, the "
+                "per-status control, donor delivered, residual, ACS assigned "
+                "and pooled counts, the adjustment-lag sensitivity of the "
+                "entry clock, and an assignment digest. Packaging refuses a "
+                "receipt whose targets are not the donor residual."
+            ),
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -1860,6 +1934,46 @@ def _require_local_hours(frame, staging_summary: dict) -> None:
         raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
 
 
+def _require_local_immigration(staging_summary: dict) -> dict:
+    """The staging immigration receipt (microcosm#1020), or refuse the staging.
+
+    Staging runs the ACS local immigration stage and its gate before writing
+    the H5. A summary without both is a pre-#1020 staging run, whose ACS
+    persons would all be default-filled citizens with a valid SSN and whose
+    entry clocks would all be the engine default of 5 years. A receipt whose
+    worker and student targets are not the donor residual
+    (:func:`acs_local_immigration_receipt_failures`) predates the #1052
+    review and is refused too.
+    """
+
+    receipt = staging_summary.get("acs_local_immigration")
+    gate = staging_summary.get("acs_local_immigration_gate")
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_IMMIGRATION_ISSUE
+        or not isinstance(receipt.get("assigned_sha256"), str)
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local immigration stage "
+            f"({ACS_LOCAL_IMMIGRATION_ISSUE}): every ACS person would reach the "
+            "engine as a citizen with a valid SSN and every years_since_us_entry "
+            "as the engine default. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    failures = acs_local_immigration_receipt_failures(receipt)
+    if failures:
+        raise SystemExit(
+            "The staging summary's ACS local immigration receipt does not "
+            "target the donor residual (microcosm#1052 review): "
+            + "; ".join(failures)
+            + ". Re-run staging (tools/build_us_acs_multispine_base.py) with "
+            "the current builder."
+        )
+    return receipt
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -1926,6 +2040,11 @@ def do_finalize(args) -> None:
     # constant (the engine-default universal take-up) on either spine, or
     # unanchored or out of band on the ACS spine this tool seeds.
     take_up_gate = acs_local_take_up_signal_gate(frame)
+    # microcosm#1020: refuse immigration labels or entry clocks that are
+    # missing, all-CITIZEN or all at the engine default on either spine,
+    # labels that contradict measured ACS CIT citizenship, and a file outside
+    # the non-citizen and undocumented-anchor bands.
+    immigration_gate = acs_local_immigration_signal_gate(frame)
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -1978,6 +2097,12 @@ def do_finalize(args) -> None:
             "detail": dict(take_up_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
+        ACS_LOCAL_IMMIGRATION_GATE_NAME: {
+            "passed": bool(immigration_gate.passed),
+            "failures": list(immigration_gate.failures),
+            "detail": dict(immigration_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
             # per-row losses at the same cap); the solve must also have
@@ -2021,7 +2146,12 @@ def do_finalize(args) -> None:
                 "transferred: ACS SNAP/TANF take-up is seeded by this tool "
                 "and gated by acs_local_take_up_signal (microcosm#1019); the "
                 "other ACS take-up flags are the reviewed limitation "
-                "acs_take_up_engine_defaults (microcosm#1022)."
+                "acs_take_up_engine_defaults (microcosm#1022). Immigration "
+                "labels are not transferred either: staging derives ACS "
+                "ssn_card_type/immigration_status_str from native ACS fields "
+                "and years_since_us_entry on both spines, gated by "
+                "acs_local_immigration_signal (microcosm#1020; reviewed "
+                "limitation acs_immigration_status_method)."
             ),
         },
         "spine_composition": {
@@ -2070,6 +2200,7 @@ def do_finalize(args) -> None:
             "hours_worked_signal",
             "acs_local_hours_signal",
             ACS_LOCAL_TAKE_UP_GATE_NAME,
+            ACS_LOCAL_IMMIGRATION_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -2199,6 +2330,28 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     return {"passed": True, "failures": [], "engine": engine.label, **summary}
 
 
+def _require_bound_finalize_gate(gates: object, name: str, h5_sha: str) -> None:
+    """Refuse packaging unless the finalize report's ``name`` gate passed on
+    exactly the H5 bytes being packaged.
+
+    A report finalized before the gate existed, a failed gate, or one bound to
+    other bytes (a recalibrate without re-running finalize) cannot vouch for
+    the packaged surface.
+    """
+
+    gate = gates.get(name) if isinstance(gates, dict) else None
+    if (
+        not isinstance(gate, dict)
+        or gate.get("passed") is not True
+        or gate.get("artifact_sha256") != h5_sha
+    ):
+        raise SystemExit(
+            f"Packaging requires a present, passing {name} gate bound to the "
+            "packaged H5; an old simulation_ready summary is insufficient. "
+            "Re-run --stage finalize against the current artifact."
+        )
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
@@ -2288,17 +2441,10 @@ def do_package(args) -> dict:
         )
     # microcosm#1019: a report finalized before the take-up gate existed (or
     # against other bytes) cannot vouch for the packaged ACS take-up surface.
-    take_up_gate = gates.get(ACS_LOCAL_TAKE_UP_GATE_NAME)
-    if (
-        not isinstance(take_up_gate, dict)
-        or take_up_gate.get("passed") is not True
-        or take_up_gate.get("artifact_sha256") != h5_sha
-    ):
-        raise SystemExit(
-            f"Packaging requires a present, passing {ACS_LOCAL_TAKE_UP_GATE_NAME} "
-            "gate bound to the packaged H5; an old simulation_ready summary is "
-            "insufficient. Re-run --stage finalize against the current artifact."
-        )
+    _require_bound_finalize_gate(gates, ACS_LOCAL_TAKE_UP_GATE_NAME, h5_sha)
+    # microcosm#1020: nor, before the immigration gate existed, for the
+    # packaged immigration labels and years_since_us_entry clock.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_IMMIGRATION_GATE_NAME, h5_sha)
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
