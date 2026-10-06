@@ -3747,9 +3747,11 @@ stages:
   - kind: derive
     derived:
       uc_reported_capital: frs_benunit_capital
+      pension_credit_reported_capital: frs_benunit_capital
       would_claim_uc: would_claim_uc OR universal_credit_reported_anchor
   outputs:
   - uc_reported_capital
+  - pension_credit_reported_capital
   rewrites:
   - frs_benunit_capital
   - would_claim_uc

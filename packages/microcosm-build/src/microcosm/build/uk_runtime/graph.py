@@ -872,6 +872,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     "uc_capital_coherence": (
         _Cell("benunit", "uc_reported_capital", "float64"),
+        _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
