@@ -767,7 +767,7 @@
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits"
    ],
-   "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed."
+   "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed. is_severely_disabled_for_benefits is the tax credit severe disability condition on the derived categories (DLA care at the highest rate, PIP daily living at the enhanced rate, or higher-rate Attendance Allowance), so it agrees with policyengine-uk's own formula (pe-uk#1946, uk-data#494); an Armed Forces Compensation Scheme payment alone no longer counts, since FRS code 8 cannot be told apart from Armed Forces Independence Payment."
   },
   {
    "stage": "frs_education",
