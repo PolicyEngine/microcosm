@@ -649,10 +649,12 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
       negative amount, so a loss is entered as a positive amount and
       RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
       engine has no property loss input, and a loss is not set against the
-      household's SUBRENT. That matches the law for the year: an individual's
-      UK property loss is carried forward against future profits of the same
-      property business only (ITA 2007 ss. 118-119), not set against other
-      income.
+      household's SUBRENT. That matches the general rule for the year: an
+      individual's UK property loss is carried forward against future profits
+      of the same property business (ITA 2007 ss. 118-119). Sideways relief
+      against general income exists only for the part of a loss from capital
+      allowances or agricultural expenses (ITA 2007 s. 120), which the FRS
+      does not identify.
 
     Because ROYYR1 nets mortgage capital and interest, it sits below the SPI's
     net income from property (after allowable expenses, before residential
@@ -675,8 +677,9 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
     householder's benefit unit understates that income.
 
     SUBRENT and lodger receipts qualify for Rent a Room relief (ITTOIA 2005
-    Part 7 Chapter 1: £7,500 a year, £3,750 if shared) when the room is in the
-    householder's only or main residence. Here SUBRENT is taxable
+    Part 7 Chapter 1: £7,500 a year, £3,750 if shared) when the letting is of
+    furnished accommodation in the householder's only or main residence
+    (s. 786). Here SUBRENT is taxable
     ``property_income``, so the engine applies only the £1,000 property
     allowance and overstates tax on it, and lodger receipts are not counted at
     all (above). Routing SUBRENT to policyengine-uk's ``sublet_income`` and the
