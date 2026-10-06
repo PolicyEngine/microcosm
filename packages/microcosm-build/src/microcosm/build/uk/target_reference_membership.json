@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1253,
-  "contract_target_count": 340,
-  "active_reference_count": 1230,
+  "candidate_count": 1254,
+  "contract_target_count": 341,
+  "active_reference_count": 1231,
   "status_counts": {
-    "active": 1230,
+    "active": 1231,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -4069,6 +4069,10 @@
       "geography_id": "K03000001"
     },
     "dwp.hb.households_pension_age_private_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.amount_pension_age": {
       "geography_level": "country",
       "geography_id": "K03000001"
     },
@@ -29170,6 +29174,21 @@
           "resolved_value": 216778.66666666666,
           "resolved_fact_period": "2025-12",
           "resolved_fact_key": "ledger_aggregate_fact_v2_f46445e7e639bfd9fea6921b"
+        }
+      ]
+    },
+    "dwp.hb.amount_pension_age": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.amount_pension_age",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 7048818510.96767,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3631e3adc6a555d6845a1252"
         }
       ]
     },

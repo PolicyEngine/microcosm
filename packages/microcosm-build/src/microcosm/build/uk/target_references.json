@@ -267,6 +267,7 @@
       "dwp.esa_claimants": "dwp.legacy_benefits",
       "dwp.esa_contrib_claimants": "dwp.legacy_benefits",
       "dwp.esa_income_claimants": "dwp.legacy_benefits",
+      "dwp.hb.amount_pension_age": "dwp.legacy_benefits",
       "dwp.hb.households": "dwp.housing_benefit",
       "dwp.hb.households_pension_age": "dwp.legacy_benefits",
       "dwp.hb.households_pension_age_private_rented": "dwp.legacy_benefits",
@@ -594,6 +595,7 @@
       "dwp.esa_claimants": "Employment and Support Allowance claimants",
       "dwp.esa_contrib_claimants": "Employment and Support Allowance contrib claimants",
       "dwp.esa_income_claimants": "Employment and Support Allowance income claimants",
+      "dwp.hb.amount_pension_age": "Housing Benefit spending, pension age",
       "dwp.hb.households": "Housing Benefit claimants, all tenures",
       "dwp.hb.households_pension_age": "Housing Benefit benefit units, pension age",
       "dwp.hb.households_pension_age_private_rented": "Housing Benefit benefit units, pension age, private rented sector",
@@ -45090,6 +45092,33 @@
       },
       "period_match_policy": "source_window",
       "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.hb.amount_pension_age",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_expenditure_amount",
+        "entity_name": "government",
+        "dimension_values": {
+          "benefit_forecast_line": "housing_benefits__housing_benefitover_pension_credit_qualifying_age"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "expenditure_2024",
+          "2025": "expenditure_2025"
+        },
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/amount_pension_age",
+      "family": "dwp_benefit_expenditure",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.amount_pension_age",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "hmrc.salary_sacrifice.it_relief_total",

@@ -830,6 +830,7 @@
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
+      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
       "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
     },
     "suppressed_ancestors": {
@@ -1203,6 +1204,7 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
+      "dwp.hb.amount_pension_age",
       "hmrc.salary_sacrifice.it_relief_total"
     ]
   },
@@ -26788,6 +26790,91 @@
       "label": "Housing Benefit benefit units, pension age, private rented sector",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.hb.amount_pension_age",
+      "family": "dwp_benefit_expenditure",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefits.housing_benefit.amount",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/amount_pension_age",
+          "value_variable": "housing_benefit",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 66
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP benefit expenditure and caseload tables, Spring Forecast 2026 (PolicyEngine/chronicle#280 / #282): the Housing_benefits worksheet line 'Housing Benefit over Pension Credit qualifying age', nominal GBP, which DWP publishes for Great Britain plus residents overseas (Notes tab), so the model column sums Great Britain households only (microcosm#1095, uk-data#490). Bound at the calendar-2025 window of the fiscal years (three twelfths of the FY2024-25 outturn, nine twelfths of the FY2025-26 forecast; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year. DWP gives each year its own measure (expenditure_2024, expenditure_2025), so the selector names each year's measure in source_measure_id_by_opening_year. DWP splits Housing Benefit at Pension Credit qualifying age; the engine reads the age of the benefit unit's eldest adult against 66, the State Pension age of everyone who reaches it in 2025, as the pension-age caseload rows do (microcosm#1069 c10, #867)."
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/amount_pension_age",
+          "status": "pending",
+          "value_rule": "uk.benefits.housing_benefit.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_expenditure_amount",
+        "entity_name": "government",
+        "dimension_values": {
+          "benefit_forecast_line": "housing_benefits__housing_benefitover_pension_credit_qualifying_age"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "expenditure_2024",
+          "2025": "expenditure_2025"
+        }
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Housing Benefit spending, pension age",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "hmrc.salary_sacrifice.it_relief_total",
