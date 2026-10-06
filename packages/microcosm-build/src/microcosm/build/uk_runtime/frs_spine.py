@@ -193,6 +193,7 @@ OUTPUT_COLUMNS = (
     "is_household_head",
     "is_benunit_head",
     "is_parent",
+    "is_blind",
     "is_uc_claimant",
     "employment_income",
     "self_employment_income",
@@ -481,6 +482,12 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_person["is_parent"] = pe_person["person_id"].isin(adult_ids) & pe_person[
         "person_benunit_id"
     ].map(dependent_by_benunit).fillna(0).gt(0)
+    # Registered blind or severely sight impaired with the local authority
+    # (SPCREG1, asked on the adult and child tabs alike). Registration follows
+    # the consultant ophthalmologist's certificate the engine's is_blind
+    # names; partial-sight registration (SPCREG2) does not meet that test
+    # (uk-data#523).
+    pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
     pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
     pe_person["self_employment_income"] = _positive(person, "seincam2") * WEEKS_IN_YEAR
@@ -1016,6 +1023,8 @@ def _positive(frame: pd.DataFrame, column: str) -> pd.Series:
     return np.maximum(_number(frame, column), 0)
 
 
+#: FRS yes code for the local-authority registration questions (SPCREG1-3).
+FRS_REGISTERED_YES = 1
 #: FRS period codes (SN 9563 code frame) for an amount reported per calendar
 #: month and per year.
 FRS_PERIOD_CALENDAR_MONTH = 5

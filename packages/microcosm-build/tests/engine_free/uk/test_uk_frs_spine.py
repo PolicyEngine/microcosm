@@ -1171,6 +1171,35 @@ def test_household_subrent_column_floors_missing_value_codes(
     assert household.loc[2, "subrent"] == pytest.approx(6 * WEEKS_IN_YEAR)
 
 
+def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
+    tmp_path: Path,
+) -> None:
+    """``is_blind`` is SPCREG1 registration, never partial sight (uk-data#523)."""
+
+    tables = _fixture_tables()
+    adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    # Registered blind; registered partially sighted only; and the child tab
+    # asks the same registration question.
+    adult_1.update({"SPCREG1": 1, "SPCREG2": 2})
+    adult_2.update({"SPCREG1": 2, "SPCREG2": 1})
+    tables["child"][0]["SPCREG1"] = 1
+    stage = _write_fixture(tmp_path / "registered", tables)
+
+    person = build_uk_frs_spine_frame(tmp_path / "registered", stage=stage).table(
+        "person"
+    )
+    blind = person.set_index("person_id")["is_blind"]
+
+    assert blind.dtype == bool
+    assert blind.to_dict() == {1001: True, 1002: True, 2001: False}
+
+    # A person the question was not asked of (blank SPCREG1) is not blind.
+    stage = _write_fixture(tmp_path / "unasked")
+    person = build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage).table("person")
+    assert not person["is_blind"].any()
+
+
 @pytest.mark.parametrize("couple_has_children", [False, True])
 def test_uc_claimant_input_uses_frs_membership_not_age_or_marriage(
     tmp_path: Path, couple_has_children: bool

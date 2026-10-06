@@ -58,6 +58,7 @@
       "incapacity_benefit_reported": "float64",
       "income_support_reported": "float64",
       "is_benunit_head": "bool",
+      "is_blind": "bool",
       "is_household_head": "bool",
       "is_parent": "bool",
       "is_uc_claimant": "bool",

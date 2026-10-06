@@ -426,6 +426,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "TUBORR": 500.0,
             "ACCSSAMT": 1.0,
             "ACCSSPD": 52.0,
+            # Registered blind (SPCREG1 1) on every seventh adult; the
+            # partial-sight registration (SPCREG2) is never read.
+            "SPCREG1": 1 if household_id % 7 == 0 else 2,
+            "SPCREG2": 1 if household_id % 5 == 0 else 2,
             "GRTDIR1": 2.0,
             "GRTDIR2": 3.0,
             "HEARTVAL": 5.0,
@@ -457,6 +461,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "FSFVVAL": 1.0,
                     "FSBVAL": 2.0,
                     "HEARTVAL": 4.0,
+                    "SPCREG1": 1 if household_id % 9 == 0 else 2,
                 }
             )
         accounts.extend(

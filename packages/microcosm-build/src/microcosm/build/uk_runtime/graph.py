@@ -489,6 +489,7 @@ _ROOT_PERSON_BOOL = {
     "is_household_head",
     "is_benunit_head",
     "is_parent",
+    "is_blind",
     "is_uc_claimant",
     "would_claim_carers_allowance",
 }

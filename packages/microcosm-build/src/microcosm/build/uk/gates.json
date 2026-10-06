@@ -908,6 +908,7 @@
           "person.has_lifetime_isa",
           "person.highest_education",
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
+          "person.is_blind",
           "person.is_in_non_advanced_education",
           "person.is_parent",
           "person.is_uc_claimant",
