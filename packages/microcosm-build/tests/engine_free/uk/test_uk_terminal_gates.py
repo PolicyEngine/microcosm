@@ -545,8 +545,20 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # is retired with the microcosm#1095 ports: with FRS respondents keeping
     # their reported dividends and SPI draws going to claimants and partners
     # only, the cell fits at +11.7 % on the rebased head, and the gate fails
-    # the deferral as stale.
-    assert register == {}
+    # the deferral as stale. The West Midlands 12,570-15,000 cell is deferred
+    # on the second microcosm#1095 ports (2026-10-06, four weeks): the
+    # regional cells slice on the engine's total_income, which leaves out the
+    # other investment income that income tax charges, and on policyengine-uk
+    # 2.122.2 the solver's pull on the cell stops at +27.4 %.
+    assert set(register) == {
+        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
+    }
+    deferral = register[
+        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
+    ]
+    assert deferral.approved_on == "2026-10-06"
+    assert deferral.expires_on == "2026-11-03"
+    assert "microcosm#1095" in deferral.adjudication
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -571,7 +583,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **empty_tail,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 10, 2),
+        now=date(2026, 10, 6),
     )
 
     assert not fit.passed
@@ -593,7 +605,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     fit = uk_target_fit_gate(
         {name: relative_error},
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 10, 2),
+        now=date(2026, 10, 6),
     )
 
     assert fit.passed is passes
@@ -608,7 +620,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
         reviewed_exclusions=register,
-        now=date(2026, 10, 2),
+        now=date(2026, 10, 6),
     )
     assert not fit.passed
     assert fit.details["failing_targets"] == {"hmrc.cgt.liability_total@2025": 0.30}
