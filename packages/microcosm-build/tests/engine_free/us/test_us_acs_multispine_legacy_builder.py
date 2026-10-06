@@ -196,6 +196,9 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "is_disabled": {"source": "acs_2024_1yr_native", "imputed_rows": 0},
         "is_blind": {"source": "acs_2024_1yr_native", "imputed_rows": 0},
     }
+    # What build_optional_acs_multispine records for the separate ASEC-channel
+    # income transfer pass (microcosm#1022).
+    income_receipt = {"issue": "microcosm#1022", "donor_channel": "asec"}
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -279,6 +282,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                     }
                 ],
                 "acs_local_work_disability": work_disability_receipt,
+                "acs_local_income_transfer": income_receipt,
             },
         )
 
@@ -302,6 +306,17 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         assert frame is labelled
         return GateResult(
             name="acs_local_immigration_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
+    def fake_income_gate(frame, *, receipt):
+        assert frame is labelled
+        assert receipt is income_receipt
+        order.append("income_gate")
+        return GateResult(
+            name="acs_local_income_transfer_signal",
             passed=True,
             failures=(),
             details={"per_spine": {}},
@@ -400,6 +415,14 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch.setattr(
         builder, "acs_local_work_disability_signal_gate", fake_work_disability_gate
     )
+    monkeypatch.setattr(
+        builder,
+        "require_acs_local_income_donor",
+        lambda frame: captured.setdefault("income_donor", frame),
+    )
+    monkeypatch.setattr(
+        builder, "acs_local_income_transfer_signal_gate", fake_income_gate
+    )
 
     arguments = [
         "--base-h5",
@@ -452,6 +475,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "target_families": transfer_plan,
         "hours_under15_policy": None,
         "work_disability_inputs": True,
+        "income_transfer": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -464,7 +488,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert captured["audited"] is True
     # microcosm#1021: the work/disability gate sees the labelled frame, after
     # the immigration stage and before the input-null audit.
-    assert order == ["immigration", "work_disability_gate", "null_audit"]
+    assert order == [
+        "immigration",
+        "work_disability_gate",
+        "income_gate",
+        "null_audit",
+    ]
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
@@ -486,6 +515,14 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert summary["acs_local_immigration"] == immigration_receipt
     assert summary["acs_local_immigration_gate"] == {
         "name": "acs_local_immigration_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    assert captured["income_donor"] is base
+    assert summary["acs_local_income_transfer"] == income_receipt
+    assert summary["acs_local_income_transfer_gate"] == {
+        "name": "acs_local_income_transfer_signal",
         "passed": True,
         "failures": [],
         "details": {"per_spine": {}},
