@@ -14,15 +14,14 @@ from pathlib import Path
 
 import pytest
 
+from test_support.microcosm_build.route_a_driver import (
+    ROUTE_A_TOOLS,
+    SECRET_ALIASES,
+    write_executable,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
-ROUTE_A_TOOLS = _TEST_PATHS.repository / "tools" / "route_a"
-_SECRET_ALIASES = (
-    "HUGGING_FACE_HUB_TOKEN",
-    "HUGGINGFACE_HUB_TOKEN",
-    "HUGGING_FACE_TOKEN_MAX",
-)
 
 
 def _function(name: str) -> str:
@@ -80,12 +79,6 @@ def _flag_checker():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _write_executable(path: Path, source: str) -> Path:
-    path.write_text(source, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def _shell_sources() -> list[Path]:
@@ -256,7 +249,7 @@ def test_wrapper_secret_reaches_only_child_environment(tmp_path: Path) -> None:
 
     Engine-free and psutil-free: it runs the wrapper directly under ``bash -x``.
     The same check through the real supervisor, which needs psutil, lives in
-    ``engine_workflow/us/test_route_a_supervisor_secrets.py``.
+    ``engine_workflow/us/test_route_a_driver.py``.
     """
 
     wrapper_source = (ROUTE_A_TOOLS / "with_hf_token.sh").read_text(encoding="utf-8")
@@ -268,7 +261,7 @@ def test_wrapper_secret_reaches_only_child_environment(tmp_path: Path) -> None:
     # This deliberately does not resemble a Hub credential and never invokes
     # the actual agent-secret executable.
     marker = "route-a-dummy-environment-value"
-    secret = _write_executable(
+    secret = write_executable(
         tmp_path / "secret-stub",
         """#!/bin/bash
 set -eu
@@ -283,7 +276,7 @@ printf '%s\\n' "$ROUTE_A_TEST_SECRET" >&2
         """import json, os, subprocess, sys
 marker = os.environ["ROUTE_A_TEST_SECRET"]
 argv = subprocess.run(
-    ["ps", "-o", "args=", "-p", str(os.getpid())],
+    ["ps", "-ww", "-o", "args=", "-p", str(os.getpid())],
     capture_output=True, text=True, check=True,
 ).stdout
 payload = {
@@ -302,7 +295,7 @@ print("dummy release child finished")
         encoding="utf-8",
     )
     env = {**os.environ, "ROUTE_A_TEST_SECRET": marker, "HF_TOKEN": "stale-value"}
-    env.update(dict.fromkeys(_SECRET_ALIASES, "stale-value"))
+    env.update(dict.fromkeys(SECRET_ALIASES, "stale-value"))
     process = subprocess.Popen(
         [
             "bash",
@@ -334,7 +327,7 @@ print("dummy release child finished")
 
 @pytest.mark.parametrize("secret_result", ["empty", "failed"])
 def test_wrapper_refuses_missing_secret(tmp_path: Path, secret_result: str) -> None:
-    secret = _write_executable(
+    secret = write_executable(
         tmp_path / "secret-stub",
         "#!/bin/bash\n"
         + (
@@ -344,7 +337,7 @@ def test_wrapper_refuses_missing_secret(tmp_path: Path, secret_result: str) -> N
         ),
     )
     sentinel = tmp_path / "child-started"
-    child = _write_executable(tmp_path / "child-stub", '#!/bin/bash\ntouch "$1"\n')
+    child = write_executable(tmp_path / "child-stub", '#!/bin/bash\ntouch "$1"\n')
     result = subprocess.run(
         [
             "bash",

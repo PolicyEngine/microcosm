@@ -2,7 +2,7 @@
 
 The supervisor imports psutil, which the engine-free job does not install, so
 this runs in the US engine job. The engine-free twin in
-``engine_free/us/test_route_a_driver.py`` checks the wrapper on its own.
+``engine_free/us/test_route_a_driver.py`` (same basename, per the agent guide's split rule) checks the wrapper on its own.
 """
 
 from __future__ import annotations
@@ -15,20 +15,11 @@ from pathlib import Path
 
 import psutil  # noqa: F401 - the supervisor needs it; fail here, not in the child
 
-from test_support.paths import paths_for
-
-ROUTE_A_TOOLS = paths_for("microcosm-build").repository / "tools" / "route_a"
-_SECRET_ALIASES = (
-    "HUGGING_FACE_HUB_TOKEN",
-    "HUGGINGFACE_HUB_TOKEN",
-    "HUGGING_FACE_TOKEN_MAX",
+from test_support.microcosm_build.route_a_driver import (
+    ROUTE_A_TOOLS,
+    SECRET_ALIASES,
+    write_executable,
 )
-
-
-def _write_executable(path: Path, source: str) -> Path:
-    path.write_text(source, encoding="utf-8")
-    path.chmod(0o755)
-    return path
 
 
 def test_supervised_release_gets_the_credential_only_in_its_environment(
@@ -37,7 +28,7 @@ def test_supervised_release_gets_the_credential_only_in_its_environment(
     # This deliberately does not resemble a Hub credential and never invokes
     # the actual agent-secret executable.
     marker = "route-a-dummy-environment-value"
-    secret = _write_executable(
+    secret = write_executable(
         tmp_path / "secret-stub",
         """#!/bin/bash
 set -eu
@@ -96,7 +87,7 @@ print("dummy release child finished")
         encoding="utf-8",
     )
     env = {**os.environ, "ROUTE_A_TEST_SECRET": marker, "HF_TOKEN": "stale-value"}
-    env.update(dict.fromkeys(_SECRET_ALIASES, "stale-value"))
+    env.update(dict.fromkeys(SECRET_ALIASES, "stale-value"))
     out = tmp_path / "release-sup"
     result = subprocess.run(
         [sys.executable, str(ROUTE_A_TOOLS / "supervise.py"), str(out), str(config)],
