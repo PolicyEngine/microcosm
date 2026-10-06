@@ -196,6 +196,8 @@ OUTPUT_COLUMNS = (
     "is_parent",
     "is_blind",
     "is_uc_claimant",
+    "is_claimant_or_partner",
+    "is_hbai_dependent_child",
     "uc_is_in_startup_period",
     "employment_income",
     "self_employment_income",
@@ -514,6 +516,16 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     # does not promote a dependent child to a partner, and legal marriage
     # alone does not establish that a partner lives in this benefit unit.
     pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
+    # policyengine-uk's person types (pe-uk#1896). Every FRS person is on the
+    # adult table or the child table: the adult table holds each benefit
+    # unit's head and any partner (uk-data#524), the child table its HBAI
+    # dependent children (uk-data#486). Supplying both stops the engine
+    # inferring them from ages.
+    # The claimant mask above already refuses a benefit unit without one or
+    # two adult records, so membership is a well-formed role.
+    adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    pe_person["is_claimant_or_partner"] = adult_record
+    pe_person["is_hbai_dependent_child"] = ~adult_record
     pe_person["uc_is_in_startup_period"] = frs_uc_start_up_period(
         person,
         pe_person,

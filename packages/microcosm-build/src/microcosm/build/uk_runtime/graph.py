@@ -491,6 +491,8 @@ _ROOT_PERSON_BOOL = {
     "is_parent",
     "is_blind",
     "is_uc_claimant",
+    "is_claimant_or_partner",
+    "is_hbai_dependent_child",
     "uc_is_in_startup_period",
     "would_claim_carers_allowance",
 }

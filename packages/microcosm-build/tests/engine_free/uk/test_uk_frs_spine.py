@@ -1223,6 +1223,61 @@ def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
     assert not person["is_blind"].any()
 
 
+def test_person_types_follow_the_adult_and_child_tables(tmp_path: Path) -> None:
+    """Claimant or partner is the adult table, HBAI dependent child the child
+    table (uk-data#524, uk-data#486), whatever the ages say."""
+
+    tables = _fixture_tables()
+    # A 19-year-old on the child table stays a dependent child, and a
+    # 17-year-old partner on the adult table is a claimant's partner.
+    tables["child"][0]["AGE"] = 19
+    tables["adult"].append(
+        {
+            **tables["adult"][0],
+            "PERSON": 2,
+            "UPERSON": 2,
+            "HRPID": 0,
+            "AGE": 17,
+            "MARITAL": 2,
+            "RELHRP": 2,
+            "R01": 2,
+            "R02": "",
+        }
+    )
+    stage = _write_fixture(tmp_path, tables)
+
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+
+    assert person["is_claimant_or_partner"].to_dict() == {
+        1001: True,
+        1002: False,
+        2001: True,
+        2002: True,
+    }
+    assert (
+        person["is_hbai_dependent_child"] == ~person["is_claimant_or_partner"]
+    ).all()
+    assert person["is_claimant_or_partner"].dtype == bool
+
+
+def test_a_benefit_unit_with_three_adult_records_refuses(tmp_path: Path) -> None:
+    tables = _fixture_tables()
+    for number in (2, 3):
+        tables["adult"].append(
+            {**tables["adult"][0], "PERSON": number, "UPERSON": number, "HRPID": 0}
+        )
+    stage = _write_fixture(tmp_path, tables)
+
+    # The claimant mask refuses it, so adult-table membership is always a
+    # single claimant or a couple (uk-data#524).
+    with pytest.raises(ValueError, match="one or two claimants per benefit unit"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
 @pytest.mark.parametrize("couple_has_children", [False, True])
 def test_uc_claimant_input_uses_frs_membership_not_age_or_marriage(
     tmp_path: Path, couple_has_children: bool

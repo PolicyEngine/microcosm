@@ -258,6 +258,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
     "person.is_blind",
+    "person.is_claimant_or_partner",
+    "person.is_hbai_dependent_child",
     "person.is_in_non_advanced_education",
     "person.is_parent",
     "person.is_uc_claimant",

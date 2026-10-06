@@ -59,6 +59,8 @@
       "income_support_reported": "float64",
       "is_benunit_head": "bool",
       "is_blind": "bool",
+      "is_claimant_or_partner": "bool",
+      "is_hbai_dependent_child": "bool",
       "is_household_head": "bool",
       "is_parent": "bool",
       "is_uc_claimant": "bool",
