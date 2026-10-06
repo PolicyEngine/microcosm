@@ -640,8 +640,12 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
       SUBLTAMT and INRINC count it for every tenure, so renting and rent-free
       households count too. It goes to the household reference person.
       ``household`` must be indexed by ``household_id``.
-    - ROYYR1, the person's rent from other property, before tax and after
-      allowable expenses (question PropRent). The questionnaire cannot take a
+    - ROYYR1, the person's rent before tax from other property, in the UK or
+      abroad, after paying for the things on show card K6 (question
+      PropRent). The card lists mortgage payments and interest on a loan to
+      buy the property alongside repairs, rent, rates, insurance and
+      services, so ROYYR1 is also net of finance costs and mortgage capital,
+      which a landlord cannot deduct for tax. The questionnaire cannot take a
       negative amount, so a loss is entered as a positive amount and
       RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
       engine has no property loss input, and a loss is not set against the
