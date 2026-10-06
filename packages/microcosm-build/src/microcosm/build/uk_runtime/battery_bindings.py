@@ -78,7 +78,10 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
-from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
+from microcosm.build.uk_runtime.national_frame import (
+    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    _uk_gate_surface,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
@@ -122,6 +125,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_gate,
 )
 from microcosm.calibrate.registry import TargetSpec
+from microcosm.frame import Frame
 
 __all__ = [
     "UK_GATE_REGISTRY",
@@ -226,14 +230,21 @@ def _evaluate_release_input_coverage(
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
     # where they live; the coverage halves read the release frame.
+    # The spine frame itself (the certifier's ``--spine-h5``), or the spine
+    # checkpoint's published build state (weight kind, period, mass log: all
+    # the build-state half reads) when a graph build hands it over.
     spine_frame = context.artifacts.get("spine_frame")
+    if spine_frame is None:
+        build_state = None
+    elif isinstance(spine_frame, Frame):
+        build_state = _uk_gate_surface(spine_frame)
+    else:
+        build_state = spine_frame
     return uk_release_input_coverage_gate(
         _uk_gate_surface(context.frame),
         engine,
         manifest=manifest,
-        build_state_frame=None
-        if spine_frame is None
-        else _uk_gate_surface(spine_frame),
+        build_state_frame=build_state,
     )
 
 
@@ -934,6 +945,10 @@ def _evaluate_degenerate_release_surface(
         _uk_gate_surface(context.frame),
         reviewed_exclusions=resolved,
         now=_exclusion_clock(context),
+        # The release boundary drops these before writing; the certifier never
+        # sees them on the exported H5, so a gate fed the pre-export frame
+        # must not report them (found by the first graph dense build).
+        dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         **kwargs,
     )
 

@@ -16,13 +16,14 @@ from collections.abc import Mapping
 from dataclasses import asdict, replace
 from importlib import metadata
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.calibrate import TargetRegistry
-from microcosm.frame import Frame, engine_tables
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -658,6 +659,15 @@ class UKFullGateKernel(KernelBase):
             raise ValueError("UK full gate manifest differs from its declared binding.")
         stage_evidence, fit_weight_records = _spine_gate_evidence(context)
         supporting = _source_gate_evidence(context, self.engine)
+        if "spine_build_state" in context.artifacts:
+            state = json.loads(context.artifacts["spine_build_state"].payload)
+            supporting["spine_build_state"] = SimpleNamespace(
+                household_weight_kind=WeightKind(str(state["household_weight_kind"])),
+                time_period=str(state["time_period"]),
+                mass_log=tuple(
+                    MassChangeRecord(**record) for record in state["mass_log"]
+                ),
+            )
         phase = str(context.params["phase"])
         diagnostics = []
         support = []
@@ -842,7 +852,7 @@ def append_uk_full_gate_nodes(
     from ..gate_battery import _gates_manifest_payload
     from ..stage_evidence import STAGE_EVIDENCE_TYPE
     from .full_gates import uk_full_gate_manifest
-    from .graph_evidence import SPINE_GATE_REPORT_TYPE
+    from .graph_evidence import SPINE_BUILD_STATE_TYPE, SPINE_GATE_REPORT_TYPE
     from .graph_targets import TARGET_SELECTION_TYPE, TARGET_SURFACE_TYPE
 
     if not engine_identity:
@@ -914,6 +924,26 @@ def append_uk_full_gate_nodes(
         if any(source.name == "uk_input_mass_reference" for source in graph.sources)
         else ()
     )
+    # The spine checkpoint's build state, when the bound checkpoint publishes
+    # it: the input-coverage gate reads the stages' importance weights and
+    # mass receipts from it rather than from the calibrated release frame.
+    build_state: tuple[ArtifactInput, ...] = ()
+    if spine_provenance is not None:
+        producer = next(
+            (node for node in graph.nodes if node.id == spine_provenance.producer),
+            None,
+        )
+        if producer is not None and any(
+            output.name == "spine_build_state" for output in producer.artifact_outputs
+        ):
+            build_state = (
+                ArtifactInput(
+                    "spine_build_state",
+                    spine_provenance.producer,
+                    "spine_build_state",
+                    SPINE_BUILD_STATE_TYPE,
+                ),
+            )
     final = Node(
         "uk.full.gates.calibrated",
         UKFullGateKernel.ref,
@@ -923,6 +953,7 @@ def append_uk_full_gate_nodes(
         params={**params, "phase": "terminal"},
         artifact_inputs=(
             *common,
+            *build_state,
             prerequisite,
             ArtifactInput(
                 "problem", calibration.problem_producer, "problem", PROBLEM_TYPE

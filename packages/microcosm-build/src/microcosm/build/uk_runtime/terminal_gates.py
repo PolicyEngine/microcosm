@@ -184,8 +184,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # #1063: the residential split's arm flag and index.
     "household.household_is_cgt_residential_clone",
     "household.cgt_residential_clone_index",
-    "household.clone_index",
-    "household.constituency_code_oa",
+    "household.household_clone_index",
+    "household.constituency_code",
     "household.consumer_debt",
     # microcosm#932: the five nation-native aliases of the atomic assignment
     # (output_area_code, data_zone_code, intermediate_zone_code,
@@ -211,7 +211,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_local_bus_trips",
     "household.spi_income_band_donor_lower_bound",
     "household.intermediate_zone_code",
-    "household.la_code_oa",
+    "household.local_authority_code",
     # #953: the engine's household local_authority enum input, written by the
     # rowwise geography ladder from local_authority_code. The incumbent never
     # carried it, so the coverage manifest cannot list it; this allow-list
@@ -228,7 +228,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.private_pension_wealth",
     "household.property_purchased",
     "household.rail_usage",
-    "household.region_code_oa",
+    "household.region_code",
     "household.stocks_and_shares_isa",
     "household.super_data_zone_code",
     "person.a_and_e_visits",
@@ -331,6 +331,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.person_support_channel",
     "person.person_support_clone_index",
     "person.srp_regular_code5",
+    "benunit.benunit_clone_index",
+    "person.person_clone_index",
+    "household.itl1_code",
+    "household.itl2_code",
+    "household.itl3_code",
+    "household.ward_code",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -457,6 +463,7 @@ def uk_degenerate_release_surface_gate(
     *,
     reviewed_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     now: date | None = None,
+    dropped_at_export: Mapping[str, Iterable[str]] | None = None,
 ) -> GateResult:
     """Reject every all-null, all-zero, or constant nonstructural column.
 
@@ -471,6 +478,14 @@ def uk_degenerate_release_surface_gate(
     exclusions = coerce_reviewed_exclusions(
         reviewed_exclusions, label="UK degenerate-surface"
     )
+    # Columns the release boundary drops before writing: a gate fed the
+    # pre-export frame skips them, exactly as the certifier never sees them
+    # on the exported H5; the skipped names are recorded in the details.
+    dropped = {
+        entity: frozenset(str(column) for column in columns)
+        for entity, columns in (dropped_at_export or {}).items()
+    }
+    skipped_at_export: list[str] = []
     present: set[str] = set()
     live: dict[str, dict[str, object]] = {}
     excluded: dict[str, dict[str, object]] = {}
@@ -480,6 +495,9 @@ def uk_degenerate_release_surface_gate(
         structural = _STRUCTURAL_COLUMNS[entity]
         for column in table.columns:
             if column in structural:
+                continue
+            if column in dropped.get(entity, frozenset()):
+                skipped_at_export.append(f"{entity}.{column}")
                 continue
             checked += 1
             name = f"{entity}.{column}"
@@ -580,6 +598,7 @@ def uk_degenerate_release_surface_gate(
         failures=tuple(failures),
         details={
             "columns_checked": checked,
+            "dropped_at_export": sorted(skipped_at_export),
             "findings": dict(sorted(live.items())),
             "all_null_columns": by_kind["all_null"],
             "all_zero_columns": by_kind["all_zero"],

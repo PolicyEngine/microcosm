@@ -844,3 +844,24 @@ def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside()
     assert plain.details["evaluated_on"] == "row_weights"
     assert "family_folded" not in plain.details
     assert not plain.passed
+
+
+def test_degenerate_gate_skips_columns_the_release_boundary_drops() -> None:
+    """A gate fed the pre-export frame must not report a column the exported
+    H5 never carries: the skipped names are recorded, nothing else changes."""
+    dataset = _dataset(signal=0.0)  # person.employment_income is all-zero
+    reported = uk_degenerate_release_surface_gate(dataset)
+    assert reported.passed is False
+    assert any("person.employment_income" in line for line in reported.failures)
+
+    skipped = uk_degenerate_release_surface_gate(
+        dataset, dropped_at_export={"person": ("employment_income",)}
+    )
+    assert skipped.passed is True
+    assert skipped.details["dropped_at_export"] == ["person.employment_income"]
+    assert skipped.details["columns_checked"] == reported.details["columns_checked"] - 1
+    # a drop list naming an absent column is inert
+    inert = uk_degenerate_release_surface_gate(
+        _dataset(), dropped_at_export={"household": ("not_a_column",)}
+    )
+    assert inert.passed is True and inert.details["dropped_at_export"] == []
