@@ -792,8 +792,11 @@ def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
     }
     assert diagnostics_rotated_holdout(skipped) == {"skipped": True}
     UKSkippedRotatedHoldout.model_validate({"skipped": True})
+    # The schema admits the graph's artifact fields too; an undeclared field
+    # is still refused.
+    UKSkippedRotatedHoldout.model_validate(skipped)
     with pytest.raises(ValidationError):
-        UKSkippedRotatedHoldout.model_validate(skipped)
+        UKSkippedRotatedHoldout.model_validate({**skipped, "invented": 1})
 
     measured = {
         "report_only": True,

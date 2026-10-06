@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from typing import Annotated, Final, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -482,6 +482,8 @@ class UKMeasuredRotatedHoldout(DiagnosticsModel):
     worst_holdout_loss: NonNegativeFiniteFloat
     fold_losses: list[NonNegativeFiniteFloat]
     folds: list[UKRotatedHoldoutFold]
+    #: The graph's holdout artifact binds the measurement to its inputs.
+    graph_binding: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def reconcile_folds(self) -> UKMeasuredRotatedHoldout:
@@ -519,7 +521,19 @@ class UKMeasuredRotatedHoldout(DiagnosticsModel):
 
 
 class UKSkippedRotatedHoldout(DiagnosticsModel):
+    """A holdout that was not measured.
+
+    The bare marker is the record; the graph's holdout artifact also carries
+    its report-only flag, the reason the holdout was skipped and the kernel's
+    binding to its inputs, which the record admits so the graph's artifact
+    validates as it is emitted (the first K=25 build, 2026-10-06, failed its
+    terminal gates on exactly that).
+    """
+
     skipped: Literal[True]
+    report_only: Literal[True] | None = None
+    reason: NonBlankText | None = None
+    graph_binding: dict[str, Any] | None = None
 
 
 UKRotatedHoldout = UKMeasuredRotatedHoldout | UKSkippedRotatedHoldout
