@@ -1145,6 +1145,30 @@ def test_property_income_matches_a_merge_of_the_raw_tabs(
     assert (built.drop(expected.index) == 0).all()
 
 
+@pytest.mark.parametrize("code", [-1.0, -9.0])
+def test_household_subrent_column_floors_missing_value_codes(
+    tmp_path: Path, code: float
+) -> None:
+    """A negative SUBRENT is an FRS missing-value code, not an amount.
+
+    The household ``subrent`` column floors it at zero, as the reference
+    person's ``property_income`` does, so later stages never read a negative
+    sub-letting rent; a reported amount passes through annualised.
+    """
+
+    tables = _fixture_tables()
+    for household in tables["househol"]:
+        if household["SERNUM"] == 1:
+            household["SUBRENT"] = code
+    stage = _write_fixture(tmp_path, tables)
+
+    frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
+    household = frame.table("household").set_index("household_id")
+
+    assert household.loc[1, "subrent"] == 0
+    assert household.loc[2, "subrent"] == pytest.approx(6 * WEEKS_IN_YEAR)
+
+
 @pytest.mark.parametrize("couple_has_children", [False, True])
 def test_uc_claimant_input_uses_frs_membership_not_age_or_marriage(
     tmp_path: Path, couple_has_children: bool

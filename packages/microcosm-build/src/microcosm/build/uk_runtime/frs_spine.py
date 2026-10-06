@@ -676,10 +676,12 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
 
     SUBRENT and lodger receipts qualify for Rent a Room relief (ITTOIA 2005
     Part 7 Chapter 1: £7,500 a year, £3,750 if shared) when the room is in the
-    householder's only or main residence. Here they are taxable
+    householder's only or main residence. Here SUBRENT is taxable
     ``property_income``, so the engine applies only the £1,000 property
-    allowance and overstates tax on them. Routing them to policyengine-uk's
-    ``sublet_income`` needs the engine to apply the relief first.
+    allowance and overstates tax on it, and lodger receipts are not counted at
+    all (above). Routing SUBRENT to policyengine-uk's ``sublet_income`` and the
+    lodgers' payments to the householder needs the engine to apply the relief
+    first.
     """
 
     is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
