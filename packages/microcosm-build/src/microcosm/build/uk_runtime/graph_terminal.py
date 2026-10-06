@@ -1342,11 +1342,17 @@ def rowwise_candidate_manifest_from_graph(
     unenforced_failures = [
         line for line in blocking_lines if line[1:].split("]")[0] in unenforced
     ]
+    representation = dict(bindings.get("measure_resolution", {})).get(
+        "engine_population_representation"
+    )
     releasable, release_posture = release_verdict(
         sample_fraction=args.sample_fraction,
         engine_blocks=args.engine_blocks,
         release_blocking_gates_passed=bool(
             enforcement["release_blocking_gates_passed"]
+        ),
+        engine_population_exact=bool(
+            isinstance(representation, Mapping) and representation.get("exact")
         ),
     )
     materialization = {

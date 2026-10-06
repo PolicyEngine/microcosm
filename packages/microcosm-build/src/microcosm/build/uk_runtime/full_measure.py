@@ -128,6 +128,91 @@ def _engine_block_frames(frame, blocks: int) -> list[tuple[int | None, Frame]]:
     return block_frames
 
 
+#: Columns that identify the spine household a cloned row was copied from, in
+#: order of preference; every clone of a spine household shares the value.
+_SOURCE_IDENTITY_COLUMNS = (
+    "household_source_id",
+    "source_household_id",
+    "source_household_key",
+)
+
+
+def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
+    """How each engine block stands for the pool, and whether exactly.
+
+    A weight-share formula (a national total allocated by ``x*w / sum(x*w)``,
+    policyengine-uk's corporate land value among them) sees only its block's
+    denominator, so each block would reproduce the whole national total: the
+    ``K`` times artefact behind the #736 erratum. Every block's engine weights
+    are therefore scaled by ``pool mass / block mass``. For blocks that are
+    identical copies of one another (the clone expansion's contract) every
+    weighted sum then equals the pool's and the formula is exact; the checks
+    record whether the blocks are such copies. A pool that is not leaves the
+    scaling approximate, and the measures receipt keeps its caveat.
+    """
+
+    if len(block_frames) == 1 and block_frames[0][0] is None:
+        return {"mode": "single_block", "exact": True, "blocks": 1}
+    pool_mass = float(frame.weights_for("household").total)
+    signatures: list[tuple[np.ndarray, np.ndarray]] = []
+    identity_key = "weights_only"
+    household_counts: list[int] = []
+    person_counts: list[int] = []
+    factors: dict[str, float] = {}
+    for clone_index, block in block_frames:
+        household = block.table("household")
+        weights = np.asarray(block.weights_for("household").values, dtype=np.float64)
+        block_mass = float(weights.sum())
+        if not block_mass > 0.0:
+            raise ValueError(
+                f"engine block {clone_index} carries no household mass; it cannot "
+                "represent the pool."
+            )
+        factors[str(clone_index)] = pool_mass / block_mass
+        # Blocks are compared as multisets of (source household, weight): the
+        # clone expansion copies every spine household into every clone, so
+        # identical copies have identical multisets whatever geography each
+        # clone drew. A frame without a source identity falls back to the
+        # weights alone, and the receipt says so.
+        key = next((c for c in _SOURCE_IDENTITY_COLUMNS if c in household), None)
+        if key is None:
+            identity_key = "weights_only"
+            source = np.zeros(len(weights), dtype=np.int64)
+        else:
+            identity_key = key
+            source = household[key].to_numpy()
+        order = np.lexsort((weights, source))
+        signatures.append((source[order], weights[order]))
+        household_counts.append(int(len(household)))
+        person_counts.append(int(len(block.table("person"))))
+    first_source, first_weights = signatures[0]
+    identical = all(
+        len(source) == len(first_source)
+        and np.array_equal(source, first_source)
+        and np.array_equal(weights, first_weights)
+        for source, weights in signatures
+    )
+    equal_households = len(set(household_counts)) == 1
+    equal_persons = len(set(person_counts)) == 1
+    blocks = len(block_frames)
+    shares = np.array([1.0 / factor for factor in factors.values()], dtype=np.float64)
+    return {
+        "mode": "block_weights_scaled_to_pool",
+        "exact": bool(identical and equal_households and equal_persons),
+        "blocks": blocks,
+        "factor_by_block": factors,
+        "checks": {
+            "identity_key": identity_key,
+            "equal_household_counts": equal_households,
+            "equal_person_counts": equal_persons,
+            "identical_source_weight_multisets": identical,
+            "max_abs_mass_share_deviation": float(
+                np.max(np.abs(shares - 1.0 / blocks))
+            ),
+        },
+    }
+
+
 def _run_engine_blocks(
     block_frames,
     national_registry,
@@ -137,6 +222,7 @@ def _run_engine_blocks(
     resolver_factory,
     local_grains: tuple[str, ...],
     on_block,
+    engine_weight_scales: Mapping[str, float] | None = None,
 ) -> tuple[
     dict[str, list[pd.DataFrame]],
     list[Mapping[str, Any]],
@@ -154,12 +240,17 @@ def _run_engine_blocks(
         block_scratch = (
             scratch_dir if clone_index is None else scratch_dir / f"clone-{clone_index}"
         )
-        resolver = resolver_factory(
-            simulation_source=None,
-            scratch_dir=block_scratch,
-            year=period,
-            frame=block_frame,
-        )
+        resolver_kwargs: dict[str, Any] = {
+            "simulation_source": None,
+            "scratch_dir": block_scratch,
+            "year": period,
+            "frame": block_frame,
+        }
+        if engine_weight_scales is not None and clone_index is not None:
+            resolver_kwargs["engine_weight_scale"] = float(
+                engine_weight_scales[str(clone_index)]
+            )
+        resolver = resolver_factory(**resolver_kwargs)
         resolution = resolve_target_measures(
             lambda block_frame=block_frame: CalibrationFrameAdapter(block_frame),
             national_registry,
@@ -252,6 +343,7 @@ def _measures_receipt(
     blocks: int,
     materialization_report,
     resolution_receipts,
+    representation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     receipt = {
         "mode": mode,
@@ -274,6 +366,11 @@ def _measures_receipt(
     if cgt_period_contract is not None:
         receipt["cgt_period_contract"] = cgt_period_contract
     if blocks > 1:
+        # The single-block receipt keeps its shape; a per-block resolution says
+        # how its blocks stood for the pool.
+        if representation is not None:
+            receipt["engine_population_representation"] = dict(representation)
+        exact = bool(representation and representation.get("exact"))
         receipt["deviation"] = "per_clone_block_engine_resolution"
         present = sorted(
             column
@@ -285,11 +382,21 @@ def _measures_receipt(
                 UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
             ),
             "present_in_this_run": present,
+            "mitigation": (
+                "each block's engine household weights are scaled by pool mass / "
+                "block mass, so weight-share formulas see the pool's denominator"
+            ),
+            "exact": exact,
             "caveat": (
-                "per-block engine resolution mis-measures population-normalised "
-                "formulas (each block reproduces a national aggregate); rows "
-                "on these measures are not evidence for adjudication from this "
-                "run. Resolve in a single block before ruling on them."
+                None
+                if exact
+                else (
+                    "the engine blocks are not identical copies of one another, so "
+                    "the scaling is approximate and per-block engine resolution "
+                    "may mis-measure population-normalised formulas; rows on these "
+                    "measures are not evidence for adjudication from this run. "
+                    "Resolve in a single block before ruling on them."
+                )
             ),
         }
     return receipt
@@ -325,6 +432,7 @@ def resolve_uk_full_measures(
     """
 
     block_frames = _engine_block_frames(frame, blocks)
+    representation = _engine_population_representation(frame, block_frames)
     measure_parts: dict[tuple[str, str], list[pd.Series]] = {}
 
     def collect(block_frame, block_inputs):
@@ -344,6 +452,7 @@ def resolve_uk_full_measures(
         period=period,
         scratch_dir=scratch_dir,
         resolver_factory=resolver_factory,
+        engine_weight_scales=representation.get("factor_by_block"),
         local_grains=local_grains,
         on_block=collect,
     )
@@ -396,6 +505,7 @@ def resolve_uk_full_measures(
         national_input_keys=set(measure_inputs),
         local_metrics=local_metrics,
         blocks=blocks,
+        representation=representation,
         materialization_report=materialized.report(),
         resolution_receipts=resolution_receipts,
     )
@@ -541,6 +651,7 @@ def resolve_uk_full_national_problem(
     """
 
     block_frames = _engine_block_frames(frame, blocks)
+    representation = _engine_population_representation(frame, block_frames)
     targets = national_registry.to_target_set()
     band_edges = national_registry if band_edge_registry is None else band_edge_registry
     block_problems: list[tuple[CalibrationProblem, np.ndarray]] = []
@@ -568,6 +679,7 @@ def resolve_uk_full_national_problem(
             period=period,
             scratch_dir=scratch_dir,
             resolver_factory=resolver_factory,
+            engine_weight_scales=representation.get("factor_by_block"),
             local_grains=local_grains,
             on_block=materialize,
         )
@@ -589,6 +701,7 @@ def resolve_uk_full_national_problem(
         national_input_keys=national_input_keys,
         local_metrics=local_metrics,
         blocks=blocks,
+        representation=representation,
         materialization_report=reports[0],
         resolution_receipts=resolution_receipts,
     )

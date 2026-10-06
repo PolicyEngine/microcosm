@@ -1183,3 +1183,132 @@ def test_scratch_engine_input_without_aliases_is_the_frame_itself(
     )
     assert writes == [frame]
     assert "engine_scratch_dropped_columns" not in resolver.receipt()
+
+
+def _tiny_national_frame(weights):
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.frame import WeightKind
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_benunit_id": [10, 10, 20, 20],
+            "person_household_id": [100, 100, 200, 200],
+            "age": [35, 8, 40, 38],
+            "is_benunit_head": [True, False, True, False],
+            "is_parent": [True, False, False, False],
+            "is_uc_claimant": [True, False, True, True],
+        }
+    )
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": [10, 20],
+            "benunit_source_id": [10, 20],
+            "dependent_children": [1, 0],
+            "is_married": [False, False],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [100, 200],
+            "household_source_id": [100, 200],
+            "region": ["WALES", "NORTHERN_IRELAND"],
+            "council_tax": [1200.0, 0.0],
+            "rent": [6000.0, 6000.0],
+            "tenure_type": ["RENT_PRIVATELY", "RENT_PRIVATELY"],
+        }
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period=2024,
+        household_weights=np.asarray(weights, dtype=float),
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+
+
+def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
+    frame = _tiny_national_frame([250.0, 125.0])
+    before = frame.weights_for("household").values.copy()
+
+    engine_frame, dropped = measure_simulation._engine_scratch_frame(
+        frame, engine_weight_scale=4.0
+    )
+
+    assert dropped == ()
+    np.testing.assert_allclose(
+        engine_frame.weights_for("household").values, before * 4.0
+    )
+    assert (
+        engine_frame.weights_for("household").kind
+        is frame.weights_for("household").kind
+    )
+    assert len(engine_frame.mass_log) == len(frame.mass_log) + 1
+    record = engine_frame.mass_log[-1]
+    assert record.entity == "household"
+    assert record.declared_factor == 4.0
+    assert record.new_total == pytest.approx(record.old_total * 4.0)
+    assert record.reason == measure_simulation.ENGINE_WEIGHT_SCALE_REASON
+    # the resolver's own frame keeps the block's true mass
+    np.testing.assert_array_equal(frame.weights_for("household").values, before)
+    # no scale (or a unit scale) on an alias-free frame: the frame itself
+    assert measure_simulation._engine_scratch_frame(frame)[0] is frame
+    assert (
+        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=1.0)[0]
+        is frame
+    )
+    with pytest.raises(ValueError, match="positive finite"):
+        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=0.0)
+
+
+def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
+    monkeypatch, tmp_path: Path
+):
+    created = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            created.append(dataset)
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    writes = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "write_uk_national_frame",
+        lambda frame, path: writes.append((frame, path)) or path,
+    )
+    monkeypatch.setattr(
+        measure_simulation, "validate_uc_claimant_input", lambda *args, **kwargs: None
+    )
+    frame = _tiny_national_frame([250.0, 125.0])
+
+    resolver = UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=frame,
+        engine_weight_scale=4.0,
+    )
+
+    assert resolver.frame is frame
+    written, _path = writes[0]
+    np.testing.assert_allclose(
+        written.weights_for("household").values,
+        frame.weights_for("household").values * 4.0,
+    )
+    assert resolver.receipt()["engine_weight_scale"] == 4.0
+    assert created == [str(tmp_path / "simulation-input.h5")]
+    with pytest.raises(ValueError, match="scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+            engine_weight_scale=4.0,
+        )

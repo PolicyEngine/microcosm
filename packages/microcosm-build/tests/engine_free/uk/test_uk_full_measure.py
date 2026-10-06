@@ -165,6 +165,17 @@ def test_full_measure_resolves_real_per_clone_blocks(
     prepared, restore, _, metrics, receipt = resolve()
 
     assert len(constructions) == 2
+    # Each block carries half the pool, so its engine weights are scaled by two
+    # and the receipt records an exact (identical-copy) representation.
+    assert [call["engine_weight_scale"] for call in constructions] == pytest.approx(
+        [2.0, 2.0]
+    )
+    representation = receipt["engine_population_representation"]
+    assert representation["mode"] == "block_weights_scaled_to_pool"
+    assert representation["exact"] is True
+    assert representation["checks"]["identical_source_weight_multisets"] is True
+    assert receipt["block_sensitivity"]["exact"] is True
+    assert receipt["block_sensitivity"]["caveat"] is None
     assert [len(call["frame"].table("household")) for call in constructions] == [
         frame.n("household"),
         frame.n("household"),
@@ -185,7 +196,11 @@ def test_full_measure_resolves_real_per_clone_blocks(
     assert set(sensitivity["present_in_this_run"]) <= set(
         sensitivity["known_population_normalised_measures"]
     )
-    assert "not evidence for adjudication" in sensitivity["caveat"]
+    # Identical clone copies scaled to the pool: the known formulas see the
+    # pool's denominator, so the receipt names the mitigation and no caveat.
+    assert "scaled by pool mass / block mass" in sensitivity["mitigation"]
+    assert sensitivity["exact"] is True
+    assert sensitivity["caveat"] is None
     assert (
         metrics["constituency"].index.tolist()
         == clone.frame.table("household")["household_id"].tolist()
@@ -535,3 +550,49 @@ def test_national_problem_is_none_without_national_targets(
         == frame.table("household")["household_id"].tolist()
     )
     assert receipt["national_materialization"] == "per_engine_block"
+
+
+def _representation_block(source_ids, weights, persons=3):
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(len(weights)),
+            "household_source_id": np.asarray(source_ids),
+        }
+    )
+    person = pd.DataFrame(index=range(persons))
+    values = np.asarray(weights, dtype=float)
+    return SimpleNamespace(
+        table=lambda name: household if name == "household" else person,
+        weights_for=lambda entity: SimpleNamespace(
+            values=values, total=float(values.sum())
+        ),
+    )
+
+
+def test_engine_population_representation_is_exact_only_for_identical_copies():
+    pool = SimpleNamespace(weights_for=lambda entity: SimpleNamespace(total=6.0))
+    copies = [
+        (0, _representation_block([10, 11, 12], [0.5, 1.0, 1.5])),
+        (1, _representation_block([12, 10, 11], [1.5, 0.5, 1.0])),
+    ]
+    exact = full_measure._engine_population_representation(pool, copies)
+    assert exact["exact"] is True
+    assert exact["factor_by_block"] == {
+        "0": pytest.approx(2.0),
+        "1": pytest.approx(2.0),
+    }
+    assert exact["checks"]["max_abs_mass_share_deviation"] == pytest.approx(0.0)
+
+    skewed = [
+        (0, _representation_block([10, 11, 12], [0.5, 1.0, 1.5])),
+        (1, _representation_block([10, 11, 12], [0.5, 1.0, 2.0])),
+    ]
+    pool = SimpleNamespace(weights_for=lambda entity: SimpleNamespace(total=6.5))
+    approximate = full_measure._engine_population_representation(pool, skewed)
+    assert approximate["exact"] is False
+    assert approximate["checks"]["identical_source_weight_multisets"] is False
+    assert approximate["factor_by_block"]["0"] == pytest.approx(6.5 / 3.0)
+    assert approximate["factor_by_block"]["1"] == pytest.approx(6.5 / 3.5)
+
+    single = full_measure._engine_population_representation(pool, [(None, object())])
+    assert single == {"mode": "single_block", "exact": True, "blocks": 1}
