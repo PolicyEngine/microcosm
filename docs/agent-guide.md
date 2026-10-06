@@ -73,7 +73,7 @@ single-purpose behavioral test job.
 
 The Orrery parser compatibility assertion lives in
 `packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The
-engine-free runner installs the exact public Orrery version and locked Node
+engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. It performs no browser rendering.

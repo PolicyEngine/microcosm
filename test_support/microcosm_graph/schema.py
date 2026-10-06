@@ -68,6 +68,14 @@ def compiled_graph():
                 structural=StructuralDelta.EXPAND,
                 base="filtered",
                 inputs=(Slice("person", ("age",)),),
+                params={"expand_cells": (("person", "clone", "int64"),)},
+            ),
+            Node(
+                "expanded.claim",
+                "unused.claim@1",
+                population="expanded",
+                outputs=(Owned("person", "clone", "int64"),),
+                params={"materialized_expand_outputs": ("person.clone",)},
             ),
             Node(
                 "reweighted",

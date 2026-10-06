@@ -35,10 +35,12 @@ from .decl import (
     GATE_OUTCOMES,
     ROWS_ALL,
     CompiledGraph,
+    GraphError,
     Node,
     Owned,
     Ownership,
     StructuralDelta,
+    materialized_expand_coordinates,
 )
 from .errors import NodeRejectedError
 from .kernel import (
@@ -646,31 +648,10 @@ def _structural_columns(frame: Frame, entity: str) -> list[str]:
 def _materialized_expand_coordinates(node: Node) -> frozenset[tuple[str, str]]:
     """Return and validate the carried EXPAND cells an ordinary node claims."""
 
-    raw_materialized = node.params.get("materialized_expand_outputs", ())
-    if not isinstance(raw_materialized, tuple) or any(
-        not isinstance(value, str) or "." not in value for value in raw_materialized
-    ):
-        raise NodeRejected(
-            f"Node {node.id!r} params['materialized_expand_outputs'] must be a "
-            "tuple of 'entity.column' strings."
-        )
-    materialized: set[tuple[str, str]] = set()
-    owned_by_coordinate = {
-        (output.entity, output.column): output for output in node.outputs
-    }
-    for value in raw_materialized:
-        entity, column = value.split(".", 1)
-        coordinate = (entity, column)
-        output = owned_by_coordinate.get(coordinate)
-        if output is None or output.rewrite:
-            raise NodeRejected(
-                f"Node {node.id!r} materialized EXPAND output {value!r} must be "
-                "one of its non-rewrite owned cells."
-            )
-        materialized.add(coordinate)
-    if len(materialized) != len(raw_materialized):
-        raise NodeRejected(f"Node {node.id!r} repeats a materialized EXPAND output.")
-    return frozenset(materialized)
+    try:
+        return materialized_expand_coordinates(node)
+    except GraphError as error:
+        raise NodeRejected(str(error)) from error
 
 
 def _expand_rewrite_coordinates(

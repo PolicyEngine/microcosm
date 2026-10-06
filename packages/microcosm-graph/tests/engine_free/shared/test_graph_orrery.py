@@ -46,7 +46,7 @@ def test_document_is_complete_static_metadata_with_no_runtime_claims():
     assert document["metadata"]["microcosm"] == schema
     assert document["metadata"]["scope"] == "complete_compiler_schema"
     assert document["metadata"]["truncated"] is False
-    assert len([node for node in document["nodes"] if node["kind"] == "operation"]) == 5
+    assert len([node for node in document["nodes"] if node["kind"] == "operation"]) == 6
     assert len([node for node in document["nodes"] if node["kind"] == "source"]) == 1
     assert (
         not {
@@ -119,6 +119,37 @@ def test_rewrite_incumbent_has_a_distinct_auxiliary_field():
         edge for edge in reads if edge["data"]["read_kind"] == "rewrite_incumbent"
     )
     assert rewrite_read["source"] == incumbent["id"]
+
+
+def test_materialized_expand_output_has_a_distinct_input_field():
+    document = orrery_document_from_schema(graph_schema(compiled_graph()))
+    clones = [
+        node
+        for node in document["nodes"]
+        if node["kind"] == "field"
+        and node["data"]["population"] == "expanded"
+        and node["data"]["column"] == "clone"
+    ]
+    assert len(clones) == 2
+    materialized = next(
+        node for node in clones if node["data"]["provider"] == "expanded"
+    )
+    claimed = next(
+        node for node in clones if node["data"]["provider"] == "expanded.claim"
+    )
+    assert materialized["data"]["declared_in"] == "expanded.claim"
+    assert materialized["data"]["visible_in_schema"] is False
+    assert claimed["data"]["visible_in_schema"] is True
+
+    target = json.dumps(["operation", "expanded.claim"], separators=(",", ":"))
+    read = next(
+        edge
+        for edge in document["edges"]
+        if edge["target"] == target
+        and edge["kind"] == "declared_read"
+        and edge["data"]["read_kind"] == "materialized_expand_output"
+    )
+    assert read["source"] == materialized["id"]
 
 
 def test_dependencies_and_provenance_are_separate_categories():
@@ -254,7 +285,10 @@ def test_direct_graph_compiled_and_saved_schema_paths_are_identical():
 def test_public_orrery_parser_accepts_generated_document():
     result = subprocess.run(
         ["node", str(_ORRERY_VERIFY)],
-        input=orrery_json(compiled_graph()),
+        input=orrery_json(
+            compiled_graph(),
+            extensions={"large": 2**80, "negative": -(2**80), "float": 1e100},
+        ),
         text=True,
         capture_output=True,
         check=False,

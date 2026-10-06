@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "dependencies": {
-    "@axiom-foundation/orrery": "0.6.0",
+    "@axiom-foundation/orrery": ">=0.6.1 <0.7.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   }

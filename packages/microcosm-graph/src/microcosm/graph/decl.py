@@ -625,6 +625,45 @@ class Node:
         }
 
 
+def materialized_expand_coordinates(
+    node: Node,
+) -> frozenset[tuple[str, str]]:
+    """Return the carried EXPAND cells an ordinary node claims as outputs.
+
+    ``materialized_expand_outputs`` is a reserved node parameter used when an
+    EXPAND kernel physically installs a new column before a following ordinary
+    node gives that column an ownership declaration. The claim node therefore
+    receives the existing values as inputs even though the coordinate is not a
+    ``Slice`` or rewrite.
+    """
+
+    raw_materialized = node.params.get("materialized_expand_outputs", ())
+    if not isinstance(raw_materialized, tuple) or any(
+        not isinstance(value, str) or "." not in value for value in raw_materialized
+    ):
+        raise GraphError(
+            f"Node {node.id!r} params['materialized_expand_outputs'] must be a "
+            "tuple of 'entity.column' strings."
+        )
+    materialized: set[tuple[str, str]] = set()
+    owned_by_coordinate = {
+        (output.entity, output.column): output for output in node.outputs
+    }
+    for value in raw_materialized:
+        entity, column = value.split(".", 1)
+        coordinate = (entity, column)
+        output = owned_by_coordinate.get(coordinate)
+        if output is None or output.rewrite:
+            raise GraphError(
+                f"Node {node.id!r} materialized EXPAND output {value!r} must be "
+                "one of its non-rewrite owned cells."
+            )
+        materialized.add(coordinate)
+    if len(materialized) != len(raw_materialized):
+        raise GraphError(f"Node {node.id!r} repeats a materialized EXPAND output.")
+    return frozenset(materialized)
+
+
 @dataclass(frozen=True)
 class Graph:
     """A complete build declaration for one country.

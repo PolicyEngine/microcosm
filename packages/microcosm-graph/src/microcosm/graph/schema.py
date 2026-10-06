@@ -22,6 +22,7 @@ from .decl import (
     Owned,
     StructuralDelta,
     compile_graph,
+    materialized_expand_coordinates,
 )
 from .serialize import graph_from_json, graph_to_json
 
@@ -315,6 +316,32 @@ def _input_bindings(
                         ROWS_ALL,
                     )
                 )
+        if "materialized_expand_outputs" in node.params:
+            holder = by_id[population]
+            if holder.structural is not StructuralDelta.EXPAND:
+                raise GraphError(
+                    f"Node {node.id!r} uses materialized_expand_outputs on "
+                    f"population {population!r}, which is not an EXPAND version."
+                )
+        for entity, column in sorted(materialized_expand_coordinates(node)):
+            if compiled.owners.get((population, entity, column)) != node.id:
+                raise GraphError(
+                    f"Node {node.id!r} does not uniquely own materialized EXPAND "
+                    f"output {entity}.{column} in population {population!r}."
+                )
+            owned = _owned(node, entity, column)
+            bindings.append(
+                {
+                    "node": node.id,
+                    "population": population,
+                    "entity": entity,
+                    "column": column,
+                    "provider": population,
+                    "declared_in": node.id,
+                    "kind": "materialized_expand_output",
+                    "rows": owned.rows,
+                }
+            )
     return bindings
 
 
@@ -373,6 +400,6 @@ def validate_graph_schema(value: object) -> dict[str, object]:
         raise ValueError("Graph schema extensions must be an object.")
     restored = graph_from_json(canonical_json(graph_value).decode("utf-8"))
     expected = graph_schema(compile_graph(restored), extensions=extensions)
-    if document != expected:
+    if canonical_json(document) != canonical_json(expected):
         raise ValueError("Graph schema core metadata disagrees with its graph.")
     return expected

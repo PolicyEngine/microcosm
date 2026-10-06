@@ -82,17 +82,17 @@ non-finite numbers, streams and devices, oversized input, an invalid graph or
 schema, and an existing output path. It does not install Orrery, download
 assets, or execute a population operation.
 
-Install the exact viewer version independently, then create the HTML file:
+Install the viewer independently, then create the HTML file:
 
 ```sh
-npm install --save-dev @axiom-foundation/orrery@0.6.0
+npm install --save-dev @axiom-foundation/orrery
 npx orrery --input orrery.json --output orrery.html
 ```
 
 Orrery validates the JSON before export. Its HTML contains the viewer assets
-and does not require a network connection to render. Microcosm CI also parses a
-generated document with the exact `0.6.0` package and its locked transitive
-dependencies.
+and does not require a network connection to render. Microcosm CI parses a
+generated document with the compatible range declared by its contract-test
+package and a locked set of transitive dependencies.
 
 ## Fields and input bindings
 
@@ -120,15 +120,22 @@ connects one declared input role to the exact pre-operation field provider:
 | `slice_mask` | The boolean column used to select a slice's rows | `all` |
 | `output_mask` | The boolean column limiting an `Owned` output | `all` |
 | `rewrite_incumbent` | The prior value replaced by `Owned(rewrite=True)` | The output's row selector |
+| `materialized_expand_output` | A new column physically installed by an `EXPAND` operation and read by its following ownership-claim operation | The output's row selector |
 
 For a rewrite, both the explicit slice and the implicit incumbent role resolve
 to the value present before that operation. The final rewritten field is a
 different identity. Repeated declared roles remain repeated schema records,
 even when they refer to the same coordinate.
 
+For `materialized_expand_output`, the input field's provider is the `EXPAND`
+operation and its declaration source is the following claim operation. The
+claim's final output receives a separate field identity, preserving both the
+physical materialization and the ownership declaration in the presentation.
+
 These records describe values supplied to an operation. They do not claim that
-a kernel read every supplied value at runtime, and they do not describe an
-operation-specific input-writing mechanism.
+a kernel read every supplied value at runtime, and they do not reproduce the
+executor's complete causal-writer history, which may be refined by runtime
+receipts.
 
 ## Orrery document structure
 

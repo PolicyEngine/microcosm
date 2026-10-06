@@ -81,8 +81,20 @@ def test_fields_record_carriage_rewrites_and_nearest_declaration():
     assert _field(schema, "filtered", "keep")["declared_in"] == "base"
     assert _field(schema, "expanded", "age")["provider"] == "expanded"
     assert _field(schema, "expanded", "age")["declared_in"] == "rewrite"
+    assert _field(schema, "expanded", "clone") == {
+        "population": "expanded",
+        "entity": "person",
+        "column": "clone",
+        "dtype": "int64",
+        "provider": "expanded.claim",
+        "declared_in": "expanded.claim",
+        "rows": "all",
+        "ownership": "produced",
+        "rewrite": False,
+    }
     assert _field(schema, "reweighted", "age")["provider"] == "reweighted"
-    assert len(schema["fields"]) == 8
+    assert _field(schema, "reweighted", "clone")["declared_in"] == "expanded.claim"
+    assert len(schema["fields"]) == 10
 
 
 def test_input_bindings_preserve_each_declared_read_role():
@@ -147,6 +159,18 @@ def test_input_bindings_preserve_each_declared_read_role():
         ]
         == "rewrite"
     )
+    assert next(
+        binding for binding in bindings if binding["node"] == "expanded.claim"
+    ) == {
+        "node": "expanded.claim",
+        "population": "expanded",
+        "entity": "person",
+        "column": "clone",
+        "provider": "expanded",
+        "declared_in": "expanded.claim",
+        "kind": "materialized_expand_output",
+        "rows": "all",
+    }
 
 
 def test_omitted_population_uses_the_compiler_resolved_version():
@@ -185,6 +209,14 @@ def test_validation_recompiles_and_refuses_core_metadata_changes(mutation):
     schema = graph_schema(compiled_graph())
     mutation(schema)
     with pytest.raises(ValueError):
+        validate_graph_schema(schema)
+
+
+def test_validation_rejects_equal_values_with_different_json_types():
+    schema = graph_schema(compiled_graph())
+    schema["fields"][0]["rewrite"] = 0
+
+    with pytest.raises(ValueError, match="core metadata"):
         validate_graph_schema(schema)
 
 
