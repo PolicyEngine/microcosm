@@ -181,6 +181,9 @@ def uk_cross_grain_overlap_candidates(
             bridged.setdefault(side.removeprefix("contract:"), set()).add(
                 bridge.bridge_id
             )
+    for entry in declarations.get("band_bridges", ()):
+        for side in (entry["higher_target_id"], *entry["lower_target_ids"]):
+            bridged.setdefault(str(side), set()).add(str(entry["bridge_id"]))
     incomplete = _incomplete_targets(declarations)
     by_measure: dict[tuple[Any, ...], list[str]] = {}
     for target_id, target in contract.items():
@@ -237,6 +240,9 @@ def uk_cross_grain_coverage_violations(
         for side in (*bridge.higher_target_ids, bridge.lower_side):
             known(side.removeprefix("contract:"), f"bridge {bridge.bridge_id}")
         bridge_lower.add(bridge.lower_side.removeprefix("contract:"))
+    for entry in declared.get("band_bridges", ()):
+        for target_id in (entry["higher_target_id"], *entry["lower_target_ids"]):
+            known(str(target_id), f"band bridge {entry['bridge_id']}")
     partition_members = set()
     for partition in partitions:
         for target_id in (partition.parent_target_id, *partition.member_target_ids):

@@ -37,11 +37,48 @@ With no control-grain row in a group, the top grain present controls the rest
 (a constituency-only family reconciles its authorities to its constituencies
 per leg).
 
+## The national register is reconciled first
+
+Before #1123, only the joint local surface was reconciled, and only its local
+cells were written back. A region row rescaled to its country control fed the
+constituencies below it, but the national register the solve binds kept the
+raw region value.
+
+`uk_runtime.national_reconciliation.reconcile_uk_national_registry` now
+reconciles the national register itself, and writes the reconciled values
+back into it. Both target loaders run it before the measure exclusions and
+before the frozen scoring register is compared:
+`load_uk_full_target_inputs` and `load_uk_national_target_inputs`. The
+national-only graph therefore binds the same values as the full graph.
+
+It reconciles two relations:
+
+- **exact measurement signatures** across the country, nation and region
+  grains, for example the CGT regional cells under the UK total;
+- **band bridges** (`band_bridges` in the declarations). A projected UK
+  income-tax-liabilities band from HMRC ITL Table 2.5, or a run of such bands,
+  controls the SPI regional cells from Table 3.11 whose band nests in it. The
+  regional `£200,000 and over` cells take the four ITL bands from £200,000 up.
+
+Every reconciled row keeps `cross_grain_value_before`, `cross_grain_factor`
+and `cross_grain_control`. Fan-out targets, meaning several cells at one
+geography, are distributions, not controls.
+
+The validation-period registers stay as compiled, because compile parity
+measures the facts themselves.
+
+The joint local pass then refuses any factor away from one on a group whose
+lower grain is a control grain
+(`national_reconciliation.assert_uk_national_rows_unmoved`): the two passes
+must agree.
+
 ## Declarations and enforcement
 
 Every declaration lives in `uk/cross_grain_declarations.json`, which the
 country-spec fingerprint covers:
 
+- **band_bridges**: projected UK ITL bands that control the SPI regional
+  band cells nesting in them (see above).
 - **bridges**: higher-grain targets whose measurement signature cannot match
   the lower side's. The household-composition partition controls the census
   household cells, and the GB UC caseload controls UC households by area.
