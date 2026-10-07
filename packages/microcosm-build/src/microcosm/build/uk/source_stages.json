@@ -1662,6 +1662,8 @@
       "OTHERINV",
       "GIFTAID",
       "GIFTINV",
+      "LLIR_RESTRICT_AMT_TOT",
+      "TAX_CRED",
       "TEI",
       "TII",
       "TI"
@@ -1705,7 +1707,8 @@
       "hmrc_spi_unemployment_benefit_income": null,
       "hmrc_spi_miscellaneous_employment_income": "employment_income_before_lsr",
       "hmrc_spi_other_income": "miscellaneous_income",
-      "hmrc_spi_state_pension_income": null
+      "hmrc_spi_state_pension_income": null,
+      "property_finance_costs": "property_finance_costs"
      },
      "predictors": [
       "age",
@@ -1778,6 +1781,9 @@
       ],
       "hmrc_spi_state_pension_income": [
        "SRP"
+      ],
+      "property_finance_costs": [
+       "LLIR_RESTRICT_AMT_TOT"
       ]
      },
      "derived_policyengine_outputs": {
@@ -1809,7 +1815,8 @@
       "hmrc_spi_unemployment_benefit_income",
       "hmrc_spi_miscellaneous_employment_income",
       "hmrc_spi_other_income",
-      "hmrc_spi_state_pension_income"
+      "hmrc_spi_state_pension_income",
+      "property_finance_costs"
      ],
      "joint_draw": true,
      "savings_interest_source_semantics": "INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input",
@@ -2246,6 +2253,7 @@
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    "property_finance_costs",
     "hmrc_spi_employment_benefits",
     "hmrc_spi_employment_expenses",
     "hmrc_spi_other_social_security_income",
@@ -2262,6 +2270,7 @@
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    "property_finance_costs",
     "hmrc_spi_employment_benefits",
     "hmrc_spi_employment_expenses",
     "hmrc_spi_other_social_security_income",

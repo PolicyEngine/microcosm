@@ -1055,6 +1055,7 @@ class TestE3ManifestLockstep:
             SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
             SPI_HMRC_QRF_AUXILIARY_COLUMNS,
             SPI_INCOME_IMPUTATION_COLUMNS,
+            SPI_PROPERTY_FINANCE_COSTS_COLUMN,
         )
 
         spec = load_country_spec("uk")
@@ -1064,6 +1065,7 @@ class TestE3ManifestLockstep:
             set(SPI_INCOME_IMPUTATION_COLUMNS)
             | set(SPI_HMRC_QRF_AUXILIARY_COLUMNS)
             | set(SPI_HMRC_DERIVED_AUXILIARY_COLUMNS)
+            | {SPI_PROPERTY_FINANCE_COSTS_COLUMN}
         )
         # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
         # by the stage even though the QRF output surface excludes it.

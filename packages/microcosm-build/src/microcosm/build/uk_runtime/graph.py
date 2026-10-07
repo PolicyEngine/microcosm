@@ -944,6 +944,8 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "hmrc_spi_miscellaneous_employment_income",
     "hmrc_spi_other_income",
     "hmrc_spi_state_pension_income",
+    # Drawn last of the first-stage outputs, so it lands after them (#1106).
+    "property_finance_costs",
     "hmrc_spi_employed_income",
     "hmrc_spi_total_earned_income",
     "hmrc_spi_total_investment_income",

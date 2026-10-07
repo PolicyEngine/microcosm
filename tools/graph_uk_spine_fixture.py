@@ -1062,6 +1062,11 @@ def _spi_donor() -> pd.DataFrame:
                 "GIFTINV": 1.0 + index % 3,
             }
         )
+        # Every third landlord carries restricted residential finance costs,
+        # with the tape's 20% relief in TAX_CRED (microcosm#1106).
+        if row["INCPROP"] > 0.0 and index % 3 == 0:
+            row["LLIR_RESTRICT_AMT_TOT"] = row["INCPROP"] * 0.4
+            row["TAX_CRED"] = 0.2 * row["LLIR_RESTRICT_AMT_TOT"]
         employment = (
             max(row["PAY"] + row["EPB"] - row["EXPS"], 0.0)
             + row["INCPBEN"]
