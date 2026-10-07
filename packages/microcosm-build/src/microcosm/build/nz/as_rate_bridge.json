@@ -1,0 +1,442 @@
+{
+  "version": 1,
+  "country": "nz",
+  "method_card_row": "MC11",
+  "description": "Host bridge for the two law-derived Accommodation Supplement inputs that rulespec-nz takes as inputs \"for later cross-module wiring\": the Social Security Regulations 2018 reg 17 base rate and the reg 18 non-beneficiary income cutout. Every rate comes from an engine evaluation of a bound rulespec-nz module; this resource declares only which outputs combine, with which coefficients, under which input overrides. It ports the statutory branch (treasury_host_aligned false) of the axiom-oracles IncomeExplorer conformance harness. It is the one sanctioned exception to \"real Axiom runtime only\" (method card amendment MC11a) and needs Max's MC11 ruling. When rulespec-nz encodes regs 17 and 18 (6 Oct plan B13) this resource and the bridge graph nodes are deleted; only the Accommodation Supplement branches re-run.",
+  "status": "awaiting D1 (MC11, MC11a)",
+  "source": {
+    "repository": "TheAxiomFoundation/ops",
+    "path": "nz-lane/emtr_reproduction/run.py",
+    "commit": "ba6e7d6e4f488fdb2762dfb9d91c90f3238b719c",
+    "branch": "main",
+    "lines": "2470-2637",
+    "supporting_lines": {
+      "jobseeker_payment": "1931-1960",
+      "zero_income_jobseeker_components": "2017-2024",
+      "compiled_parameters": "1525-1527, 1552-1561",
+      "weeks_constants": "166-168"
+    },
+    "branch_of_harness": "statutory (treasury_host_aligned false)",
+    "plan_citation": "The plan cites lines 1695-1790 of the same file at 302e43bafe5268448da3f3e16047832c1a3b736c on branch launch/ga-path-execution-gate, which is not on ops main. The composition is the same; main aggregates the per-adult zero-income amounts through aggregate_family where the branch sums them directly."
+  },
+  "rate_bindings": [
+    "main_benefits_rates",
+    "family_tax_credits"
+  ],
+  "outputs": [
+    {
+      "id": "reg17_base_rate",
+      "target_input": "accommodation_supplement_base_rate_weekly_amount",
+      "legal_basis": "Social Security Regulations 2018 reg 17",
+      "graph_node": "nz.as.bridge.base_rate",
+      "method": "counterfactual_sum",
+      "terms": [
+        {
+          "binding": "main_benefits_rates",
+          "variable": "jobseeker_support_net_weekly_payment",
+          "engine_entity": "Person",
+          "coefficient": 1,
+          "multiplier": "adults_in_couple",
+          "multiplier_rule": "1 for a single unit, 2 for a partnered unit: the harness repeats the per-person zero-income amount for each partner (run.py:2017-2024) and aggregates the components to the family (run.py:2545-2554)",
+          "input_overrides": [
+            {
+              "variable": "jobseeker_support_applicant_age",
+              "value": 25,
+              "value_source": "harness_constant",
+              "reason": "harness constant for IncomeExplorer stylized adults (run.py:1941); open item: whether reg 17 uses each adult's own age-dependent rate is unresolved (reg 17 text not read in this lane)"
+            },
+            {
+              "variable": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+              "value": false,
+              "value_source": "harness_constant",
+              "reason": "harness constant (run.py:1942)"
+            },
+            {
+              "variable": "jobseeker_support_dependent_children_count",
+              "unit_attribute": "family.n_dependent_children",
+              "value_source": "unit",
+              "reason": "harness: family_shape dependent_child_count (run.py:1937,1943)"
+            },
+            {
+              "variable": "jobseeker_support_living_with_parent",
+              "value": false,
+              "value_source": "harness_constant",
+              "reason": "harness constant (run.py:1944)"
+            },
+            {
+              "variable": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+              "value": false,
+              "value_source": "harness_constant",
+              "reason": "harness constant (run.py:1945)"
+            },
+            {
+              "variable": "jobseeker_support_partner_receives_main_benefit",
+              "unit_attribute": "family.is_partnered",
+              "value_source": "unit",
+              "reason": "harness: family_shape partner_present (run.py:1946)"
+            },
+            {
+              "variable": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+              "value": false,
+              "value_source": "harness_constant",
+              "reason": "harness constant (run.py:1947); superannuitant units follow superannuitant_units below"
+            },
+            {
+              "variable": "jobseeker_support_single",
+              "unit_attribute": "family.is_single",
+              "value_source": "unit",
+              "reason": "harness: not partner_present (run.py:1948)"
+            },
+            {
+              "variable": "jobseeker_support_transferred_2013_no_dependent_children",
+              "value": false,
+              "value_source": "harness_constant",
+              "reason": "harness constant (run.py:1950)"
+            },
+            {
+              "variable": "jobseeker_support_youngest_dependent_child_age",
+              "unit_attribute": "family.youngest_dependent_child_age",
+              "value_source": "unit",
+              "reason": "harness: family_shape youngest_child_age (run.py:1938,1951)"
+            },
+            {
+              "variable": "jobseeker_support_total_income",
+              "value": 0,
+              "value_source": "bridge_point",
+              "reason": "zero-income Jobseeker Support (run.py:2021)"
+            }
+          ]
+        },
+        {
+          "binding": "family_tax_credits",
+          "variable": "family_tax_credit_prescribed_amount",
+          "engine_entity": "Family",
+          "coefficient": 1,
+          "divisor": 52,
+          "applies_when": "family.n_dependent_children >= 1",
+          "divisor_rule": "reg 17 uses the annual eldest-child family tax credit divided by 52 (run.py:2556-2562); the harness's 365/7 divisor is a Treasury-host diagnostic only and is not used",
+          "input_overrides": [
+            {
+              "variable": "family_tax_credit_eldest_dependent_child_care_units",
+              "value": 1,
+              "value_source": "bridge_point",
+              "reason": "one eldest-child care unit, so the prescribed amount equals family_tax_credit_eldest_child_annual_amount (the parameter the harness reads, run.py:1525-1527)"
+            },
+            {
+              "variable": "family_tax_credit_subsequent_dependent_child_care_units",
+              "value": 0,
+              "value_source": "bridge_point",
+              "reason": "no subsequent-child amount enters reg 17"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reg18_cutout",
+      "target_input": "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount",
+      "legal_basis": "Social Security Regulations 2018 reg 18",
+      "graph_node": "nz.as.bridge.cutout",
+      "method": "branched",
+      "branches": [
+        {
+          "id": "sole_parent",
+          "applies_when": "family.is_sole_parent",
+          "harness_lines": "2491-2500",
+          "harness_expression": "main_benefit_income_test_lower_weekly_threshold + jobseeker_support_single_with_dependent_children_weekly_rate / main_benefit_income_test_3_abatement_rate",
+          "why_not_solve_zero": "The engine applies Income Test 1 (two-tier) to a single person with dependent children (rates.yaml jobseeker_support_weekly_income_test_reduction), while the harness pairs the single-with-children rate with the Income Test 3 slope. No input combination makes the engine evaluate that pair, so a zero-solve on the unit's own Jobseeker schedule would not reproduce golden-08. The three engine evaluations below recover the same three compiled quantities from derived outputs, with no parameter accessor.",
+          "evaluations": [
+            {
+              "id": "gross_rate",
+              "binding": "main_benefits_rates",
+              "variable": "jobseeker_support_gross_weekly_rate",
+              "engine_entity": "Person",
+              "input_overrides": [
+                {
+                  "variable": "jobseeker_support_single",
+                  "value": true,
+                  "value_source": "bridge_point",
+                  "reason": "single applicant"
+                },
+                {
+                  "variable": "jobseeker_support_dependent_children_count",
+                  "value": 1,
+                  "value_source": "bridge_point",
+                  "reason": "selects the with-dependent-children rate branch"
+                },
+                {
+                  "variable": "jobseeker_support_youngest_dependent_child_age",
+                  "value": 0,
+                  "value_source": "bridge_point",
+                  "reason": "below the 14-year threshold, so the gross rate is jobseeker_support_single_with_dependent_children_weekly_rate"
+                },
+                {
+                  "variable": "jobseeker_support_total_income",
+                  "value": 0,
+                  "value_source": "bridge_point",
+                  "reason": "the gross rate does not depend on income"
+                }
+              ]
+            },
+            {
+              "id": "reduction_at_anchor",
+              "binding": "main_benefits_rates",
+              "variable": "jobseeker_support_weekly_income_test_reduction",
+              "engine_entity": "Person",
+              "input_overrides": [
+                {
+                  "variable": "jobseeker_support_single",
+                  "value": true,
+                  "value_source": "bridge_point",
+                  "reason": "single applicant"
+                },
+                {
+                  "variable": "jobseeker_support_dependent_children_count",
+                  "value": 0,
+                  "value_source": "bridge_point",
+                  "reason": "with transferred_2013 false this selects Income Test 3"
+                },
+                {
+                  "variable": "jobseeker_support_transferred_2013_no_dependent_children",
+                  "value": false,
+                  "value_source": "bridge_point",
+                  "reason": "Income Test 3 branch"
+                },
+                {
+                  "variable": "jobseeker_support_total_income",
+                  "value": 500,
+                  "value_source": "bridge_point",
+                  "reason": "the harness anchor (run.py:2502); must exceed the lower threshold, else the bridge refuses"
+                }
+              ]
+            },
+            {
+              "id": "reduction_after_step",
+              "binding": "main_benefits_rates",
+              "variable": "jobseeker_support_weekly_income_test_reduction",
+              "engine_entity": "Person",
+              "input_overrides": [
+                {
+                  "variable": "jobseeker_support_single",
+                  "value": true,
+                  "value_source": "bridge_point",
+                  "reason": "single applicant"
+                },
+                {
+                  "variable": "jobseeker_support_dependent_children_count",
+                  "value": 0,
+                  "value_source": "bridge_point",
+                  "reason": "Income Test 3 branch"
+                },
+                {
+                  "variable": "jobseeker_support_transferred_2013_no_dependent_children",
+                  "value": false,
+                  "value_source": "bridge_point",
+                  "reason": "Income Test 3 branch"
+                },
+                {
+                  "variable": "jobseeker_support_total_income",
+                  "value": 501,
+                  "value_source": "bridge_point",
+                  "reason": "anchor plus the harness's one-dollar step (run.py:2504)"
+                }
+              ]
+            }
+          ],
+          "composition": {
+            "slope": "reduction_after_step - reduction_at_anchor (per dollar of weekly income)",
+            "lower_threshold": "500 - reduction_at_anchor / slope",
+            "cutout": "lower_threshold + gross_rate / slope",
+            "refuse_when": "reduction_at_anchor <= 0 or slope <= 0"
+          }
+        },
+        {
+          "id": "all_other_units",
+          "applies_when": "not family.is_sole_parent",
+          "harness_lines": "2501-2511",
+          "method": "anchor_extrapolation",
+          "evaluations": [
+            {
+              "id": "payment_at_anchor",
+              "binding": "main_benefits_rates",
+              "variable": "jobseeker_support_net_weekly_payment",
+              "engine_entity": "Person",
+              "input_overrides": [
+                {
+                  "variable": "jobseeker_support_applicant_age",
+                  "value": 25,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant for IncomeExplorer stylized adults (run.py:1941); open item: whether reg 17 uses each adult's own age-dependent rate is unresolved (reg 17 text not read in this lane)"
+                },
+                {
+                  "variable": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1942)"
+                },
+                {
+                  "variable": "jobseeker_support_dependent_children_count",
+                  "unit_attribute": "family.n_dependent_children",
+                  "value_source": "unit",
+                  "reason": "harness: family_shape dependent_child_count (run.py:1937,1943)"
+                },
+                {
+                  "variable": "jobseeker_support_living_with_parent",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1944)"
+                },
+                {
+                  "variable": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1945)"
+                },
+                {
+                  "variable": "jobseeker_support_partner_receives_main_benefit",
+                  "unit_attribute": "family.is_partnered",
+                  "value_source": "unit",
+                  "reason": "harness: family_shape partner_present (run.py:1946)"
+                },
+                {
+                  "variable": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1947); superannuitant units follow superannuitant_units below"
+                },
+                {
+                  "variable": "jobseeker_support_single",
+                  "unit_attribute": "family.is_single",
+                  "value_source": "unit",
+                  "reason": "harness: not partner_present (run.py:1948)"
+                },
+                {
+                  "variable": "jobseeker_support_transferred_2013_no_dependent_children",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1950)"
+                },
+                {
+                  "variable": "jobseeker_support_youngest_dependent_child_age",
+                  "unit_attribute": "family.youngest_dependent_child_age",
+                  "value_source": "unit",
+                  "reason": "harness: family_shape youngest_child_age (run.py:1938,1951)"
+                },
+                {
+                  "variable": "jobseeker_support_total_income",
+                  "value": 500,
+                  "value_source": "bridge_point",
+                  "reason": "the harness anchor (run.py:2502)"
+                }
+              ]
+            },
+            {
+              "id": "payment_after_step",
+              "binding": "main_benefits_rates",
+              "variable": "jobseeker_support_net_weekly_payment",
+              "engine_entity": "Person",
+              "input_overrides": [
+                {
+                  "variable": "jobseeker_support_applicant_age",
+                  "value": 25,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant for IncomeExplorer stylized adults (run.py:1941); open item: whether reg 17 uses each adult's own age-dependent rate is unresolved (reg 17 text not read in this lane)"
+                },
+                {
+                  "variable": "jobseeker_support_benefit_commenced_on_or_after_1998_07_01",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1942)"
+                },
+                {
+                  "variable": "jobseeker_support_dependent_children_count",
+                  "unit_attribute": "family.n_dependent_children",
+                  "value_source": "unit",
+                  "reason": "harness: family_shape dependent_child_count (run.py:1937,1943)"
+                },
+                {
+                  "variable": "jobseeker_support_living_with_parent",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1944)"
+                },
+                {
+                  "variable": "jobseeker_support_partner_ineligible_due_to_sanction_or_strike",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1945)"
+                },
+                {
+                  "variable": "jobseeker_support_partner_receives_main_benefit",
+                  "unit_attribute": "family.is_partnered",
+                  "value_source": "unit",
+                  "reason": "harness: family_shape partner_present (run.py:1946)"
+                },
+                {
+                  "variable": "jobseeker_support_partner_receives_new_zealand_superannuation_or_veterans_pension",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1947); superannuitant units follow superannuitant_units below"
+                },
+                {
+                  "variable": "jobseeker_support_single",
+                  "unit_attribute": "family.is_single",
+                  "value_source": "unit",
+                  "reason": "harness: not partner_present (run.py:1948)"
+                },
+                {
+                  "variable": "jobseeker_support_transferred_2013_no_dependent_children",
+                  "value": false,
+                  "value_source": "harness_constant",
+                  "reason": "harness constant (run.py:1950)"
+                },
+                {
+                  "variable": "jobseeker_support_youngest_dependent_child_age",
+                  "unit_attribute": "family.youngest_dependent_child_age",
+                  "value_source": "unit",
+                  "reason": "harness: family_shape youngest_child_age (run.py:1938,1951)"
+                },
+                {
+                  "variable": "jobseeker_support_total_income",
+                  "value": 501,
+                  "value_source": "bridge_point",
+                  "reason": "anchor plus one dollar (run.py:2504)"
+                }
+              ]
+            }
+          ],
+          "composition": {
+            "reduction_per_dollar": "payment_at_anchor - payment_after_step",
+            "cutout": "500 + payment_at_anchor / reduction_per_dollar",
+            "refuse_when": "payment_at_anchor <= 0 or reduction_per_dollar <= 0"
+          },
+          "exactness": "Reg 18 asks for the income that extinguishes Jobseeker Support (run.py:2513-2514). The extrapolation equals that zero when the net-payment schedule is linear between the anchor and its zero: Income Tests 3 and 4 have one rate (rates.yaml). Income Test 1 has two, but these overrides select it only for single units with children, which take the other branch."
+        }
+      ]
+    }
+  ],
+  "superannuitant_units": {
+    "central": "exclude_and_count",
+    "scenario_s5": "reg17_superannuitant_base_rate",
+    "status": "The harness has no NZ Superannuation or Veteran's Pension base-rate branch. G7 implements one from the reg 17 text if it can; otherwise the MC11 fallback stands: superannuitant units are excluded from the central run and counted. Scenario S5 carries the alternative. Awaiting D1 (MC11)."
+  },
+  "beneficiary_note": "The harness computes the base rate from zero-income Jobseeker Support for every scenario, beneficiary or not; accommodation_supplement_non_beneficiary itself comes from the receipt layer through the group encode, not from this bridge.",
+  "differential_expectations": {
+    "source": {
+      "repository": "TheAxiomFoundation/axiom-oracles",
+      "commit": "6275afcdbe7590d0a56298c4916970a46ed936d0",
+      "path": "conformance/executable/nz-treasury-incomeexplorer/requests.json",
+      "sha256": "ed83b26c3221c253b13a9df307567e09948b2e9337ff5289729276b6b6ed6272"
+    },
+    "cases": [
+      {
+        "request_id": "golden-08",
+        "entity_id": "single_parent_three_children_area1_rent:as:statutory:0",
+        "branch": "sole_parent",
+        "accommodation_supplement_base_rate_weekly_amount": "673.8469230769230769230769230769230769231",
+        "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": "905.0285714285714285714285714285714285714",
+        "tolerance_note": "decimal strings as committed; float64 graph columns reproduce them within a tolerance G7 states"
+      }
+    ]
+  }
+}

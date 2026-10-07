@@ -1,0 +1,70 @@
+sources:
+- byte_size: 2864
+  id: nz_populace_us_support_contract
+  loader: kernel:load_populace_us_support_pool
+  role: nz_populace_us_support_pool
+  sha256: a4e5bb6801e8f2b8bf539dcb739aaa35c4d2162909d61f18327932e7e252aae7
+  vintage_authorities:
+  - id: nz_support_pool_2024_buildp
+    kind: survey_period
+    value: '2024'
+  vintages:
+  - vintage:nz_support_pool_2024_buildp
+- byte_size: 2058
+  id: nz_region_assignment_contract
+  loader: kernel:assign_nz_regions
+  role: nz_region_assignment_contract
+  sha256: 353821844d85d2622c328b4986dd9e3a8075c13498b9f56d349c4578edf7495a
+  vintage_authorities:
+  - id: nz_region_2025
+    kind: geography_vintage
+    value: 2025_region
+  - id: nz_region_roster_2025
+    kind: geography_vintage
+    value: 2025_region_roster
+  vintages:
+  - vintage:nz_region_2025
+  - vintage:nz_region_roster_2025
+stage_manifest:
+  country: nz
+  policy: New Zealand v0 transports the immutable public Microcosm US support artifact into a destination Frame. Donor records remain US support records, preserve their support-stratum provenance, and are never represented as observed New Zealand microdata. Only Axiom inputs declared for the rules bindings in axiom_rules_bindings.json may cross the rules boundary; missing substantive inputs fail closed and no country-specific Python runtime is permitted.
+  version: 1
+stages:
+- artifacts:
+  - format: hdf5
+    integrity_note: The revision is the immutable release tag named by the public latest.json pointer on 2026-08-29. Execution must verify both SHA-256 and byte size before reading; main/latest fallback is forbidden.
+    kind: public_microdata
+    locator: populace_us_2024.h5
+    repository:
+      name_parts:
+      - populace-us
+      owner: policyengine
+      provider: huggingface
+      repo_type: dataset
+    revision: populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z
+    sha256: 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e
+    size_bytes: 462915783
+    vintage: '2024'
+  grain: person
+  nonnegative_outputs:
+  - household_weight
+  - age
+  notes: This pins an authenticated donor artifact, not an executable NZ loader. The generic loader must preserve Frame entity ids, membership, typed household design weights, and support strata; set donor_country_code to US; refuse unreceipted aliases; and convert donor mass to a Chronicle-supplied NZ population total with a mass-conservation receipt. The typed operation vocabulary cannot represent that destination-mass bridge without inventing its still-missing target value, so execution remains blocked. In the graph build (docs/nz-take-up-engine-plan.md) the shared transport CREATE kernel performs this load, builds the benefit units of benefit_unit_rule.json, and installs design weights at the Stats NZ population scale.
+  operations:
+  - kind: read_tables
+    tables:
+    - person
+    - household
+    weight: household_weight
+  outputs:
+  - person_id
+  - household_id
+  - person_household_id
+  - household_weight
+  - support_stratum
+  - donor_country_code
+  - age
+  - sex
+  source: https://huggingface.co/datasets/policyengine/populace-us
+  stage: load_populace_us_support_pool
+  survey: Microcosm US Build P support population (US donor support records)
