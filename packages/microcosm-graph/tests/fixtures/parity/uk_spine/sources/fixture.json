@@ -2680,6 +2680,7 @@
         "other_investment_income",
         "gift_aid",
         "charitable_investment_gifts",
+        "property_finance_costs",
         "hmrc_spi_employment_benefits",
         "hmrc_spi_employment_expenses",
         "hmrc_spi_other_social_security_income",
@@ -2736,6 +2737,8 @@
             "OTHERINV",
             "GIFTAID",
             "GIFTINV",
+            "LLIR_RESTRICT_AMT_TOT",
+            "TAX_CRED",
             "TEI",
             "TII",
             "TI"
@@ -2790,6 +2793,7 @@
             "hmrc_spi_unemployment_benefit_income": null,
             "other_investment_income": "other_investment_income",
             "private_pension_income": "private_pension_income",
+            "property_finance_costs": "property_finance_costs",
             "property_income": "property_income",
             "savings_interest_income": "savings_interest_income",
             "self_employment_income": "self_employment_income"
@@ -2819,7 +2823,8 @@
             "hmrc_spi_unemployment_benefit_income",
             "hmrc_spi_miscellaneous_employment_income",
             "hmrc_spi_other_income",
-            "hmrc_spi_state_pension_income"
+            "hmrc_spi_state_pension_income",
+            "property_finance_costs"
           ],
           "post_sample_fit_weight": "uniform",
           "predictors": [
@@ -2882,6 +2887,9 @@
             ],
             "private_pension_income": [
               "PENSION"
+            ],
+            "property_finance_costs": [
+              "LLIR_RESTRICT_AMT_TOT"
             ],
             "property_income": [
               "INCPROP"
@@ -3318,6 +3326,7 @@
         "other_investment_income",
         "gift_aid",
         "charitable_investment_gifts",
+        "property_finance_costs",
         "hmrc_spi_employment_benefits",
         "hmrc_spi_employment_expenses",
         "hmrc_spi_other_social_security_income",
