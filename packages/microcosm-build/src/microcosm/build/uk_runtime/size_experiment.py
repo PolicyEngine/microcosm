@@ -63,7 +63,10 @@ from microcosm.build.uk_runtime.dataset_size import (
     uk_size_l2,
     uk_size_l2_from_options,
 )
-from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_WEIGHT_RULES
+from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_ROW_METADATA_RULES,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
+)
 from microcosm.build.uk_runtime.local_rowwise import (
     UK_LOCAL_HOLDOUT_FOLDS,
     UK_LOCAL_HOLDOUT_SEED,
@@ -109,6 +112,7 @@ __all__ = [
     "UK_SIZE_EXPERIMENT_ARTIFACTS",
     "UK_SIZE_EXPERIMENT_MODES",
     "UK_SIZE_EXPERIMENT_RESERVED_NAMES",
+    "UK_SIZE_STEP1B_RULES",
     "UKSizeExperiment",
     "UKSizeExperimentBaseline",
     "build_uk_size_experiment_cache",
@@ -123,6 +127,7 @@ __all__ = [
     "save_uk_size_weights",
     "score_uk_size_experiments",
     "uk_size_failed_receipt",
+    "uk_size_step1b_plan",
     "uk_size_weights_of",
 ]
 
@@ -1186,6 +1191,263 @@ def _run_holdout(baseline, experiment, selection, settings, refit_l2):
         "folds": fold_rows,
         "mean": summary,
         "limitation": "support selected with every target visible; ranks refit variants on one support only",
+    }
+
+
+#: How #1124's step 1b is read off step 1a: the README's selection rules, with the
+#: readings fixed before any step-1a result (María's go of 2026-10-08). Best E
+#: and the knee are read on each anchor's floor-0.5 ladder (its λ 1e-9 point is
+#: the iterate-switch control, not a ladder point); the knee is the smallest
+#: ladder λ whose criterion-6 count is within 10 % of the ladder's best; the A×E
+#: points run at floor 0.5, at the knee and its two half-decade neighbours.
+UK_SIZE_STEP1B_RULES = {
+    "ladder_floor": 0.5,
+    "ladder_min_lambda": 1e-6,
+    "knee_within": 0.10,
+    "ae_floor": 0.5,
+    "ae_decade_steps": (-0.5, 0.0, 0.5),
+}
+UK_SIZE_STEP1B_STAGES = ("ae", "holdout")
+_STEP1B_ANCHORS = ("initial", "uniform")
+_CRITERIA_1_TO_5 = (
+    "household_total",
+    "nation_shares",
+    "lone_person_share",
+    "local_family_within_10",
+    "national_past_25",
+)
+_RULE_ABBREVIATIONS = {
+    "grain_family_equal": "gfe",
+    "grain_family_equal_sqrt_count": "gfes",
+    "nation_grain_family_equal": "ngfe",
+    "nation_grain_family_equal_sqrt_count": "ngfes",
+}
+
+
+def _scored_configurations(
+    scorecard: Mapping[str, Any], receipts: Mapping[str, Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Each finished, scored refit with its declaration and its criteria read off."""
+
+    rows = []
+    for name, receipt in sorted(receipts.items()):
+        if receipt.get("status") != "finished" or name not in scorecard["acceptance"]:
+            continue
+        declared = dict(receipt["experiment"])
+        if declared.get("mode") != "refit":
+            continue
+        criteria = scorecard["acceptance"][name]["criteria"]
+        l2 = declared.get("refit_l2") or {}
+        rows.append(
+            {
+                "name": name,
+                "declared": declared,
+                "rule": declared.get("refit_rule"),
+                "lambda": float(l2.get("lambda", 0.0)),
+                "anchor": l2.get("anchor") or "initial",
+                "floor": float(receipt["settings"]["baseline_pi_floor"]),
+                "plain": declared.get("learning_rate") is None
+                and declared.get("epochs") is None,
+                "passes_1_5": all(
+                    criteria[key].get("pass") is True for key in _CRITERIA_1_TO_5
+                ),
+                "criteria_passed": len(scorecard["acceptance"][name]["passes"]),
+                "collapse": int(criteria["relative_collapse"]["value"]),
+                "yardstick": float(
+                    scorecard["sets"][name]["loss_grain_equal_yardstick"]
+                ),
+            }
+        )
+    return rows
+
+
+def _summary(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: row[key]
+        for key in (
+            "name",
+            "rule",
+            "lambda",
+            "anchor",
+            "floor",
+            "passes_1_5",
+            "criteria_passed",
+            "collapse",
+            "yardstick",
+        )
+    }
+
+
+def _winner(rows: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
+    # The plan's winner rule: passes 1-5, then 6 (ranked by its count when none
+    # passes it), then the grain_equal yardstick.
+    return min(
+        rows,
+        key=lambda row: (not row["passes_1_5"], row["collapse"], row["yardstick"]),
+        default=None,
+    )
+
+
+def _holdout_of(row: Mapping[str, Any], name: str, notes: str) -> dict[str, Any]:
+    declared = {
+        key: row["declared"][key]
+        for key in ("refit_rule", "refit_l2", "baseline_pi_floor")
+        if row["declared"].get(key) is not None
+    }
+    return {"name": name, "mode": "refit_holdout", **declared, "notes": notes}
+
+
+def uk_size_step1b_plan(
+    scorecard: Mapping[str, Any],
+    receipts: Mapping[str, Mapping[str, Any]],
+    census: Mapping[str, Any],
+    *,
+    stage: str,
+    rules: Mapping[str, Any] = UK_SIZE_STEP1B_RULES,
+) -> dict[str, Any]:
+    """#1124's step 1b, read off the scored step-1a refits by the pre-registered rules.
+
+    ``stage="ae"``: the A×E points, the best A rule (most criteria passed, ties
+    by the ``grain_equal`` yardstick) × each anchor × the knee of that anchor's
+    floor-0.5 L2 ladder and its two half-decade neighbours, each λ multiplied by
+    the rule's loss ratio at S0 from the census, at floor 0.5. ``stage="holdout"``
+    (after the A×E points are scored): refit-level rotated holdouts of C0, C2,
+    the best E per anchor (the largest ladder λ meeting criteria 1-5), the best
+    A and the best A×E (the plan's winner rule). A pick with no candidate is
+    recorded as ``None`` and its experiments are skipped. Returns the stage,
+    the rules, the picks with the candidates each was read from, and the
+    experiment declarations.
+    """
+
+    if stage not in UK_SIZE_STEP1B_STAGES:
+        raise ValueError(f"stage must be one of {UK_SIZE_STEP1B_STAGES}.")
+    rows = _scored_configurations(scorecard, receipts)
+    ladder_floor = float(rules["ladder_floor"])
+    ladders = {
+        anchor: sorted(
+            (
+                row
+                for row in rows
+                if row["rule"] is None
+                and row["plain"]
+                and row["floor"] == ladder_floor
+                and row["lambda"] >= float(rules["ladder_min_lambda"])
+                and row["anchor"] == anchor
+            ),
+            key=lambda row: row["lambda"],
+        )
+        for anchor in _STEP1B_ANCHORS
+    }
+    best_e, knees = {}, {}
+    for anchor, ladder in ladders.items():
+        meeting = [row for row in ladder if row["passes_1_5"]]
+        best_e[anchor] = max(meeting, key=lambda row: row["lambda"], default=None)
+        if ladder:
+            best = min(row["collapse"] for row in ladder)
+            limit = (1.0 + float(rules["knee_within"])) * best
+            knees[anchor] = min(
+                row["lambda"] for row in ladder if row["collapse"] <= limit
+            )
+        else:
+            knees[anchor] = None
+    a_rows = [
+        row
+        for row in rows
+        if row["rule"] in UK_LOCAL_ROW_METADATA_RULES
+        and row["plain"]
+        and row["lambda"] == 0.0
+    ]
+    best_a = min(
+        a_rows,
+        key=lambda row: (-row["criteria_passed"], row["yardstick"]),
+        default=None,
+    )
+    picks: dict[str, Any] = {
+        "ladders": {
+            anchor: [_summary(row) for row in ladder]
+            for anchor, ladder in ladders.items()
+        },
+        "best_e": {
+            anchor: None if row is None else row["name"]
+            for anchor, row in best_e.items()
+        },
+        "knee": knees,
+        "a_candidates": [_summary(row) for row in a_rows],
+        "best_a": None if best_a is None else best_a["name"],
+    }
+    experiments: list[dict[str, Any]] = []
+    ae_floor = float(rules["ae_floor"])
+    if stage == "ae":
+        if best_a is not None:
+            rule = best_a["rule"]
+            ratio = float(census["rules"][rule]["loss_s0_to_run_rule"])
+            picks["ae_rule"], picks["ae_loss_ratio"] = rule, ratio
+            for anchor in _STEP1B_ANCHORS:
+                knee = knees[anchor]
+                if knee is None:
+                    continue
+                for step in rules["ae_decade_steps"]:
+                    value = knee * 10.0 ** float(step) * ratio
+                    experiments.append(
+                        {
+                            "name": (
+                                f"AE_{_RULE_ABBREVIATIONS[rule]}_{anchor[:4]}"
+                                f"_f{ae_floor:g}_{value:.2g}"
+                            ),
+                            "refit_rule": rule,
+                            "refit_l2": {"lambda": value, "anchor": anchor},
+                            "baseline_pi_floor": ae_floor,
+                            "notes": (
+                                f"step 1b A×E: {rule} x {anchor}, knee {knee:g} "
+                                f"{float(step):+g} decade, x loss ratio {ratio:.3f}"
+                            ),
+                        }
+                    )
+    else:
+        ae_rows = [
+            row
+            for row in rows
+            if row["rule"] in UK_LOCAL_ROW_METADATA_RULES
+            and row["plain"]
+            and row["lambda"] >= float(rules["ladder_min_lambda"])
+            and row["floor"] == ae_floor
+        ]
+        best_ae = _winner(ae_rows)
+        picks["ae_candidates"] = [_summary(row) for row in ae_rows]
+        picks["best_ae"] = None if best_ae is None else best_ae["name"]
+        experiments.append(
+            {"name": "H_C0", "mode": "refit_holdout", "notes": "step 1b holdout: C0"}
+        )
+        controls = [
+            row
+            for row in rows
+            if row["rule"] is None
+            and row["plain"]
+            and row["lambda"] == 0.0
+            and row["floor"] == ladder_floor
+        ]
+        if controls:
+            experiments.append(
+                _holdout_of(
+                    controls[0], f"H_{controls[0]['name']}", "step 1b holdout: C2"
+                )
+            )
+        chosen = [
+            *((row, f"best E {anchor}") for anchor, row in best_e.items()),
+            (best_a, "best A"),
+            (best_ae, "best A×E"),
+        ]
+        for row, label in chosen:
+            if row is not None:
+                experiments.append(
+                    _holdout_of(row, f"H_{row['name']}", f"step 1b holdout: {label}")
+                )
+    parse_uk_size_experiments(experiments)
+    return {
+        "stage": stage,
+        "rules": dict(rules),
+        "picks": picks,
+        "experiments": experiments,
     }
 
 

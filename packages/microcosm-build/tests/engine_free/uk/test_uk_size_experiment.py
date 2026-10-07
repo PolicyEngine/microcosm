@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.size_experiment import (
     run_uk_size_control,
     run_uk_size_experiment,
     score_uk_size_experiments,
+    uk_size_step1b_plan,
     uk_size_weights_of,
 )
 from microcosm.build.uk_runtime.size_experiment_scorecard import (
@@ -502,13 +503,201 @@ def test_tool_records_a_refused_configuration_and_moves_on(
     assert tool.main(["score", *common, "--out", str(out)]) == 0
     scorecard = json.loads((out / "scorecard.json").read_text())
     assert set(scorecard["acceptance"]) == {"S0", "good"}
+    # step 1b's planner on a scored out directory (no ladders here, so the
+    # holdout stage plans C0 alone)
+    for stage in ("ae", "holdout"):
+        to = tmp_path / f"step1b_{stage}.json"
+        assert (
+            tool.main(
+                ["plan-step1b", "--out", str(out), "--stage", stage, "--to", str(to)]
+            )
+            == 0
+        )
+        assert (out / f"step1b_{stage}_plan.json").is_file()
+    assert json.loads((tmp_path / "step1b_ae.json").read_text()) == []
+    assert [
+        e["name"] for e in json.loads((tmp_path / "step1b_holdout.json").read_text())
+    ] == ["H_C0"]
     published = tmp_path / "published"
     assert tool.main(["publish", "--out", str(out), "--to", str(published)]) == 0
     results = json.loads((published / "results.json").read_text())
-    assert set(results) == {"scorecard", "receipts", "census"}
+    assert set(results) == {"scorecard", "receipts", "census", "step1b"}
+    assert set(results["step1b"]) == {"ae", "holdout"}
     assert results["receipts"]["bad"]["status"] == "failed"
     assert "traceback" not in results["receipts"]["bad"]
     assert results["census"]["checks"]["passed"] is True
+
+
+_CRITERIA = (
+    "household_total",
+    "nation_shares",
+    "lone_person_share",
+    "local_family_within_10",
+    "national_past_25",
+)
+
+
+def _step1a(configs):
+    """A scored step 1a: name -> (declaration, floor, passes 1-5, passed, collapse, loss)."""
+
+    scorecard = {"acceptance": {}, "sets": {}}
+    receipts = {}
+    for name, (declared, floor, ok, passed, collapse, loss) in configs.items():
+        criteria = {key: {"pass": ok} for key in _CRITERIA}
+        criteria["relative_collapse"] = {"value": collapse, "pass": collapse == 0}
+        scorecard["acceptance"][name] = {
+            "criteria": criteria,
+            "passes": [f"criterion_{index}" for index in range(passed)],
+        }
+        scorecard["sets"][name] = {"loss_grain_equal_yardstick": loss}
+        receipts[name] = {
+            "status": "finished",
+            "experiment": {"name": name, "mode": "refit", **declared},
+            "settings": {"baseline_pi_floor": floor},
+        }
+    return scorecard, receipts
+
+
+def _l2(value, anchor):
+    return {"refit_l2": {"lambda": value, "anchor": anchor}, "baseline_pi_floor": 0.5}
+
+
+def test_step1b_reads_its_picks_off_step_1a_by_the_pre_registered_rules() -> None:
+    configs = {
+        "C2_f0.5": ({"baseline_pi_floor": 0.5}, 0.5, False, 2, 200, 0.05),
+        # the 1e-9 point is the iterate-switch control, not a ladder point
+        "C3_f0.5_l2_1e-9": (
+            {"refit_l2": {"lambda": 1e-9}, "baseline_pi_floor": 0.5},
+            0.5,
+            True,
+            5,
+            10,
+            0.01,
+        ),
+        "E_init_f0.5_1e-3": (_l2(1e-3, "initial"), 0.5, True, 5, 150, 0.03),
+        "E_init_f0.5_3e-3": (_l2(3e-3, "initial"), 0.5, True, 5, 120, 0.03),
+        "E_init_f0.5_1e-2": (_l2(1e-2, "initial"), 0.5, True, 5, 100, 0.04),
+        "E_init_f0.5_3e-2": (_l2(3e-2, "initial"), 0.5, False, 4, 95, 0.05),
+        "E_init_f0.5_1e-1": (_l2(1e-1, "initial"), 0.5, False, 4, 92, 0.06),
+        "E_unif_f0.5_1e-3": (_l2(1e-3, "uniform"), 0.5, False, 3, 180, 0.03),
+        "E_unif_f0.5_1e-2": (_l2(1e-2, "uniform"), 0.5, False, 3, 60, 0.04),
+        "E_unif_f0.5_1e-1": (_l2(1e-1, "uniform"), 0.5, False, 3, 58, 0.07),
+        # the floor-0 E points and the learning-rate control stay out of the ladders
+        "E_init_f0_1e-2": (
+            {"refit_l2": {"lambda": 1e-2, "anchor": "initial"}},
+            0.0,
+            True,
+            5,
+            1,
+            0.01,
+        ),
+        "C5_lr0.1485": ({"learning_rate": 0.1485}, 0.0, True, 5, 1, 0.01),
+        "A_gfe_f0.5": (
+            {"refit_rule": "grain_family_equal", "baseline_pi_floor": 0.5},
+            0.5,
+            False,
+            3,
+            150,
+            0.06,
+        ),
+        "A_ngfes_f0.5": (
+            {
+                "refit_rule": "nation_grain_family_equal_sqrt_count",
+                "baseline_pi_floor": 0.5,
+            },
+            0.5,
+            False,
+            4,
+            140,
+            0.07,
+        ),
+        "A_ngfe_f0": (
+            {"refit_rule": "nation_grain_family_equal"},
+            0.0,
+            False,
+            4,
+            160,
+            0.065,
+        ),
+    }
+    scorecard, receipts = _step1a(configs)
+    receipts["broken"] = {"status": "failed", "experiment": {"name": "broken"}}
+    census = {"rules": {"nation_grain_family_equal": {"loss_s0_to_run_rule": 2.0}}}
+    plan = uk_size_step1b_plan(scorecard, receipts, census, stage="ae")
+    picks = plan["picks"]
+    # best E: the largest ladder λ meeting criteria 1-5; none on the uniform ladder
+    assert picks["best_e"] == {"initial": "E_init_f0.5_1e-2", "uniform": None}
+    # knee: the smallest ladder λ within 10 % of the ladder's best collapse count
+    assert picks["knee"] == {"initial": 1e-2, "uniform": 1e-2}
+    # best A: most criteria passed, the tie broken by the grain_equal yardstick
+    assert picks["best_a"] == "A_ngfe_f0"
+    assert [len(picks["ladders"][anchor]) for anchor in ("initial", "uniform")] == [
+        5,
+        3,
+    ]
+    experiments = plan["experiments"]
+    assert len(experiments) == 6
+    assert {e["refit_rule"] for e in experiments} == {"nation_grain_family_equal"}
+    assert {e["baseline_pi_floor"] for e in experiments} == {0.5}
+    for anchor in ("initial", "uniform"):
+        values = sorted(
+            e["refit_l2"]["lambda"]
+            for e in experiments
+            if e["refit_l2"]["anchor"] == anchor
+        )
+        expected = [1e-2 * 10**step * 2.0 for step in (-0.5, 0.0, 0.5)]
+        assert values == pytest.approx(expected)
+    # the holdout stage, once the A×E points are scored: the winner rule picks
+    # the A×E point that meets criteria 1-5 over one with fewer collapses
+    scored = {
+        **configs,
+        "AE_ngfe_init_f0.5_0.02": (
+            {
+                "refit_rule": "nation_grain_family_equal",
+                **_l2(0.02, "initial"),
+            },
+            0.5,
+            True,
+            5,
+            90,
+            0.08,
+        ),
+        "AE_ngfe_unif_f0.5_0.02": (
+            {
+                "refit_rule": "nation_grain_family_equal",
+                **_l2(0.02, "uniform"),
+            },
+            0.5,
+            False,
+            3,
+            50,
+            0.04,
+        ),
+    }
+    scorecard, receipts = _step1a(scored)
+    holdout = uk_size_step1b_plan(scorecard, receipts, census, stage="holdout")
+    assert holdout["picks"]["best_ae"] == "AE_ngfe_init_f0.5_0.02"
+    assert [e["name"] for e in holdout["experiments"]] == [
+        "H_C0",
+        "H_C2_f0.5",
+        "H_E_init_f0.5_1e-2",
+        "H_A_ngfe_f0",
+        "H_AE_ngfe_init_f0.5_0.02",
+    ]
+    assert {e["mode"] for e in holdout["experiments"]} == {"refit_holdout"}
+    by_name = {e["name"]: e for e in holdout["experiments"]}
+    assert by_name["H_A_ngfe_f0"] == {
+        "name": "H_A_ngfe_f0",
+        "mode": "refit_holdout",
+        "refit_rule": "nation_grain_family_equal",
+        "notes": "step 1b holdout: best A",
+    }
+    assert by_name["H_E_init_f0.5_1e-2"]["refit_l2"] == {
+        "lambda": 1e-2,
+        "anchor": "initial",
+    }
+    with pytest.raises(ValueError, match="stage must be"):
+        uk_size_step1b_plan(scorecard, receipts, census, stage="1c")
 
 
 def _load_tool():

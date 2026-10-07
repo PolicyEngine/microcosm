@@ -13,6 +13,8 @@ dense reference held fixed. Subcommands, each its own process:
                  failed receipt and the run moves on: no release gate runs
                  here, and a refusal is a result.
 ``score``        score D, the reproduced S0 and every finished experiment.
+``plan-step1b``  write #1124's step 1b from the scored step 1a by the
+                 pre-registered rules (``--stage ae``, then ``--stage holdout``).
 ``publish``      write the disclosure-controlled aggregates (no unit records).
 
 Outputs go to ``--out``, which must lie outside the repository and the run
@@ -46,6 +48,7 @@ from microcosm.build.uk_runtime.size_experiment import (
     save_uk_size_weights,
     score_uk_size_experiments,
     uk_size_failed_receipt,
+    uk_size_step1b_plan,
     uk_size_weights_of,
 )
 from microcosm.build.uk_runtime.size_experiment_scorecard import disclosure_controlled
@@ -300,6 +303,39 @@ def _score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _plan_step1b(args: argparse.Namespace) -> int:
+    out = args.out.resolve()
+    scorecard = json.loads((out / "scorecard.json").read_text("utf-8"))
+    receipts = {
+        path.parent.name: json.loads(path.read_text("utf-8"))
+        for path in sorted(out.glob("*/receipt.json"))
+        if path.parent.name != _CONTROL
+    }
+    census = json.loads((out / _CENSUS / "census.json").read_text("utf-8"))
+    plan = uk_size_step1b_plan(scorecard, receipts, census, stage=args.stage)
+    (out / f"step1b_{args.stage}_plan.json").write_text(_json(plan), encoding="utf-8")
+    destination = args.to.resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(_json(plan["experiments"]), encoding="utf-8")
+    picks = {
+        key: value
+        for key, value in plan["picks"].items()
+        if key != "ladders" and not key.endswith("candidates")
+    }
+    sys.stdout.write(
+        _json(
+            {
+                "stage": plan["stage"],
+                "picks": picks,
+                "experiments": [
+                    experiment["name"] for experiment in plan["experiments"]
+                ],
+            }
+        )
+    )
+    return 0
+
+
 def _publish(args: argparse.Namespace) -> int:
     out = args.out.resolve()
     destination = args.to.resolve()
@@ -314,6 +350,14 @@ def _publish(args: argparse.Namespace) -> int:
     census_path = out / _CENSUS / "census.json"
     if census_path.is_file():
         published["census"] = json.loads(census_path.read_text("utf-8"))
+    plans = {
+        path.name.removeprefix("step1b_").removesuffix("_plan.json"): json.loads(
+            path.read_text("utf-8")
+        )
+        for path in sorted(out.glob("step1b_*_plan.json"))
+    }
+    if plans:
+        published["step1b"] = plans
     destination.mkdir(parents=True, exist_ok=True)
     controlled = disclosure_controlled(published, minimum_count=args.minimum_count)
     (destination / "results.json").write_text(_json(controlled), encoding="utf-8")
@@ -354,6 +398,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     score = sub.add_parser("score", help="score D, S0 and finished experiments")
     common(score)
     score.add_argument("--only", nargs="+", default=None)
+    plan = sub.add_parser(
+        "plan-step1b",
+        help="write step 1b from the scored step 1a (pre-registered rules)",
+    )
+    plan.add_argument("--out", type=Path, required=True)
+    plan.add_argument("--stage", choices=("ae", "holdout"), required=True)
+    plan.add_argument("--to", type=Path, required=True)
     publish = sub.add_parser("publish", help="write disclosure-controlled aggregates")
     publish.add_argument("--out", type=Path, required=True)
     publish.add_argument("--to", type=Path, required=True)
@@ -369,6 +420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "census": _census,
         "run": _run,
         "score": _score,
+        "plan-step1b": _plan_step1b,
         "publish": _publish,
     }
     return handlers[args.command](args)
