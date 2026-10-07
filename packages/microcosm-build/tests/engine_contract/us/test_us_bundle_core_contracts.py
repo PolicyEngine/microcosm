@@ -8,8 +8,8 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
     __import__("policyengine_us")
     catalog = build_catalogs()
     columns = catalog["columns"]
-    assert len(columns) == 176
-    assert len({row["key"] for row in columns}) == 176
+    assert len(columns) == 178
+    assert len({row["key"] for row in columns}) == 178
     assert catalog["metadata_waivers"] == [
         {
             "id": "policyengine_us_unit_unavailable",
@@ -34,7 +34,7 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
         else:
             assert "unit_waiver" not in contract
     assert Counter(row["contract"]["unit"] for row in columns) == {
-        "unit_not_declared_by_engine_metadata": 89,
+        "unit_not_declared_by_engine_metadata": 91,
         "boolean": 51,
         "count": 27,
         "categorical": 9,
@@ -60,7 +60,7 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
             "catalogs": catalog,
         }
     )
-    assert len(resolved.columns) == 176
+    assert len(resolved.columns) == 178
     by_key = {row["key"]: row["contract"] for row in columns}
     for column in resolved.columns:
         contract = by_key[column.key]

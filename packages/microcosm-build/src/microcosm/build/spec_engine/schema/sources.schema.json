@@ -1204,7 +1204,13 @@
       "net_worth_source_column": {
        "type": "string"
       },
-      "non_mortgage_output": {
+      "points_output": {
+       "type": "string"
+      },
+      "premiums_output": {
+       "type": "string"
+      },
+      "investment_output": {
        "type": "string"
       },
       "notes": {
@@ -1243,6 +1249,15 @@
        "type": "boolean"
       },
       "published_home_mortgage_column": {
+       "type": "string"
+      },
+      "published_deductible_points_column": {
+       "type": "string"
+      },
+      "published_mortgage_insurance_premiums_column": {
+       "type": "string"
+      },
+      "published_investment_interest_column": {
        "type": "string"
       },
       "published_source_year": {

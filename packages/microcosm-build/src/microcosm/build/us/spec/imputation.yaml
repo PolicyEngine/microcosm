@@ -202,15 +202,15 @@ chaining:
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   - family: late/person/puf_tax_itemization__batch_2
-    after_target: traditional_ira_contributions_desired
+    after_target: casualty_loss
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   - family: late/person/puf_tax_itemization__batch_3
-    after_target: farm_operations_income_would_be_qualified
+    after_target: partnership_self_employment_net_earnings
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   - family: late/person/puf_tax_itemization__batch_4
-    after_target: qualified_reit_and_ptp_income
+    after_target: business_is_sstb
     reason: Declared production memory boundary preserving the canonical five-batch late PUF itemization
       partition.
   memory_policy: release_after_draw
@@ -488,7 +488,7 @@ gap_fill_schedule:
   - name: asec_housing_to_acs
     activation_stage: gap_fill_stacked_spine.activation[asec_housing_to_acs]
 primary_checkpoint:
-  schema_version: 6
+  schema_version: 7
   target_order_digest_rule: sha256(compact_json_array)
 families:
 - id: early/asec_survey_to_acs/person/puf_tax_itemization
@@ -1530,6 +1530,20 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: puf_clone
+  - name: home_mortgage_points
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: puf_clone
+  - name: mortgage_insurance_premiums
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: puf_clone
   - name: investment_interest_expense
     entity: person
     value_kind: amount
@@ -1997,6 +2011,20 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
+  - name: home_mortgage_points
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: mortgage_insurance_premiums
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
   - name: investment_interest_expense
     entity: person
     value_kind: amount
@@ -2039,20 +2067,6 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: unreimbursed_business_employee_expenses
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
-  - name: traditional_ira_contributions_desired
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
 - id: late/person/puf_tax_itemization__batch_3
   stage: late_producer_dag
   entities:
@@ -2077,6 +2091,20 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
+  - name: unreimbursed_business_employee_expenses
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: traditional_ira_contributions_desired
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
   - name: self_employed_pension_contributions_desired
     entity: person
     value_kind: amount
@@ -2119,20 +2147,6 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: estate_income_would_be_qualified
-    entity: person
-    value_kind: flag
-    dtype: bool
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
-  - name: farm_operations_income_would_be_qualified
-    entity: person
-    value_kind: flag
-    dtype: bool
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
 - id: late/person/puf_tax_itemization__batch_4
   stage: late_producer_dag
   entities:
@@ -2157,6 +2171,20 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
+  - name: estate_income_would_be_qualified
+    entity: person
+    value_kind: flag
+    dtype: bool
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: farm_operations_income_would_be_qualified
+    entity: person
+    value_kind: flag
+    dtype: bool
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
   - name: farm_rent_income_would_be_qualified
     entity: person
     value_kind: flag
@@ -2199,20 +2227,6 @@ families:
     period: year
     requires_concepts: []
     output_coverage_scope: whole_pool
-  - name: qualified_bdc_income
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
-  - name: qualified_reit_and_ptp_income
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    output_coverage_scope: whole_pool
 - id: late/person/puf_tax_itemization__batch_5
   stage: late_producer_dag
   entities:
@@ -2237,6 +2251,20 @@ families:
   max_targets_per_fit: 8
   execution_contract: acs_transfer_default
   targets:
+  - name: qualified_bdc_income
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
+  - name: qualified_reit_and_ptp_income
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    output_coverage_scope: whole_pool
   - name: sstb_self_employment_income_before_lsr
     entity: person
     value_kind: amount
@@ -3422,6 +3450,16 @@ producer_graph:
       tolerated_absence_receipts:
       - optional_input:primary_puf_qrf:person_output_allocation_basis:home_mortgage_interest
     - alternatives:
+      - - column: home_mortgage_points
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:person_output_allocation_basis:home_mortgage_points'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: whole_pool
+      tolerated_absence_receipts:
+      - optional_input:primary_puf_qrf:person_output_allocation_basis:home_mortgage_points
+    - alternatives:
       - - column: investment_income_elected_form_4952
           entity: person
           value_kind: finite_numeric
@@ -3471,6 +3509,16 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts:
       - optional_input:primary_puf_qrf:person_output_allocation_basis:miscellaneous_income
+    - alternatives:
+      - - column: mortgage_insurance_premiums
+          entity: person
+          value_kind: finite_numeric
+      column: '@effective:person_output_allocation_basis:mortgage_insurance_premiums'
+      entity: person
+      producing_stage: post_clone_input_surface
+      required_scope: whole_pool
+      tolerated_absence_receipts:
+      - optional_input:primary_puf_qrf:person_output_allocation_basis:mortgage_insurance_premiums
     - alternatives:
       - - column: non_qualified_dividend_income
           entity: person
@@ -4512,6 +4560,10 @@ producer_graph:
               lower_bound: null
               upper_bound: 5000.0
               home_mortgage_share: 0.9537970921280867
+              deductible_points_residual_share: 0.02564418040566668
+              qualified_mortgage_insurance_premiums_residual_share: 0.6482054346679791
+              investment_interest_residual_share: 0.3261503849263543
+              deductible_points_within_points_and_premiums_share: 0.03805623663206218
             - source_row: 12
               total_interest_paid_amount: 1284063
               home_mortgage_interest_amount: 1237451
@@ -4529,6 +4581,10 @@ producer_graph:
               lower_bound: 5000.0
               upper_bound: 10000.0
               home_mortgage_share: 0.9636996004090141
+              deductible_points_residual_share: 0.018686576130098047
+              qualified_mortgage_insurance_premiums_residual_share: 0.7638754800369012
+              investment_interest_residual_share: 0.2174379438330008
+              deductible_points_within_points_and_premiums_share: 0.02387871477135651
             - source_row: 13
               total_interest_paid_amount: 2148799
               home_mortgage_interest_amount: 2083827
@@ -4546,6 +4602,10 @@ producer_graph:
               lower_bound: 10000.0
               upper_bound: 15000.0
               home_mortgage_share: 0.9697635749085884
+              deductible_points_residual_share: 0.05422335775410946
+              qualified_mortgage_insurance_premiums_residual_share: 0.8645724312011328
+              investment_interest_residual_share: 0.08120421104475774
+              deductible_points_within_points_and_premiums_share: 0.05901567944250871
             - source_row: 14
               total_interest_paid_amount: 2699978
               home_mortgage_interest_amount: 2589295
@@ -4563,6 +4623,10 @@ producer_graph:
               lower_bound: 15000.0
               upper_bound: 20000.0
               home_mortgage_share: 0.9590059622708037
+              deductible_points_residual_share: 0.11428132594888103
+              qualified_mortgage_insurance_premiums_residual_share: 0.8468418817704616
+              investment_interest_residual_share: 0.03887679228065737
+              deductible_points_within_points_and_premiums_share: 0.11890392931002068
             - source_row: 15
               total_interest_paid_amount: 3181401
               home_mortgage_interest_amount: 2992991
@@ -4580,6 +4644,10 @@ producer_graph:
               lower_bound: 20000.0
               upper_bound: 25000.0
               home_mortgage_share: 0.9407776636771032
+              deductible_points_residual_share: 0.08719328694489117
+              qualified_mortgage_insurance_premiums_residual_share: 0.7856843356739859
+              investment_interest_residual_share: 0.12712237738112298
+              deductible_points_within_points_and_premiums_share: 0.09989176567877513
             - source_row: 16
               total_interest_paid_amount: 3748228
               home_mortgage_interest_amount: 3591380
@@ -4597,6 +4665,10 @@ producer_graph:
               lower_bound: 25000.0
               upper_bound: 30000.0
               home_mortgage_share: 0.9581540930807838
+              deductible_points_residual_share: 0.08330358053657044
+              qualified_mortgage_insurance_premiums_residual_share: 0.8703266857084566
+              investment_interest_residual_share: 0.04636973375497297
+              deductible_points_within_points_and_premiums_share: 0.08735417014875481
             - source_row: 17
               total_interest_paid_amount: 4214763
               home_mortgage_interest_amount: 3946351
@@ -4614,6 +4686,10 @@ producer_graph:
               lower_bound: 30000.0
               upper_bound: 35000.0
               home_mortgage_share: 0.9363162294060188
+              deductible_points_residual_share: 0.06072776451039637
+              qualified_mortgage_insurance_premiums_residual_share: 0.9166017786156305
+              investment_interest_residual_share: 0.02267045687397312
+              deductible_points_within_points_and_premiums_share: 0.06213642566882429
             - source_row: 18
               total_interest_paid_amount: 5435778
               home_mortgage_interest_amount: 5122692
@@ -4631,6 +4707,10 @@ producer_graph:
               lower_bound: 35000.0
               upper_bound: 40000.0
               home_mortgage_share: 0.9424027250561006
+              deductible_points_residual_share: 0.03465501491602946
+              qualified_mortgage_insurance_premiums_residual_share: 0.9232064033524335
+              investment_interest_residual_share: 0.04213858173153702
+              deductible_points_within_points_and_premiums_share: 0.0361795707135545
             - source_row: 19
               total_interest_paid_amount: 6009927
               home_mortgage_interest_amount: 5651139
@@ -4648,6 +4728,10 @@ producer_graph:
               lower_bound: 40000.0
               upper_bound: 45000.0
               home_mortgage_share: 0.9403007723721103
+              deductible_points_residual_share: 0.06263308694828143
+              qualified_mortgage_insurance_premiums_residual_share: 0.897588548111977
+              investment_interest_residual_share: 0.03977836493974157
+              deductible_points_within_points_and_premiums_share: 0.06522773978567033
             - source_row: 20
               total_interest_paid_amount: 6888540
               home_mortgage_interest_amount: 6411648
@@ -4665,6 +4749,10 @@ producer_graph:
               lower_bound: 45000.0
               upper_bound: 50000.0
               home_mortgage_share: 0.930770235782909
+              deductible_points_residual_share: 0.07636320173120958
+              qualified_mortgage_insurance_premiums_residual_share: 0.902040713620694
+              investment_interest_residual_share: 0.021596084648096425
+              deductible_points_within_points_and_premiums_share: 0.07804874912396885
             - source_row: 21
               total_interest_paid_amount: 6955789
               home_mortgage_interest_amount: 6543517
@@ -4682,6 +4770,10 @@ producer_graph:
               lower_bound: 50000.0
               upper_bound: 55000.0
               home_mortgage_share: 0.9407296569806819
+              deductible_points_residual_share: 0.05324652958854734
+              qualified_mortgage_insurance_premiums_residual_share: 0.9182236926681722
+              investment_interest_residual_share: 0.028529777743280513
+              deductible_points_within_points_and_premiums_share: 0.05481025395184628
             - source_row: 22
               total_interest_paid_amount: 7424513
               home_mortgage_interest_amount: 6985554
@@ -4699,6 +4791,10 @@ producer_graph:
               lower_bound: 55000.0
               upper_bound: 60000.0
               home_mortgage_share: 0.9408770649334172
+              deductible_points_residual_share: 0.08112374959848186
+              qualified_mortgage_insurance_premiums_residual_share: 0.8829913499894068
+              investment_interest_residual_share: 0.035884900412111384
+              deductible_points_within_points_and_premiums_share: 0.08414322069341953
             - source_row: 23
               total_interest_paid_amount: 23294604
               home_mortgage_interest_amount: 21825640
@@ -4716,6 +4812,10 @@ producer_graph:
               lower_bound: 60000.0
               upper_bound: 75000.0
               home_mortgage_share: 0.9369397307633991
+              deductible_points_residual_share: 0.07572746797915539
+              qualified_mortgage_insurance_premiums_residual_share: 0.8665686384631356
+              investment_interest_residual_share: 0.057703893557708996
+              deductible_points_within_points_and_premiums_share: 0.08036483167172374
             - source_row: 24
               total_interest_paid_amount: 43398259
               home_mortgage_interest_amount: 40897449
@@ -4733,6 +4833,10 @@ producer_graph:
               lower_bound: 75000.0
               upper_bound: 100000.0
               home_mortgage_share: 0.9423753381443251
+              deductible_points_residual_share: 0.09537193764097938
+              qualified_mortgage_insurance_premiums_residual_share: 0.8385202548455319
+              investment_interest_residual_share: 0.06610780751348863
+              deductible_points_within_points_and_premiums_share: 0.10212306988780921
             - source_row: 25
               total_interest_paid_amount: 104846625
               home_mortgage_interest_amount: 103319155
@@ -4750,6 +4854,10 @@ producer_graph:
               lower_bound: 100000.0
               upper_bound: 200000.0
               home_mortgage_share: 0.9854313860841968
+              deductible_points_residual_share: 0.30561713159669257
+              qualified_mortgage_insurance_premiums_residual_share: 0.23383568908063662
+              investment_interest_residual_share: 0.4605471793226708
+              deductible_points_within_points_and_premiums_share: 0.5665317148828031
             - source_row: 26
               total_interest_paid_amount: 53562301
               home_mortgage_interest_amount: 51606382
@@ -4767,6 +4875,10 @@ producer_graph:
               lower_bound: 200000.0
               upper_bound: 500000.0
               home_mortgage_share: 0.9634832902343011
+              deductible_points_residual_share: 0.10577630986952431
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.8942236901304756
+              deductible_points_within_points_and_premiums_share: 1.0
             - source_row: 27
               total_interest_paid_amount: 12836968
               home_mortgage_interest_amount: 11335153
@@ -4784,6 +4896,10 @@ producer_graph:
               lower_bound: 500000.0
               upper_bound: 1000000.0
               home_mortgage_share: 0.883008588944056
+              deductible_points_residual_share: 0.02727364737091628
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.9727263526290837
+              deductible_points_within_points_and_premiums_share: 1.0
             - source_row: 28
               total_interest_paid_amount: 3505209
               home_mortgage_interest_amount: 2559360
@@ -4801,6 +4917,10 @@ producer_graph:
               lower_bound: 1000000.0
               upper_bound: 1500000.0
               home_mortgage_share: 0.7301590290336468
+              deductible_points_residual_share: 0.008392460107268707
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.9916075398927313
+              deductible_points_within_points_and_premiums_share: 1.0
             - source_row: 29
               total_interest_paid_amount: 1666807
               home_mortgage_interest_amount: 1043154
@@ -4818,6 +4938,10 @@ producer_graph:
               lower_bound: 1500000.0
               upper_bound: 2000000.0
               home_mortgage_share: 0.6258397042968982
+              deductible_points_residual_share: 0.0042251127231212274
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.9957748872768788
+              deductible_points_within_points_and_premiums_share: 1.0
             - source_row: 30
               total_interest_paid_amount: 3412493
               home_mortgage_interest_amount: 1521570
@@ -4835,6 +4959,10 @@ producer_graph:
               lower_bound: 2000000.0
               upper_bound: 5000000.0
               home_mortgage_share: 0.44588223331154087
+              deductible_points_residual_share: 0.0026981518030338605
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.9973018481969661
+              deductible_points_within_points_and_premiums_share: 1.0
             - source_row: 31
               total_interest_paid_amount: 1535736
               home_mortgage_interest_amount: 360807
@@ -4852,6 +4980,10 @@ producer_graph:
               lower_bound: 5000000.0
               upper_bound: 10000000.0
               home_mortgage_share: 0.23494077107002767
+              deductible_points_residual_share: 0.0011804968640658287
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.9988195031359342
+              deductible_points_within_points_and_premiums_share: 1.0
             - source_row: 32
               total_interest_paid_amount: 5178966
               home_mortgage_interest_amount: 205431
@@ -4869,6 +5001,10 @@ producer_graph:
               lower_bound: 10000000.0
               upper_bound: null
               home_mortgage_share: 0.0396664121757123
+              deductible_points_residual_share: 0.0001280779164115664
+              qualified_mortgage_insurance_premiums_residual_share: 0.0
+              investment_interest_residual_share: 0.9998719220835884
+              deductible_points_within_points_and_premiums_share: 1.0
             runtime_agi_bands:
               schema_version: 1
               agi_bands:
@@ -4889,6 +5025,10 @@ producer_graph:
                 lower_bound: null
                 upper_bound: 5000.0
                 home_mortgage_share: 0.9537970921280867
+                deductible_points_residual_share: 0.02564418040566668
+                qualified_mortgage_insurance_premiums_residual_share: 0.6482054346679791
+                investment_interest_residual_share: 0.3261503849263543
+                deductible_points_within_points_and_premiums_share: 0.03805623663206218
               - source_row: 12
                 total_interest_paid_amount: 1284063
                 home_mortgage_interest_amount: 1237451
@@ -4906,6 +5046,10 @@ producer_graph:
                 lower_bound: 5000.0
                 upper_bound: 10000.0
                 home_mortgage_share: 0.9636996004090141
+                deductible_points_residual_share: 0.018686576130098047
+                qualified_mortgage_insurance_premiums_residual_share: 0.7638754800369012
+                investment_interest_residual_share: 0.2174379438330008
+                deductible_points_within_points_and_premiums_share: 0.02387871477135651
               - source_row: 13
                 total_interest_paid_amount: 2148799
                 home_mortgage_interest_amount: 2083827
@@ -4923,6 +5067,10 @@ producer_graph:
                 lower_bound: 10000.0
                 upper_bound: 15000.0
                 home_mortgage_share: 0.9697635749085884
+                deductible_points_residual_share: 0.05422335775410946
+                qualified_mortgage_insurance_premiums_residual_share: 0.8645724312011328
+                investment_interest_residual_share: 0.08120421104475774
+                deductible_points_within_points_and_premiums_share: 0.05901567944250871
               - source_row: 14
                 total_interest_paid_amount: 2699978
                 home_mortgage_interest_amount: 2589295
@@ -4940,6 +5088,10 @@ producer_graph:
                 lower_bound: 15000.0
                 upper_bound: 20000.0
                 home_mortgage_share: 0.9590059622708037
+                deductible_points_residual_share: 0.11428132594888103
+                qualified_mortgage_insurance_premiums_residual_share: 0.8468418817704616
+                investment_interest_residual_share: 0.03887679228065737
+                deductible_points_within_points_and_premiums_share: 0.11890392931002068
               - source_row: 15
                 total_interest_paid_amount: 3181401
                 home_mortgage_interest_amount: 2992991
@@ -4957,6 +5109,10 @@ producer_graph:
                 lower_bound: 20000.0
                 upper_bound: 25000.0
                 home_mortgage_share: 0.9407776636771032
+                deductible_points_residual_share: 0.08719328694489117
+                qualified_mortgage_insurance_premiums_residual_share: 0.7856843356739859
+                investment_interest_residual_share: 0.12712237738112298
+                deductible_points_within_points_and_premiums_share: 0.09989176567877513
               - source_row: 16
                 total_interest_paid_amount: 3748228
                 home_mortgage_interest_amount: 3591380
@@ -4974,6 +5130,10 @@ producer_graph:
                 lower_bound: 25000.0
                 upper_bound: 30000.0
                 home_mortgage_share: 0.9581540930807838
+                deductible_points_residual_share: 0.08330358053657044
+                qualified_mortgage_insurance_premiums_residual_share: 0.8703266857084566
+                investment_interest_residual_share: 0.04636973375497297
+                deductible_points_within_points_and_premiums_share: 0.08735417014875481
               - source_row: 17
                 total_interest_paid_amount: 4214763
                 home_mortgage_interest_amount: 3946351
@@ -4991,6 +5151,10 @@ producer_graph:
                 lower_bound: 30000.0
                 upper_bound: 35000.0
                 home_mortgage_share: 0.9363162294060188
+                deductible_points_residual_share: 0.06072776451039637
+                qualified_mortgage_insurance_premiums_residual_share: 0.9166017786156305
+                investment_interest_residual_share: 0.02267045687397312
+                deductible_points_within_points_and_premiums_share: 0.06213642566882429
               - source_row: 18
                 total_interest_paid_amount: 5435778
                 home_mortgage_interest_amount: 5122692
@@ -5008,6 +5172,10 @@ producer_graph:
                 lower_bound: 35000.0
                 upper_bound: 40000.0
                 home_mortgage_share: 0.9424027250561006
+                deductible_points_residual_share: 0.03465501491602946
+                qualified_mortgage_insurance_premiums_residual_share: 0.9232064033524335
+                investment_interest_residual_share: 0.04213858173153702
+                deductible_points_within_points_and_premiums_share: 0.0361795707135545
               - source_row: 19
                 total_interest_paid_amount: 6009927
                 home_mortgage_interest_amount: 5651139
@@ -5025,6 +5193,10 @@ producer_graph:
                 lower_bound: 40000.0
                 upper_bound: 45000.0
                 home_mortgage_share: 0.9403007723721103
+                deductible_points_residual_share: 0.06263308694828143
+                qualified_mortgage_insurance_premiums_residual_share: 0.897588548111977
+                investment_interest_residual_share: 0.03977836493974157
+                deductible_points_within_points_and_premiums_share: 0.06522773978567033
               - source_row: 20
                 total_interest_paid_amount: 6888540
                 home_mortgage_interest_amount: 6411648
@@ -5042,6 +5214,10 @@ producer_graph:
                 lower_bound: 45000.0
                 upper_bound: 50000.0
                 home_mortgage_share: 0.930770235782909
+                deductible_points_residual_share: 0.07636320173120958
+                qualified_mortgage_insurance_premiums_residual_share: 0.902040713620694
+                investment_interest_residual_share: 0.021596084648096425
+                deductible_points_within_points_and_premiums_share: 0.07804874912396885
               - source_row: 21
                 total_interest_paid_amount: 6955789
                 home_mortgage_interest_amount: 6543517
@@ -5059,6 +5235,10 @@ producer_graph:
                 lower_bound: 50000.0
                 upper_bound: 55000.0
                 home_mortgage_share: 0.9407296569806819
+                deductible_points_residual_share: 0.05324652958854734
+                qualified_mortgage_insurance_premiums_residual_share: 0.9182236926681722
+                investment_interest_residual_share: 0.028529777743280513
+                deductible_points_within_points_and_premiums_share: 0.05481025395184628
               - source_row: 22
                 total_interest_paid_amount: 7424513
                 home_mortgage_interest_amount: 6985554
@@ -5076,6 +5256,10 @@ producer_graph:
                 lower_bound: 55000.0
                 upper_bound: 60000.0
                 home_mortgage_share: 0.9408770649334172
+                deductible_points_residual_share: 0.08112374959848186
+                qualified_mortgage_insurance_premiums_residual_share: 0.8829913499894068
+                investment_interest_residual_share: 0.035884900412111384
+                deductible_points_within_points_and_premiums_share: 0.08414322069341953
               - source_row: 23
                 total_interest_paid_amount: 23294604
                 home_mortgage_interest_amount: 21825640
@@ -5093,6 +5277,10 @@ producer_graph:
                 lower_bound: 60000.0
                 upper_bound: 75000.0
                 home_mortgage_share: 0.9369397307633991
+                deductible_points_residual_share: 0.07572746797915539
+                qualified_mortgage_insurance_premiums_residual_share: 0.8665686384631356
+                investment_interest_residual_share: 0.057703893557708996
+                deductible_points_within_points_and_premiums_share: 0.08036483167172374
               - source_row: 24
                 total_interest_paid_amount: 43398259
                 home_mortgage_interest_amount: 40897449
@@ -5110,6 +5298,10 @@ producer_graph:
                 lower_bound: 75000.0
                 upper_bound: 100000.0
                 home_mortgage_share: 0.9423753381443251
+                deductible_points_residual_share: 0.09537193764097938
+                qualified_mortgage_insurance_premiums_residual_share: 0.8385202548455319
+                investment_interest_residual_share: 0.06610780751348863
+                deductible_points_within_points_and_premiums_share: 0.10212306988780921
               - source_row: 25
                 total_interest_paid_amount: 104846625
                 home_mortgage_interest_amount: 103319155
@@ -5127,6 +5319,10 @@ producer_graph:
                 lower_bound: 100000.0
                 upper_bound: 200000.0
                 home_mortgage_share: 0.9854313860841968
+                deductible_points_residual_share: 0.30561713159669257
+                qualified_mortgage_insurance_premiums_residual_share: 0.23383568908063662
+                investment_interest_residual_share: 0.4605471793226708
+                deductible_points_within_points_and_premiums_share: 0.5665317148828031
               - source_row: 26
                 total_interest_paid_amount: 53562301
                 home_mortgage_interest_amount: 51606382
@@ -5144,6 +5340,10 @@ producer_graph:
                 lower_bound: 200000.0
                 upper_bound: 500000.0
                 home_mortgage_share: 0.9634832902343011
+                deductible_points_residual_share: 0.10577630986952431
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.8942236901304756
+                deductible_points_within_points_and_premiums_share: 1.0
               - source_row: 27
                 total_interest_paid_amount: 12836968
                 home_mortgage_interest_amount: 11335153
@@ -5161,6 +5361,10 @@ producer_graph:
                 lower_bound: 500000.0
                 upper_bound: 1000000.0
                 home_mortgage_share: 0.883008588944056
+                deductible_points_residual_share: 0.02727364737091628
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.9727263526290837
+                deductible_points_within_points_and_premiums_share: 1.0
               - source_row: 28
                 total_interest_paid_amount: 3505209
                 home_mortgage_interest_amount: 2559360
@@ -5178,6 +5382,10 @@ producer_graph:
                 lower_bound: 1000000.0
                 upper_bound: 1500000.0
                 home_mortgage_share: 0.7301590290336468
+                deductible_points_residual_share: 0.008392460107268707
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.9916075398927313
+                deductible_points_within_points_and_premiums_share: 1.0
               - source_row: 29
                 total_interest_paid_amount: 1666807
                 home_mortgage_interest_amount: 1043154
@@ -5195,6 +5403,10 @@ producer_graph:
                 lower_bound: 1500000.0
                 upper_bound: 2000000.0
                 home_mortgage_share: 0.6258397042968982
+                deductible_points_residual_share: 0.0042251127231212274
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.9957748872768788
+                deductible_points_within_points_and_premiums_share: 1.0
               - source_row: 30
                 total_interest_paid_amount: 3412493
                 home_mortgage_interest_amount: 1521570
@@ -5212,6 +5424,10 @@ producer_graph:
                 lower_bound: 2000000.0
                 upper_bound: 5000000.0
                 home_mortgage_share: 0.44588223331154087
+                deductible_points_residual_share: 0.0026981518030338605
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.9973018481969661
+                deductible_points_within_points_and_premiums_share: 1.0
               - source_row: 31
                 total_interest_paid_amount: 1535736
                 home_mortgage_interest_amount: 360807
@@ -5229,6 +5445,10 @@ producer_graph:
                 lower_bound: 5000000.0
                 upper_bound: 10000000.0
                 home_mortgage_share: 0.23494077107002767
+                deductible_points_residual_share: 0.0011804968640658287
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.9988195031359342
+                deductible_points_within_points_and_premiums_share: 1.0
               - source_row: 32
                 total_interest_paid_amount: 5178966
                 home_mortgage_interest_amount: 205431
@@ -5246,6 +5466,10 @@ producer_graph:
                 lower_bound: 10000000.0
                 upper_bound: null
                 home_mortgage_share: 0.0396664121757123
+                deductible_points_residual_share: 0.0001280779164115664
+                qualified_mortgage_insurance_premiums_residual_share: 0.0
+                investment_interest_residual_share: 0.9998719220835884
+                deductible_points_within_points_and_premiums_share: 1.0
           concentration_gate:
             schema_version: 2
             selection_quantile: 0.995
@@ -18187,6 +18411,15 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: home_mortgage_points
+          entity: person
+          value_kind: finite_numeric
+      column: home_mortgage_points
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: investment_income_elected_form_4952
           entity: person
           value_kind: finite_numeric
@@ -18200,6 +18433,15 @@ producer_graph:
           entity: person
           value_kind: finite_numeric
       column: investment_interest_expense
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: mortgage_insurance_premiums
+          entity: person
+          value_kind: finite_numeric
+      column: mortgage_insurance_premiums
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -18421,33 +18663,6 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: traditional_ira_contributions_desired
-          entity: person
-          value_kind: finite_numeric
-      column: traditional_ira_contributions_desired
-      entity: person
-      producing_stage: source:with_us_retirement_contribution_inputs
-      required_scope: asec_source
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: traditional_ira_contributions_desired
-          entity: person
-          value_kind: finite_numeric
-      column: traditional_ira_contributions_desired
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: unreimbursed_business_employee_expenses
-          entity: person
-          value_kind: finite_numeric
-      column: unreimbursed_business_employee_expenses
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: spm_unit_id
           entity: spm_unit
           value_kind: finite_numeric
@@ -18579,14 +18794,14 @@ producer_graph:
             entity: person
             family: puf_tax_itemization__batch_2
             ordered_targets:
+            - home_mortgage_points
+            - mortgage_insurance_premiums
             - investment_interest_expense
             - investment_income_elected_form_4952
             - student_loan_interest
             - educator_expense
             - qualified_tuition_expenses
             - casualty_loss
-            - unreimbursed_business_employee_expenses
-            - traditional_ira_contributions_desired
   - id: transfer:person/puf_tax_itemization__batch_3
     name: transfer:person/puf_tax_itemization__batch_3
     kind: late_transfer
@@ -19206,28 +19421,10 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: estate_income_would_be_qualified
-          entity: person
-          value_kind: non_null
-      column: estate_income_would_be_qualified
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: farm_income
           entity: person
           value_kind: finite_numeric
       column: farm_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: farm_operations_income_would_be_qualified
-          entity: person
-          value_kind: non_null
-      column: farm_operations_income_would_be_qualified
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -19476,6 +19673,33 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: traditional_ira_contributions_desired
+          entity: person
+          value_kind: finite_numeric
+      column: traditional_ira_contributions_desired
+      entity: person
+      producing_stage: source:with_us_retirement_contribution_inputs
+      required_scope: asec_source
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: traditional_ira_contributions_desired
+          entity: person
+          value_kind: finite_numeric
+      column: traditional_ira_contributions_desired
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: unreimbursed_business_employee_expenses
+          entity: person
+          value_kind: finite_numeric
+      column: unreimbursed_business_employee_expenses
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: spm_unit_id
           entity: spm_unit
           value_kind: finite_numeric
@@ -19607,14 +19831,14 @@ producer_graph:
             entity: person
             family: puf_tax_itemization__batch_3
             ordered_targets:
+            - unreimbursed_business_employee_expenses
+            - traditional_ira_contributions_desired
             - self_employed_pension_contributions_desired
             - estate_income
             - farm_income
             - farm_rent_income
             - partnership_income
             - partnership_self_employment_net_earnings
-            - estate_income_would_be_qualified
-            - farm_operations_income_would_be_qualified
   - id: transfer:person/puf_tax_itemization__batch_4
     name: transfer:person/puf_tax_itemization__batch_4
     kind: late_transfer
@@ -20243,6 +20467,24 @@ producer_graph:
       required_scope: puf_clone
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: estate_income_would_be_qualified
+          entity: person
+          value_kind: non_null
+      column: estate_income_would_be_qualified
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: farm_operations_income_would_be_qualified
+          entity: person
+          value_kind: non_null
+      column: farm_operations_income_would_be_qualified
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: farm_rent_income_would_be_qualified
           entity: person
           value_kind: non_null
@@ -20360,28 +20602,10 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
-      - - column: qualified_bdc_income
-          entity: person
-          value_kind: finite_numeric
-      column: qualified_bdc_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
       - - column: qualified_dividend_income
           entity: person
           value_kind: finite_numeric
       column: qualified_dividend_income
-      entity: person
-      producing_stage: primary_puf_qrf
-      required_scope: puf_clone
-      tolerated_absence_receipts: []
-    - alternatives:
-      - - column: qualified_reit_and_ptp_income
-          entity: person
-          value_kind: finite_numeric
-      column: qualified_reit_and_ptp_income
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -20635,14 +20859,14 @@ producer_graph:
             entity: person
             family: puf_tax_itemization__batch_4
             ordered_targets:
+            - estate_income_would_be_qualified
+            - farm_operations_income_would_be_qualified
             - farm_rent_income_would_be_qualified
             - partnership_s_corp_income_would_be_qualified
             - rental_income_would_be_qualified
             - self_employment_income_would_be_qualified
             - sstb_self_employment_income_would_be_qualified
             - business_is_sstb
-            - qualified_bdc_income
-            - qualified_reit_and_ptp_income
   - id: transfer:person/puf_tax_itemization__batch_5
     name: transfer:person/puf_tax_itemization__batch_5
     kind: late_transfer
@@ -21361,10 +21585,28 @@ producer_graph:
       required_scope: whole_pool
       tolerated_absence_receipts: []
     - alternatives:
+      - - column: qualified_bdc_income
+          entity: person
+          value_kind: finite_numeric
+      column: qualified_bdc_income
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
       - - column: qualified_dividend_income
           entity: person
           value_kind: finite_numeric
       column: qualified_dividend_income
+      entity: person
+      producing_stage: primary_puf_qrf
+      required_scope: puf_clone
+      tolerated_absence_receipts: []
+    - alternatives:
+      - - column: qualified_reit_and_ptp_income
+          entity: person
+          value_kind: finite_numeric
+      column: qualified_reit_and_ptp_income
       entity: person
       producing_stage: primary_puf_qrf
       required_scope: puf_clone
@@ -21636,6 +21878,8 @@ producer_graph:
             entity: person
             family: puf_tax_itemization__batch_5
             ordered_targets:
+            - qualified_bdc_income
+            - qualified_reit_and_ptp_income
             - sstb_self_employment_income_before_lsr
             - sstb_unadjusted_basis_qualified_property
             - sstb_w2_wages_from_qualified_business
@@ -33464,7 +33708,7 @@ producer_graph:
     - producer: source:with_us_retirement_contribution_inputs
       owns_final: true
       action: final_write
-    - producer: transfer:person/puf_tax_itemization__batch_2
+    - producer: transfer:person/puf_tax_itemization__batch_3
       owns_final: false
       action: producer_masked_byte_exact_noop
   - entity: person
@@ -33480,7 +33724,7 @@ producer_graph:
     - producer: source:with_us_retirement_contribution_inputs
       owns_final: true
       action: final_write
-    - producer: transfer:person/puf_tax_itemization__batch_2
+    - producer: transfer:person/puf_tax_itemization__batch_3
       owns_final: false
       action: producer_masked_byte_exact_noop
   - entity: person
@@ -33496,14 +33740,14 @@ producer_graph:
     - producer: source:with_us_retirement_contribution_inputs
       owns_final: true
       action: byte_exact_clone_1_mirror
-    - producer: transfer:person/puf_tax_itemization__batch_2
+    - producer: transfer:person/puf_tax_itemization__batch_3
       owns_final: false
       action: producer_masked_byte_exact_noop
   - entity: person
     target: traditional_ira_contributions_desired
     origin: acs
     clone_index: 0
-    final_owner: transfer:person/puf_tax_itemization__batch_2
+    final_owner: transfer:person/puf_tax_itemization__batch_3
     finalization: late_transfer_owner_last
     producer_actions:
     - producer: primary_puf_qrf
@@ -33512,7 +33756,7 @@ producer_graph:
     - producer: source:with_us_retirement_contribution_inputs
       owns_final: false
       action: origin_projection_masked_noop
-    - producer: transfer:person/puf_tax_itemization__batch_2
+    - producer: transfer:person/puf_tax_itemization__batch_3
       owns_final: true
       action: final_write
   - entity: person
@@ -33528,7 +33772,7 @@ producer_graph:
     - producer: source:with_us_retirement_contribution_inputs
       owns_final: false
       action: origin_projection_masked_noop
-    - producer: transfer:person/puf_tax_itemization__batch_2
+    - producer: transfer:person/puf_tax_itemization__batch_3
       owns_final: false
       action: producer_masked_byte_exact_noop
   - entity: person
@@ -33544,7 +33788,7 @@ producer_graph:
     - producer: source:with_us_retirement_contribution_inputs
       owns_final: false
       action: origin_projection_masked_noop
-    - producer: transfer:person/puf_tax_itemization__batch_2
+    - producer: transfer:person/puf_tax_itemization__batch_3
       owns_final: false
       action: producer_masked_byte_exact_noop
   - entity: person

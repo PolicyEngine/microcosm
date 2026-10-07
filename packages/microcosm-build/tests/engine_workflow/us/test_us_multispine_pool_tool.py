@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 72,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -925,7 +925,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
         assert set(resource_rows[producer]) == (
             stacked_spine_module._late_contract_available_input_keys(contract)
         )
-    assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
+    assert pool_code["primary_qrf_checkpoint_schema_version"] == 7
     assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 2
     assert pool_code["puf_capital_gains_tail_support_contract"] == (
         pool_tool.puf_capital_gains_tail_support_contract_identity()

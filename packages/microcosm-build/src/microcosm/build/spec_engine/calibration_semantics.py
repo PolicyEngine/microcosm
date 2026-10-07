@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 
-from .canonical import sha256_json
 from .errors import SpecValidationError
+from .imputation_semantics import restore_soi_e19200_agi_band_numbers
 
 CALIBRATION_SUMMARY_ALIASES = frozenset(
     {
@@ -174,8 +174,7 @@ def resolve_calibration_tail_contracts(
         puf.pop("execution_binding_ref", None),
         _PUF_TAIL_EXECUTION_REF,
         location=(
-            "calibration/tail_contracts/puf_capital_gains_tail/"
-            "execution_binding_ref"
+            "calibration/tail_contracts/puf_capital_gains_tail/execution_binding_ref"
         ),
     )
 
@@ -231,10 +230,15 @@ def resolve_calibration_tail_contracts(
         binding.get("capital_gains_tail"),
         "primary_puf_qrf/binding/capital_gains_tail",
     )
-    soi = _mapping(
-        execution_tail.get("soi_e19200_agi_bands"),
-        "primary_puf_qrf/binding/capital_gains_tail/soi_e19200_agi_bands",
+    soi = deepcopy(
+        dict(
+            _mapping(
+                execution_tail.get("soi_e19200_agi_bands"),
+                "primary_puf_qrf/binding/capital_gains_tail/soi_e19200_agi_bands",
+            )
+        )
     )
+    restore_soi_e19200_agi_band_numbers(soi)
     runtime_agi_bands = dict(
         _mapping(
             soi.get("runtime_agi_bands"),
@@ -258,7 +262,7 @@ def resolve_calibration_tail_contracts(
                 "asset": soi.get("asset"),
                 "asset_sha256": soi.get("asset_sha256"),
                 "runtime_schema_version": runtime_agi_bands.get("schema_version"),
-                "runtime_sha256": sha256_json(runtime_agi_bands),
+                "runtime_sha256": runtime_agi_bands["sha256"],
             },
         }
     )

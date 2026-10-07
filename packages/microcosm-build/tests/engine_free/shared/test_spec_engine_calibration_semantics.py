@@ -31,7 +31,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 ROOT = _TEST_PATHS.repository
 US_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build/us"
 CANONICAL_LEGACY_PROJECTION_SHA256 = (
-    "05cb099ee8bd0234ae94586b76dc20ab8a5bd0735c00d4e82e67f912e0b33823"
+    "b80905b62a2fe9a257f4d985972b01ff6671365da188990363357ac24811831a"
 )
 
 
@@ -215,3 +215,48 @@ def test_tail_reference_mutation_is_refused() -> None:
             spine_document=resolved.domain("spine").to_wire(),
             imputation_document=resolved.domain("imputation").to_wire(),
         )
+
+
+@pytest.mark.parametrize(
+    "share",
+    [
+        "deductible_points_residual_share",
+        "qualified_mortgage_insurance_premiums_residual_share",
+        "investment_interest_residual_share",
+        "deductible_points_within_points_and_premiums_share",
+    ],
+)
+def test_residual_share_mutation_changes_calibration_runtime_identity(
+    share: str,
+) -> None:
+    resolved = load_country_spec("us").resolved_spec
+    assert resolved is not None
+    calibration_document = resolved.domain("calibration").to_wire()
+    spine_document = resolved.domain("spine").to_wire()
+    imputation_document = resolved.domain("imputation").to_wire()
+    primary = next(
+        node
+        for node in imputation_document["producer_graph"]["nodes"]
+        if node["name"] == "primary_puf_qrf"
+    )
+    resource = next(
+        row
+        for row in primary["virtual_resources"]
+        if row["id"] == "tax_unit.@primary_puf_execution_config"
+    )
+    soi = resource["binding"]["capital_gains_tail"]["soi_e19200_agi_bands"]
+    before = resolve_calibration_tail_contracts(
+        calibration_document,
+        spine_document=spine_document,
+        imputation_document=imputation_document,
+    )["puf_capital_gains_tail"]["soi_e19200_agi_bands"]
+    for rows in (soi["agi_bands"], soi["runtime_agi_bands"]["agi_bands"]):
+        rows[0][share] /= 2
+    after = resolve_calibration_tail_contracts(
+        calibration_document,
+        spine_document=spine_document,
+        imputation_document=imputation_document,
+    )["puf_capital_gains_tail"]["soi_e19200_agi_bands"]
+
+    assert before["runtime_sha256"] != after["runtime_sha256"]
+    assert before["asset_sha256"] == after["asset_sha256"]

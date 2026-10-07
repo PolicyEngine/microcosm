@@ -122,7 +122,7 @@ LEGACY_COMPATIBILITY_PROJECTIONS = {
 # frozen files, is the forward YAML -> legacy-payload path.
 FROZEN_LEGACY_RESOURCE_SHA256 = {
     "source_stages.json": (
-        "e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf"
+        "9e807e4bb83ded40c177c130515faad2fdcde747c6acb825e0d601e1609538b7"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -348,7 +348,7 @@ def assert_frozen_legacy_compatibility(
             )
 
 
-def rendered_files() -> dict[Path, bytes]:
+def rendered_files(*, preserve_engine_lock: bool = False) -> dict[Path, bytes]:
     documents = build_documents()
     assert_frozen_legacy_compatibility(documents)
     files = {
@@ -362,21 +362,24 @@ def rendered_files() -> dict[Path, bytes]:
         + b"\n"
     )
     files[US_PACKAGE_ROOT / "country_package.json"] = manifest
-    files[US_PACKAGE_ROOT / ENGINE_ABI_LOCK_FILENAME] = (
-        engine_abi_lock_bytes_from_domains(
-            {
-                filename.removesuffix(".yaml"): document
-                for filename, document in documents.items()
-            }
+    if not preserve_engine_lock:
+        files[US_PACKAGE_ROOT / ENGINE_ABI_LOCK_FILENAME] = (
+            engine_abi_lock_bytes_from_domains(
+                {
+                    filename.removesuffix(".yaml"): document
+                    for filename, document in documents.items()
+                }
+            )
         )
-    )
     return files
 
 
-def write_generated_files(*, check: bool) -> tuple[Path, ...]:
+def write_generated_files(
+    *, check: bool, preserve_engine_lock: bool = False
+) -> tuple[Path, ...]:
     """Write, or byte-check, the generated package resources."""
 
-    expected = rendered_files()
+    expected = rendered_files(preserve_engine_lock=preserve_engine_lock)
     changed = tuple(
         path
         for path, payload in expected.items()
@@ -445,13 +448,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="generate/check only engine_abi.lock.json; never rewrite bundle YAML",
     )
+    parser.add_argument(
+        "--preserve-engine-lock",
+        action="store_true",
+        help="regenerate bundle domains while retaining the pending engine lock",
+    )
     args = parser.parse_args(argv)
+    if args.engine_lock_only and args.preserve_engine_lock:
+        parser.error("--engine-lock-only and --preserve-engine-lock are incompatible")
     if args.engine_lock_only:
         changed = write_engine_abi_lock_only(check=args.check)
         if changed and not args.check:
             print("updated generated engine ABI lock")
         return 0
-    changed = write_generated_files(check=args.check)
+    changed = write_generated_files(
+        check=args.check, preserve_engine_lock=args.preserve_engine_lock
+    )
     if not args.skip_validation:
         digest = validate_generated_bundle()
         print(f"US bundle spec_sha256={digest}")

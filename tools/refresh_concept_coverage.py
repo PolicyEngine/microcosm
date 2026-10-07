@@ -89,9 +89,38 @@ def _mapping_and_surface(engine: str) -> tuple[ConceptMapping, tuple[InputRef, .
     return axiom_concept_mapping(country), surface.refs()
 
 
-def build_report(engine: str) -> CoverageReport:
+def build_report(
+    engine: str, *, pending_us_e19200_leaves: bool = False
+) -> CoverageReport:
     """The coverage report for ``engine`` from its mapping and surface."""
 
+    if pending_us_e19200_leaves:
+        if engine != "policyengine-us":
+            raise ValueError("Pending E19200 leaves apply only to policyengine-us.")
+        from microcosm.build.us_runtime.puf_interest_components import (
+            US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+        )
+        from microcosm.frame.adapters.policyengine_us_concepts import (
+            POLICYENGINE_US_CONCEPT_MAPPING,
+        )
+
+        # The new engine release does not exist yet. Extend the committed
+        # reviewed surface through the normal coverage renderer, preserving
+        # its engine-version pin. A normal live-engine check still detects
+        # the pending names until the follow-up engine bump regenerates it.
+        pinned = CoverageReport.from_dict(
+            json.loads((GOLDEN / f"{engine}.json").read_text(encoding="utf-8"))
+        )
+        surface = {
+            *pinned.covered_inputs,
+            *pinned.structural_inputs,
+            *pinned.uncovered_inputs,
+            *(
+                InputRef(name, "person")
+                for name in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS[:2]
+            ),
+        }
+        return coverage_report(POLICYENGINE_US_CONCEPT_MAPPING, surface)
     mapping, surface = _mapping_and_surface(engine)
     return coverage_report(mapping, surface)
 
@@ -105,10 +134,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--engine", choices=ENGINES, required=True, action="append")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--pending-us-e19200-leaves",
+        action="store_true",
+        help="Extend the pinned US surface with points/premiums before the engine release; live-engine checks remain unchanged.",
+    )
     args = parser.parse_args(argv)
     stale: list[str] = []
     for engine in args.engine:
-        report = build_report(engine)
+        report = build_report(
+            engine, pending_us_e19200_leaves=args.pending_us_e19200_leaves
+        )
         if report.unknown_inputs:
             labels = ", ".join(ref.label() for ref in report.unknown_inputs)
             print(f"{engine}: mapped inputs missing from the engine: {labels}")

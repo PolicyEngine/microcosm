@@ -33,7 +33,9 @@ from microcosm.build.us_runtime.puf_e01000_reconciliation import (
     puf_processed_capital_gains_stage,
 )
 from microcosm.build.us_runtime.puf_interest_components import (
+    US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
     split_us_puf_e19200_by_agi_band,
+    split_us_puf_e19200_residual_by_agi_band,
 )
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
@@ -178,7 +180,7 @@ _US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
 )
 US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS = (
     "home_mortgage_interest",
-    "investment_interest_expense",
+    *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
     "first_home_mortgage_interest",
     "second_home_mortgage_interest",
     "interest_deduction",
@@ -302,7 +304,7 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "charitable_non_cash_donations",
     "real_estate_taxes",
     "home_mortgage_interest",
-    "investment_interest_expense",
+    *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
     "investment_income_elected_form_4952",
     "student_loan_interest",
     "educator_expense",
@@ -464,7 +466,7 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "charitable_non_cash_donations",
         "real_estate_taxes",
         "home_mortgage_interest",
-        "investment_interest_expense",
+        *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
         "investment_income_elected_form_4952",
         "student_loan_interest",
         "educator_expense",
@@ -1460,6 +1462,14 @@ def puf_tax_unit_donor_from_arrays(
         if values is not None:
             tax_unit[output] = values
 
+    if _MORTGAGE_OUTLIER_SCREEN_COLUMN in tax_unit:
+        # The processed PUF predates these residual leaves. Their source is
+        # raw E19200, so requested leaves may be derived without a stored
+        # input array; existing values still reach the overwrite guard below.
+        for output in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS:
+            if output in person_outputs and output not in tax_unit:
+                tax_unit[output] = np.zeros(len(tax_unit), dtype=np.float64)
+
     required_outputs = [*person_outputs, *tax_unit_outputs]
     missing = [column for column in required_outputs if column not in tax_unit.columns]
     if missing:
@@ -1474,7 +1484,7 @@ def puf_tax_unit_donor_from_arrays(
         # Threshold the grouped RAW person value: thresholding the carved
         # mortgage value at the same literal would miss corrupt rows in the
         # $10M-to-$10.75M raw band. Keep the mask while the E19200 split
-        # materializes both conserving components, then quarantine only those
+        # materializes all four conserving leaves, then quarantine only those
         # implicated fields so unrelated donor values remain available.
         mortgage_quarantine_mask = (
             tax_unit[_MORTGAGE_OUTLIER_SCREEN_COLUMN].to_numpy(
@@ -1581,7 +1591,7 @@ def _quarantine_us_puf_mortgage_fields(
 
 
 def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
-    """Split raw E19200 into mortgage and modeled non-mortgage components."""
+    """Split raw E19200 into mortgage, points, premiums and investment leaves."""
 
     if _MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor:
         donor.drop(columns=[_E19200_AGI_BAND_COLUMN], errors="ignore", inplace=True)
@@ -1596,20 +1606,23 @@ def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
             "adjusted_gross_income is required to split nonzero PUF E19200 "
             "records by the published SOI AGI bands."
         )
-    if "investment_interest_expense" in donor:
-        existing = donor["investment_interest_expense"].to_numpy(
+    for column in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS:
+        if column not in donor:
+            continue
+        existing = donor[column].to_numpy(
             dtype=np.float64,
             copy=False,
         )
         if (existing != 0).any():
             raise ValueError(
-                "Processed PUF already carries nonzero investment_interest_expense; "
+                f"Processed PUF already carries nonzero {column}; "
                 "refusing to overwrite independently sourced values with the "
                 "E19200 residual."
             )
     if not has_nonzero_e19200:
-        if "investment_interest_expense" in donor:
-            donor["investment_interest_expense"] = np.zeros_like(raw_total)
+        for column in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS:
+            if column in donor:
+                donor[column] = np.zeros_like(raw_total)
         donor.drop(
             columns=[
                 _MORTGAGE_OUTLIER_SCREEN_COLUMN,
@@ -1620,10 +1633,9 @@ def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
         )
         return
 
-    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
-        raw_total,
-        donor[_E19200_AGI_BAND_COLUMN].to_numpy(dtype=np.float64, copy=False),
-    )
+    agi = donor[_E19200_AGI_BAND_COLUMN].to_numpy(dtype=np.float64, copy=False)
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(raw_total, agi)
+    residual_leaves = split_us_puf_e19200_residual_by_agi_band(non_mortgage, agi)
     band_share = np.divide(
         mortgage,
         raw_total,
@@ -1632,11 +1644,20 @@ def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
     )
     for column in _US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
         if column in donor:
-            donor[column] = (
-                donor[column].to_numpy(dtype=np.float64, copy=False) * band_share
-            )
-    if "investment_interest_expense" in donor:
-        donor["investment_interest_expense"] = non_mortgage
+            if column == "home_mortgage_interest":
+                # Keep the original splitter's mortgage bits; re-multiplying
+                # raw_total by its rounded share can move this leaf by a ULP
+                # and break the exact four-leaf conservation construction.
+                donor[column] = mortgage
+            else:
+                donor[column] = (
+                    donor[column].to_numpy(dtype=np.float64, copy=False) * band_share
+                )
+    for column, values in zip(
+        US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS, residual_leaves, strict=True
+    ):
+        if column in donor:
+            donor[column] = values
     donor.drop(
         columns=[
             _MORTGAGE_OUTLIER_SCREEN_COLUMN,

@@ -71,15 +71,15 @@ def test_constant_derived_domain_counts_are_complete(
     }
     assert target_counts == {
         "gap_fill_stacked_spine": 48,
-        "primary_puf_qrf": 65,
-        "late_producer_dag": 70,
+        "primary_puf_qrf": 67,
+        "late_producer_dag": 72,
     }
     assert "primary_effective_predictor_tuples" not in imputation["chaining"]
-    assert len(derive_primary_effective_predictor_tuples(imputation)) == 65
+    assert len(derive_primary_effective_predictor_tuples(imputation)) == 67
     itemization_batches = [
         family for family in families if "puf_tax_itemization__batch_" in family["id"]
     ]
-    assert [len(family["targets"]) for family in itemization_batches] == [8, 8, 8, 8, 5]
+    assert [len(family["targets"]) for family in itemization_batches] == [8, 8, 8, 8, 7]
     modeled_output_scopes = {
         stage: Counter(
             target["output_coverage_scope"]
@@ -90,8 +90,8 @@ def test_constant_derived_domain_counts_are_complete(
         for stage in ("primary_puf_qrf", "late_producer_dag")
     }
     assert modeled_output_scopes == {
-        "primary_puf_qrf": {"puf_clone": 64, "whole_pool": 1},
-        "late_producer_dag": {"whole_pool": 70},
+        "primary_puf_qrf": {"puf_clone": 66, "whole_pool": 1},
+        "late_producer_dag": {"whole_pool": 72},
     }
     assert all(
         "output_coverage_scope" not in target
@@ -138,15 +138,15 @@ def test_constant_derived_domain_counts_are_complete(
         spine_document=spine,
         bundle_document=bundle,
     )["late_producer_schedule_receipt"]
-    assert len(compiled_schedule["edges"]) == 71
-    assert len(compiled_schedule["waves"]) == 6
+    assert len(compiled_schedule["edges"]) == 70
+    assert len(compiled_schedule["waves"]) == 5
     assert (
         compiled_schedule["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "4e5e538d9f7021d7649f06bf7b28c7374ed74b4da242ccd24dd8ccce284bd116"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
+        == "5a33b949600aaa016b1a2a36efbe0fefd3f4072900f793d030a2e1d1b4b44073"
     )
 
     assert len(take_up["programs"]) == 17
@@ -199,7 +199,7 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 134
+    assert len(battery["metric_registry"]) == 136
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
@@ -208,7 +208,7 @@ def test_constant_derived_domain_counts_are_complete(
     assert battery_views["metric_counts"] == {
         "boolean_incidence": 51,
         "categorical_tvd": 4,
-        "monetary_sign_separated": 79,
+        "monetary_sign_separated": 81,
     }
     assert set(calibration["targets"]) == {
         "cd_policy",
@@ -232,14 +232,95 @@ def test_constant_derived_domain_counts_are_complete(
     for knob in ("k", "pi_hi", "seed"):
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
-    assert len(catalogs["columns"]) == 176
-    assert len(resolved_us_spec.columns) == 176
+    assert len(catalogs["columns"]) == 178
+    assert len(resolved_us_spec.columns) == 178
     assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
         "producer_node": 38,
         "virtual_output": 18,
         "virtual_resource_binding": 28,
     }
     assert len(resolved_us_spec.scopes) == 7
+
+
+def test_e19200_residual_leaves_have_closed_source_and_person_contracts(
+    resolved_us_spec: ResolvedSpec,
+) -> None:
+    from microcosm.build.us_runtime.puf_interest_components import (
+        US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+    )
+
+    sources = _domain(resolved_us_spec, ResourceKind.SOURCES)
+    puf = next(
+        stage for stage in sources["stages"] if stage["stage"] == "puf_tax_detail"
+    )
+    split = next(
+        operation
+        for operation in puf["operations"]
+        if operation.get("method") == "decompose_e19200_by_soi_agi_band"
+    )
+    assert (
+        split["points_output"],
+        split["premiums_output"],
+        split["investment_output"],
+    ) == US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS
+    assert (
+        split["published_deductible_points_column"],
+        split["published_mortgage_insurance_premiums_column"],
+        split["published_investment_interest_column"],
+    ) == ("CN", "CP", "CR")
+    assert "non_mortgage_output" not in split
+    assert set(US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS) <= set(puf["outputs"])
+    assert set(US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS) <= set(puf["nonnegative_outputs"])
+
+    catalogs = {
+        row["key"]: row["contract"]
+        for row in _domain(resolved_us_spec, ResourceKind.CATALOGS)["columns"]
+    }
+    imputation = _domain(resolved_us_spec, ResourceKind.IMPUTATION)
+    primary = next(
+        family
+        for family in imputation["families"]
+        if family["stage"] == "primary_puf_qrf"
+    )
+    targets = {row["name"]: row for row in primary["targets"]}
+    for leaf in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS:
+        assert catalogs[f"person.{leaf}"]["dtype"] == "float64"
+        assert catalogs[f"person.{leaf}"]["definition_period"] == "year"
+        assert targets[leaf]["entity"] == "person"
+        assert targets[leaf]["output_coverage_scope"] == "puf_clone"
+
+
+@pytest.mark.parametrize(
+    "leaf", ["home_mortgage_points", "mortgage_insurance_premiums"]
+)
+def test_bundle_generator_pending_inputs_fail_closed_after_engine_release(
+    leaf: str,
+) -> None:
+    from microcosm.frame.schema import VariableMetadata
+    from tools.us_bundle_generation.pending_engine_inputs import (
+        generator_variable_metadata,
+    )
+
+    class MetadataIndex:
+        def __init__(self, entity: str | None) -> None:
+            self.entity = entity
+
+        def variable_metadata(self, name: str) -> VariableMetadata:
+            if self.entity is None:
+                raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+            return VariableMetadata(
+                name=name, entity=self.entity, dtype="float", period="year"
+            )
+
+    expected = VariableMetadata(
+        name=leaf, entity="person", dtype="float", period="year"
+    )
+    assert generator_variable_metadata(MetadataIndex(None), leaf) == expected
+    assert generator_variable_metadata(MetadataIndex("person"), leaf) == expected
+    with pytest.raises(ValueError, match="differs from its reviewed"):
+        generator_variable_metadata(MetadataIndex("tax_unit"), leaf)
+    with pytest.raises(ValueError, match="Unknown PolicyEngine-US"):
+        generator_variable_metadata(MetadataIndex(None), "unknown_input")
 
 
 def test_legacy_seed_vintage_and_publication_grammars_are_pinned(

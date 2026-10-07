@@ -1236,14 +1236,23 @@ def resolve_calibration_tail_contracts(
     execution_tail = _mapping_like(
         binding.get("capital_gains_tail"), "primary PUF capital-gains tail"
     )
-    soi = _mapping_like(
-        execution_tail.get("soi_e19200_agi_bands"),
-        "primary PUF SOI E19200 inputs",
+    soi = deepcopy(
+        dict(
+            _mapping_like(
+                execution_tail.get("soi_e19200_agi_bands"),
+                "primary PUF SOI E19200 inputs",
+            )
+        )
     )
+    from microcosm.build.spec_engine.imputation_semantics import (
+        restore_soi_e19200_agi_band_numbers,
+    )
+
+    restore_soi_e19200_agi_band_numbers(soi)
     runtime_agi_bands = dict(
         _mapping_like(soi.get("runtime_agi_bands"), "runtime SOI AGI bands")
     )
-    runtime_sha256 = contract_sha256(runtime_agi_bands)
+    runtime_sha256 = runtime_agi_bands["sha256"]
     if soi.get("agi_bands") != runtime_agi_bands.get("agi_bands"):
         raise RuntimeError("SOI parsed and runtime AGI-band rows differ.")
     puf.update(

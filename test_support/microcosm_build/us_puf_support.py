@@ -22,6 +22,7 @@ from microcosm.build.us_runtime import (
     impute_us_puf_tax_detail_support,
     puf_tax_unit_donor_from_arrays,
     split_us_puf_e19200_by_agi_band,
+    split_us_puf_e19200_residual_by_agi_band,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,

@@ -188,8 +188,10 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # structural carriers are independently imputed, so equality is a data
     # property, verified on O-1 post-itemizer-mask (identical weighted carrier
     # totals; the only gross-vs-structural divergent units are non-itemizers).
-    # The residual overshoot is the donor-side E19200 total-interest lineage
-    # (microcosm#515, #487-adjacent).
+    # Donor-side E19200 decomposition now keeps the CH mortgage lineage
+    # separate from CN points, CP qualified mortgage-insurance premiums and
+    # CR investment interest. Those residual leaves do not belong in this
+    # mortgage-only target.
     "home_mortgage_interest_amount": "deductible_mortgage_interest",
 }
 

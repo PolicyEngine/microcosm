@@ -1,15 +1,26 @@
 from __future__ import annotations
 
+import json
+import math
+from dataclasses import replace
+from fractions import Fraction
 from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
+import microcosm.build.us_runtime.puf_interest_components as interest_module
 from microcosm.build.us_runtime.puf_interest_components import (
     US_PUF_E19200_AGI_BANDS,
     US_PUF_E19200_ALL_RETURNS_COMPONENTS,
+    US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+    puf_e19200_agi_bands_runtime_identity,
+    puf_e19200_interest_components_asset_identity,
     split_us_puf_e19200_by_agi_band,
+    split_us_puf_e19200_residual_by_agi_band,
 )
 from microcosm.build.us_runtime.puf_source_agi import (
     source_year_puf_adjusted_gross_income,
@@ -33,6 +44,10 @@ _REAL_SOURCE_PUF_SHA256 = (
 )
 _REAL_SOURCE_AGI_VECTOR_SHA256 = (
     "8b2b6c206e8e9f7b80dcfd86554962b0966b25ad8c47eab7d9db4f27f69ebc0d"
+)
+_E19200_PERSON_OUTPUTS = (
+    "home_mortgage_interest",
+    *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
 )
 
 
@@ -60,9 +75,12 @@ def _one_record_per_band_arrays() -> tuple[dict[str, list[object]], np.ndarray]:
         "filing_status": [b"SINGLE"] * len(tax_unit_ids),
         "person_tax_unit_id": tax_unit_ids.tolist(),
         "home_mortgage_interest": total_interest.tolist(),
-        # The processed PUF leaf is all-zero before this decomposition. The
-        # split must replace it from E19200, not preserve or add this sentinel.
-        "investment_interest_expense": np.zeros(len(tax_unit_ids)).tolist(),
+        # Processed PUF residual leaves are absent or all-zero before this
+        # decomposition. None may carry independently sourced values.
+        **{
+            column: np.zeros(len(tax_unit_ids)).tolist()
+            for column in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS
+        },
     }
     return arrays, adjusted_gross_income
 
@@ -201,10 +219,7 @@ def test_e19200_donor_split_preserves_each_band_and_published_shares() -> None:
     donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
-        person_outputs=(
-            "home_mortgage_interest",
-            "investment_interest_expense",
-        ),
+        person_outputs=_E19200_PERSON_OUTPUTS,
         tax_unit_outputs=(),
     )
 
@@ -218,16 +233,34 @@ def test_e19200_donor_split_preserves_each_band_and_published_shares() -> None:
     )
     expected_non_mortgage = 1_000.0 - expected_mortgage
     np.testing.assert_allclose(donor["home_mortgage_interest"], expected_mortgage)
-    np.testing.assert_allclose(
-        donor["investment_interest_expense"],
+    expected_leaves = split_us_puf_e19200_residual_by_agi_band(
         expected_non_mortgage,
+        adjusted_gross_income,
     )
+    for column, expected in zip(
+        US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS, expected_leaves, strict=True
+    ):
+        np.testing.assert_allclose(donor[column], expected)
     np.testing.assert_array_equal(
         donor["home_mortgage_interest"].to_numpy()
-        + donor["investment_interest_expense"].to_numpy(),
+        + (
+            (
+                donor["home_mortgage_points"].to_numpy()
+                + donor["mortgage_insurance_premiums"].to_numpy()
+            )
+            + donor["investment_interest_expense"].to_numpy()
+        ),
         np.full(len(total), 1_000.0),
     )
     assert (donor["investment_interest_expense"] > 0).all()
+    original_mortgage, _ = split_us_puf_e19200_by_agi_band(
+        np.full(len(total), 1_000.0),
+        adjusted_gross_income,
+    )
+    np.testing.assert_array_equal(
+        donor["home_mortgage_interest"].to_numpy().view(np.uint64),
+        original_mortgage.view(np.uint64),
+    )
 
     # The same proportional rule applied to the literal source rows recovers
     # the published mortgage amounts and the full conserving residual mass.
@@ -252,7 +285,7 @@ def test_e19200_donor_split_requires_explicit_adjusted_gross_income() -> None:
         "filing_status": [b"SINGLE"],
         "person_tax_unit_id": [1],
         "home_mortgage_interest": [100.0],
-        "investment_interest_expense": [0.0],
+        **{column: [0.0] for column in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS},
         # This predictor is deliberately tempting but is not AGI and cannot
         # silently select a source-table band.
         "employment_income": [250_000.0],
@@ -261,12 +294,36 @@ def test_e19200_donor_split_requires_explicit_adjusted_gross_income() -> None:
     with pytest.raises(ValueError, match="adjusted_gross_income"):
         puf_tax_unit_donor_from_arrays(
             arrays,
-            person_outputs=(
-                "home_mortgage_interest",
-                "investment_interest_expense",
-            ),
+            person_outputs=_E19200_PERSON_OUTPUTS,
             tax_unit_outputs=(),
         )
+
+
+@pytest.mark.parametrize("column", US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS)
+def test_e19200_donor_split_rejects_independently_sourced_residual_leaves(
+    column: str,
+) -> None:
+    arrays, adjusted_gross_income = _one_record_per_band_arrays()
+    arrays[column][0] = 1.0
+    with pytest.raises(ValueError, match=f"nonzero {column}"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            adjusted_gross_income=adjusted_gross_income,
+            person_outputs=_E19200_PERSON_OUTPUTS,
+            tax_unit_outputs=(),
+        )
+
+
+def test_e19200_zero_donor_has_zero_leaves_without_agi() -> None:
+    arrays, _ = _one_record_per_band_arrays()
+    arrays["home_mortgage_interest"] = [0.0] * len(US_PUF_E19200_AGI_BANDS)
+    donor = puf_tax_unit_donor_from_arrays(
+        arrays,
+        person_outputs=_E19200_PERSON_OUTPUTS,
+        tax_unit_outputs=(),
+    )
+    for column in _E19200_PERSON_OUTPUTS:
+        np.testing.assert_array_equal(donor[column], np.zeros(len(donor)))
 
 
 def test_e19200_donor_split_is_bit_deterministic_and_order_invariant() -> None:
@@ -274,19 +331,13 @@ def test_e19200_donor_split_is_bit_deterministic_and_order_invariant() -> None:
     first = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
-        person_outputs=(
-            "home_mortgage_interest",
-            "investment_interest_expense",
-        ),
+        person_outputs=_E19200_PERSON_OUTPUTS,
         tax_unit_outputs=(),
     )
     second = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
-        person_outputs=(
-            "home_mortgage_interest",
-            "investment_interest_expense",
-        ),
+        person_outputs=_E19200_PERSON_OUTPUTS,
         tax_unit_outputs=(),
     )
 
@@ -298,15 +349,11 @@ def test_e19200_donor_split_is_bit_deterministic_and_order_invariant() -> None:
     shuffled = puf_tax_unit_donor_from_arrays(
         shuffled_arrays,
         adjusted_gross_income=adjusted_gross_income[permutation],
-        person_outputs=(
-            "home_mortgage_interest",
-            "investment_interest_expense",
-        ),
+        person_outputs=_E19200_PERSON_OUTPUTS,
         tax_unit_outputs=(),
     ).sort_values("tax_unit_id")
 
-    columns = ("home_mortgage_interest", "investment_interest_expense")
-    for column in columns:
+    for column in _E19200_PERSON_OUTPUTS:
         np.testing.assert_array_equal(
             first[column].to_numpy().view(np.uint64),
             second[column].to_numpy().view(np.uint64),
@@ -425,6 +472,283 @@ def test_split_conserves_bit_exactly_on_adversarial_floats() -> None:
         "conservation after reconciliation"
     )
     assert (mortgage >= 0.0).all() and (non_mortgage >= 0.0).all()
+
+
+@st.composite
+def _agi_in_any_band(draw):
+    index = draw(st.integers(min_value=0, max_value=21))
+    band = US_PUF_E19200_AGI_BANDS[index]
+    agi = draw(
+        st.floats(
+            min_value=band.lower_bound,
+            max_value=band.upper_bound,
+            exclude_max=band.upper_bound is not None,
+            allow_nan=False,
+            allow_infinity=False,
+        )
+    )
+    return index, agi
+
+
+def _assert_three_leaf_conservation(total: float, agi: float, index: int) -> None:
+    band = US_PUF_E19200_AGI_BANDS[index]
+    totals = np.asarray([total], dtype=np.float64)
+    agis = np.asarray([agi], dtype=np.float64)
+    mortgage, residual = split_us_puf_e19200_by_agi_band(totals, agis)
+    # Freeze the pre-three-leaf arithmetic as an independent differential
+    # oracle: the existing mortgage component must keep every float64 bit.
+    historical_mortgage = totals * band.home_mortgage_share
+    historical_residual = totals - historical_mortgage
+    historical_mortgage = totals - historical_residual
+    points, premiums, investment = split_us_puf_e19200_residual_by_agi_band(
+        residual, agis
+    )
+    np.testing.assert_array_equal(
+        mortgage.view(np.uint64), historical_mortgage.view(np.uint64)
+    )
+    np.testing.assert_array_equal(
+        residual.view(np.uint64), historical_residual.view(np.uint64)
+    )
+    leaves = [float(leaf[0]) for leaf in (mortgage, points, premiums, investment)]
+    assert all(math.isfinite(leaf) and leaf >= 0 for leaf in leaves)
+    # Fractions expose exact real arithmetic, independently of the grouping
+    # and any rounding in a floating-point sum.
+    assert sum(Fraction(leaf) for leaf in leaves) == Fraction(total)
+    assert sum(Fraction(leaf) for leaf in leaves[1:]) == Fraction(float(residual[0]))
+    assert (points[0] + premiums[0]) + investment[0] == residual[0]
+    assert mortgage[0] + ((points[0] + premiums[0]) + investment[0]) == total
+    reconstructed = np.asarray([math.fsum(leaves)], dtype=np.float64)
+    # math.fsum([-0.0, ...]) returns +0.0, as does the historical pair sum.
+    canonical_total = np.asarray([0.0 if total == 0.0 else total], dtype=np.float64)
+    np.testing.assert_array_equal(
+        reconstructed.view(np.uint64), canonical_total.view(np.uint64)
+    )
+    if total == 0.0:
+        return
+    component_denominator = band.residual_component_amount
+    expected_shares = [
+        float(
+            Fraction(
+                band.home_mortgage_interest_amount, band.total_interest_paid_amount
+            )
+        ),
+        *[
+            float(
+                Fraction(
+                    band.non_mortgage_interest_amount * component,
+                    band.total_interest_paid_amount * component_denominator,
+                )
+            )
+            for component in (
+                band.deductible_points_amount,
+                band.qualified_mortgage_insurance_premiums_amount,
+                band.investment_interest_amount,
+            )
+        ],
+    ]
+    # Complement reconciliation rounds at the scale of the original total,
+    # rather than the much smaller leaf. Subnormal totals additionally need
+    # an absolute minimum-float allowance; relative ULP bounds cannot hold
+    # when a positive published component rounds to zero.
+    share_tolerance = 4 * math.ulp(1.0) + 4 * (math.ulp(total) / total)
+    for leaf, expected_share in zip(leaves, expected_shares, strict=True):
+        assert abs(leaf / total - expected_share) <= share_tolerance
+    if band.qualified_mortgage_insurance_premiums_amount == 0:
+        assert premiums[0] == 0.0
+        assert not np.signbit(premiums[0])
+
+
+@settings(max_examples=600, deadline=None)
+@given(
+    total=st.floats(
+        min_value=0.0,
+        allow_nan=False,
+        allow_infinity=False,
+        allow_subnormal=True,
+    ),
+    indexed_agi=_agi_in_any_band(),
+)
+def test_three_leaf_split_exact_conservation_property(
+    total: float, indexed_agi: tuple[int, float]
+) -> None:
+    index, agi = indexed_agi
+    _assert_three_leaf_conservation(total, agi, index)
+
+
+@pytest.mark.parametrize(
+    "total",
+    [
+        0.0,
+        -0.0,
+        1.53,
+        0.01,
+        0.1,
+        float(np.nextafter(0.0, 1.0)),
+        float(np.nextafter(0.0, 1.0) * 7),
+        float(np.nextafter(np.finfo(np.float64).tiny, 0.0)),
+        float(np.finfo(np.float64).tiny),
+        1e-250,
+        1e250,
+        float(np.finfo(np.float64).max),
+    ],
+)
+def test_three_leaf_split_adversarial_totals_in_every_band(total: float) -> None:
+    for index, band in enumerate(US_PUF_E19200_AGI_BANDS):
+        _assert_three_leaf_conservation(
+            total, _representative_agi(band.lower_bound, band.upper_bound), index
+        )
+
+
+def test_three_leaf_split_recovers_all_published_band_proportions() -> None:
+    bands = US_PUF_E19200_AGI_BANDS
+    agis = np.asarray(
+        [_representative_agi(band.lower_bound, band.upper_bound) for band in bands]
+    )
+    totals = np.asarray(
+        [band.total_interest_paid_amount for band in bands], dtype=float
+    )
+    mortgage, residual = split_us_puf_e19200_by_agi_band(totals, agis)
+    points, premiums, investment = split_us_puf_e19200_residual_by_agi_band(
+        residual, agis
+    )
+    for index, band in enumerate(bands):
+        _assert_three_leaf_conservation(float(totals[index]), float(agis[index]), index)
+        scale = band.non_mortgage_interest_amount / band.residual_component_amount
+        np.testing.assert_allclose(
+            [points[index], premiums[index], investment[index]],
+            np.asarray(
+                [
+                    band.deductible_points_amount,
+                    band.qualified_mortgage_insurance_premiums_amount,
+                    band.investment_interest_amount,
+                ]
+            )
+            * scale,
+            rtol=1e-12,
+            atol=4 * math.ulp(float(totals[index])),
+        )
+    assert investment[-1] > 0.97 * residual[-1]
+    assert investment[-1] > mortgage[-1]
+    zero_premium = np.asarray(
+        [band.qualified_mortgage_insurance_premiums_amount == 0 for band in bands]
+    )
+    assert zero_premium.any()
+    np.testing.assert_array_equal(
+        premiums[zero_premium].view(np.uint64),
+        np.zeros(int(zero_premium.sum())).view(np.uint64),
+    )
+
+
+def test_three_leaf_split_identity_binds_all_consumed_shares() -> None:
+    identity = puf_e19200_interest_components_asset_identity()
+    runtime_identity = puf_e19200_agi_bands_runtime_identity()
+    assert identity["agi_bands"] == runtime_identity["agi_bands"]
+    for band, resolved in zip(
+        US_PUF_E19200_AGI_BANDS, identity["agi_bands"], strict=True
+    ):
+        denominator = (
+            band.deductible_points_amount
+            + band.qualified_mortgage_insurance_premiums_amount
+            + band.investment_interest_amount
+        )
+        assert resolved["deductible_points_residual_share"] == (
+            band.deductible_points_amount / denominator
+        )
+        assert resolved["qualified_mortgage_insurance_premiums_residual_share"] == (
+            band.qualified_mortgage_insurance_premiums_amount / denominator
+        )
+        assert resolved["investment_interest_residual_share"] == (
+            band.investment_interest_amount / denominator
+        )
+        assert resolved["deductible_points_within_points_and_premiums_share"] == (
+            band.deductible_points_amount
+            / (
+                band.deductible_points_amount
+                + band.qualified_mortgage_insurance_premiums_amount
+            )
+        )
+    first = US_PUF_E19200_AGI_BANDS[0]
+    changed = replace(
+        first,
+        deductible_points_amount=first.deductible_points_amount + 1,
+        qualified_mortgage_insurance_premiums_amount=(
+            first.qualified_mortgage_insurance_premiums_amount - 1
+        ),
+    )
+    changed_identity = puf_e19200_agi_bands_runtime_identity(
+        (changed, *US_PUF_E19200_AGI_BANDS[1:])
+    )
+    assert changed.home_mortgage_share == first.home_mortgage_share
+    assert (
+        changed.investment_interest_residual_share
+        == first.investment_interest_residual_share
+    )
+    assert changed_identity["sha256"] != runtime_identity["sha256"]
+
+
+def test_three_leaf_source_loader_rejects_zero_points_and_premiums(
+    tmp_path: Path,
+) -> None:
+    source = interest_module.files("microcosm.build.us").joinpath(
+        interest_module._SOURCE_ASSET
+    )
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    first = payload["agi_bands"][0]
+    first["investment_interest_amount"] += (
+        first["deductible_points_amount"]
+        + first["qualified_mortgage_insurance_premiums_amount"]
+    )
+    first["deductible_points_amount"] = 0
+    first["qualified_mortgage_insurance_premiums_amount"] = 0
+    invalid_asset = tmp_path / interest_module._SOURCE_ASSET
+    invalid_asset.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"row 11 has zero CN \+ CP"):
+        puf_e19200_interest_components_asset_identity(invalid_asset)
+
+
+def test_three_leaf_split_zero_denominator_has_no_points_or_premiums(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    absent = replace(
+        US_PUF_E19200_AGI_BANDS[0],
+        deductible_points_amount=0,
+        qualified_mortgage_insurance_premiums_amount=0,
+    )
+    assert absent.deductible_points_within_points_and_premiums_share == 0.0
+    for name, value in (
+        ("_POINTS_AND_PREMIUMS_AMOUNTS", 0),
+        ("_INVESTMENT_RESIDUAL_SHARES", 1.0),
+        ("_POINTS_WITHIN_POINTS_AND_PREMIUMS_SHARES", 0.0),
+    ):
+        values = getattr(interest_module, name).copy()
+        values[0] = value
+        monkeypatch.setattr(interest_module, name, values)
+    points, premiums, investment = split_us_puf_e19200_residual_by_agi_band(
+        [1.53], [0.0]
+    )
+    np.testing.assert_array_equal(points, [0.0])
+    np.testing.assert_array_equal(premiums, [0.0])
+    np.testing.assert_array_equal(investment, [1.53])
+
+
+@pytest.mark.parametrize(
+    ("residual", "agi", "message"),
+    [
+        ([[1.0]], [0.0], "one-dimensional"),
+        ([1.0], [[0.0]], "one-dimensional"),
+        ([1.0], [], "same record count"),
+        ([float("nan")], [0.0], "finite"),
+        ([float("inf")], [0.0], "finite"),
+        ([1.0], [float("nan")], "finite"),
+        ([1.0], [float("inf")], "finite"),
+        ([-1.0], [0.0], "nonnegative"),
+    ],
+)
+def test_three_leaf_split_rejects_invalid_inputs(
+    residual: object, agi: object, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        split_us_puf_e19200_residual_by_agi_band(residual, agi)
 
 
 def test_donor_api_rejects_non_real_agi_through_a_valid_fixture() -> None:

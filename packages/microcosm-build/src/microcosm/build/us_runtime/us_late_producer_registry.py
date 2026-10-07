@@ -1412,11 +1412,11 @@ CANONICAL_US_LATE_TRANSFER_GROUPS = _bounded_transfer_groups(
 )
 if (
     len(CANONICAL_US_LATE_TRANSFER_GROUPS) != 19
-    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 70
+    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 72
 ):
     raise RuntimeError(
         "Canonical US late transfer must contain exactly 19 bounded groups "
-        "and 70 ordered targets."
+        "and 72 ordered targets."
     )
 _canonical_late_targets = {
     target for group in CANONICAL_US_LATE_TRANSFER_GROUPS for target in group.targets
@@ -1425,11 +1425,11 @@ if (
     len(_BOOLEAN_LATE_TARGETS) != 17
     or len(_STRING_LATE_TARGETS) != 2
     or not (_BOOLEAN_LATE_TARGETS | _STRING_LATE_TARGETS) <= _canonical_late_targets
-    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 51
+    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 53
 ):
     raise RuntimeError(
-        "Canonical US late target kinds must partition 70 targets into "
-        "51 numeric, 17 boolean, and 2 string inputs."
+        "Canonical US late target kinds must partition 72 targets into "
+        "53 numeric, 17 boolean, and 2 string inputs."
     )
 US_LATE_TRANSFER_INPUT_INVENTORIES: Mapping[str, SourceInputInventory] = (
     MappingProxyType(

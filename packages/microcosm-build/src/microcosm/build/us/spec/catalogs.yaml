@@ -537,6 +537,17 @@ columns:
     domain: puf_tax_itemization
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
+- key: person.home_mortgage_points
+  contract:
+    entity: person
+    dtype: float64
+    unit: unit_not_declared_by_engine_metadata
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: puf_tax_itemization
+    public_stability: internal
+    unit_waiver: policyengine_us_unit_unavailable
 - key: person.hours_worked_last_week
   contract:
     entity: person
@@ -704,6 +715,17 @@ columns:
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
 - key: person.miscellaneous_income
+  contract:
+    entity: person
+    dtype: float64
+    unit: unit_not_declared_by_engine_metadata
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: puf_tax_itemization
+    public_stability: internal
+    unit_waiver: policyengine_us_unit_unavailable
+- key: person.mortgage_insurance_premiums
   contract:
     entity: person
     dtype: float64

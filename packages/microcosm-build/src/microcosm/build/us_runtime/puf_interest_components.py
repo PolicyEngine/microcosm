@@ -12,6 +12,11 @@ from typing import Any
 import numpy as np
 
 _SOURCE_ASSET = "soi_table_2_1_interest_components_ty2015.json"
+US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS = (
+    "home_mortgage_points",
+    "mortgage_insurance_premiums",
+    "investment_interest_expense",
+)
 _AMOUNT_COLUMNS = {
     "total_interest_paid_amount": "CF",
     "home_mortgage_interest_amount": "CH",
@@ -38,7 +43,7 @@ class PufE19200InterestComponents:
 
     @property
     def non_mortgage_interest_amount(self) -> int:
-        """Return the conserving residual represented by the engine leaf."""
+        """Return the conserving residual split among three engine leaves."""
 
         return self.total_interest_paid_amount - self.home_mortgage_interest_amount
 
@@ -65,6 +70,47 @@ class PufE19200AgiBand(PufE19200InterestComponents):
         """Return the published mortgage share of total E19200."""
 
         return self.home_mortgage_interest_amount / self.total_interest_paid_amount
+
+    @property
+    def residual_component_amount(self) -> int:
+        """Return CN + CP + CR, retaining the published source rounding."""
+
+        return (
+            self.deductible_points_amount
+            + self.qualified_mortgage_insurance_premiums_amount
+            + self.investment_interest_amount
+        )
+
+    @property
+    def deductible_points_residual_share(self) -> float:
+        """Return the published points share of the non-mortgage components."""
+
+        return self.deductible_points_amount / self.residual_component_amount
+
+    @property
+    def qualified_mortgage_insurance_premiums_residual_share(self) -> float:
+        """Return the published premiums share of the residual components."""
+
+        return (
+            self.qualified_mortgage_insurance_premiums_amount
+            / self.residual_component_amount
+        )
+
+    @property
+    def investment_interest_residual_share(self) -> float:
+        """Return the published investment share of the residual components."""
+
+        return self.investment_interest_amount / self.residual_component_amount
+
+    @property
+    def deductible_points_within_points_and_premiums_share(self) -> float:
+        """Return CN / (CN + CP), explicitly handling absent components."""
+
+        denominator = (
+            self.deductible_points_amount
+            + self.qualified_mortgage_insurance_premiums_amount
+        )
+        return self.deductible_points_amount / denominator if denominator else 0.0
 
 
 def _components(raw: dict[str, Any]) -> PufE19200InterestComponents:
@@ -142,6 +188,15 @@ def _load_source_asset(
         )
         if any(amount < 0 for amount in amounts) or row.total_interest_paid_amount == 0:
             raise ValueError(f"{_SOURCE_ASSET} carries an invalid amount.")
+        if (
+            row.deductible_points_amount
+            + row.qualified_mortgage_insurance_premiums_amount
+            == 0
+        ):
+            raise ValueError(
+                f"{_SOURCE_ASSET} row {row.source_row} has zero CN + CP; "
+                "the points-and-premiums split requires a positive denominator."
+            )
         component_sum = sum(amounts[1:])
         if abs(row.total_interest_paid_amount - component_sum) > 1:
             raise ValueError(
@@ -177,6 +232,14 @@ def _agi_band_identity(band: PufE19200AgiBand) -> dict[str, object]:
         "lower_bound": band.lower_bound,
         "upper_bound": band.upper_bound,
         "home_mortgage_share": band.home_mortgage_share,
+        "deductible_points_residual_share": band.deductible_points_residual_share,
+        "qualified_mortgage_insurance_premiums_residual_share": (
+            band.qualified_mortgage_insurance_premiums_residual_share
+        ),
+        "investment_interest_residual_share": band.investment_interest_residual_share,
+        "deductible_points_within_points_and_premiums_share": (
+            band.deductible_points_within_points_and_premiums_share
+        ),
     }
 
 
@@ -216,6 +279,25 @@ _HOME_MORTGAGE_SHARES = np.asarray(
     [band.home_mortgage_share for band in US_PUF_E19200_AGI_BANDS],
     dtype=np.float64,
 )
+_INVESTMENT_RESIDUAL_SHARES = np.asarray(
+    [band.investment_interest_residual_share for band in US_PUF_E19200_AGI_BANDS],
+    dtype=np.float64,
+)
+_POINTS_WITHIN_POINTS_AND_PREMIUMS_SHARES = np.asarray(
+    [
+        band.deductible_points_within_points_and_premiums_share
+        for band in US_PUF_E19200_AGI_BANDS
+    ],
+    dtype=np.float64,
+)
+_POINTS_AND_PREMIUMS_AMOUNTS = np.asarray(
+    [
+        band.deductible_points_amount
+        + band.qualified_mortgage_insurance_premiums_amount
+        for band in US_PUF_E19200_AGI_BANDS
+    ],
+    dtype=np.int64,
+)
 
 
 def puf_e19200_agi_bands_runtime_identity(
@@ -252,12 +334,11 @@ def split_us_puf_e19200_by_agi_band(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Split each E19200 record by its published TY2015 SOI AGI-band share.
 
-    PolicyEngine has one non-mortgage interest input,
-    ``investment_interest_expense``. The residual routed there is broader
-    than the table's investment-interest column: it also carries deductible
-    points and qualified mortgage-insurance premiums. Computing it as
-    ``total - mortgage`` preserves E19200 exactly despite published component
-    rounding.
+    Computing the non-mortgage residual as ``total - mortgage`` preserves
+    E19200 exactly despite published component rounding. The residual carries
+    deductible points, qualified mortgage-insurance premiums and investment
+    interest; ``split_us_puf_e19200_residual_by_agi_band`` separates those
+    three leaves before they are routed to their respective engine inputs.
     """
 
     total = np.asarray(total_interest_paid, dtype=np.float64)
@@ -296,11 +377,62 @@ def split_us_puf_e19200_by_agi_band(
     return mortgage, non_mortgage
 
 
+def split_us_puf_e19200_residual_by_agi_band(
+    non_mortgage_interest_paid: Any,
+    adjusted_gross_income: Any,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Split the conserved E19200 residual into points, premiums, investment.
+
+    Shares use the same TY2015 AGI bands as the mortgage split. First split
+    the residual by CR / (CN + CP + CR), then split points-and-premiums by
+    CN / (CN + CP). Each binary split recomputes its first component as the
+    complement of the rounded second component, using the Sterbenz-exact
+    construction proved in ``split_us_puf_e19200_by_agi_band``. Thus
+    ``(points + premiums) + investment == non_mortgage`` both as an exact
+    real sum and under that floating-point grouping. Together with the
+    unchanged mortgage split, ``math.fsum`` recovers E19200 bit-for-bit,
+    apart from the existing canonicalization of accepted -0.0 to +0.0.
+    """
+
+    residual = np.asarray(non_mortgage_interest_paid, dtype=np.float64)
+    agi = np.asarray(adjusted_gross_income, dtype=np.float64)
+    if residual.ndim != 1 or agi.ndim != 1:
+        raise ValueError(
+            "E19200 residual and adjusted_gross_income must be one-dimensional."
+        )
+    if len(residual) != len(agi):
+        raise ValueError(
+            "E19200 residual and adjusted_gross_income must have the same record count."
+        )
+    if not np.isfinite(residual).all():
+        raise ValueError("E19200 residual must contain only finite values.")
+    if not np.isfinite(agi).all():
+        raise ValueError("adjusted_gross_income must contain only finite values.")
+    if (residual < 0).any():
+        raise ValueError("E19200 residual must be nonnegative.")
+
+    band_index = np.searchsorted(_AGI_UPPER_BOUNDS, agi, side="right")
+    investment = residual * _INVESTMENT_RESIDUAL_SHARES[band_index]
+    points_and_premiums = residual - investment
+    investment = residual - points_and_premiums
+    points = points_and_premiums * _POINTS_WITHIN_POINTS_AND_PREMIUMS_SHARES[band_index]
+    premiums = points_and_premiums - points
+    points = points_and_premiums - premiums
+    # The loader rejects such a source row, but make the denominator-zero
+    # behavior explicit here too: CN = CP = 0 implies no points or premiums.
+    absent_points_and_premiums = _POINTS_AND_PREMIUMS_AMOUNTS[band_index] == 0
+    points[absent_points_and_premiums] = 0.0
+    premiums[absent_points_and_premiums] = 0.0
+    return points, premiums, investment
+
+
 __all__ = [
     "PufE19200AgiBand",
     "PufE19200InterestComponents",
     "US_PUF_E19200_AGI_BANDS",
     "US_PUF_E19200_ALL_RETURNS_COMPONENTS",
+    "US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS",
     "puf_e19200_interest_components_asset_identity",
     "split_us_puf_e19200_by_agi_band",
+    "split_us_puf_e19200_residual_by_agi_band",
 ]

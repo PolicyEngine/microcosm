@@ -85,6 +85,9 @@ from microcosm.build.us_runtime.parity_reference import load_ecps_parity_known_g
 from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.puf_interest_components import (
+    US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+)
 from microcosm.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
@@ -156,6 +159,10 @@ REFERENCE_ECPS_LAYER_RENAMES = {
 # become structural zeroes.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
     {
+        # The frozen eCPS predates the separate Schedule A CN/CP inputs.
+        # No reference nonzero share exists; the source-backed leaves are
+        # nevertheless required on future exports, alongside CR.
+        *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS[:2],
         "fsla_overtime_premium",
         "qualified_passenger_vehicle_loan_interest",
         "traditional_401k_contributions_desired",
@@ -880,6 +887,12 @@ def assert_release_input_coverage_manifest_current(
         elif column not in required:
             failures.append(
                 f"{column}: restored reference eCPS input must remain required."
+            )
+    for column in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS:
+        if column not in required or column in reviewed:
+            failures.append(
+                f"{column}: source-backed E19200 leaf must remain required "
+                "without a reviewed exclusion."
             )
     for column in sorted(
         RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS & parity_gap_layers.keys()

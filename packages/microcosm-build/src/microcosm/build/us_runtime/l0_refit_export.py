@@ -93,6 +93,9 @@ from microcosm.build.us_runtime.pregnancy import (
 from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS,
 )
+from microcosm.build.us_runtime.puf_interest_components import (
+    US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+)
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -196,7 +199,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_CAPITAL_GAIN_DETAILS_NONCONSTANT_PERSON_COLUMNS,
     *US_SALT_REFUND_NONCONSTANT_PERSON_COLUMNS,
     *US_HOUSING_NONCONSTANT_PERSON_COLUMNS,
-    "investment_interest_expense",
+    *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
 )
 
 US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS = (

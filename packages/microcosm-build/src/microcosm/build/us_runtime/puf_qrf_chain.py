@@ -77,7 +77,10 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 # v6 makes that recipient-universe authority a versioned chain semantic. Every
 # v1--v5 root or target must rebuild rather than sharing a schema label with a
 # chain whose root, banks, targets, and finalization bind the added receipt.
-PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 6
+# v7 splits the E19200 residual into points, mortgage-insurance premiums and
+# investment interest. Even a custom-order v6 bank may carry the old whole
+# residual as investment interest, so it must rebuild under these semantics.
+PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION = 7
 PRIMARY_QRF_MANIFEST_FILENAME = "manifest.json"
 PRIMARY_QRF_DONOR_FILENAME = "donor.frame.h5"
 PRIMARY_QRF_RECIPIENT_FILENAME = "recipient.frame.h5"
@@ -87,7 +90,7 @@ PRIMARY_QRF_TARGET_ORDER = (
     *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 PRIMARY_QRF_TARGET_ORDER_SHA256 = (
-    "795519d161e6b8425fc3b64de7eb435d52d25e7c8250b5861f3bb21ab48266a3"
+    "53b2ee6e64cb746842d771598a13aba063ad8df2d3437a4cdf69ae440655b3b3"
 )
 
 _ARTIFACT_KIND = "populace_primary_puf_qrf_chain"

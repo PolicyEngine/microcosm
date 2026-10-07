@@ -167,7 +167,9 @@ def test_primary_qrf_production_target_order_is_locked() -> None:
         *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
     assert PRIMARY_QRF_TARGET_ORDER == expected
-    assert len(PRIMARY_QRF_TARGET_ORDER) == 65
+    assert len(PRIMARY_QRF_TARGET_ORDER) == 67
+    assert "home_mortgage_points" in PRIMARY_QRF_TARGET_ORDER
+    assert "mortgage_insurance_premiums" in PRIMARY_QRF_TARGET_ORDER
     assert "investment_interest_expense" in PRIMARY_QRF_TARGET_ORDER
     digest = hashlib.sha256(
         json.dumps(list(PRIMARY_QRF_TARGET_ORDER), separators=(",", ":")).encode()
@@ -688,7 +690,7 @@ def test_primary_qrf_chain_legacy_doctrine_defaults_remain_loadable(
         n_estimators=2,
         seed=3,
     )
-    assert manifest["schema_version"] == 6
+    assert manifest["schema_version"] == 7
     assert "require_complete_recipient_predictors" not in manifest
     assert "absent_cells" not in manifest
     assert "recipient_predictor_universe" not in manifest
@@ -771,14 +773,14 @@ def test_primary_qrf_finalization_rejects_changed_recipient_features(
         finalize_primary_puf_qrf_chain(frame, checkpoint_dir)
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6))
 def test_primary_qrf_rejects_every_stale_schema_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     stale_version: int,
 ) -> None:
-    # Roots and target checkpoints must reject every schema predating the v6
-    # recipient-universe authority. In particular, the v5 case models the old
+    # Roots and target checkpoints must reject every schema predating the v7
+    # three-leaf E19200 split. In particular, the v5 case models the old
     # strict two-control payload that omitted recipient_predictor_universe; its
     # stale schema is rejected before that payload can be interpreted.
     monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
@@ -813,12 +815,12 @@ def test_primary_qrf_rejects_every_stale_schema_version(
     manifest_path.write_text(json.dumps(stale_manifest))
     with pytest.raises(
         ValueError,
-        match=rf"schema version: expected 6, got {stale_version}",
+        match=rf"schema version: expected 7, got {stale_version}",
     ):
         load_primary_puf_qrf_predictions(checkpoint_dir)
     with pytest.raises(
         ValueError,
-        match=rf"schema version: expected 6, got {stale_version}",
+        match=rf"schema version: expected 7, got {stale_version}",
     ):
         run_primary_puf_qrf_chain(checkpoint_dir)
     manifest_path.write_text(json.dumps(original_manifest))
@@ -841,7 +843,7 @@ def test_primary_qrf_rejects_every_stale_schema_version(
         )
     with pytest.raises(
         ValueError,
-        match=rf"invalid schema_version: expected 6, got {stale_version}",
+        match=rf"invalid schema_version: expected 7, got {stale_version}",
     ):
         load_primary_puf_qrf_predictions(checkpoint_dir)
 
