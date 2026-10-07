@@ -966,13 +966,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # The engine-lock move to PolicyEngine-US 2.2.1 legitimately moves the
-        # pool-code checkpoint identities embedded in the otherwise legacy
-        # publication: the checkpoint identity carries policyengine_us_version,
-        # and the pool engine contracts it binds were re-derived for 2.2.1.
-        # pool_h5 and agreement above are unchanged, so only the identity
-        # surface moved, not the pool content.
-        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
+        # The E19200 leaves change the pool-code checkpoint identity through
+        # the primary QRF order and transfer target families.
+        # Those identities also enter the legacy publication manifest; the
+        # fixture pool bytes and agreement above remain identical.
+        "manifest": "c0d547450e259c6dcf3e36bb24297161d87e6eed6b3f89240384cd66ab9f6409",
     }
 
 
