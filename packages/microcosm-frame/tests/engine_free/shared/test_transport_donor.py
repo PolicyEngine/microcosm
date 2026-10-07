@@ -236,10 +236,18 @@ def test_reader_pin_mismatch_property_precedes_hdf_parse(
     [
         ("dangling_partner", "unknown household line"),
         ("dangling_parent", "unknown household line"),
+        ("dangling_cohabitant", "unknown household line"),
+        ("noninteger_pointer", "integer line numbers"),
+        ("infinite_pointer", "integer line numbers"),
         ("asymmetric_partner", "Partners must point at each other"),
+        ("asymmetric_cohabitant", "Partners must point at each other"),
+        ("spouse_cohabitant_conflict", "name different partners"),
         ("duplicate_line", "unique within a household"),
         ("multiple_reference", "multiple reference persons"),
         ("missing_reference", "no reference person"),
+        ("multiple_heads", "multiple is_household_head persons"),
+        ("head_disagrees", "reference person and is_household_head disagree"),
+        ("head_absent", "reference person and is_household_head disagree"),
         ("channel_mismatch", "support channels disagree"),
     ],
 )
@@ -247,18 +255,89 @@ def test_reader_refuses_invalid_rosters(tmp_path, monkeypatch, change, message):
     tables = _tables()
     person = tables["person"]
     mutations = {
-        "dangling_partner": (0, "A_SPOUSE", 99),
-        "dangling_parent": (2, "PEPAR1", 99),
-        "asymmetric_partner": (1, "A_SPOUSE", 0),
-        "duplicate_line": (1, "A_LINENO", 1),
-        "multiple_reference": (1, "A_EXPRRP", 1),
-        "missing_reference": (0, "A_EXPRRP", 5),
-        "channel_mismatch": (0, "person_support_channel", "another-channel"),
+        "dangling_partner": [(0, "A_SPOUSE", 99)],
+        "dangling_parent": [(2, "PEPAR1", 99)],
+        "dangling_cohabitant": [(2, "PECOHAB", 99)],
+        # Only whole nonpositive or missing pointers are absent; fractional
+        # or infinite ones still fail.
+        "noninteger_pointer": [(2, "PEPAR1", -1.5)],
+        "infinite_pointer": [(2, "PEPAR1", -np.inf)],
+        "asymmetric_partner": [(1, "A_SPOUSE", 0)],
+        "asymmetric_cohabitant": [
+            (3, "A_SPOUSE", 0),
+            (4, "A_SPOUSE", 0),
+            (3, "PECOHAB", 2),
+        ],
+        "spouse_cohabitant_conflict": [(0, "PECOHAB", 3)],
+        "duplicate_line": [(1, "A_LINENO", 1)],
+        "multiple_reference": [(1, "A_EXPRRP", 1)],
+        # Neither an A_EXPRRP reference person nor a household head.
+        "missing_reference": [(0, "A_EXPRRP", 5), (0, "is_household_head", False)],
+        "multiple_heads": [(4, "is_household_head", True)],
+        "head_disagrees": [
+            (0, "is_household_head", False),
+            (1, "is_household_head", True),
+        ],
+        "head_absent": [(0, "is_household_head", False)],
+        "channel_mismatch": [(0, "person_support_channel", "another-channel")],
     }
-    row, column, value = mutations[change]
-    person.loc[row, column] = value
+    for row, column, value in mutations[change]:
+        if isinstance(value, float) and person[column].dtype.kind == "i":
+            person[column] = person[column].astype(np.float64)
+        person.loc[row, column] = value
     with pytest.raises(ValueError, match=message):
         _fake_donor(monkeypatch, tmp_path, tables)
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        pd.Series([1, 0, 0, 1, 0, 0]),
+        pd.Series([True, False, None] * 2, dtype="boolean"),
+    ],
+    ids=["integer", "nullable"],
+)
+def test_reader_requires_a_boolean_household_head_flag(tmp_path, monkeypatch, flags):
+    tables = _tables()
+    tables["person"]["is_household_head"] = flags
+    with pytest.raises(ValueError, match="is_household_head must be boolean"):
+        _fake_donor(monkeypatch, tmp_path, tables)
+
+
+@pytest.mark.parametrize("absent", [-1, 0, np.nan])
+def test_reader_reads_nonpositive_or_missing_pointers_as_absent(
+    tmp_path, monkeypatch, absent
+):
+    tables = _tables()
+    person = tables["person"]
+    for column in ("A_SPOUSE", "PEPAR1", "PEPAR2", "PECOHAB"):
+        values = person[column].astype(np.float64)
+        person[column] = values.where(values > 0, absent)
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    expected = _fixture()["expected"]
+    for column in ("partner_person_id", "parent_1_person_id", "parent_2_person_id"):
+        pd.testing.assert_series_equal(
+            donor.tables["person"][column],
+            pd.Series(pd.array(expected[column], dtype="Int64"), name=column),
+        )
+
+
+def test_reader_takes_household_head_when_no_a_exprrp_reference_person(
+    tmp_path, monkeypatch
+):
+    tables = _tables()
+    person = tables["person"]
+    # Household 202 has no A_EXPRRP reference person, and its head flag marks
+    # line 2 rather than line 1, so only the fallback can name that person.
+    person.loc[3, "A_EXPRRP"] = 3
+    person.loc[3, "is_household_head"] = False
+    person.loc[4, "is_household_head"] = True
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    assert donor.tables["household"]["reference_person_id"].tolist() == [
+        person.loc[0, "person_id"],
+        person.loc[4, "person_id"],
+    ]
+    assert validate_concept_tables(donor.tables) == ()
 
 
 @READER_PROPERTY
@@ -295,7 +374,7 @@ def test_pointer_recode_is_exact_bijective_and_partner_symmetric(
         parents = [
             lookup[(row.person_household_id, line)]
             for line in (row.PEPAR1, row.PEPAR2)
-            if line
+            if line > 0
         ]
         for position, column in enumerate(("parent_1_person_id", "parent_2_person_id")):
             observed = getattr(recovered, column)
@@ -381,35 +460,62 @@ def test_reader_refuses_partial_source_lineage(tmp_path, monkeypatch, missing):
         _fake_donor(monkeypatch, tmp_path, tables)
 
 
-def test_reader_recodes_unmarried_reference_partner_symmetrically(
+@pytest.mark.parametrize("housemates", [1, 2])
+def test_reader_never_reads_relationship_code_13_as_a_partner(
+    tmp_path, monkeypatch, housemates
+):
+    tables = _tables()
+    person = tables["person"]
+    # Code 13 also covers roommates and housemates. Household 202's reference
+    # person shares the home with one or two code-13 housemates and no spouse
+    # or cohabiting-partner pointer, so nobody in it has a partner.
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[4, "A_EXPRRP"] = 13
+    if housemates == 2:
+        person.loc[5, ["A_EXPRRP", "PEPAR2"]] = [13, -1]
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    partners = donor.tables["person"]["partner_person_id"]
+    assert partners.iloc[3:].isna().all()
+    assert partners.iloc[:2].tolist() == [
+        person.loc[1, "person_id"],
+        person.loc[0, "person_id"],
+    ]
+    assert validate_concept_tables(donor.tables) == ()
+
+
+def test_reader_recodes_cohabiting_partner_pointers_symmetrically(
     tmp_path, monkeypatch
 ):
     tables = _tables()
     person = tables["person"]
-    person.loc[[0, 1], "A_SPOUSE"] = 0
-    person.loc[1, "A_EXPRRP"] = 13
+    # Household 202's couple cohabits: no spouse pointer, a PECOHAB pair.
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[[3, 4], "PECOHAB"] = [2, 1]
     donor = _fake_donor(monkeypatch, tmp_path, tables)
-    pointers = donor.tables["person"]["partner_person_id"]
-    assert pointers.iloc[0] == person.loc[1, "person_id"]
-    assert pointers.iloc[1] == person.loc[0, "person_id"]
+    partners = donor.tables["person"]["partner_person_id"]
+    assert partners.iloc[3] == person.loc[4, "person_id"]
+    assert partners.iloc[4] == person.loc[3, "person_id"]
     assert validate_concept_tables(donor.tables) == ()
 
 
-@pytest.mark.parametrize("conflict", ["multiple", "contradictory_spouse"])
-def test_reader_refuses_conflicting_unmarried_reference_partners(
-    tmp_path, monkeypatch, conflict
+@pytest.mark.parametrize("cohabitation", ["agrees_with_spouse", "column_absent"])
+def test_reader_spouse_pointers_hold_with_or_without_pecohab(
+    tmp_path, monkeypatch, cohabitation
 ):
     tables = _tables()
-    person = tables["person"]
-    person.loc[[0, 1], "A_SPOUSE"] = 0
-    person.loc[1, "A_EXPRRP"] = 13
-    if conflict == "multiple":
-        person.loc[2, "A_EXPRRP"] = 13
+    if cohabitation == "agrees_with_spouse":
+        # PECOHAB may repeat a spouse pointer; only different partners fail.
+        tables["person"].loc[[0, 1], "PECOHAB"] = [2, 1]
     else:
-        person.loc[0, "A_SPOUSE"] = 3
-        person.loc[2, "A_SPOUSE"] = 1
-    with pytest.raises(ValueError):
-        _fake_donor(monkeypatch, tmp_path, tables)
+        tables["person"] = tables["person"].drop(columns="PECOHAB")
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    pd.testing.assert_series_equal(
+        donor.tables["person"]["partner_person_id"],
+        pd.Series(
+            pd.array(_fixture()["expected"]["partner_person_id"], dtype="Int64"),
+            name="partner_person_id",
+        ),
+    )
 
 
 def test_cached_real_donor_size_only_when_present():
@@ -418,6 +524,26 @@ def test_cached_real_donor_size_only_when_present():
     if not path.is_file():
         pytest.skip("Pinned real donor is not locally cached")
     assert path.stat().st_size == pin["size"]
+
+
+def test_pinned_real_donor_reaches_the_reference_person_ruling_when_cached():
+    # About 10 s: hashes the 463 MB pin, reads both tables and stages every
+    # line pointer, which must all resolve, before the reference-person
+    # check. #1130 is waiting on a ruling: in 113 pinned households (all
+    # 2022/2023 rows, whose A_EXPRRP the build derived from line 1) the
+    # A_EXPRRP reference person is not the is_household_head (P_SEQ == 1)
+    # person, so the reader refuses the file. Once that is ruled, assert the
+    # bank instead; one source household's two copies also hold a
+    # parent-pointer cycle that concept validation refuses.
+    pin = _fixture()["real_donor_pin"]
+    path = Path.home() / pin["cache_relative_path"]
+    if not path.is_file():
+        pytest.skip("Pinned real donor is not locally cached")
+    with pytest.raises(
+        ValueError,
+        match=r"^Donor A_EXPRRP reference person and is_household_head disagree\.$",
+    ):
+        read_populace_us_donor(path, sha256=pin["sha256"], size=pin["size"])
 
 
 @PROPERTY

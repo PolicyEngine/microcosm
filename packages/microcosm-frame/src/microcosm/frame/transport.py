@@ -149,6 +149,38 @@ def _quantile_component(
     return mapped[inverse]
 
 
+def _retain_exact_total(
+    result: np.ndarray, selected: np.ndarray, anchor: int, total: float
+) -> bool:
+    """Try to correct ``result[anchor]`` in place so the members sum to total.
+
+    The residual step uses the rounded current sum, which can miss by several
+    units of a small anchor's spacing (a total at a power of two halves its
+    spacing below it). If it and two one-unit steps fail, the anchor restarts
+    from the correctly rounded difference between the total and the other
+    members, then takes up to two more one-unit steps.
+    """
+    for attempt in range(3):
+        current_total = fsum(result[selected])
+        if current_total == total:
+            return True
+        if attempt == 0:
+            result[anchor] += total - current_total
+        else:
+            direction = np.inf if current_total < total else -np.inf
+            result[anchor] = np.nextafter(result[anchor], direction)
+    if fsum(result[selected]) == total:
+        return True
+    result[anchor] = fsum([total, *(-result[selected[selected != anchor]])])
+    for _ in range(2):
+        current_total = fsum(result[selected])
+        if current_total == total:
+            return True
+        direction = np.inf if current_total < total else -np.inf
+        result[anchor] = np.nextafter(result[anchor], direction)
+    return fsum(result[selected]) == total
+
+
 def _quantile_map_components(
     values: np.ndarray,
     weights: np.ndarray,
@@ -211,11 +243,23 @@ def quantile_map(
     once, and members are rescaled pro rata by a positive factor. A floating
     rounding residual is assigned to the largest nonzero member so that
     tied entity totals remain exactly tied on repeated mapping. This also
-    preserves member signs for mixed-sign assets. A zero-total entity is
-    unchanged, including cancelling nonzero members. Component labels and
-    entity ids must be nonmissing hashable scalars. Mapping fails if float64
-    cannot retain distinct ranks, signs, pro rata precision, or the mapped
-    aggregate totals (including severe mixed-sign cancellation).
+    preserves member signs for mixed-sign assets. Where the largest member
+    alone cannot reach the exact total (members ``[1, 2]`` whose total maps
+    to 0.21), a member with finer float64 spacing first moves by one unit in
+    the last place. A zero-total entity is unchanged, including cancelling
+    nonzero members.
+    The pro rata factor is the mapped total over the entity total and has no
+    upper bound: members that nearly cancel are amplified with it, so
+    members ``[1000, -999]`` whose total of 1 maps to 15 become ``[15000,
+    -14985]``. Mixed-sign members should not be aggregated when the entity
+    total is small relative to their magnitudes; ``liquid_financial_assets``
+    (``lower=0``) cannot mix signs. Component labels and entity ids must be
+    nonmissing hashable scalars. Mapping fails if float64 cannot retain
+    distinct ranks, signs, pro rata precision, or the mapped aggregate totals
+    (including severe mixed-sign cancellation). Same-sign members always
+    reach the exact total. Mixed-sign members can still be refused when no
+    tried one-unit move reaches it, as for members ``[-5, 1, 1]`` whose total
+    of -3 maps to -20.
     """
     values = np.asarray(values, dtype=np.float64)
     weights = np.asarray(weights, dtype=np.float64)
@@ -298,18 +342,40 @@ def quantile_map(
                 # cancellation may make the exact total unrepresentable.
                 anchor = nonzero[np.argmax(np.abs(result[nonzero]))]
                 original_anchor = result[anchor]
-                for attempt in range(3):
-                    current_total = fsum(result[selected])
-                    if current_total == mapped[entity]:
+                retained = _retain_exact_total(result, selected, anchor, mapped[entity])
+                # Smaller members can leave the exact total halfway between
+                # two sums the largest member reaches (members [1, 2] whose
+                # total maps to 0.21). A member with finer float64 spacing
+                # than that tie moving by one unit in the last place, a
+                # relative change near 1e-16, breaks it. Up to four members
+                # finer than the largest are tried, largest first, then the
+                # smallest member: the tie can sit a binade above the largest
+                # member, and the smallest has the finest spacing. Each moves
+                # away from zero and then toward it.
+                candidates = []
+                if not retained:
+                    others = nonzero[nonzero != anchor]
+                    others = others[np.argsort(-np.abs(result[others]), kind="stable")]
+                    finer = np.spacing(np.abs(result[others])) < np.spacing(
+                        abs(original_anchor)
+                    )
+                    candidates = list(dict.fromkeys([*others[finer][:4], others[-1]]))
+                for other, toward in [
+                    (other, side * np.sign(result[other]))
+                    for other in candidates
+                    for side in (np.inf, 0.0)
+                ]:
+                    if retained:
                         break
-                    if attempt == 0:
-                        result[anchor] += mapped[entity] - current_total
-                    else:
-                        direction = (
-                            np.inf if current_total < mapped[entity] else -np.inf
-                        )
-                        result[anchor] = np.nextafter(result[anchor], direction)
-                if fsum(result[selected]) != mapped[entity]:
+                    kept = result[other]
+                    result[anchor] = original_anchor
+                    result[other] = np.nextafter(kept, toward)
+                    retained = result[other] != 0 and _retain_exact_total(
+                        result, selected, anchor, mapped[entity]
+                    )
+                    if not retained:
+                        result[other] = kept
+                if not retained:
                     raise ValueError(
                         "Pro rata mapping cannot retain exact totals at float64 precision."
                     )
@@ -350,17 +416,37 @@ class DonorBank:
     currency: str = "USD"
 
 
-def _line_numbers(values: pd.Series, *, nullable: bool = False) -> np.ndarray:
+def _line_numbers(values: pd.Series, *, pointer: bool = False) -> np.ndarray:
     numbers = pd.to_numeric(values, errors="raise").to_numpy(
         dtype=np.float64, na_value=np.nan
     )
-    if nullable:
+    if pointer:
+        # A missing pointer is absent (rows from a vintage without PECOHAB
+        # leave it NaN).
         numbers = np.where(np.isnan(numbers), 0, numbers)
     if not np.isfinite(numbers).all() or np.any(numbers != np.floor(numbers)):
         raise ValueError(f"Donor {values.name} must contain integer line numbers.")
-    if np.any(numbers < (0 if nullable else 1)) or np.any(numbers >= 2**63):
+    if pointer:
+        # The pinned donor writes -1 for an absent parent or cohabiting
+        # partner and 0 for an absent spouse. Every pointer <= 0 is absent,
+        # as the US build's eligibility_inputs._parent_person_ids does for
+        # PEPAR1/2.
+        numbers = np.maximum(numbers, 0)
+    if np.any(numbers < (0 if pointer else 1)) or np.any(numbers >= 2**63):
         raise ValueError(f"Donor {values.name} contains invalid line numbers.")
     return numbers.astype(np.int64)
+
+
+def _pointed_rows(
+    values: pd.Series, roster: pd.MultiIndex, household_ids: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each line pointer's presence and its target row in the household roster."""
+    pointed_line = _line_numbers(values, pointer=True)
+    present = pointed_line != 0
+    rows = roster.get_indexer(pd.MultiIndex.from_arrays([household_ids, pointed_line]))
+    if np.any(present & (rows < 0)):
+        raise ValueError(f"Donor {values.name} points to an unknown household line.")
+    return present, rows
 
 
 def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
@@ -371,6 +457,7 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
         "PEPAR1",
         "PEPAR2",
         "A_EXPRRP",
+        "is_household_head",
         "bank_account_assets",
         "stock_assets",
         "bond_assets",
@@ -395,62 +482,70 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
     if (person[PERSON_ID_COLUMN] > np.iinfo(np.int64).max).any():
         raise ValueError("Donor person IDs must fit the concept pointer's int64 dtype.")
     person_ids = person[PERSON_ID_COLUMN].to_numpy(dtype=np.int64)
-    pointers = {}
-    for source, destination in (
-        ("A_SPOUSE", "partner_person_id"),
-        ("PEPAR1", "parent_1_person_id"),
-        ("PEPAR2", "parent_2_person_id"),
-    ):
-        pointed_line = _line_numbers(person[source], nullable=True)
-        present = pointed_line != 0
-        rows = roster.get_indexer(
-            pd.MultiIndex.from_arrays([household_ids, pointed_line])
+
+    def pointer(present: np.ndarray, rows: np.ndarray) -> pd.arrays.IntegerArray:
+        values = pd.array([pd.NA] * len(person), dtype="Int64")
+        values[present] = person_ids[rows[present]]
+        return values
+
+    # Partners come only from the spouse and cohabiting-partner line pointers.
+    # Relationship code 13 is never read: the Census recode uses it for
+    # roommates and housemates as well as unmarried partners, and the
+    # ACS-to-CPS crosswalk maps all three to it, so it does not identify a
+    # partner. Rows from a vintage without PECOHAB leave it NaN, so their
+    # cohabiting couples get no partner pointer.
+    partner_present, partner_rows = _pointed_rows(
+        person["A_SPOUSE"], roster, household_ids
+    )
+    if "PECOHAB" in person:
+        cohabiting, cohabitant_rows = _pointed_rows(
+            person["PECOHAB"], roster, household_ids
         )
-        if np.any(present & (rows < 0)):
-            raise ValueError(f"Donor {source} points to an unknown household line.")
-        pointer = pd.array([pd.NA] * len(person), dtype="Int64")
-        pointer[present] = person_ids[rows[present]]
-        pointers[destination] = pointer
+        if np.any(partner_present & cohabiting & (partner_rows != cohabitant_rows)):
+            raise ValueError("Donor A_SPOUSE and PECOHAB name different partners.")
+        partner_rows = np.where(partner_present, partner_rows, cohabitant_rows)
+        partner_present = partner_present | cohabiting
+    pointers = {
+        "partner_person_id": pointer(partner_present, partner_rows),
+        "parent_1_person_id": pointer(
+            *_pointed_rows(person["PEPAR1"], roster, household_ids)
+        ),
+        "parent_2_person_id": pointer(
+            *_pointed_rows(person["PEPAR2"], roster, household_ids)
+        ),
+    }
     # A sole co-resident parent is always parent 1 in the concept contract.
     move = (
         pointers["parent_1_person_id"].isna() & ~pointers["parent_2_person_id"].isna()
     )
     pointers["parent_1_person_id"][move] = pointers["parent_2_person_id"][move]
     pointers["parent_2_person_id"][move] = pd.NA
-    relationship = _line_numbers(person["A_EXPRRP"])
-    reference = np.isin(relationship, (1, 2))
-    reference_households = pd.Index(household_ids[reference])
-    if not reference_households.is_unique:
+    # The reference person is the A_EXPRRP reference person (codes 1 and 2).
+    # A household without one takes its is_household_head person. Where a
+    # household has an A_EXPRRP reference person, is_household_head must flag
+    # exactly that person: the reader refuses any disagreement rather than
+    # choosing between the two.
+    survey_reference = np.isin(_line_numbers(person["A_EXPRRP"]), (1, 2))
+    if not pd.Index(household_ids[survey_reference]).is_unique:
         raise ValueError("Donor household has multiple reference persons.")
-    reference_rows = reference_households.get_indexer(household[HOUSEHOLD_ID_COLUMN])
+    head_flags = person["is_household_head"]
+    if not pd.api.types.is_bool_dtype(head_flags.dtype) or head_flags.isna().any():
+        raise ValueError("Donor is_household_head must be boolean with no nulls.")
+    head = head_flags.to_numpy(dtype=bool)
+    if not pd.Index(household_ids[head]).is_unique:
+        raise ValueError("Donor household has multiple is_household_head persons.")
+    surveyed = pd.Index(household_ids[survey_reference]).get_indexer(household_ids) >= 0
+    if np.any(surveyed & (head != survey_reference)):
+        raise ValueError(
+            "Donor A_EXPRRP reference person and is_household_head disagree."
+        )
+    reference = survey_reference | (head & ~surveyed)
+    reference_rows = pd.Index(household_ids[reference]).get_indexer(
+        household[HOUSEHOLD_ID_COLUMN]
+    )
     if np.any(reference_rows < 0):
         raise ValueError("Donor household has no reference person.")
     reference_ids = person_ids[reference][reference_rows]
-    # The CPS relationship recode identifies the reference person's unmarried
-    # partner as 13 (the ACS-to-CPS crosswalk uses the same code). A_SPOUSE
-    # alone does not capture these cohabiting couples.
-    unmarried_rows = np.flatnonzero(relationship == 13)
-    if not pd.Index(household_ids[unmarried_rows]).is_unique:
-        raise ValueError("Donor household has multiple unmarried partners.")
-    reference_positions = np.flatnonzero(reference)
-    for partner_row in unmarried_rows:
-        reference_row = reference_positions[
-            reference_households.get_indexer([household_ids[partner_row]])[0]
-        ]
-        partners = pointers["partner_person_id"]
-        for own_row, other_row in (
-            (partner_row, reference_row),
-            (reference_row, partner_row),
-        ):
-            if (
-                not pd.isna(partners[own_row])
-                and partners[own_row] != person_ids[other_row]
-            ):
-                raise ValueError(
-                    "Donor unmarried-partner roster conflicts with spouse pointers."
-                )
-        partners[partner_row] = person_ids[reference_row]
-        partners[reference_row] = person_ids[partner_row]
     # The donor's three leaves are not invertible through an encoding mapping:
     # their sum is the reviewed donor-side stock, without inventing a split.
     leaves = person[["bank_account_assets", "stock_assets", "bond_assets"]].to_numpy(
@@ -525,12 +620,37 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
 def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> DonorBank:
     """Authenticate a local donor H5, then decode its person/household inputs.
 
-    Size and SHA-256 are mandatory and verified before any HDF parsing. There
-    is no download or alternate donor fallback. CPS pointers are resolved by
-    (household id, line number), and invalid/asymmetric relations fail concept
-    validation. Donor-only enrichment is staged before ``decode``; all work
-    after that seam reads concept names. The result declares transport content
-    with a US donor and unchanged source-currency amounts and design weights.
+    Size and SHA-256 are mandatory and verified before any HDF parsing. The
+    file is hashed through one handle and then reopened by path, so a file
+    swapped or rewritten in between would be read unverified; the reader
+    assumes a local cache that nothing rewrites while it runs. (PyTables' core
+    driver can parse the hashed bytes from memory, but only under a filename
+    that does not exist on disk.) There is no download or alternate donor
+    fallback.
+
+    CPS line pointers are resolved by (household id, line number). A pointer
+    that is missing or ``<= 0`` is absent: the donor the tests pin writes
+    ``-1`` for an absent parent or cohabiting partner and ``0`` for an absent
+    spouse. The partner pointer comes from ``A_SPOUSE``, or from ``PECOHAB``
+    on rows whose source vintage carries it; the two must agree when both are
+    set. In a donor that pools vintages, cohabiting partners are therefore
+    recovered only for some source years (only the 2024 rows of the donor the
+    tests pin carry ``PECOHAB``). Relationship code 13 is never read, because
+    it also covers roommates and housemates.
+
+    The household reference person is the person whose ``A_EXPRRP`` is 1 or
+    2; ``A_EXPRRP`` must be present on every row. A household with no such
+    person takes the one person its ``is_household_head`` flag marks. Where a
+    household has an ``A_EXPRRP`` reference person, ``is_household_head``
+    must mark exactly that person, and the reader refuses the whole donor if
+    any household's two disagree. Dangling pointers, spouse and cohabitant
+    conflicts and reference-person conflicts are refused while staging;
+    asymmetric, self, cyclic and other invalid relations fail concept
+    validation.
+
+    Donor-only enrichment is staged before ``decode``; all work after that
+    seam reads concept names. The result declares transport content with a
+    US donor and unchanged source-currency amounts and design weights.
     """
     path = Path(path)
     if isinstance(size, bool) or not isinstance(size, int) or size < 0:
@@ -552,11 +672,6 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
             for entity in ("person", "household")
         }
     staged = _donor_extras(raw["person"], raw["household"])
-    # Use the validated roster as the input mapping's householder flag, so
-    # stale engine flags cannot override the survey reference-person pointer.
-    raw["person"]["is_household_head"] = raw["person"][PERSON_ID_COLUMN].isin(
-        staged["reference_person_id"]
-    )
     tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)
     del raw
     for name, values in staged["pointers"].items():

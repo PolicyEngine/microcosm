@@ -1,10 +1,18 @@
 # Engine-neutral concepts and transport (ADR)
 
 **Status:** accepted for the concept schema, the per-engine mappings and their
-coverage reports. The transport operators now include a pinned local US donor
-reader, source-ID seeds, a currency bridge and weighted quantile mapping;
-the composed transport pipeline below remains a design, and no build has
-migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
+coverage reports. `microcosm.frame.transport` adds a reader for local
+populace-US donor files pinned by size and SHA-256, source-ID seeds, a
+currency bridge and weighted quantile mapping. The reader does not yet load
+the donor its tests pin. Run on that file (166,321 persons, 57,240
+households), it resolves every line pointer, then refuses the whole file: in
+113 households the `A_EXPRRP` reference person is not the `is_household_head`
+person, and the reader will not choose between them. All 113 are 2022 or 2023
+rows, whose `A_EXPRRP` matches the build's line-1 derivation rather than the
+Census recode. Once that is resolved, concept validation would also refuse
+two other households, copies of one source household in which two people name
+each other as parents. The composed transport pipeline below remains a
+design, and no build has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
 international populations and law-anchored concepts. **Amended 2026-10-07:**
 schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
@@ -285,11 +293,15 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   encoding it through the adapter's mapping, one build at a time.
 - The spec engine's `imputation.yaml` `concepts:` block is unrelated. It groups
   predictor columns for imputation, and its names are not concept ids.
-- `microcosm.frame.transport` supplies the donor bank and the income
-  transformation operators (step 3). Its bank declares US donor provenance
-  and source-currency amounts; it does not declare destination residents.
-  The consuming builder supplies the destination frame declaration after
-  transport. Transport still needs a unit-construction step that builds engine
+- `microcosm.frame.transport` supplies a reader for pinned local donor files
+  and the income transformation operators (step 3). The reader's bank
+  declares US donor provenance and source-currency amounts; it does not
+  declare destination residents. It produces no bank from the donor its
+  tests pin yet: that file stops at the reference-person disagreement in the
+  status line above, and two households with a parent-pointer cycle would
+  then fail concept validation. The consuming builder supplies the
+  destination frame declaration after transport. Transport still needs a
+  unit-construction step that builds engine
   units from the concept pointers (until it exists, 13 of New Zealand's 80 and
   46 of Belgium's 105 module bindings, and the take-up and housing bindings on
   US and UK group entities, stay deferred), and a country pack with geography,

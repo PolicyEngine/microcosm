@@ -4,9 +4,10 @@ from math import fsum
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.frame import transport
 from microcosm.frame.transport import quantile_map
 
 
@@ -17,6 +18,18 @@ def _bands():
         {"lower": 10.0, "upper": 30.0, "share": 0.5},
         {"lower": 30.0, "upper": 90.0, "share": 0.25},
     ]
+
+
+def _one_entity(values, total):
+    # One entity whose total maps to the given value (the band's midpoint).
+    bands = [{"lower": 0.0, "upper": 2 * abs(total), "share": 1}]
+    return quantile_map(
+        values,
+        np.ones(len(values)),
+        {"positive": bands, "negative": bands},
+        interpolation="uniform",
+        group={"entity_ids": np.zeros(len(values), dtype=int)},
+    )
 
 
 _samples = st.lists(
@@ -267,6 +280,10 @@ def test_permuting_members_preserves_mapped_values(samples):
         st.lists(st.integers(0, 50), min_size=1, max_size=5), min_size=1, max_size=12
     )
 )
+# Members [1, 2] whose total maps to a total the largest member alone cannot
+# reach; the second is the counterexample #1130's engine-free CI job found.
+@example(entities=[[1], [1], [1, 2]])
+@example(entities=[[1], [1], [1], [1], [1], [1], [1], [4], [1, 2]])
 @settings(max_examples=100, deadline=None)
 def test_aggregate_pro_rata_totals_and_idempotence(entities):
     values = np.array([value for members in entities for value in members], dtype=float)
@@ -470,6 +487,132 @@ def test_pro_rata_mapping_avoids_overflow_in_the_common_scale_factor():
         group={"entity_ids": [0, 0]},
     )
     np.testing.assert_array_equal(mapped, [2.5e307, 2.5e307])
+
+
+def test_pro_rata_correction_beyond_float64_rounding_is_refused(monkeypatch):
+    # No correctly rounded entity total has been found to move the anchor past
+    # the bound, so a mis-rounded total stands in for a pro rata step that
+    # loses more than rounding. Correcting the anchor still restores the
+    # exact total, so only the correction bound refuses the result.
+    members = [1.0, 3.0]
+
+    def misrounded(items):
+        items = list(items)
+        total = fsum(items)
+        return total * (1 + 1e-9) if items == members else total
+
+    monkeypatch.setattr(transport, "fsum", misrounded)
+    with pytest.raises(ValueError, match="correction exceeds float64 rounding"):
+        quantile_map(
+            members,
+            [1, 1],
+            [{"lower": 0, "upper": 120, "share": 1}],
+            interpolation="uniform",
+            group={"entity_ids": [0, 0]},
+        )
+
+
+def test_pro_rata_moves_one_other_member_when_the_largest_cannot_reach_the_total():
+    # [1, 2] scaled to a total of 0.21: every value of the larger member
+    # leaves the sum halfway between 0.21 and a float64 neighbour, and
+    # rounding to even never lands on 0.21, so the smaller member moves by
+    # one unit in the last place.
+    values = np.array([1.0, 2.0])
+    mapped = quantile_map(
+        values,
+        [1, 1],
+        [{"lower": 0, "upper": 0.42, "share": 1}],
+        interpolation="uniform",
+        group={"entity_ids": [0, 0]},
+    )
+    pro_rata = values / 3 * 0.21
+    assert fsum(mapped) == 0.21
+    assert mapped[0] == np.nextafter(pro_rata[0], np.inf)
+    assert mapped[1] == pro_rata[1]
+
+
+_amounts = st.one_of(
+    st.integers(1, 50).map(float), st.integers(1, 10**6).map(lambda cents: cents / 100)
+)
+
+
+@given(
+    # Whole amounts and amounts in cents. Entities of one to three members
+    # produce the halfway ties most often; larger ones cover household sizes.
+    st.lists(
+        st.one_of(
+            st.lists(_amounts, min_size=1, max_size=3),
+            st.lists(_amounts, min_size=4, max_size=16),
+        ),
+        min_size=1,
+        max_size=20,
+    ),
+    st.sampled_from([1.0, -1.0]),
+)
+@example(entities=[[1.0], [1.0], [1.0, 2.0]], sign=1.0)
+@example(entities=[[1.0], [1.0], [1.0, 2.0]], sign=-1.0)
+@example(
+    entities=[[1.0], [2.0], [3.0], [1.62, 1.53], [5.0], [6.0], [7.0], [8.0], [9.0]],
+    sign=1.0,
+)
+@settings(max_examples=100, deadline=None)
+def test_same_sign_members_always_retain_exact_entity_totals(entities, sign):
+    values = sign * np.array([value for members in entities for value in members])
+    entity_ids = np.array(
+        [entity for entity, members in enumerate(entities) for _ in members]
+    )
+    mapped = quantile_map(
+        values,
+        np.ones(len(values)),
+        _bands(),
+        interpolation="uniform",
+        group={"entity_ids": entity_ids},
+    )
+    totals = np.array([fsum(values[entity_ids == e]) for e in range(len(entities))])
+    expected = quantile_map(
+        totals, np.ones(len(entities)), _bands(), interpolation="uniform"
+    )
+    for entity, total in enumerate(totals):
+        selected = entity_ids == entity
+        assert fsum(mapped[selected]) == expected[entity]
+        pro_rata = values[selected] / total * expected[entity]
+        moved = np.abs(mapped[selected] - pro_rata) / np.spacing(np.abs(pro_rata))
+        # Only the largest member absorbs more than one unit in the last place.
+        assert (np.delete(moved, np.argmax(np.abs(pro_rata))) <= 1).all()
+
+
+def test_pro_rata_reaches_a_power_of_two_total_far_from_the_residual_step():
+    # Thirteen members scaled to 8192: the total's spacing halves below it,
+    # and the residual step from the rounded sum misses by more than the two
+    # one-unit steps can recover. The largest member alone can still reach
+    # the total, so every other member keeps its exact pro rata value.
+    values = [575.99, 442.46, 26.4, 365.04, 974.36, 860.0, 783.83]
+    values += [715.86, 762.91, 803.26, 810.82, 704.65, 512.47]
+    mapped = _one_entity(values, 8192.0)
+    pro_rata = np.array(values) / fsum(values) * 8192.0
+    largest = np.argmax(values)
+    assert fsum(mapped) == 8192.0
+    np.testing.assert_array_equal(
+        np.delete(mapped, largest), np.delete(pro_rata, largest)
+    )
+
+
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_pro_rata_moves_the_smallest_member_when_the_tie_sits_a_binade_up(sign):
+    # [7, 3.57] scaled to 1.51: the larger member falls just below 1, but the
+    # anchor the total needs sits halfway between two values above 1, where
+    # the other member's spacing is no finer than the larger member's own.
+    values = sign * np.array([7.0, 3.57])
+    mapped = _one_entity(values, sign * 1.51)
+    pro_rata = values / fsum(values) * (sign * 1.51)
+    assert fsum(mapped) == sign * 1.51
+    assert (np.abs(mapped - pro_rata) <= np.spacing(np.abs(pro_rata))).all()
+
+
+def test_mixed_sign_members_mapped_once_map_to_themselves_again():
+    first = _one_entity([30.59, -90.38], -763.16)
+    assert fsum(first) == -763.16
+    np.testing.assert_array_equal(_one_entity(first, -763.16), first)
 
 
 def test_cancelling_members_refuse_an_unrepresentable_aggregate_total():
