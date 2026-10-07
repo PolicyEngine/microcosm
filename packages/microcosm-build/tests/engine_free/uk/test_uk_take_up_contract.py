@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_take_up_contract.py."""
 
 # ruff: noqa: F403, F405
+import numpy as np
+
 from test_support.microcosm_build.uk_take_up_contract import *
 from test_support.paths import paths_for
 
@@ -191,3 +193,31 @@ def test_forbidden_source_dependency_strings_absent_from_uk_resources() -> None:
         text = files("microcosm.build.uk").joinpath(resource).read_text().lower()
         assert "policyengine_" + "uk_data" not in text
         assert "policyengine-" + "uk-data" not in text
+
+
+def test_extended_hours_usage_reproduces_dfe_additional_hours_ptes() -> None:
+    """The clipped draw's mean is the DfE-implied total weekly hours (#1126).
+
+    DfE funds 341,988.09 additional-hours PTEs (15 hours x 38 weeks each) for
+    the 379,000 3- and 4-year-olds registered for the working parent
+    entitlement in January 2025, on top of the universal 15 hours.
+    """
+
+    from microcosm.build.stochastic_assignment import clipped_normal_from_uniforms
+
+    contract = load_uk_take_up_contract()
+    entry = contract.continuous_entry("maximum_extended_childcare_hours_usage")
+    assert entry["source"]["status"] == "sourced_administrative_derived"
+    assert (entry["lower"], entry["upper"]) == (0, 30)
+
+    n = 200_000
+    uniforms = (np.arange(n) + 0.5) / n
+    draws = clipped_normal_from_uniforms(
+        uniforms,
+        mean=float(entry["mean"]),
+        sd=float(entry["sd"]),
+        lower=float(entry["lower"]),
+        upper=float(entry["upper"]),
+    )
+    dfe_mean_hours = 15 + 15 * 341_988.09 / 379_000
+    assert draws.mean() == pytest.approx(dfe_mean_hours, abs=0.01)
