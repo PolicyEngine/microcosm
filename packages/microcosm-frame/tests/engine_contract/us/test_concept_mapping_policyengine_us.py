@@ -8,6 +8,7 @@ coverage report must match the engine. The round trip through a real
 Microsimulation is the engine_scenario test of the same name.
 """
 
+import inspect
 import json
 from importlib.metadata import version
 
@@ -116,6 +117,30 @@ def test_the_liquid_asset_reason_names_cpi_uprated_person_inputs(index, engine) 
         assert index.variable_metadata(name).entity == "person", name
         assert index.variable_metadata(name).dtype == "float", name
         assert engine._variable(name).uprating == "gov.bls.cpi.cpi_u", name
+
+
+def test_the_liquid_asset_reason_names_every_spm_unit_assets_reader(engine) -> None:
+    # The reason calls feeding spm_unit_assets a modelling choice; it names
+    # every formula that reads the input.
+    readers = {
+        name
+        for name, variable in engine._tax_benefit_system().variables.items()
+        if any(
+            "spm_unit_assets" in inspect.getsource(formula)
+            for formula in variable.formulas.values()
+        )
+    }
+    assert readers == {
+        "is_ccdf_asset_eligible",
+        "ma_ccfa_asset_eligible",
+        "in_ccdf_asset_eligible",
+        "ia_cca_asset_eligible",
+        "tx_ccs_asset_eligible",
+        "il_hbi_resource_eligible",
+    }
+    reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
+    for name in readers:
+        assert name in reason, name
 
 
 def test_committed_coverage_report_matches_the_engine(index) -> None:

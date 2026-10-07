@@ -126,6 +126,37 @@ def test_the_belgian_liquid_asset_reason_names_real_inputs() -> None:
         assert ref.module.removeprefix("be/") in reason, ref.module
 
 
+def test_the_belgian_liquid_asset_reason_states_the_apa_household_reading() -> None:
+    # A wording pin: the derived APA rules are not on the committed surface.
+    # At b105e2b3 the module turns the input into deemed income and halves
+    # the summed income when both household members are entitled, so it reads
+    # the input as the household's capital, not the beneficiary's alone.
+    reason = axiom_concept_mapping("be").unmapped["fact:person.liquid_financial_assets"]
+    for claim in (
+        "brussels_apa_movable_capital_deemed_annual_income",
+        "brussels_apa_household_income_split_factor",
+        "not the beneficiary's alone",
+    ):
+        assert claim in reason, claim
+
+
+def test_the_nz_cash_asset_note_leaves_membership_to_unit_construction() -> None:
+    # No adapter builds Family units yet, so the note states who is summed as
+    # what the unit-construction step's rule will decide; and s 68(2)(a)(iv)
+    # counts shares in a body the person runs, not a sole trader's non-cash equity.
+    mapping = axiom_concept_mapping("nz")
+    (binding,) = mapping.bindings_for("fact:person.liquid_financial_assets")
+    assert not mapping.is_executable(binding)
+    for claim in (
+        "unit-construction step",
+        "s 68(2)(a)(iv)",
+        "a sole trader's non-cash business equity is in neither",
+    ):
+        assert claim in binding.note, claim
+    assert "is not a member" not in binding.note
+    assert "a dependent child's assets are summed too" not in binding.note
+
+
 @pytest.mark.parametrize("country", COUNTRIES)
 def test_the_adapter_finds_its_country_mapping(country, tmp_path) -> None:
     root = tmp_path / f"rulespec-{country}"
