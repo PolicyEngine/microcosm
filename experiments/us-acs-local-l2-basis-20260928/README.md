@@ -39,10 +39,42 @@ what that anchor buys, what it costs, and what limits it.
    - A larger ACS share raises that limit several-fold. At share 0.9 without a penalty: ESS 93,524, Massachusetts 2,704, no district below 50, and 95.8% of targets within 10%.
    - It also worsens held-out fit, mainly on SOI targets (held-out SOI within 10% falls from 64% to 54% at share 0.9), while held-out district populations improve.
    - That is consistent with how the staging builds the rows: the ACS rows' tax variables are transferred from the donor rows by QRF (the tool's `donor_sparse_selection_training_set` limitation), so the donor rows carry tax detail the ACS rows only approximate.
-4. **The softmax parametrization is not needed at this scale for λ ≤ 0.03, and its cap loop runs out of rounds here.**
+4. **The softmax parametrization is not needed at this scale for λ ≤ 0.03.**
    - The per-record gradients here are near Adam's `eps`, with mixed signs (`results/gradient_scale.json`). The same-sign stall that the small-problem evidence shows does not occur.
    - The two parametrizations trace the same training frontier for λ ≤ 0.03. At λ = 0 softmax reaches 18% more ESS (16,132 against 13,646) at a 3% higher loss (0.0160 against 0.0155), a loss gap about the size of the unpenalized solve's run-to-run variation (2.7%; see "How it was run"). At λ ≥ 0.1 projection falls inside softmax's training frontier. At λ = 0.1 projection reaches ESS 22,739 at loss 0.0228, where softmax's path (interpolated between its λ = 0.03 and 0.1 solves) gives about 0.021. At λ = 1 projection reaches 30,582 at 0.0785, against about 0.055 on softmax's path (between λ = 0.3 and 1). Equal λ is not an equal-ESS comparison.
-   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6, bc763cb4 and d82ff85b), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on the full surface (the `dup_` rerun) and on fold 0, and every share-0.9 run. Those epochs optimize total·softmax(log_w) past the 5x cap, by an amount that is not recorded; only the closing projection makes the returned weights exact. The returned loss is within 0.3% of the last trajectory loss in every softmax run that records the count, but projection runs, which have no cap loop, show the same gap (0.01-0.33%), so it says nothing about the overshoot. Projection is the recommended parametrization.
+   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6, bc763cb4 and d82ff85b), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on the full surface (the `dup_` rerun) and on fold 0, and every share-0.9 run. Those epochs optimize total·softmax(log_w) past the 5x cap, by an amount these runs did not record; only the closing projection makes the returned weights exact. The loop has since been replaced by an exact projection, and the overshoot measured: it was float32-sized, 1 + 1.2e-5 at most, against 1 + 9.0e-6 for the projection, so the grid's softmax results stand (see "The softmax cap step, re-measured" below). Projection is the recommended parametrization.
+
+## The softmax cap step, re-measured
+
+Softmax's per-step cap loop (finding 4) was replaced by an exact projection
+onto the capped simplex (docs/calibration-l2-basis.md). `exact_cap_modal.py`
+reran two configurations whose grid runs ran out of rounds, under the new
+step and under the old loop, at kernel head 4bddde64. It recorded the largest
+in-loop weight over its cap at every forward pass, the cap step's rounds and
+its time (`results/exact_cap.md`, `results/exact_cap/`):
+
+| Configuration | Cap step | Largest in-loop weight over its cap | Steps out of rounds | Cap step | Final loss | National ESS |
+|---|---|---:|---:|---:|---:|---:|
+| Share 0.5, softmax, chi-square λ 0.03 | exact projection | 1 + 9.0e-6 | 0 of 800 | 12.7 ms | 0.018991 | 21,834 |
+| Share 0.5, softmax, chi-square λ 0.03 | 32-round loop | 1 + 1.2e-5 | 713 of 800 | 53.8 ms | 0.019169 | 21,835 |
+| Share 0.9, softmax, no penalty | exact projection | 1 + 9.0e-6 | 0 of 800 | 22.5 ms | 0.031293 | 93,609 |
+| Share 0.9, softmax, no penalty | 32-round loop | 1 + 8.7e-6 | 705 of 800 | 48.7 ms | 0.031365 | 93,598 |
+
+- The loop's overshoot was float32-sized, about the same as the projection's.
+  Both are set by the solve's float32 softmax, whose normalizer missed the
+  total by up to 8.2e-6. With a float64 normalizer the projected vectors sit
+  within 1 + 4.9e-7 of their caps (`exact_cap_float32.py`,
+  `results/exact_cap_float32.json`).
+- The loop ran out because of float32 too. Its shift was `log(total)` in
+  float64 minus a float32 `logsumexp`, which bottoms out at the float32
+  rounding residual of `log(total)` (7.8e-8) and lifts a few capped records
+  over their caps every round. On vectors the projection had already made
+  exact it still ran out in 10 of 12 trials.
+- The projection settled in one to three active-set rounds on every step.
+- The loop run at share 0.5 reproduced the grid's `soft_chi_s050_0.03`
+  (0.019169, ESS 21,835); the `dup_` rerun gave 0.019104. The projection's
+  0.018991 is 0.6-0.9% below those three, from one run. ESS agreed within
+  0.1% at both configurations.
 
 ## Key configurations
 
@@ -86,7 +118,7 @@ default `--mass-parametrization projection`.
   - the smallest district from 12 to 22.
 - Out of sample it is ahead on both measures and both folds: held-out error 0.1247 and 0.1191 against 0.1296 and 0.1236, and held-out within 10% 64.2% and 67.0% against 63.3% and 65.8%. Held-out run-to-run variation was not measured and λ was picked on these folds, so treat that as "no worse, probably slightly better".
 - In sample it costs a little: training loss rises from 0.0155 to 0.0181, and training targets within 10% fall from 97.6% to 97.3%.
-- Softmax at λ = 0.03 gives a little more ESS (21,835). Against projection, its held-out fit is a toss-up (lower capped error, fewer targets within 10%, both by small margins). What separates them is training fit (loss 0.0192 against 0.0181, 6% higher, against 0.3% run-to-run variation at this λ) and softmax's cap loop (finding 4). Projection is the default and the better-supported choice.
+- Softmax at λ = 0.03 gives a little more ESS (21,835). Against projection, its held-out fit is a toss-up (lower capped error, fewer targets within 10%, both by small margins). What separates them is training fit: loss 0.0192 against 0.0181, 6% higher, against 0.3% run-to-run variation at this λ (0.0190 and 5% higher with the exact cap projection, from one run). Projection is the default and the better-supported choice.
 - λ = 0.1 (softmax) buys more ESS (24,895; 132 districts below 50) and lower held-out error than the release, but lower held-out within 10% on both folds (61.5% and 63.8%), and 2 pp of training fit.
 - **λ is in units of the loss.** The ACS local build weights every target equally today (`calibrate` gets no `target_loss_weights`), and IRS SOI cells are 3,819 of the 4,459 targets. A change to weight them as the national release does is planned. Re-pick λ on that loss by rerunning this harness with its target weights before shipping a default.
 

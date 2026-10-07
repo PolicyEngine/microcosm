@@ -95,29 +95,70 @@ The total holds by construction, and autograd hands Adam the gradient with its
 component along the constraint already removed. For a smooth objective that
 reduced gradient vanishes at the constrained optimum; the capped-MAPE loss has
 kinks, so Adam still oscillates there on the scale of `lr`, as it does under
-`mass="free"`. The ratio cap remains a per-step clamp, alternated with the
-softmax-invariant renormalization for up to 32 rounds, plus the closing
-float64 projection that both parametrizations share. It requires
-`mass="conserve"` and no L0 gates.
+`mass="free"`. After every step the log-weights are projected exactly onto
+the capped simplex `{w : sum(w) = D, w <= cap * d}`, and the closing float64
+projection that both parametrizations share makes the returned vector exact.
+It requires `mass="conserve"` and no L0 gates.
 
-**Known limitation: the cap rounds run out at production scale.** Each
-renormalization lifts the clamped records back over the cap by a shrinking
-amount, so the rounds converge geometrically but need not reach float32
-exactness in 32. A step that runs out ends on a clamp, and its next forward
-pass optimizes `total·softmax(log_w)` past the cap, by an amount that is not
-recorded.
-`options["iterate_selection_receipt"]["softmax_cap_rounds_exhausted_epochs"]`
-counts those steps. On small problems it is rare. On the ACS local release it
-is the normal state: 165-400 of the last 400 epochs in every run that records
-it, including 400 at the share-0.5, `l2_lambda = 0.03` configuration on the
-full surface and on one fold, and 400 in every share-0.9 run. Only the
-closing projection makes the returned vector exact. The returned loss stays
-within 0.3% of the last trajectory loss in every run that records the count,
-but projection runs, which have no cap loop, show the same gap (0.01-0.33%), so
-that says nothing about the overshoot; its size is not measured. An
-exact capped-softmax step (water-filling the excess onto the uncapped records)
-would remove the limitation. Until then, prefer `"projection"` at that scale,
-where the stall does not bite (below).
+**The per-step cap projection.** It is the Kullback-Leibler projection: one
+common shift `s` for every log-weight, then a clamp to each log cap,
+`log_w <- min(log_w + s, log(cap * d))`. Uncapped records keep their
+relative weights, the direction the softmax cannot see, and only records
+whose share would pass their caps are held at them. `s` solves
+`sum(min(exp(log_w + s), cap * d)) = D`, whose left side is continuous and
+nondecreasing in `s`. Active-set rounds find it: with `C` the records already
+at their caps, the next shift solves
+`sum(cap * d[C]) + exp(s) * sum(exp(log_w)[not C]) = D`. That shift is a lower
+bound on the answer for every `C`, so `C` only grows, and a round that adds
+no record is exact. If eight rounds pass without that, a sort over the
+remaining records finishes it, which bounds the worst case at `O(n log n)`.
+The shift is computed in float64. The solve records
+`options["iterate_selection_receipt"]["softmax_in_loop_max_cap_ratio"]`, the
+largest ratio of a realized in-loop weight to its float64 cap over every
+forward pass and the closing iterate, before the closing projection.
+`test_softmax_cap_projection.py` pins the projection for every drawn input,
+including zero design weights and a cap of exactly 1. It conserves the total,
+respects every cap, is idempotent and invariant to a constant added to the
+log-weights, and moves an input already within its caps by the shift alone.
+It also meets the Kullback-Leibler projection's KKT conditions, equals a
+float64 water-fill written from the definition, and gives the same answer by
+its active-set and sorted paths, including on an input built to need one
+round per record.
+
+**What the projection replaced.** Before, each step renormalized and clamped
+in a loop of at most 32 rounds. On the ACS local release the rounds ran out on
+most epochs, and how far that left the in-loop weights past their caps was
+not recorded. It has since been measured
+(`experiments/us-acs-local-l2-basis-20260928/results/exact_cap.md` and
+`results/exact_cap_float32.json`):
+
+- **Why the loop ran out.** Each round's shift was `log(D)` in float64 minus a
+  float32 `logsumexp`. On a vector already within its caps that difference
+  does not reach zero. It bottoms out at the float32 rounding residual of
+  `log(D)` itself, 7.8e-8 here. That shift lifts the one to three capped
+  records with log caps below 2 in magnitude one float32 step over their caps,
+  the clamp puts them back, and the next round repeats it. On full-scale vectors
+  the projection had already made exact, the loop still ran out in 10 of 12
+  trials.
+- **How far past the cap it was.** Not materially. Two full-scale
+  configurations whose earlier runs ran out were rerun under both steps: share
+  0.5 at `l2_lambda = 0.03`, and share 0.9 unpenalized. The largest in-loop
+  weight over its cap was 1 + 1.2e-5 and 1 + 8.7e-6 under the loop, and
+  1 + 9.0e-6 under the projection at both. The loop ran out on 713 and 705 of
+  800 steps. The projection settled in one to three rounds on every step and
+  took 12.7-22.5 ms a step, against the loop's 48.7-53.8 ms.
+- **What sets that residual.** The float32 softmax. The projected
+  log-weights sit within their float32 log caps, but the solve realizes
+  `D * softmax(log_w)` with a float32 normalizer over 1.59M records, whose
+  total was off by up to 8.2e-6. The cap ratio exceeded that total error by
+  at most 6.1e-7. With a float64 normalizer on the same log-weights the largest
+  ratio was 1 + 4.9e-7, the float32 rounding of the log-weights themselves.
+- **The solves.** National ESS agreed within 0.1% between the two steps
+  (21,834 against 21,835, and 93,609 against 93,598). At share 0.5 and
+  `l2_lambda = 0.03` the projection's final loss was 0.01899. Three loop runs
+  of that configuration gave 0.01910-0.01917, so the projection's loss is
+  0.6-0.9% lower, from one run. At share 0.9 the loss was 0.2% lower (0.03129
+  against 0.03137).
 
 Evidence:
 
@@ -165,8 +206,10 @@ recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-2026092
   `l2_lambda` is not an equal-ESS comparison. At `0.03` the held-out
   comparison is a toss-up: softmax has slightly lower capped error, projection
   more held-out targets within 10% on both folds. Projection's training loss is
-  6% lower there, against 0.3% run-to-run variation. With that and the
-  cap-loop limitation above, projection is the recommended parametrization.
+  6% lower there, against 0.3% run-to-run variation, so projection is the
+  recommended parametrization. Rerun with the exact cap projection, softmax's
+  training loss at `0.03` is 0.01899 (one run), still 5% above projection's
+  0.01806.
 - **Record basis.** The record basis at `0.1` lowers national ESS from 13,646
   to 8,689, as its `w ∝ d ** 2` optimum predicts.
 - **Chi-square basis.** The chi-square basis raises ESS smoothly with
@@ -191,7 +234,7 @@ result = calibrate(
     l2_lambda=...,
     l2_basis="chi_square",
     # mass_parametrization="softmax" for problems where every target presses
-    # the same way; see the cap-loop limitation above.
+    # the same way (above).
 )
 result.options["l2_basis"], result.options["mass_parametrization"]
 result.chi_square_distance, result.effective_sample_size
@@ -200,8 +243,9 @@ result.chi_square_distance, result.effective_sample_size
 The ACS local-area tool takes the same settings as
 `--l2-lambda`, `--l2-basis {record,chi_square}` and
 `--mass-parametrization {projection,softmax}`. It records them, with the
-realized chi-square distance, in `calibration_summary.json` and in the build
-manifest's `calibration` block. Both join the tool's solver-settings stamp,
+realized chi-square distance and, under softmax, the last epoch batch's
+largest in-loop weight over its cap, in `calibration_summary.json` and in the
+build manifest's `calibration` block. Both join the tool's solver-settings stamp,
 so `--resume` and the already-complete shortcut refuse weights solved under
 any other solver setting (cap, loss cap, `l2_lambda`, `l2_basis`,
 `mass_parametrization`, seed, epoch batch); a stamp written before these two
