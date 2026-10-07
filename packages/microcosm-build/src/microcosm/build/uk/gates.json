@@ -854,7 +854,7 @@
           "household.cgt_support_copy_index",
           "household.household_is_cgt_residential_clone",
           "household.cgt_residential_clone_index",
-          "household.clone_index",
+          "household.household_clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",
           "household.data_zone_code",
@@ -972,7 +972,13 @@
           "person.person_source_id",
           "person.person_support_channel",
           "person.person_support_clone_index",
-          "person.srp_regular_code5"
+          "person.srp_regular_code5",
+          "benunit.benunit_clone_index",
+          "person.person_clone_index",
+          "household.itl1_code",
+          "household.itl2_code",
+          "household.itl3_code",
+          "household.ward_code"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."

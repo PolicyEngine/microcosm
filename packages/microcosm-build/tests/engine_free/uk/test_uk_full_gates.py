@@ -131,6 +131,11 @@ def evidence(monkeypatch):
         "uk_aggregate_admin_totals",
         lambda frame, manifest: ({"admin": 2.0}, [{"measured": 2.0}]),
     )
+    monkeypatch.setattr(
+        runtime,
+        "uk_cgt_projection_artifact",
+        lambda frame, manifest: {"stub_projection": True},
+    )
     return (
         frame,
         ordered,
@@ -315,3 +320,46 @@ def test_missing_evidence_uses_declared_development_policy():
         )["artifact_permitted"]
         is False
     )
+
+
+def test_gate_context_hands_the_spine_build_state_to_the_coverage_gate(evidence):
+    """The checkpoint's build state is the battery's ``spine_frame``: the
+    input-coverage gate reads the stages' importance weights from it, never
+    from the calibrated release frame; the raw key does not leak through."""
+    frame, ordered, solution, supporting = evidence
+    state = SimpleNamespace(
+        household_weight_kind="importance", time_period="2024", mass_log=()
+    )
+    context = runtime.build_full_gate_context(
+        frame,
+        ordered_problem=ordered,
+        solution=solution,
+        selection_receipt=_selection(),
+        stage_evidence={"frs_spine": {}},
+        supporting_evidence={**supporting, "spine_build_state": state},
+    )
+    assert context.artifacts["spine_frame"] is state
+    assert "spine_build_state" not in context.artifacts
+    # without a published build state the certifier's own spine frame (if any) stands
+    plain = _context(evidence)
+    assert "spine_frame" not in plain.artifacts
+
+
+def test_gate_context_computes_the_cgt_projection_for_the_entrants_fence(evidence):
+    from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
+
+    context = _context(evidence)
+    assert context.artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY] == {
+        "stub_projection": True
+    }
+    # a projection the caller already supplies is kept as given
+    frame, ordered, solution, supporting = evidence
+    supplied = runtime.build_full_gate_context(
+        frame,
+        ordered_problem=ordered,
+        solution=solution,
+        selection_receipt=_selection(),
+        stage_evidence={"frs_spine": {}},
+        supporting_evidence={**supporting, UK_CGT_PROJECTION_ARTIFACT_KEY: "given"},
+    )
+    assert supplied.artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY] == "given"

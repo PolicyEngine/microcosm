@@ -52,6 +52,7 @@ class UKSizeSelection:
     learning_rate: float
     seed: int
     search_pi_hi: float
+    initial_lambda: float | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +181,20 @@ def _check_baseline_pi_floor(value: object) -> float:
     return floor
 
 
+def _check_initial_lambda(value: object) -> float | None:
+    """``None`` (cold search) or a positive finite warm-start penalty."""
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not np.isfinite(value)
+        or float(value) <= 0.0
+    ):
+        raise ValueError("initial_lambda must be None or a positive finite number.")
+    return float(value)
+
+
 def _check_pi_hi(pi_hi: object) -> float:
     if not isinstance(pi_hi, float | int) or isinstance(pi_hi, bool):
         raise ValueError("pi_hi must be a number in (0, 1].")
@@ -214,6 +229,7 @@ def select_uk_dataset_size(
     learning_rate: float,
     seed: int,
     pi_hi: float = 1.0,
+    initial_lambda: float | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> UKSizeSelection:
     """Run the informed L0 budget search for an exact-count draw of ``households``.
@@ -223,9 +239,18 @@ def select_uk_dataset_size(
     the gates' open-probability mass until a draw of ``households`` at
     ``pi_hi`` is feasible on the learned probabilities (or the probe budget
     is spent; then the draw refuses with the measurement).
+
+    ``initial_lambda`` warm-starts the search at a known penalty (the one a
+    previous search on the same pool and targets selected, microcosm#1115):
+    the search probes it first and stops there when the draw is feasible and
+    within tolerance, saving the full bisection. The search still verifies
+    every probe, so a stale hint costs probes, never feasibility; any penalty
+    whose draw lands inside the budget window is a valid stop, so a warm and a
+    cold search can settle on different penalties and select different rows.
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
+    initial_lambda = _check_initial_lambda(initial_lambda)
     if households == n:
         raise ValueError("a full-pool size needs no selection.")
     problem = dense.problem
@@ -262,6 +287,7 @@ def select_uk_dataset_size(
         mass_reason=dense.options["mass_reason"],
         budget_basis=BUDGET_BASIS_OPEN_PROBABILITY_MASS,
         feasible_draw_pi_hi=pi_hi,
+        l0_lambda=0.0 if initial_lambda is None else initial_lambda,
         progress_callback=_phased(progress_callback, "size_search"),
         **_solver_common(dense, epochs=epochs, learning_rate=learning_rate, seed=seed),
     )
@@ -275,6 +301,7 @@ def select_uk_dataset_size(
         learning_rate=learning_rate,
         seed=seed,
         search_pi_hi=pi_hi,
+        initial_lambda=initial_lambda,
     )
 
 
@@ -287,6 +314,7 @@ def refit_uk_dataset_size(
     learning_rate: float,
     seed: int,
     pi_hi: float = 1.0,
+    initial_lambda: float | None = None,
     baseline_pi_floor: float = 0.0,
     selection: UKSizeSelection | None = None,
     draw: UKSizeDraw | None = None,
@@ -350,6 +378,7 @@ def refit_uk_dataset_size(
             learning_rate=learning_rate,
             seed=seed,
             pi_hi=pi_hi,
+            initial_lambda=initial_lambda,
             progress_callback=progress_callback,
         )
         reused = False

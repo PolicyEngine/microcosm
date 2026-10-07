@@ -3,6 +3,7 @@
 # ruff: noqa: F403, F405
 from types import SimpleNamespace
 
+import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -1243,11 +1244,12 @@ def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, 
     assert spool_rows(out)[0].disposition == "failed"
 
 
-def test_multi_block_engine_run_is_never_releasable(tmp_path, monkeypatch):
-    """End to end: ``--engine-blocks K`` on f100 writes ``releasable: false``.
-
-    Every release-blocking gate passes here; the posture alone withholds the
-    verdict, and the manifest names the leg (``single_block_engine``).
+def test_multi_block_engine_run_is_releasable_when_its_blocks_represent_the_pool(
+    tmp_path, monkeypatch
+):
+    """End to end: ``--engine-blocks K`` on f100 with every block an identical
+    copy scaled to the pool writes ``releasable: true``; the manifest names the
+    legs (``single_block_engine`` false, ``engine_population_exact`` true).
     """
     pytest.importorskip("tables")
     status, out = run_dense_main(
@@ -1257,10 +1259,33 @@ def test_multi_block_engine_run_is_never_releasable(tmp_path, monkeypatch):
     manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
     assert manifest["parameters"]["engine_blocks"] == 2
     assert manifest["blocking_failures"] == []
-    assert manifest["releasable"] is False
+    assert manifest["releasable"] is True
     posture = manifest["release_posture"]
     assert posture["full_rung"] is True
     assert posture["single_block_engine"] is False
+    assert posture["engine_population_exact"] is True
+    assert posture["release_blocking_gates_passed"] is True
+
+
+def test_multi_block_engine_run_without_an_exact_representation_is_never_releasable(
+    tmp_path, monkeypatch
+):
+    """The blocks were not identical copies: the scaling is approximate, the
+    measures receipt keeps its caveat, and the posture alone withholds the
+    verdict with every release-blocking gate passed (#736 erratum).
+    """
+    pytest.importorskip("tables")
+    monkeypatch.setattr(support, "ENGINE_POPULATION_EXACT", False)
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, "--n-clones", "2", "--engine-blocks", "2"
+    )
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["blocking_failures"] == []
+    assert manifest["releasable"] is False
+    posture = manifest["release_posture"]
+    assert posture["single_block_engine"] is False
+    assert posture["engine_population_exact"] is False
     assert posture["release_blocking_gates_passed"] is True
 
 

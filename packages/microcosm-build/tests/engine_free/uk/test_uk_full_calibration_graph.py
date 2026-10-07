@@ -508,3 +508,51 @@ def test_size_kernels_forward_phased_epochs_to_the_registered_observer(
         replay.population(endpoints.population).weights_for("household").values,
         first.population(endpoints.population).weights_for("household").values,
     )
+
+
+def test_select_warm_starts_the_search_and_refuses_bad_hints(monkeypatch):
+    """microcosm#1115: ``initial_lambda`` reaches the shared search as its
+    warm-start penalty, is recorded on the selection and refused when invalid."""
+    from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
+
+    frame = source_frame()
+    dense = calibrate(frame, targets(), epochs=2)
+    seen = {}
+    real = dataset_size.calibrate
+
+    def spy(*args, **kwargs):
+        seen.update(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(dataset_size, "calibrate", spy)
+    options = dict(households=2, epochs=2, learning_rate=0.02, seed=7)
+    cold = dataset_size.select_uk_dataset_size(frame, dense, **options)
+    assert seen["l0_lambda"] == 0.0
+    assert cold.initial_lambda is None
+    assert cold.selection.options["budget_search"]["initial_lambda"] is None
+    warm = dataset_size.select_uk_dataset_size(
+        frame, dense, initial_lambda=1e-3, **options
+    )
+    assert seen["l0_lambda"] == 1e-3
+    assert warm.initial_lambda == 1e-3
+    assert warm.selection.options["budget_search"]["initial_lambda"] == 1e-3
+    assert warm.selection.options["budget_search"]["probes"][0]["l0_lambda"] == 1e-3
+    for bad in (0.0, -1e-3, float("nan"), float("inf"), True):
+        with pytest.raises(ValueError, match="initial_lambda"):
+            dataset_size.select_uk_dataset_size(
+                frame, dense, initial_lambda=bad, **options
+            )
+        with pytest.raises(ValueError, match="initial_lambda"):
+            UKGraphCalibrationConfig(selection_initial_lambda=bad)
+    assert (
+        UKGraphCalibrationConfig(selection_initial_lambda=2e-6).selection_initial_lambda
+        == 2e-6
+    )
+    # The refit reuses a warm-searched selection like any other.
+    draw = dataset_size.draw_uk_dataset_size(
+        frame, dense, selection=warm, households=2, seed=7
+    )
+    refit = dataset_size.refit_uk_dataset_size(
+        frame, dense, selection=warm, draw=draw, initial_lambda=1e-3, **options
+    )
+    assert refit.receipt["selection_l0_lambda"] == warm.selection.l0_lambda
