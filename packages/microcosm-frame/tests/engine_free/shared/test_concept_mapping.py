@@ -19,7 +19,7 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import concept_mapping as concept_mapping_module
@@ -1413,12 +1413,12 @@ class TestArithmeticReadsAnnualFlows:
         # for any concept, and its basis, dtype and unit redeclared. In either
         # order, the binding validates exactly when the rule's text says it
         # should, and a refusal names only operands that break the rule.
-        drawn = []
+        drawn, taken = [], set()
         for slot in (_HOURS, _WEEKS):
-            concept_id = data.draw(
-                st.one_of(st.just(slot), st.sampled_from([c.id for c in CONCEPTS])),
-                label="concept",
-            )
+            others = st.sampled_from([c.id for c in CONCEPTS if c.id not in taken])
+            choices = others if slot in taken else st.one_of(st.just(slot), others)
+            concept_id = data.draw(choices, label="concept")
+            taken.add(concept_id)
             basis = data.draw(
                 st.one_of(st.none(), st.sampled_from(TemporalBasis)), label="basis"
             )
@@ -1439,11 +1439,11 @@ class TestArithmeticReadsAnnualFlows:
                     fields["unit"] = unit
             drawn.append((concept_id, basis, fields))
         (first, *_), (second, *_) = drawn
-        assume(first != second)
         with ExitStack() as stack:
             for concept_id, basis, fields in drawn:
                 stack.enter_context(_redeclared(concept_id, basis, **fields))
             faults = _faults(concept(first), concept(second))
+            event("refused" if faults else "validates")
             for order in ((first, second), (second, first)):
                 if not faults:
                     assert _product(*order).concepts == order

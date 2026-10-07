@@ -312,7 +312,7 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     two usual rates, two annual flows, a usual rate that is not a float, or an
     annual flow that is not a number of weeks, such as a year's income. A
     refusal of two concepts names only operands at fault. A Hypothesis property
-    swaps either operand of the committed product for any concept and redeclares
+    swaps either operand of the committed product for any other concept and redeclares
     its basis, and, for a numeric quantity that is neither an amount nor a
     pointer, its dtype and unit. In either order, the binding validates exactly
     when this rule says it should. Each way to break the rule is also refused by
