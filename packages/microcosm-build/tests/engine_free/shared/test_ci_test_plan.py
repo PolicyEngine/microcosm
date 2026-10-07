@@ -152,6 +152,24 @@ jobs:
     )
 
 
+def test_workflow_rejects_an_underscore_prefixed_job() -> None:
+    source = """\
+jobs:
+  engine-free:
+    steps:
+      - run: pytest
+  _invented-compatibility-test:
+    steps:
+      - run: node verify.mjs
+"""
+
+    assert (
+        "_invented-compatibility-test: workflow job has no registered test "
+        "category or approved infrastructure role"
+        in ci_test_plan.workflow_job_errors(source)
+    )
+
+
 def test_workflow_job_parser_ignores_nested_yaml_keys() -> None:
     source = """\
 jobs:

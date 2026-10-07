@@ -87,7 +87,7 @@ DOC_SUFFIXES = {".md", ".rst"}
 
 RequestJSON = Callable[[str, str], Any]
 
-_WORKFLOW_JOB = re.compile(r"^  ([A-Za-z0-9][A-Za-z0-9_-]*):(?:\s.*)?$")
+_WORKFLOW_JOB = re.compile(r"^  ([A-Za-z_][A-Za-z0-9_-]*):(?:\s.*)?$")
 
 
 def workflow_job_names(source: str) -> tuple[str, ...]:
