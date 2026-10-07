@@ -37,9 +37,15 @@ frozen dataclass built from a closed vocabulary (plain data, enums, classes
 and undecorated top-level functions without closures), and the hash covers
 its fields, its functions' defaults and the source of every first-party module
 its code can import, read from the import statements in the source. A binding
-outside that vocabulary is refused when the kernel is built; a binding, or a
-module in its source closure, that changes afterwards makes the kernel refuse
-to run. Data a binding's modules read from disk is not bound, so a binding
+outside that vocabulary is refused when the kernel is built. A binding, or a
+module in its source closure, that changes afterwards (or can no longer be
+read or parsed) makes the kernel raise
+:class:`~microcosm.graph.KernelIdentityChangedError`: from
+``implementation_hash``, and from ``run``, which checks before it evaluates,
+before it returns, and when evaluation raises. The executor never files that
+error as a ``fail`` verdict (graph amendment 29), so a change made while a
+build runs leaves no record for the refused gate node under the unchanged
+binding's key. Data a binding's modules read from disk is not bound, so a binding
 takes its values through the manifest's parameters or evidence artifacts. A
 declared gate with no binding still resolves to a named ``evidence_absent``
 gap, exactly as the battery does.
@@ -110,6 +116,7 @@ from microcosm.graph import (
     Determinism,
     KernelBase,
     KernelContext,
+    KernelIdentityChangedError,
     KernelRegistry,
     KernelResult,
     KernelRole,
@@ -705,12 +712,34 @@ class GateBatteryKernel(KernelBase):
             sources.update(digests)
         return descriptions, dict(sorted(sources.items()))
 
+    def _require_identity(self, cause: Exception | None = None) -> None:
+        """Refuse once a binding or its source closure moved since construction.
+
+        Raised during key derivation, this refuses the run before anything is
+        written; raised from ``run``, the executor refuses the node instead of
+        filing an outcome under the key of the unchanged registry (graph
+        amendment 29). A closure file that can no longer be read or parsed is
+        a change too. ``cause`` is the exception evaluation raised, if any.
+        """
+
+        try:
+            moved = self._binding_identity() != self._identity
+        except Exception as error:
+            raise KernelIdentityChangedError(
+                f"{_REF} binding registry, or a module in its source closure, "
+                "changed after the kernel was built and can no longer be "
+                f"described ({type(error).__name__}: {error}); its node keys "
+                "would no longer describe it."
+            ) from error
+        if moved:
+            raise KernelIdentityChangedError(
+                f"{_REF} binding registry, or a module in its source closure, "
+                "changed after the kernel was built; its node keys would no "
+                "longer describe it."
+            ) from cause
+
     def implementation_hash(self) -> str:
-        if self._binding_identity() != self._identity:
-            raise ValueError(
-                f"{_REF} binding registry changed after the kernel was built; its "
-                "node keys would no longer describe it."
-            )
+        self._require_identity()
         descriptions, sources = self._identity
         code = source_hash(
             sys.modules[__name__],
@@ -801,11 +830,19 @@ class GateBatteryKernel(KernelBase):
     def run(self, context: KernelContext) -> KernelResult:
         require_params(context, _REF, required=self._required, optional=self._optional)
         require_outputs(context, _REF)
-        if self._binding_identity() != self._identity:
-            raise ValueError(
-                f"{_REF} binding registry changed after the kernel was built; its "
-                "node keys would no longer describe it."
-            )
+        # The identity is checked on both sides of evaluation, and again when
+        # evaluation raises: an outcome or failure produced while it moved is
+        # not one the node key names, so it must never be filed as a verdict.
+        self._require_identity()
+        try:
+            result = self._evaluate(context)
+        except Exception as error:
+            self._require_identity(cause=error)
+            raise
+        self._require_identity()
+        return result
+
+    def _evaluate(self, context: KernelContext) -> KernelResult:
         country = string_param(context, _REF, "country")
         phase = string_param(context, _REF, "phase")
         gates_sha256 = sha256_param(context, _REF, "gates_sha256")

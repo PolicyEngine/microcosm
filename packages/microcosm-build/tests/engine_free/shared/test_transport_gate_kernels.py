@@ -71,6 +71,7 @@ from microcosm.graph import (
     ContentStore,
     Kernel,
     KernelContext,
+    KernelIdentityChangedError,
     KernelRegistry,
     KernelRole,
     Node,
@@ -386,7 +387,9 @@ def test_a_binding_mutated_after_construction_refuses_to_run() -> None:
     kernel = GateBatteryKernel({**TOY_BINDINGS, "per_family_fit": binding})
     kernel.run(_context(_node()))
     arguments["diagnostics"] = "other_alias"
-    with pytest.raises(ValueError, match="changed after the kernel was built"):
+    with pytest.raises(
+        KernelIdentityChangedError, match="changed after the kernel was built"
+    ):
         kernel.run(_context(_node()))
 
 
