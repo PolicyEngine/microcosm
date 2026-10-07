@@ -224,6 +224,76 @@ structural node depends on every member of its base version, so a gate that
 is a member of the calibration base would re-key calibration on any
 `gates.json` edit. A preflight phase belongs on its own FILTER branch.
 
+### Gate bindings
+
+`transport/gate_bindings.py` holds `TRANSPORT_GATE_REGISTRY`, the registry a
+transport country passes to `gates.battery@1`: `DEFAULT_REGISTRY` plus a
+`FunctionBinding` for each gate below. Every binding reads evidence the
+transport graph produces, under the alias of the producing output, and takes
+its thresholds and declared surfaces only from the entry's `parameters`.
+No tunable threshold has a Python default: an entry that omits one fails
+closed when it runs. A composer can call `validate_required_gate_parameters`
+(the converse of the battery's `validate_gate_parameters`, which the kernel
+runs) to refuse such a manifest before any gate runs. The shared comparisons
+keep their fixed semantics: non-negative means at least zero, and
+`aggregate_admin_gate` measures a miss relative to `max(|value|, 1)`.
+
+| Gate | Evidence | Parameters (required in bold) |
+| --- | --- | --- |
+| `per_family_fit` | `diagnostics` | **`within`**, **`min_family_share`**, **`hard_within`**, **`min_hard_family_share`**, **`min_family_size`**, `families` |
+| `aggregate_admin` | `surface`, `diagnostics` | **`default_rtol`**, `families`, `geography_levels` |
+| `calibration_reference_coverage` | `surface`, `problem` | none |
+| `target_profile_coverage` | `problem` | **`required_families`**, `reviewed_exclusions` |
+| `nonnegative_columns` | frame | **`columns`**, `reviewed_exclusions` |
+| `exported_nonzero` | frame | `exemptions` |
+| `formula_owned_export` | frame | **`formula_owned_columns`** |
+| `weight_ess` | frame | **`minimum_ess_fraction`** |
+| `weight_ratio` | frame | **`maximum_max_to_median_ratio`** |
+
+- `per_family_fit` groups the diagnostics rows by registry family; `families`
+  restricts the entry to those families (so one family can carry a tighter
+  entry) and each declared family must have a target. `hard_within` must be
+  a number: the shared gate's report-only `null` belongs in a `diagnostic`
+  entry.
+- `aggregate_admin` checks each compiled target of the surface (its source
+  and any fact-specific tolerance) against the diagnostics' final estimate,
+  sign first; `default_rtol` applies where a target declares no tolerance.
+  The diagnostics must record that surface (`build.surface_sha256`).
+- `calibration_reference_coverage` passes iff at least one reference is
+  activated, the activated references, the resolved targets and the matrix
+  rows are one set without repeats or skipped targets, and the problem was
+  compiled from that surface.
+- `target_profile_coverage` requires at least one matrix row in each declared
+  family.
+- The frame gates read the node's rebuilt population. Each weighted entity's
+  typed weights stand in for its `{entity}_weight` column, which the export
+  writes from them; entity ids and the memberships of the frame's own groups
+  are not measured as layers. The gates check only the columns the node
+  slices, so a gate node that checks the export must slice what
+  `export.prepare@1` slices; `exported_nonzero` and `formula_owned_export`
+  list the columns they read in their details.
+- `nonnegative_columns` also fails a non-finite value in a declared column
+  (the shared gate skips them): `-inf` is negative, and a missing value
+  cannot be certified non-negative.
+- `weight_ess` and `weight_ratio` read the frame's one weighted entity. The
+  ESS fraction divides the Kish ESS by every record; the ratio divides the
+  maximum by the median positive weight. On the same row weights they agree
+  with the UK runtime's weight gates (a differential test over finite
+  summaries); where the ESS overflows to NaN, the neutral gate fails closed.
+
+Of the gates New Zealand declares, three have no transport binding, because
+no code produces their evidence for a transport build yet: `support`
+(realized donor-support bounds of transported columns),
+`release_input_coverage` (donor-artifact authentication and the per-module
+Axiom input closure) and `macro_realism` (destination national-accounts
+metrics and bands). New Zealand declares them `not_applicable`, naming the
+missing producer; an applicable entry would resolve to the battery's
+`evidence_absent` gap. A `not_applicable` entry does not block a release, so
+each must be activated with a binding before any candidate release.
+`weights_audit` keeps its `DEFAULT_REGISTRY` binding, but no transport
+kernel emits its `fit_weight_records` evidence yet, so it resolves to a named
+`evidence_absent` gap.
+
 ## Export
 
 `export.prepare@1` describes the exact entity tables to write: the declared
