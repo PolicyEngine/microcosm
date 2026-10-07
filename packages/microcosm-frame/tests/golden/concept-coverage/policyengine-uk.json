@@ -395,7 +395,7 @@
  "engine": "policyengine-uk",
  "engine_version": "2.100.0",
  "input_count": 233,
- "schema_sha256": "d4cb09218a9757642af016e795e900ae9091a552694d37a954e6a70fffa2b6a1",
+ "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
  "structural_inputs": [
   {
    "entity": "benunit",
@@ -1176,6 +1176,7 @@
  "unmapped_concepts": {
   "fact:household.reference_person_id": "is_household_head is formula-owned (the oldest member). The UK build overrides it with the FRS household reference person (frs_spine.py), an override the loader accepts, but it is not an input, so the mapping does not target it. Every housing input is household-level, so nothing is allocated to the reference person.",
   "fact:person.legal_marital_status": "policyengine-uk derives marital status from benefit-unit composition; marital_status and is_married are formula-owned.",
+  "fact:person.liquid_financial_assets": "policyengine-uk holds financial wealth on the household: savings ('Household liquid savings'), corporate_wealth ('Wealth held in corporations directly or through investment funds'), gross_financial_wealth and net_financial_wealth are household inputs. Its one person-level GBP stock input is student_loan_balance, a debt, and no transform puts a person amount on a household input. savings and corporate_wealth are two of Universal Credit's capital sources (gov.dwp.universal_credit.means_test.capital.sources). uc_reported_capital (benefit unit; 'Claimant-level capital for Universal Credit when household-level asset data cannot be attributed across multiple benefit units', default -1) is Universal Credit capital: when it is zero or more, uc_assessable_capital takes it in place of the household-capital proxy it otherwise sums from all of those capital sources, net of capital other benefit units report, and apportions by benefit-unit adults, so feeding it would be a modelling choice for a UK build, not a mapping of this concept.",
   "fact:person.partner_person_id": "Partnerships reach policyengine-uk only through benefit-unit membership, a structure the bundle must already carry (the adapter builds no units); is_benunit_head and is_married are formula-owned.",
   "fact:person.public_pension_income": "The State Pension is computed from state_pension_reported, which is formula-owned: the loader accepts it as an override, but it is not an input."
  }

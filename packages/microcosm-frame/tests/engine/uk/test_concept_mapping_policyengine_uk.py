@@ -111,6 +111,55 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
         assert name not in inputs, name
 
 
+def test_the_liquid_asset_reason_holds(engine) -> None:
+    # Financial wealth is a household input; the only person-level GBP stock
+    # is a debt. uc_reported_capital is a benefit-unit input, unset at
+    # -1, that the uc_assessable_capital formula reads in place of a household
+    # proxy apportioned by benefit-unit adults.
+    inputs = set(engine.variables())
+    person_stocks = {
+        name
+        for name in inputs
+        if engine._variable(name).quantity_type == "stock"
+        and engine._variable(name).unit == "currency-GBP"
+        and engine.variable_metadata(name).entity == "person"
+    }
+    assert person_stocks == {"student_loan_balance"}
+    for name in ("savings", "gross_financial_wealth", "net_financial_wealth"):
+        assert name in inputs, name
+        assert engine.variable_metadata(name).entity == "household", name
+    assert "uc_reported_capital" in inputs
+    assert engine.variable_metadata("uc_reported_capital").entity == "benunit"
+    assert engine._variable("uc_reported_capital").default_value == -1
+    assert "uc_assessable_capital" not in inputs
+    source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
+    assert "uc_reported_capital" in source
+    assert 'add(benunit, period, ["is_adult"])' in source
+    assert "loan" in engine._variable("student_loan_balance").label.lower()
+
+
+def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> None:
+    # Shares and funds sit on the household too, in corporate_wealth, which
+    # Universal Credit counts as capital alongside savings.
+    reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
+    assert engine.variable_metadata("corporate_wealth").entity == "household"
+    assert engine._variable("corporate_wealth").quantity_type == "stock"
+    assert engine._variable("corporate_wealth").unit == "currency-GBP"
+    universal_credit = engine._tax_benefit_system().parameters.gov.dwp.universal_credit
+    sources = universal_credit.means_test.capital.sources("2026-01-01")
+    assert {"savings", "corporate_wealth"} <= set(sources)
+    source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
+    assert "p.capital.sources" in source
+    for name in (
+        "savings",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "net_financial_wealth",
+    ):
+        assert name in reason, name
+    assert "one person-level GBP stock input is student_loan_balance" in reason
+
+
 def test_weekly_hours_divides_annual_hours_by_52(engine) -> None:
     formula = engine._variable("weekly_hours").get_formula()
     assert "WEEKS_IN_YEAR" in inspect.getsource(formula)

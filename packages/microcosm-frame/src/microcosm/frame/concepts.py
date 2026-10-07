@@ -7,8 +7,9 @@ country's public targets, where that country's own rules engine computes its
 taxes and benefits. This module defines the neutral layer that removes the
 tie. It declares, once, the record-level facts a household survey observes
 and that stay meaningful across countries: age, sex, co-resident
-relationships, income by component, hours and weeks worked, tenure and
-housing costs, disability, education and a persistent take-up seed.
+relationships, income by component, liquid financial assets, hours and weeks
+worked, tenure and housing costs, disability, education and a persistent
+take-up seed.
 
 Each :class:`Concept` states what a value *is*: its entity, dtype, unit,
 period semantics, currency and price-level handling, provenance class and
@@ -116,7 +117,7 @@ __all__ = [
 #: concept is added, removed or changes any declared field, so artifacts that
 #: pin :func:`concept_schema_sha256` can say which schema they were written
 #: against.
-CONCEPT_SCHEMA_VERSION = 1
+CONCEPT_SCHEMA_VERSION = 2
 
 #: The two entities concept content lives on. Engine group entities (tax
 #: units, benefit units, SPM units, families) are engine constructs built
@@ -1003,6 +1004,31 @@ CONCEPTS: tuple[Concept, ...] = (
         ),
         index_family=IndexFamily.CAPITAL_INCOME,
         signed=True,
+    ),
+    # --- Financial wealth -------------------------------------------------
+    Concept(
+        id="fact:person.liquid_financial_assets",
+        label="Liquid financial assets",
+        definition=(
+            "Value at the reference date of the person's deposits (checking, "
+            "current, savings and money-market accounts and term deposits with "
+            "banks and other deposit-taking institutions), shares and "
+            "investment-fund units, and bonds and other debt securities, "
+            "before deducting any debt. A jointly held asset is divided among "
+            "its owners, so each asset counts once in a household total. "
+            "Excludes notes and coins, money lent to others, balances in "
+            "pension and retirement-savings schemes (such as US IRAs and "
+            "401(k) plans or NZ KiwiSaver), life insurance, equity in a "
+            "business the person runs, and real estate."
+        ),
+        dtype="float",
+        unit=Unit.BASE_CURRENCY,
+        period="point",
+        temporal_basis=TemporalBasis.REFERENCE_STATE,
+        provenance=ProvenanceClass.OBSERVED,
+        transport=TransportRule.QUANTILE_MAP,
+        monetary=MonetaryHandling(index_family=IndexFamily.CONSUMER_PRICES),
+        lower=0.0,
     ),
     # --- Pensions ---------------------------------------------------------
     _amount(

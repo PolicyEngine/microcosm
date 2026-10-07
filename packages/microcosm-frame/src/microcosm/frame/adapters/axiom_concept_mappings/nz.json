@@ -504,6 +504,21 @@
    }
   },
   {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_cash_assets",
+   "concepts": [
+    "fact:person.liquid_financial_assets"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_cash_assets",
+   "group_rule": "sum_over_members",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (source: Social Security Act 2018 s 65(1)(b); Social Security Regulations 2018 reg 15). It holds when accommodation_supplement_cash_assets is at most accommodation_supplement_cash_asset_limit_partnered_or_with_children (16200, reg 15(1)(a)) for a family in a relationship or with dependent children, and at most accommodation_supplement_cash_asset_limit_other (8100, reg 15(1)(b)) otherwise, and accommodation_supplement_non_rate_entitlement_requirements (ss 65 to 67) requires it. The module does not define cash assets. The Act does, in s 68(2), which Schedule 2 applies for the purposes of the accommodation supplement: money saved, invested or banked with a bank or other institution; money invested in securities, bonds or debentures, or advanced on mortgage; money withdrawn from a KiwiSaver scheme; and money invested in shares in a partnership, company or other body. It excludes KiwiSaver contributions and member's interests, and anything the regulations exempt (reg 16 and Schedule 8 Part 1). Under s 69(2), which reg 15(3) restates, an applicant's assets include those of their spouse or partner, so the binding sums members' amounts onto the Family entity. It is deferred: no code applies it until a future unit-construction step builds Family units, and that step's unit rule will decide who is a member. Differences: the concept leaves out money advanced on mortgage, withdrawn KiwiSaver money held as cash, shares in a partnership or company the person runs, which s 68(2)(a)(iv) counts as money invested in shares in a partnership or limited liability company or other incorporated or unincorporated body (a sole trader's non-cash business equity is in neither), and a member's interest in a non-KiwiSaver superannuation scheme, which Schedule 8 item 10 exempts only while a lock-in clause prevents withdrawal (Schedule 8 cl 25); the other Schedule 8 exemptions are not applied; if the unit rule makes a dependent child a Family member, the child's assets will be summed too, although s 69(2) adds only a spouse's or partner's, and if it leaves out a spouse or partner in long-term residential care, whose assets s 69(2A) still counts, their assets will be missed; and the concept is the stock at the survey reference date, while the test applies when the supplement is assessed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_costs_are_homeownership",
    "concepts": [
     "fact:household.tenure"

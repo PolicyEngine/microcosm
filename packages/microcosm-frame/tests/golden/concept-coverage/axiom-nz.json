@@ -488,6 +488,13 @@
     "name": "sole_parent_spouse_or_partner_died"
    }
   ],
+  "fact:person.liquid_financial_assets": [
+   {
+    "entity": "Family",
+    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+    "name": "accommodation_supplement_cash_assets"
+   }
+  ],
   "fact:person.nonfarm_self_employment_income": [
    {
     "entity": "Person",
@@ -925,7 +932,7 @@
    }
   ]
  },
- "covered_count": 88,
+ "covered_count": 89,
  "covered_inputs": [
   {
    "entity": "Person",
@@ -941,6 +948,11 @@
    "entity": "Person",
    "module": "nz/regulations/acc/earners_levy.yaml",
    "name": "acc_self_employed_earnings_for_earners_levy"
+  },
+  {
+   "entity": "Family",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "name": "accommodation_supplement_cash_assets"
   },
   {
    "entity": "Family",
@@ -1371,7 +1383,7 @@
  "engine": "axiom:nz",
  "engine_version": "6fe181fc4c65763150fe97501ef3443774e64869",
  "input_count": 668,
- "schema_sha256": "d4cb09218a9757642af016e795e900ae9091a552694d37a954e6a70fffa2b6a1",
+ "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
  "structural_inputs": [],
  "uncovered_inputs": [
   {
@@ -1488,11 +1500,6 @@
    "entity": "Family",
    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
    "name": "accommodation_supplement_business_use_area"
-  },
-  {
-   "entity": "Family",
-   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
-   "name": "accommodation_supplement_cash_assets"
   },
   {
    "entity": "Family",

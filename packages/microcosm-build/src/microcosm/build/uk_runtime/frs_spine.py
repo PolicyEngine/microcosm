@@ -177,6 +177,10 @@ FRS_CARE_HOURS_BY_BAND = {
     10: 35.0,  # varies, 35 hours or more
 }
 
+# FRS adult RENTPROF (question RentProf): whether the rent from other property
+# in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
+FRS_RENTPROF_LOSS = 2
+
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -583,21 +587,7 @@ def _add_person_income(
     household: pd.DataFrame,
     oddjob: pd.DataFrame,
 ) -> None:
-    is_head = _number(person, "hrpid") == 1
-    household_property = _number(household, "tentyp2").isin((5, 6)).astype(
-        float
-    ) * _number(household, "subrent")
-    property_by_household = pd.Series(household_property.values, index=household.index)
-    pe_person["property_income"] = (
-        np.maximum(
-            0,
-            is_head.to_numpy(dtype=float)
-            * person["household_id"].map(property_by_household).fillna(0).to_numpy()
-            + _number(person, "cvpay").to_numpy()
-            + _number(person, "royyr1").to_numpy(),
-        )
-        * WEEKS_IN_YEAR
-    )
+    pe_person["property_income"] = frs_property_income(person, household)
     maintenance_to_self = np.maximum(
         np.where(
             _number(person, "mntus1") == 2,
@@ -638,6 +628,80 @@ def _add_person_income(
     pe_person["free_school_breakfasts"] = _positive(person, "fsbval") * WEEKS_IN_YEAR
     pe_person["free_school_fruit_veg"] = _positive(person, "fsfvval") * WEEKS_IN_YEAR
     pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
+
+
+def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
+    """Annual property income each person reports in the FRS.
+
+    Two FRS amounts, both weekly in the released data:
+
+    - SUBRENT, the rent the household received from sub-letting. The FRS asks
+      every household (SubLet), whatever its tenure, and DWP's derived
+      SUBLTAMT and INRINC count it for every tenure, so renting and rent-free
+      households count too. It goes to the household reference person.
+      ``household`` must be indexed by ``household_id``.
+    - ROYYR1, the person's rent before tax from other property, in the UK or
+      abroad, after paying for the things on show card K6 (question
+      PropRent). The card lists mortgage payments and interest on a loan to
+      buy the property alongside repairs, rent, rates, insurance and
+      services, so ROYYR1 is also net of finance costs and mortgage capital,
+      which a landlord cannot deduct for tax. The questionnaire cannot take a
+      negative amount, so a loss is entered as a positive amount and
+      RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
+      engine has no property loss input, and a loss is not set against the
+      household's SUBRENT. That matches the general rule for the year: an
+      individual's UK property loss is carried forward against future profits
+      of the same property business (ITA 2007 ss. 118-119). Sideways relief
+      against general income exists only for the part of a loss from capital
+      allowances or agricultural expenses (ITA 2007 s. 120), which the FRS
+      does not identify.
+
+    Because ROYYR1 nets mortgage capital and interest, it sits below the SPI's
+    net income from property (after allowable expenses, before residential
+    finance costs) for landlords with a mortgage. Binding the SPI amounts on
+    this variable (microcosm#1106) therefore leans on reweighting unless the
+    other-property mortgage is added back.
+
+    SUBRENT is used as reported. SUBALLOW records whether it is before (1) or
+    after (2) allowable expenses, but the FRS records no sub-letting expense
+    amount to take off the before-expenses answers.
+
+    Negative values are FRS missing-value codes (-1 to -9), not amounts, so
+    each amount is floored at zero before the two are added.
+
+    CVPAY is not included. It is the rent a boarder or lodger pays the
+    householder (question CvPay, "How much rent did [name] pay"), recorded on
+    the boarder's or lodger's own adult record, so it is not their income.
+    Within the household the payment is a transfer, so household totals are
+    unaffected, but the householder's receipt is not credited to anyone: the
+    householder's benefit unit understates that income.
+
+    SUBRENT and lodger receipts qualify for Rent a Room relief (ITTOIA 2005
+    Part 7 Chapter 1: £7,500 a year, £3,750 if shared) when the letting is of
+    furnished accommodation in the householder's only or main residence
+    (s. 786). Here SUBRENT is taxable
+    ``property_income``, so the engine applies only the £1,000 property
+    allowance and overstates tax on it, and lodger receipts are not counted at
+    all (above). Routing SUBRENT to policyengine-uk's ``sublet_income`` and the
+    lodgers' payments to the householder needs the engine to apply the relief
+    first.
+    """
+
+    is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
+    subrent = pd.Series(
+        _positive(household, "subrent").to_numpy(), index=household.index
+    )
+    persons_household_subrent = (
+        person["household_id"].map(subrent).fillna(0).to_numpy(dtype="float64")
+    )
+    rent_from_other_property = (
+        _positive(person, "royyr1")
+        .where(_number(person, "rentprof") != FRS_RENTPROF_LOSS, 0)
+        .to_numpy(dtype="float64")
+    )
+    return (
+        is_head * persons_household_subrent + rent_from_other_property
+    ) * WEEKS_IN_YEAR
 
 
 def _odd_job_income(person: pd.DataFrame, oddjob: pd.DataFrame) -> np.ndarray:
@@ -837,7 +901,7 @@ def _add_household_columns(
         * WEEKS_IN_YEAR
     ).astype(float)
     pe_household["rent"] = _number(household, "hhrent") * WEEKS_IN_YEAR
-    pe_household["subrent"] = _number(household, "subrent") * WEEKS_IN_YEAR
+    pe_household["subrent"] = _positive(household, "subrent") * WEEKS_IN_YEAR
     pe_household["mortgage_interest_repayment"] = (
         _number(household, "mortint") * WEEKS_IN_YEAR
     )
