@@ -605,27 +605,18 @@ class UKSizeRefitKernel(_ObservedSolveKernel):
         dense = _dense(context, frame, problem)
         selection = _selection(context, frame, problem)
         draw = json.loads(context.artifacts["draw"].payload)
-        if draw.pop("problem_sha256") != problem.sha256:
-            raise ValueError("Exact-count draw belongs to another ordered problem.")
-        method = draw.pop("method")
         if selection is None:
-            if method != "full_pool" or draw["support"] != list(
+            if draw.get("problem_sha256") != problem.sha256:
+                raise ValueError("Exact-count draw belongs to another ordered problem.")
+            if draw.get("method") != "full_pool" or draw.get("support") != list(
                 range(frame.n("household"))
             ):
                 raise ValueError("Full-pool draw has a different support.")
             cached_draw = None
         else:
-            if method != "exact_count":
+            cached_draw = UKSizeDraw.from_payload(draw, problem_sha256=problem.sha256)
+            if cached_draw is None:
                 raise ValueError("Compact refit requires a completed exact-count draw.")
-            cached_draw = UKSizeDraw(
-                **{
-                    **draw,
-                    "support": np.asarray(draw["support"]),
-                    "inclusion_probabilities": np.asarray(
-                        draw["inclusion_probabilities"], dtype=np.float64
-                    ),
-                }
-            )
         compact = dataset_size.refit_uk_dataset_size(
             frame,
             dense,

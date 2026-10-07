@@ -30,7 +30,11 @@ import numpy as np
 from microcosm.build.uk_runtime.atomic_area_support import (
     SOURCES as ATOMIC_SUPPORT_SOURCES,
 )
-from microcosm.build.uk_runtime.dataset_size import UKSizeSelection
+from microcosm.build.uk_runtime.dataset_size import (
+    UKSizeSelection,
+    uk_size_l2,
+    uk_size_l2_from_options,
+)
 from microcosm.build.uk_runtime.rowwise_cli import doctrine_bounds, posture_of
 from microcosm.calibrate import (
     CalibrationProblem,
@@ -106,6 +110,18 @@ def uk_size_checkpoint_identity(
         # bound while the manifest declares the new one.
         "doctrine": doctrine_bounds(posture),
     }
+    # microcosm#1124: a search under an L2 penalty binds it; an unpenalized
+    # search adds nothing, so every existing checkpoint keeps its identity.
+    # The refit's L2 is never bound: re-refitting a stored search under
+    # another refit penalty is the point.
+    selection_l2 = uk_size_l2(
+        "selection",
+        l2_lambda=getattr(args, "selection_l2_lambda", None) or 0.0,
+        anchor=getattr(args, "selection_l2_anchor", None),
+        basis=getattr(args, "selection_l2_basis", None),
+    )
+    if selection_l2 is not None:
+        identity["selection_l2"] = selection_l2.as_dict()
     # microcosm#932: an identity-keyed atomic run also binds the assignment
     # and the three support pins (flat pin roles named by graph source); a
     # legacy run adds nothing, so its checkpoints keep their identity.
@@ -211,6 +227,22 @@ def write_uk_size_checkpoint(
     n = frame.n("household")
     if len(dense.weights) != n or len(search.weights) != n:
         raise ValueError("checkpoint weights must align with the pool households.")
+    if not np.array_equal(
+        np.asarray(search.target_loss_weights, dtype=np.float64),
+        np.asarray(dense.target_loss_weights, dtype=np.float64),
+    ):
+        raise ValueError(
+            "a size checkpoint stores one loss-weight vector: a selection searched "
+            "under other target weights than the dense solve's cannot be "
+            "checkpointed."
+        )
+    if uk_size_l2_from_options(search.options) != _normalised(identity).get(
+        "selection_l2"
+    ):
+        raise ValueError(
+            "size checkpoint identity's selection_l2 disagrees with the L2 penalty "
+            "the selection was searched under."
+        )
     np.savez(
         arrays_path,
         dense_weights=np.asarray(dense.weights, dtype=np.float64),
@@ -401,6 +433,12 @@ def load_uk_size_checkpoint_files(
     _check_closing_loss(
         "selection", float(selection_meta["closing_loss"]), search.final_loss
     )
+    searched_l2 = uk_size_l2_from_options(search.options)
+    if searched_l2 != requested_identity.get("selection_l2"):
+        raise ValueError(
+            f"size checkpoint selection was searched under L2 {searched_l2!r}; this "
+            f"run requests {requested_identity.get('selection_l2')!r}."
+        )
     protected = np.asarray(stored["protected"], dtype=bool)
     if int(np.count_nonzero(protected)) != int(selection_meta["protected_carriers"]):
         raise ValueError("size checkpoint protected-carrier mask is inconsistent.")
