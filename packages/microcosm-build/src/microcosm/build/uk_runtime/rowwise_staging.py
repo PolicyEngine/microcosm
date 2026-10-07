@@ -1,6 +1,6 @@
-"""Staging telemetry and staged-dataset delivery of the UK rowwise roles.
+"""Staging run bundles and staged-dataset delivery for UK rowwise roles.
 
-Two destinations, one run id: reviewed aggregate telemetry goes to the
+Two destinations, one run id: reviewed aggregate build files go to the
 staging repository under ``runs/<run_id>/``, the finished bundle a manifest
 vouches for to the private artifact repository under ``staged/<run_id>/``.
 Both are best-effort evidence about the build, never a release, and the
@@ -32,7 +32,7 @@ from microcosm.build.staging_dataset import (
 from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 from microcosm.build.staging_v2 import (
     StagingContractError,
-    StagingTelemetryV2,
+    StagingRunBundleWriterV2,
     disabled_staging_delivery,
 )
 from microcosm.build.telemetry_emitter import (
@@ -54,10 +54,10 @@ __all__ = [
     "STAGING_MAX_EPOCH_ROWS",
     "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
-    "calibration_progress",
-    "create_staging_telemetry",
-    "fail_staging_telemetry",
-    "finalize_staging_telemetry",
+    "create_staging_run_bundle",
+    "emit_calibration_progress",
+    "fail_staging_run_bundle",
+    "finalize_staging_run_bundle",
     "fit_summary",
     "gate_statuses",
     "graph_progress",
@@ -73,13 +73,13 @@ __all__ = [
     "thinned_epochs",
 ]
 
-# Best-effort telemetry upload cadence. The Hub allows about 128 commits per
+# Best-effort staging-bundle upload cadence. The Hub allows about 128 commits per
 # hour per repository and one cycle is up to eight single-file commits, so
 # the shared 30-second default exhausts the budget on a multi-hour solve
 # and loses uploads (the v20 national run did); five minutes keeps a
 # 1,500-epoch run well inside it.
 STAGING_UPLOAD_INTERVAL_SECONDS = 300.0
-# Staging telemetry keeps one row per forwarded epoch in
+# The staging bundle keeps one row per forwarded epoch in
 # calibration_progress.json and one event in events.ndjson, both under the
 # contract's 5 MiB remote cap. A size run at 2,000 epochs solves the dense
 # pool, up to ten full-length L0 probes and the refit: about 24,000 epochs,
@@ -103,7 +103,7 @@ _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
 def _hub_api() -> Any:
-    """The Hub client used for telemetry and the staged dataset (test seam)."""
+    """The Hub client used for the run bundle and staged dataset (test seam)."""
 
     from huggingface_hub import HfApi
 
@@ -191,17 +191,16 @@ def _require_write_credential(storage: HuggingFaceDatasetStorage, *, hint: str) 
         )
 
 
-def create_staging_telemetry(
+def create_staging_run_bundle(
     args: argparse.Namespace, *, build_id: str
-) -> StagingTelemetryV2 | None:
+) -> StagingRunBundleWriterV2 | None:
     posture = posture_of(args)
     run_id = args.staging_run_id or build_id
-    emitter = start_telemetry_emitter(args, build_id=build_id)
     if args.no_staging:
         return None
     local_only = bool(args.staging_local_only)
     out_dir = args.out.expanduser().resolve()
-    return StagingTelemetryV2(
+    return StagingRunBundleWriterV2(
         run_id=run_id,
         country_code="GB",
         operation_id=posture.staging_operation_id,
@@ -214,7 +213,6 @@ def create_staging_telemetry(
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
         api=None if local_only else _hub_api(),
-        emitter=emitter,
     )
 
 
@@ -247,16 +245,16 @@ def start_telemetry_emitter(
     return _ACTIVE_EMITTER
 
 
-_create_staging_telemetry = create_staging_telemetry
+_create_staging_run_bundle = create_staging_run_bundle
 
 
 def stage(
-    telemetry: StagingTelemetryV2 | None,
+    staging_bundle: StagingRunBundleWriterV2 | None,
     stage_id: str,
     event_status: str = "started",
     **details: Any,
 ) -> None:
-    """Forward one stage event to the best-effort telemetry.
+    """Report one stage independently to the emitter and staging bundle.
 
     A contract or content refusal of the event is reported and the event
     dropped; the build must never abort on its own progress report. Each
@@ -264,19 +262,25 @@ def stage(
     the ones that follow.
     """
 
-    if telemetry is None:
-        if _ACTIVE_EMITTER is not None:
-            _ACTIVE_EMITTER.stage(
-                stage_id,
-                status=event_status,
-                **details,
-            )
+    emitter_details = dict(details)
+    message = emitter_details.pop("message", None)
+    emitter_details.pop("force_upload", None)
+    if "status" in emitter_details:
+        emitter_details["result_status"] = emitter_details.pop("status")
+    if _ACTIVE_EMITTER is not None:
+        _ACTIVE_EMITTER.transition_stage(
+            stage_id,
+            status=event_status,
+            message=message,
+            **emitter_details,
+        )
+    if staging_bundle is None:
         return
     try:
-        telemetry.stage(stage_id, event_status=event_status, **details)
+        staging_bundle.stage(stage_id, event_status=event_status, **details)
     except StagingContractError as error:
         print(
-            f"warning: staging telemetry refused the {stage_id!r} stage event "
+            f"warning: staging run bundle refused the {stage_id!r} stage event "
             f"({type(error).__name__}: {error}); the event is not staged, the "
             "build continues.",
             file=sys.stderr,
@@ -287,20 +291,14 @@ def stage(
 _stage = stage
 
 
-def calibration_progress(
-    telemetry: StagingTelemetryV2 | None,
-    event: Mapping[str, Any],
-) -> None:
-    """Forward calibration progress with or without staging artifacts."""
+def emit_calibration_progress(event: Mapping[str, Any]) -> None:
+    """Report calibration progress only through the local emitter service."""
 
-    if telemetry is not None:
-        telemetry.calibration_progress(event)
-    elif _ACTIVE_EMITTER is not None:
+    if _ACTIVE_EMITTER is not None:
         _ACTIVE_EMITTER.transition_calibration_progress(event)
 
 
 def graph_progress(
-    telemetry: StagingTelemetryV2 | None,
     *,
     node_id: str,
     done: int,
@@ -309,10 +307,9 @@ def graph_progress(
 ) -> None:
     """Send graph work progress only through the local emitter service."""
 
-    emitter = telemetry.emitter if telemetry is not None else _ACTIVE_EMITTER
-    if emitter is None:
+    if _ACTIVE_EMITTER is None:
         return
-    emitter.emit(
+    _ACTIVE_EMITTER.emit(
         event_type="progress",
         stage_id=node_id,
         status="completed",
@@ -326,9 +323,9 @@ def graph_progress(
 
 
 def stage_sample(
-    telemetry: StagingTelemetryV2 | None, *, sample_fraction: float
+    staging_bundle: StagingRunBundleWriterV2 | None, *, sample_fraction: float
 ) -> None:
-    """Record the run's sampling evidence on the staging telemetry.
+    """Record the run's sampling evidence in the staging bundle.
 
     The contract's only sampling statement is ``{"mode": "full"}``, the f100
     rung; a rung below f100 stages a null sample, as the spine builder does.
@@ -337,9 +334,9 @@ def stage_sample(
     own fraction), so the two release roles stage the same evidence.
     """
 
-    if telemetry is None or float(sample_fraction) != 1.0:
+    if staging_bundle is None or float(sample_fraction) != 1.0:
         return
-    telemetry.set_sample({"mode": "full"})
+    staging_bundle.set_sample({"mode": "full"})
 
 
 def staging_epoch_every(args: argparse.Namespace) -> int:
@@ -391,7 +388,7 @@ def thinned_epochs(
         except StagingContractError as error:
             disabled = True
             print(
-                "warning: staging telemetry refused a calibration progress row "
+                "warning: staging run bundle refused a calibration progress row "
                 f"({type(error).__name__}); epoch progress is no longer forwarded, "
                 "the solve continues.",
                 file=sys.stderr,
@@ -415,50 +412,51 @@ def gate_statuses(gate_report: Mapping[str, Any]) -> dict[str, str]:
 _gate_statuses = gate_statuses
 
 
-def fail_staging_telemetry(
-    telemetry: StagingTelemetryV2 | None, error: BaseException
+def fail_staging_run_bundle(
+    staging_bundle: StagingRunBundleWriterV2 | None, error: BaseException
 ) -> None:
-    if telemetry is None:
-        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.fail(error)
+    if staging_bundle is None:
         return
-    if telemetry.status != "running":
+    if staging_bundle.status != "running":
         return
     try:
-        telemetry.fail(error)
-        telemetry.validate_local_bundle()
+        staging_bundle.fail(error)
+        staging_bundle.validate_local_bundle()
     except Exception:
         pass
 
 
-_fail_staging_telemetry = fail_staging_telemetry
+_fail_staging_run_bundle = fail_staging_run_bundle
 
 
-def finalize_staging_telemetry(
-    args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
+def finalize_staging_run_bundle(
+    args: argparse.Namespace, staging_bundle: StagingRunBundleWriterV2 | None
 ) -> None:
-    if telemetry is None:
-        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.complete()
-        return
-    try:
-        telemetry.complete(message="UK rowwise candidate staging run completed.")
-    except StagingContractError as error:
-        _warn_telemetry("could not close the staging run", error)
-        return
-    try:
-        if args.staging_read_back:
-            # Requested explicitly, so a failed read-back is the run's failure,
-            # as on the national command.
-            telemetry.verify_remote()
-    finally:
+    if staging_bundle is not None:
         try:
-            telemetry.validate_local_bundle()
+            staging_bundle.complete(
+                message="UK rowwise candidate staging run completed."
+            )
         except StagingContractError as error:
-            _warn_telemetry("the local staging bundle does not validate", error)
+            _warn_telemetry("could not close the staging run", error)
+        else:
+            try:
+                if args.staging_read_back:
+                    # Requested explicitly, so a failed read-back is the run's
+                    # failure, as on the national command.
+                    staging_bundle.verify_remote()
+            finally:
+                try:
+                    staging_bundle.validate_local_bundle()
+                except StagingContractError as error:
+                    _warn_telemetry("the local staging bundle does not validate", error)
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.complete()
 
 
-_finalize_staging_telemetry = finalize_staging_telemetry
+_finalize_staging_run_bundle = finalize_staging_run_bundle
 
 
 def _warn_telemetry(what: str, error: BaseException) -> None:
@@ -470,10 +468,12 @@ def _warn_telemetry(what: str, error: BaseException) -> None:
     )
 
 
-def staging_delivery(telemetry: StagingTelemetryV2 | None) -> dict[str, Any]:
-    if telemetry is None:
+def staging_delivery(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+) -> dict[str, Any]:
+    if staging_bundle is None:
         return disabled_staging_delivery("--no-staging")
-    return telemetry.delivery_summary
+    return staging_bundle.delivery_summary
 
 
 _staging_delivery = staging_delivery
@@ -485,7 +485,7 @@ def stage_dataset(
     manifest: Mapping[str, Any],
     output_paths: Mapping[str, Path],
     run_id: str,
-    telemetry: StagingTelemetryV2 | None,
+    staging_bundle: StagingRunBundleWriterV2 | None,
 ) -> dict[str, Any]:
     """Stage the published bundle under ``staged/<run_id>/``; record, never raise.
 
@@ -502,7 +502,13 @@ def stage_dataset(
     repository = (
         None if mode == "local_only" else str(args.staged_dataset_repo_id).strip()
     )
-    stage(telemetry, "dataset_staging", "started", mode=mode, repository=repository)
+    stage(
+        staging_bundle,
+        "dataset_staging",
+        "started",
+        mode=mode,
+        repository=repository,
+    )
     statuses = gate_statuses(getattr(args, "_gate_report", {}) or {})
     bundle = StagedDatasetBundle.from_manifest(
         output_paths["manifest"].parent,
@@ -519,11 +525,11 @@ def stage_dataset(
     )
     telemetry_reference = (
         None
-        if telemetry is None
+        if staging_bundle is None
         else {
-            "repository": telemetry.repo_id,
-            "prefix": telemetry.repo_run_prefix,
-            "mode": telemetry.delivery_mode,
+            "repository": staging_bundle.repo_id,
+            "prefix": staging_bundle.repo_run_prefix,
+            "mode": staging_bundle.delivery_mode,
         }
     )
     write_sidecars(
@@ -547,7 +553,7 @@ def stage_dataset(
         )
     print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)
     stage(
-        telemetry,
+        staging_bundle,
         "dataset_staging",
         "completed",
         status=delivery["status"],
@@ -557,14 +563,14 @@ def stage_dataset(
         file_count=len(delivery["files"]),
     )
     add_staging_artifact(
-        telemetry,
+        staging_bundle,
         "staged_dataset",
         delivery,
         artifact_kind="build_metadata",
         classification="non_row_level",
     )
     add_staging_artifact(
-        telemetry,
+        staging_bundle,
         "fit_summary",
         fit_summary(
             manifest,
@@ -601,26 +607,26 @@ def _staged_dataset_line(delivery: Mapping[str, Any]) -> str:
 
 
 def add_staging_artifact(
-    telemetry: StagingTelemetryV2 | None,
+    staging_bundle: StagingRunBundleWriterV2 | None,
     logical_name: str,
     payload: Mapping[str, Any],
     *,
     artifact_kind: str,
     classification: str,
 ) -> None:
-    """Attach a reviewed aggregate JSON artifact to the telemetry run.
+    """Attach a reviewed aggregate JSON artifact to the staging run bundle.
 
     A content-policy refusal is reported and skipped: the telemetry is
     best-effort and must never fail a finished build.
     """
 
-    if telemetry is None:
+    if staging_bundle is None:
         return
     with tempfile.TemporaryDirectory(prefix=".staging-artifact.") as scratch:
         source = Path(scratch) / f"{logical_name}.json"
         source.write_text(json_text(payload), encoding="utf-8")
         try:
-            telemetry.add_artifact(
+            staging_bundle.add_artifact(
                 logical_name,
                 source,
                 artifact_kind=artifact_kind,

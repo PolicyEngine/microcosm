@@ -49,7 +49,7 @@ from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MethodType
-from typing import Any, Protocol
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -68,7 +68,7 @@ from microcosm.build.gates import (
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
+from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
@@ -1754,7 +1754,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-dir",
         type=Path,
         help=(
-            "Optional local directory for staging telemetry artifacts. Defaults "
+            "Optional local directory for staging run files. Defaults "
             "to <out>/staging/runs/<run_id> when --staging-repo-id is set."
         ),
     )
@@ -1762,7 +1762,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-repo-id",
         default=_env_default("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
-            "Hugging Face dataset repo to upload staging telemetry to while "
+            "Hugging Face dataset repo to upload staging run files to while "
             "the build runs. On by default (uploads are best-effort and never "
             "fail the build); override with POPULACE_STAGING_REPO_ID or "
             "disable with --no-staging. An empty POPULACE_STAGING_REPO_ID is "
@@ -1791,7 +1791,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-staging",
         action="store_true",
-        help="Disable staging telemetry (local staging dir and uploads) for this build.",
+        help=(
+            "Disable staging run files and their uploads for this build; hosted "
+            "telemetry remains active."
+        ),
     )
     parser.add_argument(
         "--staging-prefix",
@@ -1888,7 +1891,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         # effect of a blank repo id.
         parser.error(
             "--staging-repo-id is empty and no --staging-dir is set, so staging "
-            "telemetry would silently do nothing. Pass --no-staging to skip "
+            "run files would have no destination. Pass --no-staging to skip "
             "staging deliberately, or --staging-dir for a local-only run."
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
@@ -8017,7 +8020,7 @@ def _record_qrf_tail_concentration_gate(
     allow_concentration: bool,
     terminal_gate_failures: list[str],
     release_dir: Path,
-    telemetry: _TerminalBatchTelemetry,
+    telemetry: _TerminalBatchProgress,
 ) -> list[str]:
     """Evaluate the terminal QRF tail gate and record everything it measured.
 
@@ -8744,7 +8747,7 @@ def _enforce_ssi_take_up_delivery(
     *,
     targets: Mapping[str, float],
     release_dir: Path,
-    telemetry: _BuildTelemetry | None,
+    telemetry: _BuildProgress | None,
     enforcement_fences: Mapping[str, str] | None = None,
 ) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
@@ -11308,52 +11311,33 @@ def _assert_exact_k_original_pool_alignment(
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
-class _BuildTelemetry(Protocol):
-    """Telemetry operations used by the release build body."""
-
-    run_id: str
-    repo_id: str | None
-    uploads_succeeded: int
-
-    def stage(
-        self,
-        stage: str,
-        *,
-        message: str | None = None,
-        status: str = "running",
-        force_upload: bool = False,
-        **details: Any,
-    ) -> None: ...
-
-    def calibration_progress(self, event: dict[str, object]) -> None: ...
-
-    def attach_artifact(
-        self,
-        name: str,
-        path: Path | str,
-        **details: Any,
-    ) -> None: ...
-
-    def fail(self, error: BaseException) -> None: ...
-
-    def complete(self) -> None: ...
-
-
-class _EmitterOnlyTelemetry:
-    """Expose the build telemetry interface without writing staging files."""
+class _BuildProgress:
+    """Report progress to an emitter and, independently, a staging bundle."""
 
     def __init__(
         self,
         *,
         run_id: str,
         emitter: LocalTelemetryEmitter,
-        reason: str,
+        staging_bundle: StagingRunBundleWriter | None,
+        staging_opt_out_reason: str | None = None,
     ) -> None:
         self.run_id = run_id
-        self.repo_id: str | None = None
-        self.uploads_succeeded = 0
-        self.reason = reason
         self.emitter = emitter
+        self.staging_bundle = staging_bundle
+        self.staging_opt_out_reason = staging_opt_out_reason
+
+    @property
+    def repo_id(self) -> str | None:
+        if self.staging_bundle is None:
+            return None
+        return self.staging_bundle.repo_id
+
+    @property
+    def uploads_succeeded(self) -> int:
+        if self.staging_bundle is None:
+            return 0
+        return self.staging_bundle.uploads_succeeded
 
     def stage(
         self,
@@ -11364,16 +11348,25 @@ class _EmitterOnlyTelemetry:
         force_upload: bool = False,
         **details: Any,
     ) -> None:
-        del force_upload
         self.emitter.transition_stage(
             stage,
             status=status,
             message=message,
             **details,
         )
+        if self.staging_bundle is not None:
+            self.staging_bundle.stage(
+                stage,
+                message=message,
+                status=status,
+                force_upload=force_upload,
+                **details,
+            )
 
     def calibration_progress(self, event: dict[str, object]) -> None:
         self.emitter.transition_calibration_progress(event)
+        if self.staging_bundle is not None:
+            self.staging_bundle.calibration_progress(event)
 
     def attach_artifact(
         self,
@@ -11381,19 +11374,23 @@ class _EmitterOnlyTelemetry:
         path: Path | str,
         **details: Any,
     ) -> None:
-        del name, path, details
+        if self.staging_bundle is not None:
+            self.staging_bundle.attach_artifact(name, path, **details)
 
     def fail(self, error: BaseException) -> None:
         self.emitter.fail(error)
+        if self.staging_bundle is not None:
+            self.staging_bundle.fail(error)
 
     def complete(self) -> None:
+        if self.staging_bundle is not None:
+            self.staging_bundle.complete()
         self.emitter.complete()
 
 
-#: The telemetry interface for the build in flight, so the entry point can
-#: report failure on the way out without threading another handle through the
-#: release call stack.
-_ACTIVE_TELEMETRY: _BuildTelemetry | None = None
+#: The progress coordinator for the build in flight, so the entry point can
+#: report failure without threading another handle back through the call stack.
+_ACTIVE_PROGRESS: _BuildProgress | None = None
 
 
 class _WorkCounter:
@@ -11434,7 +11431,8 @@ class _ReleaseDryRun:
     ``_main`` runs the release as it would build it, up to the point where the
     staged frame goes to target materialization. It differs in four ways:
 
-    * Nothing is written under ``--out`` and staging telemetry stays off.
+    * Nothing is written under ``--out`` and staging run files stay off;
+      hosted progress reporting remains active.
     * The input-mass, degenerate-input and eCPS parity gates take their
       degraded-mode branch and batch instead of raising, so one report
       carries them with every register.
@@ -11601,7 +11599,7 @@ class _ReleaseDryRun:
 
 
 #: The dry run in flight, so :func:`main` can turn a refusal before the stop
-#: point into that run's report. Like :data:`_ACTIVE_TELEMETRY`, a module-level
+#: point into that run's report. Like :data:`_ACTIVE_PROGRESS`, a module-level
 #: handle rather than a second object threaded back up the build's call stack.
 _ACTIVE_DRY_RUN: _ReleaseDryRun | None = None
 
@@ -12023,17 +12021,20 @@ def _release_dry_run_checks(
     return checks
 
 
-def _staging_manifest_block(telemetry: _BuildTelemetry | None) -> dict[str, object]:
+def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, object]:
     """Record what staging did and distinguish an opt-out from non-delivery.
 
     Uploads are best-effort and self-disable after repeated failures, so a
     configured destination is not evidence that anything reached it.
     """
 
-    if telemetry is None:
-        return {"enabled": False, "reason": "--no-staging"}
-    if isinstance(telemetry, _EmitterOnlyTelemetry):
-        return {"enabled": False, "reason": telemetry.reason}
+    if telemetry is None or telemetry.staging_bundle is None:
+        reason = (
+            "--no-staging"
+            if telemetry is None
+            else telemetry.staging_opt_out_reason or "--no-staging"
+        )
+        return {"enabled": False, "reason": reason}
     return {
         "enabled": True,
         "run_id": telemetry.run_id,
@@ -12042,28 +12043,27 @@ def _staging_manifest_block(telemetry: _BuildTelemetry | None) -> dict[str, obje
     }
 
 
-def _staging_telemetry(
+def _build_progress(
     args: argparse.Namespace,
     *,
     release_root: Path,
     release_id: str,
     run_id: str | None = None,
-    emitter: LocalTelemetryEmitter | None = None,
-) -> _BuildTelemetry | None:
-    global _ACTIVE_TELEMETRY
+    emitter: LocalTelemetryEmitter,
+) -> _BuildProgress:
+    global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
-    _ACTIVE_TELEMETRY = None
+    _ACTIVE_PROGRESS = None
     run_id = run_id or args.staging_run_id or release_id
     if args.no_staging:
-        if emitter is None:
-            return None
-        _ACTIVE_TELEMETRY = _EmitterOnlyTelemetry(
+        _ACTIVE_PROGRESS = _BuildProgress(
             run_id=run_id,
             emitter=emitter,
-            reason="--no-staging",
+            staging_bundle=None,
+            staging_opt_out_reason="--no-staging",
         )
-        return _ACTIVE_TELEMETRY
+        return _ACTIVE_PROGRESS
     if not args.staging_dir and not args.staging_repo_id:
         # The parser rejects this combination, so reaching it means a caller
         # built the namespace directly. Returning None here would reinstate
@@ -12074,19 +12074,23 @@ def _staging_telemetry(
             "or give a staging_dir for a local-only run."
         )
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    _ACTIVE_TELEMETRY = StagingTelemetry(
+    staging_bundle = StagingRunBundleWriter(
         run_id=run_id,
         candidate_release_id=release_id,
         run_dir=run_dir,
         repo_id=args.staging_repo_id,
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
-        emitter=emitter,
     )
-    return _ACTIVE_TELEMETRY
+    _ACTIVE_PROGRESS = _BuildProgress(
+        run_id=run_id,
+        emitter=emitter,
+        staging_bundle=staging_bundle,
+    )
+    return _ACTIVE_PROGRESS
 
 
-class _TerminalBatchTelemetry:
+class _TerminalBatchProgress:
     """Turn terminal-batch telemetry crashes into release-gate failures.
 
     The proxy is deliberately scoped to the post-diagnostics terminal batch.
@@ -12097,7 +12101,7 @@ class _TerminalBatchTelemetry:
 
     def __init__(
         self,
-        telemetry: _BuildTelemetry | None,
+        telemetry: _BuildProgress | None,
         terminal_gate_failures: list[str],
     ) -> None:
         self._telemetry = telemetry
@@ -12195,9 +12199,9 @@ def main(argv: Sequence[str] | None = None) -> None:
                     failure_class="dry_run_refusal",
                 )
             raise SystemExit(dry_run.refused(error)) from error
-        if _ACTIVE_TELEMETRY is not None:
+        if _ACTIVE_PROGRESS is not None:
             try:
-                _ACTIVE_TELEMETRY.fail(error)
+                _ACTIVE_PROGRESS.fail(error)
             except Exception as telemetry_error:  # pragma: no cover - defensive
                 # A failing failure-report must not replace the real traceback.
                 print(
@@ -12255,9 +12259,9 @@ def _check_committed_us_ledger_feed_pin(
 
 
 def _main(argv: Sequence[str] | None = None) -> int | None:
-    global _ACTIVE_EMITTER, _ACTIVE_TELEMETRY
+    global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
-    _ACTIVE_TELEMETRY = None
+    _ACTIVE_PROGRESS = None
     args = _parse_args(argv)
     build_started = time.perf_counter()
     attempt_started_at = datetime.now(UTC)
@@ -12575,7 +12579,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # A dry run writes only its report under --out and creates no staging
     # artifacts. Hosted telemetry identifies it separately from a release.
     if dry_run is None:
-        telemetry = _staging_telemetry(
+        telemetry = _build_progress(
             args,
             release_root=release_root,
             release_id=release_id,
@@ -12583,12 +12587,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             emitter=_ACTIVE_EMITTER,
         )
     else:
-        telemetry = _EmitterOnlyTelemetry(
+        telemetry = _BuildProgress(
             run_id=run_id,
             emitter=_ACTIVE_EMITTER,
-            reason="dry run",
+            staging_bundle=None,
+            staging_opt_out_reason="dry run",
         )
-        _ACTIVE_TELEMETRY = telemetry
+        _ACTIVE_PROGRESS = telemetry
     if telemetry is not None:
         telemetry.stage(
             "target_registry",
@@ -15112,7 +15117,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # An unbuildable post-export plan refuses here, before the export write,
     # with every other terminal group still evaluated (microcosm#956).
     terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())
-    terminal_batch_telemetry = _TerminalBatchTelemetry(
+    terminal_batch_telemetry = _TerminalBatchProgress(
         telemetry,
         terminal_gate_failures,
     )
@@ -15471,7 +15476,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # The owned failures ride into the release manifest's known_failures
         # block instead of aborting the export; the H5 written below carries
         # the calibrated weights, so the sidecar is not written on this path.
-        # Failures appended AFTER this point (a _TerminalBatchTelemetry crash
+        # Failures appended AFTER this point (a _TerminalBatchProgress crash
         # line, the smoke/take-up/coverage recordings) are owner-checked at
         # their own append sites and again before the manifest write; if one
         # is unowned the run dies post-H5 — weights retained in the written

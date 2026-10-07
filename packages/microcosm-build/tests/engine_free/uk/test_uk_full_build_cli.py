@@ -522,7 +522,7 @@ def test_dense_dry_run_starts_and_finishes_hosted_telemetry(tmp_path, monkeypatc
     )
     monkeypatch.setattr(
         cli,
-        "finalize_staging_telemetry",
+        "finalize_staging_run_bundle",
         lambda requested, telemetry: events.append(("complete", telemetry)),
     )
 
@@ -555,12 +555,12 @@ def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypa
     monkeypatch.setattr(cli, "preflight_staged_dataset", refuse_preflight)
     monkeypatch.setattr(
         cli,
-        "fail_staging_telemetry",
+        "fail_staging_run_bundle",
         lambda telemetry, error: events.append(("failed", telemetry, str(error))),
     )
     monkeypatch.setattr(
         cli,
-        "create_staging_telemetry",
+        "create_staging_run_bundle",
         lambda *args, **kwargs: pytest.fail("preflight failure reached staging setup"),
     )
 
@@ -573,6 +573,38 @@ def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypa
         "failed",
     ]
     assert events[-1][1] is None
+
+
+def test_hosted_stage_reporting_survives_staging_bundle_refusal(monkeypatch, capsys):
+    from microcosm.build.staging_v2 import StagingContentError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    events = []
+
+    class RefusingBundle:
+        def stage(self, *args, **kwargs):
+            raise StagingContentError("synthetic staging bundle refusal")
+
+    class Emitter:
+        def transition_stage(self, stage_id, **details):
+            events.append((stage_id, details))
+
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
+
+    rowwise_staging.stage(
+        RefusingBundle(),
+        "target_compilation",
+        "started",
+        selected_target_count=10,
+    )
+
+    assert events == [
+        (
+            "target_compilation",
+            {"status": "started", "message": None, "selected_target_count": 10},
+        )
+    ]
+    assert "synthetic staging bundle refusal" in capsys.readouterr().err
 
 
 def test_rejected_output_inside_source_never_writes_failure_sidecar(
@@ -953,11 +985,11 @@ def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
     from microcosm.build.staging_v2 import StagingContractError
     from microcosm.build.uk_runtime import rowwise_staging
 
-    class Invalid(rowwise_staging.StagingTelemetryV2):
+    class Invalid(rowwise_staging.StagingRunBundleWriterV2):
         def validate_local_bundle(self):
             raise StagingContractError("synthetic bundle defect")
 
-    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Invalid)
+    monkeypatch.setattr(rowwise_staging, "StagingRunBundleWriterV2", Invalid)
     status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
     assert status == 0
     err = capsys.readouterr().err
@@ -976,11 +1008,11 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
     from microcosm.build.staging_v2 import StagingContentError, validate_v2_bundle
     from microcosm.build.uk_runtime import rowwise_staging
 
-    class Refusing(rowwise_staging.StagingTelemetryV2):
+    class Refusing(rowwise_staging.StagingRunBundleWriterV2):
         def calibration_progress(self, event):
             raise StagingContentError("Staging file exceeds the 5242880-byte limit.")
 
-    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Refusing)
+    monkeypatch.setattr(rowwise_staging, "StagingRunBundleWriterV2", Refusing)
     status, out = run_dense_main(
         tmp_path, monkeypatch, staging="--staging-local-only", on_prepare=_drive_epochs
     )
