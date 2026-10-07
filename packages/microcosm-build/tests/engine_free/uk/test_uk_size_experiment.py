@@ -12,12 +12,14 @@ import numpy as np
 import pytest
 
 from microcosm.build.uk_runtime import dataset_size
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_WEIGHT_RULES
 from microcosm.build.uk_runtime.size_experiment import (
     UKSizeExperiment,
     build_uk_size_experiment_cache,
     load_uk_size_experiment_baseline,
     load_uk_size_scoring_inputs,
     parse_uk_size_experiments,
+    run_uk_size_census,
     run_uk_size_control,
     run_uk_size_experiment,
     score_uk_size_experiments,
@@ -249,6 +251,73 @@ def test_experiment_declarations_refuse_unknown_or_inconsistent_settings() -> No
         UKSizeExperiment(name="a", refit_l2={"lambda": 0.1, "basis": "record"})
     with pytest.raises(ValueError, match="plain directory name"):
         UKSizeExperiment(name="../a")
+    for reserved in ("control", "census"):
+        with pytest.raises(ValueError, match="reserved"):
+            UKSizeExperiment(name=reserved)
+    with pytest.raises(ValueError, match="refit-only override"):
+        UKSizeExperiment(name="a", mode="selection", epochs=2)
+    with pytest.raises(ValueError, match="refit-only override"):
+        UKSizeExperiment(name="a", epochs=0)
+
+
+def test_an_epoch_override_shortens_only_the_refit(baseline) -> None:
+    outcome = run_uk_size_experiment(baseline, UKSizeExperiment(name="s", epochs=2))
+    sized = outcome["results"]["refit"]
+    assert outcome["receipt"]["refit_epochs_override"] == 2
+    assert sized.receipt["refit_epochs"] == 2
+    assert len(sized.result.loss_trajectory) == 2
+    # the stored search is reused as stored: no new search ran
+    assert sized.receipt["selection_reused"] is True
+
+
+def test_census_reads_the_stored_support_and_checks_itself(baseline) -> None:
+    census = run_uk_size_census(baseline)
+    assert census["checks"] == {
+        "s0_above_cap_rows": 0,
+        "start_matches_receipt": True,
+        "passed": True,
+    }
+    assert set(census["floors"]) == {"0", "0.1", "0.5", "1"}
+    # the floor-0 start is the refit's own: its per-nation capacity matches the
+    # cap on the control refit's starting weights
+    control = run_uk_size_control(baseline)["sized"]
+    support = np.asarray(control.support)
+    start = np.asarray(control.result.initial_weights)
+    ratio = baseline.settings["max_weight_ratio"]
+    dense = np.asarray(baseline.dense.weights)
+    nation = baseline.profile.nation
+    for name, value in census["floors"]["0"]["capacity_to_dense"]["by_nation"].items():
+        expected = ratio * start[nation[support] == name].sum()
+        assert value == pytest.approx(expected / dense[nation == name].sum(), rel=1e-12)
+    # at floor 1 the start is the kept design rescaled to the pool mass
+    design = np.asarray(baseline.problem.problem.initial_weights.values)
+    kept = design[support] * design.sum() / design[support].sum()
+    one = census["floors"]["1"]["start_to_dense"]["by_household_type"]
+    for name, value in one.items():
+        types = baseline.profile.household_type
+        expected = kept[types[support] == name].sum() / dense[types == name].sum()
+        assert value == pytest.approx(expected, rel=1e-12)
+    assert census["floors"]["1"]["floored_rows"] == control.receipt["boundary_draws"]
+    k_min = census["search"]["k_min"]
+    assert 1 <= k_min["total"] <= len(design)
+    assert set(k_min["by_nation"]) == set(nation)
+    assert set(census["rules"]) == set(UK_LOCAL_TARGET_WEIGHT_RULES)
+    assert census["rules"][baseline.run_rule]["loss_s0_to_run_rule"] == 1.0
+    uniform = census["penalty"]["uniform"]
+    assert set(uniform["pressure"]) == {"0.001", "0.003", "0.01", "0.03", "0.1"}
+    placed = uniform["shifted_grid"][0] * uniform["scale"]
+    placed /= census["penalty"]["loss_s0_run_rule"]
+    assert 0.05 / 10**0.25 <= placed <= 0.05 * 10**0.25
+    assert set(census["areas"]) == {"constituency", "la"}
+    assert census["areas"]["la"]["areas"] == len(
+        set(baseline.profile.local_authority_code)
+    )
+    assert set(census["early_size_triggers"]) == {
+        "k_min_exceeds_households",
+        "nation_k_min_exceeds_households",
+        "areas_support_ceiling",
+        "any",
+    }
 
 
 def test_scorecard_blocks_and_acceptance(built, baseline) -> None:
@@ -272,6 +341,12 @@ def test_scorecard_blocks_and_acceptance(built, baseline) -> None:
         assert block["lone_person_share"] is not None
     assert "below_relative_collapse" not in scorecard["sets"]["D"]["areas"]["la"]
     assert "below_relative_collapse" in scorecard["sets"]["S0"]["areas"]["la"]
+    capacity = scorecard["sets"]["S0"]["nation_capacity_to_dense"]
+    assert set(capacity) == set(scorecard["sets"]["D"]["nation_share"])
+    assert all(value > 0 for value in capacity.values())
+    assert {"household_type", "type_x_tenure", "type_x_income_decile"} <= set(
+        scorecard["representativeness"]["e"]["constituency"]
+    )
     assert set(scorecard["acceptance"]) == {"S0", "e"}
     assert set(scorecard["acceptance"]["e"]["criteria"]) == {
         "household_total",
@@ -348,6 +423,8 @@ def test_pool_profile_round_trips_and_binds_its_axis(tmp_path) -> None:
     )
     np.testing.assert_array_equal(loaded.gross_income, profile.gross_income)
     assert list(loaded.tenure) == list(profile.tenure)
+    assert list(loaded.household_type) == list(profile.household_type)
+    assert profile.binding["household_type_column"] == "ons_household_type"
     with pytest.raises(ValueError, match="another problem"):
         load_uk_pool_profile(
             tmp_path, problem_sha256="xyz", household_ids=profile.household_ids
@@ -364,13 +441,74 @@ def test_disclosure_control_suppresses_small_unit_counts() -> None:
         "sources_median": 3.5,
         "areas": 4,
         "nested": [{"nonzero_households": 2}],
+        "ess_min": 7.2,
+        "ess_to_dense_median": 0.3,
+        "floored_rows": 0,
+        "boundary_draws": 3,
+        "certainties_share_at_cap": 0.46,
+        "relative_collapse": {"ess_min": {"constituency": 4.0, "la": 55.0}},
     }
     assert disclosure_controlled(value) == {
         "rows_min": "<10",
-        "sources_median": 3.5,
+        "sources_median": "<10",
         "areas": 4,
         "nested": [{"nonzero_households": "<10"}],
+        "ess_min": "<10",
+        "ess_to_dense_median": 0.3,
+        "floored_rows": 0,
+        "boundary_draws": "<10",
+        "certainties_share_at_cap": 0.46,
+        "relative_collapse": {"ess_min": {"constituency": "<10", "la": 55.0}},
     }
+
+
+def test_tool_records_a_refused_configuration_and_moves_on(
+    built, tmp_path, monkeypatch
+) -> None:
+    root, _ = built
+    tool = _load_tool()
+    monkeypatch.setattr(tool, "_LOCK", tmp_path / "lock")
+    common = ["--run-dir", str(root / "run"), "--cache-dir", str(root / "cache")]
+    out = tmp_path / "out"
+    exclusive = ["--out", str(out), "--confirm-exclusive"]
+    assert tool.main(["control", *common, *exclusive]) == 0
+    assert tool.main(["census", *common, *exclusive]) == 0
+    real = tool.run_uk_size_experiment
+
+    def refusing(baseline, experiment):
+        if experiment.name == "bad":
+            raise RuntimeError(
+                "compact refit lost targets or positive household support."
+            )
+        return real(baseline, experiment)
+
+    monkeypatch.setattr(tool, "run_uk_size_experiment", refusing)
+    experiments = tmp_path / "experiments.json"
+    experiments.write_text(json.dumps([{"name": "bad"}, {"name": "good", "epochs": 2}]))
+    run = ["run", *common, *exclusive, "--experiments", str(experiments)]
+    assert tool.main(run) == 0
+    bad = json.loads((out / "bad" / "receipt.json").read_text())
+    assert bad["status"] == "failed"
+    assert bad["error"] == {
+        "type": "RuntimeError",
+        "message": "compact refit lost targets or positive household support.",
+    }
+    assert not (out / "bad" / "weights.npz").exists()
+    good = json.loads((out / "good" / "receipt.json").read_text())
+    assert good["status"] == "finished" and good["refit_epochs_override"] == 2
+    # a re-run skips both receipts, the failed one included
+    assert tool.main(run) == 0
+    assert json.loads((out / "bad" / "receipt.json").read_text()) == bad
+    assert tool.main(["score", *common, "--out", str(out)]) == 0
+    scorecard = json.loads((out / "scorecard.json").read_text())
+    assert set(scorecard["acceptance"]) == {"S0", "good"}
+    published = tmp_path / "published"
+    assert tool.main(["publish", "--out", str(out), "--to", str(published)]) == 0
+    results = json.loads((published / "results.json").read_text())
+    assert set(results) == {"scorecard", "receipts", "census"}
+    assert results["receipts"]["bad"]["status"] == "failed"
+    assert "traceback" not in results["receipts"]["bad"]
+    assert results["census"]["checks"]["passed"] is True
 
 
 def _load_tool():

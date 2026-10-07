@@ -7,7 +7,11 @@ dense reference held fixed. Subcommands, each its own process:
 
 ``build-cache``  load the run's pool once; cache its skeleton and profile.
 ``control``      re-run the stored refit; it must reproduce the stored weights.
-``run``          run the declared experiments (JSON list); resumable.
+``census``       step 0's census of the stored support and its caps (no solve).
+``run``          run the declared experiments (JSON list); resumable. A
+                 configuration the solver chain refuses is recorded as a
+                 failed receipt and the run moves on: no release gate runs
+                 here, and a refusal is a result.
 ``score``        score D, the reproduced S0 and every finished experiment.
 ``publish``      write the disclosure-controlled aggregates (no unit records).
 
@@ -23,6 +27,7 @@ import argparse
 import fcntl
 import json
 import sys
+import time
 from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -35,10 +40,12 @@ from microcosm.build.uk_runtime.size_experiment import (
     load_uk_size_scoring_inputs,
     load_uk_size_weights,
     parse_uk_size_experiments,
+    run_uk_size_census,
     run_uk_size_control,
     run_uk_size_experiment,
     save_uk_size_weights,
     score_uk_size_experiments,
+    uk_size_failed_receipt,
     uk_size_weights_of,
 )
 from microcosm.build.uk_runtime.size_experiment_scorecard import disclosure_controlled
@@ -46,6 +53,7 @@ from microcosm.build.uk_runtime.size_experiment_scorecard import disclosure_cont
 _REPO = Path(__file__).resolve().parents[1]
 _LOCK = Path.home() / ".cache" / "microcosm" / "uk-size-experiment.lock"
 _CONTROL = "control"
+_CENSUS = "census"
 
 
 def _json(value: Any) -> str:
@@ -158,6 +166,34 @@ def _control(args: argparse.Namespace) -> int:
     return 0 if result["passed"] else 1
 
 
+def _census(args: argparse.Namespace) -> int:
+    _require_exclusive(args)
+    out = _check_out(args.out, args.run_dir)
+    with _machine_lock():
+        baseline = load_uk_size_experiment_baseline(args.run_dir, args.cache_dir)
+        census = run_uk_size_census(baseline)
+    directory = out / _CENSUS
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "census.json").write_text(_json(census), encoding="utf-8")
+    stored = census["floors"][f"{census['stored_floor']:g}"]
+    sys.stdout.write(
+        _json(
+            {
+                "checks": census["checks"],
+                "early_size_triggers": census["early_size_triggers"],
+                "k_min": census["search"]["k_min"],
+                "capacity_to_dense_at_run_floor": stored["capacity_to_dense"],
+            }
+        )
+    )
+    if not census["checks"]["passed"]:
+        sys.stdout.write(
+            "census self-check FAILED: its recomputed refit start disagrees with "
+            "the stored run; read census.json before using its capacities.\n"
+        )
+    return 0
+
+
 def _control_passed(out: Path) -> bool:
     path = out / _CONTROL / "receipt.json"
     return path.is_file() and json.loads(path.read_text("utf-8")).get("passed") is True
@@ -178,6 +214,7 @@ def _run(args: argparse.Namespace) -> int:
         if unknown:
             raise SystemExit(f"--only names unknown experiments: {sorted(unknown)}")
         experiments = tuple(e for e in experiments if e.name in set(args.only))
+    failed = []
     with _machine_lock():
         baseline = load_uk_size_experiment_baseline(args.run_dir, args.cache_dir)
         for experiment in experiments:
@@ -187,7 +224,28 @@ def _run(args: argparse.Namespace) -> int:
                 continue
             sys.stdout.write(f"run {experiment.name} ({experiment.mode})\n")
             sys.stdout.flush()
-            outcome = run_uk_size_experiment(baseline, experiment)
+            started = time.perf_counter()
+            try:
+                outcome = run_uk_size_experiment(baseline, experiment)
+            except Exception as error:
+                # A refusal of the solver chain is this configuration's result:
+                # record it and move on (no weights, so it is never scored).
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / "weights.npz").unlink(missing_ok=True)
+                receipt = uk_size_failed_receipt(
+                    baseline,
+                    experiment,
+                    error,
+                    wall_seconds=time.perf_counter() - started,
+                )
+                (directory / "receipt.json").write_text(
+                    _json(receipt), encoding="utf-8"
+                )
+                failed.append(experiment.name)
+                sys.stdout.write(
+                    f"failed {experiment.name}: {type(error).__name__}: {error}\n"
+                )
+                continue
             directory.mkdir(parents=True, exist_ok=True)
             refit = outcome["results"].get("refit")
             if refit is not None:
@@ -203,6 +261,8 @@ def _run(args: argparse.Namespace) -> int:
                 _json(outcome["receipt"]), encoding="utf-8"
             )
             _check_rss(outcome["receipt"], args.max_rss_gib)
+    if failed:
+        sys.stdout.write(f"{len(failed)} configuration(s) failed: {failed}\n")
     return 0
 
 
@@ -248,11 +308,14 @@ def _publish(args: argparse.Namespace) -> int:
     for path in sorted(out.glob("*/receipt.json")):
         receipt = json.loads(path.read_text("utf-8"))
         receipt.get("size_receipt", {}).pop("household_ids", None)
+        receipt.pop("traceback", None)
         receipts[path.parent.name] = receipt
+    published = {"scorecard": scorecard, "receipts": receipts}
+    census_path = out / _CENSUS / "census.json"
+    if census_path.is_file():
+        published["census"] = json.loads(census_path.read_text("utf-8"))
     destination.mkdir(parents=True, exist_ok=True)
-    controlled = disclosure_controlled(
-        {"scorecard": scorecard, "receipts": receipts}, minimum_count=args.minimum_count
-    )
+    controlled = disclosure_controlled(published, minimum_count=args.minimum_count)
     (destination / "results.json").write_text(_json(controlled), encoding="utf-8")
     sys.stdout.write(f"wrote {destination / 'results.json'}\n")
     return 0
@@ -278,6 +341,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     common(control)
     compute(control)
     control.add_argument("--accept-control-drift", metavar="REASON", default=None)
+    census = sub.add_parser("census", help="step 0's census of the stored support")
+    common(census)
+    compute(census)
     run = sub.add_parser("run", help="run declared experiments")
     common(run)
     compute(run)
@@ -300,6 +366,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     handlers = {
         "build-cache": _build_cache,
         "control": _control,
+        "census": _census,
         "run": _run,
         "score": _score,
         "publish": _publish,

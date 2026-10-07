@@ -17,6 +17,11 @@ reads them without writing to either:
   for bit.
 * :func:`run_uk_size_control` re-runs the stored refit from the stored search
   and draw; it must reproduce the stored weights before any variant is read.
+* :func:`run_uk_size_census` is step 0's census of what the stored support
+  and its stretch caps allow before any variant runs: mass capacity by nation
+  and household type at several refit baseline floors, per-area ceilings
+  against the relative-collapse rule, the search's capacity bound k_min, the
+  L2 penalty scales that place the λ grid, and each rule's loss shares.
 * :func:`run_uk_size_experiment` runs one :class:`UKSizeExperiment`: a refit
   on the stored support under another rule, L2 penalty or baseline floor; a
   new search from the stored dense solve (warm-started) then a draw and a
@@ -24,8 +29,10 @@ reads them without writing to either:
 
 Each experiment returns its receipt and its weights; the tool
 ``tools/run_uk_size_experiment.py`` writes them outside the repository and the
-run directory. The dense reference is never re-solved: every delta is the
-selection's.
+run directory. No release gate runs here: the scorecard's criteria are
+measurements, and a configuration the solver chain refuses is recorded as a
+failed result (:func:`uk_size_failed_receipt`), not a stop. The dense
+reference is never re-solved: every delta is the selection's.
 """
 
 from __future__ import annotations
@@ -36,12 +43,14 @@ import json
 import resource
 import sys
 import time
+import traceback
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from microcosm.build.holdout import rotated_folds
 from microcosm.build.uk_runtime.dataset_size import (
@@ -61,6 +70,8 @@ from microcosm.build.uk_runtime.local_rowwise import (
 )
 from microcosm.build.uk_runtime.rowwise_cli import git_commit, git_dirty
 from microcosm.build.uk_runtime.size_experiment_scorecard import (
+    UK_SIZE_ACCEPTANCE,
+    UK_SIZE_CAP_TOLERANCE,
     UKPoolProfile,
     UKSizeWeights,
     build_uk_pool_profile,
@@ -72,10 +83,12 @@ from microcosm.build.uk_runtime.target_weights import (
     UKStageTargetWeighting,
     UKTargetRows,
     uk_rule_loss_weights,
+    uk_target_loss_weight_receipt,
     uk_target_rows_from_problem,
 )
 from microcosm.calibrate import (
     CalibrationResult,
+    chi_square_distance,
     default_target_loss_scales,
     relative_error_loss,
 )
@@ -90,13 +103,18 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.store import ContentStore
 
 __all__ = [
+    "UK_SIZE_CENSUS_FLOORS",
+    "UK_SIZE_CENSUS_L2_GRID",
+    "UK_SIZE_CENSUS_PRESSURE_BAND",
     "UK_SIZE_EXPERIMENT_ARTIFACTS",
     "UK_SIZE_EXPERIMENT_MODES",
+    "UK_SIZE_EXPERIMENT_RESERVED_NAMES",
     "UKSizeExperiment",
     "UKSizeExperimentBaseline",
     "build_uk_size_experiment_cache",
     "load_uk_size_experiment_baseline",
     "parse_uk_size_experiments",
+    "run_uk_size_census",
     "run_uk_size_control",
     "run_uk_size_experiment",
     "UKSizeScoringInputs",
@@ -104,6 +122,7 @@ __all__ = [
     "load_uk_size_weights",
     "save_uk_size_weights",
     "score_uk_size_experiments",
+    "uk_size_failed_receipt",
     "uk_size_weights_of",
 ]
 
@@ -118,6 +137,14 @@ UK_SIZE_EXPERIMENT_ARTIFACTS = {
     "size": "uk.full.size_refit/size",
 }
 UK_SIZE_EXPERIMENT_MODES = ("refit", "selection", "refit_holdout")
+#: Output directory names the tool itself writes; no experiment may take one.
+UK_SIZE_EXPERIMENT_RESERVED_NAMES = frozenset({"control", "census"})
+#: The refit baseline floors step 0's census measures (the plan's 0, 0.1, 0.5, 1).
+UK_SIZE_CENSUS_FLOORS = (0.0, 0.1, 0.5, 1.0)
+#: The pre-registered refit L2 grid whose penalty pressure the census places.
+UK_SIZE_CENSUS_L2_GRID = (1e-3, 3e-3, 1e-2, 3e-2, 1e-1)
+#: The band the grid's pressure λ·P/L should span (the plan's grid placement).
+UK_SIZE_CENSUS_PRESSURE_BAND = (0.05, 5.0)
 _POOL_NODE = "uk.full.pool"
 _CACHE_MANIFEST = "size_experiment_cache.json"
 _SKELETON_KEY_PREFIX = b"microcosm-uk-size-experiment-skeleton/1\n"
@@ -366,9 +393,11 @@ class UKSizeExperiment:
     are ``{"lambda", "anchor", "basis"}`` mappings (``None``: off).
     ``baseline_pi_floor`` and ``learning_rate`` override the run's (the
     learning rate is a refit-only perturbation, recorded as such).
-    ``initial_lambda`` (selection mode) is a warm-start penalty, ``"scaled"``
-    for the stored search's penalty times the rule's loss ratio at S0, or
-    ``None`` for a cold search.
+    ``epochs`` is a refit-only epoch count for smoke runs of the setup (a
+    shortened refit is a plumbing check, not a result; no pre-registered
+    experiment sets it). ``initial_lambda`` (selection mode) is a warm-start
+    penalty, ``"scaled"`` for the stored search's penalty times the rule's
+    loss ratio at S0, or ``None`` for a cold search.
     """
 
     name: str
@@ -379,6 +408,7 @@ class UKSizeExperiment:
     selection_l2: Mapping[str, Any] | None = None
     baseline_pi_floor: float | None = None
     learning_rate: float | None = None
+    epochs: int | None = None
     initial_lambda: float | str | None = "scaled"
     folds: int = UK_LOCAL_HOLDOUT_FOLDS
     notes: str = ""
@@ -387,6 +417,10 @@ class UKSizeExperiment:
         if not self.name or "/" in self.name or self.name.startswith("."):
             raise ValueError(
                 f"experiment name {self.name!r} is not a plain directory name."
+            )
+        if self.name in UK_SIZE_EXPERIMENT_RESERVED_NAMES:
+            raise ValueError(
+                f"experiment name {self.name!r} is reserved for the tool's own output."
             )
         if self.mode not in UK_SIZE_EXPERIMENT_MODES:
             raise ValueError(
@@ -398,6 +432,16 @@ class UKSizeExperiment:
         if self.mode != "selection" and (self.selection_rule or self.selection_l2):
             raise ValueError(
                 f"experiment {self.name}: selection settings need mode 'selection'."
+            )
+        if self.epochs is not None and (
+            self.mode == "selection"
+            or isinstance(self.epochs, bool)
+            or not isinstance(self.epochs, int)
+            or self.epochs <= 0
+        ):
+            raise ValueError(
+                f"experiment {self.name}: epochs is a positive refit-only override "
+                "(modes 'refit' and 'refit_holdout')."
             )
         for stage, block in (
             ("refit", self.refit_l2),
@@ -588,6 +632,294 @@ def run_uk_size_control(
     }
 
 
+def _kish_by_area(
+    area: np.ndarray, positions: np.ndarray, weights: np.ndarray, n_areas: int
+) -> np.ndarray:
+    sums = np.bincount(area[positions], weights=weights, minlength=n_areas)
+    squares = np.bincount(area[positions], weights=weights**2, minlength=n_areas)
+    return np.divide(sums**2, squares, out=np.zeros_like(sums), where=squares > 0)
+
+
+def _refit_start(
+    design: np.ndarray, support: np.ndarray, q: np.ndarray, floor: float
+) -> np.ndarray:
+    """The refit's start at ``floor``: design over max(q, floor), to the pool mass.
+
+    The solver's normalized Horvitz-Thompson baseline
+    (``refit_l0_selection`` on an exact-k support), recomputed here.
+    """
+
+    floored = q if floor == 0.0 else np.maximum(q, floor)
+    expanded = design[support] / floored
+    return expanded * (design.sum() / expanded.sum())
+
+
+def _k_min(design: np.ndarray, mass: float, ratio: float) -> int | None:
+    """Fewest rows whose capped design weights (heaviest first) carry ``mass``."""
+
+    if mass <= 0.0:
+        return 0
+    reach = np.cumsum(ratio * np.sort(design)[::-1])
+    index = int(np.searchsorted(reach, mass, side="left"))
+    return index + 1 if index < len(reach) else None
+
+
+def _mass_to(
+    labels: np.ndarray, values: np.ndarray, reference: Mapping[str, float]
+) -> dict[str, float | None]:
+    return {
+        label: float(values[labels == label].sum() / mass) if mass > 0 else None
+        for label, mass in reference.items()
+    }
+
+
+def run_uk_size_census(
+    baseline: UKSizeExperimentBaseline,
+    *,
+    floors: Sequence[float] = UK_SIZE_CENSUS_FLOORS,
+    l2_grid: Sequence[float] = UK_SIZE_CENSUS_L2_GRID,
+    pressure_band: tuple[float, float] = UK_SIZE_CENSUS_PRESSURE_BAND,
+) -> dict[str, Any]:
+    """Step 0's census of the stored support and its caps (no solve).
+
+    For each refit baseline floor in ``floors`` and the run's own: the start's
+    and the stretch cap's mass against D's, in total, by nation and by
+    household type (a capacity below one means the refit cannot reach D's mass
+    there whatever it fits); the areas whose start already falls below the
+    relative-collapse rule; and the ``initial`` anchor's chi-square penalty
+    scale P, measured at S0. Beside them:
+
+    * per grain, the areas whose kept rows cannot reach the rule even at equal
+      weights (the support's ceiling, which is also the ``uniform`` anchor's);
+    * the search's share of kept rows on its cap and its capacity bound k_min,
+      the fewest pool rows whose capped design weights carry D's mass, in
+      total and nation by nation;
+    * the penalty pressure λ·P/L of ``l2_grid`` per anchor (L is S0's loss
+      under the run's weights) and the half-decade shift that would put the
+      grid's low end on ``pressure_band``'s;
+    * each rule's loss shares and its losses at D and S0;
+    * the early size (F) triggers: k_min above the requested size, or areas
+      the support can never lift to the rule.
+
+    Self-checks: S0's households are the draw's support in pool order, S0
+    never exceeds its cap at the run's floor, and the recomputed start
+    reproduces the stored receipt's certainty mass share.
+    """
+
+    started = time.perf_counter()
+    problem = baseline.problem
+    design = np.asarray(problem.problem.initial_weights.values, dtype=np.float64)
+    dense = np.asarray(baseline.dense.weights, dtype=np.float64)
+    support = np.asarray(baseline.draw.support, dtype=np.int64)
+    q = np.asarray(baseline.draw.inclusion_probabilities, dtype=np.float64)
+    s0 = np.asarray(baseline.stored_refit_weights, dtype=np.float64)
+    if tuple(problem.entity_ids[index] for index in support) != tuple(
+        baseline.stored_refit_ids
+    ):
+        raise ValueError(
+            "the stored refit's households are not the draw's support in pool order."
+        )
+    ratio = float(baseline.settings["max_weight_ratio"])
+    households = int(baseline.settings["households"])
+    stored_floor = float(baseline.settings["baseline_pi_floor"])
+    profile = baseline.profile
+    nations = sorted(set(profile.nation.tolist()))
+    types = sorted(set(profile.household_type.tolist()))
+    dense_total = float(dense.sum())
+    dense_by_nation = {n: float(dense[profile.nation == n].sum()) for n in nations}
+    dense_by_type = {t: float(dense[profile.household_type == t].sum()) for t in types}
+    kept_nation, kept_type = profile.nation[support], profile.household_type[support]
+    certain = q >= 1.0
+    share = float(UK_SIZE_ACCEPTANCE["relative_collapse_share"])
+    pool_positions = np.arange(len(design), dtype=np.int64)
+    grains = {}
+    for grain, codes in (
+        ("constituency", profile.constituency_code),
+        ("la", profile.local_authority_code),
+    ):
+        area, roster = pd.factorize(pd.Series(codes, dtype=object), sort=True)
+        dense_ess = _kish_by_area(area, pool_positions, dense, len(roster))
+        grains[grain] = (area, len(roster), share * dense_ess, dense_ess > 0)
+
+    def below_rule(weights: np.ndarray) -> dict[str, int]:
+        return {
+            grain: int(
+                (
+                    (_kish_by_area(area, support, weights, n_areas) < threshold)
+                    & present
+                ).sum()
+            )
+            for grain, (area, n_areas, threshold, present) in grains.items()
+        }
+
+    def masses(values: np.ndarray) -> dict[str, Any]:
+        return {
+            "total": float(values.sum() / dense_total),
+            "by_nation": _mass_to(kept_nation, values, dense_by_nation),
+            "by_household_type": _mass_to(kept_type, values, dense_by_type),
+        }
+
+    run_weights = np.asarray(problem.bindings["target_loss_weights"], dtype=np.float64)
+    estimates_s0 = _estimates(baseline, support, s0)
+    loss_s0 = _loss(baseline, estimates_s0, run_weights)
+    floor_blocks: dict[str, dict[str, Any]] = {}
+    for floor in sorted({*(float(value) for value in floors), stored_floor}):
+        start = _refit_start(design, support, q, floor)
+        cap = ratio * start
+        block: dict[str, Any] = {
+            "floored_rows": int(np.count_nonzero(q < floor)),
+            "start_mass_share_certainties": float(start[certain].sum() / start.sum()),
+            "start_to_dense": masses(start),
+            "capacity_to_dense": masses(cap),
+            "areas_start_below_rule": below_rule(start),
+            "initial_anchor_penalty_at_s0": float(chi_square_distance(s0, start)),
+        }
+        if floor == stored_floor:
+            block["s0_share_at_cap"] = float(
+                np.mean(s0 >= (1.0 - UK_SIZE_CAP_TOLERANCE) * cap)
+            )
+            block["s0_above_cap_rows"] = int(
+                np.count_nonzero(s0 > (1.0 + UK_SIZE_CAP_TOLERANCE) * cap)
+            )
+        floor_blocks[f"{floor:g}"] = block
+    area_blocks = {}
+    for grain, (area, n_areas, threshold, present) in grains.items():
+        kept = np.bincount(area[support], minlength=n_areas).astype(np.float64)
+        s0_ess = _kish_by_area(area, support, s0, n_areas)
+        area_blocks[grain] = {
+            "areas": int(present.sum()),
+            "areas_support_ceiling": int(((kept < threshold) & present).sum()),
+            "areas_without_support": int(((kept == 0) & present).sum()),
+            "areas_s0_below_rule": int(((s0_ess < threshold) & present).sum()),
+        }
+
+    def pressure(scale: float) -> dict[str, Any]:
+        block: dict[str, Any] = {"scale": scale}
+        if loss_s0 > 0.0 and scale > 0.0:
+            block["pressure"] = {
+                f"{value:g}": float(value * scale / loss_s0) for value in l2_grid
+            }
+            low = min(l2_grid) * scale / loss_s0
+            shift = int(np.round(2.0 * np.log10(pressure_band[0] / low)))
+            block["suggested_half_decade_shift"] = shift
+            block["shifted_grid"] = [
+                float(value * 10 ** (shift / 2)) for value in l2_grid
+            ]
+        return block
+
+    uniform = np.full(len(s0), design.sum() / len(s0))
+    penalty = {
+        "loss_s0_run_rule": loss_s0,
+        "grid": [float(value) for value in l2_grid],
+        "band": [float(value) for value in pressure_band],
+        "uniform": pressure(float(chi_square_distance(s0, uniform))),
+        "initial": {
+            key: pressure(block["initial_anchor_penalty_at_s0"])
+            for key, block in floor_blocks.items()
+        },
+    }
+    search = baseline.selection.selection
+    search_ratio = float(search.options.get("max_weight_ratio") or ratio)
+    kept_weights = np.asarray(search.weights, dtype=np.float64)[support]
+    kept_start = np.asarray(search.initial_weights, dtype=np.float64)[support]
+    on_cap = kept_weights >= (1.0 - UK_SIZE_CAP_TOLERANCE) * search_ratio * kept_start
+    k_by_nation = {
+        n: _k_min(design[profile.nation == n], dense_by_nation[n], search_ratio)
+        for n in nations
+    }
+    k_total = _k_min(design, dense_total, search_ratio)
+    k_nations = (
+        None
+        if any(value is None for value in k_by_nation.values())
+        else int(sum(k_by_nation.values()))
+    )
+    kept_design = design[support]
+    search_block = {
+        "l0_lambda": float(search.l0_lambda),
+        "max_weight_ratio": search_ratio,
+        "kept_share_at_cap": float(on_cap.mean()),
+        "certainties_share_at_cap": (
+            float(on_cap[certain].mean()) if certain.any() else None
+        ),
+        "pool_design_weight_mean": float(design.mean()),
+        "pool_design_weight_median": float(np.median(design)),
+        "kept_design_weight_median": float(np.median(kept_design)),
+        "certainties_design_weight_mean": (
+            float(kept_design[certain].mean()) if certain.any() else None
+        ),
+        "k_min": {
+            "total": k_total,
+            "by_nation": k_by_nation,
+            "sum_of_nations": k_nations,
+        },
+    }
+    estimates_dense = np.asarray(problem.problem.matrix @ dense, dtype=np.float64)
+    rules = {}
+    for rule in UK_LOCAL_TARGET_WEIGHT_RULES:
+        weights = uk_rule_loss_weights(baseline.rows, rule=rule)
+        rule_s0 = _loss(baseline, estimates_s0, weights)
+        rules[rule] = {
+            "loss_shares": uk_target_loss_weight_receipt(
+                baseline.rows, weights, rule=rule
+            ),
+            "loss_dense": _loss(baseline, estimates_dense, weights),
+            "loss_s0": rule_s0,
+            "loss_s0_to_run_rule": rule_s0 / loss_s0 if loss_s0 > 0.0 else None,
+        }
+    triggers: dict[str, Any] = {
+        "k_min_exceeds_households": k_total is None or k_total > households,
+        "nation_k_min_exceeds_households": k_nations is None or k_nations > households,
+        "areas_support_ceiling": {
+            grain: block["areas_support_ceiling"]
+            for grain, block in area_blocks.items()
+        },
+    }
+    triggers["any"] = bool(
+        triggers["k_min_exceeds_households"]
+        or triggers["nation_k_min_exceeds_households"]
+        or any(count > 0 for count in triggers["areas_support_ceiling"].values())
+    )
+    stored_share = baseline.size_receipt.get("baseline_mass_share_certainties")
+    recomputed = floor_blocks[f"{stored_floor:g}"]["start_mass_share_certainties"]
+    checks = {
+        "s0_above_cap_rows": floor_blocks[f"{stored_floor:g}"]["s0_above_cap_rows"],
+        "start_matches_receipt": (
+            None
+            if stored_share is None
+            else bool(abs(recomputed - float(stored_share)) <= 1e-9)
+        ),
+    }
+    checks["passed"] = checks["s0_above_cap_rows"] == 0 and checks[
+        "start_matches_receipt"
+    ] in (True, None)
+    return {
+        "households": households,
+        "pool_households": int(len(design)),
+        "max_weight_ratio": ratio,
+        "stored_floor": stored_floor,
+        "dense_mass": {
+            "total": dense_total,
+            "by_nation": dense_by_nation,
+            "by_household_type": dense_by_type,
+        },
+        "search": search_block,
+        "floors": floor_blocks,
+        "areas": area_blocks,
+        "penalty": penalty,
+        "rules": rules,
+        "early_size_triggers": triggers,
+        "checks": checks,
+        "wall_seconds": time.perf_counter() - started,
+        "peak_rss_bytes": _peak_rss_bytes(),
+        "baseline": {
+            "run_dir": str(baseline.run_dir),
+            "run_rule": baseline.run_rule,
+            "digests": dict(baseline.digests),
+        },
+        "code": {"git_commit": git_commit(), "git_dirty": git_dirty()},
+    }
+
+
 def _scaled_initial_lambda(
     baseline: UKSizeExperimentBaseline, rule: str | None
 ) -> float:
@@ -614,6 +946,7 @@ def run_uk_size_experiment(
     settings = _refit_settings(baseline, experiment)
     selection = baseline.selection
     receipt: dict[str, Any] = {
+        "status": "finished",
         "experiment": asdict(experiment),
         "settings": dict(settings),
     }
@@ -623,6 +956,12 @@ def run_uk_size_experiment(
         selection = replace(selection, learning_rate=float(experiment.learning_rate))
         settings["learning_rate"] = float(experiment.learning_rate)
         receipt["refit_learning_rate_override"] = float(experiment.learning_rate)
+    if experiment.epochs is not None:
+        # A smoke run of the setup: the refit (which reuses the search's epoch
+        # count) runs this many; the stored search keeps its own.
+        selection = replace(selection, epochs=int(experiment.epochs))
+        settings["epochs"] = int(experiment.epochs)
+        receipt["refit_epochs_override"] = int(experiment.epochs)
     refit_l2 = _l2_kwargs("refit", experiment.refit_l2)
     if experiment.mode == "refit":
         sized = refit_uk_dataset_size(
@@ -735,6 +1074,36 @@ def run_uk_size_experiment(
     except ImportError:  # pragma: no cover - torch is a calibrate dependency
         receipt["torch"] = None
     return {"receipt": receipt, "results": results}
+
+
+def uk_size_failed_receipt(
+    baseline: UKSizeExperimentBaseline,
+    experiment: UKSizeExperiment,
+    error: Exception,
+    *,
+    wall_seconds: float,
+) -> dict[str, Any]:
+    """The receipt of a configuration the solver chain refused: a result, not a stop.
+
+    The refusal's type and message are the finding (a refit that lost
+    positive support, a search with no drawable probe, ...). The traceback is
+    kept for the out directory and dropped on publication.
+    """
+
+    return {
+        "status": "failed",
+        "experiment": asdict(experiment),
+        "error": {"type": type(error).__name__, "message": str(error)},
+        "traceback": traceback.format_exception(error)[-20:],
+        "wall_seconds": float(wall_seconds),
+        "peak_rss_bytes": _peak_rss_bytes(),
+        "baseline": {
+            "run_dir": str(baseline.run_dir),
+            "run_rule": baseline.run_rule,
+            "digests": dict(baseline.digests),
+        },
+        "code": {"git_commit": git_commit(), "git_dirty": git_dirty()},
+    }
 
 
 def _run_holdout(baseline, experiment, selection, settings, refit_l2):

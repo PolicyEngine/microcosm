@@ -42,6 +42,7 @@ SYNTHETIC_SIZE_SETTINGS = dict(epochs=3, learning_rate=0.05, seed=7, pi_hi=0.5)
 _CONSTITUENCIES = ("E14000001", "E14000002", "W07000041", "N05000001")
 _AUTHORITIES = ("E06000001", "E06000002", "W06000001", "N09000001")
 _TENURES = ("OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL")
+_HOUSEHOLD_TYPES = ("ONE_PERSON", "COUPLE_NO_CHILDREN", "LONE_PARENT", "OTHER")
 
 
 def synthetic_uk_pool(households: int = 16, *, seed: int = 3):
@@ -62,6 +63,9 @@ def synthetic_uk_pool(households: int = 16, *, seed: int = 3):
             "constituency_code": [_CONSTITUENCIES[a] for a in area],
             "local_authority_code": [_AUTHORITIES[a] for a in area],
             "tenure_type": [_TENURES[i % len(_TENURES)] for i in range(households)],
+            "ons_household_type": [
+                _HOUSEHOLD_TYPES[i % len(_HOUSEHOLD_TYPES)] for i in range(households)
+            ],
         }
     )
     person = pd.DataFrame(

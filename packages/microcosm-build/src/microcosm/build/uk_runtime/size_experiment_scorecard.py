@@ -4,7 +4,8 @@ One pool, one problem, three or more weight vectors: the dense reference D on
 every pool row, the stored size run S0 on its support, and each experiment's
 candidate on its support. Every block is computed the same way for each
 vector so a delta is the selection's alone: household total and nation
-shares; the household-composition rows and lone-person share; per-area
+shares; the mass the kept rows can carry by nation under their stretch cap,
+against D's; the household-composition rows and lone-person share; per-area
 support (rows, Kish ESS, distinct FRS source households) at constituency and
 local-authority grain against an absolute floor and a relative-collapse rule;
 fit by grain and family; national rows past 25 %; the share of kept rows on
@@ -16,7 +17,8 @@ sampling-noise distance of an ESS-sized draw from D).
 The pool profile (:class:`UKPoolProfile`) is the household-level metadata the
 blocks read, built once from a run's pool frame and bound to its problem and
 household axis. Nothing here writes unit records: :func:`disclosure_controlled`
-suppresses small unit counts before anything is published (UKDS licence).
+suppresses small unit counts and effective sample sizes before anything is
+published (UKDS licence).
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ from microcosm.frame import Frame
 __all__ = [
     "UK_POOL_PROFILE_INCOME_COLUMNS",
     "UK_SIZE_ACCEPTANCE",
+    "UK_SIZE_CAP_TOLERANCE",
     "UKPoolProfile",
     "UKSizeWeights",
     "build_uk_pool_profile",
@@ -91,6 +94,9 @@ UK_SIZE_ACCEPTANCE = {
     "national_past_25_extra": 2,
     "relative_collapse_share": 0.25,
 }
+#: Relative tolerance for "on the stretch cap": the solver clamps its weights
+#: to the cap in float32, so a capped weight can sit ~1e-7 below the float64 cap.
+UK_SIZE_CAP_TOLERANCE = 1e-6
 
 
 @dataclass(frozen=True)
@@ -106,6 +112,7 @@ class UKPoolProfile:
     household_size: np.ndarray
     head_age_band: np.ndarray
     tenure: np.ndarray
+    household_type: np.ndarray
     gross_income: np.ndarray
     binding: Mapping[str, Any]
 
@@ -130,9 +137,11 @@ def build_uk_pool_profile(
     Nation comes from the constituency code's prefix (the shared
     :func:`~microcosm.build.uk_runtime.local_targets.area_groups_from_codes`
     rule); household size counts persons; the head's age band reads the
-    person flagged ``is_household_head``; tenure is ``tenure_type``; gross
-    income sums the person income inputs in ``income_columns`` that the
-    frame carries.
+    person flagged ``is_household_head``; tenure is ``tenure_type``; the
+    household type is the ``frs_relationships`` stage's ``ons_household_type``
+    (the domain the ten ``ons_household_composition`` rows partition;
+    ``"unknown"`` on a frame without it); gross income sums the person income
+    inputs in ``income_columns`` that the frame carries.
     """
 
     household = pool.table("household")
@@ -170,6 +179,12 @@ def build_uk_pool_profile(
         np.add.at(income, position, person[column].to_numpy(dtype=np.float64))
     constituency = household["constituency_code"].astype(str).to_numpy(dtype=object)
     groups = area_groups_from_codes(sorted(set(constituency.tolist())))
+    has_type = "ons_household_type" in household.columns
+    household_type = (
+        household["ons_household_type"].astype(str).to_numpy(dtype=object)
+        if has_type
+        else np.full(n, "unknown", dtype=object)
+    )
     return UKPoolProfile(
         household_ids=np.asarray(ids, dtype=np.int64),
         source_household_ids=household["source_household_id"].to_numpy(dtype=object),
@@ -184,12 +199,14 @@ def build_uk_pool_profile(
         household_size=np.minimum(size, _SIZE_CAP).astype(np.int64),
         head_age_band=head_age_band,
         tenure=household["tenure_type"].astype(str).to_numpy(dtype=object),
+        household_type=household_type,
         gross_income=income,
         binding={
             "problem_sha256": str(problem_sha256),
             "household_ids_sha256": _ids_digest(ids),
             "households": int(n),
             "income_columns": found,
+            "household_type_column": "ons_household_type" if has_type else None,
         },
     )
 
@@ -204,6 +221,7 @@ _PROFILE_ARRAYS = (
     "household_size",
     "head_age_band",
     "tenure",
+    "household_type",
     "gross_income",
 )
 
@@ -385,6 +403,7 @@ def _set_block(
     yardstick: np.ndarray,
     target_loss_cap: float,
     dense_area_ess: Mapping[str, pd.DataFrame] | None,
+    dense_nation_mass: Mapping[str, float],
     ess_floor: float,
 ) -> dict[str, object]:
     support, values = weights.support, weights.weights
@@ -526,7 +545,18 @@ def _set_block(
         start = weights.initial
         if weights.max_weight_ratio is not None:
             cap = weights.max_weight_ratio * start
-            block["share_at_stretch_cap"] = float(np.mean(values >= (1.0 - 1e-9) * cap))
+            block["share_at_stretch_cap"] = float(
+                np.mean(values >= (1.0 - UK_SIZE_CAP_TOLERANCE) * cap)
+            )
+            # The mass the kept rows could carry with every row on its cap: below
+            # one, the stage cannot reach D's nation mass whatever it fits.
+            kept_nation = profile.nation[support]
+            block["nation_capacity_to_dense"] = {
+                nation: (
+                    float(cap[kept_nation == nation].sum() / mass) if mass > 0 else None
+                )
+                for nation, mass in dense_nation_mass.items()
+            }
         kept_design = profile.design_weights[support]
         scaled_design = kept_design * (profile.design_weights.sum() / kept_design.sum())
         block["chi_square_to_start"] = float(chi_square_distance(values, start))
@@ -584,11 +614,17 @@ def uk_size_scorecard(
             ("la", profile.local_authority_code),
         )
     }
+    dense_nation = profile.nation[dense.support]
+    dense_nation_mass = {
+        nation: float(dense.weights[dense_nation == nation].sum())
+        for nation in sorted(set(profile.nation.tolist()))
+    }
     sets = [dense, control, *candidates]
     blocks = {
         weights.label: _set_block(
             weights=weights,
             dense_area_ess=None if weights is dense else dense_area_ess,
+            dense_nation_mass=dense_nation_mass,
             **common,
         )
         for weights in sets
@@ -600,12 +636,15 @@ def uk_size_scorecard(
         "household_size": profile.household_size,
         "tenure": profile.tenure,
         "head_age_band": profile.head_age_band,
+        "household_type": profile.household_type,
         "income_decile": deciles,
     }
     variables["size_x_tenure"] = _joint(profile.household_size, profile.tenure)
     variables["tenure_x_head_age"] = _joint(profile.tenure, profile.head_age_band)
     variables["size_x_income_decile"] = _joint(profile.household_size, deciles)
     variables["head_age_x_income_decile"] = _joint(profile.head_age_band, deciles)
+    variables["type_x_tenure"] = _joint(profile.household_type, profile.tenure)
+    variables["type_x_income_decile"] = _joint(profile.household_type, deciles)
     representativeness: dict[str, object] = {}
     for weights in sets[1:]:
         per_grain = {}
@@ -735,34 +774,56 @@ def uk_size_acceptance(
     }
 
 
-_UNIT_COUNT_KEY_PARTS = ("rows", "sources", "nonzero", "distinct")
+_UNIT_COUNT_KEY_PARTS = (
+    "rows",
+    "sources",
+    "nonzero",
+    "distinct",
+    "draws",
+    "carriers",
+    "certainty",
+)
+#: Per-area medians of unit counts: small values are as disclosive as counts.
+_UNIT_COUNT_MEDIAN_KEYS = frozenset({"rows_median", "sources_median"})
+#: Absolute effective sample sizes (ratios such as ``ess_to_dense_median`` are not).
+_ESS_KEYS = frozenset({"ess_min", "ess_p5", "ess_median"})
 
 
-def disclosure_controlled(value: Any, *, minimum_count: int = 10, key: str = "") -> Any:
-    """Suppress small unit counts (survey rows, source households) for publication.
+def disclosure_controlled(
+    value: Any, *, minimum_count: int = 10, key: str = "", parent: str = ""
+) -> Any:
+    """Suppress small unit counts and effective sample sizes for publication.
 
-    Integer values under a key naming a unit count (``rows``, ``sources``,
-    ``nonzero``, ``distinct``) below ``minimum_count`` become ``"<10"``;
-    everything else is aggregate and passes through.
+    An integer under a key naming a unit count (``rows``, ``sources``,
+    ``nonzero``, ``distinct``, ``draws``, ``carriers``, ``certainty``), a
+    per-area median unit count, or an absolute effective sample size
+    (``ess_min``, ``ess_p5``, ``ess_median`` and the per-grain values under
+    them) strictly between zero and ``minimum_count`` becomes ``"<10"``.
+    Zeros, shares, ratios and weighted aggregates pass through.
     """
 
     if isinstance(value, Mapping):
         return {
             name: disclosure_controlled(
-                item, minimum_count=minimum_count, key=str(name)
+                item, minimum_count=minimum_count, key=str(name), parent=key
             )
             for name, item in value.items()
         }
     if isinstance(value, list | tuple):
         return [
-            disclosure_controlled(item, minimum_count=minimum_count, key=key)
+            disclosure_controlled(
+                item, minimum_count=minimum_count, key=key, parent=parent
+            )
             for item in value
         ]
-    if (
-        isinstance(value, int)
-        and not isinstance(value, bool)
-        and any(part in key for part in _UNIT_COUNT_KEY_PARTS)
-        and value < minimum_count
-    ):
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return value
+    sensitive = (
+        (isinstance(value, int) and any(part in key for part in _UNIT_COUNT_KEY_PARTS))
+        or key in _UNIT_COUNT_MEDIAN_KEYS
+        or key in _ESS_KEYS
+        or parent in _ESS_KEYS
+    )
+    if sensitive and 0 < value < minimum_count:
         return f"<{minimum_count}"
     return value
