@@ -472,7 +472,16 @@ class UKMeasuredRotatedHoldout(DiagnosticsModel):
     method: Literal["rotated_folds"]
     target_loss_cap: PositiveFiniteFloat
     loss_weight_scale: Literal["held_local_grains_only"]
-    target_weight_rule: Literal["uniform", "grain_equal"]
+    # The UK local target-weight vocabulary (microcosm#1124); a microcosm-build
+    # test pins it to ``UK_LOCAL_TARGET_WEIGHT_RULES``.
+    target_weight_rule: Literal[
+        "uniform",
+        "grain_equal",
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ]
     population: Literal["held_out_local_targets"]
     grains: list[Literal["constituency", "local_authority", "la"]] = Field(min_length=1)
     n_folds: Annotated[int, Field(ge=2)]

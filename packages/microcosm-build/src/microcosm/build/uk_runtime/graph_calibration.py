@@ -54,7 +54,7 @@ from microcosm.graph.canonical import canonical_json
 from . import dataset_size, size_checkpoint
 from .dataset_size import UKSizeDraw, UKSizeSelection
 from .graph_population import context_frame, population_slices
-from .local_doctrine import UK_LOCAL_SOLVE_EPOCHS
+from .local_doctrine import UK_LOCAL_SOLVE_EPOCHS, UK_LOCAL_TARGET_WEIGHT_RULES
 
 SIZE_SEARCH_TYPE = ArtifactType("microcosm.uk.size-search", 1)
 SIZE_DRAW_TYPE = ArtifactType("microcosm.uk.size-draw", 1)
@@ -98,6 +98,14 @@ class UKGraphCalibrationConfig:
         dataset_size._check_pi_hi(self.selection_pi_hi)
         dataset_size._check_initial_lambda(self.selection_initial_lambda)
         dataset_size._check_baseline_pi_floor(self.baseline_pi_floor)
+        if self.target_weight_rule not in (
+            *UK_LOCAL_TARGET_WEIGHT_RULES,
+            "family_equal",
+        ):
+            raise ValueError(
+                f"Unknown target_weight_rule {self.target_weight_rule!r}; admitted: "
+                f"{(*UK_LOCAL_TARGET_WEIGHT_RULES, 'family_equal')}."
+            )
 
 
 @dataclass(frozen=True)

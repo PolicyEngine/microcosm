@@ -145,6 +145,7 @@ from .graph_terminal import (
     register_uk_terminal_kernels,
     rowwise_candidate_manifest_from_graph,
 )
+from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
@@ -429,7 +430,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--target-weight-rule",
-        choices=("uniform", "grain_equal", "family_equal"),
+        choices=(
+            "uniform",
+            "grain_equal",
+            "family_equal",
+            *UK_LOCAL_ROW_METADATA_RULES,
+        ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",
     )
     parser.add_argument("--engine-blocks", type=int, default=1)

@@ -109,6 +109,33 @@ def test_dense_role_refuses_the_national_knobs(tmp_path, extra, needle):
     assert needle in str(excinfo.value)
 
 
+def test_dense_role_admits_the_row_metadata_rules_as_candidate_overrides(tmp_path):
+    """microcosm#1124: candidate-only rules; release candidates and the national role refuse them."""
+    for rule in (
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ):
+        args = arguments(tmp_path, "--target-weight-rule", rule)
+        cli.validate_cli_args(args)
+        assert args.target_weight_rule == rule
+    with pytest.raises(ValueError, match="--release-candidate refuses non-release"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--target-weight-rule",
+                "grain_family_equal",
+            )
+        )
+    national = cli.parse_args(
+        _national_argv(tmp_path, "--target-weight-rule", "grain_family_equal")
+    )
+    with pytest.raises(ValueError, match="--target-weight-rule grain_family_equal"):
+        cli.validate_cli_args(national)
+
+
 def test_engine_blocks_must_be_positive_and_equal_the_clone_count(tmp_path):
     """The per-clone engine block count is either one or the clone count."""
     with pytest.raises(ValueError, match="must equal --n-clones"):

@@ -1082,7 +1082,14 @@ class UKFullHoldoutKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from ..country_spec import load_country_spec
-        from . import dataset_size, graph_targets, local_rowwise
+        from . import (
+            dataset_size,
+            graph_targets,
+            local_doctrine,
+            local_rowwise,
+            national_doctrine,
+            target_weights,
+        )
 
         return hashlib.sha256(
             canonical_json(
@@ -1092,6 +1099,9 @@ class UKFullHoldoutKernel(KernelBase):
                         graph_targets,
                         local_rowwise,
                         dataset_size,
+                        local_doctrine,
+                        national_doctrine,
+                        target_weights,
                         dependencies=self.capabilities.dependencies,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
@@ -1656,6 +1666,15 @@ def rowwise_candidate_manifest_from_graph(
                         "default": posture.target_weight_rule,
                         "effective": args.target_weight_rule,
                     }
+                }
+            ),
+            **(
+                {}
+                if "target_loss_weight_receipt" not in bindings
+                else {
+                    "target_loss_weight_receipt": dict(
+                        bindings["target_loss_weight_receipt"]
+                    )
                 }
             ),
             "measure_resolution": dict(bindings.get("measure_resolution", {})),
