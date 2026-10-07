@@ -8,7 +8,9 @@ international populations and law-anchored concepts. **Amended 2026-10-07:**
 schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
 Zealand mapping binds it, as a deferred `Family` binding; the other three
-mappings list it as unmapped with a reason.
+mappings list it as unmapped with a reason. A scale, sum, share or fraction now
+computes from annual flows only (invariant 11), so none of them can rescale the
+stock, add it to a year's income, or split it.
 
 ## Context
 
@@ -130,7 +132,7 @@ binds engine inputs to concepts. Each binding states:
   another input holds whole, a fixed scale (annual to weekly or monthly), a
   positivity test, sum, product, allocation to the reference person, a
   predicate, a relationship role, a co-resident child count, or a take-up
-  threshold;
+  threshold. A scale, sum, share or fraction computes from annual flows only;
 - the relation, in the same vocabulary;
 - the evidence, quoting the engine's own definition or how builds populate the
   input.
@@ -276,6 +278,27 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     round-trips through JSON. Malformed input raises `ValueError` and never
     another exception, whatever is corrupted; a missing, unexpected or
     wrongly typed field is named.
+11. **Arithmetic reads annual flows.** A scale, sum, share or fraction binding
+    computes only from concepts whose declared temporal basis is
+    `annual_flow`: every concept in its `concepts`. A stock such as
+    `liquid_financial_assets` has no weekly value and cannot be added to a
+    year's income. The rule also refuses a scale of a usual rate or a
+    persistent draw. The household reference person that a binding allocated
+    to the reference unit also reads, to place its value, is not an operand,
+    and the rule does not check it. The rule is enforced at construction. Any
+    such binding that computes from another basis is refused, and the same
+    binding with an annual flow in its place validates. In every mapping, an
+    edit that feeds a concept that is not an annual flow to one of these
+    transforms is refused, though the edit would validate if that concept
+    were an annual flow. Two checks are exhaustive rather than sampled.
+    Redeclaring any operand of a committed arithmetic binding under another
+    basis refuses that binding, while redeclaring its placement pointer
+    leaves it valid. Redeclaring anything any other committed binding reads
+    leaves that binding valid. Every committed mapping validates. Other
+    transforms are outside the rule. The New Zealand binding reads the stock
+    through an identity whose group rule sums it over a family's members, and
+    policyengine-uk's hours input is a product of usual weekly hours and
+    weeks worked.
 
 ## Consequences
 
