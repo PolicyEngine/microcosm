@@ -1,13 +1,16 @@
 import json
 import os
 import socket
-import sqlite3
 import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
+
+from alembic import command
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+from sqlalchemy.orm import Session
 
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
@@ -20,8 +23,24 @@ from microcosm.build.telemetry_emitter_service import (
 )
 from microcosm.build.telemetry_emitter_service import collector as collector_module
 from microcosm.build.telemetry_emitter_service import resources as resources_module
+from microcosm.build.telemetry_emitter_service import spool as spool_module
 from microcosm.build.telemetry_emitter_service.constants import (
     PRODUCTION_COLLECTOR_URL,
+)
+from microcosm.build.telemetry_emitter_service.database import (
+    create_spool_engine,
+    sqlite_database_url,
+)
+from microcosm.build.telemetry_emitter_service.migrations import (
+    alembic_config,
+    current_database_revision,
+    migration_head_revision,
+)
+from microcosm.build.telemetry_emitter_service.models import (
+    SpoolModel,
+    TelemetryEventRecord,
+    TelemetryRunRecord,
+    serialized_json_length,
 )
 from microcosm.build.telemetry_protocol import (
     BUILD_COMPLETED_MESSAGE,
@@ -136,7 +155,8 @@ def test_outbound_payload_redacts_credentials_and_tracebacks() -> None:
 
 
 def test_event_spool_assigns_stable_sequences_and_acknowledges(tmp_path) -> None:
-    spool = EventSpool(tmp_path / "events.sqlite3")
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
     registration = _registration()
     spool.register(registration)
 
@@ -153,6 +173,19 @@ def test_event_spool_assigns_stable_sequences_and_acknowledges(tmp_path) -> None
 
     spool.acknowledge([first["event_id"]])
     assert [event["sequence"] for event in spool.batch("run-a", "producer-a")] == [2]
+    assert current_database_revision(spool_path) == migration_head_revision()
+
+
+def test_alembic_schema_matches_sqlalchemy_models(tmp_path) -> None:
+    spool_path = tmp_path / "events.sqlite3"
+    EventSpool(spool_path)
+    engine = create_spool_engine(spool_path)
+    try:
+        with engine.begin() as connection:
+            with alembic_config(connection=connection) as config:
+                command.check(config)
+    finally:
+        engine.dispose()
 
 
 def test_sequential_stage_updates_close_the_previous_stage() -> None:
@@ -200,54 +233,114 @@ def test_event_spool_keeps_repeated_run_producers_separate(tmp_path) -> None:
 def test_pre_eligibility_spool_is_not_uploaded_after_upgrade(tmp_path) -> None:
     path = tmp_path / "events.sqlite3"
     registration = _registration()
-    connection = sqlite3.connect(path)
-    connection.executescript(
-        """
-        CREATE TABLE telemetry_runs (
-            run_id TEXT NOT NULL,
-            producer_id TEXT NOT NULL,
-            registration_json TEXT NOT NULL,
-            next_sequence INTEGER NOT NULL DEFAULT 1,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY(run_id, producer_id)
-        );
-        CREATE TABLE telemetry_events (
-            event_id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL,
-            producer_id TEXT NOT NULL,
-            sequence INTEGER NOT NULL,
-            payload_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            UNIQUE(run_id, producer_id, sequence)
-        );
-        """
+    metadata = MetaData()
+    runs = Table(
+        "telemetry_runs",
+        metadata,
+        Column("run_id", String, primary_key=True),
+        Column("producer_id", String, primary_key=True),
+        Column("registration_json", String, nullable=False),
+        Column("next_sequence", Integer, nullable=False, default=1),
+        Column("updated_at", String, nullable=False),
     )
-    connection.execute(
-        "INSERT INTO telemetry_runs VALUES (?, ?, ?, 2, ?)",
-        (
-            "run-a",
-            "producer-a",
-            json.dumps(registration),
-            "2026-10-02T10:00:00+00:00",
-        ),
+    events = Table(
+        "telemetry_events",
+        metadata,
+        Column("event_id", String, primary_key=True),
+        Column("run_id", String, nullable=False),
+        Column("producer_id", String, nullable=False),
+        Column("sequence", Integer, nullable=False),
+        Column("payload_json", String, nullable=False),
+        Column("created_at", String, nullable=False),
     )
-    connection.execute(
-        "INSERT INTO telemetry_events VALUES (?, ?, ?, 1, ?, ?)",
-        (
-            "old-event",
-            "run-a",
-            "producer-a",
-            json.dumps({"event_id": "old-event"}),
-            "2026-10-02T10:00:00+00:00",
-        ),
-    )
-    connection.commit()
-    connection.close()
+    engine = create_engine(sqlite_database_url(path))
+    metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            runs.insert().values(
+                run_id="run-a",
+                producer_id="producer-a",
+                registration_json=json.dumps(registration),
+                next_sequence=2,
+                updated_at="2026-10-02T10:00:00+00:00",
+            )
+        )
+        connection.execute(
+            events.insert().values(
+                event_id="old-event",
+                run_id="run-a",
+                producer_id="producer-a",
+                sequence=1,
+                payload_json=json.dumps({"event_id": "old-event"}),
+                created_at="2026-10-02T10:00:00+00:00",
+            )
+        )
+    engine.dispose()
 
     spool = EventSpool(path)
 
     assert spool.has_pending()
     assert spool.pending_runs() == []
+    assert current_database_revision(path) == migration_head_revision()
+
+
+def test_current_pre_alembic_spool_is_adopted_without_losing_events(tmp_path) -> None:
+    path = tmp_path / "events.sqlite3"
+    registration = _registration()
+    engine = create_engine(sqlite_database_url(path))
+    SpoolModel.metadata.create_all(engine)
+    with Session(engine) as session, session.begin():
+        session.add(
+            TelemetryRunRecord(
+                run_id="run-a",
+                producer_id="producer-a",
+                registration=registration,
+                next_sequence=2,
+                upload_state="pending",
+                local_only_reason=None,
+                updated_at="2026-10-02T10:00:00+00:00",
+            )
+        )
+        session.add(
+            TelemetryEventRecord(
+                event_id="existing-event",
+                run_id="run-a",
+                producer_id="producer-a",
+                sequence=1,
+                payload={"event_id": "existing-event", "sequence": 1},
+                created_at="2026-10-02T10:00:00+00:00",
+            )
+        )
+    engine.dispose()
+
+    spool = EventSpool(path)
+
+    assert spool.pending_runs() == [registration]
+    assert spool.batch("run-a", "producer-a") == [
+        {"event_id": "existing-event", "sequence": 1}
+    ]
+    assert current_database_revision(path) == migration_head_revision()
+
+
+def test_event_spool_prunes_oldest_events_to_size_limit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    registration = _registration()
+    spool.register(registration)
+    first = spool.append(registration, _event("first"))
+    second = spool.append(registration, _event("second"))
+    monkeypatch.setattr(
+        spool_module,
+        "MAX_QUEUED_BYTES",
+        serialized_json_length(second),
+    )
+
+    spool.prune()
+
+    assert first["event_id"] != second["event_id"]
+    assert spool.batch("run-a", "producer-a") == [second]
 
 
 def test_collector_delivery_exchanges_hf_token_then_flushes(
