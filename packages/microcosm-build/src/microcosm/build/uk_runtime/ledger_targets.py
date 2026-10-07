@@ -17,8 +17,8 @@ import pandas as pd
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.cross_grain import (
-    CrossGrainBridge,
     CrossGrainRule,
+    apply_cross_grain_partitions,
     apply_cross_grain_reconciliation,
 )
 from microcosm.build.ledger_targets import (
@@ -32,6 +32,13 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.cross_grain_declarations import (
+    assert_uk_cross_grain_coverage,
+    load_uk_cross_grain_declarations,
+    uk_cross_grain_bridges,
+    uk_cross_grain_grain,
+    uk_cross_grain_partitions,
+)
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
@@ -164,105 +171,49 @@ def uk_cross_grain_leg_of_area(
 #: the leg licences derive from.
 _uk_cross_grain_leg_of_area = uk_cross_grain_leg_of_area()
 
-UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "region", "constituency", "la")
+_UK_CROSS_GRAIN_DECLARATIONS = load_uk_cross_grain_declarations()
+#: Country (UK, GB, England and Wales) > nation > region > the two local
+#: grains (microcosm#1123): a nation row on England's code sits between the
+#: UK row and the English regions; Wales, Scotland and Northern Ireland are
+#: one leg each at whichever of the nation or region tier their family binds.
+UK_CROSS_GRAIN_GRAIN_PRECEDENCE: tuple[str, ...] = tuple(
+    _UK_CROSS_GRAIN_DECLARATIONS["grain_precedence"]
+)
 UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS: dict[str, tuple[str, ...]] = {
     **{code: (code,) for code in UK_REGION_TIER_CODES},
     "K02000001": UK_REGION_TIER_CODES,
     "K03000001": (*_UK_ENGLISH_REGION_CODES, "W92000004", "S92000003"),
+    "K04000001": (*_UK_ENGLISH_REGION_CODES, "W92000004"),
     "E92000001": _UK_ENGLISH_REGION_CODES,
 }
-UK_CROSS_GRAIN_BRIDGES = (
-    CrossGrainBridge(
-        bridge_id="national_household_composition_partition_vs_census_households",
-        concept="uk.household.count",
-        higher_target_ids=(
-            "ons.household_composition.lone_households_under_65",
-            "ons.household_composition.lone_households_over_65",
-            "ons.household_composition.unrelated_adult_households",
-            "ons.household_composition.couple_no_children_households",
-            "ons.household_composition.couple_under_3_children_households",
-            "ons.household_composition.couple_3_plus_children_households",
-            "ons.household_composition.couple_non_dependent_children_only_households",
-            "ons.household_composition.lone_parent_dependent_children_households",
-            "ons.household_composition.lone_parent_non_dependent_children_households",
-            "ons.household_composition.multi_family_households",
-        ),
-        lower_side=f"contract:{UK_CENSUS_HOUSEHOLDS_TARGET_ID}",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_uc_caseload_vs_uc_households_by_area",
-        concept="uk.benefit_unit.count",
-        higher_target_ids=("dwp.uc.households",),
-        lower_side="contract:dwp.uc.households_by_area",
-    ),
-    # The ONS controls use inclusive integer-age bands (0--9), while local
-    # targets use equivalent half-open encodings (0--10), so their signatures
-    # cannot match directly. These bridges let the region-tier controls (one
-    # row per English region and per nation, microcosm#905) rescale both
-    # constituency and local-authority bands over their twelve legs.
-    CrossGrainBridge(
-        bridge_id="national_age_0_9_vs_local_age_0_10",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_0_9_by_region",),
-        lower_side="contract:ons.age.0_10",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_10_19_vs_local_age_10_20",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_10_19_by_region",),
-        lower_side="contract:ons.age.10_20",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_20_29_vs_local_age_20_30",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_20_29_by_region",),
-        lower_side="contract:ons.age.20_30",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_30_39_vs_local_age_30_40",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_30_39_by_region",),
-        lower_side="contract:ons.age.30_40",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_40_49_vs_local_age_40_50",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_40_49_by_region",),
-        lower_side="contract:ons.age.40_50",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_50_59_vs_local_age_50_60",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_50_59_by_region",),
-        lower_side="contract:ons.age.50_60",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_60_69_vs_local_age_60_70",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_60_69_by_region",),
-        lower_side="contract:ons.age.60_70",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_70_79_vs_local_age_70_80",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_70_79_by_region",),
-        lower_side="contract:ons.age.70_80",
-    ),
-)
-# A future move of these declarations into country-package spec JSON follows
-# the country-owned specification direction established in microcosm#159.
+#: The bridges live in ``uk/cross_grain_declarations.json`` with their
+#: reasons; the country-spec fingerprint covers the file.
+UK_CROSS_GRAIN_BRIDGES = uk_cross_grain_bridges(_UK_CROSS_GRAIN_DECLARATIONS)
+UK_CROSS_GRAIN_PARTITIONS = uk_cross_grain_partitions(_UK_CROSS_GRAIN_DECLARATIONS)
 UK_CROSS_GRAIN_RULE = CrossGrainRule(
     grain_precedence=UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
-    signature_fields=("concept", "entity", "map_to", "filters"),
+    signature_fields=tuple(_UK_CROSS_GRAIN_DECLARATIONS["signature_fields"]),
     bridges=UK_CROSS_GRAIN_BRIDGES,
     leg_of_area=_uk_cross_grain_leg_of_area,
     parent_geography_legs=UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS,
-    # Country and region rows control the grains below them. With no
+    # Country, nation and region rows control the grains below them. With no
     # control-tier row in a group the operator keeps the standing
     # single-winner rule, so a local-only family still reconciles authorities
     # to constituencies over their legs, as it did before the region tier.
-    control_grains=("country", "region"),
+    control_grains=tuple(_UK_CROSS_GRAIN_DECLARATIONS["control_grains"]),
 )
+
+
+@functools.lru_cache(maxsize=1)
+def uk_cross_grain_coverage_receipt() -> dict[str, Any]:
+    """The enforced coverage check over the committed contract (#1123).
+
+    Refuses an undeclared multi-grain overlap or local target without a
+    control; the receipt lists the gaps the doctrine-exception ledger still
+    tolerates.
+    """
+
+    return assert_uk_cross_grain_coverage(_uk_contract_targets(national_only=False))
 
 
 #: The incumbent's regional row spellings: ``ons/<slug>_age_<lo>_<hi>`` uses
@@ -1667,6 +1618,37 @@ def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
     return level, geography_id
 
 
+@functools.lru_cache(maxsize=1)
+def uk_cross_grain_contract_signatures() -> Mapping[str, Mapping[str, Any]]:
+    """The contract as the operator groups it (microcosm#1123).
+
+    A target declared ``signature_incomplete`` (its binding's filters or
+    groupby carry the population its measurement block leaves open) gets a
+    measurement of its own, so it never exact-matches another target: the
+    two-child-limit rows and the Scottish under-one UC row would otherwise share
+    one signature, and with the nation grain the Scottish row would sit under
+    the GB rows as if it were their part. Its relations are declared by hand.
+    """
+
+    incomplete = {
+        str(target_id)
+        for group in _UK_CROSS_GRAIN_DECLARATIONS.get("signature_incomplete", ())
+        for target_id in group["targets"]
+    }
+    contract = _uk_contract_targets(national_only=False)
+    signatures: dict[str, Mapping[str, Any]] = {}
+    for target_id, target in contract.items():
+        if target_id in incomplete:
+            measurement = dict(target.get("measurement") or {})
+            measurement["filters"] = [
+                {"concept": "uk.target_identity", "equals": target_id}
+            ]
+            signatures[target_id] = {**target, "measurement": measurement}
+        else:
+            signatures[target_id] = target
+    return MappingProxyType(signatures)
+
+
 def apply_uk_cross_grain_reconciliation(
     local_frame: pd.DataFrame,
     bound_higher_targets: Iterable[str],
@@ -1702,7 +1684,7 @@ def apply_uk_cross_grain_reconciliation(
     return apply_cross_grain_reconciliation(
         local_frame,
         bound_higher_targets,
-        _uk_contract_targets(national_only=False),
+        uk_cross_grain_contract_signatures(),
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
@@ -2172,7 +2154,7 @@ def uk_local_target_surface(
             # but on the surface those rows are the same ITL1 tier as the
             # nine English regions and must not outrank them (microcosm#905).
             # The selector and ledger metadata keep Chronicle's level.
-            grain = str(spec.metadata.get("cross_grain_grain") or geography_level)
+            grain = uk_cross_grain_grain(spec.metadata, geography_level, geography_id)
             if grain not in UK_CROSS_GRAIN_GRAIN_PRECEDENCE:
                 raise ValueError(
                     f"UK national target cell {spec.name!r} declares "
@@ -2275,14 +2257,21 @@ def uk_local_target_surface(
         reconciliation_rows,
         columns=["grain", "geography_id", "target_id", "value", "_output_position"],
     )
+    coverage = uk_cross_grain_coverage_receipt()
+    raw_surface = reconciliation[["grain", "geography_id", "target_id", "value"]]
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
-        reconciliation[["grain", "geography_id", "target_id", "value"]],
+        raw_surface,
         bound_control_ids,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licensed_empty_legs,
         area_region_codes=area_region_codes,
     )
+    reconciled, partition_receipt = apply_cross_grain_partitions(
+        raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
+    )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
+    receipt["partitions"] = partition_receipt
+    receipt["coverage"] = coverage
 
     def cell_receipt(
         holds: list[dict[str, Any]],

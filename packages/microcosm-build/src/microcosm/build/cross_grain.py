@@ -24,6 +24,10 @@ _CLOSURE_RTOL = 1e-9
 # factor, so the vanishing-total refusal is relative to the control rather than
 # an exact-zero test.
 _MIN_LEG_SUM_RTOL = 1e-9
+# Two controls over the same legs agree when they differ by summation order
+# only: a control summed from member rows (a partition parent) and the same
+# total read from one row can differ in the last bits.
+_CONTROL_AGREEMENT_RTOL = 1e-12
 # Absent, null, and empty signature values are one canonical "unspecified", so
 # two spellings of the same measurement cannot land in different groups.
 _UNSPECIFIED = ("<unspecified>",)
@@ -293,6 +297,18 @@ def _reconcile_cross_grain_surface_with_control_receipts(
         key = (group.inconsistency_id.rsplit(":", 1)[0], group.lower_grain)
         pairs_per_key[key] = pairs_per_key.get(key, 0) + 1
     pairs_seen: dict[tuple[str, str], int] = {}
+    # Per group identity, the targets on its leaf grains: a leg a middle tier
+    # leaves empty is genuinely empty only when every leaf target is licensed
+    # empty there too.
+    leaf_targets: dict[str, set[str]] = {}
+    for group in materialized_groups:
+        identity = group.inconsistency_id.rsplit(":", 1)[0]
+        bucket = leaf_targets.setdefault(identity, set())
+        if group.lower_grain not in control_grains:
+            bucket.update(
+                str(reconciled.iloc[position][columns["target_id"]])
+                for position in group.lower_positions
+            )
     for group in materialized_groups:
         controls = _winning_controls(reconciled, group, columns, rule)
         claim_key = (group.inconsistency_id.rsplit(":", 1)[0], group.lower_grain)
@@ -302,17 +318,20 @@ def _reconcile_cross_grain_surface_with_control_receipts(
         already = claimed.setdefault(claim_key, set())
         lower_by_leg_all: dict[str, list[int]] = {}
         lower_by_leg: dict[str, list[int]] = {}
+        row_legs: dict[int, tuple[str, ...]] = {}
         for position in group.lower_positions:
             area = str(reconciled.iloc[position][columns["geography_id"]])
-            leg = str(rule.leg_of_area(area))
-            if not leg:
+            legs = _row_legs(area, rule)
+            if not legs:
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     f"maps area {area!r} to a blank leg."
                 )
-            lower_by_leg_all.setdefault(leg, []).append(position)
-            if position not in already:
-                lower_by_leg.setdefault(leg, []).append(position)
+            row_legs[position] = legs
+            for leg in legs:
+                lower_by_leg_all.setdefault(leg, []).append(position)
+                if position not in already:
+                    lower_by_leg.setdefault(leg, []).append(position)
 
         lower_target_ids = tuple(
             sorted(
@@ -327,10 +346,9 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             for leg in control["covered_legs"]:
                 existing = assigned_controls.get(leg)
                 if existing is not None:
-                    if (
-                        existing["covered_legs"] != control["covered_legs"]
-                        or existing["value"] != control["value"]
-                    ):
+                    if existing["covered_legs"] != control[
+                        "covered_legs"
+                    ] or not _controls_agree(existing["value"], control["value"]):
                         raise ValueError(
                             "cross-grain inconsistency "
                             f"{group.inconsistency_id!r} has two different "
@@ -362,11 +380,9 @@ def _reconcile_cross_grain_surface_with_control_receipts(
 
         populated_controls: list[dict[str, Any]] = []
         for control in controls:
-            positions = [
-                position
-                for leg in control["covered_legs"]
-                for position in lower_by_leg.get(leg, ())
-            ]
+            positions = _control_positions(
+                control, lower_by_leg, row_legs, group.inconsistency_id
+            )
             delegated = [
                 leg
                 for leg in control["covered_legs"]
@@ -383,6 +399,31 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                     "alongside legs it must still reconcile; a control cannot "
                     "be split across tiers."
                 )
+            if positions and empty and group.lower_grain in control_grains:
+                # A middle tier present on some of the control's legs and on no
+                # row at all on the others would take the whole control onto
+                # the legs it covers. Only legs licensed empty for every leaf
+                # target (no data at any grain) may be left out.
+                identity = group.inconsistency_id.rsplit(":", 1)[0]
+                required = sorted(leaf_targets.get(identity) or lower_target_ids)
+                unlicensed_legs = sorted(
+                    leg
+                    for leg in empty
+                    if any(
+                        leg
+                        not in _licensed_legs_for_target(target_id, licensed_empty_legs)
+                        for target_id in required
+                    )
+                )
+                if unlicensed_legs:
+                    raise ValueError(
+                        f"cross-grain inconsistency {group.inconsistency_id!r} "
+                        f"control {control['parent_geography_id']!r} has rows at "
+                        f"grain {group.lower_grain!r} on some legs and no row at "
+                        f"that grain on {unlicensed_legs}, which are not licensed "
+                        "empty; a partial tier would take the whole control onto "
+                        "the legs it covers."
+                    )
             if positions:
                 populated_controls.append(control)
                 continue
@@ -459,11 +500,9 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             if control_key in used_controls:
                 continue
             used_controls.add(control_key)
-            positions = [
-                position
-                for leg in control["covered_legs"]
-                for position in lower_by_leg.get(leg, ())
-            ]
+            positions = _control_positions(
+                control, lower_by_leg, row_legs, group.inconsistency_id
+            )
             raw_values = reconciled.iloc[positions][columns["value"]].to_numpy(
                 dtype=np.float64
             )
@@ -646,6 +685,182 @@ def apply_cross_grain_reconciliation(
         ),
     }
     return reconciled, receipt
+
+
+PARTITION_KINDS = ("exhaustive", "share_of_parent")
+
+
+@dataclass(frozen=True)
+class CrossGrainPartition:
+    """Member targets that divide one parent target at the same geography.
+
+    ``exhaustive``: the members sum to the parent, so they are rescaled jointly
+    onto it (council-tax bands onto the authority's total). ``share_of_parent``:
+    the members cover part of the parent (tenure categories the census also
+    splits into shared ownership and rent-free), so they move by the parent's
+    own reconciliation factor and keep their shares.
+    """
+
+    partition_id: str
+    parent_target_id: str
+    member_target_ids: tuple[str, ...]
+    kind: str = "exhaustive"
+
+
+def apply_cross_grain_partitions(
+    raw_frame: pd.DataFrame,
+    reconciled_frame: pd.DataFrame,
+    partitions: Iterable[CrossGrainPartition],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Rescale each partition's members onto their reconciled parent.
+
+    Runs after :func:`apply_cross_grain_reconciliation`: ``raw_frame`` is its
+    input and ``reconciled_frame`` its output, row for row, so a
+    ``share_of_parent`` partition reads the parent's own factor. A geography
+    with the parent and no members is recorded; one with some members but not
+    all is refused, since rescaling a partial set onto the whole parent would
+    move the missing members' mass onto the present ones.
+    """
+
+    columns = _surface_columns(reconciled_frame)
+    if len(raw_frame) != len(reconciled_frame):
+        raise ValueError("cross-grain partitions need the raw and reconciled surface.")
+    partitions = tuple(partitions)
+    _validate_partitions(partitions)
+    out = reconciled_frame.copy(deep=True)
+    value_column = out.columns.get_loc(columns["value"])
+    raw_values = raw_frame[columns["value"]].to_numpy(dtype=np.float64)
+    target_ids = [
+        _contract_target_id(str(value)) for value in out[columns["target_id"]]
+    ]
+    cells: dict[tuple[str, str], dict[str, list[int]]] = {}
+    for position, (grain, geography_id, target_id) in enumerate(
+        zip(
+            out[columns["grain"]], out[columns["geography_id"]], target_ids, strict=True
+        )
+    ):
+        cells.setdefault((str(grain), str(geography_id)), {}).setdefault(
+            target_id, []
+        ).append(position)
+    receipts: list[dict[str, Any]] = []
+    parents_without_members: list[dict[str, Any]] = []
+    for partition in partitions:
+        legs: list[dict[str, Any]] = []
+        for (grain, geography_id), by_target in sorted(cells.items()):
+            parent_rows = by_target.get(partition.parent_target_id, [])
+            if not parent_rows:
+                continue
+            if len(parent_rows) != 1:
+                raise ValueError(
+                    f"cross-grain partition {partition.partition_id!r} has "
+                    f"{len(parent_rows)} parent rows at {geography_id!r}."
+                )
+            present = [
+                member for member in partition.member_target_ids if member in by_target
+            ]
+            if not present:
+                parents_without_members.append(
+                    {
+                        "partition_id": partition.partition_id,
+                        "grain": grain,
+                        "geography_id": geography_id,
+                    }
+                )
+                continue
+            if len(present) != len(partition.member_target_ids):
+                missing = sorted(set(partition.member_target_ids) - set(present))
+                raise ValueError(
+                    f"cross-grain partition {partition.partition_id!r} at "
+                    f"{geography_id!r} lacks member(s) {missing}."
+                )
+            positions = [
+                position for member in present for position in by_target[member]
+            ]
+            parent = parent_rows[0]
+            parent_value = float(out.iloc[parent][columns["value"]])
+            member_values = out.iloc[positions][columns["value"]].to_numpy(
+                dtype=np.float64
+            )
+            old_total = float(member_values.sum())
+            if partition.kind == "exhaustive":
+                if abs(old_total) < _MIN_LEG_SUM_RTOL * abs(parent_value):
+                    raise ValueError(
+                        f"cross-grain partition {partition.partition_id!r} at "
+                        f"{geography_id!r} cannot scale a vanishing member total."
+                    )
+                factor = 1.0 if old_total == 0.0 else parent_value / old_total
+                expected_total = parent_value
+            else:
+                raw_parent = float(raw_values[parent])
+                if raw_parent == 0.0:
+                    factor = 1.0
+                else:
+                    factor = parent_value / raw_parent
+                expected_total = old_total * factor
+            if not np.isfinite(factor) or factor < 0.0:
+                raise ValueError(
+                    f"cross-grain partition {partition.partition_id!r} at "
+                    f"{geography_id!r} produced factor {factor!r}."
+                )
+            out.iloc[positions, value_column] = member_values * factor
+            new_total = float(
+                out.iloc[positions][columns["value"]].to_numpy(dtype=np.float64).sum()
+            )
+            if not np.isclose(new_total, expected_total, rtol=_CLOSURE_RTOL, atol=0.0):
+                raise ValueError(
+                    f"cross-grain partition {partition.partition_id!r} left "
+                    f"{geography_id!r} at {new_total!r} against {expected_total!r}."
+                )
+            legs.append(
+                {
+                    "grain": grain,
+                    "geography_id": geography_id,
+                    "parent_value": parent_value,
+                    "old_total": old_total,
+                    "new_total": new_total,
+                    "declared_factor": factor,
+                }
+            )
+        receipts.append(
+            {
+                "partition_id": partition.partition_id,
+                "kind": partition.kind,
+                "parent_target_id": partition.parent_target_id,
+                "member_target_ids": list(partition.member_target_ids),
+                "cells": legs,
+            }
+        )
+    return out, {
+        "partitions": receipts,
+        "parents_without_members": parents_without_members,
+    }
+
+
+def _validate_partitions(partitions: tuple[CrossGrainPartition, ...]) -> None:
+    _require_unique_nonblank(
+        tuple(partition.partition_id for partition in partitions),
+        label="partition ids",
+    )
+    for partition in partitions:
+        if partition.kind not in PARTITION_KINDS:
+            raise ValueError(
+                f"cross-grain partition {partition.partition_id!r} has unknown "
+                f"kind {partition.kind!r}; expected one of {PARTITION_KINDS}."
+            )
+        if not partition.parent_target_id or not partition.member_target_ids:
+            raise ValueError(
+                f"cross-grain partition {partition.partition_id!r} has a blank "
+                "parent or no members."
+            )
+        _require_unique_nonblank(
+            partition.member_target_ids,
+            label=f"partition {partition.partition_id!r} members",
+        )
+        if partition.parent_target_id in partition.member_target_ids:
+            raise ValueError(
+                f"cross-grain partition {partition.partition_id!r} lists its "
+                "parent as a member."
+            )
 
 
 def _reviewed_unbound_bridges(
@@ -906,6 +1121,57 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _row_legs(geography_id: str, rule: CrossGrainRule) -> tuple[str, ...]:
+    """The legs one lower row covers.
+
+    A row on a declared parent geography covers that geography's legs, so a
+    nation row (England) sits under a country control across all of its
+    regions; any other row covers the one leg its area maps to.
+    """
+
+    declared = rule.parent_geography_legs.get(geography_id)
+    if declared is not None:
+        return tuple(str(leg) for leg in declared)
+    leg = str(rule.leg_of_area(geography_id))
+    return (leg,) if leg else ()
+
+
+def _control_positions(
+    control: Mapping[str, Any],
+    lower_by_leg: Mapping[str, list[int]],
+    row_legs: Mapping[int, tuple[str, ...]],
+    inconsistency_id: str,
+) -> list[int]:
+    """The unclaimed lower rows on a control's legs, each once.
+
+    A row whose legs are not all inside the control's would be rescaled by a
+    factor computed for a different total, so it is refused.
+    """
+
+    covered = tuple(control["covered_legs"])
+    positions = list(
+        dict.fromkeys(
+            position for leg in covered for position in lower_by_leg.get(leg, ())
+        )
+    )
+    for position in positions:
+        outside = sorted(set(row_legs[position]) - set(covered))
+        if outside:
+            raise ValueError(
+                f"cross-grain inconsistency {inconsistency_id!r}: a lower row "
+                f"spans leg(s) {outside} outside control "
+                f"{control['parent_geography_id']!r}; a row must sit inside one "
+                "control."
+            )
+    return positions
+
+
+def _controls_agree(left: float, right: float) -> bool:
+    return bool(
+        np.isclose(float(left), float(right), rtol=_CONTROL_AGREEMENT_RTOL, atol=0.0)
+    )
+
+
 def _winning_controls(
     frame: pd.DataFrame,
     group: CrossGrainInconsistency,
@@ -1031,7 +1297,9 @@ def _assert_compatible_overlapping_groups(
                 for control in right_controls
             }
             for coverage in set(left_by_coverage) & set(right_by_coverage):
-                if left_by_coverage[coverage] != right_by_coverage[coverage]:
+                if not _controls_agree(
+                    left_by_coverage[coverage], right_by_coverage[coverage]
+                ):
                     raise ValueError(
                         "cross-grain groups "
                         f"{left.inconsistency_id!r} and "

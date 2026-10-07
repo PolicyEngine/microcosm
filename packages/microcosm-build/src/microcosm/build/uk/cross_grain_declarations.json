@@ -1,0 +1,357 @@
+{
+  "schema_version": 1,
+  "description": "UK cross-grain reconciliation declarations (microcosm#802, #905, #1123). Every target bound at more than one geography grain, or overlapping another target's population at a different grain, reaches a control through an exact measurement signature, a bridge or a partition, or is declared here as a subset or an unreconciled local family with its reason. tools and tests read this file through microcosm.build.uk_runtime.cross_grain_declarations; the static coverage check refuses an undeclared overlap.",
+  "grain_precedence": [
+    "country",
+    "nation",
+    "region",
+    "constituency",
+    "la"
+  ],
+  "control_grains": [
+    "country",
+    "nation",
+    "region"
+  ],
+  "signature_fields": [
+    "concept",
+    "entity",
+    "map_to",
+    "filters"
+  ],
+  "nation_geography_ids": [
+    "E92000001",
+    "W92000004",
+    "S92000003",
+    "N92000002"
+  ],
+  "bridges": [
+    {
+      "bridge_id": "national_household_composition_partition_vs_census_households",
+      "concept": "uk.household.count",
+      "higher_target_ids": [
+        "ons.household_composition.lone_households_under_65",
+        "ons.household_composition.lone_households_over_65",
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.couple_no_children_households",
+        "ons.household_composition.couple_under_3_children_households",
+        "ons.household_composition.couple_3_plus_children_households",
+        "ons.household_composition.couple_non_dependent_children_only_households",
+        "ons.household_composition.lone_parent_dependent_children_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
+        "ons.household_composition.multi_family_households"
+      ],
+      "lower_side": "contract:ons.census.households",
+      "reason": "The ten ONS household-composition rows (Families and households, LFS) partition all UK households; their sum controls the census household cells at both local grains (microcosm#887)."
+    },
+    {
+      "bridge_id": "national_uc_caseload_vs_uc_households_by_area",
+      "concept": "uk.benefit_unit.count",
+      "higher_target_ids": [
+        "dwp.uc.households"
+      ],
+      "lower_side": "contract:dwp.uc.households_by_area",
+      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally)."
+    },
+    {
+      "bridge_id": "national_age_0_9_vs_local_age_0_10",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_0_9_by_region"
+      ],
+      "lower_side": "contract:ons.age.0_10",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_10_19_vs_local_age_10_20",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_10_19_by_region"
+      ],
+      "lower_side": "contract:ons.age.10_20",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_20_29_vs_local_age_20_30",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_20_29_by_region"
+      ],
+      "lower_side": "contract:ons.age.20_30",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_30_39_vs_local_age_30_40",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_30_39_by_region"
+      ],
+      "lower_side": "contract:ons.age.30_40",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_40_49_vs_local_age_40_50",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_40_49_by_region"
+      ],
+      "lower_side": "contract:ons.age.40_50",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_50_59_vs_local_age_50_60",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_50_59_by_region"
+      ],
+      "lower_side": "contract:ons.age.50_60",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_60_69_vs_local_age_60_70",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_60_69_by_region"
+      ],
+      "lower_side": "contract:ons.age.60_70",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    },
+    {
+      "bridge_id": "national_age_70_79_vs_local_age_70_80",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "ons.population.age_70_79_by_region"
+      ],
+      "lower_side": "contract:ons.age.70_80",
+      "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
+    }
+  ],
+  "partitions": [],
+  "local_routes": {
+    "ons.rent.private_rent": {
+      "route": "no_higher_control",
+      "reason": "ONS PIPR publishes area means, not a national private-rent total the frame binds; the local-authority rows are 12 x mean x reconciled private renters (uk_private_rent_mean_to_total), so they follow the tenure cells' reconciliation. Area-placed rents are PR B (microcosm#1123 item 4)."
+    },
+    "ons.equiv_net_income_bhc": {
+      "route": "no_higher_control",
+      "reason": "No pinned fact compiles at any area (the ONS small-area income estimates are MSOA-grain and carry no local-authority rows in the feed), so the target is inactive."
+    },
+    "ons.equiv_net_income_ahc": {
+      "route": "no_higher_control",
+      "reason": "No pinned fact compiles at any area (the ONS small-area income estimates are MSOA-grain and carry no local-authority rows in the feed), so the target is inactive."
+    },
+    "ons.equiv_housing_costs": {
+      "route": "no_higher_control",
+      "reason": "No pinned fact compiles at any area (the ONS small-area income estimates are MSOA-grain and carry no local-authority rows in the feed), so the target is inactive."
+    }
+  },
+  "relations": [
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_12570_15000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_15000_20000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_20000_30000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_30000_40000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_40000_50000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_50000_70000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_70000_100000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_100000_150000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_150000_200000"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "obr.income_tax",
+        "hmrc.spi_region.income_tax_by_region_200000_plus"
+      ],
+      "relation": "independent",
+      "reason": "OBR income tax is cash receipts in the fiscal year; the SPI regional rows are liabilities of taxpayers in one total-income band. Different concepts: the regional cells are neither a partition nor a bounded part of the OBR line."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.residential_property_taxpayers",
+        "hmrc.cgt.taxpayers_by_region"
+      ],
+      "relation": "subset",
+      "reason": "Residential-property CGT taxpayers are a subset of all CGT taxpayers, whose regional cells partition the UK total; parts <= whole."
+    },
+    {
+      "targets": [
+        "dft.bus_fare_receipts.england",
+        "dft.bus_fare_receipts.london"
+      ],
+      "relation": "subset",
+      "reason": "London's fare receipts are part of England's; the England-outside-London and UK rows that would close the partition are signed out."
+    },
+    {
+      "targets": [
+        "dft.bus_net_support.england",
+        "dft.bus_net_support.london"
+      ],
+      "relation": "subset",
+      "reason": "London's net support is part of England's; the England-outside-London and UK rows that would close the partition are signed out."
+    },
+    {
+      "targets": [
+        "ons.population.uk_total",
+        "ons.population.age_0_9_by_region"
+      ],
+      "relation": "subset",
+      "reason": "The region-tier age bands 0-9 to 80-89 sum to the UK total less the 90-and-over population, which no band binds; parts <= whole (same MYE edition)."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "hmrc.cgt.taxpayers_by_region"
+      ],
+      "relation": "subset",
+      "reason": "Taxpayers claiming Business Asset Disposal Relief or Investors' Relief are a subset of all CGT taxpayers, whose regional cells partition the UK total; parts <= whole."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.gains_by_region",
+        "hmrc.cgt.residential_property_gains"
+      ],
+      "relation": "subset",
+      "reason": "Residential-property gains are part of all chargeable gains, whose regional cells partition the UK total; parts <= whole."
+    }
+  ],
+  "signature_incomplete": [
+    {
+      "targets": [
+        "dft.bus_fare_receipts.england_outside_london",
+        "dft.bus_fare_receipts.london",
+        "dft.bus_net_support.england_outside_london",
+        "dft.bus_net_support.london"
+      ],
+      "reason": "The measurement carries no geography filter; the binding's region filters place the receipts. Their relation to England is declared under relations."
+    },
+    {
+      "targets": [
+        "dwp.uc.scotland_households_child_under_1",
+        "dwp.uc.two_child_limit.children_affected",
+        "dwp.uc.two_child_limit.children_claimant_pip",
+        "dwp.uc.two_child_limit.children_disabled_child_element",
+        "dwp.uc.two_child_limit.children_in_3_children_households",
+        "dwp.uc.two_child_limit.children_in_4_children_households",
+        "dwp.uc.two_child_limit.children_in_5_children_households",
+        "dwp.uc.two_child_limit.children_in_6_plus_children_households",
+        "dwp.uc.two_child_limit.children_in_affected_households",
+        "dwp.uc.two_child_limit.households_3_children",
+        "dwp.uc.two_child_limit.households_4_children",
+        "dwp.uc.two_child_limit.households_5_children",
+        "dwp.uc.two_child_limit.households_6_plus_children",
+        "dwp.uc.two_child_limit.households_affected",
+        "dwp.uc.two_child_limit.households_claimant_pip",
+        "dwp.uc.two_child_limit.households_disabled_child_element"
+      ],
+      "reason": "National-only Universal Credit sub-populations whose region and claim conditions sit in the binding's household_conditions. No other grain binds the same population."
+    },
+    {
+      "targets": [
+        "hmrc.itl.income_tax_by_total_income_band",
+        "hmrc.itl.total_income_by_total_income_band"
+      ],
+      "reason": "Banded by groupby on total income; the band is the fan-out dimension, not a measurement filter. The regional SPI cells' relation to these bands is a reconciliation (see target_doctrine_exceptions.json until it lands)."
+    },
+    {
+      "targets": [
+        "hmrc.spi.dividend_income.amount_by_total_income_band",
+        "hmrc.spi.employment_income.amount_by_total_income_band",
+        "hmrc.spi.private_pension_income.amount_by_total_income_band",
+        "hmrc.spi.property_income.amount_by_total_income_band",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "hmrc.spi.self_employment_income.amount_by_total_income_band",
+        "hmrc.spi.state_pension.amount_by_total_income_band"
+      ],
+      "reason": "Banded by groupby on total income. The employment and self-employment band partitions control the income-by-area cells (see target_doctrine_exceptions.json until that bridge lands); the other components have no other grain."
+    },
+    {
+      "targets": [
+        "hmrc.salary_sacrifice.users_above_cap",
+        "hmrc.salary_sacrifice.users_below_cap"
+      ],
+      "reason": "National-only populations defined by the salary-sacrifice binding filters."
+    },
+    {
+      "targets": [
+        "ons.population.uk_total"
+      ],
+      "reason": "The all-ages filter is in the binding; its relation to the age bands is declared under relations."
+    },
+    {
+      "targets": [
+        "ons.rent.private_rent"
+      ],
+      "reason": "The private-renter condition is in the binding; local-only (see local_routes)."
+    },
+    {
+      "targets": [
+        "slc.borrowers.plan_2_above_threshold",
+        "slc.borrowers.plan_2_liable",
+        "slc.borrowers.plan_5_above_threshold",
+        "slc.borrowers.plan_5_liable"
+      ],
+      "reason": "National-only (England) borrower stocks defined by the plan and threshold filters in the binding."
+    }
+  ]
+}

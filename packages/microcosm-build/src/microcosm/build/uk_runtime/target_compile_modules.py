@@ -28,6 +28,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.target_reference_authoring",
     "microcosm.build.uk_runtime.cgt_calibration",
     "microcosm.build.uk_runtime.chronicle_feed",
+    "microcosm.build.uk_runtime.cross_grain_declarations",
     "microcosm.build.uk_runtime.geography_ladder",
     "microcosm.build.uk_runtime.hmrc_uprating",
     "microcosm.build.uk_runtime.ledger_fact_vendoring",
