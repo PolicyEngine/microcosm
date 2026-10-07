@@ -22,7 +22,7 @@ policyengine = [
     "policyengine-core==3.32.5",
     "microunit>=0.1.0",
 ]
-uk = ["policyengine-uk>=2.98.0"]
+uk = ["policyengine-uk>=2.122.2"]
 # The Axiom adapter's PyPI-resolvable dependencies. The engine itself
 # (axiom-rules-engine + its dense native extension) is not on PyPI yet and
 # installs from a checkout; see microcosm/frame/adapters/axiom.py.

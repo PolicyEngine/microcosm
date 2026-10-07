@@ -252,7 +252,7 @@
     "cgt_residential_split": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.100.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.122.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -2272,7 +2272,7 @@
     "hmrc_cgt_asset_type_spine": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.100.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.122.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
