@@ -1,0 +1,1 @@
+Both UK target kernels hash every module that decides a target value (the shared resolver and the HMRC uprating appliers were missing), and tools/uk_target_surface_receipt.py writes and diffs receipts of the compiled target surface (microcosm#1123).
