@@ -12,14 +12,14 @@ mapped input exists in the installed engine is checked by the engine tests.
 import copy
 import json
 import re
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import concept_mapping as concept_mapping_module
@@ -55,6 +55,8 @@ from microcosm.frame.concepts import (
     CanonicalConceptKind,
     ConceptAlignment,
     TemporalBasis,
+    TransportRule,
+    Unit,
     concept,
     derive_take_up_draws,
 )
@@ -680,6 +682,24 @@ class TestConstructionRules:
             ),
             ({"transform": Share(parameter="p")}, "not an amount"),
             ({"transform": Scale(factor=0.5)}, "only float concepts scale"),
+            (
+                {
+                    "transform": Product(),
+                    "concepts": ("fact:person.usual_weekly_hours",),
+                },
+                r"^Binding for 'x': a product reads two concepts\.$",
+            ),
+            (
+                {
+                    "transform": Product(),
+                    "concepts": (
+                        "fact:person.usual_weekly_hours",
+                        "fact:person.weeks_worked",
+                        "fact:person.age",
+                    ),
+                },
+                r"^Binding for 'x': a product reads two concepts\.$",
+            ),
             ({"transform": RelationshipRole(role=Role.REFERENCE_PERSON)}, "reads"),
             ({"transform": CoresidentChildCount()}, "both parents"),
             ({"transform": TakeUpThreshold(program="x")}, "seed"),
@@ -1003,10 +1023,19 @@ def _refusal(kind: type, concept_id: str, engine_input: str = "x") -> str:
 
 
 @contextmanager
-def _redeclared(concept_id: str, basis: TemporalBasis):
-    """Run with ``concept_id`` declared under ``basis``, and nothing else."""
+def _redeclared(concept_id: str, basis: TemporalBasis | None = None, **fields):
+    """Run with ``concept_id`` redeclared, and nothing else.
+
+    ``basis`` sets its temporal basis. An annual flow also takes period
+    ``year``, which every annual flow must have; no other basis changes the
+    period. ``fields`` change other declared fields.
+    """
+    if basis is not None:
+        fields["temporal_basis"] = basis
+        if basis is TemporalBasis.ANNUAL_FLOW:
+            fields.setdefault("period", "year")
     registry = dict(concepts_module.CONCEPT_BY_ID)
-    registry[concept_id] = replace(registry[concept_id], temporal_basis=basis)
+    registry[concept_id] = replace(registry[concept_id], **fields)
     patched = MappingProxyType(registry)
     with pytest.MonkeyPatch.context() as patch:
         # concept() reads the first; the mapping module imported the second.
@@ -1037,6 +1066,71 @@ def _us_reading_the_stock(*bindings) -> dict:
     return edited
 
 
+_HOURS = "fact:person.usual_weekly_hours"
+_WEEKS = "fact:person.weeks_worked"
+_CONCEPT_ID = re.compile(r"fact:[a-z]+\.[a-z0-9_]+")
+#: Units of the numeric quantities that are neither amounts nor pointers, so
+#: their dtype and unit can be redeclared freely.
+_QUANTITIES = (Unit.YEARS, Unit.HOURS_PER_WEEK, Unit.WEEKS, Unit.UNIT_INTERVAL)
+
+
+def _faults(first, second) -> set[str]:
+    """The ids that keep a product of ``first`` and ``second`` from validating.
+
+    The rule as stated: a product reads one usual rate held as a float and one
+    annual flow counted in weeks (an int or a float), in either order. An
+    empty set means the product validates.
+    """
+    items = (first, second)
+    faults = {
+        item.id
+        for item in items
+        if item.temporal_basis
+        not in (TemporalBasis.USUAL_RATE, TemporalBasis.ANNUAL_FLOW)
+    }
+    if first.temporal_basis is second.temporal_basis:
+        faults |= {first.id, second.id}
+    for item in items:
+        if item.temporal_basis is TemporalBasis.USUAL_RATE and item.dtype != "float":
+            faults.add(item.id)
+        if item.temporal_basis is TemporalBasis.ANNUAL_FLOW and (
+            item.unit is not Unit.WEEKS or item.dtype not in ("int", "float")
+        ):
+            faults.add(item.id)
+    return faults
+
+
+def _product(*concepts: str) -> InputBinding:
+    return _binding(concepts=concepts, transform=Product())
+
+
+def _uk_hours_reading(concepts: tuple[str, str]) -> dict:
+    """policyengine-uk's JSON form, with ``hours_worked`` reading ``concepts``.
+
+    Whatever the product now reads leaves ``unmapped``; whatever it no longer
+    reads, and no other binding reads, joins it.
+    """
+    mapping = MAPPINGS["policyengine-uk"]
+    edited = mapping.to_dict()
+    (index,) = (
+        position
+        for position, binding in enumerate(mapping.bindings)
+        if binding.engine_input == "hours_worked"
+    )
+    edited["bindings"][index]["concepts"] = list(concepts)
+    for concept_id in concepts:
+        edited["unmapped"].pop(concept_id, None)
+    others = {
+        concept_id
+        for position, binding in enumerate(mapping.bindings)
+        if position != index
+        for concept_id in binding.reads
+    }
+    for concept_id in set(mapping.bindings[index].concepts) - set(concepts) - others:
+        edited["unmapped"][concept_id] = "probe"
+    return edited
+
+
 class TestArithmeticReadsAnnualFlows:
     """A scale, sum, share or fraction reads annual flows only.
 
@@ -1048,7 +1142,13 @@ class TestArithmeticReadsAnnualFlows:
     sum, share or fraction binding now checks the declared temporal basis of
     each concept it computes from. The household reference person that a
     binding allocated to the reference unit also reads, to place its value,
-    is not an operand. Other transforms are outside the rule.
+    is not an operand.
+
+    A product has a rule of its own. Its one committed use, policyengine-uk's
+    ``hours_worked``, multiplies usual weekly hours by weeks worked, yet a
+    product of the stock and weeks worked validated too. A product now reads
+    exactly one usual rate, held as a float, and one annual flow counted in
+    weeks, in either order. Other transforms are outside both rules.
     """
 
     @PROPERTY
@@ -1153,19 +1253,21 @@ class TestArithmeticReadsAnnualFlows:
         self,
     ) -> None:
         # The complement, also exhaustive: no other committed binding depends
-        # on the basis of anything it reads (identities, roles, take-up,
-        # recodes, predicates, positivity tests, allocations and the hours
-        # product).
+        # on the basis of anything it reads (identities, roles, child counts,
+        # take-up, recodes, predicates, positivity tests and allocations),
+        # whichever basis it is redeclared under. The hours product used to be
+        # one of them; it now has a rule of its own, and redeclaring either of
+        # its operands refuses it (see the product tests below).
         others = [
             (name, binding)
             for name, binding in _COMMITTED
-            if not isinstance(binding.transform, _ARITHMETIC)
+            if not isinstance(binding.transform, (*_ARITHMETIC, Product))
         ]
         kinds = {type(binding.transform) for _, binding in others}
-        assert {Identity, Product, AllocateToReferencePerson, Positive} <= kinds
+        assert {Identity, AllocateToReferencePerson, Positive} <= kinds
         for name, binding in others:
             for concept_id in binding.reads:
-                for basis in _NOT_FLOWS:
+                for basis in TemporalBasis:
                     with _redeclared(concept_id, basis):
                         assert replace(binding) == binding, (name, binding.ref, basis)
 
@@ -1301,6 +1403,278 @@ class TestArithmeticReadsAnnualFlows:
                 assert (
                     concept(concept_id).temporal_basis is TemporalBasis.ANNUAL_FLOW
                 ), (binding.ref, concept_id)
+
+    @PROPERTY
+    @given(data=st.data())
+    def test_a_product_validates_exactly_when_it_reads_a_float_rate_and_weeks(
+        self, data
+    ) -> None:
+        # Start from the committed hours product. Each operand may be swapped
+        # for any concept, and its basis, dtype and unit redeclared. In either
+        # order, the binding validates exactly when the rule's text says it
+        # should, and a refusal names only operands that break the rule.
+        drawn, taken = [], set()
+        for slot in (_HOURS, _WEEKS):
+            others = st.sampled_from([c.id for c in CONCEPTS if c.id not in taken])
+            choices = others if slot in taken else st.one_of(st.just(slot), others)
+            concept_id = data.draw(choices, label="concept")
+            taken.add(concept_id)
+            basis = data.draw(
+                st.one_of(st.none(), st.sampled_from(TemporalBasis)), label="basis"
+            )
+            fields = {}
+            if concept(concept_id).unit in _QUANTITIES:
+                dtype = data.draw(
+                    st.one_of(st.none(), st.sampled_from(("float", "int", "str"))),
+                    label="dtype",
+                )
+                unit = data.draw(
+                    st.one_of(st.none(), st.sampled_from(_QUANTITIES)), label="unit"
+                )
+                if dtype is not None:
+                    fields["dtype"] = dtype
+                if dtype == "str":
+                    fields.update(lower=None, upper=None)
+                if unit is not None:
+                    fields["unit"] = unit
+            drawn.append((concept_id, basis, fields))
+        (first, *_), (second, *_) = drawn
+        with ExitStack() as stack:
+            for concept_id, basis, fields in drawn:
+                stack.enter_context(_redeclared(concept_id, basis, **fields))
+            faults = _faults(concept(first), concept(second))
+            event("refused" if faults else "validates")
+            for order in ((first, second), (second, first)):
+                if not faults:
+                    assert _product(*order).concepts == order
+                    continue
+                with pytest.raises(
+                    ValueError, match=r"^Binding for 'x': a product"
+                ) as error:
+                    _product(*order)
+                named = set(_CONCEPT_ID.findall(str(error.value)))
+                assert named and named <= faults, (order, faults, named)
+
+    def test_of_all_committed_concepts_only_hours_and_weeks_multiply(self) -> None:
+        # Exhaustive: every ordered pair of distinct committed concepts.
+        valid = set()
+        for first in CONCEPTS:
+            for second in CONCEPTS:
+                if first.id == second.id:
+                    continue
+                pair = (first.id, second.id)
+                try:
+                    _product(*pair)
+                except ValueError as error:
+                    named = set(_CONCEPT_ID.findall(str(error)))
+                    assert str(error).startswith("Binding for 'x': a product"), pair
+                    assert named and named <= _faults(first, second), (pair, named)
+                else:
+                    assert not _faults(first, second), pair
+                    valid.add(pair)
+        assert valid == {(_HOURS, _WEEKS), (_WEEKS, _HOURS)}
+
+    @pytest.mark.parametrize(
+        ("concepts", "setup", "message", "fix"),
+        [
+            pytest.param(
+                (_LIQUID_ASSETS, _WEEKS),
+                [],
+                "a product reads a usual rate and an annual flow, and "
+                "fact:person.liquid_financial_assets has temporal basis "
+                "reference_state.",
+                [(_LIQUID_ASSETS, TemporalBasis.USUAL_RATE, {})],
+                id="stock-times-weeks",
+            ),
+            pytest.param(
+                (_WEEKS, _LIQUID_ASSETS),
+                [],
+                "a product reads a usual rate and an annual flow, and "
+                "fact:person.liquid_financial_assets has temporal basis "
+                "reference_state.",
+                [(_LIQUID_ASSETS, TemporalBasis.USUAL_RATE, {})],
+                id="weeks-times-stock",
+            ),
+            pytest.param(
+                ("fact:person.take_up_seed", _WEEKS),
+                [],
+                "a product reads a usual rate and an annual flow, and "
+                "fact:person.take_up_seed has temporal basis persistent.",
+                [("fact:person.take_up_seed", TemporalBasis.USUAL_RATE, {})],
+                id="seed-times-weeks",
+            ),
+            pytest.param(
+                (_HOURS, "fact:person.age"),
+                [],
+                "a product reads a usual rate and an annual flow, and "
+                "fact:person.age has temporal basis reference_state.",
+                [("fact:person.age", TemporalBasis.ANNUAL_FLOW, {"unit": Unit.WEEKS})],
+                id="hours-times-age",
+            ),
+            pytest.param(
+                ("fact:person.employment_income", _WEEKS),
+                [],
+                "a product reads one usual rate and one annual flow, and "
+                "fact:person.employment_income and fact:person.weeks_worked both "
+                "have temporal basis annual_flow.",
+                [("fact:person.employment_income", TemporalBasis.USUAL_RATE, {})],
+                id="income-times-weeks",
+            ),
+            pytest.param(
+                (_HOURS, _WEEKS),
+                [(_WEEKS, TemporalBasis.USUAL_RATE, {})],
+                "a product reads one usual rate and one annual flow, and "
+                "fact:person.usual_weekly_hours and fact:person.weeks_worked both "
+                "have temporal basis usual_rate.",
+                [(_WEEKS, TemporalBasis.ANNUAL_FLOW, {})],
+                id="two-rates",
+            ),
+            pytest.param(
+                (_HOURS, "fact:person.employment_income"),
+                [],
+                "a product multiplies a usual rate by a number of weeks, and "
+                "fact:person.employment_income has unit base_currency and dtype "
+                "float.",
+                [
+                    (
+                        "fact:person.employment_income",
+                        None,
+                        {
+                            "unit": Unit.WEEKS,
+                            "monetary": None,
+                            "transport": TransportRule.CARRY,
+                        },
+                    )
+                ],
+                id="hours-times-income",
+            ),
+            pytest.param(
+                (_HOURS, _WEEKS),
+                [(_HOURS, None, {"dtype": "int"})],
+                "a product's usual rate is a float, and "
+                "fact:person.usual_weekly_hours has dtype int.",
+                [(_HOURS, None, {"dtype": "float"})],
+                id="whole-number-rate",
+            ),
+            pytest.param(
+                (_WEEKS, _HOURS),
+                [(_WEEKS, None, {"unit": Unit.HOURS_PER_WEEK})],
+                "a product multiplies a usual rate by a number of weeks, and "
+                "fact:person.weeks_worked has unit hours_per_week and dtype int.",
+                [(_WEEKS, None, {"unit": Unit.WEEKS})],
+                id="weeks-in-hours",
+            ),
+            pytest.param(
+                (_HOURS, _WEEKS),
+                [(_WEEKS, None, {"dtype": "str", "lower": None, "upper": None})],
+                "a product multiplies a usual rate by a number of weeks, and "
+                "fact:person.weeks_worked has unit weeks and dtype str.",
+                [(_WEEKS, None, {"dtype": "int"})],
+                id="weeks-as-text",
+            ),
+            pytest.param(
+                (_HOURS, _WEEKS),
+                [(_HOURS, None, {"dtype": "str", "lower": None, "upper": None})],
+                "a product's usual rate is a float, and "
+                "fact:person.usual_weekly_hours has dtype str.",
+                [(_HOURS, None, {"dtype": "float", "lower": 0.0, "upper": 168.0})],
+                id="rate-as-text",
+            ),
+            pytest.param(
+                (_HOURS, _WEEKS),
+                [(_WEEKS, None, {"unit": Unit.YEARS})],
+                "a product multiplies a usual rate by a number of weeks, and "
+                "fact:person.weeks_worked has unit years and dtype int.",
+                [(_WEEKS, None, {"unit": Unit.WEEKS})],
+                id="weeks-in-years",
+            ),
+            pytest.param(
+                (_HOURS, _WEEKS),
+                [(_WEEKS, None, {"unit": Unit.UNIT_INTERVAL})],
+                "a product multiplies a usual rate by a number of weeks, and "
+                "fact:person.weeks_worked has unit unit_interval and dtype int.",
+                [(_WEEKS, None, {"unit": Unit.WEEKS})],
+                id="weeks-in-unit-interval",
+            ),
+        ],
+    )
+    def test_each_way_a_product_breaks_the_rule_is_refused_by_name(
+        self, concepts, setup, message, fix
+    ) -> None:
+        # The whole message is matched. Each case validates once the field at
+        # fault is redeclared to fit, so the rule is the only obstacle.
+        with ExitStack() as stack:
+            for concept_id, basis, fields in setup:
+                stack.enter_context(_redeclared(concept_id, basis, **fields))
+            refusal = "^" + re.escape(f"Binding for 'x': {message}") + "$"
+            with pytest.raises(ValueError, match=refusal):
+                _product(*concepts)
+            for concept_id, basis, fields in fix:
+                stack.enter_context(_redeclared(concept_id, basis, **fields))
+            assert _product(*concepts).concepts == concepts
+
+    def test_redeclaring_either_operand_of_a_committed_product_refuses_it(
+        self,
+    ) -> None:
+        # Exhaustive: every committed product, each operand, and every basis.
+        # Any basis but the operand's own refuses the binding and names the
+        # operand. This is the intended change to the complement test above,
+        # which used to keep the hours product valid under every basis it
+        # tried (all but annual_flow).
+        products = [
+            (name, binding)
+            for name, binding in _COMMITTED
+            if isinstance(binding.transform, Product)
+        ]
+        assert products
+        for name, binding in products:
+            assert not _faults(*map(concept, binding.concepts)), (name, binding.ref)
+            for concept_id in binding.concepts:
+                own = concept(concept_id).temporal_basis
+                for basis in TemporalBasis:
+                    with _redeclared(concept_id, basis):
+                        if basis is own:
+                            assert replace(binding) == binding, (name, binding.ref)
+                            continue
+                        with pytest.raises(ValueError, match="a product") as error:
+                            replace(binding)
+                    assert concept_id in str(error.value), (name, binding.ref, basis)
+
+    @pytest.mark.parametrize("slot", [0, 1], ids=["rate", "weeks"])
+    def test_the_uk_hours_product_refuses_every_other_person_concept(
+        self, slot
+    ) -> None:
+        # Exhaustive over policyengine-uk's JSON form: each operand of
+        # hours_worked swapped for each other person concept, which leaves
+        # ``unmapped``. The product rule refuses every edit and names the
+        # newcomer.
+        committed = MAPPINGS["policyengine-uk"].bindings_for(_HOURS)[0].concepts
+        assert committed == (_HOURS, _WEEKS)
+        swapped = 0
+        for item in CONCEPTS:
+            if item.entity != "person" or item.id in committed:
+                continue
+            concepts = list(committed)
+            concepts[slot] = item.id
+            with pytest.raises(ValueError, match="'hours_worked': a product") as error:
+                ConceptMapping.from_dict(_uk_hours_reading(tuple(concepts)))
+            assert item.id in str(error.value)
+            swapped += 1
+        assert swapped == sum(item.entity == "person" for item in CONCEPTS) - 2
+
+    def test_the_stock_times_weeks_worked_is_refused_in_the_uk_mapping(self) -> None:
+        # The case that prompted the rule, in a mapping's JSON form. It
+        # validates if the stock is declared a usual rate.
+        edited = _uk_hours_reading((_LIQUID_ASSETS, _WEEKS))
+        refusal = (
+            r"^Binding for 'hours_worked': a product reads a usual rate and an "
+            r"annual flow, and fact:person\.liquid_financial_assets has temporal "
+            r"basis reference_state\.$"
+        )
+        with pytest.raises(ValueError, match=refusal):
+            ConceptMapping.from_dict(edited)
+        with _redeclared(_LIQUID_ASSETS, TemporalBasis.USUAL_RATE):
+            ConceptMapping.from_dict(edited)
 
 
 class TestCoverageReport:

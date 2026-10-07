@@ -6,6 +6,7 @@ satisfy, and that the frame validator catches each planted violation.
 """
 
 import json
+import re
 from dataclasses import replace
 
 import numpy as np
@@ -236,11 +237,45 @@ class TestConceptValidation:
             ({"unit": Unit.PERSON_ID}, "int named"),
             ({"lower": 200.0}, "empty"),
             ({"transport": TransportRule.QUANTILE_MAP}, "quantile"),
+            ({"temporal_basis": TemporalBasis.ANNUAL_FLOW}, "its period is year"),
         ],
     )
     def test_bad_declarations_are_refused(self, change, message) -> None:
         with pytest.raises(ValueError, match=message):
             replace(concept("fact:person.age"), **change)
+
+    def test_an_annual_flow_has_period_year_and_nothing_else_is_tied(self) -> None:
+        # Exhaustive: every committed concept, redeclared under every basis
+        # and every period. Exactly an annual flow outside period year is
+        # refused, with the whole message. Every other basis takes any
+        # period, so the tie runs one way: usual weekly hours, a usual rate,
+        # has period year.
+        flows = [
+            item
+            for item in CONCEPTS
+            if item.temporal_basis is TemporalBasis.ANNUAL_FLOW
+        ]
+        assert len(flows) == 14
+        assert {item.period for item in flows} == {"year"}
+        assert concept("fact:person.usual_weekly_hours").period == "year"
+        for item in CONCEPTS:
+            for basis in TemporalBasis:
+                for period in ("year", "month", "point"):
+                    change = {"temporal_basis": basis, "period": period}
+                    if basis is TemporalBasis.ANNUAL_FLOW and period != "year":
+                        refusal = (
+                            f"^Concept {re.escape(repr(item.id))}: an annual flow "
+                            f"accumulates over the year, so its period is year, "
+                            f"not {period}\\.$"
+                        )
+                        with pytest.raises(ValueError, match=refusal):
+                            replace(item, **change)
+                    else:
+                        redeclared = replace(item, **change)
+                        assert (redeclared.temporal_basis, redeclared.period) == (
+                            basis,
+                            period,
+                        )
 
     def test_generated_concepts_must_carry(self) -> None:
         with pytest.raises(ValueError, match="persistence"):
