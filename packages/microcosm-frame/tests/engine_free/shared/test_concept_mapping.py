@@ -70,6 +70,8 @@ PROPERTY = settings(max_examples=100, deadline=None)
 MAPPINGS = concept_mappings()
 mapping_names = st.sampled_from(sorted(MAPPINGS))
 _PARENTS = ("fact:person.parent_1_person_id", "fact:person.parent_2_person_id")
+_LIQUID_ASSETS = "fact:person.liquid_financial_assets"
+_AS_MODULE = "nz/statutes/social_security/accommodation_supplement/core.yaml"
 
 # The round-trip and idempotence properties check exactly the concepts
 # invertible_concepts() returns, so the sets are pinned here: a decoder that
@@ -199,6 +201,29 @@ class TestEveryMapping:
             if places:
                 assert "fact:household.reference_person_id" in binding.reads
 
+    def test_liquid_assets_bind_only_the_nz_cash_asset_test(self) -> None:
+        # Every other mapping lists the concept as unmapped. The one binding
+        # is a group binding, which encode defers until units exist.
+        bound = {
+            name: [binding.ref for binding in mapping.bindings_for(_LIQUID_ASSETS)]
+            for name, mapping in MAPPINGS.items()
+        }
+        assert bound == {
+            "axiom-be": [],
+            "axiom-nz": [
+                InputRef("accommodation_supplement_cash_assets", "Family", _AS_MODULE)
+            ],
+            "policyengine-uk": [],
+            "policyengine-us": [],
+        }
+        nz = MAPPINGS["axiom-nz"]
+        (binding,) = nz.bindings_for(_LIQUID_ASSETS)
+        assert binding.concepts == (_LIQUID_ASSETS,)
+        assert isinstance(binding.transform, Identity)
+        assert binding.group_rule is GroupRule.SUM_OVER_MEMBERS
+        assert binding.relation is AlignmentRelation.APPROXIMATE
+        assert not nz.is_executable(binding)
+
     def test_declarations_match_the_engine_kind(self) -> None:
         for name, mapping in MAPPINGS.items():
             axiom = name.startswith("axiom-")
@@ -269,6 +294,30 @@ class TestExecution:
         for entity in ("person", "household"):
             assert len(first.tables[entity]) == len(tables[entity])
             pd.testing.assert_frame_equal(first.tables[entity], second.tables[entity])
+
+    @PROPERTY
+    @given(name=mapping_names, tables=concept_frames(), data=st.data())
+    def test_liquid_assets_reach_no_executed_input(self, name, tables, data) -> None:
+        # Bound only through a deferred group binding, the concept changes no
+        # encoded column, and no decode recovers it.
+        mapping = MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        with_assets = mapping.encode(tables, **parameters)
+        without = {
+            "person": tables["person"].drop(columns="liquid_financial_assets"),
+            "household": tables["household"],
+        }
+        without_assets = mapping.encode(without, **parameters)
+        for entity in ("person", "household"):
+            pd.testing.assert_frame_equal(
+                with_assets.tables[entity], without_assets.tables[entity]
+            )
+        if name == "axiom-nz":
+            assert "accommodation_supplement_cash_assets" in {
+                binding.engine_input for binding in with_assets.deferred
+            }
+        decoded = mapping.decode(with_assets.tables)
+        assert "liquid_financial_assets" not in decoded["person"].columns
 
     @PROPERTY
     @given(name=mapping_names, tables=concept_frames(), data=st.data())

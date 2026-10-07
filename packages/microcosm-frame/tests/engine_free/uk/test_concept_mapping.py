@@ -5,13 +5,22 @@ says about UK inputs. Whether each input exists in the installed engine is
 checked in engine/uk.
 """
 
+from dataclasses import replace
+
 import pandas as pd
+import pytest
 
 from microcosm.frame.adapters.policyengine_uk import (
     POLICYENGINE_UK_CONCEPT_MAPPING,
     PolicyEngineUKEngine,
 )
-from microcosm.frame.concept_mapping import ConceptMappedEngine
+from microcosm.frame.concept_mapping import (
+    ConceptMappedEngine,
+    GroupRule,
+    Identity,
+    bind,
+)
+from microcosm.frame.concepts import AlignmentRelation
 
 MAPPING = POLICYENGINE_UK_CONCEPT_MAPPING
 
@@ -37,6 +46,44 @@ def test_formula_owned_variables_are_never_targets() -> None:
 
 def test_the_state_pension_has_no_input_route() -> None:
     assert "fact:person.public_pension_income" in MAPPING.unmapped
+
+
+@pytest.mark.parametrize(
+    ("group_rule", "error"),
+    [
+        (None, "its transform produces 'person' values"),
+        (GroupRule.SUM_OVER_MEMBERS, "needs a group rule exactly when"),
+    ],
+)
+def test_no_transform_puts_a_person_amount_on_a_household_input(
+    group_rule, error
+) -> None:
+    # The liquid-asset reason rests on this: binding the person concept to
+    # the household savings input is rejected with or without a group rule.
+    liquid_assets = "fact:person.liquid_financial_assets"
+    assert (
+        "no transform puts a person amount on a household input"
+        in MAPPING.unmapped[liquid_assets]
+    )
+    probe = bind(
+        "savings",
+        "household",
+        liquid_assets,
+        Identity(),
+        AlignmentRelation.APPROXIMATE,
+        "probe",
+        group_rule=group_rule,
+    )
+    with pytest.raises(ValueError, match=error):
+        replace(
+            MAPPING,
+            bindings=(*MAPPING.bindings, probe),
+            unmapped={
+                key: value
+                for key, value in MAPPING.unmapped.items()
+                if key != liquid_assets
+            },
+        )
 
 
 def _person(**columns) -> dict[str, pd.DataFrame]:

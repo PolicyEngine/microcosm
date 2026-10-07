@@ -4,7 +4,11 @@
 coverage reports, which this change adds. The transport pipeline described
 below is the design those pieces serve; none of it is built yet, and no build
 has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
-international populations and law-anchored concepts.
+international populations and law-anchored concepts. **Amended 2026-10-07:**
+schema version 2 adds `liquid_financial_assets`, the first stock concept, for
+New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
+Zealand mapping binds it, as a deferred `Family` binding; the other three
+mappings list it as unmapped with a reason.
 
 ## Context
 
@@ -25,7 +29,7 @@ working through the same layer.
 ### 1. Primitive facts are the neutral layer
 
 `microcosm.frame.concepts` declares the record-level facts a household survey
-observes and that keep their meaning across countries. There are 28, on two
+observes and that keep their meaning across countries. There are 29, on two
 entities. Engine group entities (tax units, benefit units, SPM units,
 families) are engine constructs built from relationships. Today the US unit
 operator builds them from raw CPS roster columns, and the UK adapter requires
@@ -37,6 +41,7 @@ them already present. Building them from the concept pointers is future work.
 | Relationships | `partner_person_id`, `parent_1_person_id`, `parent_2_person_id`, household `reference_person_id` |
 | Labour income | `employment_income`, `nonfarm_self_employment_income`, `farm_self_employment_income` |
 | Capital income | `interest_income`, `dividend_income`, `rental_income`, `realized_capital_gains` |
+| Financial wealth | `liquid_financial_assets` |
 | Pensions | `private_pension_income`, `public_pension_income` |
 | Work intensity | `usual_weekly_hours`, `weeks_worked` |
 | Disability and education | `has_disability`, `educational_attainment`, `education_enrollment`, `enrolled_full_time` |
@@ -54,7 +59,8 @@ Each concept declares:
   frame's single declared currency (`ConceptFrameDeclaration.currency`, ISO
   4217), at the prices of its own period. Each amount names the index family
   that moves it across years (earnings, mixed income, capital income, pensions,
-  rents, owner housing costs). Amounts say whether they may be negative.
+  rents, owner housing costs, consumer prices). Amounts say whether they may be
+  negative.
 - **Provenance class.** `observed` (the survey asks), `derived` (a neutral
   function of observed items, such as pointers from a roster) or `generated`
   (Microcosm's own randomness, such as the take-up seed).
@@ -280,7 +286,7 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   predictor columns for imputation, and its names are not concept ids.
 - Transport still needs four pieces beyond the schema: the donor bank, the
   income transformation (step 3), a unit-construction step that builds engine
-  units from the concept pointers (until it exists, 12 of New Zealand's 79 and
+  units from the concept pointers (until it exists, 13 of New Zealand's 80 and
   46 of Belgium's 105 module bindings, and the take-up and housing bindings on
   US and UK group entities, stay deferred), and a country pack with geography,
   targets and an engine adapter. The schema was the one piece that belongs in
