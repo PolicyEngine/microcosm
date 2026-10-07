@@ -69,6 +69,17 @@ _SPI_UPRATED_DRIFT_RATIONALE = (
     "one year forward with its own income-projection ratios."
 )
 
+_SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE = (
+    "The x1.9 adjustment is retired (microcosm#1106, María's ruling of "
+    "2026-10-05): ours binds the SPI 2023-24 Table 3.7 net income from "
+    "property, landlords' profit after allowable expenses and before "
+    "residential finance costs, moved to the 2025 calibration year by the "
+    "pinned engine's per-capita GDP index; the frozen incumbent fixture holds "
+    "1.9 times the SPI amounts (uk-data#311), a factor that set HMRC Property "
+    "Rental Income Statistics receipts, which are before expenses, against "
+    "this net concept."
+)
+
 _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
     "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
     "liabilities Table 2.5 taxpayers, total income and tax by band as the "
@@ -623,6 +634,11 @@ def _add_signed_rationale_notes(
             continue
         elif name in _CGT_OBSERVED_RATIONALES:
             row["reason"] = _CGT_OBSERVED_RATIONALES[name]
+        elif (
+            name.startswith("hmrc/property_income_income_band_")
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _SPI_PROPERTY_AMOUNT_DRIFT_RATIONALE
         elif (
             name.startswith("hmrc/")
             and "_income_band_" in name

@@ -360,11 +360,14 @@ after the reorder were still falling 0.11 to 0.75 points).
 
 ## Not done here
 
-- The property-income amount rows stay signed out: the spine's
-  `property_income` is FRS rent from other property (before tax, after the
-  expenses on show card K6, which include mortgage payments and loan
-  interest) plus sub-letting rent as reported, which SUBALLOW records as
-  before or after expenses, while the SPI concept is landlords' profit after
-  allowable expenses and before residential finance costs.
+- The property-income amount rows are bound since microcosm#1106: the 13 SPI
+  Table 3.7 net amounts bind unscaled on `property_income`, landlords' profit
+  after allowable expenses and before residential finance costs, and the
+  incumbent's x1.9 scaling is retired (María's ruling of 2026-10-05). The FRS
+  side is not done: the spine's FRS landlords hold rent from other property
+  (before tax, after the expenses on show card K6, which include mortgage
+  payments and loan interest) plus sub-letting rent as reported, which
+  SUBALLOW records as before or after expenses, so they sit below the SPI
+  concept and the binding leans on the SPI records and the weights.
 - The ESA rows' migration residual and the SPI support channel's benefit fill
   (microcosm#840, #867, #869) are spine items.
