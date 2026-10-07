@@ -1,11 +1,11 @@
 {
- "compiled_count": 919,
+ "compiled_count": 932,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 787
+  "ledger_only": 800
  },
- "difference_count": 924,
+ "difference_count": 937,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -4253,6 +4253,97 @@
    "kind": "ledger_only",
    "ledger_value": 226000.0,
    "name": "hmrc/property_income_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2550000000.0,
+   "name": "hmrc/property_income_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 670000000.0,
+   "name": "hmrc/property_income_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1150000000.0,
+   "name": "hmrc/property_income_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1690000000.0,
+   "name": "hmrc/property_income_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 439000000.0,
+   "name": "hmrc/property_income_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1050000000.0,
+   "name": "hmrc/property_income_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3820000000.0,
+   "name": "hmrc/property_income_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 765000000.0,
+   "name": "hmrc/property_income_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3800000000.0,
+   "name": "hmrc/property_income_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3780000000.0,
+   "name": "hmrc/property_income_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 474000000.0,
+   "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5400000000.0,
+   "name": "hmrc/property_income_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3770000000.0,
+   "name": "hmrc/property_income_income_band_70_000_to_100_000",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

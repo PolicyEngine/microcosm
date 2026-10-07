@@ -1,13 +1,13 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1254,
+  "candidate_count": 1266,
   "contract_target_count": 341,
-  "active_reference_count": 1231,
+  "active_reference_count": 1244,
   "status_counts": {
-    "active": 1231,
+    "active": 1244,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 16
+    "signed_excluded": 15
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -4904,6 +4904,110 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "factor": "1.21716287215412",
       "value_before_uprating": "336000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_100_000_to_150_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "2550000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_1_000_000_to_inf",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "439000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_12_570_to_15_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "670000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_15_000_to_20_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "1690000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_150_000_to_200_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "1150000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_20_000_to_30_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "3820000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_200_000_to_300_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "1050000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_30_000_to_40_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "3800000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_300_000_to_500_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "765000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_40_000_to_50_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "3780000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_50_000_to_70_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "5400000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "474000000.0"
+    },
+    {
+      "name": "hmrc/property_income_income_band_70_000_to_100_000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.08262675352428",
+      "value_before_uprating": "3770000000.0"
     },
     {
       "name": "hmrc/property_income_count_income_band_100_000_to_150_000",
@@ -12762,14 +12866,202 @@
       ]
     },
     "hmrc.spi.property_income.amount_by_total_income_band": {
-      "status": "signed_excluded",
+      "status": "active",
       "candidates": [
         {
-          "name": "hmrc.spi.property_income.amount_by_total_income_band",
-          "status": "signed_excluded",
-          "matched_fact_count_overall": 13,
-          "matched_fact_count_at_or_before_period": 13,
-          "signed_rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface."
+          "name": "hmrc/property_income_income_band_100_000_to_150_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2760698221.4869194,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9d10f6e51a5dcb04f54f9fae",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "2550000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_1_000_000_to_inf",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 475273144.79715985,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_51eeeeb41e0c6dc54bc0d407",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "439000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_12_570_to_15_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 725359924.861269,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e177c50af86589dd859592e8",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "670000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_15_000_to_20_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1829639213.4560368,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_87ed04807ef839bd818e526d",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "1690000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_150_000_to_200_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1245020766.5529244,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5e148f28371c7b8c5d72e716",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "1150000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_20_000_to_30_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4135634198.462758,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a793597e38fe8f9240136d5e",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "3820000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_200_000_to_300_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1136758091.2004962,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_968f0c586e0de9ec29bde5b5",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "1050000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_30_000_to_40_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4113981663.3922725,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6a693f190800a2604ffd1c69",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "3800000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_300_000_to_500_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 828209466.4460759,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_03b3c75a46af68646f0d8eb2",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "765000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_40_000_to_50_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4092329128.3217864,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_41f2ee883cc817a3f04d4b84",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "3780000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_50_000_to_70_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 5846184469.031124,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_161cfda7cbd0fd9ad69ed477",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "5400000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 513165081.17050976,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_16a6a0e6c9bbd738d853fda8",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "474000000.0"
+          }
+        },
+        {
+          "name": "hmrc/property_income_income_band_70_000_to_100_000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4081502860.786544,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9335b51ae0737d222433f03e",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.08262675352428",
+            "value_before_uprating": "3770000000.0"
+          }
         }
       ]
     },
@@ -29211,9 +29503,9 @@
   "fanout_family_outcomes": [
     {
       "family": "hmrc_spi",
-      "status": "active_with_signed_property_amount_exclusion",
-      "active_reference_count": 169,
-      "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins, except the HMRC property-income amount surface. Those 13 rows are signed out because Ledger carries the official SPI Table 3.7 net property-income amounts, while the incumbent target applies the populace-side x1.9 property-income undercount adjustment traced to policyengine-uk-data PR #311 / issue #230 and HMRC Property Rental Income Statistics."
+      "status": "active_strict_band_pins",
+      "active_reference_count": 182,
+      "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins. The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts bind on their own variable (microcosm#1106, Mar\u00eda's ruling of 2026-10-05)."
     },
     {
       "family": "hmrc_itl",
@@ -29260,12 +29552,6 @@
     }
   ],
   "signed_exclusion_rationales": [
-    {
-      "family": "hmrc_spi",
-      "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-      "status": "signed_excluded",
-      "signed_rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface."
-    },
     {
       "family": "ons_population",
       "target_id": "ons.population.scotland_households_3plus_children",
