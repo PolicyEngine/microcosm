@@ -22,7 +22,7 @@ import re
 import shutil
 import subprocess
 import tarfile
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +32,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import ExportContract, Frame, WeightKind, Weights
+from microcosm.frame.adapters import axiom as axiom_adapter
 from microcosm.frame.adapters.axiom import (
     BE_SCHEMA,
     NZ_NESTING,
@@ -317,6 +318,7 @@ def _fake_engine(
                     f"`{entity}`"
                 )
             program = _FakeProgram(entity, relations)
+            program.module_path = Path(path)
             programs[entity] = program
             return program
 
@@ -832,6 +834,21 @@ class TestGraphTypedMaterialize:
         assert results["family_assets_ok"].dtype == np.dtype(np.int8)
         assert results["family_category"].tolist() == ["small"] * 3
 
+    def test_native_outputs_are_numpy_arrays_text_and_dates_included(
+        self, monkeypatch
+    ) -> None:
+        # The module docstring's claim: every output, text and dates
+        # included, comes back as a numpy array, uncast.
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        variables = ["family_assets_ok", "family_category", "family_review_date"]
+        results = adapter.materialize(_fake_frame(), variables, 2026)
+        assert all(isinstance(results[name], np.ndarray) for name in variables)
+        assert results["family_assets_ok"].dtype == np.dtype(np.int8)
+        assert results["family_category"].dtype.kind == "U"
+        assert results["family_review_date"].dtype.kind == "U"
+        assert results["family_review_date"].tolist() == ["2026-04-01"] * 3
+
     def test_graph_mode_returns_graph_ownable_dtypes(self, monkeypatch) -> None:
         adapter = _nz_adapter(output_dtypes="graph", periods={"2026-27": TAX_YEAR})
         _fake_engine(adapter, monkeypatch)
@@ -932,6 +949,7 @@ class TestAssertNoRelations:
 # ----------------------------------------------------------------------
 
 _MODULE = "zz/policies/tests/toy.yaml"
+_OTHER_MODULE = "zz/policies/tests/other.yaml"
 _BASE_TREE = {
     _MODULE: b"format: rulespec/v1\nrules: []\n",
     "zz/policies/shared/rates.yaml": b"format: rulespec/v1\nrules:\n  - name: r\n",
@@ -1308,6 +1326,155 @@ class TestEngineRefPin:
         with pytest.raises(ValueError, match="before the adapter compiles"):
             self._reference(adapter, root)
 
+    def _linked_adapter(self, tmp_path: Path) -> tuple[AxiomEngine, Path, Path]:
+        """An adapter whose module path is a link outside the root."""
+
+        root = _write_tree(
+            tmp_path / "rulespec",
+            {**_BASE_TREE, _OTHER_MODULE: b"format: rulespec/v1\n"},
+        )
+        link = tmp_path / "links" / "module.yaml"
+        link.parent.mkdir()
+        link.symlink_to(root / _MODULE)
+        return self._adapter_at(link, root), root, link
+
+    def _adapter_at(self, module: Path, root: Path) -> AxiomEngine:
+        return AxiomEngine(
+            module, schema=NZ_SCHEMA, rulespec_roots=(root,), output_dtypes="graph"
+        )
+
+    def test_a_module_link_left_alone_compiles_the_referenced_file(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        adapter, root, link = self._linked_adapter(tmp_path)
+        programs = _fake_engine(adapter, monkeypatch)
+        reference = self._reference(adapter, root)
+        assert json.loads(reference)["module"] == _MODULE
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert {program.module_path for program in programs.values()} == {link}
+        assert self._reference(adapter, root) == reference
+
+    def test_a_module_link_repointed_after_the_reference_blocks_the_next_compile(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        # The review's scenario: the link lies outside the root, so repointing
+        # it at another file under the root moves no digest the pin checks.
+        adapter, root, link = self._linked_adapter(tmp_path)
+        programs = _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        before = rulespec_tree_digest(root)
+        link.unlink()
+        link.symlink_to(root / _OTHER_MODULE)
+        assert rulespec_tree_digest(root) == before
+        with pytest.raises(ValueError) as refused:
+            adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert str(refused.value) == (
+            f"Module {link} resolves to "
+            f"{(root / _OTHER_MODULE).resolve()}, not the file "
+            f"{(root / _MODULE).resolve()} this adapter's engine_ref named; "
+            "construct a new adapter and reference."
+        )
+        assert programs == {}
+
+    def test_a_module_link_repointed_after_the_reference_blocks_a_second_reference(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        adapter, root, link = self._linked_adapter(tmp_path)
+        _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        link.unlink()
+        link.symlink_to(root / _OTHER_MODULE)
+        with pytest.raises(ValueError, match="not the file .* engine_ref named"):
+            self._reference(adapter, root)
+
+    @settings(
+        max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    )
+    @given(files=rulespec_trees(), data=st.data())
+    def test_property_it_compiles_only_from_the_referenced_bytes(
+        self, tmp_path_factory, files, data
+    ) -> None:
+        """Invariant: a referenced adapter compiles only from referenced bytes.
+
+        After the reference the test makes one random change, or none: edits
+        one byte, adds, removes or renames a file, adds a directory or
+        dangling link, or repoints the module's outside link at another file.
+        The adapter compiles iff nothing changed. When it compiles, the root
+        still hashes to the pinned digest and the engine was handed a module
+        path that resolves to the referenced file.
+        """
+
+        base = tmp_path_factory.mktemp("pin")
+        # A second module is always present, for the link to be repointed at.
+        files = {**files, _OTHER_MODULE: b"format: rulespec/v1\n"}
+        root = _write_tree(base / "rulespec", files)
+        names = sorted(files)
+        others = [name for name in names if name != _MODULE]
+        change = data.draw(
+            st.sampled_from(
+                [
+                    "none",
+                    "edit",
+                    "add",
+                    "remove",
+                    "rename",
+                    "dir link",
+                    "dangling link",
+                    "repoint",
+                ]
+            ),
+            label="change",
+        )
+        # Repointing needs the module path to be a link outside the root.
+        via_link = change == "repoint" or data.draw(st.booleans(), label="via_link")
+        module = root / _MODULE
+        if via_link:
+            link = base / "links" / "module.yaml"
+            link.parent.mkdir()
+            link.symlink_to(module)
+            module = link
+        adapter = self._adapter_at(module, root)
+        with pytest.MonkeyPatch.context() as patch:
+            programs = _fake_engine(adapter, patch)
+            self._reference(adapter, root)
+            pinned, _ = rulespec_tree_digest(root)
+            if change == "edit":
+                name = data.draw(st.sampled_from(names), label="file")
+                content = bytearray(files[name])
+                offset = data.draw(st.integers(0, len(content) - 1), label="offset")
+                content[offset] ^= data.draw(st.integers(1, 255), label="mask")
+                (root / name).write_bytes(bytes(content))
+            elif change == "add":
+                (root / "added.bin").write_bytes(b"")
+            elif change == "remove":
+                (root / data.draw(st.sampled_from(names), label="file")).unlink()
+            elif change == "rename":
+                name = data.draw(st.sampled_from(names), label="file")
+                (root / name).rename(root / f"{name}.renamed")
+            elif change == "dir link":
+                outside = _write_tree(base / "outside", {"hidden.yaml": b"x"})
+                (root / "linked").symlink_to(outside, target_is_directory=True)
+            elif change == "dangling link":
+                (root / "dangling.yaml").symlink_to(base / "nowhere.yaml")
+            elif change == "repoint":
+                link.unlink()
+                link.symlink_to(root / data.draw(st.sampled_from(others), label="file"))
+            try:
+                adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+            except ValueError:
+                compiled = False
+            else:
+                compiled = True
+        assert compiled == (change == "none")
+        if compiled:
+            assert rulespec_tree_digest(root)[0] == pinned
+            assert {program.module_path.resolve() for program in programs.values()} == {
+                (root / _MODULE).resolve()
+            }
+        else:
+            assert programs == {}
+
     def test_an_adapter_without_a_reference_never_hashes_its_root(
         self, monkeypatch
     ) -> None:
@@ -1322,6 +1489,64 @@ class TestEngineRefPin:
             "microcosm.frame.adapters.axiom.rulespec_tree_digest", refuse
         )
         adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+
+
+#: Variables git lists as local to one repository, each set by the property
+#: test to name a clean copy (``GIT_CONFIG_COUNT`` carries core.worktree).
+_REDIRECTING_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG_COUNT",
+)
+
+#: Changes that leave a committed checkout short of exactly its commit.
+_CHECKOUT_CHANGES = (
+    "none",
+    "edit",
+    "untracked file",
+    "ignored file",
+    "staged edit, reverted on disk",
+    "skip-worktree",
+    "assume-unchanged edit",
+    "submodule",
+    "HEAD moved on",
+    "another commit declared",
+    "replace ref",
+    "stat-cache edit",
+    "clean-filter edit",
+    "fsmonitor-hidden edit",
+    "nested .git file",
+    "symbolic link as a plain file",
+    "executable mode hidden by core.filemode",
+    "core.worktree elsewhere",
+)
+
+
+def _aim_git_at(
+    patch: pytest.MonkeyPatch, repository: Path, names: Iterable[str]
+) -> None:
+    """Set each named repository-selecting variable to point at ``repository``.
+
+    ``GIT_CONFIG_COUNT`` carries ``-c core.worktree=<repository>``.
+    """
+
+    values = {
+        "GIT_DIR": repository / ".git",
+        "GIT_WORK_TREE": repository,
+        "GIT_INDEX_FILE": repository / ".git" / "index",
+        "GIT_OBJECT_DIRECTORY": repository / ".git" / "objects",
+        "GIT_COMMON_DIR": repository / ".git",
+    }
+    for name in names:
+        if name == "GIT_CONFIG_COUNT":
+            patch.setenv("GIT_CONFIG_COUNT", "1")
+            patch.setenv("GIT_CONFIG_KEY_0", "core.worktree")
+            patch.setenv("GIT_CONFIG_VALUE_0", str(repository))
+        else:
+            patch.setenv(name, str(values[name]))
 
 
 class TestAxiomEngineRefGitCheckout:
@@ -1384,8 +1609,14 @@ class TestAxiomEngineRefGitCheckout:
         _git(root, "update-index", flag, _MODULE)
         (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [hidden]\n")
         assert _git(root, "status", "--porcelain", "--ignored") == ""
-        with pytest.raises(ValueError, match=f"{_MODULE} is flagged"):
+        with pytest.raises(ValueError) as refused:
             self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()}: {_MODULE} is flagged "
+            "skip-worktree or assume-unchanged (1 flagged file(s)), so git status "
+            "does not report edits to it; clear the flags or reference a git "
+            "archive export instead."
+        )
 
     @pytest.mark.parametrize(
         ("flag", "unflag"),
@@ -1426,6 +1657,509 @@ class TestAxiomEngineRefGitCheckout:
         other = "0" * 40 if head != "0" * 40 else "1" * 40
         with pytest.raises(ValueError, match="not the declared rulespec_commit"):
             self._checkout_ref(root, other)
+
+    # -- submodules ------------------------------------------------------
+
+    def test_a_clean_submodule_is_refused(self, checkout) -> None:
+        # The commit records the submodule's commit, not its files.
+        root, _ = checkout
+        head, _ = _commit_submodule(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()} contains the submodule zz/vendor "
+            f"(1 submodule(s)); commit {head} records a submodule's commit, not "
+            "its files, and git status does not report every change inside one. "
+            "Reference a git archive export instead."
+        )
+
+    @pytest.mark.parametrize(
+        "change", ["edit under ignore=all", "assume-unchanged edit", "ignored file"]
+    )
+    def test_a_change_inside_a_submodule_that_git_status_misses_is_refused(
+        self, checkout, change
+    ) -> None:
+        # The review's A1, D1 and E1: git status reports nothing for each, so
+        # the checkout used to pass with rulespec_commit equal to HEAD.
+        root, _ = checkout
+        head, vendor = _commit_submodule(
+            root, ignore="all" if change == "edit under ignore=all" else None
+        )
+        if change == "edit under ignore=all":
+            (vendor / "vendor.yaml").write_bytes(b"vendor: edited\n")
+        elif change == "assume-unchanged edit":
+            _git(vendor, "update-index", "--assume-unchanged", "vendor.yaml")
+            (vendor / "vendor.yaml").write_bytes(b"vendor: hidden\n")
+        else:
+            (vendor / "build.tmp").write_bytes(b"x")
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match="contains the submodule zz/vendor"):
+            self._checkout_ref(root, head)
+
+    # -- the caller's git environment --------------------------------------
+
+    @pytest.mark.parametrize(
+        "variables",
+        [
+            ("GIT_DIR", "GIT_WORK_TREE"),
+            ("GIT_WORK_TREE",),
+            ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"),
+        ],
+        ids="+".join,
+    )
+    def test_an_inherited_git_environment_cannot_vouch_for_a_dirty_root(
+        self, checkout, tmp_path, monkeypatch, variables
+    ) -> None:
+        # The variables name a clean copy at the same commit while the root
+        # itself is edited; git must examine the root.
+        root, head = checkout
+        decoy = tmp_path / "decoy"
+        shutil.copytree(root, decoy, symlinks=True)
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [dirty]\n")
+        _aim_git_at(monkeypatch, decoy, variables)
+        with pytest.raises(ValueError, match="modified, untracked, or ignored"):
+            self._checkout_ref(root, head)
+
+    def test_an_inherited_git_environment_cannot_vouch_for_another_head(
+        self, checkout, tmp_path, monkeypatch
+    ) -> None:
+        # The root holds the declared commit's bytes, but its HEAD has moved
+        # on; a copy still at the declared commit must not answer for it.
+        root, head = checkout
+        decoy = tmp_path / "decoy"
+        shutil.copytree(root, decoy, symlinks=True)
+        _git(root, "commit", "-q", "--allow-empty", "-m", "moved")
+        moved = _git(root, "rev-parse", "HEAD")
+        monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+        monkeypatch.setenv("GIT_WORK_TREE", str(decoy))
+        with pytest.raises(
+            ValueError, match=f"is at {moved}, not the declared rulespec_commit {head}"
+        ):
+            self._checkout_ref(root, head)
+
+    def test_a_clean_root_is_accepted_whatever_the_inherited_git_environment(
+        self, checkout, tmp_path, monkeypatch
+    ) -> None:
+        root, head = checkout
+        other = _write_tree(tmp_path / "other", {"other.yaml": b"other\n"})
+        _git(other, "init", "-q")
+        _git(other, "add", "-A")
+        _git(other, "commit", "-q", "-m", "other")
+        _aim_git_at(monkeypatch, other, _REDIRECTING_VARIABLES)
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+
+    def test_the_root_must_be_its_repositorys_top_level(
+        self, checkout, tmp_path
+    ) -> None:
+        # core.worktree points the repository at a clean copy while the root
+        # itself is edited, so git status examines the copy.
+        root, head = checkout
+        elsewhere = tmp_path / "elsewhere"
+        shutil.copytree(root, elsewhere, ignore=shutil.ignore_patterns(".git"))
+        _git(root, "config", "core.worktree", str(elsewhere))
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [dirty]\n")
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()} is not the top level of its git "
+            f"repository, whose work tree is {elsewhere.resolve()}; reference a "
+            "git archive export instead."
+        )
+
+    def test_a_replace_ref_cannot_stand_in_for_the_declared_commit(
+        self, checkout
+    ) -> None:
+        # refs/replace makes the declared commit read as another whose tree
+        # the root holds; HEAD still names the declared commit.
+        root, head = checkout
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [other]\n")
+        _git(root, "commit", "-q", "-a", "-m", "other")
+        other = _git(root, "rev-parse", "HEAD")
+        _git(root, "replace", head, other)
+        _git(root, "update-ref", "HEAD", head)
+        assert _git(root, "rev-parse", "HEAD") == head
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match="modified, untracked, or ignored"):
+            self._checkout_ref(root, head)
+
+    # -- bytes git status does not see ----------------------------------------
+
+    def test_a_same_size_edit_the_stat_cache_hides_is_refused(self, tmp_path) -> None:
+        # With core.trustctime=false git trusts size and mtime; an in-place
+        # edit of the same size with its mtime put back is invisible to it.
+        root, head = _old_mtime_checkout(tmp_path / "stat-cache")
+        _hide_a_same_size_edit_from_the_stat_cache(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value).startswith(
+            f"RuleSpec checkout {root.resolve()}: {_MODULE} is not the blob "
+        )
+
+    def test_a_same_size_edit_a_clean_filter_hides_is_refused(self, checkout) -> None:
+        # A clean filter maps the edited bytes back to the committed blob, so
+        # git status sees no change.
+        root, head = checkout
+        _hide_a_same_size_edit_behind_a_clean_filter(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=f"{_MODULE} is not the blob"):
+            self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize("hidden", ["edit", "deletion"])
+    def test_a_change_a_quiet_file_system_monitor_hides_is_refused(
+        self, checkout, tmp_path, hidden
+    ) -> None:
+        # git status trusts core.fsmonitor for which tracked files changed; a
+        # monitor that reports nothing hides an edit or a deletion.
+        root, head = checkout
+        _quiet_file_system_monitor(root, tmp_path / "quiet-fsmonitor")
+        if hidden == "edit":
+            (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [quiet]\n")
+            expected = f"{_MODULE} is not the blob"
+        else:
+            (root / "README.md").unlink()
+            expected = "lacks README.md, unlike commit"
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=expected):
+            self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize("entry", ["file", "directory"])
+    def test_a_nested_dot_git_entry_git_status_skips_is_refused(
+        self, checkout, entry
+    ) -> None:
+        # git's untracked scan skips every entry named .git, so bytes the
+        # digest hashes, and the commit does not hold, pass git status.
+        root, head = checkout
+        _plant_nested_dot_git(root, entry)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match="holds zz/policies/.git"):
+            self._checkout_ref(root, head)
+
+    def test_a_symbolic_link_checked_out_as_a_plain_file_is_refused(
+        self, checkout
+    ) -> None:
+        # Under core.symlinks=false git writes a committed link as a plain
+        # file holding the link's blob, which git status calls unchanged. The
+        # bytes match the blob; the mode does not.
+        root, _ = checkout
+        head = _commit_symlink_as_a_plain_file(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()}: commit {head} records "
+            f"{_ALIAS} with mode 120000, not as a regular file, though the "
+            "checkout holds a plain file there; reference a git archive export "
+            "instead."
+        )
+
+    @pytest.mark.parametrize(
+        ("committed_mode", "changed_mode"), [(0o644, 0o755), (0o755, 0o644)]
+    )
+    def test_an_executable_mode_change_git_status_hides_is_refused(
+        self, checkout, committed_mode, changed_mode
+    ) -> None:
+        root, head = checkout
+        module = root / _MODULE
+        if committed_mode == 0o755:
+            module.chmod(committed_mode)
+            _git(root, "update-index", "--chmod=+x", _MODULE)
+            _git(root, "commit", "-q", "-m", "executable module")
+            head = _git(root, "rev-parse", "HEAD")
+        _hide_an_executable_mode_change(root, changed_mode)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        expected_mode = "100755" if committed_mode == 0o755 else "100644"
+        actual_mode = "100755" if changed_mode == 0o755 else "100644"
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()}: {_MODULE} has mode "
+            f"{actual_mode}, not the mode {expected_mode} commit {head} records "
+            "for it, though git status reports no change; reference a git "
+            "archive export instead."
+        )
+
+    def test_a_sha256_repository_is_accepted_and_checked_byte_for_byte(
+        self, tmp_path
+    ) -> None:
+        root = _write_tree(tmp_path / "rulespec-sha256", _BASE_TREE)
+        _git(root, "init", "-q", "--object-format=sha256")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "fixture")
+        head = _git(root, "rev-parse", "HEAD")
+        assert len(head) == 64
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+        _hide_a_same_size_edit_behind_a_clean_filter(root)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=f"{_MODULE} is not the blob"):
+            self._checkout_ref(root, head)
+
+    # -- the invariant -------------------------------------------------------
+
+    @settings(
+        max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    )
+    @given(
+        change=st.sampled_from(_CHECKOUT_CHANGES),
+        variables=st.sets(st.sampled_from(_REDIRECTING_VARIABLES)),
+    )
+    def test_property_accepted_iff_the_root_holds_exactly_the_commit(
+        self, tmp_path_factory, git_template, change, variables
+    ) -> None:
+        """Invariant: a git root is accepted iff it is exactly the declared commit.
+
+        The root is a copy of a committed checkout. The test makes one change
+        that leaves it short of exactly the declared commit, or none, and sets
+        any subset of git's repository-selecting variables to a clean copy
+        at the same commit. The root is accepted iff nothing changed, and
+        then the reference records its own HEAD.
+        """
+
+        template, decoy, head = git_template
+        root = tmp_path_factory.mktemp("checkout") / "rulespec-git"
+        shutil.copytree(template, root, symlinks=True)
+        declared = _apply_checkout_change(root, change, head, tmp_path_factory)
+        with pytest.MonkeyPatch.context() as patch:
+            _aim_git_at(patch, decoy, variables)
+            try:
+                reference = self._checkout_ref(root, declared)
+            except ValueError:
+                reference = None
+        assert (reference is not None) == (change == "none")
+        if reference is not None:
+            assert json.loads(reference)["rulespec_commit"] == head
+
+
+class TestGitBlobId:
+    @settings(max_examples=60, deadline=None)
+    @given(content=st.binary(max_size=512))
+    def test_differential_blob_ids_equal_git_hash_object(
+        self, blob_repositories, content
+    ) -> None:
+        """The byte check's blob ids are the ones git computes, in both formats."""
+
+        for algorithm, repository in blob_repositories.items():
+            expected = (
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(repository),
+                        "hash-object",
+                        "--no-filters",
+                        "--stdin",
+                    ],
+                    input=content,
+                    capture_output=True,
+                    check=True,
+                    env=_GIT_ENV,
+                )
+                .stdout.decode("ascii")
+                .strip()
+            )
+            assert axiom_adapter._git_blob_id(content, algorithm) == expected
+
+
+@pytest.fixture(scope="module")
+def blob_repositories(tmp_path_factory) -> dict[str, Path]:
+    repositories = {}
+    for algorithm in ("sha1", "sha256"):
+        repository = tmp_path_factory.mktemp(f"blob-{algorithm}")
+        _git(repository, "init", "-q", f"--object-format={algorithm}")
+        assert _git(repository, "rev-parse", "--show-object-format") == algorithm
+        repositories[algorithm] = repository
+    return repositories
+
+
+@pytest.fixture(scope="module")
+def git_template(tmp_path_factory) -> tuple[Path, Path, str]:
+    """A committed checkout to copy, a clean decoy copy of it, and its commit.
+
+    Every file carries an old mtime, so an in-place edit can restore it and
+    leave the stat cache matching (the ``stat-cache edit`` change).
+    """
+
+    root, head = _old_mtime_checkout(
+        tmp_path_factory.mktemp("template") / "rulespec-git"
+    )
+    decoy = tmp_path_factory.mktemp("decoy") / "rulespec-git"
+    shutil.copytree(root, decoy, symlinks=True)
+    return root, decoy, head
+
+
+def _commit_submodule(root: Path, *, ignore: str | None = None) -> tuple[str, Path]:
+    """Commit an embedded repository at ``zz/vendor`` as a submodule of ``root``."""
+
+    vendor = _write_tree(
+        root / "zz/vendor", {"vendor.yaml": b"vendor: 1\n", ".gitignore": b"*.tmp\n"}
+    )
+    _git(vendor, "init", "-q")
+    _git(vendor, "add", "-A")
+    _git(vendor, "commit", "-q", "-m", "vendor")
+    _git(root, "add", "zz/vendor")
+    if ignore is not None:
+        (root / ".gitmodules").write_text(
+            '[submodule "zz/vendor"]\n\tpath = zz/vendor\n\turl = ./zz/vendor\n'
+            f"\tignore = {ignore}\n",
+            encoding="utf-8",
+        )
+        _git(root, "add", ".gitmodules")
+    _git(root, "commit", "-q", "-m", "vendor")
+    return _git(root, "rev-parse", "HEAD"), vendor
+
+
+_OLD_MTIME = 1_600_000_000
+
+
+def _old_mtime_checkout(root: Path) -> tuple[Path, str]:
+    """A committed checkout whose files all carry an old mtime."""
+
+    _write_tree(root, {**_BASE_TREE, ".gitignore": b"*.local.yaml\n"})
+    for path in root.rglob("*"):
+        if path.is_file():
+            os.utime(path, (_OLD_MTIME, _OLD_MTIME))
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "fixture")
+    return root, _git(root, "rev-parse", "HEAD")
+
+
+def _hide_a_same_size_edit_from_the_stat_cache(root: Path) -> None:
+    """Edit the module in place, same size, and put its old mtime back.
+
+    With core.trustctime=false git's stat check ignores the ctime the edit
+    moves, so it sees size and mtime unchanged.
+    """
+
+    _git(root, "config", "core.trustctime", "false")
+    # Record this copy's own inode and ctime in the index first.
+    _git(root, "update-index", "--refresh")
+    module = root / _MODULE
+    content = module.read_bytes()
+    edited = content.replace(b"rules: []", b"rules: [x")
+    assert len(edited) == len(content) and edited != content
+    module.write_bytes(edited)
+    os.utime(module, (_OLD_MTIME, _OLD_MTIME))
+
+
+def _quiet_file_system_monitor(root: Path, hook: Path) -> None:
+    """Install a core.fsmonitor hook that never reports a change.
+
+    The index records the monitor and marks every entry valid, so git status
+    then takes the hook's word that nothing changed.
+    """
+
+    hook.write_text("#!/bin/sh\nprintf 'quiet\\0'\n", encoding="utf-8")
+    hook.chmod(0o755)
+    _git(root, "config", "core.fsmonitor", str(hook))
+    _git(root, "update-index", "--fsmonitor")
+    _git(root, "status")
+    _git(root, "status")
+
+
+def _plant_nested_dot_git(root: Path, entry: str) -> None:
+    """Add a ``.git`` file or directory below the root that is no repository."""
+
+    if entry == "file":
+        (root / "zz/policies/.git").write_bytes(b"gitdir: nowhere\n")
+    else:
+        _write_tree(root / "zz/policies/.git", {"notes.txt": b"not a repository\n"})
+
+
+_ALIAS = "zz/policies/tests/alias.yaml"
+
+
+def _commit_symlink_as_a_plain_file(root: Path) -> str:
+    """Commit a symbolic link, then hold it as a plain file under core.symlinks=false."""
+
+    alias = root / _ALIAS
+    alias.symlink_to(Path(_MODULE).name)
+    _git(root, "add", _ALIAS)
+    _git(root, "commit", "-q", "-m", "alias")
+    _git(root, "config", "core.symlinks", "false")
+    alias.unlink()
+    alias.write_bytes(Path(_MODULE).name.encode("utf-8"))
+    _git(root, "update-index", "--refresh")
+    assert _git(root, "ls-files", "--stage", _ALIAS).startswith("120000 ")
+    return _git(root, "rev-parse", "HEAD")
+
+
+def _hide_a_same_size_edit_behind_a_clean_filter(root: Path) -> None:
+    """Edit the module, same size, behind a clean filter that undoes the edit."""
+
+    (root / ".git" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "info" / "attributes").write_text(
+        "*.yaml filter=restore\n", encoding="utf-8"
+    )
+    _git(root, "config", "filter.restore.clean", "sed s/HIDDEN/rules:/")
+    module = root / _MODULE
+    content = module.read_bytes()
+    edited = content.replace(b"rules:", b"HIDDEN")
+    assert len(edited) == len(content) and edited != content
+    module.write_bytes(edited)
+
+
+def _hide_an_executable_mode_change(root: Path, mode: int = 0o755) -> None:
+    """Change the module's executable bit while git ignores worktree modes."""
+
+    _git(root, "config", "core.filemode", "false")
+    (root / _MODULE).chmod(mode)
+
+
+def _apply_checkout_change(root: Path, change: str, head: str, tmp_path_factory) -> str:
+    """Apply one ``_CHECKOUT_CHANGES`` entry to ``root``; return the commit to declare."""
+
+    module = root / _MODULE
+    if change == "edit":
+        module.write_bytes(b"format: rulespec/v1\nrules: [edited]\n")
+    elif change == "untracked file":
+        (root / "zz/untracked.yaml").write_bytes(b"x")
+    elif change == "ignored file":
+        (root / "zz/override.local.yaml").write_bytes(b"x")
+    elif change == "staged edit, reverted on disk":
+        content = module.read_bytes()
+        module.write_bytes(b"format: rulespec/v1\nrules: [staged]\n")
+        _git(root, "add", _MODULE)
+        module.write_bytes(content)
+    elif change == "skip-worktree":
+        _git(root, "update-index", "--skip-worktree", _MODULE)
+    elif change == "assume-unchanged edit":
+        _git(root, "update-index", "--assume-unchanged", _MODULE)
+        module.write_bytes(b"format: rulespec/v1\nrules: [hidden]\n")
+    elif change == "submodule":
+        head, _ = _commit_submodule(root)
+    elif change == "HEAD moved on":
+        _git(root, "commit", "-q", "--allow-empty", "-m", "moved")
+    elif change == "another commit declared":
+        return "1" * len(head) if head != "1" * len(head) else "2" * len(head)
+    elif change == "replace ref":
+        module.write_bytes(b"format: rulespec/v1\nrules: [other]\n")
+        _git(root, "commit", "-q", "-a", "-m", "other")
+        _git(root, "replace", head, _git(root, "rev-parse", "HEAD"))
+        _git(root, "update-ref", "HEAD", head)
+    elif change == "stat-cache edit":
+        _hide_a_same_size_edit_from_the_stat_cache(root)
+    elif change == "clean-filter edit":
+        _hide_a_same_size_edit_behind_a_clean_filter(root)
+    elif change == "fsmonitor-hidden edit":
+        _quiet_file_system_monitor(root, root.parent / "quiet-fsmonitor")
+        module.write_bytes(b"format: rulespec/v1\nrules: [quiet]\n")
+    elif change == "nested .git file":
+        _plant_nested_dot_git(root, "file")
+    elif change == "symbolic link as a plain file":
+        head = _commit_symlink_as_a_plain_file(root)
+    elif change == "executable mode hidden by core.filemode":
+        _hide_an_executable_mode_change(root)
+    elif change == "core.worktree elsewhere":
+        elsewhere = tmp_path_factory.mktemp("elsewhere") / "rulespec-git"
+        shutil.copytree(root, elsewhere, ignore=shutil.ignore_patterns(".git"))
+        _git(root, "config", "core.worktree", str(elsewhere))
+        module.write_bytes(b"format: rulespec/v1\nrules: [dirty]\n")
+    else:
+        assert change == "none", change
+    return head
 
 
 # ----------------------------------------------------------------------
