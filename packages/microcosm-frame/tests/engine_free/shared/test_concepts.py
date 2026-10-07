@@ -24,7 +24,10 @@ from microcosm.frame.concepts import (
     ConceptAlignment,
     ConceptFrameDeclaration,
     ContentBasis,
+    IndexFamily,
+    MonetaryHandling,
     ProvenanceClass,
+    TemporalBasis,
     TransportRule,
     Unit,
     canonical_concept_kind,
@@ -72,7 +75,7 @@ CHRONICLE_FEED = (
 
 #: Pinned schema digest. A change to any concept's declared contract moves it:
 #: bump CONCEPT_SCHEMA_VERSION when the change is deliberate, then re-pin.
-SCHEMA_SHA256 = "d4cb09218a9757642af016e795e900ae9091a552694d37a954e6a70fffa2b6a1"
+SCHEMA_SHA256 = "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e"
 
 
 class TestDeclaredSchema:
@@ -90,6 +93,7 @@ class TestDeclaredSchema:
             "fact:person.dividend_income",
             "fact:person.rental_income",
             "fact:person.realized_capital_gains",
+            "fact:person.liquid_financial_assets",
             "fact:person.private_pension_income",
             "fact:person.public_pension_income",
             "fact:person.usual_weekly_hours",
@@ -153,6 +157,37 @@ class TestDeclaredSchema:
             if item.provenance is ProvenanceClass.GENERATED:
                 assert item.transport is TransportRule.CARRY
 
+    def test_liquid_financial_assets_are_a_quantile_mapped_person_stock(
+        self,
+    ) -> None:
+        item = concept("fact:person.liquid_financial_assets")
+        assert (item.entity, item.dtype, item.unit) == (
+            "person",
+            "float",
+            Unit.BASE_CURRENCY,
+        )
+        assert (item.period, item.temporal_basis) == (
+            "point",
+            TemporalBasis.REFERENCE_STATE,
+        )
+        assert item.provenance is ProvenanceClass.OBSERVED
+        assert item.transport is TransportRule.QUANTILE_MAP
+        assert item.monetary == MonetaryHandling(
+            index_family=IndexFamily.CONSUMER_PRICES
+        )
+        assert (item.lower, item.upper, item.nullable) == (0.0, None, False)
+
+    def test_liquid_financial_assets_are_the_only_amount_held_as_a_stock(
+        self,
+    ) -> None:
+        stocks = {
+            item.id
+            for item in CONCEPTS
+            if item.monetary is not None
+            and item.temporal_basis is not TemporalBasis.ANNUAL_FLOW
+        }
+        assert stocks == {"fact:person.liquid_financial_assets"}
+
     def test_the_take_up_seed_is_generated_persistent_state(self) -> None:
         seed = concept("fact:person.take_up_seed")
         assert seed.provenance is ProvenanceClass.GENERATED
@@ -171,7 +206,7 @@ class TestDeclaredSchema:
             concepts_for_entity("tax_unit")
 
     def test_schema_digest_is_pinned(self) -> None:
-        assert CONCEPT_SCHEMA_VERSION == 1
+        assert CONCEPT_SCHEMA_VERSION == 2
         assert concept_schema_sha256() == SCHEMA_SHA256
 
     def test_schema_digest_ignores_alignments(self) -> None:
@@ -445,6 +480,7 @@ class TestFrameValidation:
                     ("weeks_worked", 54),
                     ("take_up_seed", 1.0),
                     ("employment_income", -0.01),
+                    ("liquid_financial_assets", -0.01),
                 ]
             )
         )
@@ -729,6 +765,7 @@ class TestTransportSplit:
         kept, dropped = split_for_transport(tables)
         assert "public_pension_income" in dropped["person"]
         assert "receives_snap" in dropped["person"]
+        assert "liquid_financial_assets" in kept["person"].columns
         assert dropped["household"] == ("state_fips",)
         for entity in CONCEPT_ENTITIES:
             for column in kept[entity].columns:

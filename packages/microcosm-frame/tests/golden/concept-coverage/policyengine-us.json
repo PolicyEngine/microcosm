@@ -547,7 +547,7 @@
  "engine": "policyengine-us",
  "engine_version": "2.2.1",
  "input_count": 926,
- "schema_sha256": "d4cb09218a9757642af016e795e900ae9091a552694d37a954e6a70fffa2b6a1",
+ "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
  "structural_inputs": [
   {
    "entity": "family",
@@ -4037,5 +4037,7 @@
   }
  ],
  "unknown_inputs": [],
- "unmapped_concepts": {}
+ "unmapped_concepts": {
+  "fact:person.liquid_financial_assets": "policyengine-us splits this stock across three person inputs, which the populace-us donor H5 also carries as person columns. Their engine documentation: bank_account_assets ('Value of checking, savings, and money market accounts. Imputed from SIPP TVAL_BANK.'), stock_assets ('Value of stocks and mutual funds. Imputed from SIPP TVAL_STMF.') and bond_assets ('Value of bonds and government securities. Imputed from SIPP TVAL_BOND.'). As far as that documentation shows, their sum is the concept less term deposits, which bank_account_assets does not name; the donor's SCF half fills it from SCF liq (checking, savings, money-market and call accounts, in microcosm.build.us_runtime.scf_wealth). All three uprate with CPI-U (gov.bls.cpi.cpi_u), the concept's consumer-price index family. In the donor that stage draws one vector per household and places it on the member with the lowest CPS line number (the householder is line 1), with every other member at zero, so the columns hold a household total on one member, not each owner's share. spm_unit_assets (SPM unit; read by state child-care asset tests) is a unit stock the engine defines only by its label 'SPM unit assets', so feeding it would be a modelling choice. No transform here splits one amount across three inputs: a share pair splits it in two, and a fraction is never decoded. So decode cannot recover the concept from these inputs, and encoding it waits for a reviewed three-way split."
+ }
 }

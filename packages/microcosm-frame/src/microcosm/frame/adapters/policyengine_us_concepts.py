@@ -619,7 +619,34 @@ POLICYENGINE_US_CONCEPT_MAPPING = ConceptMapping(
             group_rule=GroupRule.REFERENCE_MEMBER,
         ),
     ),
-    unmapped={},
+    unmapped={
+        "fact:person.liquid_financial_assets": (
+            "policyengine-us splits this stock across three person inputs, "
+            "which the populace-us donor H5 also carries as person columns. "
+            "Their engine documentation: bank_account_assets ('Value of "
+            "checking, savings, and money market accounts. Imputed from SIPP "
+            "TVAL_BANK.'), stock_assets ('Value of stocks and mutual funds. "
+            "Imputed from SIPP TVAL_STMF.') and bond_assets ('Value of bonds "
+            "and government securities. Imputed from SIPP TVAL_BOND.'). As far "
+            "as that documentation shows, their sum is the concept less term "
+            "deposits, which bank_account_assets does not name; the donor's "
+            "SCF half fills it from SCF liq (checking, savings, money-market "
+            "and call accounts, in microcosm.build.us_runtime.scf_wealth). All "
+            "three uprate with CPI-U (gov.bls.cpi.cpi_u), the concept's "
+            "consumer-price index family. In the donor that stage draws one "
+            "vector per household and places it on the member with the lowest "
+            "CPS line number (the householder is line 1), with every other "
+            "member at zero, so the columns hold a household total on one "
+            "member, not each owner's share. "
+            "spm_unit_assets (SPM unit; read by state child-care asset tests) "
+            "is a unit stock the engine defines only by its label 'SPM unit "
+            "assets', so feeding it would be a modelling choice. No transform "
+            "here splits one amount across three inputs: a share pair splits "
+            "it in two, and a fraction is never decoded. So decode cannot "
+            "recover the concept from these inputs, and encoding it waits for "
+            "a reviewed three-way split."
+        ),
+    },
     structural_inputs=(
         "household_id",
         "tax_unit_id",

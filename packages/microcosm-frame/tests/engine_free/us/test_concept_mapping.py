@@ -40,8 +40,15 @@ def test_formula_owned_aggregates_are_never_targets() -> None:
     }
 
 
-def test_every_concept_reaches_the_us_engine() -> None:
-    assert dict(MAPPING.unmapped) == {}
+def test_every_concept_but_liquid_assets_reaches_the_us_engine() -> None:
+    # The engine splits liquid financial assets across three person inputs,
+    # and no transform splits one amount three ways.
+    assert set(MAPPING.unmapped) == {"fact:person.liquid_financial_assets"}
+    reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
+    for name in ("bank_account_assets", "stock_assets", "bond_assets"):
+        assert name in reason
+    bound = {binding.engine_input for binding in MAPPING.bindings}
+    assert not bound & {"bank_account_assets", "stock_assets", "bond_assets"}
 
 
 def test_the_donor_receipt_concept_feeds_social_security_retirement() -> None:

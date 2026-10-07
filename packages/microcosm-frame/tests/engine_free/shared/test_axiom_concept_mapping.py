@@ -18,6 +18,7 @@ from microcosm.frame.adapters.axiom_input_surface import (
 )
 from microcosm.frame.concept_mapping import (
     InputDeclaration,
+    InputRef,
     coverage_report,
 )
 from microcosm.frame.concepts import (
@@ -94,6 +95,35 @@ def test_committed_coverage_report_matches_the_surface(country) -> None:
         "Regenerate with: uv run --no-sync python tools/refresh_concept_coverage.py "
         f"--engine axiom-{country}"
     )
+
+
+def test_the_belgian_liquid_asset_reason_names_real_inputs() -> None:
+    # The reason rests on where the movable-capital inputs live: the social
+    # integration means test's on Household, the Brussels APA's on Person.
+    reason = axiom_concept_mapping("be").unmapped["fact:person.liquid_financial_assets"]
+    ris = (
+        "be/regulations/social_integration/resource_calculation.yaml",
+        "be/statutes/social_integration/payable_amount.yaml",
+    )
+    named = {
+        InputRef(
+            "brussels_apa_movable_capital_amount",
+            "Person",
+            "be-bru/statutes/disability/elderly_care_allowance.yaml",
+        ),
+        *(
+            InputRef(
+                f"belgium_social_integration_movable_capital_{name}", "Household", path
+            )
+            for name in ("amount", "numerator_share", "account_holder_count")
+            for path in ris
+        ),
+    }
+    assert named <= set(load_axiom_input_surface("be").refs())
+    for ref in named:
+        assert ref.name in reason
+        # The reason cites federal modules below be/ and keeps be-bru/.
+        assert ref.module.removeprefix("be/") in reason, ref.module
 
 
 @pytest.mark.parametrize("country", COUNTRIES)

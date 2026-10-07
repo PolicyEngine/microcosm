@@ -109,6 +109,15 @@ def test_the_mapping_notes_formula_ownership_claims_hold(index) -> None:
     assert index.formula_owned_outputs(claimed) == claimed
 
 
+def test_the_liquid_asset_reason_names_cpi_uprated_person_inputs(index, engine) -> None:
+    inputs = set(index.variables())
+    for name in ("bank_account_assets", "stock_assets", "bond_assets"):
+        assert name in inputs, name
+        assert index.variable_metadata(name).entity == "person", name
+        assert index.variable_metadata(name).dtype == "float", name
+        assert engine._variable(name).uprating == "gov.bls.cpi.cpi_u", name
+
+
 def test_committed_coverage_report_matches_the_engine(index) -> None:
     report = coverage_report(MAPPING, rules_engine_input_refs(index))
     assert report.unknown_inputs == ()
