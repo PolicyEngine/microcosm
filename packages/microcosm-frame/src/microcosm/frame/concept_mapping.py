@@ -46,6 +46,7 @@ from microcosm.frame.concepts import (
     CanonicalConceptKind,
     Concept,
     ConceptAlignment,
+    TemporalBasis,
     Unit,
     _parsing,
     _record_fields,
@@ -192,7 +193,7 @@ class Share:
     layer does not (taxable and tax-exempt interest). The engine input gets
     ``value * s``, or ``value * (1 - s)`` for the complement, where the share
     ``s`` on [0, 1] is a country-pack parameter supplied at encode time. The
-    pair sums back to the concept.
+    pair sums back to the concept. Reads an annual flow only.
     """
 
     parameter: str
@@ -201,7 +202,7 @@ class Share:
 
 @dataclass(frozen=True)
 class Sum:
-    """The engine input is the sum of several amount concepts."""
+    """The engine input is the sum of several annual-flow amount concepts."""
 
 
 @dataclass(frozen=True)
@@ -262,8 +263,9 @@ class RelationshipRole:
 class Scale:
     """The engine input is the concept times a fixed factor.
 
-    Converts an annual concept to the period a rule states it in: ``1/52``
-    for a weekly amount, ``1/12`` for a monthly one. Invertible.
+    Converts an annual flow to the period a rule states it in: ``1/52``
+    for a weekly amount, ``1/12`` for a monthly one. Invertible. Reads annual
+    flows only: a stock has no weekly or monthly value.
     """
 
     factor: float
@@ -288,6 +290,7 @@ class Fraction:
     inputs, a fraction feeds an input that is part of an amount some other
     binding delivers whole (UK ISA interest inside savings interest). The
     input gets ``value * f`` for a country-pack parameter ``f`` on [0, 1].
+    Reads an annual flow only.
     """
 
     parameter: str
@@ -739,6 +742,15 @@ def bind(
     )
 
 
+#: Transforms that do arithmetic on a year's amount: a scale restates it per
+#: week or month, a sum adds amounts, and a share or fraction splits one. Each
+#: reads annual flows only, so none of them takes a stock (a value at the
+#: reference date), a usual rate or a persistent draw by accident; a binding
+#: that needs one needs a new transform. A product is outside the rule: it
+#: multiplies a usual rate (weekly hours) by weeks.
+_FLOW_TRANSFORMS = (Scale, Sum, Share, Fraction)
+
+
 def _check_transform_arity(binding: InputBinding) -> None:
     transform = binding.transform
     items = [concept(concept_id) for concept_id in binding.concepts]
@@ -786,6 +798,14 @@ def _check_transform_arity(binding: InputBinding) -> None:
         )
     if isinstance(transform, Sum) and len(items) < 2:
         raise ValueError(f"Binding for {name!r}: a sum reads two or more amounts.")
+    if isinstance(transform, _FLOW_TRANSFORMS):
+        for item in items:
+            if item.temporal_basis is not TemporalBasis.ANNUAL_FLOW:
+                raise ValueError(
+                    f"Binding for {name!r}: a {_KIND_BY_TRANSFORM[type(transform)]} "
+                    f"reads annual flows only, and {item.id} has temporal "
+                    f"basis {item.temporal_basis.value}."
+                )
     if isinstance(transform, Product) and len(items) != 2:
         raise ValueError(f"Binding for {name!r}: a product reads two concepts.")
     if isinstance(transform, AllocateToReferencePerson) and items[0].entity != (
