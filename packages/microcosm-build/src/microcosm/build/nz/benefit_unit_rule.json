@@ -2,7 +2,7 @@
   "version": 1,
   "country": "nz",
   "method_card_row": "MC7",
-  "description": "The New Zealand benefit unit (engine Family entity): an adult, their co-resident partner, and their dependent children; every other adult forms their own unit. The unit id family.family_id and the membership person.person_family_id are structural graph columns: the graph executor counts each entity's id column and each person-table membership column as structural (microcosm.graph.executor._structural_columns, executor.py lines 636-643) and rejects a non-structural node that declares one as an output (_validate_population_declaration, executor.py lines 1550-1573). family.family_household_id, the unit's link to its household, is not structural; it is an ordinary family column. The planned shared transport CREATE kernel (packages G4 and G5a) is to build the units from the donor concept pointers, refusing ambiguous or cross-household units. Family weights are never stored: each unit inherits its household's weight through the Frame.",
+  "description": "The New Zealand benefit unit (engine Family entity): an adult, their co-resident partner, and their dependent children; every other adult forms their own unit. The unit id family.family_id and the membership person.person_family_id are structural graph columns: the graph executor counts each entity's id column and each person-table membership column as structural (microcosm.graph.executor._structural_columns) and rejects a non-structural node that declares one as an output (microcosm.graph.executor._validate_population_declaration). family.family_household_id, the unit's link to its household, is not structural; it is an ordinary family column. The planned shared transport CREATE kernel (packages G4 and G5a) is to build the units from the donor concept pointers, refusing ambiguous or cross-household units. Family weights are never stored: each unit inherits its household's weight through the Frame.",
   "status": "awaiting D1 (MC7; the dependent-child rule is spec data under amendment MC11a, which is proposed and also awaits D1)",
   "entity": "family",
   "engine_entity": "Family",
@@ -19,7 +19,7 @@
       "parent_2_person_id"
     ],
     "household_reference_person": "reference_person_id",
-    "citation": "packages/microcosm-frame/src/microcosm/frame/concepts.py:880-919"
+    "citation": "microcosm.frame.concepts, the partner_person_id, parent_1_person_id, parent_2_person_id and reference_person_id pointer concepts"
   },
   "composition": [
     {
@@ -32,7 +32,7 @@
     },
     {
       "member": "dependent_child",
-      "rule": "a dependent child joins the unit of its co-resident parent parent_1_person_id; a lone co-resident parent is always parent 1 (the pointer definition, concepts.py lines 892-901; the pointer checks flag parent_2_person_id without parent_1_person_id as parent_order, concepts.py _check_pointers), so parent_2_person_id never chooses the unit"
+      "rule": "a dependent child joins the unit of its co-resident parent parent_1_person_id; a lone co-resident parent is always parent 1 (the parent_1_person_id pointer definition in microcosm.frame.concepts; the pointer checks flag parent_2_person_id without parent_1_person_id as parent_order, microcosm.frame.concepts._check_pointers), so parent_2_person_id never chooses the unit"
     },
     {
       "member": "other_adult",
