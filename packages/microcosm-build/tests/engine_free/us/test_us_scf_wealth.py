@@ -51,7 +51,7 @@ _SCF_FIN_CONSTITUENTS = frozenset(
 )
 
 
-def test_ssi_leaves_partition_scf_financial_assets_without_double_counting() -> None:
+def test_ssi_leaves_draw_on_distinct_scf_fin_constituents() -> None:
     components = [
         component
         for leaf_components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.values()
@@ -59,8 +59,9 @@ def test_ssi_leaves_partition_scf_financial_assets_without_double_counting() -> 
     ]
     # No SCF component feeds two SSI leaves, so the leaves cannot double count.
     assert len(components) == len(set(components))
-    # Every component is one of FIN's disjoint constituents, so the three leaves
-    # together never exceed the household's total financial assets.
+    # Every component is one of FIN's disjoint constituents (the leaves use five
+    # of the ten), so wherever the other constituents are nonnegative the three
+    # leaves together cannot exceed the household's total financial assets.
     assert set(components) <= _SCF_FIN_CONSTITUENTS
     # U.S. savings bonds (POMS SI 01140.240) reach an SSI leaf, as SIPP's
     # TVAL_BOND does on the other half of the blend.
@@ -201,9 +202,37 @@ def test_scf_targets_sum_cleaned_components(raw) -> None:
         assert (targets[leaf].to_numpy() >= 0.0).all()
 
 
+#: A signed non-sentinel amount, so the zero floor can bind.
+_signed_scf_amount = st.floats(min_value=-1e10, max_value=1e10, allow_nan=False).filter(
+    lambda value: value not in _SCF_SENTINELS
+)
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    rows=st.integers(min_value=1, max_value=12).flatmap(
+        lambda rows: st.fixed_dictionaries(
+            {
+                column: st.lists(_signed_scf_amount, min_size=rows, max_size=rows)
+                for column in _COMPONENT_COLUMNS
+            }
+        )
+    )
+)
+def test_scf_targets_floor_negative_sums_at_zero(rows) -> None:
+    raw = pd.DataFrame(rows)
+    targets = _scf_financial_asset_targets(raw)
+    for leaf, components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.items():
+        expected = np.maximum(sum(raw[c].to_numpy() for c in components), 0.0)
+        np.testing.assert_allclose(targets[leaf].to_numpy(), expected, rtol=1e-12)
+        assert (targets[leaf].to_numpy() >= 0.0).all()
+
+
 @settings(max_examples=200, deadline=None)
 @given(raw=_raw_component_tables())
 def test_savings_bonds_add_to_bond_assets_and_nothing_else(raw) -> None:
+    # Components here are nonnegative or sentinels, as in the SCF extract; with a
+    # negative non-sentinel bond the zero floor could absorb savings bonds.
     targets = _scf_financial_asset_targets(raw)
     without_savings_bonds = _scf_financial_asset_targets(raw.assign(savbnd=0.0))
     # Savings bonds raise bond_assets by exactly their cleaned value, so the

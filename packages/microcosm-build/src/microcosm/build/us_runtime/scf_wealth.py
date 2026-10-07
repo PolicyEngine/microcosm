@@ -24,7 +24,8 @@ commit ``42ed5d45`` (``utils/asset_imputation.py``) except ``bond_assets``,
 which also reads U.S. savings bonds:
 
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
-  call accounts).
+  call and prepaid-card accounts; the Fed's macro sets it to at least $1 for
+  a household holding any such account).
 - ``stock_assets`` ← SCF ``stocks`` + ``nmmf`` (directly-held stock plus
   stock/non-money-market mutual funds).
 - ``bond_assets`` ← SCF ``bond`` + ``savbnd``. ``bond`` is directly held
@@ -48,11 +49,14 @@ the variable's cited sources. If the archive's net-worth components are ever
 built, ``scf_savings_bonds`` must leave that partition, because
 ``bond_assets`` now carries ``savbnd``.
 
-Two measurement limits remain. SCF ``X3902`` asks the face value of savings
-bonds, while SIPP asks market value. And neither survey identifies savings
-bonds still in their mandatory retention period (12 months for Series EE and
-I bonds issued on or after 2/1/2003), which POMS SI 01140.240 says are not
-resources. Both affect amounts, not which leaf savings bonds belong to.
+Two measurement limits remain, for this leaf as before. The SCF records face
+values: ``X3902`` for savings bonds, and face-value items for every component
+of ``bond``. SIPP asks balance or market value including interest, while POMS
+counts other bonds at current market value (SI 01140.250) and savings bonds at
+redemption value (SI 01140.240). And neither survey identifies savings bonds
+still in their mandatory retention period (12 months for Series EE and I bonds
+issued on or after 2/1/2003), which SI 01140.240 says are not resources. Both
+limits affect amounts, not which leaf savings bonds belong to.
 
 The SCF QRF's eight predictors are age, sex, race, marriage, own children,
 employment income, interest/dividend income, and Social Security/pension
@@ -286,9 +290,10 @@ _PERSON_WEIGHT_COLUMN = "person_weight"
 _HOUSEHOLD_ID_COLUMN = "person_household_id"
 
 #: Weighted person-level nonzero-share plausibility bands. Centred on the
-#: pinned incumbent eCPS parity reference (bank 0.54, stock 0.16, bond 0.03)
-#: with generous width — the gate exists to catch an all-zero or constant
-#: surface, not to pin a point estimate.
+#: pinned incumbent eCPS parity reference (bank 0.54, stock 0.16, bond 0.03;
+#: those reference values are unweighted record shares) with generous width —
+#: the gate exists to catch an all-zero or constant surface, not to pin a
+#: point estimate.
 _BANK_NONZERO_SHARE_BAND = (0.25, 0.85)
 _STOCK_NONZERO_SHARE_BAND = (0.03, 0.40)
 _BOND_NONZERO_SHARE_BAND = (0.001, 0.12)
