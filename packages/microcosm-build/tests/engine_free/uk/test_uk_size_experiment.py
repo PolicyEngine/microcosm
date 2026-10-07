@@ -83,6 +83,30 @@ def test_control_reproduces_the_stored_refit_exactly(baseline, built) -> None:
     )
 
 
+def test_control_and_variants_carry_the_stored_stages_l2(tmp_path) -> None:
+    synthetic_uk_size_run(
+        tmp_path / "run", selection_l2_lambda=1e-3, refit_l2_lambda=0.02
+    )
+    build_uk_size_experiment_cache(tmp_path / "run", tmp_path / "cache")
+    baseline = load_uk_size_experiment_baseline(tmp_path / "run", tmp_path / "cache")
+    assert baseline.settings["selection_l2"]["lambda"] == 1e-3
+    assert baseline.settings["refit_l2"] == {
+        "lambda": 0.02,
+        "anchor": "initial",
+        "basis": "chi_square",
+    }
+    control = run_uk_size_control(baseline)
+    assert control["passed"] and control["exact"]
+    # A variant on the stored search names the search's own L2 for reuse.
+    outcome = run_uk_size_experiment(baseline, UKSizeExperiment(name="r"))
+    assert outcome["results"]["refit"].receipt["selection_l2"]["lambda"] == 1e-3
+    assert "refit_l2" not in outcome["results"]["refit"].receipt
+    holdout = run_uk_size_experiment(
+        baseline, UKSizeExperiment(name="h", mode="refit_holdout")
+    )
+    assert len(holdout["receipt"]["holdout"]["folds"]) == 5
+
+
 def test_control_fails_when_the_stored_refit_differs(built, tmp_path) -> None:
     root, run = built
     clone = tmp_path / "run"

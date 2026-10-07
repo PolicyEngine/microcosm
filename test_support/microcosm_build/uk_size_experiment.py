@@ -188,8 +188,20 @@ def _write(
     }
 
 
-def synthetic_uk_size_run(run_dir: Path, *, households: int = 16, k: int = 10) -> dict:
-    """Write a finished size build of ``k`` of ``households`` rows to ``run_dir``."""
+def synthetic_uk_size_run(
+    run_dir: Path,
+    *,
+    households: int = 16,
+    k: int = 10,
+    selection_l2_lambda: float = 0.0,
+    refit_l2_lambda: float = 0.0,
+) -> dict:
+    """Write a finished size build of ``k`` of ``households`` rows to ``run_dir``.
+
+    ``selection_l2_lambda`` / ``refit_l2_lambda`` build it with the size
+    stages' L2 penalties on, as a ``--selection-l2-lambda`` /
+    ``--refit-l2-lambda`` build would.
+    """
 
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -237,13 +249,26 @@ def synthetic_uk_size_run(run_dir: Path, *, households: int = 16, k: int = 10) -
         learning_rate=settings["learning_rate"],
         seed=settings["seed"],
     )
-    selection = select_uk_dataset_size(frame, dense, pi_hi=settings["pi_hi"], **common)
+    selection_l2 = (
+        {} if not selection_l2_lambda else {"selection_l2_lambda": selection_l2_lambda}
+    )
+    refit_l2 = {} if not refit_l2_lambda else {"refit_l2_lambda": refit_l2_lambda}
+    selection = select_uk_dataset_size(
+        frame, dense, pi_hi=settings["pi_hi"], **selection_l2, **common
+    )
     draw = draw_uk_dataset_size(
         frame, dense, selection=selection, households=k, seed=settings["seed"],
         pi_hi=settings["pi_hi"],
     )  # fmt: skip
     sized = refit_uk_dataset_size(
-        frame, dense, selection=selection, draw=draw, pi_hi=settings["pi_hi"], **common
+        frame,
+        dense,
+        selection=selection,
+        draw=draw,
+        pi_hi=settings["pi_hi"],
+        **selection_l2,
+        **refit_l2,
+        **common,
     )
     compact_ids = sized.result.frame.table("household")["household_id"].tolist()
     evidence: dict[str, dict] = {}

@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.dataset_size import (
     refit_uk_dataset_size,
     select_uk_dataset_size,
     uk_size_l2,
+    uk_size_l2_from_options,
 )
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_WEIGHT_RULES
 from microcosm.build.uk_runtime.local_rowwise import (
@@ -321,6 +322,11 @@ def load_uk_size_experiment_baseline(
         "initial_lambda": meta.get("initial_lambda"),
         "max_weight_ratio": dense.options["max_weight_ratio"],
         "target_loss_cap": float(dense.target_loss_cap),
+        # The stored stages' own L2 penalties: a refit on the stored search must
+        # name the search's (the reuse check binds it), and the control
+        # re-runs the stored refit under the refit's.
+        "selection_l2": uk_size_l2_from_options(search.options),
+        "refit_l2": _stored_refit_l2(size_receipt),
     }
     profile = load_uk_pool_profile(
         cache_dir / "profile",
@@ -485,6 +491,17 @@ def _estimates(
     )
 
 
+def _stored_refit_l2(size_receipt: Mapping[str, Any]) -> dict[str, Any] | None:
+    block = size_receipt.get("refit_l2")
+    if not block:
+        return None
+    return {key: block[key] for key in ("lambda", "anchor", "basis")}
+
+
+def _stored_selection_l2_kwargs(baseline: UKSizeExperimentBaseline) -> dict[str, Any]:
+    return _l2_kwargs("selection", baseline.settings["selection_l2"])
+
+
 def _refit_settings(
     baseline: UKSizeExperimentBaseline, experiment: UKSizeExperiment | None
 ) -> dict[str, Any]:
@@ -525,6 +542,8 @@ def run_uk_size_control(
         selection=baseline.selection,
         draw=baseline.draw,
         **_refit_settings(baseline, None),
+        **_stored_selection_l2_kwargs(baseline),
+        **_l2_kwargs("refit", baseline.settings["refit_l2"]),
     )
     ids = tuple(sized.result.frame.table("household")["household_id"])
     weights = np.asarray(sized.result.weights, dtype=np.float64)
@@ -612,6 +631,7 @@ def run_uk_size_experiment(
             selection=selection,
             draw=baseline.draw,
             refit_target_weighting=_weighting(baseline, experiment.refit_rule),
+            **_stored_selection_l2_kwargs(baseline),
             **refit_l2,
             **settings,
         )
@@ -737,6 +757,7 @@ def _run_holdout(baseline, experiment, selection, settings, refit_l2):
             selection=selection,
             draw=baseline.draw,
             refit_target_weighting=weighting,
+            **_stored_selection_l2_kwargs(baseline),
             **refit_l2,
             **settings,
         )
