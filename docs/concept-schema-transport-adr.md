@@ -3,16 +3,15 @@
 **Status:** accepted for the concept schema, the per-engine mappings and their
 coverage reports. `microcosm.frame.transport` adds a reader for local
 populace-US donor files pinned by size and SHA-256, source-ID seeds, a
-currency bridge and weighted quantile mapping. The reader does not yet load
-the donor its tests pin. Run on that file (166,321 persons, 57,240
-households), it resolves every line pointer, then refuses the whole file: in
-113 households the `A_EXPRRP` reference person is not the `is_household_head`
-person, and the reader will not choose between them. All 113 are 2022 or 2023
-rows, whose `A_EXPRRP` matches the build's line-1 derivation rather than the
-Census recode. Once that is resolved, concept validation would also refuse
-two other households, copies of one source household in which two people name
-each other as parents. The composed transport pipeline below remains a
-design, and no build has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
+currency bridge and weighted quantile mapping. The reader selects the donor's
+`is_household_head` as the reference person and repairs two-person parent
+cycles under the age rule below, following the NZ hub's 2026-10-07 defaults
+recorded for D1 method card d1043. The full reader smoke test returns a valid
+bank from its pinned donor: 166,321 persons, 57,240 households, 57,240 heads,
+74,572 partner pointers, 62,096 `parent_1_person_id` pointers and 43,731
+`parent_2_person_id` pointers, after dropping two parent edges. Concept
+validation reports no violations. The composed transport pipeline below
+remains a design, and no build has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
 international populations and law-anchored concepts. **Amended 2026-10-07:**
 schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
@@ -296,12 +295,23 @@ These hold for every input and are tested (Hypothesis properties unless noted):
 - `microcosm.frame.transport` supplies a reader for pinned local donor files
   and the income transformation operators (step 3). The reader's bank
   declares US donor provenance and source-currency amounts; it does not
-  declare destination residents. It produces no bank from the donor its
-  tests pin yet: that file stops at the reference-person disagreement in the
-  status line above, and two households with a parent-pointer cycle would
-  then fail concept validation. The consuming builder supplies the
-  destination frame declaration after transport. Transport still needs a
-  unit-construction step that builds engine
+  declare destination residents. Each household must have exactly one person
+  whose boolean `is_household_head` flag is true; this supplies its
+  `reference_person_id`. `A_EXPRRP` is not used to select it. On the pinned
+  donor, `is_household_head` equals `P_SEQ == 1` on every row and is the US
+  engine's own head. It agrees with the Census `A_EXPRRP` reference person in
+  all 19,753 households from 2024, including 222 where that person is not
+  line 1. The 2022/2023 `A_EXPRRP` values instead come from the build's line-1
+  derivation.
+- If two people name each other as parents, the reader drops the edge whose
+  named parent is younger than the child and keeps the other edge. If their
+  ages are equal or the donor has no age column, it drops both edges. A
+  present age column must satisfy the existing concept contract: whole,
+  nonmissing ages in completed years, from 0 through 130.
+  `DonorBank.dropped_parent_cycle_edges` exposes the number of dropped edges.
+  Longer cycles and other inconsistent relationships still fail validation.
+- The consuming builder supplies the destination frame declaration after
+  transport. Transport still needs a unit-construction step that builds engine
   units from the concept pointers (until it exists, 13 of New Zealand's 80 and
   46 of Belgium's 105 module bindings, and the take-up and housing bindings on
   US and UK group entities, stay deferred), and a country pack with geography,

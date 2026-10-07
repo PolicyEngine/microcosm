@@ -405,6 +405,8 @@ class DonorBank:
     ``currency`` describes source
     amounts; the destination producer supplies its own frame declaration after
     transport. No destination country or year is inferred by this reader.
+    ``dropped_parent_cycle_edges`` counts directed parent pointers removed by
+    the reader's age-based two-person-cycle rule, including support copies.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -414,6 +416,7 @@ class DonorBank:
     content_basis: ContentBasis = ContentBasis.TRANSPORT
     donor_country: str = "us"
     currency: str = "USD"
+    dropped_parent_cycle_edges: int = 0
 
 
 def _line_numbers(values: pd.Series, *, pointer: bool = False) -> np.ndarray:
@@ -456,7 +459,6 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
         "A_SPOUSE",
         "PEPAR1",
         "PEPAR2",
-        "A_EXPRRP",
         "is_household_head",
         "bank_account_assets",
         "stock_assets",
@@ -520,32 +522,20 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
     )
     pointers["parent_1_person_id"][move] = pointers["parent_2_person_id"][move]
     pointers["parent_2_person_id"][move] = pd.NA
-    # The reference person is the A_EXPRRP reference person (codes 1 and 2).
-    # A household without one takes its is_household_head person. Where a
-    # household has an A_EXPRRP reference person, is_household_head must flag
-    # exactly that person: the reader refuses any disagreement rather than
-    # choosing between the two.
-    survey_reference = np.isin(_line_numbers(person["A_EXPRRP"]), (1, 2))
-    if not pd.Index(household_ids[survey_reference]).is_unique:
-        raise ValueError("Donor household has multiple reference persons.")
+    # The donor's US-engine head (P_SEQ == 1) is the reference person in
+    # every vintage. A_EXPRRP is not read: older rows derive it from line 1.
     head_flags = person["is_household_head"]
     if not pd.api.types.is_bool_dtype(head_flags.dtype) or head_flags.isna().any():
         raise ValueError("Donor is_household_head must be boolean with no nulls.")
     head = head_flags.to_numpy(dtype=bool)
     if not pd.Index(household_ids[head]).is_unique:
         raise ValueError("Donor household has multiple is_household_head persons.")
-    surveyed = pd.Index(household_ids[survey_reference]).get_indexer(household_ids) >= 0
-    if np.any(surveyed & (head != survey_reference)):
-        raise ValueError(
-            "Donor A_EXPRRP reference person and is_household_head disagree."
-        )
-    reference = survey_reference | (head & ~surveyed)
-    reference_rows = pd.Index(household_ids[reference]).get_indexer(
+    reference_rows = pd.Index(household_ids[head]).get_indexer(
         household[HOUSEHOLD_ID_COLUMN]
     )
     if np.any(reference_rows < 0):
-        raise ValueError("Donor household has no reference person.")
-    reference_ids = person_ids[reference][reference_rows]
+        raise ValueError("Donor household has no is_household_head person.")
+    reference_ids = person_ids[head][reference_rows]
     # The donor's three leaves are not invertible through an encoding mapping:
     # their sum is the reviewed donor-side stock, without inventing a split.
     leaves = person[["bank_account_assets", "stock_assets", "bond_assets"]].to_numpy(
@@ -617,6 +607,66 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
     }
 
 
+def _drop_two_person_parent_cycles(person: pd.DataFrame) -> int:
+    """Repair reciprocal parent edges only after other concepts validate.
+
+    Check the original graph before mutation: a reciprocal edge may also
+    belong to a longer cycle, which must still refuse. Removing its direct
+    reverse edge for a reachability search exposes any such longer cycle.
+    Searches stay within a household and run only for reciprocal edges.
+    """
+    columns = ("parent_1_person_id", "parent_2_person_id")
+    ids = pd.Index(person[PERSON_ID_COLUMN])
+    parents = np.full((len(person), len(columns)), -1, dtype=np.int64)
+    for slot, column in enumerate(columns):
+        present = person[column].notna().to_numpy()
+        parents[present, slot] = ids.get_indexer(
+            person[column][present].to_numpy(dtype=np.int64)
+        )
+    rows = np.arange(len(person))
+    reciprocal = np.zeros(parents.shape, dtype=bool)
+    for slot in range(len(columns)):
+        present = parents[:, slot] >= 0
+        reciprocal[present, slot] = np.any(
+            parents[parents[present, slot]] == rows[present, None], axis=1
+        )
+    edges = np.argwhere(reciprocal)
+    if not len(edges):
+        return 0
+    for child, slot in edges:
+        parent = parents[child, slot]
+        pending = [parent]
+        visited = {parent}
+        while pending:
+            current = pending.pop()
+            for target in parents[current]:
+                if target < 0 or (current == parent and target == child):
+                    continue
+                if target == child:
+                    # Leave the original violations for the caller to report.
+                    return 0
+                if target not in visited:
+                    visited.add(target)
+                    pending.append(target)
+    ages = (
+        person["age"].to_numpy(dtype=np.float64, na_value=np.nan)
+        if "age" in person
+        else np.full(len(person), np.nan)
+    )
+    children, slots = edges.T
+    targets = parents[children, slots]
+    known = np.isfinite(ages[children]) & np.isfinite(ages[targets])
+    drop = ~known | (ages[targets] <= ages[children])
+    for slot, column in enumerate(columns):
+        person.iloc[
+            children[drop & (slots == slot)], person.columns.get_loc(column)
+        ] = pd.NA
+    move = person[columns[0]].isna() & person[columns[1]].notna()
+    person.loc[move, columns[0]] = person.loc[move, columns[1]]
+    person.loc[move, columns[1]] = pd.NA
+    return int(drop.sum())
+
+
 def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> DonorBank:
     """Authenticate a local donor H5, then decode its person/household inputs.
 
@@ -638,15 +688,21 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
     tests pin carry ``PECOHAB``). Relationship code 13 is never read, because
     it also covers roommates and housemates.
 
-    The household reference person is the person whose ``A_EXPRRP`` is 1 or
-    2; ``A_EXPRRP`` must be present on every row. A household with no such
-    person takes the one person its ``is_household_head`` flag marks. Where a
-    household has an ``A_EXPRRP`` reference person, ``is_household_head``
-    must mark exactly that person, and the reader refuses the whole donor if
-    any household's two disagree. Dangling pointers, spouse and cohabitant
-    conflicts and reference-person conflicts are refused while staging;
-    asymmetric, self, cyclic and other invalid relations fail concept
-    validation.
+    The reference person is the donor's ``is_household_head`` person in
+    every household; exactly one boolean head flag is required. The US build
+    sets it from ``P_SEQ == 1`` (``relationship_inputs.py``). On all 19,753
+    households from 2024 in the pinned donor, that head agrees with the Census
+    reference person, including 222 whose reference person is not line 1.
+    The 2022/2023 ``A_EXPRRP`` recode instead derives from line 1
+    (``asec_pool.py``), so ``A_EXPRRP`` is not used.
+
+    When two people name each other as parents, drop the edge naming the
+    younger parent and keep the other. Equal ages or an absent age column
+    drop both edges. The bank's ``dropped_parent_cycle_edges`` counts removed
+    directed pointers. A remaining sole parent is compacted into parent 1.
+    Longer cycles, including ones sharing reciprocal edges, and every other
+    concept inconsistency still refuse. A present age column must satisfy
+    the concept schema's whole, nonmissing-age contract.
 
     Donor-only enrichment is staged before ``decode``; all work after that
     seam reads concept names. The result declares transport content with a
@@ -679,6 +735,11 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
     tables["person"]["liquid_financial_assets"] = staged["liquid_financial_assets"]
     tables["household"]["reference_person_id"] = staged["reference_person_id"]
     violations = validate_concept_tables(tables)
+    dropped = 0
+    if violations and all(v.code == "parent_cycle" for v in violations):
+        dropped = _drop_two_person_parent_cycles(tables["person"])
+        if dropped:
+            violations = validate_concept_tables(tables)
     if violations:
         details = "; ".join(f"{v.entity}.{v.column}: {v.message}" for v in violations)
         raise ValueError(f"Invalid donor concepts: {details}")
@@ -687,6 +748,7 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         staged["weights"],
         staged["support_strata"],
         staged["source_person_ids"],
+        dropped_parent_cycle_edges=dropped,
     )
 
 

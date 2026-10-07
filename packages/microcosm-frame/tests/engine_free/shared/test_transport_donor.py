@@ -130,6 +130,7 @@ def test_synthetic_donor_matches_decode_and_exact_fixture(tmp_path, monkeypatch)
     assert donor.content_basis is ContentBasis.TRANSPORT
     assert donor.donor_country == "us"
     assert donor.currency == "USD"
+    assert donor.dropped_parent_cycle_edges == 0
     assert validate_concept_tables(donor.tables) == ()
     assert "A_LINENO" not in person and "bank_account_assets" not in person
     assert "household_weight" not in donor.tables["household"]
@@ -243,11 +244,9 @@ def test_reader_pin_mismatch_property_precedes_hdf_parse(
         ("asymmetric_cohabitant", "Partners must point at each other"),
         ("spouse_cohabitant_conflict", "name different partners"),
         ("duplicate_line", "unique within a household"),
-        ("multiple_reference", "multiple reference persons"),
-        ("missing_reference", "no reference person"),
         ("multiple_heads", "multiple is_household_head persons"),
-        ("head_disagrees", "reference person and is_household_head disagree"),
-        ("head_absent", "reference person and is_household_head disagree"),
+        ("missing_head_with_reference", "no is_household_head"),
+        ("missing_head_without_reference", "no is_household_head"),
         ("channel_mismatch", "support channels disagree"),
     ],
 )
@@ -270,15 +269,12 @@ def test_reader_refuses_invalid_rosters(tmp_path, monkeypatch, change, message):
         ],
         "spouse_cohabitant_conflict": [(0, "PECOHAB", 3)],
         "duplicate_line": [(1, "A_LINENO", 1)],
-        "multiple_reference": [(1, "A_EXPRRP", 1)],
-        # Neither an A_EXPRRP reference person nor a household head.
-        "missing_reference": [(0, "A_EXPRRP", 5), (0, "is_household_head", False)],
         "multiple_heads": [(4, "is_household_head", True)],
-        "head_disagrees": [
+        "missing_head_with_reference": [(0, "is_household_head", False)],
+        "missing_head_without_reference": [
+            (0, "A_EXPRRP", 5),
             (0, "is_household_head", False),
-            (1, "is_household_head", True),
         ],
-        "head_absent": [(0, "is_household_head", False)],
         "channel_mismatch": [(0, "person_support_channel", "another-channel")],
     }
     for row, column, value in mutations[change]:
@@ -322,22 +318,191 @@ def test_reader_reads_nonpositive_or_missing_pointers_as_absent(
         )
 
 
-def test_reader_takes_household_head_when_no_a_exprrp_reference_person(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("recode", ["different", "absent", "duplicate", "no_column"])
+def test_reader_uses_household_head_regardless_of_a_exprrp(
+    tmp_path, monkeypatch, recode
 ):
     tables = _tables()
     person = tables["person"]
-    # Household 202 has no A_EXPRRP reference person, and its head flag marks
-    # line 2 rather than line 1, so only the fallback can name that person.
-    person.loc[3, "A_EXPRRP"] = 3
+    # Household 202's flagged head is line 2. The survey recode may instead
+    # name line 1, name nobody or name multiple persons; none chooses the head.
     person.loc[3, "is_household_head"] = False
     person.loc[4, "is_household_head"] = True
+    if recode == "absent":
+        person.loc[3, "A_EXPRRP"] = 3
+    elif recode == "duplicate":
+        person.loc[4, "A_EXPRRP"] = 2
+    elif recode == "no_column":
+        tables["person"] = person.drop(columns="A_EXPRRP")
     donor = _fake_donor(monkeypatch, tmp_path, tables)
     assert donor.tables["household"]["reference_person_id"].tolist() == [
         person.loc[0, "person_id"],
         person.loc[4, "person_id"],
     ]
     assert validate_concept_tables(donor.tables) == ()
+
+
+@pytest.mark.parametrize("younger_row", [4, 5])
+@pytest.mark.parametrize("parent_column", ["PEPAR1", "PEPAR2"])
+def test_reader_drops_only_the_younger_parent_edge_of_a_two_person_cycle(
+    tmp_path, monkeypatch, younger_row, parent_column
+):
+    tables = _tables()
+    person = tables["person"]
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[[4, 5], ["PEPAR1", "PEPAR2"]] = -1
+    person.loc[[4, 5], parent_column] = [3, 2]
+    older_row = 9 - younger_row
+    person.loc[younger_row, "age"] = 31
+    person.loc[older_row, "age"] = 51
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    parents = donor.tables["person"]["parent_1_person_id"]
+    assert parents.iloc[younger_row] == person.loc[older_row, "person_id"]
+    assert pd.isna(parents.iloc[older_row])
+    assert donor.tables["person"]["parent_2_person_id"].iloc[[4, 5]].isna().all()
+    assert donor.dropped_parent_cycle_edges == 1
+    assert validate_concept_tables(donor.tables) == ()
+
+
+@pytest.mark.parametrize("ages", ["equal", "no_column"])
+def test_reader_drops_both_two_person_cycle_edges_when_ages_cannot_order_them(
+    tmp_path, monkeypatch, ages
+):
+    tables = _tables()
+    person = tables["person"]
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[[4, 5], ["PEPAR1", "PEPAR2"]] = -1
+    # One edge starts in parent 2, so either slot participates in the rule.
+    person.loc[4, "PEPAR1"] = 3
+    person.loc[5, "PEPAR2"] = 2
+    if ages == "equal":
+        person.loc[[4, 5], "age"] = 31
+    else:
+        tables["person"] = person.drop(columns="age")
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    for column in ("parent_1_person_id", "parent_2_person_id"):
+        assert donor.tables["person"][column].iloc[[4, 5]].isna().all()
+    assert donor.dropped_parent_cycle_edges == 2
+    assert validate_concept_tables(donor.tables) == ()
+
+
+@pytest.mark.parametrize("missing_rows", [(4,), (5,), (4, 5)])
+def test_reader_cycle_rule_preserves_the_nonmissing_age_contract(
+    tmp_path, monkeypatch, missing_rows
+):
+    tables = _tables()
+    person = tables["person"]
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[[4, 5], ["PEPAR1", "PEPAR2"]] = -1
+    person.loc[4, "PEPAR1"] = 3
+    person.loc[5, "PEPAR2"] = 2
+    # An absent age column is permitted, but null cells in a present column
+    # violate the concept's whole, nonmissing-age contract before repair.
+    person["age"] = person["age"].astype(np.float64)
+    person.loc[list(missing_rows), "age"] = np.nan
+    with pytest.raises(
+        ValueError, match="fact:person.age decodes only from whole numbers"
+    ):
+        _fake_donor(monkeypatch, tmp_path, tables)
+
+
+def test_reader_compacts_the_other_parent_after_dropping_a_cycle_edge(
+    tmp_path, monkeypatch
+):
+    tables = _tables()
+    person = tables["person"]
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[4, ["age", "PEPAR1", "PEPAR2"]] = [31, 3, -1]
+    person.loc[5, ["age", "PEPAR1", "PEPAR2"]] = [51, 2, 1]
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    parents = donor.tables["person"]
+    assert parents["parent_1_person_id"].iloc[4] == person.loc[5, "person_id"]
+    assert parents["parent_1_person_id"].iloc[5] == person.loc[3, "person_id"]
+    assert parents["parent_2_person_id"].iloc[[4, 5]].isna().all()
+    assert donor.dropped_parent_cycle_edges == 1
+    assert validate_concept_tables(donor.tables) == ()
+
+
+@pytest.mark.parametrize("reverse_persons", [False, True])
+def test_reader_repairs_two_person_cycles_that_share_one_person(
+    tmp_path, monkeypatch, reverse_persons
+):
+    tables = _tables()
+    person = tables["person"]
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[[3, 4, 5], "age"] = [60, 40, 20]
+    # Line 1 <-> 2 <-> 3 is two reciprocal pairs without a longer cycle.
+    person.loc[[3, 4, 5], "PEPAR1"] = [2, 1, 2]
+    person.loc[[3, 4, 5], "PEPAR2"] = [-1, 3, -1]
+    if reverse_persons:
+        tables["person"] = person.iloc[::-1].reset_index(drop=True)
+    donor = _fake_donor(monkeypatch, tmp_path, tables)
+    parents = donor.tables["person"].set_index("person_id")
+    assert pd.isna(parents.loc[person.loc[3, "person_id"], "parent_1_person_id"])
+    assert (
+        parents.loc[person.loc[4, "person_id"], "parent_1_person_id"]
+        == person.loc[3, "person_id"]
+    )
+    assert (
+        parents.loc[person.loc[5, "person_id"], "parent_1_person_id"]
+        == person.loc[4, "person_id"]
+    )
+    assert (
+        parents.loc[person.loc[[3, 4, 5], "person_id"], "parent_2_person_id"]
+        .isna()
+        .all()
+    )
+    assert donor.dropped_parent_cycle_edges == 2
+    assert validate_concept_tables(donor.tables) == ()
+
+
+@pytest.mark.parametrize("also_two_person_cycle", [False, True])
+def test_reader_still_refuses_a_three_person_parent_cycle(
+    tmp_path, monkeypatch, also_two_person_cycle
+):
+    tables = _tables()
+    person = tables["person"]
+    person.loc[[3, 4], "A_SPOUSE"] = 0
+    person.loc[[3, 4, 5], "PEPAR1"] = [2, 3, 1]
+    person.loc[[3, 4, 5], "PEPAR2"] = -1
+    if also_two_person_cycle:
+        # Line 1 -> 2 -> 3 -> 1 must still refuse even though dropping the
+        # younger-parent edge of line 1 <-> 2 would erase the longer cycle.
+        person.loc[4, "PEPAR2"] = 1
+    with pytest.raises(ValueError, match="Parent pointers form a cycle"):
+        _fake_donor(monkeypatch, tmp_path, tables)
+
+
+@pytest.mark.parametrize(
+    ("inconsistency", "message"),
+    [
+        ("self_parent", "points at the person"),
+        ("duplicate_parents", "The two parents must differ"),
+        ("partner_parent", "partner cannot also be their parent"),
+    ],
+)
+def test_reader_cycle_rule_preserves_other_parent_refusals(
+    tmp_path, monkeypatch, inconsistency, message
+):
+    tables = _tables()
+    person = tables["person"]
+    if inconsistency == "self_parent":
+        # A self edge remains an inconsistency even alongside a repairable
+        # reciprocal cycle. Repair must not silently delete the self edge.
+        person.loc[[3, 4], "A_SPOUSE"] = 0
+        person.loc[4, ["age", "PEPAR1", "PEPAR2"]] = [51, 3, 2]
+        person.loc[5, ["age", "PEPAR1", "PEPAR2"]] = [31, 2, -1]
+    elif inconsistency == "duplicate_parents":
+        # The age repair would remove both copies of line 2 -> 3 and hide
+        # the duplicate-parent defect unless it is checked before repair.
+        person.loc[[3, 4], "A_SPOUSE"] = 0
+        person.loc[4, ["age", "PEPAR1", "PEPAR2"]] = [51, 3, 3]
+        person.loc[5, ["age", "PEPAR1", "PEPAR2"]] = [31, 2, -1]
+    else:
+        person.loc[3, "PEPAR1"] = 2
+        person.loc[4, "PEPAR1"] = 1
+    with pytest.raises(ValueError, match=message):
+        _fake_donor(monkeypatch, tmp_path, tables)
 
 
 @READER_PROPERTY
@@ -526,24 +691,26 @@ def test_cached_real_donor_size_only_when_present():
     assert path.stat().st_size == pin["size"]
 
 
-def test_pinned_real_donor_reaches_the_reference_person_ruling_when_cached():
-    # About 10 s: hashes the 463 MB pin, reads both tables and stages every
-    # line pointer, which must all resolve, before the reference-person
-    # check. #1130 is waiting on a ruling: in 113 pinned households (all
-    # 2022/2023 rows, whose A_EXPRRP the build derived from line 1) the
-    # A_EXPRRP reference person is not the is_household_head (P_SEQ == 1)
-    # person, so the reader refuses the file. Once that is ruled, assert the
-    # bank instead; one source household's two copies also hold a
-    # parent-pointer cycle that concept validation refuses.
+def test_pinned_real_donor_reads_the_complete_bank_when_cached():
+    # Hash and read the 463 MB pin. All households use is_household_head;
+    # the ASEC and PUF copies of source household 9424 each drop one
+    # reciprocal parent edge that names a parent younger than the child.
     pin = _fixture()["real_donor_pin"]
     path = Path.home() / pin["cache_relative_path"]
     if not path.is_file():
         pytest.skip("Pinned real donor is not locally cached")
-    with pytest.raises(
-        ValueError,
-        match=r"^Donor A_EXPRRP reference person and is_household_head disagree\.$",
-    ):
-        read_populace_us_donor(path, sha256=pin["sha256"], size=pin["size"])
+    donor = read_populace_us_donor(path, sha256=pin["sha256"], size=pin["size"])
+    household = donor.tables["household"]
+    person = donor.tables["person"]
+    assert len(household) == 57_240
+    assert len(person) == 166_321
+    assert household["reference_person_id"].notna().sum() == 57_240
+    assert household["reference_person_id"].is_unique
+    assert person["partner_person_id"].notna().sum() == 74_572
+    assert person["parent_1_person_id"].notna().sum() == 62_096
+    assert person["parent_2_person_id"].notna().sum() == 43_731
+    assert donor.dropped_parent_cycle_edges == 2
+    assert validate_concept_tables(donor.tables) == ()
 
 
 @PROPERTY
