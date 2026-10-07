@@ -172,7 +172,8 @@ class TemporalBasis(StrEnum):
     ``annual_flow`` matches ``microcosm.build.monetary_targets``.
     """
 
-    #: An amount or count accumulated over the reference year.
+    #: An amount or count accumulated over the reference year. Its period is
+    #: ``year``.
     ANNUAL_FLOW = "annual_flow"
     #: The record's state at the survey reference date.
     REFERENCE_STATE = "reference_state"
@@ -519,7 +520,8 @@ class Concept:
         dtype: Kernel dtype kind: ``float``, ``int``, ``bool`` or ``str``.
         unit: The unit values are expressed in.
         period: Kernel period semantics: ``year``, ``month`` or ``point``.
-        temporal_basis: What the value measures over its period.
+        temporal_basis: What the value measures over its period. An annual
+            flow's period is ``year``.
         provenance: How values come to exist.
         transport: What transport does with the column.
         monetary: Currency and price-level handling; set exactly when the
@@ -576,6 +578,11 @@ class Concept:
         if self.period not in _PERIOD_SEMANTICS:
             raise ValueError(
                 f"Concept {self.id!r} period must be one of {_PERIOD_SEMANTICS}."
+            )
+        if self.temporal_basis is TemporalBasis.ANNUAL_FLOW and self.period != "year":
+            raise ValueError(
+                f"Concept {self.id!r}: an annual flow accumulates over the year, "
+                f"so its period is year, not {self.period}."
             )
         self._validate_unit_contract()
         self._validate_bounds()
