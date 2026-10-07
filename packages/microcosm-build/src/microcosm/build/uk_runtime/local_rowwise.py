@@ -1338,6 +1338,12 @@ def solve_uk_rowwise_weights_under_doctrine(
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
     baseline_pi_floor: float = 0.0,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
     size_checkpoint_dir: Path | None = None,
     resume_size_checkpoint: Path | None = None,
     checkpoint_identity: Mapping[str, Any] | None = None,
@@ -1402,6 +1408,20 @@ def solve_uk_rowwise_weights_under_doctrine(
         dataset_households is None
     ):
         raise ValueError("size checkpoints apply to a dataset_households solve.")
+    if dataset_households is None and (
+        selection_l2_lambda
+        or refit_l2_lambda
+        or any(
+            value is not None
+            for value in (
+                selection_l2_anchor,
+                selection_l2_basis,
+                refit_l2_anchor,
+                refit_l2_basis,
+            )
+        )
+    ):
+        raise ValueError("size-stage L2 penalties apply to a dataset_households solve.")
     if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
         raise ValueError("a resumed solve does not write a second checkpoint.")
     progress_callback = _progress_fan_out(progress, progress_events)
@@ -1477,6 +1497,9 @@ def solve_uk_rowwise_weights_under_doctrine(
                 learning_rate=learning_rate,
                 seed=size_seed,
                 pi_hi=selection_pi_hi,
+                selection_l2_lambda=selection_l2_lambda,
+                selection_l2_anchor=selection_l2_anchor,
+                selection_l2_basis=selection_l2_basis,
                 progress_callback=progress_callback,
             )
             if size_checkpoint_dir is not None:
@@ -1505,6 +1528,12 @@ def solve_uk_rowwise_weights_under_doctrine(
             seed=size_seed,
             pi_hi=selection_pi_hi,
             baseline_pi_floor=baseline_pi_floor,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            refit_l2_lambda=refit_l2_lambda,
+            refit_l2_anchor=refit_l2_anchor,
+            refit_l2_basis=refit_l2_basis,
             selection=size_selection,
             progress_callback=progress_callback,
         )
@@ -1894,6 +1923,12 @@ def rotated_uk_local_holdout(
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
     baseline_pi_floor: float = 0.0,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training."""
 
@@ -1961,6 +1996,12 @@ def rotated_uk_local_holdout(
             selection_seed=selection_seed,
             selection_pi_hi=selection_pi_hi,
             baseline_pi_floor=baseline_pi_floor,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            refit_l2_lambda=refit_l2_lambda,
+            refit_l2_anchor=refit_l2_anchor,
+            refit_l2_basis=refit_l2_basis,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(

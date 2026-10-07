@@ -52,7 +52,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from . import dataset_size, size_checkpoint
-from .dataset_size import UKSizeDraw, UKSizeSelection
+from .dataset_size import UKSizeDraw, UKSizeL2, UKSizeSelection
 from .graph_population import context_frame, population_slices
 from .local_doctrine import UK_LOCAL_SOLVE_EPOCHS, UK_LOCAL_TARGET_WEIGHT_RULES
 
@@ -82,6 +82,12 @@ class UKGraphCalibrationConfig:
     selection_initial_lambda: float | None = None
     baseline_pi_floor: float = 0.0
     target_weight_rule: str = "uniform"
+    #: microcosm#1124: each size stage's L2 penalty (``None``: off). The
+    #: selection's is a parameter of the search, draw and refit nodes; the
+    #: refit's of the refit node alone, like ``baseline_pi_floor``. Off adds
+    #: no node parameter, so a default build's node keys keep their params.
+    selection_l2: UKSizeL2 | None = None
+    refit_l2: UKSizeL2 | None = None
 
     def __post_init__(self):
         if type(self.epochs) is not int or self.epochs < 1:
@@ -98,6 +104,15 @@ class UKGraphCalibrationConfig:
         dataset_size._check_pi_hi(self.selection_pi_hi)
         dataset_size._check_initial_lambda(self.selection_initial_lambda)
         dataset_size._check_baseline_pi_floor(self.baseline_pi_floor)
+        for stage, l2 in (("selection", self.selection_l2), ("refit", self.refit_l2)):
+            if l2 is None:
+                continue
+            if not isinstance(l2, UKSizeL2) or l2.stage != stage:
+                raise ValueError(
+                    f"{stage}_l2 must be a {stage}-stage UKSizeL2 or None."
+                )
+            if self.dataset_households is None:
+                raise ValueError(f"A {stage} L2 penalty requires a dataset size.")
         if self.target_weight_rule not in (
             *UK_LOCAL_TARGET_WEIGHT_RULES,
             "family_equal",
@@ -815,6 +830,7 @@ def uk_calibration_nodes(
             # search verifies it like any probe, so it is a parameter of the
             # search node and of the nodes that reuse its selection.
             "initial_lambda": config.selection_initial_lambda,
+            **({} if config.selection_l2 is None else config.selection_l2.params()),
         }
         dense_input = ArtifactInput("dense", dense_id, "result", RESULT_TYPE)
         search_id, draw_id, refit_id = (
@@ -875,7 +891,11 @@ def uk_calibration_nodes(
                 kernel=UKSizeRefitKernel.ref,
                 population=base,
                 inputs=inputs,
-                params={**params, "baseline_pi_floor": config.baseline_pi_floor},
+                params={
+                    **params,
+                    "baseline_pi_floor": config.baseline_pi_floor,
+                    **({} if config.refit_l2 is None else config.refit_l2.params()),
+                },
                 artifact_inputs=(
                     *search_inputs,
                     ArtifactInput("draw", draw_id, "draw", SIZE_DRAW_TYPE),

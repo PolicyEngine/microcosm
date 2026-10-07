@@ -152,6 +152,9 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
         )
     if parameters.get("skip_holdout"):
         failures.append("holdout was skipped.")
+    for stage in ("selection", "refit"):
+        if parameters.get(f"{stage}_l2") is not None:
+            failures.append(f"a {stage} L2 penalty was applied (candidate-only).")
     solve = manifest.get("solve", {})
     resolution = solve.get("measure_resolution", {})
     if resolution.get("blocks") != 1:
