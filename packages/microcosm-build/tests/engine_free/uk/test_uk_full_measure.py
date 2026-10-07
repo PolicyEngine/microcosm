@@ -102,7 +102,28 @@ def test_full_measure_resolves_real_per_clone_blocks(
     second_cgt_period,
     toy_ladder,
 ) -> None:
-    frame = source_frame()
+    # The weight-share allocation keys ride into every clone, so the
+    # representation can verify them (microcosm#1115 review).
+    from microcosm.build.uk_runtime.full_measure import (
+        UK_WEIGHT_SHARE_FORMULA_INPUTS,
+    )
+    from microcosm.frame import Frame
+
+    original = source_frame()
+    tables = {e: original.table(e).copy() for e in original.entities}
+    for inputs in UK_WEIGHT_SHARE_FORMULA_INPUTS.values():
+        for column in inputs:
+            tables["household"][column] = (
+                tables["household"]["household_id"].astype("float64") * 10.0
+            )
+    frame = Frame(
+        tables,
+        original.schema,
+        {"household": original.weights_for("household")},
+        original.strata,
+        mass_log=original.mass_log,
+        metadata=original.metadata,
+    )
     ladder, _ = toy_ladder
     clone = clone_uk_dataset_with_ladder_geography(
         frame,
@@ -552,13 +573,23 @@ def test_national_problem_is_none_without_national_targets(
     assert receipt["national_materialization"] == "per_engine_block"
 
 
-def _representation_block(source_ids, weights, persons=3):
-    household = pd.DataFrame(
-        {
-            "household_id": np.arange(len(weights)),
-            "household_source_id": np.asarray(source_ids),
-        }
+def _representation_block(
+    source_ids, weights, persons=3, *, identity=True, key_values=None
+):
+    """A block whose allocation keys all equal ``key_values`` (default 1 per row)."""
+    from microcosm.build.uk_runtime.full_measure import (
+        UK_WEIGHT_SHARE_FORMULA_INPUTS,
     )
+
+    n = len(weights)
+    columns = {"household_id": np.arange(n)}
+    if identity:
+        columns["household_source_id"] = np.asarray(source_ids)
+    values = np.ones(n) if key_values is None else np.asarray(key_values, dtype=float)
+    for inputs in UK_WEIGHT_SHARE_FORMULA_INPUTS.values():
+        for column in inputs:
+            columns[column] = values
+    household = pd.DataFrame(columns)
     person = pd.DataFrame(index=range(persons))
     values = np.asarray(weights, dtype=float)
     return SimpleNamespace(
@@ -596,3 +627,43 @@ def test_engine_population_representation_is_exact_only_for_identical_copies():
 
     single = full_measure._engine_population_representation(pool, [(None, object())])
     assert single == {"mode": "single_block", "exact": True, "blocks": 1}
+
+    # microcosm#1115 review: identical (source, weight) multisets are not
+    # enough; the allocation keys of the weight-share formulas must carry the
+    # same sum(x * w) in every block, and a frame without a source identity is
+    # never exact.
+    pool = SimpleNamespace(weights_for=lambda entity: SimpleNamespace(total=6.0))
+    keyed = [
+        (0, _representation_block([10, 11, 12], [0.5, 1.0, 1.5], key_values=[1, 2, 3])),
+        (1, _representation_block([12, 10, 11], [1.5, 0.5, 1.0], key_values=[3, 1, 2])),
+    ]
+    assert full_measure._engine_population_representation(pool, keyed)["exact"] is True
+    drawn = [
+        (0, _representation_block([10, 11, 12], [0.5, 1.0, 1.5], key_values=[1, 2, 3])),
+        (1, _representation_block([12, 10, 11], [1.5, 0.5, 1.0], key_values=[9, 1, 2])),
+    ]
+    inexact = full_measure._engine_population_representation(pool, drawn)
+    assert inexact["exact"] is False
+    assert inexact["checks"]["identical_source_weight_multisets"] is True
+    assert inexact["checks"]["weight_share_inputs_match"] is False
+    shares = inexact["checks"]["weight_share_inputs"]["shareholding"]
+    assert shares["match"] is False and shares["max_rel_diff"] > 0.1
+    assert set(shares["sum_by_block"]) == {"0", "1"}
+    nameless = [
+        (0, _representation_block([10, 11, 12], [0.5, 1.0, 1.5], identity=False)),
+        (1, _representation_block([12, 10, 11], [1.5, 0.5, 1.0], identity=False)),
+    ]
+    anonymous = full_measure._engine_population_representation(pool, nameless)
+    assert anonymous["exact"] is False
+    assert anonymous["checks"]["identity_key"] is None
+    assert anonymous["checks"]["source_identity_present"] is False
+    partial = [
+        (0, _representation_block([10, 11, 12], [0.5, 1.0, 1.5])),
+        (1, _representation_block([12, 10, 11], [1.5, 0.5, 1.0])),
+    ]
+    partial[1][1].table("household").drop(columns=["corporate_wealth"], inplace=True)
+    unverified = full_measure._engine_population_representation(pool, partial)
+    assert unverified["exact"] is False
+    assert unverified["checks"]["weight_share_inputs"]["corporate_land_value"][
+        "missing_columns"
+    ] == ["corporate_wealth"]

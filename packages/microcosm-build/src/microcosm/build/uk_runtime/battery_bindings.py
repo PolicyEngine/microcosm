@@ -235,8 +235,18 @@ def _evaluate_release_input_coverage(
     # the build-state half reads) when a graph build hands it over.
     spine_frame = context.artifacts.get("spine_frame")
     if spine_frame is None:
-        build_state = None
-    elif isinstance(spine_frame, Frame):
+        # Never the calibrated frame: its weights are the solve's, so the
+        # build-state half would judge the wrong frame (the first K=25 build
+        # failed all 17 families on weight kind that way). The binding's
+        # artifact selector marks the gate evidence_absent before this point;
+        # this refusal is the backstop.
+        raise ValueError(
+            "release_input_coverage needs the spine build state: the certifier "
+            "supplies --spine-h5 and a graph build the checkpoint's "
+            "spine_build_state artifact; none arrived, so the family "
+            "build-state half cannot be evaluated."
+        )
+    if isinstance(spine_frame, Frame):
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
@@ -250,6 +260,16 @@ def _evaluate_release_input_coverage(
 
 def _coverage_requires_frame(parameters: Mapping[str, Any]) -> bool:
     return parameters.get("check") != "manifest_current"
+
+
+def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str]:
+    # The preflight check reads the engine and the manifest only; the
+    # evaluation needs the spine build state beside them (microcosm#1115
+    # review): without it the gate is evidence_absent, never a verdict on
+    # the calibrated frame.
+    if parameters.get("check") == "manifest_current":
+        return frozenset({"coverage_engine"})
+    return frozenset({"coverage_engine", "spine_frame"})
 
 
 def _evaluate_source_coverage(
@@ -1662,6 +1682,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_release_input_coverage,
         parameter_keys=frozenset({"check"}),
         artifact_keys=frozenset({"coverage_engine"}),
+        artifact_selector=_coverage_required_artifacts,
         frame_predicate=_coverage_requires_frame,
         legacy_name="uk_release_input_coverage",
     ),

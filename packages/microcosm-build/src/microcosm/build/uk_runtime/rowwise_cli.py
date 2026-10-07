@@ -810,8 +810,10 @@ def release_verdict(
     block's denominator and each block reproduced the whole aggregate, the
     ``K`` times land-value artefact behind the #736 erratum. The measures loop
     now scales every block's engine weights to the pool and records whether the
-    blocks are identical copies (``engine_population_representation.exact``);
-    a single block is exact by construction. ``engine_population_exact`` is that
+    blocks are identical copies with identical allocation keys for the named
+    weight-share formulas (``engine_population_representation.exact``; the
+    formulas and their inputs are ``UK_WEIGHT_SHARE_FORMULA_INPUTS``); a single
+    block is exact by construction. ``engine_population_exact`` is that
     record; left unset, a multi-block run is treated as inexact. The posture is
     written beside the verdict so a reader sees which leg failed.
     """

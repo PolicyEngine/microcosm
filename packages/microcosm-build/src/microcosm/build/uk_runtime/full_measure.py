@@ -35,6 +35,38 @@ UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = (
     "slc/student_loan_repayment/england",
 )
 
+#: policyengine-uk's weight-share formulas (a national total or a share
+#: allocated by ``x * w / sum(x * w)``) and the frame columns their allocation
+#: key ``x`` reads (microcosm#1115 review). Scaling a block's engine weights by
+#: pool mass / block mass makes such a formula exact only when every block
+#: carries the same ``sum(x * w)``; identical (source household, weight)
+#: multisets guarantee that only while ``x`` is copied into every clone, which
+#: holds for these keys (spine wealth and consumption inputs) and would not for
+#: anything drawn per clone. The representation check therefore records each
+#: block's ``sum(x * w)`` for every key here and requires them to agree; a
+#: formula of this shape that reads a per-clone input must be added here so
+#: the check sees it, never assumed exact.
+UK_WEIGHT_SHARE_FORMULA_INPUTS: Mapping[str, tuple[str, ...]] = {
+    # corporate_land_value and shareholding allocate by corporate_sector_wealth.
+    "corporate_land_value": ("corporate_wealth", "private_pension_wealth"),
+    "shareholding": ("corporate_wealth", "private_pension_wealth"),
+    # consumption_shareholding allocates by the engine's consumption total.
+    "consumption_shareholding": (
+        "food_and_non_alcoholic_beverages_consumption",
+        "alcohol_and_tobacco_consumption",
+        "clothing_and_footwear_consumption",
+        "housing_water_and_electricity_consumption",
+        "household_furnishings_consumption",
+        "health_consumption",
+        "transport_consumption",
+        "communication_consumption",
+        "recreation_consumption",
+        "education_consumption",
+        "restaurants_and_hotels_consumption",
+        "miscellaneous_consumption",
+    ),
+}
+
 
 def _without_scratch_paths(value, scratch_dir: Path):
     """Record scratch-relative paths in a receipt, never the scratch root.
@@ -155,10 +187,17 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
         return {"mode": "single_block", "exact": True, "blocks": 1}
     pool_mass = float(frame.weights_for("household").total)
     signatures: list[tuple[np.ndarray, np.ndarray]] = []
-    identity_key = "weights_only"
+    identity_key: str | None = None
+    identity_present = True
     household_counts: list[int] = []
     person_counts: list[int] = []
     factors: dict[str, float] = {}
+    # sum(x * w) per block for every weight-share allocation key, and the key
+    # columns a block lacks (an absent column leaves the formula unverified).
+    input_sums: dict[str, dict[str, float]] = {
+        formula: {} for formula in UK_WEIGHT_SHARE_FORMULA_INPUTS
+    }
+    missing_inputs: dict[str, list[str]] = {}
     for clone_index, block in block_frames:
         household = block.table("household")
         weights = np.asarray(block.weights_for("household").values, dtype=np.float64)
@@ -172,11 +211,11 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
         # Blocks are compared as multisets of (source household, weight): the
         # clone expansion copies every spine household into every clone, so
         # identical copies have identical multisets whatever geography each
-        # clone drew. A frame without a source identity falls back to the
-        # weights alone, and the receipt says so.
+        # clone drew. Without a source identity the comparison is weights
+        # only, which cannot establish copies, so the result is never exact.
         key = next((c for c in _SOURCE_IDENTITY_COLUMNS if c in household), None)
         if key is None:
-            identity_key = "weights_only"
+            identity_present = False
             source = np.zeros(len(weights), dtype=np.int64)
         else:
             identity_key = key
@@ -185,6 +224,18 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
         signatures.append((source[order], weights[order]))
         household_counts.append(int(len(household)))
         person_counts.append(int(len(block.table("person"))))
+        for formula, columns in UK_WEIGHT_SHARE_FORMULA_INPUTS.items():
+            absent = [c for c in columns if c not in household.columns]
+            if absent:
+                missing_inputs.setdefault(formula, [])
+                for column in absent:
+                    if column not in missing_inputs[formula]:
+                        missing_inputs[formula].append(column)
+                continue
+            key_values = np.zeros(len(weights), dtype=np.float64)
+            for column in columns:
+                key_values += np.asarray(household[column], dtype=np.float64)
+            input_sums[formula][str(clone_index)] = float(np.sum(key_values * weights))
     first_source, first_weights = signatures[0]
     identical = all(
         len(source) == len(first_source)
@@ -196,16 +247,50 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
     equal_persons = len(set(person_counts)) == 1
     blocks = len(block_frames)
     shares = np.array([1.0 / factor for factor in factors.values()], dtype=np.float64)
+    weight_share_inputs: dict[str, dict[str, object]] = {}
+    inputs_match = True
+    for formula, columns in UK_WEIGHT_SHARE_FORMULA_INPUTS.items():
+        sums = input_sums[formula]
+        if formula in missing_inputs or len(sums) != blocks:
+            inputs_match = False
+            weight_share_inputs[formula] = {
+                "columns": list(columns),
+                "missing_columns": list(missing_inputs.get(formula, [])),
+                "sum_by_block": dict(sums),
+                "match": False,
+            }
+            continue
+        values = np.array(list(sums.values()), dtype=np.float64)
+        scale = max(float(np.max(np.abs(values))), 1.0)
+        max_rel_diff = float((np.max(values) - np.min(values)) / scale)
+        match = bool(max_rel_diff <= 1e-9)
+        inputs_match = inputs_match and match
+        weight_share_inputs[formula] = {
+            "columns": list(columns),
+            "missing_columns": [],
+            "sum_by_block": dict(sums),
+            "max_rel_diff": max_rel_diff,
+            "match": match,
+        }
     return {
         "mode": "block_weights_scaled_to_pool",
-        "exact": bool(identical and equal_households and equal_persons),
+        "exact": bool(
+            identity_present
+            and identical
+            and equal_households
+            and equal_persons
+            and inputs_match
+        ),
         "blocks": blocks,
         "factor_by_block": factors,
         "checks": {
             "identity_key": identity_key,
+            "source_identity_present": identity_present,
             "equal_household_counts": equal_households,
             "equal_person_counts": equal_persons,
             "identical_source_weight_multisets": identical,
+            "weight_share_inputs_match": inputs_match,
+            "weight_share_inputs": weight_share_inputs,
             "max_abs_mass_share_deviation": float(
                 np.max(np.abs(shares - 1.0 / blocks))
             ),
@@ -382,9 +467,16 @@ def _measures_receipt(
                 UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
             ),
             "present_in_this_run": present,
+            "weight_share_formulas": {
+                formula: list(columns)
+                for formula, columns in UK_WEIGHT_SHARE_FORMULA_INPUTS.items()
+            },
             "mitigation": (
                 "each block's engine household weights are scaled by pool mass / "
-                "block mass, so weight-share formulas see the pool's denominator"
+                "block mass, so weight-share formulas see the pool's denominator; "
+                "exact only while the blocks are identical copies and every "
+                "allocation key named in weight_share_formulas carries the same "
+                "sum(x * w) in every block"
             ),
             "exact": exact,
             "caveat": (
