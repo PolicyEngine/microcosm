@@ -27,27 +27,35 @@ lives in ``engine_free/uk/test_transport_gate_bindings.py``.
 from __future__ import annotations
 
 import ast
+import base64
 import inspect
 import json
 import math
 from dataclasses import replace
+from fractions import Fraction
 from functools import cache
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import HealthCheck, assume, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
+    BlockingMode,
     EvidenceContext,
     FunctionBinding,
+    GateBatteryRun,
+    GateOutcome,
+    GatePhaseReport,
     GateStatus,
     evaluate_phase,
     gate_phase_report_payload,
+    gate_signing_key_env,
     validate_gate_parameters,
 )
+from microcosm.build.gates import GateResult
 from microcosm.build.transport import gate_bindings
 from microcosm.build.transport.gate_bindings import (
     DIAGNOSTICS,
@@ -64,6 +72,7 @@ from microcosm.build.transport.gate_kernels import (
     EVIDENCE_DECODERS,
     GateBatteryKernel,
     decode_gate_report,
+    phase_enforcement,
 )
 from microcosm.build.transport.target_kernels import (
     decode_target_surface,
@@ -102,7 +111,7 @@ MODULE_PATH = _BUILD.package / "src/microcosm/build/transport/gate_bindings.py"
 NZ_ROOT = _BUILD.package / "src/microcosm/build/nz"
 COUNTRY = "xx"
 
-#: The gates this module binds; every other registry entry is DEFAULT_REGISTRY's.
+#: The nine implemented comparisons; pending bindings never pass.
 BOUND = (
     "aggregate_admin",
     "calibration_reference_coverage",
@@ -114,8 +123,14 @@ BOUND = (
     "weight_ess",
     "weight_ratio",
 )
-#: Gates whose transport evidence no code produces yet: deliberately unbound.
-UNBOUND = ("macro_realism", "release_input_coverage", "support")
+#: Registered fail-closed bindings awaiting producers and comparisons.
+PENDING = ("release_input_coverage", "support")
+PENDING_ARTIFACTS = {
+    "support": ("donor_support_bounds",),
+    "release_input_coverage": ("donor_artifact_receipt", "axiom_input_closure"),
+}
+#: Gates deliberately deferred by country policy.
+UNBOUND = ("macro_realism",)
 
 PROPERTY = settings(
     max_examples=40,
@@ -479,13 +494,35 @@ def _evaluate(gate: str, parameters: dict, evidence: dict, *, drop=()):
 
 class TestRegistry:
     def test_extends_the_default_registry_with_the_bound_gates(self) -> None:
-        assert set(TRANSPORT_GATE_REGISTRY) == set(DEFAULT_REGISTRY) | set(BOUND)
+        assert set(TRANSPORT_GATE_REGISTRY) == (
+            set(DEFAULT_REGISTRY) | set(BOUND) | set(PENDING)
+        )
         for name in DEFAULT_REGISTRY:
             if name not in BOUND:
                 assert TRANSPORT_GATE_REGISTRY[name] is DEFAULT_REGISTRY[name]
         for name, binding in TRANSPORT_GATE_REGISTRY.items():
             assert binding.name == name
         assert set(UNBOUND).isdisjoint(TRANSPORT_GATE_REGISTRY)
+
+    @pytest.mark.parametrize("gate", PENDING)
+    @pytest.mark.parametrize("supplied", (False, True))
+    def test_pending_bindings_require_named_artifacts_and_never_pass(
+        self, gate, supplied
+    ) -> None:
+        artifacts = {name: {"passed": True} for name in PENDING_ARTIFACTS[gate]}
+        outcome = _outcome(_entry(gate), **(artifacts if supplied else {}))
+        expected = GateStatus.FAILED if supplied else GateStatus.EVIDENCE_ABSENT
+        assert outcome.status is expected
+        binding = TRANSPORT_GATE_REGISTRY[gate]
+        assert isinstance(binding, FunctionBinding)
+        assert binding.__dataclass_params__.frozen
+        assert isinstance(binding.artifact_arguments, type(TRANSPORT_GATE_REGISTRY))
+        assert binding.required_artifacts({}) == frozenset(artifacts)
+        assert binding.parameter_keys == required_gate_parameters(binding) == set()
+        if supplied:
+            assert any("not implemented" in line for line in outcome.result.failures)
+        else:
+            assert outcome.reason == "missing evidence: " + ", ".join(sorted(artifacts))
 
     def test_the_gate_kernel_accepts_and_describes_the_registry(self) -> None:
         kernel = GateBatteryKernel(TRANSPORT_GATE_REGISTRY)
@@ -553,13 +590,78 @@ class TestNewZealandManifest:
         validate_gate_parameters(gates, TRANSPORT_GATE_REGISTRY)
         validate_required_gate_parameters(gates)
 
-    def test_unbound_gates_wait_on_named_evidence(self, gates) -> None:
+    def test_pending_gates_remain_applicable_and_fail_closed(self, gates) -> None:
         for entry in gates.gates:
             if entry.gate in UNBOUND:
                 assert entry.not_applicable is not None, entry.id
         by_gate = {entry.gate: entry for entry in gates.gates}
-        for gate in ("release_input_coverage", "support"):
-            assert by_gate[gate].not_applicable.startswith("awaiting its evidence")
+        document = json.loads((NZ_ROOT / "gates.json").read_text())
+        for gate in PENDING:
+            entry = by_gate[gate]
+            assert entry.not_applicable is None
+            assert entry.evidence_absent_blocks
+            raw = next(row for row in document["gates"] if row["gate"] == gate)
+            assert raw["parameters"] == {}
+
+    @pytest.mark.parametrize("supplied", (False, True))
+    def test_pending_gates_block_candidates_with_every_other_gate_passing(
+        self, gates, supplied, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.setenv(
+            gate_signing_key_env("nz"), base64.b64encode(b"t" * 32).decode()
+        )
+        artifacts = {
+            name: {"passed": True}
+            for names in PENDING_ARTIFACTS.values()
+            for name in names
+        }
+        evaluated = evaluate_phase(
+            gates,
+            "terminal",
+            EvidenceContext(artifacts=artifacts if supplied else {}),
+            registry=TRANSPORT_GATE_REGISTRY,
+        )
+        report = GatePhaseReport(
+            phase="terminal",
+            outcomes=tuple(
+                outcome
+                if outcome.entry.gate in PENDING
+                else GateOutcome(
+                    entry=replace(outcome.entry, not_applicable=None),
+                    status=GateStatus.PASSED,
+                    result=GateResult(outcome.entry.gate, True, (), {}),
+                )
+                for outcome in evaluated.outcomes
+            ),
+        )
+        # The policy must match the isolated outcomes even for deferred gates.
+        isolated = replace(gates, gates=tuple(o.entry for o in report.outcomes))
+        run = GateBatteryRun(
+            isolated,
+            release_id="pending-candidate",
+            report_path=tmp_path / "battery.json",
+            release_candidate=True,
+            registry=TRANSPORT_GATE_REGISTRY,
+        )
+        run.record_phase(report)
+        blocked = run.enforce("terminal", mode=BlockingMode.MARKS_ARTIFACT)
+        graph = phase_enforcement(
+            report,
+            release_candidate=True,
+            synthetic_smoke=False,
+            upstream_blocked=False,
+        )
+        assert blocked is True
+        assert run.report_payload()["shippable"] is False
+        assert graph.artifact_permitted is False
+        assert set(graph.blocking) == {
+            entry.id for entry in gates.gates if entry.gate in PENDING
+        }
+        expected = GateStatus.FAILED if supplied else GateStatus.EVIDENCE_ABSENT
+        assert all(
+            o.status is (expected if o.entry.gate in PENDING else GateStatus.PASSED)
+            for o in report.outcomes
+        )
 
     def test_applicable_entries_use_no_python_threshold_default(self, gates) -> None:
         for entry in gates.gates:
@@ -631,7 +733,7 @@ class TestModuleBoundaries:
         assert not [value for value in numbers if isinstance(value, float)]
         assert set(numbers) <= {0, 1}
 
-    @pytest.mark.parametrize("gate", BOUND)
+    @pytest.mark.parametrize("gate", (*BOUND, *PENDING))
     def test_bound_evaluators_default_nothing_but_none(self, gate) -> None:
         binding = TRANSPORT_GATE_REGISTRY[gate]
         defaults = [
@@ -848,7 +950,7 @@ class TestAggregateAdmin:
         assert outcome.result.name == "aggregate_admin"
         assert outcome.result.details["default_rtol"] == rtol
 
-    def test_a_spec_tolerance_overrides_the_default(self) -> None:
+    def test_surface_evidence_cannot_change_the_declared_threshold(self) -> None:
         surface = _surface([_spec("a", value=100.0, tolerance=50.0)])
         outcome = _evaluate(
             "aggregate_admin",
@@ -862,7 +964,9 @@ class TestAggregateAdmin:
                 }
             },
         )
-        assert outcome.status is GateStatus.PASSED
+        assert outcome.status is GateStatus.FAILED
+        assert outcome.result.details["default_rtol"] == 0.01
+        assert surface.registry.specs[0].tolerance == 50.0
 
     def test_an_unmeasured_anchor_or_empty_selection_fails(self) -> None:
         surface = _surface([_spec("a"), _spec("b")])
@@ -995,6 +1099,19 @@ class TestCalibrationReferenceCoverage:
 
 
 class TestTargetProfileCoverage:
+    @pytest.mark.parametrize("reason", (None, False, 0, {}, [], "   "))
+    def test_reviewed_exclusion_requires_a_nonempty_string(self, reason) -> None:
+        outcome = _evaluate(
+            "target_profile_coverage",
+            {
+                "required_families": ["absent"],
+                "reviewed_exclusions": {"absent": reason},
+            },
+            {"artifacts": {PROBLEM: _problem_for(frozenset({0}), "e" * 64)}},
+        )
+        assert outcome.status is GateStatus.FAILED
+        assert "non-empty string" in outcome.result.failures[0]
+
     @PROPERTY
     @given(
         matrix=st.frozensets(st.integers(0, 5), min_size=1),
@@ -1025,6 +1142,16 @@ class TestTargetProfileCoverage:
 
 
 class TestFrameGates:
+    @pytest.mark.parametrize("reason", (None, False, 0, {}, [], "   "))
+    def test_reviewed_exclusion_requires_a_nonempty_string(self, reason) -> None:
+        outcome = _evaluate(
+            "nonnegative_columns",
+            {"columns": ["age"], "reviewed_exclusions": {"age": reason}},
+            {"frame": _frame(age=[-1.0] * N_PERSONS)},
+        )
+        assert outcome.status is GateStatus.FAILED
+        assert "non-empty string" in outcome.result.failures[0]
+
     @PROPERTY
     @given(
         rent=st.lists(
@@ -1151,30 +1278,142 @@ _WEIGHTS = st.lists(
 
 
 class TestWeightGates:
+    @pytest.mark.parametrize(
+        ("weights", "gate", "keyword", "threshold", "summary_field", "expected"),
+        [
+            (
+                [1e154, 5e153],
+                weight_ess_gate,
+                "minimum_ess_fraction",
+                0.95,
+                "ess_fraction",
+                0.9,
+            ),
+            (
+                [1e-162, 2e-162],
+                weight_ess_gate,
+                "minimum_ess_fraction",
+                0.99,
+                "ess_fraction",
+                0.9,
+            ),
+            (
+                [1e308, 9e307],
+                weight_ratio_gate,
+                "maximum_max_to_median_ratio",
+                1.01,
+                "max_to_median_positive_weight",
+                1 / 0.95,
+            ),
+        ],
+    )
+    def test_extreme_finite_weights_do_not_false_pass(
+        self, weights, gate, keyword, threshold, summary_field, expected
+    ) -> None:
+        result = gate(weights, **{keyword: threshold})
+        assert result.passed is False
+        assert result.details[summary_field] == pytest.approx(expected)
+        if not math.isfinite(sum(weights)):
+            assert result.details["total_weight"] is None
+        normalized = np.asarray(weights) / max(weights)
+        assert gate(normalized, **{keyword: threshold}).passed is result.passed
+
+    @PROPERTY
+    @example(weights=[1, 2], scale=1e-162, minimum=0.99, maximum=10.0)
+    @given(
+        weights=st.lists(st.integers(0, 1024), min_size=2, max_size=20).filter(any),
+        scale=st.floats(min_value=1e-200, max_value=1e200),
+        minimum=st.floats(min_value=0.01, max_value=1.0),
+        maximum=st.floats(min_value=0.01, max_value=100.0),
+    )
+    def test_property_verdicts_are_invariant_to_positive_rescaling(
+        self, weights, scale, minimum, maximum
+    ) -> None:
+        values = np.asarray(weights, dtype=np.float64)
+        # Stay away from the comparison boundary where float rounding matters.
+        positive = values[values > 0]
+        fraction = values.sum() ** 2 / np.square(values).sum() / values.size
+        ratio = values.max() / np.median(positive)
+        assume(abs(fraction - minimum) > 1e-9)
+        assume(abs(ratio - maximum) > 1e-9 * maximum)
+        for gate, keyword, threshold in (
+            (weight_ess_gate, "minimum_ess_fraction", minimum),
+            (weight_ratio_gate, "maximum_max_to_median_ratio", maximum),
+        ):
+            baseline = gate(values, **{keyword: threshold})
+            scaled = gate(values * scale, **{keyword: threshold})
+            assert scaled.passed is baseline.passed
+
+    def test_normalization_preserves_original_positive_mask_and_record_counts(
+        self,
+    ) -> None:
+        summary = weight_summary([0.0, 5e-324, 1e308])
+        assert summary["n_records"] == 3
+        assert summary["positive_weight_records"] == 2
+        assert summary["zero_weight_records"] == 1
+        assert summary["ess_fraction"] == pytest.approx(1 / 3)
+        assert summary["max_to_median_positive_weight"] == pytest.approx(2.0)
+
     @PROPERTY
     @given(weights=_WEIGHTS, minimum=st.floats(min_value=1e-6, max_value=1.0))
     def test_property_ess_floor(self, weights, minimum) -> None:
-        values = np.asarray(weights)
-        total, squares = values.sum(), np.square(values).sum()
-        fraction = 0.0 if squares == 0 else total**2 / squares / values.size
+        # Exact arithmetic keeps the oracle independent of float squaring.
+        values = [Fraction(value) for value in weights]
+        total = sum(values)
+        squares = sum(value * value for value in values)
+        fraction = 0.0 if not squares else float(total * total / squares / len(values))
+        positive = sorted(value for value in values if value > 0)
+        if positive:
+            middle = len(positive) // 2
+            median = (
+                positive[middle]
+                if len(positive) % 2
+                else (positive[middle - 1] + positive[middle]) / 2
+            )
+            ratio = positive[-1] / median
+            representable = ratio <= Fraction(float(np.finfo(np.float64).max))
+        else:
+            representable = True
         assume(abs(fraction - minimum) > 1e-9)
         result = weight_ess_gate(weights, minimum_ess_fraction=minimum)
-        assert result.passed is bool(fraction >= minimum)
+        assert result.passed is bool(representable and fraction >= minimum)
         assert result.details["minimum_ess_fraction"] == minimum
-        assert math.isclose(
-            result.details["ess_fraction"], fraction, rel_tol=1e-12, abs_tol=1e-15
-        )
+        if representable:
+            assert math.isclose(
+                result.details["ess_fraction"], fraction, rel_tol=1e-12, abs_tol=1e-15
+            )
+        else:
+            assert result.failures
 
     @PROPERTY
     @given(weights=_WEIGHTS, maximum=st.floats(min_value=1e-3, max_value=1e3))
     def test_property_max_to_median_ceiling(self, weights, maximum) -> None:
-        values = np.asarray(weights)
-        positive = values[values > 0]
-        ratio = None if not positive.size else values.max() / np.median(positive)
-        assume(ratio is None or abs(ratio - maximum) > 1e-9 * maximum)
+        positive = sorted(Fraction(value) for value in weights if value > 0)
+        if positive:
+            middle = len(positive) // 2
+            median = (
+                positive[middle]
+                if len(positive) % 2
+                else (positive[middle - 1] + positive[middle]) / 2
+            )
+            ratio = positive[-1] / median
+        else:
+            ratio = None
+        assume(
+            ratio is None or abs(ratio - Fraction(maximum)) > Fraction(1e-9 * maximum)
+        )
         result = weight_ratio_gate(weights, maximum_max_to_median_ratio=maximum)
-        assert result.passed is bool(ratio is not None and ratio <= maximum)
+        assert result.passed is bool(ratio is not None and ratio <= Fraction(maximum))
         assert result.details["maximum_max_to_median_ratio"] == maximum
+        if ratio is not None:
+            if ratio <= Fraction(float(np.finfo(np.float64).max)):
+                assert math.isclose(
+                    result.details["max_to_median_positive_weight"],
+                    float(ratio),
+                    rel_tol=1e-12,
+                )
+            else:
+                assert result.failures
 
     @PROPERTY
     @given(
@@ -1211,7 +1450,7 @@ class TestWeightGates:
             }
 
     def test_an_overflowing_summary_fails_closed(self) -> None:
-        # Squares of 1e200 overflow, so the ESS is NaN: never a pass.
+        # Normalization keeps ESS finite; one dominant row still fails the floor.
         result = weight_ess_gate([1e200, 1.0, 1.0], minimum_ess_fraction=0.9)
         assert not result.passed
 

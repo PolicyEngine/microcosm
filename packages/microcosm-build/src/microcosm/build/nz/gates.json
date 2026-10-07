@@ -1,7 +1,7 @@
 {
   "version": 2,
   "country": "nz",
-  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. Gates whose thresholds are D1 method-card items (MC15 fit tolerances, effective sample size, weight ratio) stay not_applicable with the reason 'awaiting D1'; macro_realism waits on packaged evidence and reviewed bands; donor support and release input coverage wait on the transport code that is to produce their evidence. Thresholds are never borrowed from Belgium, the US, the UK or Armenia and never set from a candidate. Active reference, profile, weights, nonzero, formula-ownership, and nonnegative gates fail closed.",
+  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. Gates whose thresholds are D1 method-card items (MC15 fit tolerances, effective sample size, weight ratio) stay not_applicable with the reason 'awaiting D1'; macro_realism waits on packaged evidence and reviewed bands. Donor support and release input coverage remain applicable and fail closed while their producers and checks are pending. Thresholds are never borrowed from Belgium, the US, the UK or Armenia and never set from a candidate. Active reference, profile, support, release-input-coverage, weights, nonzero, formula-ownership, and nonnegative gates fail closed.",
   "phases": [
     "terminal"
   ],
@@ -54,7 +54,8 @@
       "gate": "release_input_coverage",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "not_applicable": "awaiting its evidence: no Microcosm code yet emits the donor-artifact authentication receipt (the transport CREATE kernel, package G5a) or the per-module Axiom input-closure verdict (package G4), so no gate binding can read this evidence; activate it with a binding before any candidate release.",
+      "parameters": {},
+      "evidence_absent_blocks": true,
       "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive root input of any module bound in axiom_rules_bindings.json is a build failure, never an engine default."
     },
     {
@@ -62,7 +63,8 @@
       "gate": "support",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "not_applicable": "awaiting its evidence: no Microcosm code yet records the realized donor-support bounds of transported columns (the donor reader and transport operators, packages G3b and G5a), so no gate binding can read this evidence; activate it with a binding before any candidate release.",
+      "parameters": {},
+      "evidence_absent_blocks": true,
       "notes": "Every direct or derived calibration measure and every substantive Axiom input must carry a donor-support receipt."
     },
     {

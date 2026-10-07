@@ -228,9 +228,10 @@ is a member of the calibration base would re-key calibration on any
 
 `transport/gate_bindings.py` holds `TRANSPORT_GATE_REGISTRY`, the registry a
 transport country passes to `gates.battery@1`: `DEFAULT_REGISTRY` plus a
-`FunctionBinding` for each gate below. Every binding reads evidence the
-transport graph produces, under the alias of the producing output, and takes
-its thresholds and declared surfaces only from the entry's `parameters`.
+`FunctionBinding` for each implemented gate below and two frozen pending
+bindings. The implemented bindings read evidence the transport graph
+produces, under the alias of the producing output, and take their thresholds
+and declared surfaces only from the entry's `parameters` in `gates.json`.
 No tunable threshold has a Python default: an entry that omits one fails
 closed when it runs. A composer can call `validate_required_gate_parameters`
 (the converse of the battery's `validate_gate_parameters`, which the kernel
@@ -255,10 +256,10 @@ keep their fixed semantics: non-negative means at least zero, and
   entry) and each declared family must have a target. `hard_within` must be
   a number: the shared gate's report-only `null` belongs in a `diagnostic`
   entry.
-- `aggregate_admin` checks each compiled target of the surface (its source
-  and any fact-specific tolerance) against the diagnostics' final estimate,
-  sign first; `default_rtol` applies where a target declares no tolerance.
-  The diagnostics must record that surface (`build.surface_sha256`).
+- `aggregate_admin` checks each compiled target of the surface against the
+  diagnostics' final estimate, sign first. Every anchor uses `default_rtol`
+  from `gates.json`; a surface's `TargetSpec.tolerance` cannot change the gate
+  threshold. The diagnostics must record that surface (`build.surface_sha256`).
 - `calibration_reference_coverage` passes iff at least one reference is
   activated, the activated references, the resolved targets and the matrix
   rows are one set without repeats or skipped targets, and the problem was
@@ -275,24 +276,36 @@ keep their fixed semantics: non-negative means at least zero, and
 - `nonnegative_columns` also fails a non-finite value in a declared column
   (the shared gate skips them): `-inf` is negative, and a missing value
   cannot be certified non-negative.
+- Reviewed exclusions must carry non-empty string reasons before the
+  bindings forward them to the shared comparison.
 - `weight_ess` and `weight_ratio` read the frame's one weighted entity. The
   ESS fraction divides the Kish ESS by every record; the ratio divides the
-  maximum by the median positive weight. On the same row weights they agree
-  with the UK runtime's weight gates (a differential test over finite
-  summaries); where the ESS overflows to NaN, the neutral gate fails closed.
+  maximum by the median positive weight. For a nonzero vector, both
+  comparisons use weights normalized by their maximum, retaining the
+  original record count and positive-weight mask. Invalid computed
+  concentration summaries fail closed. The differential tests compare
+  concentration with the UK gates on normalized weights, preserving original
+  positive support, and compare metadata in original units on the original
+  weights. An unrepresentable diagnostic `total_weight` is reported as `null`;
+  it does not change either concentration comparison.
 
-Of the gates New Zealand declares, three have no transport binding, because
-no code produces their evidence for a transport build yet: `support`
-(realized donor-support bounds of transported columns),
-`release_input_coverage` (donor-artifact authentication and the per-module
-Axiom input closure) and `macro_realism` (destination national-accounts
-metrics and bands). New Zealand declares them `not_applicable`, naming the
-missing producer; an applicable entry would resolve to the battery's
-`evidence_absent` gap. A `not_applicable` entry does not block a release, so
-each must be activated with a binding before any candidate release.
+Two additional frozen bindings remain pending: `support` requires the
+`donor_support_bounds` artifact for realized donor-support evidence, and
+`release_input_coverage` requires `donor_artifact_receipt` and
+`axiom_input_closure` for donor authentication and per-module Axiom input
+closure. Neither accepts gate parameters. Missing named producer artifacts
+resolve to registered `evidence_absent` outcomes. Their
+evaluators fail even when artifacts are supplied, until the evidence
+checks are implemented. New Zealand keeps both entries applicable, with
+empty parameters and `evidence_absent_blocks: true`: absent evidence or a
+pending evaluator blocks the build, makes the report non-shippable, and
+prevents graph artifact production, even if every other gate passes.
+
+`macro_realism` still has no transport binding and remains `not_applicable`
+until destination national-accounts metrics and reviewed bands are packaged.
 `weights_audit` keeps its `DEFAULT_REGISTRY` binding, but no transport
 kernel emits its `fit_weight_records` evidence yet, so it resolves to a named
-`evidence_absent` gap.
+`evidence_absent` gap that blocks New Zealand builds.
 
 ## Export
 

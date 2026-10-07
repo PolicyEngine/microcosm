@@ -4,9 +4,9 @@
 binding registry as a constructor argument; :data:`TRANSPORT_GATE_REGISTRY`
 is that registry for a donor-based (transport) country. It is
 :data:`~microcosm.build.gate_battery.DEFAULT_REGISTRY` plus one
-:class:`~microcosm.build.gate_battery.FunctionBinding` per gate below. A
-binding adapts evidence the transport graph already produces to a gate
-comparison. The comparisons stay in :mod:`microcosm.build.gates` where one
+:class:`~microcosm.build.gate_battery.FunctionBinding` per gate below. An
+implemented binding adapts evidence the transport graph already produces to
+a gate comparison. The comparisons stay in :mod:`microcosm.build.gates` where one
 exists; the two weight-concentration gates and the calibration-reference
 coverage check have none there and are defined here.
 
@@ -43,14 +43,15 @@ The evidence each bound gate reads:
   ``gates.json``.
 - ``weight_ess`` and ``weight_ratio``: the frame's one weighted entity.
 
-Of the gates New Zealand declares, three have no binding here, because no
-code in Microcosm yet produces their evidence for a transport build:
-``support`` (realized donor-support bounds of transported columns),
-``release_input_coverage`` (donor-artifact authentication and the per-module
-Axiom input closure) and ``macro_realism`` (destination national-accounts
-metrics and reviewed bands). A country declares them ``not_applicable`` with
-the missing producer as its reason; an entry left applicable resolves to the
-battery's ``evidence_absent`` gap. ``weights_audit`` keeps its
+Two frozen bindings remain pending: ``support`` requires
+``donor_support_bounds`` (realized donor-support bounds of transported
+columns), and ``release_input_coverage`` requires ``donor_artifact_receipt``
+and ``axiom_input_closure`` (donor authentication and per-module Axiom input
+closure). Missing artifacts resolve to registered ``evidence_absent``;
+supplied artifacts still fail until the checks are implemented. New Zealand
+keeps both entries applicable with ``evidence_absent_blocks``. Only
+``macro_realism`` has no transport binding and remains ``not_applicable``
+pending national-accounts evidence and reviewed bands. ``weights_audit`` keeps its
 ``DEFAULT_REGISTRY`` binding, but no transport kernel emits its
 ``fit_weight_records`` evidence yet, so it resolves to a named
 ``evidence_absent``.
@@ -67,6 +68,7 @@ import inspect
 import math
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
@@ -149,6 +151,21 @@ def _strings(name: str, value: object) -> tuple[str, ...]:
 
 def _optional_strings(name: str, value: object) -> tuple[str, ...] | None:
     return None if value is None else _strings(name, value)
+
+
+def _reviewed_exclusions(value: Mapping[str, str] | None) -> dict[str, str] | None:
+    """Review reasons must be strings before the shared gate can coerce them."""
+
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError("Reviewed exclusions must be a mapping from name to reason.")
+    for name, reason in value.items():
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                f"Reviewed exclusion {name!r} needs a non-empty string reason."
+            )
+    return dict(value)
 
 
 def _diagnostics_rows(diagnostics: object) -> tuple[Mapping[str, Any], ...]:
@@ -293,6 +310,10 @@ def _weighted_entity(frame: Frame) -> tuple[str, np.ndarray]:
 # ---------------------------------------------------------------------------
 
 
+class _InvalidWeightSummaryError(ValueError):
+    """Finite input weights produced an unusable concentration summary."""
+
+
 def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
     """The concentration summary of one shipped weight vector.
 
@@ -300,6 +321,9 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
     zero-weight rows included; the median is over positive weights only, so
     the max-to-median ratio does not depend on how many dead rows ship. An
     all-zero vector is reportable: its median and ratio are ``None``.
+    Concentration is computed after scaling by the largest weight to avoid
+    overflow and underflow. An unrepresentable diagnostic total is ``None``;
+    invalid concentration summaries are refused rather than compared.
     """
 
     values = np.asarray(weights, dtype=np.float64)
@@ -307,20 +331,55 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
         raise ValueError("Weights must be a non-empty vector.")
     if not np.isfinite(values).all() or (values < 0).any():
         raise ValueError("Weights must be finite and non-negative.")
-    positive = values[values > 0]
-    ess = float(effective_sample_size(values))
-    median = float(np.median(positive)) if positive.size else None
+    positive_mask = values > 0
+    positive_records = int(positive_mask.sum())
     maximum = float(values.max())
+    scaled = values / maximum if maximum > 0 else values
+    ess = float(effective_sample_size(scaled))
+    record_limit = float(values.size)
+    roundoff = math.ulp(record_limit) * record_limit
+    if not math.isfinite(ess) or not 0 <= ess <= record_limit + roundoff:
+        raise _InvalidWeightSummaryError(
+            "Computed weight ESS must be finite and within record bounds."
+        )
+    # Kish ESS is bounded by record count; allow only summation roundoff.
+    ess = min(ess, record_limit)
+    fraction = ess / values.size
+    if positive_records:
+        if not ess >= 1:
+            raise _InvalidWeightSummaryError(
+                "Computed positive-weight ESS must be at least one."
+            )
+        # Keep the original mask: positive inputs can normalize to zero.
+        scaled_median = float(np.median(scaled[positive_mask]))
+        if not math.isfinite(scaled_median) or not 0 < scaled_median <= 1:
+            raise _InvalidWeightSummaryError(
+                "Computed positive-weight median must be finite and positive."
+            )
+        ratio = 1 / scaled_median
+        median = maximum * scaled_median
+        if not math.isfinite(ratio) or ratio < 1:
+            raise _InvalidWeightSummaryError(
+                "Computed max/positive-median ratio must be finite and at least one."
+            )
+        if not math.isfinite(median) or not 0 < median <= maximum:
+            raise _InvalidWeightSummaryError(
+                "Computed positive-weight median must be finite and positive."
+            )
+    else:
+        median = ratio = None
+    with np.errstate(over="ignore"):
+        total = float(values.sum())
     return {
         "n_records": int(values.size),
-        "positive_weight_records": int(positive.size),
-        "zero_weight_records": int(values.size - positive.size),
-        "total_weight": float(values.sum()),
+        "positive_weight_records": positive_records,
+        "zero_weight_records": int(values.size - positive_records),
+        "total_weight": total if math.isfinite(total) else None,
         "effective_sample_size": ess,
-        "ess_fraction": ess / values.size,
+        "ess_fraction": fraction,
         "median_positive_weight": median,
         "max_weight": maximum,
-        "max_to_median_positive_weight": (None if median is None else maximum / median),
+        "max_to_median_positive_weight": ratio,
     }
 
 
@@ -332,7 +391,15 @@ def weight_ess_gate(
     minimum = _number("minimum_ess_fraction", minimum_ess_fraction)
     if not 0 < minimum <= 1:
         raise ValueError("minimum_ess_fraction must lie in (0, 1].")
-    summary = weight_summary(weights)
+    try:
+        summary = weight_summary(weights)
+    except _InvalidWeightSummaryError as exc:
+        return GateResult(
+            name="weight_ess",
+            passed=False,
+            failures=(str(exc),),
+            details={"minimum_ess_fraction": minimum},
+        )
     fraction = float(summary["ess_fraction"])
     failures = (
         (f"ESS fraction {fraction:.6g} is below the reviewed minimum {minimum:.6g}.",)
@@ -355,7 +422,15 @@ def weight_ratio_gate(
     maximum = _number("maximum_max_to_median_ratio", maximum_max_to_median_ratio)
     if not maximum > 0:
         raise ValueError("maximum_max_to_median_ratio must be strictly positive.")
-    summary = weight_summary(weights)
+    try:
+        summary = weight_summary(weights)
+    except _InvalidWeightSummaryError as exc:
+        return GateResult(
+            name="weight_ratio",
+            passed=False,
+            failures=(str(exc),),
+            details={"maximum_max_to_median_ratio": maximum},
+        )
     ratio = summary["max_to_median_positive_weight"]
     if ratio is None:
         failures: tuple[str, ...] = (
@@ -463,13 +538,14 @@ def _aggregate_admin(
 ) -> GateResult:
     """Calibrated aggregates against the compiled surface's anchors, signed.
 
-    Anchors are the surface's compiled target specs (each with its source
-    and any fact-specific tolerance); the achieved aggregate is the
+    Anchors are the surface's compiled target specs (each with its source);
+    the achieved aggregate is the
     diagnostics' final estimate of the same target. The diagnostics must
     record this surface (``build.surface_sha256``, which
     ``diagnostics.calibration@1`` writes), so another calibration's
-    estimates cannot be graded against it. ``default_rtol`` applies where a
-    spec declares no tolerance. ``families`` and ``geography_levels``
+    estimates cannot be graded against it. Every anchor uses ``default_rtol``
+    from ``gates.json``; surface tolerances cannot change it.
+    ``families`` and ``geography_levels``
     restrict the anchors; each declared value must select at least one.
     """
 
@@ -525,7 +601,9 @@ def _aggregate_admin(
     }
     if not specs:
         missing.append("aggregate_admin: no compiled anchor was selected.")
-    result = aggregate_admin_gate(aggregates, specs, default_rtol=rtol)
+    result = aggregate_admin_gate(
+        aggregates, [replace(spec, tolerance=None) for spec in specs], default_rtol=rtol
+    )
     return _with_failures(
         result,
         legacy="aggregate_vs_admin",
@@ -638,9 +716,7 @@ def _target_profile_coverage(
     return target_profile_coverage_gate(
         targets,
         requirements,
-        reviewed_exclusions=None
-        if reviewed_exclusions is None
-        else dict(reviewed_exclusions),
+        reviewed_exclusions=_reviewed_exclusions(reviewed_exclusions),
     )
 
 
@@ -660,7 +736,7 @@ def _nonnegative_columns(
     """
 
     required = _strings("columns", columns)
-    exclusions = None if reviewed_exclusions is None else dict(reviewed_exclusions)
+    exclusions = _reviewed_exclusions(reviewed_exclusions)
     values = _frame_columns(frame)
     result = nonnegative_columns_gate(values, required, reviewed_exclusions=exclusions)
     nonfinite: dict[str, int] = {}
@@ -731,6 +807,33 @@ def _weight_ratio(*, frame: Frame, maximum_max_to_median_ratio: float) -> GateRe
         weights, maximum_max_to_median_ratio=maximum_max_to_median_ratio
     )
     return _with_failures(result, failures=(), details={"weight_entity": entity})
+
+
+def _pending_support(*, donor_support_bounds: object) -> GateResult:
+    """Fail even with supplied evidence until donor-support checks exist."""
+
+    return GateResult(
+        name="support",
+        passed=False,
+        failures=("Transport donor-support evidence checks are not implemented.",),
+        details={},
+    )
+
+
+def _pending_release_input_coverage(
+    *, donor_artifact_receipt: object, axiom_input_closure: object
+) -> GateResult:
+    """A producer artifact cannot bypass the pending authentication checks."""
+
+    return GateResult(
+        name="release_input_coverage",
+        passed=False,
+        failures=(
+            "Transport donor authentication and Axiom input-closure checks "
+            "are not implemented.",
+        ),
+        details={},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -847,6 +950,23 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
             gate=_weight_ratio,
             parameter_keys=_parameters(_weight_ratio),
             frame_argument="frame",
+        ),
+        "support": FunctionBinding(
+            name="support",
+            gate=_pending_support,
+            artifact_arguments=MappingProxyType(
+                {"donor_support_bounds": "donor_support_bounds"}
+            ),
+        ),
+        "release_input_coverage": FunctionBinding(
+            name="release_input_coverage",
+            gate=_pending_release_input_coverage,
+            artifact_arguments=MappingProxyType(
+                {
+                    "donor_artifact_receipt": "donor_artifact_receipt",
+                    "axiom_input_closure": "axiom_input_closure",
+                }
+            ),
         ),
     }
 )
