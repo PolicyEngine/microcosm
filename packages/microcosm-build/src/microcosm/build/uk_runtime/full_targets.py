@@ -32,6 +32,9 @@ from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
 )
+from microcosm.build.uk_runtime.national_reconciliation import (
+    reconcile_uk_national_registry,
+)
 from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
 from microcosm.calibrate import TargetRegistry
 
@@ -181,7 +184,15 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         local_registries[period] = compilation.registry
-    band_edges = national_registries[year]
+    # microcosm#1123: reconcile the compiled national register across its own
+    # grains before the exclusions, so a control's excluded members still
+    # count, and the register the solve binds (and the frozen scoring register
+    # it is checked against) carries the reconciled values. The validation
+    # periods stay as compiled: compile parity measures the facts themselves.
+    compiled_version = national_registries[year].version
+    band_edges, national_reconciliation = reconcile_uk_national_registry(
+        national_registries[year]
+    )
     frozen_version = None
     if register_json is not None:
         frozen = TargetRegistry.from_json(Path(register_json))
@@ -212,6 +223,7 @@ def load_uk_full_target_inputs(
         "calibration_year": year,
         "national_registry": national_registry,
         "band_edge_registry": band_edges,
+        "national_reconciliation": national_reconciliation,
         "local_registry": local_registries[year],
         "measure_exclusions": exclusion_receipt,
         "reviewed_unbound_higher_targets": reviewed_unbound,
@@ -219,7 +231,8 @@ def load_uk_full_target_inputs(
         "local_source_pin": local_pin,
         "ledger_provenance": _ledger_provenance(artifact),
         "register_completeness": {
-            "compiled_registry_version": band_edges.version,
+            "compiled_registry_version": compiled_version,
+            "reconciled_registry_version": band_edges.version,
             "approved_registry_version": national_registry.version,
             "frozen_registry_version": frozen_version,
             "compiled_reference_count": len(band_edges.specs),
@@ -292,12 +305,15 @@ def load_uk_national_target_inputs(
     exclusions = load_uk_calibration_measure_exclusions(
         None if measure_exclusions is None else Path(measure_exclusions)
     )
+    reconciled, national_reconciliation = reconcile_uk_national_registry(
+        compilation.registry
+    )
     registry, exclusion_receipt = apply_uk_calibration_measure_exclusions(
-        compilation.registry, exclusions, now=evaluated_on
+        reconciled, exclusions, now=evaluated_on
     )
     _validate_band_edge_registry(
         register_registry=registry,
-        band_edge_registry=compilation.registry,
+        band_edge_registry=reconciled,
         exclusion_receipt=exclusion_receipt,
     )
     frozen_version = None
@@ -316,13 +332,15 @@ def load_uk_national_target_inputs(
         "artifact": artifact,
         "calibration_year": year,
         "national_registry": registry,
-        "band_edge_registry": compilation.registry,
+        "band_edge_registry": reconciled,
+        "national_reconciliation": national_reconciliation,
         "measure_exclusions": exclusion_receipt,
         "chronicle_feed_pin": pin.to_dict(),
         "chronicle_provenance": artifact.provenance(),
         "ledger_provenance": _ledger_provenance(artifact),
         "register_completeness": {
             "compiled_registry_version": compilation.registry.version,
+            "reconciled_registry_version": reconciled.version,
             "approved_registry_version": registry.version,
             "frozen_registry_version": frozen_version,
             "compiled_reference_count": len(compilation.registry.specs),

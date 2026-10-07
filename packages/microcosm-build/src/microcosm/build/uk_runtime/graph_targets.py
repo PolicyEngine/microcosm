@@ -254,6 +254,7 @@ def compile_uk_full_target_surface(
     """
 
     from .ledger_targets import uk_local_target_surface
+    from .national_reconciliation import assert_uk_national_rows_unmoved
 
     ladder = load_uk_oa_ladder(ladder_path)
     period = int(inputs["calibration_year"])
@@ -276,6 +277,7 @@ def compile_uk_full_target_surface(
         census_household_uprating=uprating,
         area_region_codes=uk_area_region_codes(ladder),
     )
+    assert_uk_national_rows_unmoved(reconciliation)
     full = TargetRegistry(
         [
             *_local_specs(surface),

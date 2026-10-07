@@ -127,6 +127,287 @@
     }
   ],
   "partitions": [],
+  "band_bridges": [
+    {
+      "bridge_id": "itl_taxpayers_12570_vs_spi_region_12570",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        12570
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_12570_15000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_15000_vs_spi_region_15000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        15000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_15000_20000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_20000_vs_spi_region_20000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        20000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_20000_30000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_30000_vs_spi_region_30000_40000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        30000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_30000_40000",
+        "hmrc.spi_region.taxpayers_by_region_40000_50000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_50000_vs_spi_region_50000_70000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        50000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_50000_70000",
+        "hmrc.spi_region.taxpayers_by_region_70000_100000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_100000_vs_spi_region_100000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        100000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_100000_150000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_150000_vs_spi_region_150000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        150000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_150000_200000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_taxpayers_200000_vs_spi_region_200000",
+      "higher_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "higher_band_lower_bounds": [
+        200000,
+        500000,
+        1000000,
+        2000000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.taxpayers_by_region_200000_plus"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_12570_vs_spi_region_12570",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        12570
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_12570_15000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_15000_vs_spi_region_15000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        15000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_15000_20000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_20000_vs_spi_region_20000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        20000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_20000_30000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_30000_vs_spi_region_30000_40000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        30000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_30000_40000",
+        "hmrc.spi_region.total_income_by_region_40000_50000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_50000_vs_spi_region_50000_70000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        50000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_50000_70000",
+        "hmrc.spi_region.total_income_by_region_70000_100000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_100000_vs_spi_region_100000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        100000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_100000_150000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_150000_vs_spi_region_150000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        150000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_150000_200000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_total_income_200000_vs_spi_region_200000",
+      "higher_target_id": "hmrc.itl.total_income_by_total_income_band",
+      "higher_band_lower_bounds": [
+        200000,
+        500000,
+        1000000,
+        2000000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.total_income_by_region_200000_plus"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_12570_vs_spi_region_12570",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        12570
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_12570_15000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_15000_vs_spi_region_15000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        15000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_15000_20000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_20000_vs_spi_region_20000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        20000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_20000_30000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_30000_vs_spi_region_30000_40000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        30000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_30000_40000",
+        "hmrc.spi_region.income_tax_by_region_40000_50000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_50000_vs_spi_region_50000_70000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        50000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_50000_70000",
+        "hmrc.spi_region.income_tax_by_region_70000_100000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_100000_vs_spi_region_100000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        100000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_100000_150000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_150000_vs_spi_region_150000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        150000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_150000_200000"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    },
+    {
+      "bridge_id": "itl_income_tax_200000_vs_spi_region_200000",
+      "higher_target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "higher_band_lower_bounds": [
+        200000,
+        500000,
+        1000000,
+        2000000
+      ],
+      "lower_target_ids": [
+        "hmrc.spi_region.income_tax_by_region_200000_plus"
+      ],
+      "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
+    }
+  ],
   "local_routes": {
     "ons.rent.private_rent": {
       "route": "no_higher_control",

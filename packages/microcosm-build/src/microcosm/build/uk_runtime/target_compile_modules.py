@@ -35,6 +35,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.ledger_targets",
     "microcosm.build.uk_runtime.local_target_census",
     "microcosm.build.uk_runtime.local_targets",
+    "microcosm.build.uk_runtime.national_reconciliation",
     "microcosm.build.uk_runtime.tenure_constants",
     "microcosm.build.uk_runtime.uc_relationships",
     "microcosm.build.uk_runtime.uc_source_periods",

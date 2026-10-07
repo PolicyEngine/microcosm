@@ -584,6 +584,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                 "inconsistency_id": group.inconsistency_id,
                 "bridge_id": group.bridge_id,
                 "winning_grain": group.winning_grain,
+                "lower_grain": group.lower_grain,
                 "legs": leg_receipts,
             }
         )

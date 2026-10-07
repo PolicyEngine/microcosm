@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -76,6 +77,13 @@ def prepared(monkeypatch):
     monkeypatch.setattr(runtime, "compile_uk_local_target_registry", compile_local)
     monkeypatch.setattr(
         runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
+    # The national reconciliation (#1123) has its own tests; these registers
+    # carry no geography, so it passes them through here.
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (registry, {"rows_moved_by_exact_signature": 0}),
     )
     monkeypatch.setattr(
         runtime,
@@ -243,6 +251,49 @@ def test_frozen_register_compares_complete_not_measure_pruned_surface(
         == prepared[0].version
     )
     prepared[1].to_json(path)
+    with pytest.raises(ValueError, match="full national register differs"):
+        _load(register_json=path)
+
+
+def test_the_bound_and_frozen_registers_are_the_reconciled_ones(
+    prepared, monkeypatch, tmp_path
+):
+    national = prepared[0]
+    reconciled = TargetRegistry(
+        [replace(spec, value=2.0) for spec in national.specs], country="uk"
+    )
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (
+            seen.append(registry) or reconciled,
+            {"rows_moved_by_exact_signature": 2},
+        ),
+    )
+    excluded_from = []
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (
+            excluded_from.append(registry) or prepared[1],
+            {"excluded": {"reason": "reviewed"}},
+        ),
+    )
+    result = _load()
+    # Only the calibration year is reconciled; validation periods stay as
+    # compiled, since compile parity measures the facts themselves.
+    assert seen == [national]
+    assert excluded_from == [reconciled]
+    assert result["band_edge_registry"] is reconciled
+    assert result["national_reconciliation"] == {"rows_moved_by_exact_signature": 2}
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == national.version
+    assert completeness["reconciled_registry_version"] == reconciled.version
+    path = tmp_path / "register.json"
+    reconciled.to_json(path)
+    _load(register_json=path)
+    national.to_json(path)
     with pytest.raises(ValueError, match="full national register differs"):
         _load(register_json=path)
 
