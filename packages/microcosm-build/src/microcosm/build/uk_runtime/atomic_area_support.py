@@ -42,6 +42,42 @@ UK_NATIVE_ALIAS_COLUMNS = (
     "super_data_zone_code",
     "district_electoral_area_code",
 )
+#: The committed provenance of the three support artifacts: per-column source
+#: and vintage of every derived layer, with the artifacts' digests.
+PROVENANCE_RESOURCE = "uk_atomic_area_supports.provenance.json"
+
+
+def uk_area_code_frames() -> dict[str, dict[str, str]]:
+    """The code frames behind the exported area codes, per support system.
+
+    microcosm#1114: consumers check their own area lists against the frames a
+    release carries. The frames are the per-column vintages the three support
+    artifacts declare (``2024_pcon`` for Westminster constituencies of July
+    2024; ``2023_april_lad``, ``2019_council_area`` and ``2014_lgd`` for the
+    April 2023 local-authority code set; ``2024_rgn`` for the English regions
+    with the FRS sentinel codes for the other nations), read from the
+    committed provenance rather than restated here. Keyed by the exported
+    column name, then by support system.
+    """
+
+    import json
+    from importlib.resources import files
+
+    from .geography_ladder import UK_EXPORT_AREA_CODE_COLUMNS
+
+    payload = json.loads(
+        files("microcosm.build.uk").joinpath(PROVENANCE_RESOURCE).read_text()
+    )
+    supports = payload["supports"]
+    _require(set(supports) == set(SYSTEMS), "provenance covers the three systems")
+    frames: dict[str, dict[str, str]] = {}
+    for ladder_column, export_column in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        frames[export_column] = {}
+        for system in SYSTEMS:
+            vintage = supports[system]["column_metadata"][ladder_column]["vintage"]
+            _require(_text(vintage), f"{system} {ladder_column} vintage is text")
+            frames[export_column][system] = str(vintage)
+    return frames
 
 
 def without_uk_native_alias_columns(household):

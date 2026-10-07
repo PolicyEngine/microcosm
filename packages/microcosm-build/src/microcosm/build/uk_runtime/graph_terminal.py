@@ -47,8 +47,12 @@ from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
 from . import geography_ladder, national_frame
-from .atomic_area_support import without_uk_native_alias_columns
-from .geography_ladder import uk_geography_ladder_gate
+from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
+from .geography_ladder import (
+    UK_EXPORT_AREA_CODE_COLUMNS,
+    export_area_code_columns,
+    uk_geography_ladder_gate,
+)
 from .graph_population import context_frame, population_columns, population_slices
 from .national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
@@ -70,7 +74,12 @@ PACKAGE_INVENTORY_TYPE = ArtifactType("microcosm.full-package-inventory", 1)
 EXPORT_SOURCE_CODEC = "uk-single-year-h5@1"
 
 
-def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
+def _ladder_tables(frame: Frame) -> dict[str, pd.DataFrame]:
+    """The export tables before the area codes take their consumer names.
+
+    The geography ladder gate reads the ladder names, so it runs on these;
+    :func:`_tables` is what the artifact carries.
+    """
     tables = engine_tables(frame, weighted_entities=("household",))
     renamed = {}
     for entity in ("person", "benunit", "household"):
@@ -83,7 +92,7 @@ def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
             columns={column: ARTIFACT_CLONE_INDEX_COLUMN}
         )
     # Nation-native aliases of derived layers are NA outside their own nation;
-    # the single-year artifact carries the ten ladder columns plus the
+    # the single-year artifact carries the ladder columns plus the
     # identity-keyed assignment columns, never the aliases.
     renamed["household"] = without_uk_native_alias_columns(renamed["household"])
     # The reviewed export exclusions leave at the same boundary (microcosm#1063 c9).
@@ -92,6 +101,58 @@ def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
         if dropped:
             renamed[entity] = renamed[entity].drop(columns=dropped)
     return renamed
+
+
+def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
+    tables = _ladder_tables(frame)
+    # The three area codes leave under the consumers' names (microcosm#1114).
+    tables["household"] = export_area_code_columns(tables["household"])
+    return tables
+
+
+def _area_codes_block(household: pd.DataFrame) -> dict[str, object]:
+    """The exported area-code columns and the code frames behind them."""
+    columns = {
+        ladder: export
+        for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items()
+        if export in household.columns
+    }
+    if not columns:
+        return {"columns": {}, "frames": {}}
+    frames = uk_area_code_frames()
+    return {
+        "columns": columns,
+        "frames": {export: dict(frames[export]) for export in columns.values()},
+    }
+
+
+def _area_code_failures(
+    household: pd.DataFrame, descriptor: Mapping[str, object]
+) -> list[str]:
+    """microcosm#1114: the written table carries the consumer names, filled, and no ladder name."""
+    failures = []
+    for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        if ladder in household.columns:
+            failures.append(
+                f"Exported household table carries the ladder area code {ladder!r}; "
+                f"the artifact name is {export!r}."
+            )
+    declared = dict(descriptor.get("area_codes", {}).get("columns", {}))
+    for export in declared.values():
+        if export not in household.columns:
+            failures.append(
+                f"Exported household table lacks the declared area code {export!r}."
+            )
+            continue
+        values = household[export]
+        empty = int(values.isna().sum()) + int(
+            (values.astype(str).str.len() == 0).sum()
+        )
+        if empty:
+            failures.append(
+                f"Exported area code {export!r} is empty on {empty} household(s)."
+            )
+    return failures
 
 
 def _table_description(table: pd.DataFrame) -> dict[str, object]:
@@ -137,14 +198,15 @@ def describe_uk_export(
 ) -> dict[str, object]:
     """Validate and describe the maintained H5 layout without serializing it."""
     validate_uk_national_frame(frame)
-    tables = _tables(frame)
+    ladder = _ladder_tables(frame)
     gate = uk_geography_ladder_gate(
-        tables["household"], frame.weights_for("household").values
+        ladder["household"], frame.weights_for("household").values
     )
     if not gate.passed:
         raise ValueError(
             "UK export geography integrity failed: " + "; ".join(gate.failures)
         )
+    tables = {**ladder, "household": export_area_code_columns(ladder["household"])}
     return {
         "schema_version": 1,
         "kind": "uk_full_build_export",
@@ -156,6 +218,7 @@ def describe_uk_export(
         ),
         "bindings": dict(bindings),
         "geography_integrity": {"passed": gate.passed, "failures": list(gate.failures)},
+        "area_codes": _area_codes_block(tables["household"]),
         "graph_only_metadata": [
             "strata",
             "metadata_other_than_time_period",
@@ -226,6 +289,7 @@ def validate_uk_export(
     for key in ("time_period", "weight_kind", "mass_log", "hash_environment"):
         if actual[key] != descriptor[key]:
             failures.append(f"Exported {key} differs from its graph descriptor.")
+    failures.extend(_area_code_failures(payload["household"], descriptor))
     if file_artifact(path) != dataset:
         raise ValueError("UK exported file changed during graph readback validation.")
     return {
@@ -1464,6 +1528,16 @@ def rowwise_candidate_manifest_from_graph(
         "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
         "cross_grain": dict(bindings.get("cross_geography", {})),
         "ladder_assignment_provenance": dict(ladder_provenance),
+        # microcosm#1114: the area-code columns the artifact carries and the
+        # code frames behind them, from the export descriptor.
+        "area_codes": dict(
+            (
+                _optional_graph_json(
+                    final_manifest, store, "uk.full.export.prepare", "export_descriptor"
+                )
+                or {}
+            ).get("area_codes", {"columns": {}, "frames": {}})
+        ),
         "household_dispersion": dict(surface.get("household_dispersion", {})),
         "parameters": rowwise_parameters(args, source_year=source_year),
         "inputs": {

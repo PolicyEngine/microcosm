@@ -282,6 +282,78 @@ def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> No
     assert any("unreviewed_extra" in failure for failure in unrelated.failures)
 
 
+def test_export_candidate_columns_and_release_frame_carry_consumer_area_code_names() -> (
+    None
+):
+    """microcosm#1114: the surface the export gate compares, and the frame the
+    national boundary writes, name the three area codes as consumers read them."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "SOUTH_EAST"],
+                "constituency_code": ["E14000001", "E14000002"],
+                "local_authority_code": ["E09000001", "E07000008"],
+                "region_code": ["E12000007", "E12000008"],
+                "ward_code": ["E05000001", "E05000002"],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    surface = uk_export_candidate_columns(frame)
+    assert {
+        "household.constituency_code_oa",
+        "household.la_code_oa",
+        "household.region_code_oa",
+        "household.ward_code",
+    } <= surface
+    assert (
+        not {
+            "household.constituency_code",
+            "household.local_authority_code",
+            "household.region_code",
+        }
+        & surface
+    )
+    for export in UK_EXPORT_AREA_CODE_COLUMNS.values():
+        assert f"household.{export}" in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    for ladder in UK_EXPORT_AREA_CODE_COLUMNS:
+        assert f"household.{ladder}" not in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    exported = uk_release_export_frame(frame)
+    household = exported.table("household")
+    assert household["constituency_code_oa"].tolist() == ["E14000001", "E14000002"]
+    assert household["la_code_oa"].tolist() == ["E09000001", "E07000008"]
+    assert household["region_code_oa"].tolist() == ["E12000007", "E12000008"]
+    assert "constituency_code" not in household.columns
+    assert "constituency_code" in frame.table("household").columns
+    assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
+
+
 def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     """microcosm#1063 c9: the certifier rehearsal listed every id column as an
     unreviewed extra and the frame's weights as a missing reference column."""

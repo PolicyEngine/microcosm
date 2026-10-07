@@ -185,7 +185,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_is_cgt_residential_clone",
     "household.cgt_residential_clone_index",
     "household.household_clone_index",
-    "household.constituency_code",
+    # microcosm#1114: the three area codes leave every artifact under the
+    # consumers' names (geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS); the
+    # ladder names never reach an artifact and uk_export_candidate_columns
+    # translates them before this list is compared.
+    "household.constituency_code_oa",
     "household.consumer_debt",
     # microcosm#932: the five nation-native aliases of the atomic assignment
     # (output_area_code, data_zone_code, intermediate_zone_code,
@@ -211,7 +215,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_local_bus_trips",
     "household.spi_income_band_donor_lower_bound",
     "household.intermediate_zone_code",
-    "household.local_authority_code",
+    "household.la_code_oa",
     # #953: the engine's household local_authority enum input, written by the
     # rowwise geography ladder from local_authority_code. The incumbent never
     # carried it, so the coverage manifest cannot list it; this allow-list
@@ -228,7 +232,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.private_pension_wealth",
     "household.property_purchased",
     "household.rail_usage",
-    "household.region_code",
+    "household.region_code_oa",
     "household.stocks_and_shares_isa",
     "household.super_data_zone_code",
     "person.a_and_e_visits",
@@ -390,12 +394,20 @@ def uk_export_candidate_columns(frame: Any) -> set[str]:
     does.
     """
 
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+
     columns: set[str] = set()
     for entity in frame.entities:
         structural = _STRUCTURAL_COLUMNS.get(str(entity), frozenset())
         for column in frame.table(entity).columns:
             if column in structural:
                 continue
+            # microcosm#1114: the frame holds the ladder names; the artifact
+            # carries the consumers' names, which is what the surface compares.
+            if str(entity) == "household":
+                column = UK_EXPORT_AREA_CODE_COLUMNS.get(str(column), column)
             columns.add(f"{entity}.{column}")
     columns.add(f"household.{_WEIGHT_COLUMN}")
     return columns
