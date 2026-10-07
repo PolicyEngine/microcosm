@@ -276,6 +276,14 @@ Axiom mappings are data (`adapters/axiom_concept_mappings/<country>.json`),
 checked against the engine-generated input surfaces in
 `packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/` (regenerate with
 `tools/refresh_axiom_input_surface.py`; it needs a real Axiom engine build).
+Group bindings run through `ConceptMapping.encode_groups` on units from
+`microcosm.frame.unit_construction`; `encode` still reports them as deferred.
+The Axiom engine fails a request that reaches an input it was not given, so a
+country pack that binds Axiom modules closes every root input in an input
+closure (`build/<cc>/axiom_input_closure.json`, read by
+`microcosm.frame.input_closure`), and its test checks the closure against the
+committed surface. A change that binds, unbinds or moves a mapping input
+updates its closure entry too; the closure test fails until the two agree.
 
 ## Root journals are history, not state
 

@@ -122,7 +122,8 @@ CONCEPT_SCHEMA_VERSION = 1
 #: units, benefit units, SPM units, families) are engine constructs built
 #: from relationships. Today the US operator in microcosm.frame.units builds
 #: them from raw CPS roster columns and the UK adapter requires them already
-#: present; building them from these concepts' pointers is future work.
+#: present; microcosm.frame.unit_construction builds benefit units from these
+#: concepts' pointers.
 CONCEPT_ENTITIES: tuple[str, ...] = ("person", "household")
 
 #: A concept frame's entity structure, in the kernel's id conventions.
