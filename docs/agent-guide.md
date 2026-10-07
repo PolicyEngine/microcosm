@@ -171,6 +171,13 @@ to the private repository; when you run `microcosm-build-uk`
 yourself, pass `--staging-local-only` unless the operator asked for a staged
 upload.
 
+The versioned Route A driver is `tools/route_a/route_a.sh`; see its
+[runbook](../tools/route_a/README.md) for configuration, preserved admission
+and release gates, and the Modal-base hand-off. Its release stage enables
+staging telemetry by default, obtains the HF credential only in a runtime
+wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
+publisher's offline `--preflight-only` check and leaves publication to Max.
+
 The US fiscal-refresh builder scores its written H5 in household batches.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).

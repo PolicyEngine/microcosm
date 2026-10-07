@@ -7,8 +7,11 @@ has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
 international populations and law-anchored concepts. **Amended 2026-10-07:**
 schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
-Zealand mapping binds it, as a deferred `Family` binding; the other three
-mappings list it as unmapped with a reason.
+Zealand mapping binds it, as a `Family` binding that `encode_groups` executes
+on built benefit units; the other three mappings list it as unmapped with a
+reason. A scale, sum, scaled sum, share or fraction now computes from annual
+flows only (invariant 11), so none of them can rescale the stock, add it to a
+year's income, or split it.
 
 ## Context
 
@@ -132,7 +135,8 @@ binds engine inputs to concepts. Each binding states:
   another input holds whole, a fixed scale (annual to weekly or monthly), a
   positivity test, sum, a sum then a fixed scale, product, allocation to the
   reference person, a predicate, a relationship role, a co-resident child
-  count, a take-up threshold, or a test of a built unit's composition;
+  count, a take-up threshold, or a test of a built unit's composition. A scale,
+  sum, scaled sum, share or fraction computes from annual flows only;
 - the relation, in the same vocabulary;
 - the evidence, quoting the engine's own definition or how builds populate the
   input.
@@ -298,7 +302,28 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     another exception, whatever is corrupted; a missing, unexpected or
     wrongly typed field is named. So do unit rules, state bindings and input
     closures.
-11. **Units.** Benefit units partition persons: every person is in exactly
+11. **Arithmetic reads annual flows.** A scale, sum, scaled sum, share or
+    fraction binding computes only from concepts whose declared temporal basis
+    is `annual_flow`: every concept in its `concepts`. A stock such as
+    `liquid_financial_assets` has no weekly value and cannot be added to a
+    year's income. The rule also refuses a scale of a usual rate or a
+    persistent draw. The household reference person that a binding allocated
+    to the reference unit also reads, to place its value, is not an operand,
+    and the rule does not check it. The rule is enforced at construction. Any
+    such binding that computes from another basis is refused, and the same
+    binding with an annual flow in its place validates. In every mapping, an
+    edit that feeds a concept that is not an annual flow to one of these
+    transforms is refused, though the edit would validate if that concept
+    were an annual flow. Two checks are exhaustive rather than sampled.
+    Redeclaring any operand of a committed arithmetic binding under another
+    basis refuses that binding, while redeclaring its placement pointer
+    leaves it valid. Redeclaring anything any other committed binding reads
+    leaves that binding valid. Every committed mapping validates. Other
+    transforms are outside the rule. The New Zealand binding reads the stock
+    through an identity whose group rule sums it over a family's members, and
+    policyengine-uk's hours input is a product of usual weekly hours and
+    weeks worked.
+12. **Units.** Benefit units partition persons: every person is in exactly
     one unit, every unit has a head and at most one partner, partners share a
     unit and the partner role goes to the head's partner alone, every
     dependent child shares a unit with a co-resident parent (or, with none,
@@ -310,7 +335,7 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     row order. Group encoding agrees with a row-by-row reference, and its
     unit-composition flags agree with the unit attributes computed
     separately.
-12. **Input closure** (engine-free). An Axiom country pack's closure puts
+13. **Input closure** (engine-free). An Axiom country pack's closure puts
     every root input of every module it binds, as the committed surface
     lists them, in exactly one class (encoded or defaulted), and an input is
     concept-encoded exactly when the mapping binds it.
