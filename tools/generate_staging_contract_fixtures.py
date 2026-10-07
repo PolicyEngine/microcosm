@@ -9,7 +9,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from microcosm.build.staging_v2 import StagingTelemetryV2
+from microcosm.build.staging_v2 import StagingRunBundleWriterV2
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = (
@@ -29,7 +29,7 @@ class FixtureClock:
 
 
 def _completed_spine(root: Path) -> None:
-    recorder = StagingTelemetryV2(
+    recorder = StagingRunBundleWriterV2(
         run_id="uk-spine-v2-fixture",
         country_code="GB",
         operation_id="uk_frs_spine",
@@ -54,7 +54,7 @@ def _completed_spine(root: Path) -> None:
 
 
 def _calibration(root: Path) -> None:
-    recorder = StagingTelemetryV2(
+    recorder = StagingRunBundleWriterV2(
         run_id="uk-calibration-v2-fixture",
         country_code="GB",
         operation_id="uk_national_calibration",
@@ -86,7 +86,7 @@ def _calibration(root: Path) -> None:
 
 
 def _failed(root: Path) -> None:
-    recorder = StagingTelemetryV2(
+    recorder = StagingRunBundleWriterV2(
         run_id="uk-failed-v2-fixture",
         country_code="GB",
         operation_id="uk_frs_spine",

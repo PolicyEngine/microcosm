@@ -160,7 +160,7 @@ def test_sequential_stage_updates_close_the_previous_stage() -> None:
 
     emitter.transition_stage("load", message="Loading.")
     emitter.transition_stage("compile", message="Compiling.")
-    emitter.transition_stage("compile", status="passed", batches=4)
+    emitter.transition_stage("compile", status="completed", batches=4)
 
     events = [message["event"] for message in messages]
     assert [(event["stage_id"], event["status"]) for event in events] == [

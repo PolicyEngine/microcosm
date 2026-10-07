@@ -108,15 +108,20 @@ def _stored_fit_weight_records(
     }
 
 
-def test_staging_stage_observer_translates_shared_observation() -> None:
+def test_stage_observer_reports_to_emitter_and_staging_bundle_independently() -> None:
     tool = _load_tool()
-    calls = []
+    bundle_calls = []
+    emitter_calls = []
 
-    class RecordingTelemetry:
+    class RecordingBundle:
         def stage(self, stage_id: str, **payload: object) -> None:
-            calls.append((stage_id, payload))
+            bundle_calls.append((stage_id, payload))
 
-    observer = tool._staging_stage_observer(RecordingTelemetry())
+    class RecordingEmitter:
+        def transition_stage(self, stage_id: str, **payload: object) -> None:
+            emitter_calls.append((stage_id, payload))
+
+    observer = tool._stage_observer(RecordingBundle(), RecordingEmitter())
     observer(
         StageObservation(
             stage_id="frs_spine",
@@ -127,17 +132,21 @@ def test_staging_stage_observer_translates_shared_observation() -> None:
         )
     )
 
-    assert calls == [
+    details = {
+        "elapsed_seconds": 1.25,
+        "entity_row_counts": {"household": 2},
+        "produced_column_count": 4,
+    }
+    assert bundle_calls == [
         (
             "frs_spine",
             {
                 "event_status": "completed",
-                "elapsed_seconds": 1.25,
-                "entity_row_counts": {"household": 2},
-                "produced_column_count": 4,
+                **details,
             },
         )
     ]
+    assert emitter_calls == [("frs_spine", {"status": "completed", **details})]
 
 
 def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:

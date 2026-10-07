@@ -348,7 +348,10 @@ class LocalTelemetryEmitter:
 
         collector_status = {
             "failed": "failed",
+            "completed": "completed",
             "passed": "completed",
+            "progress": "progress",
+            "started": "started",
             "running": "started",
         }.get(status, "progress")
         if collector_status == "started":

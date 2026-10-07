@@ -174,10 +174,10 @@ from .rowwise_posture import (
 from .rowwise_staging import (
     STAGED_DATASET_PHASES,
     STAGING_UPLOAD_INTERVAL_SECONDS,
-    calibration_progress,
-    create_staging_telemetry,
-    fail_staging_telemetry,
-    finalize_staging_telemetry,
+    create_staging_run_bundle,
+    emit_calibration_progress,
+    fail_staging_run_bundle,
+    finalize_staging_run_bundle,
     gate_statuses,
     graph_progress,
     preflight_staged_dataset,
@@ -215,7 +215,7 @@ _SUPPORT_ARGUMENTS = dict(
 )
 
 
-def _run_graph_with_progress(compiled, *, telemetry, **kwargs):
+def _run_graph_with_progress(compiled, **kwargs):
     """Run a graph and emit one lightweight update per completed node."""
 
     completed = 0
@@ -227,7 +227,6 @@ def _run_graph_with_progress(compiled, *, telemetry, **kwargs):
         now = time.monotonic()
         completed += 1
         graph_progress(
-            telemetry,
             node_id=node_id,
             done=completed,
             total=total,
@@ -603,11 +602,14 @@ def _solve_observer(args: argparse.Namespace, telemetry):
 
     sinks = [uk_solve_progress_callback(_stderr_progress)]
     sinks.append(
-        thinned_epochs(
-            lambda event: calibration_progress(telemetry, event),
-            every=staging_epoch_every(args),
-        )
+        thinned_epochs(emit_calibration_progress, every=staging_epoch_every(args))
     )
+    if telemetry is not None:
+        sinks.append(
+            thinned_epochs(
+                telemetry.calibration_progress, every=staging_epoch_every(args)
+            )
+        )
 
     def observer(event: dict[str, object]) -> None:
         for sink in sinks:
@@ -1149,11 +1151,11 @@ def _close_attempt(
             manifest=manifest,
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
-            telemetry=telemetry,
+            staging_bundle=telemetry,
         )
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         try:
-            finalize_staging_telemetry(args, telemetry)
+            finalize_staging_run_bundle(args, telemetry)
         finally:
             manifest["staging_delivery"] = staging_delivery(telemetry)
             manifest["staged_dataset"] = staged_dataset
@@ -1167,7 +1169,7 @@ def _close_attempt(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
     else:
-        finalize_staging_telemetry(args, telemetry)
+        finalize_staging_run_bundle(args, telemetry)
     spool_path = record_candidate_attempt(
         state=state,
         started_at=attempt["started_at"],
@@ -1316,7 +1318,6 @@ def _execute_full_build(
             continue
         checkpoint = _run_graph_with_progress(
             compile_graph(_through(graph, endpoint)),
-            telemetry=telemetry,
             sources=sources,
             store=store,
             kernels=kernels,
@@ -1329,7 +1330,6 @@ def _execute_full_build(
     preflight_graph = _through(graph, "uk.full.gates.preflight")
     preflight = _run_graph_with_progress(
         compile_graph(preflight_graph),
-        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1366,7 +1366,6 @@ def _execute_full_build(
     )
     manifest = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.gates.calibrated")),
-        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1444,7 +1443,6 @@ def _execute_full_build(
     stage(telemetry, "output_bundle", "started")
     manifest = _run_graph_with_progress(
         compile_graph(graph),
-        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1525,7 +1523,6 @@ def _execute_full_build(
     )
     final = _run_graph_with_progress(
         compile_graph(graph),
-        telemetry=telemetry,
         sources={
             **sources,
             "exported_dataset": dataset,
@@ -1912,7 +1909,6 @@ def _execute_national_build(
     stage(telemetry, "input_loading", "started")
     checkpoint = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.spine_checkpoint")),
-        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1934,7 +1930,6 @@ def _execute_national_build(
     stage(telemetry, "target_compilation", "started")
     targets = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_TARGETS_NODE)),
-        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1988,7 +1983,6 @@ def _execute_national_build(
     )
     manifest = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_GATES_NODE)),
-        telemetry=telemetry,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2142,7 +2136,6 @@ def _execute_national_build(
     continued = add_uk_national_readback(graph, population=national.population)
     final = _run_graph_with_progress(
         compile_graph(continued),
-        telemetry=telemetry,
         sources={**sources, "exported_dataset": paths["dataset"]},
         store=store,
         kernels=kernels,
@@ -2281,7 +2274,7 @@ def _close_national_attempt(
             manifest=manifest,
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
-            telemetry=telemetry,
+            staging_bundle=telemetry,
         )
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         evaluation = national_role.evaluate_against_incumbent(
@@ -2294,7 +2287,7 @@ def _close_national_attempt(
             out_dir=output,
         )
         try:
-            finalize_staging_telemetry(args, telemetry)
+            finalize_staging_run_bundle(args, telemetry)
         finally:
             delivery = staging_delivery(telemetry)
             build_record = json.loads(paths["build_record"].read_text())
@@ -2328,7 +2321,7 @@ def _close_national_attempt(
                 },
             )
     else:
-        finalize_staging_telemetry(args, telemetry)
+        finalize_staging_run_bundle(args, telemetry)
     spool_path = record_candidate_attempt(
         state=state,
         started_at=attempt["started_at"],
@@ -2364,7 +2357,7 @@ def _national_main(args: argparse.Namespace) -> int:
     try:
         digest = preflight_digest(posture.pipeline)
     except BaseException as error:
-        fail_staging_telemetry(None, error)
+        fail_staging_run_bundle(None, error)
         raise
     state = AttemptState(
         # The staging run id and Logbook row use the same attempt id.
@@ -2388,9 +2381,9 @@ def _national_main(args: argparse.Namespace) -> int:
                 ).national.operation_inventory(),
             )
         except BaseException as error:
-            fail_staging_telemetry(None, error)
+            fail_staging_run_bundle(None, error)
             raise
-        finalize_staging_telemetry(args, None)
+        finalize_staging_run_bundle(args, None)
         return status
 
     try:
@@ -2400,9 +2393,9 @@ def _national_main(args: argparse.Namespace) -> int:
         refuse_occupied_national_output(args)
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-        telemetry = create_staging_telemetry(args, build_id=state.build_id)
+        telemetry = create_staging_run_bundle(args, build_id=state.build_id)
     except BaseException as error:
-        fail_staging_telemetry(None, error)
+        fail_staging_run_bundle(None, error)
         raise
     attempt = {
         "state": state,
@@ -2428,13 +2421,13 @@ def _national_main(args: argparse.Namespace) -> int:
             pipeline=posture.pipeline,
             disposition="discarded",
         )
-        fail_staging_telemetry(telemetry, interrupt)
+        fail_staging_run_bundle(telemetry, interrupt)
         raise
     except Exception as error:
         _record_failure(
             args, error, state=state, attempt=attempt, pipeline=posture.pipeline
         )
-        fail_staging_telemetry(telemetry, error)
+        fail_staging_run_bundle(telemetry, error)
         print(f"UK national build failed: {error}", file=sys.stderr)
         return 1
 
@@ -2536,7 +2529,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         digest = preflight_digest(posture.pipeline)
     except BaseException as error:
-        fail_staging_telemetry(None, error)
+        fail_staging_run_bundle(None, error)
         raise
     state = AttemptState(
         build_id=build_id,
@@ -2556,9 +2549,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             status = _dry_run(args)
         except BaseException as error:
-            fail_staging_telemetry(None, error)
+            fail_staging_run_bundle(None, error)
             raise
-        finalize_staging_telemetry(args, None)
+        finalize_staging_run_bundle(args, None)
         return status
 
     try:
@@ -2566,9 +2559,9 @@ def main(argv: list[str] | None = None) -> int:
         # the emitter records their failures.
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-        telemetry = create_staging_telemetry(args, build_id=state.build_id)
+        telemetry = create_staging_run_bundle(args, build_id=state.build_id)
     except BaseException as error:
-        fail_staging_telemetry(None, error)
+        fail_staging_run_bundle(None, error)
         raise
     attempt = {
         "state": state,
@@ -2593,7 +2586,7 @@ def main(argv: list[str] | None = None) -> int:
             prepared=prepared,
             disposition="discarded",
         )
-        fail_staging_telemetry(telemetry, interrupt)
+        fail_staging_run_bundle(telemetry, interrupt)
         raise
     except Exception as error:
         _record_failure(
@@ -2604,7 +2597,7 @@ def main(argv: list[str] | None = None) -> int:
             pipeline=posture.pipeline,
             prepared=prepared,
         )
-        fail_staging_telemetry(telemetry, error)
+        fail_staging_run_bundle(telemetry, error)
         print(f"UK full build failed: {error}", file=sys.stderr)
         return 1
 
