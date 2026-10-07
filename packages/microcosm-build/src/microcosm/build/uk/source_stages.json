@@ -217,7 +217,7 @@
     },
     {
      "kind": "replace_sentinels",
-     "sentinel_policy": "raw numeric blanks and nonnumeric sentinels are coerced to NaN, then produced E2 columns are filled to the Frame no-NaN contract. Clamping is deliberately per-column, mirroring the incumbent base build: redamt stays unclamped, tuborr clamps at zero, and the property/royalties components clamp only in their aggregate."
+     "sentinel_policy": "raw numeric blanks and nonnumeric sentinels are coerced to NaN, then produced E2 columns are filled to the Frame no-NaN contract. Clamping is deliberately per-column, mirroring the incumbent base build: redamt stays unclamped, tuborr clamps at zero, and property income clamps SUBRENT and ROYYR1 at zero separately before adding them, counting an ROYYR1 loss (RENTPROF 2) as zero. The household subrent column also clamps at zero."
     },
     {
      "kind": "assemble_group_entities",
