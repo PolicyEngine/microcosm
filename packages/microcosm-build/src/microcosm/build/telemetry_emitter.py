@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -19,21 +18,59 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from importlib import metadata
 from pathlib import Path
-from platform import platform
-from typing import Any, Literal
+from typing import Any
 
-_SENSITIVE_KEY_PARTS = (
-    "authorization",
-    "credential",
-    "password",
-    "secret",
-    "token",
-    "traceback",
+from microcosm.build.telemetry_emitter_constants import (
+    DEFAULT_HEARTBEAT_SECONDS,
+    DEFAULT_SEND_TIMEOUT_SECONDS,
+    DEFAULT_STARTUP_TIMEOUT_SECONDS,
+    INVALID_ACKNOWLEDGEMENT_ERROR,
+    NO_LOCAL_SOCKET_WARNING,
+    QUEUE_WARNING,
+    RUNTIME_DIRECTORY_PREFIX,
+    SERVICE_NOT_READY_WARNING,
+    SERVICE_PROCESS_EXIT_TIMEOUT_SECONDS,
+    SERVICE_READY_TIMEOUT_SECONDS,
+    SERVICE_START_WARNING,
+    SOCKET_FILENAME,
+    STARTUP_POLL_SECONDS,
+    TELEMETRY_CACHE_PARTS,
+    TELEMETRY_SERVICE_MODULE,
+    TELEMETRY_SPOOL_FILENAME,
+    TEMPORARY_DIRECTORY_ALIAS,
 )
-_SECRET_TEXT = re.compile(
-    r"(?i)(?:bearer\s+[^\s]+|(?:token|secret|password|credential)\s*[:=]\s*[^\s]+|hf_[A-Za-z0-9_-]{8,})"
+from microcosm.build.telemetry_identity import runtime_identity
+from microcosm.build.telemetry_protocol import (
+    ACTION_CLOSE,
+    ACTION_EVENT,
+    BUILD_COMPLETED_MESSAGE,
+    BUILD_STARTED_MESSAGE,
+    CALIBRATION_EVENT_KIND,
+    EVENT_TYPE_CALIBRATION,
+    EVENT_TYPE_PROGRESS,
+    EVENT_TYPE_RUN,
+    EVENT_TYPE_STAGE,
+    LOCAL_ACKNOWLEDGEMENT_OK,
+    LOCAL_ACKNOWLEDGEMENT_READ_BYTES,
+    LOCAL_MESSAGE_DELIMITER,
+    LOCAL_PING_MESSAGE,
+    MAX_TELEMETRY_MESSAGE_CHARS,
+    SEQUENTIAL_STATUS_MAP,
+    STAGE_CALIBRATING,
+    STAGE_COMPLETE,
+    STAGE_CREATED,
+    STAGE_FAILED,
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_PROGRESS,
+    STATUS_STARTED,
+    TelemetryEventType,
+    TelemetryStatus,
+)
+from microcosm.build.telemetry_sanitization import (
+    sanitize_details,
+    sanitize_text,
 )
 
 
@@ -44,96 +81,7 @@ def _now() -> str:
 def _cache_dir() -> Path:
     configured = os.environ.get("XDG_CACHE_HOME", "").strip()
     root = Path(configured).expanduser() if configured else Path.home() / ".cache"
-    return root / "microcosm" / "telemetry"
-
-
-def _safe_text(value: str, *, limit: int = 2_000) -> str:
-    return _SECRET_TEXT.sub("[redacted]", value)[:limit]
-
-
-def _safe_json(value: Any, *, depth: int = 0) -> Any:
-    """Return JSON-compatible telemetry without retaining model objects."""
-
-    if depth >= 6:
-        return "[maximum depth]"
-    if isinstance(value, Mapping):
-        result = {}
-        for key, item in list(value.items())[:200]:
-            name = str(key)
-            if any(part in name.lower() for part in _SENSITIVE_KEY_PARTS):
-                result[name] = "[redacted]"
-            else:
-                result[name] = _safe_json(item, depth=depth + 1)
-        return result
-    if isinstance(value, (list, tuple)):
-        return [_safe_json(item, depth=depth + 1) for item in value[:200]]
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, float):
-        return value if value == value and abs(value) != float("inf") else None
-    if isinstance(value, str):
-        return _safe_text(value)
-    if isinstance(value, (int, bool)) or value is None:
-        return value
-    item = getattr(value, "item", None)
-    if callable(item):
-        return _safe_json(item())
-    return _safe_text(str(value))
-
-
-def _safe_details(value: Mapping[str, Any]) -> dict[str, Any]:
-    sanitized = _safe_json(value)
-    assert isinstance(sanitized, dict)
-    if len(json.dumps(sanitized, separators=(",", ":")).encode()) <= 8_192:
-        return sanitized
-    compact: dict[str, Any] = {"telemetry_details_truncated": True}
-    for key, item in sanitized.items():
-        if not (isinstance(item, (str, int, float, bool)) or item is None):
-            continue
-        candidate = {**compact, key: item}
-        if len(json.dumps(candidate, separators=(",", ":")).encode()) > 8_192:
-            break
-        compact[key] = item
-    return compact
-
-
-def _run_identity() -> dict[str, Any]:
-    try:
-        commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=1,
-        ).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        commit = None
-    try:
-        memory_bytes = int(os.sysconf("SC_PHYS_PAGES")) * int(
-            os.sysconf("SC_PAGE_SIZE")
-        )
-    except (AttributeError, OSError, ValueError):
-        memory_bytes = None
-    versions = {}
-    for distribution in (
-        "microcosm-build",
-        "microcosm-graph",
-        "policyengine-us",
-        "policyengine-uk",
-    ):
-        try:
-            versions[distribution] = metadata.version(distribution)
-        except metadata.PackageNotFoundError:
-            continue
-    return {
-        "git_commit": commit,
-        "host": {
-            "platform": platform(),
-            "cpu_count": os.cpu_count(),
-            "memory_bytes": memory_bytes,
-        },
-        "runtime": versions,
-    }
+    return root.joinpath(*TELEMETRY_CACHE_PARTS)
 
 
 @dataclass(frozen=True)
@@ -170,7 +118,7 @@ class LocalTelemetryEmitter:
         process: subprocess.Popen[bytes] | None,
         socket_path: Path | None,
         runtime_dir: Path | None,
-        send_timeout_seconds: float = 0.2,
+        send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
     ) -> None:
         self.run = run
         self._process = process
@@ -192,8 +140,8 @@ class LocalTelemetryEmitter:
         release_id: str | None = None,
         run_kind: str = "build",
         development_collector_url: str | None = None,
-        heartbeat_seconds: float = 60.0,
-        startup_timeout_seconds: float = 3.0,
+        heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
+        startup_timeout_seconds: float = DEFAULT_STARTUP_TIMEOUT_SECONDS,
         spool_path: Path | str | None = None,
     ) -> LocalTelemetryEmitter:
         """Start the service, returning a harmless disabled handle on failure."""
@@ -207,26 +155,26 @@ class LocalTelemetryEmitter:
             run_kind=run_kind,
         )
         if not hasattr(socket, "AF_UNIX"):
-            print(
-                "warning: Microcosm telemetry is unavailable because this "
-                "platform has no local Unix sockets.",
-                file=sys.stderr,
-            )
+            print(NO_LOCAL_SOCKET_WARNING, file=sys.stderr)
             return cls(run=run, process=None, socket_path=None, runtime_dir=None)
 
         # macOS limits AF_UNIX paths to roughly 100 bytes.  Its default
         # temporary directory is already long, so use the short system alias.
-        temporary_root = Path("/tmp") if Path("/tmp").is_dir() else None
+        temporary_root = (
+            TEMPORARY_DIRECTORY_ALIAS if TEMPORARY_DIRECTORY_ALIAS.is_dir() else None
+        )
         runtime_dir = Path(
-            tempfile.mkdtemp(prefix="microcosm-telemetry-", dir=temporary_root)
+            tempfile.mkdtemp(prefix=RUNTIME_DIRECTORY_PREFIX, dir=temporary_root)
         )
         runtime_dir.chmod(0o700)
-        socket_path = runtime_dir / "emitter.sock"
-        queue_path = Path(spool_path) if spool_path else _cache_dir() / "events.sqlite3"
+        socket_path = runtime_dir / SOCKET_FILENAME
+        queue_path = (
+            Path(spool_path) if spool_path else _cache_dir() / TELEMETRY_SPOOL_FILENAME
+        )
         command = [
             sys.executable,
             "-m",
-            "microcosm.build.telemetry_emitter_service",
+            TELEMETRY_SERVICE_MODULE,
             "--socket",
             str(socket_path),
             "--spool",
@@ -258,28 +206,26 @@ class LocalTelemetryEmitter:
                         runtime_dir=runtime_dir,
                     )
                     emitter.emit(
-                        event_type="run",
-                        stage_id="created",
-                        status="started",
-                        message="Microcosm build started.",
-                        details={"identity": _run_identity()},
+                        event_type=EVENT_TYPE_RUN,
+                        stage_id=STAGE_CREATED,
+                        status=STATUS_STARTED,
+                        message=BUILD_STARTED_MESSAGE,
+                        details={"identity": runtime_identity()},
                     )
                     return emitter
                 if process.poll() is not None:
                     break
-                time.sleep(0.02)
+                time.sleep(STARTUP_POLL_SECONDS)
         except Exception as error:
             print(
-                "warning: the local telemetry emitter service could not start: "
-                f"{type(error).__name__}: {error}",
+                SERVICE_START_WARNING.format(
+                    error_type=type(error).__name__,
+                    error=error,
+                ),
                 file=sys.stderr,
             )
         else:
-            print(
-                "warning: the local telemetry emitter service did not become ready; "
-                "the build will continue without hosted telemetry.",
-                file=sys.stderr,
-            )
+            print(SERVICE_NOT_READY_WARNING, file=sys.stderr)
         if process is not None:
             _terminate_process(process)
         try:
@@ -296,8 +242,8 @@ class LocalTelemetryEmitter:
     def emit(
         self,
         *,
-        event_type: Literal["run", "stage", "progress", "calibration", "heartbeat"],
-        status: Literal["started", "progress", "completed", "failed"],
+        event_type: TelemetryEventType,
+        status: TelemetryStatus,
         stage_id: str | None = None,
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
@@ -308,14 +254,18 @@ class LocalTelemetryEmitter:
             return
         self._send(
             {
-                "action": "event",
+                "action": ACTION_EVENT,
                 "event": {
                     "timestamp": _now(),
                     "event_type": event_type,
                     "stage_id": stage_id,
                     "status": status,
-                    "message": _safe_text(message, limit=500) if message else None,
-                    "details": _safe_details(details or {}),
+                    "message": (
+                        sanitize_text(message, limit=MAX_TELEMETRY_MESSAGE_CHARS)
+                        if message
+                        else None
+                    ),
+                    "details": sanitize_details(details or {}),
                 },
             }
         )
@@ -324,12 +274,12 @@ class LocalTelemetryEmitter:
         self,
         stage_id: str,
         *,
-        status: Literal["started", "progress", "completed", "failed"] = "started",
+        status: TelemetryStatus = STATUS_STARTED,
         message: str | None = None,
         **details: Any,
     ) -> None:
         self.emit(
-            event_type="stage",
+            event_type=EVENT_TYPE_STAGE,
             stage_id=stage_id,
             status=status,
             message=message,
@@ -346,19 +296,12 @@ class LocalTelemetryEmitter:
     ) -> None:
         """Translate a sequential stage update into explicit lifecycle events."""
 
-        collector_status = {
-            "failed": "failed",
-            "completed": "completed",
-            "passed": "completed",
-            "progress": "progress",
-            "started": "started",
-            "running": "started",
-        }.get(status, "progress")
-        if collector_status == "started":
+        collector_status = SEQUENTIAL_STATUS_MAP.get(status, STATUS_PROGRESS)
+        if collector_status == STATUS_STARTED:
             if self._transition_stage == stage_id:
                 self.stage(
                     stage_id,
-                    status="progress",
+                    status=STATUS_PROGRESS,
                     message=message,
                     **details,
                 )
@@ -386,29 +329,29 @@ class LocalTelemetryEmitter:
         **details: Any,
     ) -> None:
         self.emit(
-            event_type="progress",
+            event_type=EVENT_TYPE_PROGRESS,
             stage_id=stage_id,
-            status="progress",
+            status=STATUS_PROGRESS,
             details={"done": done, "total": total, "unit": unit, **details},
         )
 
     def calibration_progress(self, event: Mapping[str, Any]) -> None:
-        if event.get("kind") != "calibration_epoch":
+        if event.get("kind") != CALIBRATION_EVENT_KIND:
             return
         self.emit(
-            event_type="calibration",
-            stage_id="calibrating",
-            status="progress",
+            event_type=EVENT_TYPE_CALIBRATION,
+            stage_id=STAGE_CALIBRATING,
+            status=STATUS_PROGRESS,
             details=event,
         )
 
     def transition_calibration_progress(self, event: Mapping[str, Any]) -> None:
         """Enter the sequential calibration stage, then report one epoch."""
 
-        if event.get("kind") != "calibration_epoch":
+        if event.get("kind") != CALIBRATION_EVENT_KIND:
             return
-        if self._transition_stage != "calibrating":
-            self.transition_stage("calibrating")
+        if self._transition_stage != STAGE_CALIBRATING:
+            self.transition_stage(STAGE_CALIBRATING)
         self.calibration_progress(event)
 
     def fail(
@@ -421,10 +364,10 @@ class LocalTelemetryEmitter:
         failed_stage = failed_during or self._transition_stage
         self._close_transition_stage()
         self.emit(
-            event_type="run",
-            stage_id="failed",
-            status="failed",
-            message=str(error)[:500],
+            event_type=EVENT_TYPE_RUN,
+            stage_id=STAGE_FAILED,
+            status=STATUS_FAILED,
+            message=str(error)[:MAX_TELEMETRY_MESSAGE_CHARS],
             details={
                 "error_type": type(error).__name__,
                 "failure_class": failure_class,
@@ -436,10 +379,10 @@ class LocalTelemetryEmitter:
     def complete(self) -> None:
         self._close_transition_stage()
         self.emit(
-            event_type="run",
-            stage_id="complete",
-            status="completed",
-            message="Microcosm build completed.",
+            event_type=EVENT_TYPE_RUN,
+            stage_id=STAGE_COMPLETE,
+            status=STATUS_COMPLETED,
+            message=BUILD_COMPLETED_MESSAGE,
         )
         self.close()
 
@@ -448,7 +391,7 @@ class LocalTelemetryEmitter:
 
         if self._closed:
             return
-        self._send({"action": "close"})
+        self._send({"action": ACTION_CLOSE})
         self._closed = True
 
     def _close_transition_stage(self) -> None:
@@ -456,7 +399,7 @@ class LocalTelemetryEmitter:
             return
         stage_id = self._transition_stage
         self._transition_stage = None
-        self.stage(stage_id, status="completed")
+        self.stage(stage_id, status=STATUS_COMPLETED)
 
     def _send(self, payload: Mapping[str, Any]) -> None:
         if self._socket_path is None:
@@ -467,16 +410,15 @@ class LocalTelemetryEmitter:
                 client.connect(str(self._socket_path))
                 client.sendall(
                     json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
-                    + b"\n"
+                    + LOCAL_MESSAGE_DELIMITER
                 )
-                acknowledgement = client.recv(16)
-                if acknowledgement != b"ok\n":
-                    raise OSError("invalid acknowledgement")
+                acknowledgement = client.recv(LOCAL_ACKNOWLEDGEMENT_READ_BYTES)
+                if acknowledgement != LOCAL_ACKNOWLEDGEMENT_OK:
+                    raise OSError(INVALID_ACKNOWLEDGEMENT_ERROR)
         except Exception as error:
             if not self._warned:
                 print(
-                    "warning: the local telemetry emitter service could not queue "
-                    f"an update ({type(error).__name__}); the build will continue.",
+                    QUEUE_WARNING.format(error_type=type(error).__name__),
                     file=sys.stderr,
                 )
                 self._warned = True
@@ -493,10 +435,13 @@ def start_local_telemetry_emitter_service(
 def _service_ready(socket_path: Path) -> bool:
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(0.1)
+            client.settimeout(SERVICE_READY_TIMEOUT_SECONDS)
             client.connect(str(socket_path))
-            client.sendall(b'{"action":"ping"}\n')
-            return client.recv(16) == b"ok\n"
+            client.sendall(LOCAL_PING_MESSAGE)
+            return (
+                client.recv(LOCAL_ACKNOWLEDGEMENT_READ_BYTES)
+                == LOCAL_ACKNOWLEDGEMENT_OK
+            )
     except OSError:
         return False
 
@@ -507,9 +452,9 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
     try:
         if process.poll() is None:
             process.terminate()
-        process.wait(timeout=1.0)
+        process.wait(timeout=SERVICE_PROCESS_EXIT_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=1.0)
+        process.wait(timeout=SERVICE_PROCESS_EXIT_TIMEOUT_SECONDS)
     except OSError:
         pass

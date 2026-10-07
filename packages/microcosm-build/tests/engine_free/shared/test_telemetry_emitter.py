@@ -9,18 +9,29 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 
-import microcosm.build.telemetry_emitter_service as service_module
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     TelemetryRun,
-    _safe_details,
-    _safe_json,
-    _safe_text,
 )
 from microcosm.build.telemetry_emitter_service import (
     CollectorDelivery,
     EmitterService,
     EventSpool,
+)
+from microcosm.build.telemetry_emitter_service import collector as collector_module
+from microcosm.build.telemetry_emitter_service import resources as resources_module
+from microcosm.build.telemetry_emitter_service.constants import (
+    PRODUCTION_COLLECTOR_URL,
+)
+from microcosm.build.telemetry_protocol import (
+    BUILD_COMPLETED_MESSAGE,
+    BUILD_STARTED_MESSAGE,
+    MAX_TELEMETRY_DETAILS_BYTES,
+)
+from microcosm.build.telemetry_sanitization import (
+    sanitize_details,
+    sanitize_json,
+    sanitize_text,
 )
 
 
@@ -46,12 +57,12 @@ def _event(stage_id: str = "compile_targets") -> dict[str, object]:
 
 
 def test_development_collector_must_be_on_loopback() -> None:
-    assert service_module._development_collector_url("http://127.0.0.1:8080") == (
+    assert collector_module._development_collector_url("http://127.0.0.1:8080") == (
         "http://127.0.0.1:8080"
     )
     for value in ("https://collector.example", "http://192.0.2.1:8080"):
         try:
-            service_module._development_collector_url(value)
+            collector_module._development_collector_url(value)
         except ValueError as error:
             assert "loopback" in str(error)
         else:
@@ -68,7 +79,7 @@ def test_production_collector_cannot_be_replaced_by_environment(
 
     delivery = CollectorDelivery(EventSpool(tmp_path / "events.sqlite3"))
 
-    assert delivery.collector_url == service_module.PRODUCTION_COLLECTOR_URL
+    assert delivery.collector_url == PRODUCTION_COLLECTOR_URL
 
 
 def test_token_bearing_http_post_does_not_follow_redirects() -> None:
@@ -89,7 +100,7 @@ def test_token_bearing_http_post_does_not_follow_redirects() -> None:
     server_thread = threading.Thread(target=server.serve_forever)
     server_thread.start()
     try:
-        status, _ = service_module._http_post(
+        status, _ = collector_module._http_post(
             f"http://127.0.0.1:{server.server_port}/exchange",
             {"run_id": "run-a"},
             "hf-private-token",
@@ -104,8 +115,8 @@ def test_token_bearing_http_post_does_not_follow_redirects() -> None:
 
 
 def test_outbound_payload_redacts_credentials_and_tracebacks() -> None:
-    assert _safe_text("Bearer hf_abcdefghijk") == "[redacted]"
-    assert _safe_json(
+    assert sanitize_text("Bearer hf_abcdefghijk") == "[redacted]"
+    assert sanitize_json(
         {
             "HF_TOKEN": "hf_abcdefghijk",
             "traceback": "private stack",
@@ -116,12 +127,12 @@ def test_outbound_payload_redacts_credentials_and_tracebacks() -> None:
         "traceback": "[redacted]",
         "message": "[redacted]",
     }
-    bounded = _safe_details(
+    bounded = sanitize_details(
         {"done": 2, **{f"large_{index}": "x" * 2_000 for index in range(10)}}
     )
     assert bounded["done"] == 2
     assert bounded["telemetry_details_truncated"] is True
-    assert len(json.dumps(bounded).encode()) <= 8_192
+    assert len(json.dumps(bounded).encode()) <= MAX_TELEMETRY_DETAILS_BYTES
 
 
 def test_event_spool_assigns_stable_sequences_and_acknowledges(tmp_path) -> None:
@@ -248,7 +259,7 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
     queued = spool.append(registration, _event())
     requests: list[tuple[str, dict[str, object], str]] = []
 
-    monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-secret")
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-secret")
 
     def fake_post(url, payload, token, *, timeout=5.0):
         requests.append((url, payload, token))
@@ -258,7 +269,7 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
             return 201, {"registered": True}
         return 202, {"accepted": 1, "duplicates": 0}
 
-    monkeypatch.setattr(service_module, "_http_post", fake_post)
+    monkeypatch.setattr(collector_module, "_http_post", fake_post)
 
     delivery = CollectorDelivery(
         spool,
@@ -283,13 +294,13 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
     spool.register(registration)
     spool.append(registration, _event())
     requests: list[dict[str, object]] = []
-    monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-outsider")
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-outsider")
 
     def reject(url, payload, token, *, timeout=5.0):
         requests.append(payload)
         return 403, {"detail": "not a member"}
 
-    monkeypatch.setattr(service_module, "_http_post", reject)
+    monkeypatch.setattr(collector_module, "_http_post", reject)
     delivery = CollectorDelivery(
         spool,
         development_collector_url="http://127.0.0.1:8080",
@@ -310,9 +321,9 @@ def test_identity_provider_outage_keeps_events_eligible_for_retry(
     registration = _registration()
     spool.register(registration)
     spool.append(registration, _event())
-    monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-member")
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
     monkeypatch.setattr(
-        service_module,
+        collector_module,
         "_http_post",
         lambda *args, **kwargs: (503, {"detail": "temporarily unavailable"}),
     )
@@ -329,9 +340,9 @@ def test_missing_credential_never_contacts_collector_and_stays_local_only(
     registration = _registration()
     spool.register(registration)
     spool.append(registration, _event())
-    monkeypatch.setattr(service_module, "_huggingface_token", lambda: None)
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: None)
     monkeypatch.setattr(
-        service_module,
+        collector_module,
         "_http_post",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("network request")
@@ -343,13 +354,13 @@ def test_missing_credential_never_contacts_collector_and_stays_local_only(
     assert spool.pending_runs() == []
 
     reopened = EventSpool(spool_path)
-    monkeypatch.setattr(service_module, "_huggingface_token", lambda: "hf-later")
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-later")
     assert reopened.pending_runs() == []
 
 
 def test_resource_sampler_has_a_base_install_fallback(monkeypatch) -> None:
-    monkeypatch.setattr(service_module, "psutil", None)
-    sampler = service_module.ProcessTreeSampler(os.getpid())
+    monkeypatch.setattr(resources_module, "psutil", None)
+    sampler = resources_module.ProcessTreeSampler(os.getpid())
 
     assert sampler.parent_alive()
     sample = sampler.sample()
@@ -397,11 +408,11 @@ def test_resource_sampler_keeps_reaped_child_cpu_monotonic(monkeypatch) -> None:
             return SimpleNamespace(rss=100)
 
     monkeypatch.setattr(
-        service_module,
+        resources_module,
         "psutil",
         SimpleNamespace(Process=FakeProcess, Error=OSError, STATUS_ZOMBIE="zombie"),
     )
-    sampler = service_module.ProcessTreeSampler(10)
+    sampler = resources_module.ProcessTreeSampler(10)
 
     before = sampler.sample()
     state["child_alive"] = False
@@ -577,4 +588,6 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
     identity = events[0]["details"]["identity"]
     assert identity["host"]["cpu_count"] is not None
     assert "runtime" in identity
+    assert events[0]["message"] == BUILD_STARTED_MESSAGE
+    assert events[-1]["message"] == BUILD_COMPLETED_MESSAGE
     assert events[-1]["status"] == "completed"
