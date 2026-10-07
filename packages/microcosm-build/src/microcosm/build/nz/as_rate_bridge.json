@@ -2,8 +2,8 @@
   "version": 1,
   "country": "nz",
   "method_card_row": "MC11",
-  "description": "Host bridge for the two law-derived Accommodation Supplement inputs that rulespec-nz takes as inputs \"for later cross-module wiring\": the Social Security Regulations 2018 reg 17 base rate and the reg 18 non-beneficiary income cutout. Every rate comes from an engine evaluation of a bound rulespec-nz module; this resource declares only which outputs combine, with which coefficients, under which input overrides. It ports the statutory branch (treasury_host_aligned false) of the axiom-oracles IncomeExplorer conformance harness. It is the one sanctioned exception to \"real Axiom runtime only\" (method card amendment MC11a) and needs Max's MC11 ruling. When rulespec-nz encodes regs 17 and 18 (6 Oct plan B13) this resource and the bridge graph nodes are deleted; only the Accommodation Supplement branches re-run.",
-  "status": "awaiting D1 (MC11, MC11a)",
+  "description": "Host bridge for the two law-derived Accommodation Supplement inputs that rulespec-nz takes as inputs \"for later cross-module wiring\": the Social Security Regulations 2018 reg 17 base rate and the reg 18 non-beneficiary income cutout. Every rate is to come from an engine evaluation of a bound rulespec-nz module; this resource declares only which outputs combine, with which coefficients, under which input overrides. No bridge graph node exists yet (package G7). It ports the statutory branch (treasury_host_aligned false) of the axiom-oracles IncomeExplorer conformance harness. Under method card amendment MC11a, which is proposed (awaiting D1), it would be the one sanctioned exception to \"real Axiom runtime only\"; it needs Max's MC11 ruling. When rulespec-nz encodes regs 17 and 18 (6 Oct plan B13), this resource and the bridge graph nodes are to be deleted, and only the Accommodation Supplement branches will re-run.",
+  "status": "awaiting D1 (MC11; amendment MC11a proposed)",
   "source": {
     "repository": "TheAxiomFoundation/ops",
     "path": "nz-lane/emtr_reproduction/run.py",

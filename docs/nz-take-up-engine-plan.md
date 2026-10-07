@@ -38,11 +38,20 @@ The two region-geography kernel ids, `assign_nz_regions` and
 ## How the build runs
 
 The whole v0 build, from the donor file to the AS gap bands, is planned as
-one `microcosm.graph.Graph` run with `run_graph` over a content store. There
-is no `nz_runtime/` package: kernels are country-neutral (`transport.*`,
-`concepts.*`, `takeup.*`, `targets.*`, `gates.*`, `export.*`,
-`diagnostics.*`, `simulate.*`), and everything New Zealand-specific is spec
-data in `build/nz/`. "nz" appears only in node ids and spec data.
+one `microcosm.graph.Graph` run with `run_graph` over a content store. None
+of its nodes exists yet. Most of its kernels are still to be written; the
+geography kernels `geography.assign_atomic@1`, `geography.derive@1` and
+`geography.gate@1` already exist and are to be reused unchanged. The plan
+has no `nz_runtime/` package: kernels are to be country-neutral
+(`transport.*`, `concepts.*`, `geography.*`, `takeup.*`, `targets.*`,
+`calibrate.*`, `gates.*`, `export.*`, `diagnostics.*`, `simulate.*`), and
+the New Zealand specifics are to be data: the spec in `build/nz/` and the
+Frame concept mapping `adapters/axiom_concept_mappings/nz.json`. In
+package source (`packages/*/src`), the New Zealand-specific identifiers are
+to be the two contract-only resolver ids above (`assign_nz_regions`,
+`nz_region_geography_gate`) and the Axiom adapter's `NZ_SCHEMA` entity
+schema, which package G1 is to add. Graph node ids (`nz.create`, …) also
+name New Zealand.
 
 Version layout:
 
@@ -56,19 +65,26 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
                          └── nz.v.V1 … nz.v.V3 (FILTER each: variant → calibrate → AS → gap)
 ```
 
-- **CREATE builds the benefit units.** Entity ids and memberships are
-  structural columns, so the NZ `family` benefit unit is built inside CREATE,
-  with design weights installed at the Stats NZ population scale.
+- **CREATE is to build the benefit units.** Entity ids and person
+  memberships are structural columns, which the graph executor does not let
+  a non-structural node own, so the NZ `family` benefit unit is to be built
+  inside CREATE, with design weights installed at the Stats NZ population
+  scale.
 - **`nz.calibrate` has no members.** Scenarios, validation and terminal
   nodes hang off FILTER branches, so adding one never re-keys calibration.
 - **Hold-out by ancestry.** No ancestor of a calibration node may read an AS
   output, the hold-out references, or the hold-out Chronicle artifact. The
-  composer package (G6) adds a test over the compiled graph's predecessors
-  that checks this.
-- **Spec values enter node params.** Each node carries the resolved values it
-  reads and a digest of where they came from; no kernel's implementation hash
-  binds the whole NZ spec fingerprint, which would re-key every spec-reading
-  node on any spec edit.
+  composer package (G6) is to add a test over the compiled graph's
+  predecessors that checks this. Until then, `test_nz_spec_package.py`
+  checks the hold-out only as data: no calibration or pre-calibration
+  reference shares a hold-out reference's name, Ledger identifier or family,
+  or has a selector that could match the same Ledger fact. Without the
+  Ledger feed it cannot match an identifier on one side against a selector
+  on the other.
+- **Spec values enter node params.** Each node is to carry the resolved
+  values it reads and a digest of where they came from; no kernel's
+  implementation hash is to bind the whole NZ spec fingerprint, which would
+  re-key every spec-reading node on any spec edit.
 
 ## Spec resources
 
@@ -78,7 +94,7 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
 | `benefit_unit_rule.json` | adult + partner + dependent children; other adults form their own unit; refusals | `nz.create` | MC7 |
 | `currency_bridge.json` | USD→NZD 1.654 (IRS 2024 yearly average), one multiplication, 2 dp | `nz.transport.currency` | MC4 |
 | `precal_references.json` | quantile-map destinations (IRD wage bands, MBIE rents, Stats NZ financial net worth), TA population, MSD M1 and O4 for take-up draws | `nz.facts.precal` | MC4, MC6, MC8–MC10 |
-| `as_area_crosswalk.json` | TA → AS area population shares; Work and Income area definitions | `nz.geo.support` | MC9 |
+| `as_area_crosswalk.json` | Work and Income area definitions; the TA → AS area population shares are a placeholder (`rows: []`, `status: requires_harvest`) until harvested | `nz.geo.support` | MC9 |
 | `axiom_rules_bindings.json` | rulespec-nz pin, five module bindings, variables, the `2026-27` tax-year period | every Axiom-bound node | MC1 |
 | `target_references.json` | the calibration set (MC5 list) | `nz.targets.compile` | MC5 |
 | `as_rate_bridge.json` | reg 17 base rate and reg 18 cutout composition | `nz.as.bridge.*` | MC11 |
@@ -87,9 +103,9 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
 | `gates.json` | the gate battery; thresholds await D1 | `nz.gates.calibrated` | MC15 |
 | `export_contract.json` | the closed export contract | export nodes | — |
 
-The three reference sets are separate files on purpose. A node carries the
-digest of the resource it reads, so a hold-out edit cannot move a
-calibration-side key, and a new calibration target does not re-run
+The three reference sets are separate files on purpose. Each planned node is
+to carry the digest of the resource it reads, so a hold-out edit cannot move
+a calibration-side key, and a new calibration target does not re-run
 transport.
 
 ### Reference sets
@@ -114,17 +130,18 @@ branch.
 
 The AS module takes the reg 17 base rate and the reg 18 non-beneficiary
 cutout as inputs. Until rulespec-nz encodes those regulations,
-`as_rate_bridge.json` composes them from engine evaluations of the bound
+`as_rate_bridge.json` declares how the bridge nodes (package G7, not yet
+written) are to compose them from engine evaluations of the bound
 main-benefit and family-tax-credit modules, porting the statutory branch of
-the IncomeExplorer conformance harness. This is the one sanctioned exception
-to "real Axiom runtime only" (method card amendment MC11a) and needs Max's
-MC11 ruling.
+the IncomeExplorer conformance harness. Under method card amendment MC11a,
+which is proposed (awaiting D1), this would be the one sanctioned exception
+to "real Axiom runtime only"; it needs Max's MC11 ruling.
 
 The sole-parent cutout cannot be a zero-solve on the unit's own Jobseeker
 schedule. The engine applies Income Test 1 to a single person with dependent
 children, while the harness pairs the single-with-children rate with the
-Income Test 3 slope. The bridge recovers the threshold, the slope and the
-gross rate from three engine evaluations instead. Golden-08's base rate
+Income Test 3 slope. The bridge declaration recovers the threshold, the slope
+and the gross rate from three engine evaluations instead. Golden-08's base rate
 (673.846923…) and cutout (905.028571…) are the differential expectations.
 
 ### What is still open

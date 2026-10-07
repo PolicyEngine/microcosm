@@ -1,9 +1,9 @@
 sources:
-- byte_size: 2864
+- byte_size: 2897
   id: nz_populace_us_support_contract
   loader: kernel:load_populace_us_support_pool
   role: nz_populace_us_support_pool
-  sha256: a4e5bb6801e8f2b8bf539dcb739aaa35c4d2162909d61f18327932e7e252aae7
+  sha256: cc1eef0769c79917f33c5ba0f99edf861070143168db48e0145b71efeee751d1
   vintage_authorities:
   - id: nz_support_pool_2024_buildp
     kind: survey_period
@@ -49,7 +49,7 @@ stages:
   nonnegative_outputs:
   - household_weight
   - age
-  notes: This pins an authenticated donor artifact, not an executable NZ loader. The generic loader must preserve Frame entity ids, membership, typed household design weights, and support strata; set donor_country_code to US; refuse unreceipted aliases; and convert donor mass to a Chronicle-supplied NZ population total with a mass-conservation receipt. The typed operation vocabulary cannot represent that destination-mass bridge without inventing its still-missing target value, so execution remains blocked. In the graph build (docs/nz-take-up-engine-plan.md) the shared transport CREATE kernel performs this load, builds the benefit units of benefit_unit_rule.json, and installs design weights at the Stats NZ population scale.
+  notes: This pins an authenticated donor artifact, not an executable NZ loader. The generic loader must preserve Frame entity ids, membership, typed household design weights, and support strata; set donor_country_code to US; refuse unreceipted aliases; and convert donor mass to a Chronicle-supplied NZ population total with a mass-conservation receipt. The typed operation vocabulary cannot represent that destination-mass bridge without inventing its still-missing target value, so execution remains blocked. In the planned graph build (docs/nz-take-up-engine-plan.md) the shared transport CREATE kernel (packages G4 and G5a) is to perform this load, build the benefit units of benefit_unit_rule.json, and install design weights at the Stats NZ population scale.
   operations:
   - kind: read_tables
     tables:
