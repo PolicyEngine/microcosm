@@ -1,6 +1,7 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.graph import graph_schema, orrery_document
 from test_support.microcosm_build.uk_graph import *
 
 
@@ -224,6 +225,55 @@ def test_uk_graph_json_round_trip_is_canonical() -> None:
 
     assert graph_from_json(serialized) == graph
     assert graph_to_json(graph_from_json(serialized)) == serialized
+
+
+def test_uk_spine_exports_complete_orrery_document() -> None:
+    compiled = compile_graph(uk_spine_graph())
+    schema = graph_schema(compiled)
+    materialized_claims = [
+        binding
+        for binding in schema["input_bindings"]
+        if binding["kind"] == "materialized_expand_output"
+    ]
+
+    document = orrery_document(compiled, title="UK spine")
+    nodes = {node["id"]: node for node in document["nodes"]}
+    materialized_reads = [
+        edge
+        for edge in document["edges"]
+        if edge["kind"] == "declared_read"
+        and edge["data"]["read_kind"] == "materialized_expand_output"
+    ]
+    expected_reads = {
+        (
+            binding["node"],
+            binding["population"],
+            binding["entity"],
+            binding["column"],
+            binding["provider"],
+            binding["declared_in"],
+            binding["rows"],
+        )
+        for binding in materialized_claims
+    }
+    actual_reads = {
+        (
+            nodes[edge["target"]]["label"],
+            nodes[edge["source"]]["data"]["population"],
+            nodes[edge["source"]]["data"]["entity"],
+            nodes[edge["source"]]["data"]["column"],
+            nodes[edge["source"]]["data"]["provider"],
+            nodes[edge["source"]]["data"]["declared_in"],
+            edge["data"]["rows"],
+        )
+        for edge in materialized_reads
+    }
+
+    assert materialized_claims
+    assert actual_reads == expected_reads
+    assert document["schemaVersion"] == "graph-explorer/v1"
+    assert document["metadata"]["microcosm"] == schema
+    assert document["metadata"]["truncated"] is False
 
 
 def test_conserve_rejects_a_mass_shift_across_household_sizes() -> None:

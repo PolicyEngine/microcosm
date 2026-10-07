@@ -18,12 +18,14 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 uv sync --all-packages   # set up the whole workspace
 uv sync --all-packages --locked --extra us  # US engine environment
 uv sync --all-packages --locked --extra uk  # UK engine environment
-uv run pytest            # engine-free tests; integration tests remain excluded
+bash tools/run_engine_free_tests.sh  # complete engine-free test category
+uv run pytest <path>     # focused test while developing
 uv run ruff check .      # lint
 ```
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs.
+`engine-uk`, `integration-uk`, and `wheels` jobs, plus the
+`select-countries` orchestration job.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -34,13 +36,14 @@ or country mapping.
 
 Each ordinary behavioral job has a Python 3.13/3.14 matrix and reports the 25
 slowest tests. The engine-free job installs no country extra, always runs every
-engine-free test, and distributes files across two pytest workers with `--dist
-loadfile`. Changed-file selection only controls the more resource-intensive
-country jobs. A documentation-only pull request selects neither country; a
-US-only or UK-only pull request selects that country; shared, mixed, unknown,
-or empty changed-path sets select both. Main pushes select both without querying
-the pull-request API. The UK integration job follows the same UK selection as
-the ordinary UK engine job.
+engine-free test, installs its locked JavaScript test dependencies, and
+distributes files across two pytest workers with `--dist loadfile`.
+Changed-file selection only controls the more resource-intensive country jobs.
+A documentation-only pull request selects neither country; a US-only or UK-only
+pull request selects that country; shared, mixed, unknown, or empty changed-path
+sets select both. Main pushes select both without querying the pull-request API.
+The UK integration job follows the same UK selection as the ordinary UK engine
+job.
 
 The US engine job runs contract and scenario categories in small pytest
 processes with at most two processes active at once, then runs each complete
@@ -59,9 +62,21 @@ Ordinary behavioral jobs pass `-v --tb=short --maxfail=1 --durations=25`, so eac
 names tests as they run, prints a concise first-failure traceback, and reports
 its 25 slowest tests.
 
-Every automated test must run from `.github/workflows/test.yml`. Add a new test
-group to `TEST_GROUPS` before adding its executor to that workflow; do not create
-a separate selection system or test workflow.
+Every behavioral or cross-language compatibility assertion must be a pytest
+test in a directory registered by `TEST_GROUPS` and must run through that
+category's existing workflow job. Supporting programs and data may live under
+`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
+allows only registered test jobs and the explicitly declared orchestration,
+lint, and wheel-building jobs. Add a test category to `TEST_GROUPS` before its
+executor; do not create a separate selection system, test workflow, or
+single-purpose behavioral test job.
+
+The Orrery parser compatibility assertion lives in
+`packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The
+engine-free runner installs the supported public Orrery range and locked Node
+dependency set under `tools/orrery-contract/`; the pytest test generates a
+document through Microcosm's public Python API and requires Orrery's public
+parser to accept it. It performs no browser rendering.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs

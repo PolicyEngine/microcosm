@@ -154,6 +154,15 @@ def _nonempty(label: str, value: str) -> None:
         raise GraphError(f"{label} must be a non-empty string, got {value!r}.")
 
 
+def _description(label: str, value: str) -> None:
+    """Require an empty sentinel or text containing a non-whitespace character."""
+
+    if not isinstance(value, str) or (value and not value.strip()):
+        raise GraphError(
+            f"{label} must be empty or contain non-whitespace text, got {value!r}."
+        )
+
+
 def _name(label: str, value: str) -> None:
     """An entity or column name: non-empty and free of ``.``.
 
@@ -182,6 +191,7 @@ class SourceRef:
     def __post_init__(self) -> None:
         _nonempty("SourceRef.name", self.name)
         _nonempty("SourceRef.codec", self.codec)
+        _description("SourceRef.description", self.description)
 
 
 @dataclass(frozen=True)
@@ -495,6 +505,7 @@ class Node:
     def __post_init__(self) -> None:
         _nonempty("Node.id", self.id)
         _nonempty("Node.kernel", self.kernel)
+        _description("Node.description", self.description)
         for name, kind in (
             ("artifact_inputs", ArtifactInput),
             ("artifact_outputs", ArtifactOutput),

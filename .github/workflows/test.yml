@@ -60,6 +60,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/orrery-contract/package-lock.json
       - name: Sync workspace without country engines
         run: uv sync --all-packages --locked
       - name: Run engine-free tests
