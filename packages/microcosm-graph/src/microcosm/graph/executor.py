@@ -40,9 +40,9 @@ from .decl import (
     Owned,
     Ownership,
     StructuralDelta,
-    materialized_expand_coordinates,
 )
 from .errors import NodeRejectedError
+from .expansion import materialized_expand_coordinates
 from .kernel import (
     ArtifactValue,
     Capabilities,

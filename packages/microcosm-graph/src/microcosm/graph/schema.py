@@ -22,9 +22,8 @@ from .decl import (
     Owned,
     StructuralDelta,
     compile_graph,
-    declared_expand_cells,
-    materialized_expand_coordinates,
 )
+from .expansion import declared_expand_cells, materialized_expand_coordinates
 from .serialize import graph_from_json, graph_to_json
 
 __all__ = ["graph_schema", "validate_graph_schema"]

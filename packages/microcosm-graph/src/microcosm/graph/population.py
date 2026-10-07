@@ -26,8 +26,8 @@ from .decl import (
     Ownership,
     StructuralDelta,
     WeightUpdate,
-    declared_expand_cells,
 )
+from .expansion import declared_expand_cells
 from .kernel import KernelResult
 from .store import _encode_object_scalar
 from .weight_update import weight_update_receipt
