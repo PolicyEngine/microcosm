@@ -1,9 +1,10 @@
 # Engine-neutral concepts and transport (ADR)
 
 **Status:** accepted for the concept schema, the per-engine mappings and their
-coverage reports, which this change adds. The transport pipeline described
-below is the design those pieces serve; none of it is built yet, and no build
-has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
+coverage reports. The transport operators now include a pinned local US donor
+reader, source-ID seeds, a currency bridge and weighted quantile mapping;
+the composed transport pipeline below remains a design, and no build has
+migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
 international populations and law-anchored concepts. **Amended 2026-10-07:**
 schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
@@ -284,8 +285,11 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   encoding it through the adapter's mapping, one build at a time.
 - The spec engine's `imputation.yaml` `concepts:` block is unrelated. It groups
   predictor columns for imputation, and its names are not concept ids.
-- Transport still needs four pieces beyond the schema: the donor bank, the
-  income transformation (step 3), a unit-construction step that builds engine
+- `microcosm.frame.transport` supplies the donor bank and the income
+  transformation operators (step 3). Its bank declares US donor provenance
+  and source-currency amounts; it does not declare destination residents.
+  The consuming builder supplies the destination frame declaration after
+  transport. Transport still needs a unit-construction step that builds engine
   units from the concept pointers (until it exists, 13 of New Zealand's 80 and
   46 of Belgium's 105 module bindings, and the take-up and housing bindings on
   US and UK group entities, stay deferred), and a country pack with geography,
