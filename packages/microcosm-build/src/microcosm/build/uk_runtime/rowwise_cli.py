@@ -227,6 +227,10 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         "selection_pi_hi": None
         if args.dataset_households is None
         else float(args.selection_pi_hi),
+        "selection_initial_lambda": None
+        if args.dataset_households is None
+        or getattr(args, "selection_initial_lambda", None) is None
+        else float(args.selection_initial_lambda),
         "baseline_pi_floor": None
         if args.dataset_households is None
         else float(args.baseline_pi_floor),
