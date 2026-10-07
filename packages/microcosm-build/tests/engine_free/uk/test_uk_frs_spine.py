@@ -1059,6 +1059,24 @@ def test_root_stage_reports_capital_sentinel_mapping_count(tmp_path: Path) -> No
     }
 
 
+def test_root_stage_reports_the_access_fund_repair(tmp_path: Path) -> None:
+    # Both fixture adults report an annual-coded award of 1 a week, so the
+    # threshold is twice that, annualised, and nothing is repaired.
+    stage = _write_fixture(tmp_path)
+    transform = UKFRSSpineStageTransform(tmp_path, stage=stage)
+
+    transform(uk_frs_spine_seed_frame())
+
+    assert transform.checkpoint_metadata()["evidence"]["access_fund"] == {
+        "paid_awards": 2,
+        "annual_coded_awards": 2,
+        "calendar_month_awards": 0,
+        "repair_multiple": 2.0,
+        "repair_threshold_annual": pytest.approx(2 * WEEKS_IN_YEAR),
+        "repaired_awards": 0,
+    }
+
+
 def test_benunit_capital_maps_unavailable_raw_values_to_named_sentinel(
     tmp_path: Path,
 ) -> None:
@@ -2951,11 +2969,41 @@ class TestAccessFundAnnual:
         frame = self._frame([(20.0, 52.0), (30.0, 5.0)])
         assert access_fund_annual(frame).iloc[1] == pytest.approx(30.0 * WEEKS_IN_YEAR)
 
-    def test_without_an_annual_award_nothing_is_repaired(self) -> None:
+    def test_monthly_awards_without_an_annual_award_refuse(self) -> None:
+        # The threshold is twice the tab's largest annual-coded award, so a
+        # tab with calendar-month awards and none coded annual cannot set it
+        # (microcosm#1095 review round 1): refuse rather than repair nothing.
         frame = self._frame([(100.0, 5.0), (3.0, 5.0)])
-        assert access_fund_annual(frame).tolist() == pytest.approx(
-            [100.0 * WEEKS_IN_YEAR, 3.0 * WEEKS_IN_YEAR]
+        with pytest.raises(ValueError, match="no annual-coded award"):
+            access_fund_annual(frame)
+
+    def test_awards_with_neither_code_need_no_threshold(self) -> None:
+        frame = self._frame([(10.0, 1.0), (5.0, float("nan"))])
+        evidence: dict[str, object] = {}
+        assert access_fund_annual(frame, evidence=evidence).tolist() == pytest.approx(
+            [10.0 * WEEKS_IN_YEAR, 5.0 * WEEKS_IN_YEAR]
         )
+        assert evidence["repair_threshold_annual"] is None
+        assert evidence["repaired_awards"] == 0
+
+    def test_the_repair_is_recorded_as_evidence(self) -> None:
+        frame = self._frame([(20.0, 52.0), (100.0, 5.0), (30.0, 5.0), (0.0, 5.0)])
+        evidence: dict[str, object] = {}
+        access_fund_annual(frame, evidence=evidence)
+        assert evidence == {
+            "paid_awards": 3,
+            "annual_coded_awards": 1,
+            "calendar_month_awards": 2,
+            "repair_multiple": 2.0,
+            "repair_threshold_annual": pytest.approx(2 * 20.0 * WEEKS_IN_YEAR),
+            "repaired_awards": 1,
+        }
+
+    def test_no_paid_award_records_an_empty_repair(self) -> None:
+        evidence: dict[str, object] = {}
+        access_fund_annual(self._frame([(0.0, float("nan"))]), evidence=evidence)
+        assert evidence["paid_awards"] == 0
+        assert evidence["repair_threshold_annual"] is None
 
     def test_an_award_without_a_period_code_stays_as_weeklyised(self) -> None:
         # The 2024-25 tab carries a few awards with no period code; the FRS

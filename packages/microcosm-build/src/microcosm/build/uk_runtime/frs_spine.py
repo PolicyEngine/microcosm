@@ -289,11 +289,16 @@ class UKFRSSpineStageTransform:
         self.raw_dir = Path(raw_dir)
         self.stage = stage
         self._sentinel_mapped_rows: int | None = None
+        self._access_fund: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        result = build_uk_frs_spine_frame(self.raw_dir, stage=self.stage)
+        evidence: dict[str, object] = {}
+        result = build_uk_frs_spine_frame(
+            self.raw_dir, stage=self.stage, evidence=evidence
+        )
         capital = result.table("benunit")["frs_benunit_capital"]
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
+        self._access_fund = dict(evidence["access_fund"])
         return result
 
     @staticmethod
@@ -301,9 +306,10 @@ class UKFRSSpineStageTransform:
         return OUTPUT_COLUMNS
 
     def checkpoint_metadata(self) -> dict[str, object]:
-        """Report how loudly the FRS capital availability rule fired."""
+        """Report how loudly the capital availability rule and the
+        access-fund repair fired."""
 
-        if self._sentinel_mapped_rows is None:
+        if self._sentinel_mapped_rows is None or self._access_fund is None:
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
             "evidence": {
@@ -312,6 +318,7 @@ class UKFRSSpineStageTransform:
                     "unavailable_sentinel": UC_CAPITAL_UNAVAILABLE,
                     "mapped_rows": self._sentinel_mapped_rows,
                 },
+                "access_fund": dict(self._access_fund),
             }
         }
 
@@ -337,8 +344,17 @@ def uk_frs_spine_seed_frame() -> Frame:
     )
 
 
-def build_uk_frs_spine_frame(raw_dir: str | Path, *, stage: SourceStageSpec) -> Frame:
-    """Build the direct raw FRS spine Frame from pinned local tab files."""
+def build_uk_frs_spine_frame(
+    raw_dir: str | Path,
+    *,
+    stage: SourceStageSpec,
+    evidence: dict[str, object] | None = None,
+) -> Frame:
+    """Build the direct raw FRS spine Frame from pinned local tab files.
+
+    ``evidence``, when given, receives the access-fund repair's record under
+    ``"access_fund"`` (see :func:`access_fund_annual`).
+    """
 
     raw_root = Path(raw_dir)
     artifacts = _artifact_by_table(stage)
@@ -349,7 +365,7 @@ def build_uk_frs_spine_frame(raw_dir: str | Path, *, stage: SourceStageSpec) -> 
         for table in FRS_SPINE_TABLES
     }
     normalized = {name: _normalize_ids(table) for name, table in tables.items()}
-    frame = _assemble_frame(normalized)
+    frame = _assemble_frame(normalized, evidence=evidence)
     validate_uk_national_frame(frame)
     return frame
 
@@ -444,7 +460,9 @@ def _normalize_ids(table: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
+def _assemble_frame(
+    frs: Mapping[str, pd.DataFrame], *, evidence: dict[str, object] | None = None
+) -> Frame:
     person = (
         pd.concat([frs["adult"], frs["child"]], ignore_index=True, sort=False)
         .fillna(0)
@@ -503,7 +521,7 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_person["self_employment_income"] = _positive(person, "seincam2") * WEEKS_IN_YEAR
     _add_private_pension(pe_person, person, frs["pension"])
     _add_accounts(pe_person, person, frs["accounts"])
-    _add_person_income(pe_person, person, household, frs["oddjob"])
+    _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
     _add_benefits(pe_person, person, frs["benefits"])
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
     # on reported receipt so that care_hours qualifies carers for the UC carer
@@ -629,6 +647,8 @@ def _add_person_income(
     person: pd.DataFrame,
     household: pd.DataFrame,
     oddjob: pd.DataFrame,
+    *,
+    evidence: dict[str, object] | None = None,
 ) -> None:
     pe_person["property_income"] = frs_property_income(person, household)
     maintenance_to_self = np.maximum(
@@ -659,7 +679,10 @@ def _add_person_income(
     pe_person["statutory_sick_pay"] = _number(person, "sspadj") * WEEKS_IN_YEAR
     pe_person["statutory_maternity_pay"] = _number(person, "smpadj") * WEEKS_IN_YEAR
     pe_person["student_loans"] = _positive(person, "tuborr")
-    pe_person["access_fund"] = access_fund_annual(person)
+    access_fund_evidence: dict[str, object] = {}
+    pe_person["access_fund"] = access_fund_annual(person, evidence=access_fund_evidence)
+    if evidence is not None:
+        evidence["access_fund"] = access_fund_evidence
     pe_person["education_grants"] = np.maximum(
         _number(person, "grtdir1") + _number(person, "grtdir2"), 0
     )
@@ -1369,44 +1392,71 @@ FRS_PERIOD_YEAR = 52
 ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE = 2.0
 
 
-def access_fund_annual(person: pd.DataFrame) -> pd.Series:
+def access_fund_annual(
+    person: pd.DataFrame, evidence: dict[str, object] | None = None
+) -> pd.Series:
     """Annual access-fund award, with one period-code repair.
 
     The FRS weeklyises ``ACCSSAMT`` from the reported amount and its period
     code ``ACCSSPD``, and the spine annualises it. An access-fund award is paid
     per academic year or term, and on the 2024-25 tab the calendar-month
-    amounts run up to the size of a whole annual award: read as monthly, one
-    of them annualises to more than ten times every award the survey records
+    amounts run up to the size of a whole annual award: read as monthly, such
+    an award annualises to more than ten times every award the survey records
     as annual (microcosm#1095, from the review of #1100). So a calendar-month
     award (code 5) that annualises to more than
     ``ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE`` times the largest award the same
     tab records as annual (code 52) is read as the annual award: its
-    per-period amount, ``ACCSSAMT`` x 52/12. On the 2024-25 tab that is one
-    award; the next largest monthly amount annualises just above the largest
-    annual award and stays as reported. Every other award stays as the FRS
-    weeklyised it,
-    including the few with no period code on the tab, and a tab with no
-    annual-coded award repairs nothing. A tab without the ``ACCSSPD`` column
-    refuses, since the rule cannot be applied to it.
+    per-period amount, ``ACCSSAMT`` x 52/12. On the 2024-25 tab that repairs
+    fewer than 10 awards and leaves large but plausible monthly payments as
+    reported. Every other award stays as the FRS weeklyised it, including the
+    few with no period code on the tab. The threshold moves
+    with the tab's largest annual-coded award, so a tab with calendar-month
+    awards but no annual-coded award refuses rather than repair nothing
+    silently, and so does a tab without the ``ACCSSPD`` column, since the rule
+    cannot be applied to either.
+
+    ``evidence``, when given, records the paid awards by period code, the
+    annual threshold (``None`` when no award is paid) and how many awards
+    were repaired, for the stage's checkpoint evidence.
     """
 
     amount = _positive(person, "accssamt")
     annual = amount * WEEKS_IN_YEAR
     paid = amount > 0
+    record: dict[str, object] = {
+        "paid_awards": int(paid.sum()),
+        "annual_coded_awards": 0,
+        "calendar_month_awards": 0,
+        "repair_multiple": ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE,
+        "repair_threshold_annual": None,
+        "repaired_awards": 0,
+    }
+    if evidence is not None:
+        evidence.update(record)
     if not bool(paid.any()):
         return annual
     if "accsspd" not in person.columns:
         raise KeyError("FRS access fund needs the period code ACCSSPD beside ACCSSAMT.")
     period = _raw_number(person, "accsspd")
     annual_coded = paid & period.eq(FRS_PERIOD_YEAR)
+    calendar_month = paid & period.eq(FRS_PERIOD_CALENDAR_MONTH)
     if not bool(annual_coded.any()):
+        if bool(calendar_month.any()):
+            raise ValueError(
+                "FRS access fund has calendar-month awards (ACCSSPD 5) but no "
+                "annual-coded award (ACCSSPD 52), so the calendar-month repair "
+                "has no threshold on this tab."
+            )
         return annual
-    ceiling = float(annual[annual_coded].max())
-    implausible = (
-        paid
-        & period.eq(FRS_PERIOD_CALENDAR_MONTH)
-        & annual.gt(ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE * ceiling)
-    )
+    threshold = ACCESS_FUND_MONTHLY_REPAIR_MULTIPLE * float(annual[annual_coded].max())
+    implausible = calendar_month & annual.gt(threshold)
+    if evidence is not None:
+        evidence.update(
+            annual_coded_awards=int(annual_coded.sum()),
+            calendar_month_awards=int(calendar_month.sum()),
+            repair_threshold_annual=threshold,
+            repaired_awards=int(implausible.sum()),
+        )
     return annual.where(~implausible, amount * 52 / 12)
 
 
