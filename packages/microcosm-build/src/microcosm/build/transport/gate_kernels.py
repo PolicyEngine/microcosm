@@ -45,10 +45,11 @@ declared gate with no binding still resolves to a named ``evidence_absent``
 gap, exactly as the battery does.
 
 Determinism. Gate details must be plain data (the battery would otherwise keep
-an object's ``repr``), and memory addresses inside failure text and details are
-blanked. Gate text is otherwise the binding's: a gate must not format an
-unordered set into a failure line, or the report's bytes would vary between
-runs of one computation.
+an object's ``repr``). Common Python repr addresses (`` at 0x...>`` or
+`` at 0x...,``) inside failure text and details are blanked. Other text and
+detail ordering are the binding's: failure lines, details and exception text
+must not depend on unordered set iteration, or the report's bytes would vary
+between runs of one computation.
 
 Phase order. The battery runs phases in their declared order and none after a
 block (``GateBatteryRun.run_phase``). In the graph, a node names the reports of
@@ -155,10 +156,9 @@ __all__ = [
 
 _REF = "gates.battery@1"
 _REPORT_KIND = "transport_gate_phase_report"
-#: The address in a default repr (``<pkg.Thing object at 0x10f3a2b50>``,
-#: ``<function f.<locals>.g at 0x...>``): the hex after `` at `` and before
-#: the closing ``>``.
-_ADDRESS = re.compile(r"(?<= at )0x[0-9a-fA-F]+(?=>)")
+#: The address in common Python reprs (objects, functions and code objects):
+#: the hex after `` at `` and before a closing ``>`` or a comma.
+_ADDRESS = re.compile(r"(?<= at )0x[0-9a-fA-F]+(?=[,>])")
 
 
 def phase_outcome(report: GatePhaseReport) -> str:
@@ -706,6 +706,11 @@ class GateBatteryKernel(KernelBase):
         return descriptions, dict(sorted(sources.items()))
 
     def implementation_hash(self) -> str:
+        if self._binding_identity() != self._identity:
+            raise ValueError(
+                f"{_REF} binding registry changed after the kernel was built; its "
+                "node keys would no longer describe it."
+            )
         descriptions, sources = self._identity
         code = source_hash(
             sys.modules[__name__],

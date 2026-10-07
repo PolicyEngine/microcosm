@@ -248,10 +248,11 @@ def test_compile_refuses_a_node_with_misdeclared_outputs(tmp_path) -> None:
 def test_surface_decode_refuses_a_tampered_trace_or_registry(tmp_path) -> None:
     document = json.loads(_surface(tmp_path))
 
-    placeholder = json.loads(json.dumps(document))
-    placeholder["trace"][0]["activation_status"] = "requires_harvested_fact_reference"
-    with pytest.raises(ValueError, match="executable reference"):
-        decode_target_surface(canonical_json(placeholder))
+    for status in ("requires_harvested_fact_reference", "placeholder"):
+        placeholder = json.loads(json.dumps(document))
+        placeholder["trace"][0]["activation_status"] = status
+        with pytest.raises(ValueError, match="executable reference"):
+            decode_target_surface(canonical_json(placeholder))
 
     doubled = json.loads(json.dumps(document))
     doubled["trace"][1]["reference"] = doubled["trace"][0]["reference"]
@@ -273,6 +274,7 @@ _STATUSES = (
     "requires_harvested_cell_references",
     "requires_harvested_fact_reference",
     "draft",
+    "placeholder",
 )
 
 

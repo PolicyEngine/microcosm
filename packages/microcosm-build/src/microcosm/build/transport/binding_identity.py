@@ -210,6 +210,11 @@ class _Describer:
                 f"{path}: {kind.__qualname__} must be a frozen dataclass, so its "
                 "identity cannot change after the kernel is built."
             )
+        if any(base in _CONTAINERS for base in kind.__mro__[1:]):
+            raise UndescribableBindingError(
+                f"{path}: {kind.__qualname__} inherits a builtin container, "
+                "whose state lives outside its dataclass fields."
+            )
         fields = dataclasses.fields(value)
         names = {field.name for field in fields}
         extra = (set(getattr(value, "__dict__", {})) | _slots(kind)) - names

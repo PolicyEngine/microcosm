@@ -67,6 +67,7 @@ from microcosm.graph import (
 from test_support.microcosm_build.transport_graph import (
     CALIBRATION_TARGETS,
     DEFAULT_CONFIG,
+    TOY_BINDINGS,
     ToySources,
     descendants,
     run_through,
@@ -122,6 +123,79 @@ def test_a2_a_second_run_on_the_same_store_executes_no_kernel(tmp_path) -> None:
     assert all(receipt.hit for receipt in again.prepared.nodes.values())
     assert all(receipt.hit for receipt in again.manifest.nodes.values())
     assert _keys(again.manifest) == _keys(first.manifest)
+
+
+def _editable_gate_bindings():
+    binding = replace(
+        TOY_BINDINGS["weight_ratio"],
+        artifact_arguments=dict(TOY_BINDINGS["weight_ratio"].artifact_arguments),
+    )
+    return {**TOY_BINDINGS, "weight_ratio": binding}
+
+
+def _store_files(store):
+    return {
+        path.relative_to(store.root): path.read_bytes()
+        for path in store.root.rglob("*")
+        if path.is_file()
+    }
+
+
+def test_binding_edit_after_first_run_raises_without_changing_store(tmp_path) -> None:
+    sources = write_toy_sources(tmp_path / "src")
+    bindings = _editable_gate_bindings()
+    registry = toy_registry(bindings)
+    first, store = run_through(
+        tmp_path, sources, DEFAULT_CONFIG, "toy.gates.terminal", registry=registry
+    )
+    assert first.nodes["toy.gates.terminal"].receipt["outcome"] == "pass"
+    before = _store_files(store)
+    bindings["weight_ratio"].artifact_arguments["solution"] = "missing"
+
+    with pytest.raises(ValueError, match="binding registry changed"):
+        run_through(
+            tmp_path,
+            sources,
+            DEFAULT_CONFIG,
+            "toy.gates.terminal",
+            store=store,
+            registry=registry,
+        )
+
+    assert _store_files(store) == before
+
+
+def test_binding_edit_before_first_run_raises_then_correct_registry_runs_fresh(
+    tmp_path,
+) -> None:
+    sources = write_toy_sources(tmp_path / "src")
+    bindings = _editable_gate_bindings()
+    registry = toy_registry(bindings)
+    store = ContentStore(tmp_path / "store")
+    before = _store_files(store)
+    bindings["weight_ratio"].artifact_arguments["solution"] = "missing"
+
+    with pytest.raises(ValueError, match="binding registry changed"):
+        run_through(
+            tmp_path,
+            sources,
+            DEFAULT_CONFIG,
+            "toy.gates.terminal",
+            store=store,
+            registry=registry,
+        )
+
+    assert _store_files(store) == before
+    correct, _ = run_through(
+        tmp_path,
+        sources,
+        DEFAULT_CONFIG,
+        "toy.gates.terminal",
+        store=store,
+        registry=toy_registry(_editable_gate_bindings()),
+    )
+    assert correct.nodes["toy.gates.terminal"].receipt["outcome"] == "pass"
+    assert all(not receipt.hit for receipt in correct.nodes.values())
 
 
 def test_a4_description_and_citation_move_no_key(tmp_path) -> None:

@@ -26,8 +26,8 @@ Example tests:
   reaches enter the implementation hash; a binding outside the describable
   vocabulary is refused when the kernel is built, and one mutated afterwards
   refuses to run;
-- gate details must be plain data, and memory addresses in failure text are
-  blanked, so a report's bytes are a function of the computation;
+- gate details must be plain data, and common Python repr addresses in failure
+  text and details are blanked; bindings control their text and item order;
 - a gate manifest edit re-keys the gate and its descendants only.
 
 The bindings are test-only stand-ins (``test_support``); the neutral
@@ -259,6 +259,15 @@ def _support_with_repr_failure(*, frame, min_persons):
     return GateResult("support", False, failures=(f"refused {object()} at the floor",))
 
 
+def _support_with_code_repr(*, frame, min_persons):
+    text = repr(support_gate.__code__)
+    return GateResult("support", False, failures=(text,), details={"code": text})
+
+
+def _support_with_positional_default(frame, min_persons=1):
+    return GateResult("support", True)
+
+
 class _Mode(enum.Enum):
     STRICT = "strict"
     LENIENT = "lenient"
@@ -361,6 +370,16 @@ def test_bindings_outside_the_vocabulary_are_refused_at_construction() -> None:
         _hash_with_gate(functools.partial(support_gate, min_persons=3))
 
 
+def test_positional_function_defaults_enter_the_binding_hash() -> None:
+    defaults = _support_with_positional_default.__defaults__
+    before = _hash_with_gate(_support_with_positional_default)
+    try:
+        _support_with_positional_default.__defaults__ = (7,)
+        assert _hash_with_gate(_support_with_positional_default) != before
+    finally:
+        _support_with_positional_default.__defaults__ = defaults
+
+
 def test_a_binding_mutated_after_construction_refuses_to_run() -> None:
     arguments = {"diagnostics": "diagnostics"}
     binding = replace(TOY_BINDINGS["per_family_fit"], artifact_arguments=arguments)
@@ -413,6 +432,20 @@ def test_gate_details_must_be_plain_data_and_failure_text_loses_addresses() -> N
     assert one.artifacts["gate_report"] == two.artifacts["gate_report"]
     assert b"key <object object at 0x>" in one.artifacts["gate_report"]
     assert b"value <object object at 0x>" in one.artifacts["gate_report"]
+
+    code = replace(TOY_BINDINGS["support"], gate=_support_with_code_repr)
+    payload = (
+        GateBatteryKernel(_with_support(code))
+        .run(_frame_context(node))
+        .artifacts["gate_report"]
+    )
+    outcome = next(
+        item
+        for item in decode_gate_report(payload).report.outcomes
+        if item.entry.id == "toy_floor"
+    )
+    assert " at 0x," in outcome.result.failures[0]
+    assert " at 0x," in outcome.result.details["code"]
 
 
 def _node(gates=None, *, phase="terminal", **params) -> Node:
@@ -654,6 +687,43 @@ def test_decode_refuses_inconsistent_upstream_entries() -> None:
     ):
         with pytest.raises(ValueError, match=match):
             decode_gate_report(canonical_json(forged))
+
+
+def test_decode_refuses_unreached_rows_without_blocking_upstream() -> None:
+    report = json.loads(
+        GateBatteryKernel(TOY_BINDINGS).run(_context(_node())).artifacts["gate_report"]
+    )
+    for row in report["report"]["outcomes"]:
+        row.update(status="unreached", reason=None)
+    # Keep the derived verdict and enforcement consistent with the forged rows.
+    report["outcome"] = "unreached"
+    report["enforcement"].update(blocking=[], artifact_permitted=False)
+    assert report["upstream"] == {}
+    assert report["enforcement"]["upstream_blocked"] == []
+
+    with pytest.raises(ValueError, match="reached exactly when no upstream phase"):
+        decode_gate_report(canonical_json(report))
+
+
+def test_decode_refuses_a_passing_upstream_phase_that_blocks_the_artifact() -> None:
+    gates = _preflight_gates(min_persons=1000)
+    blocked = _preflight_report(gates)
+    report = json.loads(
+        GateBatteryKernel(TOY_BINDINGS)
+        .run(
+            _context(
+                _node(gates, upstream=("preflight",)),
+                {"preflight": _report_value(blocked)},
+            )
+        )
+        .artifacts["gate_report"]
+    )
+    decode_gate_report(canonical_json(report))
+    assert report["enforcement"]["upstream_blocked"] == ["preflight"]
+    report["upstream"]["preflight"]["outcome"] = "pass"
+
+    with pytest.raises(ValueError, match="upstream entries are malformed"):
+        decode_gate_report(canonical_json(report))
 
 
 # ---------------------------------------------------------------------------

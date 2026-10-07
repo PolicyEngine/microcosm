@@ -79,6 +79,21 @@ class _Slotted(_SlotBase):
     name: str
 
 
+@dataclass(frozen=True)
+class _DictBinding(dict):
+    name: str
+
+
+@dataclass(frozen=True)
+class _ListBinding(list):
+    name: str
+
+
+@dataclass(frozen=True)
+class _SetBinding(set):
+    name: str
+
+
 _scalars = st.one_of(
     st.none(),
     st.booleans(),
@@ -216,6 +231,27 @@ def test_values_outside_the_vocabulary_are_refused(value, match) -> None:
         describe(_Holder("holder", value))
 
 
+@pytest.mark.parametrize(
+    ("kind", "mutate", "arguments"),
+    [
+        pytest.param(_DictBinding, dict.__setitem__, ("ok", True), id="dict"),
+        pytest.param(_ListBinding, list.append, (True,), id="list"),
+        pytest.param(_SetBinding, set.add, (True,), id="set"),
+    ],
+)
+@pytest.mark.parametrize("nested", [False, True], ids=["binding", "field"])
+def test_frozen_dataclasses_with_builtin_container_state_are_refused(
+    kind, mutate, arguments, nested
+) -> None:
+    value = kind("container")
+    mutate(value, *arguments)
+    assert len(value) == 1
+    assert vars(value) == {"name": "container"}
+    binding = _Holder("holder", value) if nested else value
+    with pytest.raises(UndescribableBindingError, match="builtin container"):
+        describe(binding)
+
+
 def test_cycles_and_non_dataclass_bindings_are_refused() -> None:
     cyclic: list = []
     cyclic.append(cyclic)
@@ -236,12 +272,20 @@ print(GateBatteryKernel(TOY_BINDINGS).implementation_hash())
 
 def test_the_kernel_hash_is_stable_across_string_hash_seeds() -> None:
     root = paths_for("microcosm-build").repository
+    # Prefer this worktree's sources to editable installs in another checkout.
+    pythonpath = os.pathsep.join(
+        [
+            *(str(path) for path in sorted((root / "packages").glob("*/src"))),
+            str(root),
+            os.environ.get("PYTHONPATH", ""),
+        ]
+    )
     hashes = set()
     for seed in ("1", "31337"):
         result = subprocess.run(
             [sys.executable, "-c", _PROBE],
             cwd=root,
-            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(root)},
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": pythonpath},
             capture_output=True,
             text=True,
             check=True,

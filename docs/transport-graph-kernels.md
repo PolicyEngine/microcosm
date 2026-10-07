@@ -74,12 +74,20 @@ reach the weight entity through the person table's memberships.
 `calibrate.ordered_adam@1` decodes the problem, checks that its entity axis
 and starting weights are the node's base population's, and calls the same
 `microcosm.calibrate.calibrate(...)` as `calibrate.adam@1`. On equal-valued
-targets the two install byte-identical weights, because both build their
-constraint matrix through `microcosm.calibrate.matrix` and the solver sees
-the same matrix. Where the shared solver refuses an input, both refuse it
-with the same error. One such input is known: with `mass="conserve"` and a
-cap, the solver's conserved total can drift past its 1e-9 tolerance
+fully compiled targets the two install byte-identical weights, because both
+build their constraint matrix through `microcosm.calibrate.matrix` and the
+solver sees the same matrix. Where the shared solver refuses an input, both
+refuse it with the same error. One such input is known: with
+`mass="conserve"` and a cap, the solver's conserved total can drift past its
+1e-9 tolerance
 (`test_ordered_kernels.py`, `_MASS_DRIFT`).
+
+There is one intended difference before the solve: `calibrate.adam@1` skips
+uncompilable targets when at least one target compiles (for example, a
+measure containing NaN), while `calibrate.ordered_adam@1` refuses a problem
+with any skipped target. In the composed transport graph,
+`targets.problem@1` already refuses skipped targets, so this difference
+cannot reach its calibration node.
 
 ## The weight cap
 
@@ -150,11 +158,20 @@ attribute), and code reached without an import statement
 binding takes its values through the manifest's parameters or through
 evidence artifacts.
 
-Gate details must be plain data, and the memory address in any default repr
-(`... at 0x...>`) inside failure text and detail keys or values is blanked.
-Any other text is the binding's own: a gate must not format an unordered set
-into a failure line, or the report's bytes would vary between runs of one
-computation.
+Also not bound: versions of third-party dependencies beyond the kernel's
+declared `numpy` and `pandas` dependencies, and submodules loaded by a
+package's star import through `__all__` when no import statement names the
+submodule. Such dependencies must not carry gate behaviour outside the
+bound sources and declared versions.
+
+Gate details must be plain data, and common Python repr addresses
+(`... at 0x...>` or `... at 0x...,`) inside failure text and detail keys or
+values are blanked. Other text and detail ordering are the binding's own:
+failure lines, details and exception text must not depend on unordered set
+iteration, including lists built from sets, or the report's bytes would vary
+between runs of one computation. Failure text containing a lone surrogate
+character is refused by canonical JSON encoding rather than written into a
+report.
 
 The node outcome is one of the five graph outcomes:
 
@@ -219,6 +236,14 @@ the round-trip allowlist (`bool`, `int32`, `int64`, `float32`, `float64`,
 `string`). Nullable `Int64` does not write, and nullable `boolean` comes back
 as `bool` without missing values and as `object` with them; the allowlist is
 conservative and also refuses dtypes, such as `int8`, that would round-trip.
+
+The dtype allowlist does not guarantee that every value or column name can
+round-trip: a `string` cell containing the literal text `"nan"` reads back as
+missing, and a trailing NUL is stripped. A column named `index` is accepted
+by preparation but makes the HDF5 writer raise `IndexError`. Preparation
+does not reject these cases up front; materialization or readback refuses
+them, so the package cannot accept an export that differs from its
+descriptor.
 
 Writing is an outer step, `materialize_export(frame, descriptor, path)`, run
 on every build. It refuses a population whose content differs from the

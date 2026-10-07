@@ -24,7 +24,6 @@ Invariants (Hypothesis property test):
 from __future__ import annotations
 
 import hashlib
-import re
 
 import numpy as np
 import pandas as pd
@@ -455,10 +454,25 @@ def _cases(draw):
 def _outcome(frame, targets, mass, solve):
     """Both kernels' results, or the exception each raised."""
 
-    try:
-        return _run_pair(frame, targets, mass=mass, **solve), None
-    except ValueError as error:
-        return None, error
+    def capture(kernel, context):
+        try:
+            return kernel.run(context), None
+        except ValueError as error:
+            return None, error
+
+    adam = capture(
+        CALIBRATE_ADAM, _context(frame, _adam_node(targets, mass=mass, **solve))
+    )
+    ordered = capture(
+        CALIBRATE_ORDERED_ADAM,
+        _context(
+            frame,
+            _ordered_node(mass=mass, **solve),
+            columns=("income",),
+            problem=_problem_payload(frame, targets),
+        ),
+    )
+    return adam, ordered
 
 
 #: Found by Hypothesis: a target already met, ``mass="conserve"`` and a cap.
@@ -490,14 +504,13 @@ def test_property_differential_nonnegative_and_deterministic(case) -> None:
     solve = {"epochs": epochs, "learning_rate": learning_rate, "max_weight_ratio": cap}
     if cap is None:
         solve["weight_anchor"] = None
-    pair, error = _outcome(frame, targets, mass, solve)
-    if error is not None:
-        # Differential on failure: calibrate.adam@1 alone raises the same way.
-        with pytest.raises(type(error), match=re.escape(str(error))):
-            CALIBRATE_ADAM.run(_context(frame, _adam_node(targets, mass=mass, **solve)))
+    (adam, adam_error), (ordered, ordered_error) = _outcome(frame, targets, mass, solve)
+    if adam_error is not None or ordered_error is not None:
+        assert adam_error is not None and ordered_error is not None
+        assert type(adam_error) is type(ordered_error)
+        assert str(adam_error) == str(ordered_error)
         event("both kernels raise")
         return
-    adam, ordered = pair
     values = ordered.weights.values
 
     # Differential: one matrix, one solver, one answer.
