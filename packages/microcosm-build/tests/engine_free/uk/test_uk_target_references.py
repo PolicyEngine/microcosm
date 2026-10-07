@@ -1710,3 +1710,41 @@ def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:
             {"dimensions": {"age_band": "age_16_to_24"}, "layout": {}},
             _CGT_BAND_INVERSE,
         )
+
+
+def test_every_reference_and_hold_names_its_contract_targets_uprating_index() -> None:
+    """The contract is the regeneration source, so a reference may not carry an
+    index its contract target does not declare: before microcosm#1123 the SPI
+    employment, self-employment and private-pension amounts named the OBR
+    indices in the contract and ITL band growth in the committed references
+    (#1063), so a regeneration would have silently reverted #1063."""
+
+    contract = {
+        target["target_id"]: target
+        for target in _load_uk_resource("uk_population_targets.json")["targets"]
+    }
+    references = _load_uk_resource("target_references.json")["target_references"]
+    drift = sorted(
+        (reference["name"], contract_index, reference.get("uprating_index"))
+        for reference in references
+        if (
+            contract_index := contract[reference["metadata"]["contract_target_id"]].get(
+                "uprating_index"
+            )
+        )
+        != reference.get("uprating_index")
+    )
+    assert drift == []
+    names_to_target = {
+        reference["name"]: reference["metadata"]["contract_target_id"]
+        for reference in references
+    }
+    membership = _load_uk_resource("target_reference_membership.json")
+    held_drift = sorted(
+        (hold["name"], hold.get("index"))
+        for hold in membership["uprating_holds"]
+        if hold.get("index") is not None
+        and hold["index"]
+        != contract[names_to_target[hold["name"]]].get("uprating_index")
+    )
+    assert held_drift == []
