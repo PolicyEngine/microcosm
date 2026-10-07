@@ -22,8 +22,13 @@ reference is never re-solved, so every delta is the selection's.
 
 ## Ladder
 
-1. **Step 0** (`tools/run_uk_size_experiment.py build-cache`, then `control`): the
-   stored refit must come back bit for bit before any variant is read.
+1. **Step 0** (`tools/run_uk_size_experiment.py build-cache`, `control`, then
+   `census`): the stored refit must come back bit for bit before any variant is
+   read. The census then records what the stored support and its caps allow: mass
+   capacity against D by nation and household type at floors 0, 0.1, 0.5 and 1,
+   the areas no refit on this support can lift to criterion 6, the search's
+   capacity bound k_min, the penalty scales that place the λ grid, each rule's
+   loss shares and the early size triggers.
 2. **Step 1a**, `experiments.json` (26 refits on the stored support):
    - controls C1–C5: iterate switch, floor only, floor plateau, optimiser noise;
    - E under `grain_equal`: floor 0 `initial` at 1e-3, 1e-2 and 1e-1 (predicted harmful), floor 0 `uniform` at 1e-2, and floor 0.5 at 1e-3, 3e-3, 1e-2, 3e-2 and 1e-1 for each anchor;
@@ -65,6 +70,11 @@ reference is never re-solved, so every delta is the selection's.
 `run.sh` holds the commands. Every compute step needs `--confirm-exclusive`
 (no other solve on the machine). Weights stay outside the repository. Only
 `publish` output, disclosure-controlled, is copied into `results/`.
+
+No release gate runs in the harness: the acceptance criteria above are
+measurements of every configuration. A configuration the solver chain refuses
+(for example a refit that loses positive support) is recorded as a failed
+receipt with its reason, and the run moves on to the next one.
 
 ## Results
 

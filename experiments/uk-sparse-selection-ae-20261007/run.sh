@@ -10,6 +10,7 @@ TOOL=tools/run_uk_size_experiment.py
 
 .venv/bin/python $TOOL build-cache --run-dir "$RUN" --cache-dir "$CACHE" --confirm-exclusive
 .venv/bin/python $TOOL control --run-dir "$RUN" --cache-dir "$CACHE" --out "$OUT" --confirm-exclusive
+.venv/bin/python $TOOL census --run-dir "$RUN" --cache-dir "$CACHE" --out "$OUT" --confirm-exclusive
 .venv/bin/python $TOOL run --run-dir "$RUN" --cache-dir "$CACHE" --out "$OUT" \
   --experiments $HERE/experiments.json --confirm-exclusive --max-rss-gib 18
 .venv/bin/python $TOOL score --run-dir "$RUN" --cache-dir "$CACHE" --out "$OUT"

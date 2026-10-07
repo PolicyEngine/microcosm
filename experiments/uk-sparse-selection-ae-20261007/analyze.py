@@ -40,6 +40,65 @@ def _row(label: str, block: dict, dense: dict, acceptance: dict | None) -> str:
     )
 
 
+def _census_lines(census: dict | None) -> list[str]:
+    if not census:
+        return []
+    k_min = census["search"]["k_min"]
+    triggers = census["early_size_triggers"]
+    lines = [
+        "",
+        "Step 0 census:",
+        "",
+        f"- self-checks passed: {census['checks']['passed']}",
+        f"- k_min at the search cap: {k_min['total']} (nations summed: "
+        f"{k_min['sum_of_nations']}) for {census['households']} households",
+        "- areas no refit on this support can lift to criterion 6: "
+        + ", ".join(
+            f"{grain} {count}"
+            for grain, count in triggers["areas_support_ceiling"].items()
+        ),
+        f"- early size (F) trigger: {triggers['any']}",
+    ]
+    for floor, block in census["floors"].items():
+        capacity = block["capacity_to_dense"]["by_nation"]
+        lines.append(
+            f"- capacity / D at floor {floor}: "
+            + ", ".join(
+                f"{nation} {value:.2f}"
+                for nation, value in capacity.items()
+                if value is not None
+            )
+        )
+    for anchor in ("uniform",):
+        shift = census["penalty"][anchor].get("suggested_half_decade_shift")
+        lines.append(f"- {anchor} anchor: suggested grid shift {shift} half-decades")
+    for floor, block in census["penalty"]["initial"].items():
+        shift = block.get("suggested_half_decade_shift")
+        lines.append(
+            f"- initial anchor at floor {floor}: suggested grid shift {shift} half-decades"
+        )
+    return lines
+
+
+def _failed_lines(receipts: dict) -> list[str]:
+    failed = {
+        name: receipt["error"]
+        for name, receipt in receipts.items()
+        if receipt.get("status") == "failed"
+    }
+    if not failed:
+        return []
+    return [
+        "",
+        "Configurations the solver chain refused (results, not stops):",
+        "",
+        *(
+            f"- {name}: {error['type']}: {error['message']}"
+            for name, error in sorted(failed.items())
+        ),
+    ]
+
+
 def main() -> int:
     results = json.loads((HERE / "results" / "results.json").read_text("utf-8"))
     scorecard = results["scorecard"]
@@ -55,7 +114,13 @@ def main() -> int:
         _row(label, block, dense, acceptance.get(label))
         for label, block in sets.items()
     ]
-    table = "\n".join(f"| {line} |" for line in lines)
+    table = "\n".join(
+        [
+            *(f"| {line} |" for line in lines),
+            *_failed_lines(results.get("receipts", {})),
+            *_census_lines(results.get("census")),
+        ]
+    )
     readme = HERE / "README.md"
     text = readme.read_text("utf-8")
     before, rest = text.split(START, 1)
