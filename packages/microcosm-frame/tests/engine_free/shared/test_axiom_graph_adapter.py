@@ -1281,6 +1281,23 @@ class TestEngineRefPin:
         with pytest.raises(ValueError, match="changed after this adapter"):
             self._reference(adapter, root)
 
+    def test_a_symbolic_link_added_after_the_reference_blocks_the_next_compile(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        # The digest does not descend into a linked directory, so it cannot
+        # see the link; the compile-time check must refuse it directly.
+        root = _write_tree(tmp_path / "rulespec", _BASE_TREE)
+        adapter = self._adapter(root)
+        programs = _fake_engine(adapter, monkeypatch)
+        self._reference(adapter, root)
+        before = rulespec_tree_digest(root)
+        target = _write_tree(tmp_path / "linked", {"hidden.yaml": b"x"})
+        (root / "zz/policies/linked").symlink_to(target, target_is_directory=True)
+        assert rulespec_tree_digest(root) == before
+        with pytest.raises(ValueError, match="symbolic link zz/policies/linked"):
+            adapter.materialize(_fake_frame(), ["family_assistance"], 2026)
+        assert programs == {}
+
     def test_a_reference_after_compiling_is_refused(
         self, tmp_path, monkeypatch
     ) -> None:
@@ -1358,6 +1375,34 @@ class TestAxiomEngineRefGitCheckout:
         assert _git(root, "status", "--porcelain") == ""
         with pytest.raises(ValueError, match="ignored"):
             self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
+    def test_an_edit_hidden_by_an_index_flag_is_refused(self, checkout, flag) -> None:
+        # git status trusts the flag and reports nothing, so the checkout would
+        # pass as clean while the module no longer holds the commit's bytes.
+        root, head = checkout
+        _git(root, "update-index", flag, _MODULE)
+        (root / _MODULE).write_bytes(b"format: rulespec/v1\nrules: [hidden]\n")
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError, match=f"{_MODULE} is flagged"):
+            self._checkout_ref(root, head)
+
+    @pytest.mark.parametrize(
+        ("flag", "unflag"),
+        [
+            ("--skip-worktree", "--no-skip-worktree"),
+            ("--assume-unchanged", "--no-assume-unchanged"),
+        ],
+    )
+    def test_a_clean_checkout_with_its_index_flags_cleared_is_accepted(
+        self, checkout, flag, unflag
+    ) -> None:
+        root, head = checkout
+        _git(root, "update-index", flag, _MODULE)
+        with pytest.raises(ValueError, match="flagged"):
+            self._checkout_ref(root, head)
+        _git(root, "update-index", unflag, _MODULE)
+        assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
 
     def test_a_checkout_reference_is_clone_specific_and_an_export_is_not(
         self, checkout, tmp_path

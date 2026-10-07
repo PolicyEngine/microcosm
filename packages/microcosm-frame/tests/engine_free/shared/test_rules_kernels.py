@@ -8,6 +8,7 @@ outputs, and check that property three ways: directly on kernel contexts
 both engines, and against two single-engine ``simulate.rules@1`` graph runs.
 """
 
+import itertools
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -29,7 +30,7 @@ from microcosm.frame import (
     WeightKind,
     Weights,
 )
-from microcosm.frame.adapters.axiom import NZ_SCHEMA
+from microcosm.frame.adapters.axiom import NZ_SCHEMA, AxiomEngine
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.frame.rules_kernels import SimulateRulesByRefKernel
 from microcosm.graph import (
@@ -54,6 +55,9 @@ from microcosm.graph import (
     source_hash,
 )
 from test_support.microcosm_frame.kernels import _context, _StubRulesEngine
+from test_support.paths import paths_for
+
+_RULESPEC_ROOT = paths_for("microcosm-frame").tests / "fixtures" / "rulespec-zz"
 
 PERSON_REF = "toy-person-engine"
 FAMILY_REF = "toy-family-engine"
@@ -336,6 +340,44 @@ class TestConstruction:
         assert extended.implementation_hash() == base.implementation_hash()
         assert reordered.implementation_hash() == base.implementation_hash()
         assert extended.capabilities == base.capabilities
+
+    def test_the_hash_is_independent_of_binding_order(self) -> None:
+        """Invariant: the hash never depends on the order bindings arrive in.
+
+        Three adapter classes from three modules make the source order
+        observable: all six binding orders must give the hash of the classes
+        in ``(module, qualname)`` order. These three classes sort the same way
+        by qualname alone, so the test pins order independence, not the
+        choice of sort key.
+        """
+
+        bindings = {
+            "axiom": AxiomEngine(
+                _RULESPEC_ROOT / "zz/policies/tests/axiom_toy_family.yaml",
+                schema=NZ_SCHEMA,
+                rulespec_roots=(_RULESPEC_ROOT,),
+            ),
+            "stub": _StubRulesEngine(),
+            "person": _PersonEngine(),
+        }
+        classes = sorted(
+            {type(engine) for engine in bindings.values()},
+            key=lambda cls: (cls.__module__, cls.__qualname__),
+        )
+        assert len({cls.__module__ for cls in classes}) == 3
+        expected = source_hash(
+            SimulateRulesByRefKernel,
+            SimulateRulesKernel,
+            *classes,
+            frame_bundle_module,
+            frame_rules_module,
+            frame_schema_module,
+        )
+        orders = list(itertools.permutations(bindings))
+        assert len(orders) == 6
+        for order in orders:
+            kernel = SimulateRulesByRefKernel({ref: bindings[ref] for ref in order})
+            assert kernel.implementation_hash() == expected, order
 
     def test_binding_a_new_adapter_class_moves_the_hash(self) -> None:
         # Documented: a new class's source joins the hash.

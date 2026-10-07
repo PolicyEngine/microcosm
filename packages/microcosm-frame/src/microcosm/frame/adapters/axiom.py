@@ -85,8 +85,9 @@ commit and wheel digest, the RuleSpec commit, the module path and digest, the
 content digest of the whole RuleSpec root, and the adapter's configuration.
 Any edit to a RuleSpec byte therefore moves the reference, and with it every
 node key that names it. The reference also pins the adapter: from then on it
-compiles only from a root whose digest still matches, so a node keyed by the
-reference is never computed from other bytes.
+compiles only from a root whose digest still matches and that holds no
+symbolic link, so a node keyed by the reference is never computed from other
+bytes.
 """
 
 import hashlib
@@ -811,12 +812,16 @@ class AxiomEngine:
         """Refuse to compile when the root no longer holds the referenced bytes.
 
         Once :func:`axiom_engine_ref` has named this adapter's RuleSpec tree,
-        every compile re-hashes the root, so a node keyed by that reference is
-        never computed from other bytes.
+        every compile refuses a symbolic link under the root (the digest does
+        not descend into a linked directory, so a directory or dangling link
+        added after the reference would not move it) and re-hashes the root,
+        so a node keyed by that reference is never computed from other bytes.
 
         Raises:
-            ValueError: If the root's digest moved since the reference.
+            ValueError: If the root holds a symbolic link, or its digest moved
+                since the reference.
         """
+        _refuse_symlinks(self._rulespec_roots[0].resolve())
         current, _ = rulespec_tree_digest(self._rulespec_roots[0].resolve())
         if current != self._pinned_tree_sha256:
             raise ValueError(
@@ -1140,8 +1145,8 @@ def axiom_engine_ref(
     that parameter enters the node key. The reference this function returns is
     canonical JSON of everything that decides the adapter's outputs:
 
-    * the engine (``axiom-rules-engine``), its commit, and the SHA-256 of the
-      wheel built from it;
+    * the engine (``axiom-rules-engine``) and the commit and wheel SHA-256
+      the caller declares for it;
     * the RuleSpec commit, the module's path relative to the root, the
       module's SHA-256, and :func:`rulespec_tree_digest` of the whole root
       (imports resolve anywhere under it);
@@ -1151,11 +1156,17 @@ def axiom_engine_ref(
     For a ``git archive`` export (the normal root, with no ``.git``) no
     absolute path enters the reference: the same tree exported to two places
     gives the same reference, and editing any byte under the root gives a
-    different one. The commits are declarations taken from the pin file, and
-    the directory digest is the authority.
+    different one. The engine commit and wheel SHA-256 are pins the caller
+    declares, not values read from the installed engine: nothing here
+    inspects ``axiom_rules_engine``, so a different engine installed under the
+    same pins gives the same reference. The RuleSpec commit is also a
+    declaration, checked only for a git checkout root (below). The directory
+    digest is the authority.
 
     A git checkout root is accepted only when clean, with no untracked or
-    ignored files, and at ``rulespec_commit``. Its ``.git`` is then hashed
+    ignored files and no tracked file flagged skip-worktree or
+    assume-unchanged (``git status`` does not report edits to those), and at
+    ``rulespec_commit``. Its ``.git`` is then hashed
     like any other file, as the graph's source key hashes it. That makes the
     reference specific to one clone: two clones or worktrees of one commit
     (a worktree's ``.git`` file names an absolute path) and an export of that
@@ -1165,12 +1176,17 @@ def axiom_engine_ref(
     The first call pins the adapter to the tree digest it names: it refuses
     an adapter that has already compiled (those programs were read from bytes
     no reference names), and from then on every compile, and every later
-    reference to the same adapter, refuses a root whose digest has moved.
+    reference to the same adapter, refuses a root whose digest has moved or
+    that holds a symbolic link.
 
     Args:
         engine: The adapter the reference names.
-        engine_commit: Full lowercase git commit of axiom-rules-engine.
-        wheel_sha256: Lowercase SHA-256 of the installed engine wheel.
+        engine_commit: Full lowercase git commit of axiom-rules-engine, as
+            the caller declares it. It is recorded as given; the installed
+            engine is not checked against it.
+        wheel_sha256: Lowercase SHA-256 of the engine wheel, as the caller
+            declares it. It is recorded as given; no installed wheel or
+            native library is hashed to confirm it.
         rulespec_root: The adapter's only RuleSpec root.
         rulespec_commit: Full lowercase git commit the root was exported from.
 
@@ -1182,7 +1198,8 @@ def axiom_engine_ref(
         ValueError: If a pin is malformed; ``rulespec_root`` is not the
             adapter's only root; the module is not a file under it; the root
             contains a symbolic link (the digest would not cover what it
-            points at); a git checkout root is dirty or at another commit; or
+            points at); a git checkout root is dirty, has a file flagged
+            skip-worktree or assume-unchanged, or is at another commit; or
             the adapter compiled before its first reference, or its root moved
             after it.
     """
@@ -1496,13 +1513,16 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
     """Require a git-checkout RuleSpec root to hold exactly ``commit``.
 
     Ignored files count as changes: the digest hashes them, but the commit
-    does not hold them. ``--no-optional-locks`` stops ``git status``
+    does not hold them. A tracked file flagged skip-worktree or
+    assume-unchanged is refused even when unedited, because ``git status``
+    does not report edits to it. ``--no-optional-locks`` stops ``git status``
     refreshing the index, which would otherwise rewrite ``.git/index`` and
     move the digest taken next.
 
     Raises:
         ValueError: If git fails or times out, the checkout has modified,
-            untracked, or ignored files, or ``HEAD`` is not ``commit``.
+            untracked, or ignored files or a file flagged skip-worktree or
+            assume-unchanged, or ``HEAD`` is not ``commit``.
     """
 
     def git(*args: str) -> str:
@@ -1534,6 +1554,20 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
             f"RuleSpec checkout {root} has modified, untracked, or ignored "
             f"files that commit {commit} does not hold; reference a git "
             "archive export instead."
+        )
+    # ``ls-files -v`` tags a skip-worktree file ``S`` and an assume-unchanged
+    # file in lower case; ``git status`` reports no edit to either.
+    flagged = [
+        entry[2:]
+        for entry in git("ls-files", "-v", "-z").split("\0")
+        if entry and (entry[0] == "S" or entry[0].islower())
+    ]
+    if flagged:
+        raise ValueError(
+            f"RuleSpec checkout {root}: {flagged[0]} is flagged skip-worktree "
+            f"or assume-unchanged ({len(flagged)} flagged file(s)), so git "
+            "status does not report edits to it; clear the flags or reference "
+            "a git archive export instead."
         )
     head = git("rev-parse", "--verify", "HEAD^{commit}").strip()
     if head != commit:
