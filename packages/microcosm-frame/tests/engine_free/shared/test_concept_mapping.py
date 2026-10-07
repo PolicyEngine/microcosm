@@ -992,13 +992,13 @@ def _arithmetic(kind: type):
     return st.just(Sum())
 
 
-def _refusal(kind: type, concept_id: str) -> str:
-    """The flow rule's message for a ``kind`` binding reading ``concept_id``."""
+def _refusal(kind: type, concept_id: str, engine_input: str = "x") -> str:
+    """The flow rule's whole message for a ``kind`` binding on ``concept_id``."""
     name = transform_to_dict(_EXAMPLE_TRANSFORMS[kind])["kind"]
     basis = concept(concept_id).temporal_basis.value
     return (
-        rf"a {name} reads annual flows only, and {re.escape(concept_id)} has "
-        rf"temporal basis {basis}\."
+        rf"^Binding for {re.escape(repr(engine_input))}: a {name} reads annual "
+        rf"flows only, and {re.escape(concept_id)} has temporal basis {basis}\.$"
     )
 
 
@@ -1046,7 +1046,9 @@ class TestArithmeticReadsAnnualFlows:
     ``Sum(interest_income, liquid_financial_assets)`` validated. A stock has
     no weekly value and cannot be added to a year's income, so every scale,
     sum, share or fraction binding now checks the declared temporal basis of
-    each concept it reads. Other transforms are outside the rule.
+    each concept it computes from. The household reference person that a
+    binding allocated to the reference unit also reads, to place its value,
+    is not an operand. Other transforms are outside the rule.
     """
 
     @PROPERTY
@@ -1115,19 +1117,21 @@ class TestArithmeticReadsAnnualFlows:
         with _redeclared(concept_id, TemporalBasis.ANNUAL_FLOW):
             _binding(concepts=concepts, transform=_EXAMPLE_TRANSFORMS[kind])
 
-    def test_redeclaring_any_read_of_any_committed_arithmetic_binding_refuses_it(
+    def test_redeclaring_any_operand_of_any_committed_arithmetic_binding_refuses_it(
         self,
     ) -> None:
         # Exhaustive: every committed scale, sum, share and fraction binding,
-        # every concept it reads, and every temporal basis that is not an
-        # annual flow. Changing only that concept's declared basis refuses
-        # the binding, so the rule reads the declaration.
+        # every concept it computes from, and every temporal basis that is not
+        # an annual flow. Changing only that concept's declared basis refuses
+        # the binding, so the rule reads the declaration. Redeclaring a
+        # placement pointer the binding also reads leaves it valid.
         arithmetic = [
             (name, binding)
             for name, binding in _COMMITTED
             if isinstance(binding.transform, _ARITHMETIC)
         ]
         assert arithmetic
+        placed = 0
         for name, binding in arithmetic:
             assert replace(binding) == binding
             for concept_id in binding.concepts:
@@ -1138,13 +1142,20 @@ class TestArithmeticReadsAnnualFlows:
                     ):
                         replace(binding)
                     assert concept_id in str(error.value), (name, binding.ref)
+            for pointer in set(binding.reads) - set(binding.concepts):
+                placed += 1
+                for basis in _NOT_FLOWS:
+                    with _redeclared(pointer, basis):
+                        assert replace(binding) == binding, (name, binding.ref)
+        assert placed
 
     def test_redeclaring_any_read_of_any_other_committed_binding_keeps_it(
         self,
     ) -> None:
         # The complement, also exhaustive: no other committed binding depends
-        # on the basis of what it reads (identities, roles, take-up, recodes,
-        # predicates, positivity tests, allocations and the hours product).
+        # on the basis of anything it reads (identities, roles, take-up,
+        # recodes, predicates, positivity tests, allocations and the hours
+        # product).
         others = [
             (name, binding)
             for name, binding in _COMMITTED
@@ -1153,7 +1164,7 @@ class TestArithmeticReadsAnnualFlows:
         kinds = {type(binding.transform) for _, binding in others}
         assert {Identity, Product, AllocateToReferencePerson, Positive} <= kinds
         for name, binding in others:
-            for concept_id in binding.concepts:
+            for concept_id in binding.reads:
                 for basis in _NOT_FLOWS:
                     with _redeclared(concept_id, basis):
                         assert replace(binding) == binding, (name, binding.ref, basis)
@@ -1251,8 +1262,9 @@ class TestArithmeticReadsAnnualFlows:
         # The scale and the sum are F6's own; the share pair and the fraction
         # are the same edit through the other two transforms. Each validates
         # if the stock is declared an annual flow.
-        kind = type(bindings[0][2])
-        with pytest.raises(ValueError, match=_refusal(kind, _LIQUID_ASSETS)):
+        engine_input, _, transform = bindings[0]
+        refusal = _refusal(type(transform), _LIQUID_ASSETS, engine_input)
+        with pytest.raises(ValueError, match=refusal):
             ConceptMapping.from_dict(_us_reading_the_stock(*bindings))
         with _redeclared(_LIQUID_ASSETS, TemporalBasis.ANNUAL_FLOW):
             ConceptMapping.from_dict(_us_reading_the_stock(*bindings))

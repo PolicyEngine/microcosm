@@ -746,8 +746,11 @@ def bind(
 #: week or month, a sum adds amounts, and a share or fraction splits one. Each
 #: reads annual flows only, so none of them takes a stock (a value at the
 #: reference date), a usual rate or a persistent draw by accident; a binding
-#: that needs one needs a new transform. A product is outside the rule: it
-#: multiplies a usual rate (weekly hours) by weeks.
+#: that needs one needs a new transform. The rule checks the concepts a
+#: binding computes from (``concepts``), not the household reference person a
+#: binding allocated to the reference unit also reads to place its value. A
+#: product is outside the rule: it multiplies a usual rate (weekly hours) by
+#: weeks.
 _FLOW_TRANSFORMS = (Scale, Sum, Share, Fraction)
 
 
