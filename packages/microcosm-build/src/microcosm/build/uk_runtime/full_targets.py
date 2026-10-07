@@ -81,8 +81,13 @@ def load_uk_full_target_inputs(
     register_json: str | Path | None = None,
     calibration_year: int | None = None,
     exclusions_evaluated_on: date | None = None,
+    include_validation_periods: bool = True,
 ) -> dict[str, Any]:
     """Compile the full target surface with both reviewed source contracts.
+
+    ``include_validation_periods=False`` compiles the calibration year alone,
+    for receipts that read the surface (``tools/uk_target_surface_receipt.py``);
+    the graph node always compiles the validation periods too.
 
     Default hashes are the reviewed national feed pins. Explicit hashes must
     agree with those pins as well: a target-scope filter does not authorize a
@@ -142,7 +147,15 @@ def load_uk_full_target_inputs(
         "national": {},
         "local": {},
     }
-    for period in sorted({*_VALIDATION_PERIODS, year}):
+    national_periods = (
+        sorted({*_VALIDATION_PERIODS, year}) if include_validation_periods else [year]
+    )
+    local_periods = (
+        sorted({*_LOCAL_VALIDATION_PERIODS, year})
+        if include_validation_periods
+        else [year]
+    )
+    for period in national_periods:
         compilation = compile_uk_target_registry(artifact.facts, target_period=period)
         if compilation.unsupported:
             if period == year:
@@ -154,7 +167,7 @@ def load_uk_full_target_inputs(
                 compilation.unsupported
             )
         national_registries[period] = compilation.registry
-    for period in sorted({*_LOCAL_VALIDATION_PERIODS, year}):
+    for period in local_periods:
         compilation = compile_uk_local_target_registry(
             artifact.facts, target_period=period, crosswalk=crosswalk
         )
