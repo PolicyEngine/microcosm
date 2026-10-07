@@ -404,11 +404,15 @@ def benefit_unit_roles(
     units = _unit_rows(family, membership, rule)
     head_of = family[rule.head_column].to_numpy(dtype=np.int64)[units]
     is_head = ids == head_of
+    # Partner presence is a mask, not a sentinel id: any integer, -1
+    # included, can be a person id.
     present = person["partner_person_id"].notna().to_numpy()
-    partner = np.full(len(ids), -1, dtype=np.int64)
+    partner = np.zeros(len(ids), dtype=np.int64)
     partner[present] = person["partner_person_id"][present].to_numpy(dtype=np.int64)
-    head_partner = pd.Series(partner, index=ids).reindex(head_of).to_numpy()
-    is_partner = ~is_head & (head_partner == ids)
+    head_row = pd.Index(ids).get_indexer(head_of)
+    found = head_row >= 0
+    head_row = np.where(found, head_row, 0)
+    is_partner = ~is_head & found & present[head_row] & (partner[head_row] == ids)
     roles = np.where(
         is_head,
         UnitRole.HEAD.value,

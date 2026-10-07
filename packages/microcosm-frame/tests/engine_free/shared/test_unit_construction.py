@@ -7,7 +7,7 @@ schema allows rather than a few hand-picked households:
 
 - partition: every person is in exactly one unit, and every unit has members;
 - every unit has an adult (its head) and at most one partner;
-- partners share a unit;
+- partners share a unit, and the partner role is exactly the head's partner;
 - every dependent child shares a unit with a co-resident parent, or with the
   household's reference person when it has none;
 - units nest in households;
@@ -43,6 +43,9 @@ from test_support.microcosm_frame.concept_frames import concept_frames
 from test_support.microcosm_frame.unit_rules import unit_rules
 
 PROPERTY = settings(max_examples=150, deadline=None)
+#: Ids may be negative: the concept-frame contract accepts any unique integer,
+#: so no unit reading may treat an id such as -1 as "absent".
+FRAMES = concept_frames(max_households=5, max_members=6, min_id=-(10**9))
 
 
 def _rows(person: pd.DataFrame, column: str) -> np.ndarray:
@@ -65,7 +68,7 @@ def _reference_rows(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray
 
 class TestInvariants:
     @PROPERTY
-    @given(tables=concept_frames(max_households=5, max_members=6), rule=unit_rules())
+    @given(tables=FRAMES, rule=unit_rules())
     def test_units_partition_persons_and_nest_in_households(self, tables, rule) -> None:
         person, household = tables["person"], tables["household"]
         family, membership = build_benefit_units(person, household, rule)
@@ -91,7 +94,7 @@ class TestInvariants:
         assert membership.dtype == np.int64
 
     @PROPERTY
-    @given(tables=concept_frames(max_households=5, max_members=6), rule=unit_rules())
+    @given(tables=FRAMES, rule=unit_rules())
     def test_every_unit_has_an_adult_and_partners_share_it(self, tables, rule) -> None:
         person, household = tables["person"], tables["household"]
         family, membership = build_benefit_units(person, household, rule)
@@ -115,9 +118,18 @@ class TestInvariants:
             membership.to_numpy()[paired], membership.to_numpy()[partner[paired]]
         )
         assert not roles[paired].eq(UnitRole.DEPENDENT_CHILD.value).any()
+        # the partner role is held by the head's partner and nobody else
+        # (row positions, so no person id can pass for a missing partner)
+        head_row = pd.Index(person["person_id"].to_numpy()).get_indexer(
+            heads.reindex(membership.to_numpy()).to_numpy()
+        )
+        assert np.array_equal(
+            roles.eq(UnitRole.PARTNER.value).to_numpy(),
+            partner[head_row] == np.arange(len(person)),
+        )
 
     @PROPERTY
-    @given(tables=concept_frames(max_households=5, max_members=6), rule=unit_rules())
+    @given(tables=FRAMES, rule=unit_rules())
     def test_dependent_children_live_with_a_parent_or_caregiver(
         self, tables, rule
     ) -> None:
@@ -152,7 +164,7 @@ class TestInvariants:
 
     @PROPERTY
     @given(
-        tables=concept_frames(max_households=5, max_members=6),
+        tables=FRAMES,
         rule=unit_rules(),
         weights=st.lists(
             st.floats(min_value=0.001, max_value=1e6, allow_nan=False),
@@ -198,7 +210,7 @@ class TestInvariants:
 
     @PROPERTY
     @given(
-        tables=concept_frames(max_households=5, max_members=6),
+        tables=FRAMES,
         rule=unit_rules(),
         data=st.data(),
     )
@@ -216,7 +228,7 @@ class TestInvariants:
         pd.testing.assert_series_equal(first.sort_index(), second.sort_index())
 
     @PROPERTY
-    @given(tables=concept_frames(max_households=5, max_members=6), rule=unit_rules())
+    @given(tables=FRAMES, rule=unit_rules())
     def test_attributes_count_the_roles(self, tables, rule) -> None:
         person, household = tables["person"], tables["household"]
         family, membership = build_benefit_units(person, household, rule)
@@ -380,6 +392,42 @@ class TestPlacement:
         )
         _, membership = build_benefit_units(person, household, first)
         assert membership.tolist() == [1, 2, 2]
+
+    def test_a_person_id_of_minus_one_is_a_person_not_a_missing_partner(
+        self,
+    ) -> None:
+        # A sole parent and their child, whose id is -1: the child is not the
+        # partner of a head who has none.
+        person, household = self._frame(
+            [(5, 1, 40, None, None, None, 0.0), (-1, 1, 10, None, 5, None, 0.0)],
+            {1: 5},
+        )
+        family, membership = build_benefit_units(person, household, self.RULE)
+        assert membership.tolist() == [5, 5]
+        roles = benefit_unit_roles(person, family, membership, self.RULE)
+        assert roles.tolist() == ["head", "dependent_child"]
+        attributes = benefit_unit_attributes(person, family, membership, self.RULE)
+        assert attributes["family_type"].tolist() == ["sole_parent"]
+        assert attributes["n_dependent_children"].tolist() == [1]
+        assert attributes["is_couple"].tolist() == [False]
+        # Negative ids in every role: a couple -1 and -2 with their child -3,
+        # and a lone adult -4 with no partner.
+        person, household = self._frame(
+            [
+                (-1, 1, 40, -2, None, None, 0.0),
+                (-2, 1, 38, -1, None, None, 0.0),
+                (-3, 1, 10, None, -1, -2, 0.0),
+                (-4, 1, 30, None, None, None, 0.0),
+            ],
+            {1: -2},
+        )
+        family, membership = build_benefit_units(person, household, self.RULE)
+        assert family["family_id"].tolist() == [-4, -2]
+        assert membership.tolist() == [-2, -2, -2, -4]
+        roles = benefit_unit_roles(person, family, membership, self.RULE)
+        assert roles.tolist() == ["partner", "head", "dependent_child", "head"]
+        attributes = benefit_unit_attributes(person, family, membership, self.RULE)
+        assert attributes["family_type"].tolist() == ["single", "couple_with_children"]
 
     @pytest.mark.parametrize(
         ("rows", "message"),

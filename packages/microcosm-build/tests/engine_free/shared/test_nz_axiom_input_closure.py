@@ -66,7 +66,8 @@ MAPPING = axiom_concept_mapping("nz")
 #: closure check reports the entry until its awaiting note is removed.
 AWAITING = {entry.ref for entry in CLOSURE.entries if entry.awaiting is not None}
 #: Stand-in unit rule for these tests. The NZ rule is spec data (method card
-#: MC7, build/nz benefit_unit_rule.json); these properties hold for any rule.
+#: MC7, build/nz/benefit_unit_rule.json, which G2 adds); these properties
+#: hold for any rule.
 RULE = BenefitUnitRule(
     entity="family",
     dependent_child=DependentChildRule(max_age=17, financial_independence=None),
@@ -236,7 +237,10 @@ def _family_inputs(tables, knobs=None) -> pd.DataFrame:
 
 class TestExecutableClosure:
     @settings(max_examples=60, deadline=None)
-    @given(tables=concept_frames(max_households=4, max_members=6), data=st.data())
+    @given(
+        tables=concept_frames(max_households=4, max_members=6, min_id=-(10**9)),
+        data=st.data(),
+    )
     def test_encoding_and_defaults_supply_every_supplement_input(
         self, tables, data
     ) -> None:
@@ -261,7 +265,7 @@ class TestExecutableClosure:
                 assert family[name].dtype.kind in "bif", name
 
     @settings(max_examples=40, deadline=None)
-    @given(tables=concept_frames(max_households=4, max_members=6))
+    @given(tables=concept_frames(max_households=4, max_members=6, min_id=-(10**9)))
     def test_encoding_and_defaults_supply_every_person_input(self, tables) -> None:
         # The v0 frame is transported: donor program receipts are dropped, so
         # a binding that reads one never runs and the closure feeds its input.

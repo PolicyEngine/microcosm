@@ -294,10 +294,12 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     closures.
 11. **Units.** Benefit units partition persons: every person is in exactly
     one unit, every unit has a head and at most one partner, partners share a
-    unit, every dependent child shares a unit with a co-resident parent (or,
-    with none, with the household reference person), and units nest in
-    households. Units carry no weights; each takes its household's, so the
-    sum of unit weights is the sum over households of household weight times
+    unit and the partner role goes to the head's partner alone, every
+    dependent child shares a unit with a co-resident parent (or, with none,
+    with the household reference person), and units nest in households,
+    whatever unique integer ids the persons carry, negative ones included.
+    Units carry no weights; each takes its household's, so the sum of unit
+    weights is the sum over households of household weight times
     units in the household. Unit ids are deterministic and independent of
     row order. Group encoding agrees with a row-by-row reference, and its
     unit-composition flags agree with the unit attributes computed

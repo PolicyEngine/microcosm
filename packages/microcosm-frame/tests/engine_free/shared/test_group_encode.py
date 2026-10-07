@@ -50,7 +50,7 @@ from microcosm.frame.concept_mapping import (
     transform_from_dict,
     transform_to_dict,
 )
-from microcosm.frame.concepts import CONCEPTS, AlignmentRelation
+from microcosm.frame.concepts import CONCEPTS, AlignmentRelation, TemporalBasis
 from microcosm.frame.unit_construction import (
     BenefitUnitRule,
     DependentChildRule,
@@ -202,7 +202,7 @@ STATE = (
 def unit_frames(draw):
     """A concept frame with model state, its units, and its membership."""
 
-    tables = draw(concept_frames(max_households=5, max_members=6))
+    tables = draw(concept_frames(max_households=5, max_members=6, min_id=-(10**9)))
     rule = draw(unit_rules())
     person = tables["person"].copy()
     household = tables["household"].copy()
@@ -775,7 +775,7 @@ class TestRefusals:
         bad = GroupMembership(
             entity="family", units=family, person_unit=membership, person_role=swapped
         )
-        with pytest.raises(ValueError, match="partner"):
+        with pytest.raises(ValueError, match="partner must be its head's partner"):
             MAPPING.encode_groups(tables, {"Family": bad})
         demoted = roles.copy()
         demoted.iloc[1] = UnitRole.DEPENDENT_CHILD.value
@@ -783,6 +783,34 @@ class TestRefusals:
             entity="family", units=family, person_unit=membership, person_role=demoted
         )
         with pytest.raises(ValueError, match="must be its partner"):
+            MAPPING.encode_groups(tables, {"Family": bad})
+
+    def test_a_child_relabelled_as_a_partner_is_refused(self) -> None:
+        tables, rule, _, _, _ = _example()
+        # Give the lone adult 13 a child, 14, so 13 heads a unit with no
+        # partner in it: no head-side check can see a partner label there.
+        person = tables["person"]
+        child = person.iloc[[2]].assign(person_id=14)
+        child["parent_1_person_id"] = pd.array([13], dtype="Int64")
+        person = pd.concat([person, child], ignore_index=True)
+        tables = {**tables, "person": person}
+        family, membership = build_benefit_units(person, tables["household"], rule)
+        group = benefit_unit_membership(person, family, membership, rule)
+        roles = group.person_role.copy()
+        assert membership.tolist() == [10, 10, 10, 13, 13]
+        assert roles.tolist() == [
+            "head",
+            "partner",
+            "dependent_child",
+            "head",
+            "dependent_child",
+        ]
+        MAPPING.encode_groups(tables, {"Family": group})
+        roles.iloc[4] = UnitRole.PARTNER.value
+        bad = GroupMembership(
+            entity="family", units=family, person_unit=membership, person_role=roles
+        )
+        with pytest.raises(ValueError, match="partner must be its head's partner"):
             MAPPING.encode_groups(tables, {"Family": bad})
 
     def test_memberships_are_typed_and_distinct(self) -> None:
@@ -976,7 +1004,7 @@ class TestNewZealandMapping:
     )
 
     @PROPERTY
-    @given(tables=concept_frames(max_households=4, max_members=6))
+    @given(tables=concept_frames(max_households=4, max_members=6, min_id=-(10**9)))
     def test_every_accommodation_supplement_group_binding_executes(
         self, tables
     ) -> None:
@@ -1000,3 +1028,189 @@ class TestNewZealandMapping:
             assert kind in ("b", "f"), binding.engine_input
         rent = table["accommodation_supplement_weekly_rent_paid"].sum()
         np.testing.assert_allclose(rent, household["rent"].sum() * WEEK, rtol=1e-12)
+
+    # Hand-computed households. Concept amounts are annual flows and these
+    # inputs are weekly amounts, so every expected value below is the annual
+    # figure divided by 52 weeks, worked by hand rather than read from a
+    # binding's factor.
+    RATES = "nz/statutes/social_security/main_benefits/rates.yaml"
+    #: Each person's own weekly income from the seven income concepts.
+    OWN_WEEKLY_INCOME = {
+        101: 1_000.0 + 10.0,  # wages 52,000; interest 520
+        102: 200.0 + 20.0,  # non-farm self-employment 10,400; dividends 1,040
+        103: 0.0,
+        104: 0.0,
+        105: 400.0 + 50.0 + 50.0,  # wages 20,800; rent 2,600; private pension 2,600
+        201: 250.0 + 50.0,  # wages 13,000; farm self-employment 2,600
+        202: 0.0,
+    }
+
+    @staticmethod
+    def _households() -> dict[str, pd.DataFrame]:
+        """Two households, every income concept non-zero somewhere.
+
+        Household 1 owns with a mortgage (interest 15,600 and principal 5,200
+        a year): a couple, 101 (the reference person) and 102, their children
+        103 and 104, and an adult boarder, 105. Household 2 rents privately at
+        15,600 a year: a sole parent, 201, and their child, 202.
+        """
+
+        rows = [
+            (101, 1, 41, 102, None, None),
+            (102, 1, 39, 101, None, None),
+            (103, 1, 9, None, 101, 102),
+            (104, 1, 6, None, 101, 102),
+            (105, 1, 30, None, None, None),
+            (201, 2, 28, None, None, None),
+            (202, 2, 3, None, 201, None),
+        ]
+        person = pd.DataFrame(
+            rows,
+            columns=[
+                "person_id",
+                "person_household_id",
+                "age",
+                "partner_person_id",
+                "parent_1_person_id",
+                "parent_2_person_id",
+            ],
+        )
+        for column in ("partner_person_id", "parent_1_person_id", "parent_2_person_id"):
+            person[column] = pd.array(person[column].tolist(), dtype="Int64")
+        for item in CONCEPTS:
+            if item.entity == "person" and item.monetary is not None:
+                person[item.name] = 0.0
+        annual = {
+            "employment_income": {101: 52_000.0, 105: 20_800.0, 201: 13_000.0},
+            "interest_income": {101: 520.0},
+            "nonfarm_self_employment_income": {102: 10_400.0},
+            "dividend_income": {102: 1_040.0},
+            "rental_income": {105: 2_600.0},
+            "private_pension_income": {105: 2_600.0},
+            "farm_self_employment_income": {201: 2_600.0},
+        }
+        for column, amounts in annual.items():
+            person[column] = person["person_id"].map(amounts).fillna(0.0)
+        household = pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "reference_person_id": pd.array([101, 201], dtype="Int64"),
+                "tenure": ["owned_with_mortgage", "rented_private"],
+            }
+        )
+        for item in CONCEPTS:
+            if item.entity == "household" and item.monetary is not None:
+                household[item.name] = 0.0
+        household["mortgage_interest"] = [15_600.0, 0.0]
+        household["mortgage_principal"] = [5_200.0, 0.0]
+        household["rent"] = [0.0, 15_600.0]
+        return {"person": person, "household": household}
+
+    def test_hand_computed_households_get_the_supplement_inputs(self) -> None:
+        tables = self._households()
+        person, household = tables["person"], tables["household"]
+        family, membership = build_benefit_units(person, household, self.NZ_RULE)
+        group = benefit_unit_membership(person, family, membership, self.NZ_RULE)
+        table = (
+            axiom_concept_mapping("nz")
+            .encode_groups(tables, {"Family": group}, modules=[self.AS])
+            .tables["family"]
+        )
+        # The couple's family (101), the boarder's (105), the sole parent's (201).
+        assert table["family_id"].tolist() == [101, 105, 201]
+        flags = {
+            "accommodation_supplement_in_relationship": [True, False, False],
+            "accommodation_supplement_has_dependent_children": [True, False, True],
+            "accommodation_supplement_has_two_or_more_dependent_children": [
+                True,
+                False,
+                False,
+            ],
+            "accommodation_supplement_sole_parent": [False, False, True],
+            # Every family in an owner-occupied household, the boarder's too.
+            "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident": [
+                True,
+                True,
+                False,
+            ],
+        }
+        for name, expected in flags.items():
+            assert table[name].dtype == bool, name
+            assert table[name].tolist() == expected, name
+        income = self.OWN_WEEKLY_INCOME
+        amounts = {
+            # (15,600 + 5,200) / 52, on the family holding the reference person.
+            "accommodation_supplement_owner_weekly_required_payments": [400.0, 0, 0],
+            # 15,600 / 52.
+            "accommodation_supplement_weekly_rent_paid": [0, 0, 300.0],
+            # Summed over each family's members.
+            "accommodation_supplement_relevant_weekly_income": [
+                income[101] + income[102] + income[103] + income[104],
+                income[105],
+                income[201] + income[202],
+            ],
+        }
+        assert amounts["accommodation_supplement_relevant_weekly_income"] == [
+            1_230.0,
+            500.0,
+            300.0,
+        ]
+        for name, expected in amounts.items():
+            assert table[name].dtype.kind == "f", name
+            np.testing.assert_allclose(
+                table[name], expected, rtol=1e-12, atol=1e-9, err_msg=name
+            )
+
+    def test_main_benefit_income_inputs_are_weekly_own_income(self) -> None:
+        tables = self._households()
+        mapping = axiom_concept_mapping("nz")
+        encoded = mapping.encode(
+            tables,
+            shares={name: 0.5 for name in mapping.share_parameters()},
+            take_up_rates={name: None for name in mapping.take_up_programs()},
+        ).tables["person"]
+        names = {
+            "jobseeker_support_total_income",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_total_income",
+            "supported_living_payment_total_income",
+        }
+        assert names <= {
+            binding.engine_input
+            for binding in mapping.bindings
+            if binding.module == self.RATES
+        }
+        expected = [self.OWN_WEEKLY_INCOME[pid] for pid in encoded["person_id"]]
+        for name in sorted(names):
+            np.testing.assert_allclose(
+                encoded[name], expected, rtol=1e-12, atol=1e-9, err_msg=name
+            )
+
+    def test_every_amount_conversion_is_annual_to_weekly(self) -> None:
+        # The New Zealand rules this mapping feeds state amounts weekly, and
+        # every amount concept is an annual flow, so each scaling divides by
+        # the 52 weeks of a year. A monthly or fortnightly input would need a
+        # different factor and a note saying so.
+        by_id = {item.id: item for item in CONCEPTS}
+        scaled = [
+            binding
+            for binding in axiom_concept_mapping("nz").bindings
+            if isinstance(binding.transform, Scale | ScaledSum)
+        ]
+        assert {binding.engine_input for binding in scaled} >= {
+            "accommodation_supplement_owner_weekly_required_payments",
+            "accommodation_supplement_relevant_weekly_income",
+            "jobseeker_support_total_income",
+            "main_benefit_income_test_assessable_income",
+            "sole_parent_support_total_income",
+            "supported_living_payment_total_income",
+        }
+        for binding in scaled:
+            for concept_id in binding.concepts:
+                concept = by_id[concept_id]
+                assert concept.period == "year", (binding.engine_input, concept_id)
+                assert concept.temporal_basis is TemporalBasis.ANNUAL_FLOW
+            assert "1/52" in binding.note, binding.engine_input
+            assert binding.transform.factor * 52 == pytest.approx(1.0, abs=1e-15), (
+                binding.engine_input
+            )
