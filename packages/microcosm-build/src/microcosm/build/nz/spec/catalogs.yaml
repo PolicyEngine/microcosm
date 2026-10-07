@@ -1,0 +1,121 @@
+columns:
+- key: household.household_id
+  contract:
+    entity: household
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: household.household_weight
+  contract:
+    entity: household
+    dtype: float64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_weight
+    public_stability: internal
+- key: family.family_id
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: family.family_household_id
+  contract:
+    entity: family
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.person_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: person.person_household_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.person_family_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: frame_membership
+    public_stability: internal
+- key: person.support_stratum
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: eternity
+    vintage: vintage:nz_support_pool_2024_buildp
+    nullable: false
+    domain: support_provenance
+    public_stability: internal
+- key: person.donor_country_code
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: eternity
+    vintage: vintage:nz_support_pool_2024_buildp
+    nullable: false
+    domain: support_provenance
+    public_stability: internal
+- key: person.age
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: donor_demography
+    public_stability: internal
+- key: person.sex
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:nz_target_2026
+    nullable: false
+    domain: donor_demography
+    public_stability: internal
+- key: person.region_code
+  contract:
+    entity: person
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:nz_region_2025
+    nullable: false
+    domain: target_assigned_geography
+    public_stability: internal
