@@ -25,7 +25,7 @@ from hypothesis import strategies as st
 
 from microcosm.frame.adapters.axiom import _batch_from_table, axiom_concept_mapping
 from microcosm.frame.adapters.axiom_input_surface import load_axiom_input_surface
-from microcosm.frame.concept_mapping import Allocation
+from microcosm.frame.concept_mapping import Allocation, GroupRule, Identity
 from microcosm.frame.concepts import CONCEPTS, ContentBasis, split_for_transport
 from microcosm.frame.input_closure import (
     ClosureClass,
@@ -60,13 +60,13 @@ PERSON_MODULES = (ENTITLEMENT, RATES, NZS)
 CLOSURE = InputClosure.from_dict(json.loads(CLOSURE_PATH.read_text(encoding="utf-8")))
 SURFACE = load_axiom_input_surface(SURFACE_PATH)
 MAPPING = axiom_concept_mapping("nz")
-#: Concept-encoded inputs whose binding lands in a later change (the cash-asset
-#: binding arrives with the liquid-asset concept, work package G3a). The
-#: closure records the change it waits for; when the binding lands, the
-#: closure check reports the entry until its awaiting note is removed.
+#: Concept-encoded inputs whose binding lands in a later change. None does now:
+#: the cash-asset binding arrived with the liquid-asset concept (work package
+#: G3a). An entry that awaits a binding the mapping already has is reported by
+#: the closure check until its awaiting note is removed.
 AWAITING = {entry.ref for entry in CLOSURE.entries if entry.awaiting is not None}
 #: Stand-in unit rule for these tests. The NZ rule is spec data (method card
-#: MC7, build/nz/benefit_unit_rule.json, which G2 adds); these properties
+#: MC7, build/nz/benefit_unit_rule.json, which G2 added); these properties
 #: hold for any rule.
 RULE = BenefitUnitRule(
     entity="family",
@@ -87,13 +87,23 @@ class TestClosure:
         assert CLOSURE.content_basis is ContentBasis.TRANSPORT
         assert CLOSURE.check(MAPPING, SURFACE) == ()
 
-    def test_only_the_cash_asset_binding_awaits_a_later_change(self) -> None:
-        assert {ref.name for ref in AWAITING} <= {
-            "accommodation_supplement_cash_assets"
-        }
-        for entry in CLOSURE.entries:
-            if entry.awaiting is not None:
-                assert "G3a" in entry.awaiting
+    def test_the_cash_assets_are_the_bound_liquid_asset_input(self) -> None:
+        # G3a's binding has landed, so no input awaits a later change: the
+        # cash-asset input is concept-encoded like any other.
+        assert AWAITING == set()
+        (entry,) = (
+            entry
+            for entry in CLOSURE.entries_for(AS)
+            if entry.input == "accommodation_supplement_cash_assets"
+        )
+        assert entry.closure_class is ClosureClass.ENCODED
+        assert entry.encoded_by is EncodedBy.CONCEPT_BINDING
+        (binding,) = (
+            binding for binding in MAPPING.bindings if binding.ref == entry.ref
+        )
+        assert binding.concepts == ("fact:person.liquid_financial_assets",)
+        assert isinstance(binding.transform, Identity)
+        assert binding.group_rule is GroupRule.SUM_OVER_MEMBERS
 
     def test_the_receipt_layer_requirements_are_declared(self) -> None:
         requirements = _payload()["receipt_requirements"]["requirements"]
@@ -130,14 +140,36 @@ class TestClosure:
         )
 
     def test_no_input_is_claimed_engine_optional(self) -> None:
-        # axiom-rules-engine 04315d94 has no optional inputs; the closure says
-        # why and classes none as engine-optional.
+        # The axiom-rules-engine commit in input_surface.engine (04315d94) has
+        # no optional inputs; the closure says why and classes none as
+        # engine-optional.
         assert not any(
             entry.closure_class is ClosureClass.ENGINE_OPTIONAL
             for entry in CLOSURE.entries
         )
-        assert "04315d94" in CLOSURE.engine_optional_evidence
+        assert "input_surface.engine" in CLOSURE.engine_optional_evidence
         assert CLOSURE.surface_engine_commit.startswith("04315d94")
+        assert CLOSURE.surface_engine_repository == (
+            "TheAxiomFoundation/axiom-rules-engine"
+        )
+        # The record is the committed surface's own engine record.
+        engine = json.loads(SURFACE_PATH.read_text(encoding="utf-8"))["engine"]
+        assert _payload()["input_surface"]["engine"] == {
+            "repository": engine["repository"],
+            "commit": engine["commit"],
+        }
+
+    def test_the_engine_record_holds_the_surface_engine_commit(self) -> None:
+        # A record that names axiom-rules-engine is foreign to the rulespec
+        # commit scan (test_nz_spec_package.py), so the check pins its commit
+        # to the surface: any other commit there, a rulespec one included, is
+        # reported.
+        payload = _payload()
+        pin = payload["rulespec_pin"]["commit"]
+        payload["input_surface"]["engine"]["commit"] = pin
+        assert InputClosure.from_dict(payload).check(MAPPING, SURFACE) == (
+            f"Surface engine {SURFACE.engine_commit} is not {pin}.",
+        )
 
     def test_undetermined_judgments_are_refused(self) -> None:
         assert CLOSURE.undetermined.action is UndeterminedAction.REFUSE
@@ -263,6 +295,30 @@ class TestExecutableClosure:
             )
             for name in expected - from_nodes - awaited:
                 assert family[name].dtype.kind in "bif", name
+
+    @settings(max_examples=40, deadline=None)
+    @given(
+        tables=concept_frames(max_households=4, max_members=6, min_id=-(10**9)),
+        data=st.data(),
+    )
+    def test_cash_assets_are_each_familys_summed_liquid_assets(
+        self, tables, data
+    ) -> None:
+        tables = _with_state(split_for_transport(tables)[0], data)
+        person = tables["person"]
+        _, membership = build_benefit_units(person, tables["household"], RULE)
+        summed = person["liquid_financial_assets"].groupby(membership).sum()
+        cash = "accommodation_supplement_cash_assets"
+        family = _family_inputs(tables).set_index("family_id")
+        assert np.allclose(
+            family[cash].to_numpy(),
+            summed.reindex(family.index).to_numpy(),
+            rtol=1e-12,
+            atol=1e-6,
+        )
+        # Scenario S1 (method card MC10) switches the asset test off.
+        off = _family_inputs(tables, {"asset_test": False})
+        assert (off[cash] == 0).all()
 
     @settings(max_examples=40, deadline=None)
     @given(tables=concept_frames(max_households=4, max_members=6, min_id=-(10**9)))

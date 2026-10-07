@@ -222,6 +222,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
     assert {row.path for row in spec.resource_rows if row.kind == "legacy_json"} == {
         "as_area_crosswalk.json",
         "as_rate_bridge.json",
+        "axiom_input_closure.json",
         "axiom_rules_bindings.json",
         "benefit_unit_rule.json",
         "currency_bridge.json",

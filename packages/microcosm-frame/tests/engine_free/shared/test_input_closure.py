@@ -160,6 +160,7 @@ def _closure(**change) -> InputClosure:
         "mapping_engine": "axiom:zz",
         "mapping_engine_version": "r1",
         "surface_rulespec_commit": "r1",
+        "surface_engine_repository": "TheAxiomFoundation/axiom-rules-engine",
         "surface_engine_commit": "e1",
         "modules": {MODULE: SHA},
         "engine_optional_evidence": "the engine has no optional inputs",
@@ -516,10 +517,36 @@ class TestSerialization:
         payload["input_surface"]["fixture"] = "path/to/surface.json"
         assert InputClosure.from_dict(payload).to_dict() == _closure().to_dict()
 
+    def test_the_surface_engine_is_a_record_naming_its_repository(self) -> None:
+        # The engine commit is not a rulespec commit, so it sits in a record
+        # that names the engine's repository.
+        payload = _closure().to_dict()
+        assert payload["input_surface"] == {
+            "rulespec_commit": "r1",
+            "engine": {
+                "repository": "TheAxiomFoundation/axiom-rules-engine",
+                "commit": "e1",
+            },
+        }
+        again = InputClosure.from_dict(payload)
+        assert again.surface_engine_repository == (
+            "TheAxiomFoundation/axiom-rules-engine"
+        )
+        assert again.surface_engine_commit == "e1"
+
     @pytest.mark.parametrize(
         "change",
         [
             {"format": "x"},
+            {"input_surface": {"rulespec_commit": "r1", "engine_commit": "e1"}},
+            {"input_surface": {"rulespec_commit": "r1", "engine": "e1"}},
+            {"input_surface": {"rulespec_commit": "r1", "engine": {"commit": "e1"}}},
+            {
+                "input_surface": {
+                    "rulespec_commit": "r1",
+                    "engine": {"repository": 7, "commit": "e1"},
+                }
+            },
             {"rulespec_paths": {"m": 1}},
             {"knobs": {}},
             {"entries": [{"module": "m"}]},

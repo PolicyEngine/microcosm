@@ -439,6 +439,11 @@ class InputClosure:
         mapping_engine_version: That mapping's ``engine_version``.
         surface_rulespec_commit: The rulespec commit the input surface was
             generated from.
+        surface_engine_repository: The repository of the engine that
+            generated it. The engine commit is serialized in a record that
+            names this repository, which marks it as the engine's commit, not
+            a rulespec commit; :meth:`check` compares the commit with the
+            surface, not the repository.
         surface_engine_commit: The engine commit that generated it.
         modules: Module path -> SHA-256 of the module bytes reviewed.
         engine_optional_evidence: What the engine does with an absent input,
@@ -454,6 +459,7 @@ class InputClosure:
     mapping_engine: str
     mapping_engine_version: str
     surface_rulespec_commit: str
+    surface_engine_repository: str
     surface_engine_commit: str
     modules: Mapping[str, str]
     engine_optional_evidence: str
@@ -706,7 +712,10 @@ class InputClosure:
             },
             "input_surface": {
                 "rulespec_commit": self.surface_rulespec_commit,
-                "engine_commit": self.surface_engine_commit,
+                "engine": {
+                    "repository": self.surface_engine_repository,
+                    "commit": self.surface_engine_commit,
+                },
             },
             "rulespec_paths": dict(self.modules),
             "engine_optional_evidence": self.engine_optional_evidence,
@@ -756,12 +765,18 @@ class InputClosure:
             surface = _record_fields(
                 data["input_surface"],
                 "closure input surface",
-                required=("rulespec_commit", "engine_commit"),
+                required=("rulespec_commit", "engine"),
                 optional=("fixture",),
             )
+            engine = _record_fields(
+                surface["engine"],
+                "closure input-surface engine",
+                required=("repository", "commit"),
+            )
             _text_fields(mapping, "closure mapping", ("engine", "engine_version"))
+            _text_fields(surface, "closure input surface", ("rulespec_commit",))
             _text_fields(
-                surface, "closure input surface", ("rulespec_commit", "engine_commit")
+                engine, "closure input-surface engine", ("repository", "commit")
             )
             modules = data["rulespec_paths"]
             if not isinstance(modules, Mapping) or not all(
@@ -794,7 +809,8 @@ class InputClosure:
                 mapping_engine=mapping["engine"],
                 mapping_engine_version=mapping["engine_version"],
                 surface_rulespec_commit=surface["rulespec_commit"],
-                surface_engine_commit=surface["engine_commit"],
+                surface_engine_repository=engine["repository"],
+                surface_engine_commit=engine["commit"],
                 modules=modules,
                 engine_optional_evidence=evidence,
                 undetermined=UndeterminedPolicy(**policy),

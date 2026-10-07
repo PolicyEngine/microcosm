@@ -811,6 +811,54 @@ class TestRulespecPin:
             "abad1dea",
         }
 
+    def test_a_rulespec_commit_planted_in_the_input_closure_is_caught(self) -> None:
+        # The closure names the axiom-rules-engine commit that generated the
+        # input surface in a foreign record (one naming that repository), so
+        # the scan passes it over; test_nz_axiom_input_closure.py pins that
+        # commit to the surface. A rulespec commit planted beside it is caught.
+        reviewed = reviewed_rulespec_commits()
+        clean = _package_payloads()
+        engine = clean["axiom_input_closure.json"]["input_surface"]["engine"]
+        assert engine["repository"] == "TheAxiomFoundation/axiom-rules-engine"
+        assert unreviewed_mentions(rulespec_commit_mentions(clean), reviewed) == set()
+
+        def planted(edit: Callable[[dict[str, Any]], object]) -> set[str]:
+            payloads = copy.deepcopy(clean)
+            edit(payloads["axiom_input_closure.json"])
+            return unreviewed_mentions(rulespec_commit_mentions(payloads), reviewed)
+
+        assert planted(
+            lambda closure: closure["input_surface"].update(rulespec_commit="c0ffee1")
+        ) == {"c0ffee1"}
+        assert planted(
+            lambda closure: closure["input_surface"]["engine"].update(
+                rulespec_nz_commit="abad1dea"
+            )
+        ) == {"abad1dea"}
+        assert planted(
+            lambda closure: closure["entries"][0].update(
+                reason="Set at rulespec-nz deadbee."
+            )
+        ) == {"deadbee"}
+        # The record escapes the scan only while it names a non-rulespec
+        # repository.
+        assert planted(
+            lambda closure: closure["input_surface"]["engine"].update(
+                repository="TheAxiomFoundation/rulespec-nz"
+            )
+        ) == {engine["commit"]}
+        # The engine evidence cites the engine's src/rulespec.rs, so the
+        # engine commit's hex in that prose reads as a rulespec mention.
+        short = engine["commit"][:8]
+        assert planted(
+            lambda closure: closure.update(
+                engine_optional_evidence=(
+                    f"axiom-rules-engine {short}: "
+                    + closure["engine_optional_evidence"]
+                )
+            )
+        ) == {short}
+
     @settings(max_examples=300, deadline=None)
     @given(
         commit=_HEX40_TEXT,
