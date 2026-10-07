@@ -367,7 +367,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "selected_l0_lambda of a previous search on the same pool and "
             "targets, microcosm#1115). The search probes it first and stops "
             "there when the draw is feasible and within tolerance; a stale "
-            "value costs probes, not correctness. Requires --dataset-households."
+            "value costs probes, not feasibility (a warm and a cold search may "
+            "settle on different penalties inside the budget window). Requires "
+            "--dataset-households."
         ),
     )
     parser.add_argument(

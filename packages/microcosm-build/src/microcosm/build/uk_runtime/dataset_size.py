@@ -244,7 +244,9 @@ def select_uk_dataset_size(
     previous search on the same pool and targets selected, microcosm#1115):
     the search probes it first and stops there when the draw is feasible and
     within tolerance, saving the full bisection. The search still verifies
-    every probe, so a stale hint costs probes, never correctness.
+    every probe, so a stale hint costs probes, never feasibility; any penalty
+    whose draw lands inside the budget window is a valid stop, so a warm and a
+    cold search can settle on different penalties and select different rows.
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
