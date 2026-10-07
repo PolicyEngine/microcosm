@@ -436,6 +436,16 @@
       "path": "nts_car_availability.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "cross_grain_declarations.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_doctrine_exceptions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

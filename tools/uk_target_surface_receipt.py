@@ -31,6 +31,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.uk_runtime.cross_grain_declarations import uk_cross_grain_grain
 from microcosm.build.uk_runtime.full_targets import load_uk_full_target_inputs
 from microcosm.build.uk_runtime.graph_targets import (
     compile_uk_full_target_surface,
@@ -70,7 +71,7 @@ def _national_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "family": spec.family,
                 "geography_level": level,
                 "geography_id": geography_id,
-                "grain": str(metadata.get("cross_grain_grain") or level),
+                "grain": uk_cross_grain_grain(metadata, level, geography_id),
                 "value": float(spec.value),
                 "ledger_fact_period": metadata.get("ledger_fact_period"),
                 "uprating_from_period": metadata.get("uprating_from_period"),

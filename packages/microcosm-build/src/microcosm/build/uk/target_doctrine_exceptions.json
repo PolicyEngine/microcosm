@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "description": "Transitional ledger of cross-grain coverage gaps that exist on main and are closed by later commits of microcosm#1123 PR A. The coverage check tolerates exactly these entries; an entry that no longer matches a violation is stale and refused. The file is deleted by the commit that closes the last gap.",
+  "entries": [
+    {
+      "kind": "local_target_without_control",
+      "target_id": "hmrc.employment_income.amount",
+      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "hmrc.employment_income.count",
+      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "hmrc.self_employment_income.amount",
+      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "hmrc.self_employment_income.count",
+      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "ons.tenure.owned_mortgage",
+      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "ons.tenure.owned_outright",
+      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "ons.tenure.private_rent",
+      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "ons.tenure.social_rent",
+      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "dwp.uc.households_by_area_children_0",
+      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "dwp.uc.households_by_area_children_1",
+      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "dwp.uc.households_by_area_children_2",
+      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
+    },
+    {
+      "kind": "local_target_without_control",
+      "target_id": "dwp.uc.households_by_area_children_3plus",
+      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_12570_15000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_15000_20000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_20000_30000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_30000_40000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_40000_50000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_50000_70000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_70000_100000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_100000_150000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_150000_200000",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    },
+    {
+      "kind": "undeclared_overlap",
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band,hmrc.spi_region.taxpayers_by_region_200000_plus",
+      "closed_by": "C5: the regional SPI cells (taxpayers, total income, income tax) are reconciled to the ITL projected UK bands they nest in (band bridges in the national compile)"
+    }
+  ]
+}

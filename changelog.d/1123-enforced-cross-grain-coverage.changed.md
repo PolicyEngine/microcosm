@@ -1,0 +1,1 @@
+UK cross-grain reconciliation gains a nation grain, lower rows that span several legs (England over its regions), same-geography partitions and a refusal of partial middle tiers; the UK declarations move to uk/cross_grain_declarations.json and a coverage check refuses any undeclared multi-grain overlap or local target without a control (microcosm#1123).

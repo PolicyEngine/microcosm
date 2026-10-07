@@ -1030,18 +1030,17 @@ def test_household_condition_still_reduces_group_entities():
 
 
 def test_uk_cross_grain_rule_constants_are_review_pinned():
+    # microcosm#1123: a nation grain sits between the UK/GB/E&W rows and the
+    # regions, and the nation tier controls the grains below it.
     assert UK_CROSS_GRAIN_GRAIN_PRECEDENCE == (
         "country",
+        "nation",
         "region",
         "constituency",
         "la",
     )
-    assert UK_CROSS_GRAIN_RULE.grain_precedence == (
-        "country",
-        "region",
-        "constituency",
-        "la",
-    )
+    assert UK_CROSS_GRAIN_RULE.grain_precedence == UK_CROSS_GRAIN_GRAIN_PRECEDENCE
+    assert UK_CROSS_GRAIN_RULE.control_grains == ("country", "nation", "region")
     assert [bridge.bridge_id for bridge in UK_CROSS_GRAIN_BRIDGES] == [
         "national_household_composition_partition_vs_census_households",
         "national_uc_caseload_vs_uc_households_by_area",
@@ -2245,8 +2244,9 @@ def test_uk_local_target_surface_places_nation_rows_at_the_region_grain() -> Non
 
 
 def test_uk_local_target_surface_reconciles_mixed_country_and_region_tiers() -> None:
-    """A nation row left at Chronicle's country grain still parents its own
-    constituencies: each lower leg takes its nearest covering control."""
+    """A nation row left at Chronicle's country level sits at the nation grain
+    (microcosm#1123) and still parents its own constituencies: each lower leg
+    takes its nearest covering control, with values unchanged."""
 
     registry = TargetRegistry(
         [
@@ -2274,9 +2274,9 @@ def test_uk_local_target_surface_reconciles_mixed_country_and_region_tiers() -> 
         if group["bridge_id"] == "national_age_0_9_vs_local_age_0_10"
     }
     assert pairs == {
-        "country_over_region",
+        "nation_over_region",
         "region_over_constituency",
-        "country_over_constituency",
+        "nation_over_constituency",
     }
     assert {e["parent_geography_id"] for e in receipt["absent_middle_tier_legs"]} == {
         "W92000004"
