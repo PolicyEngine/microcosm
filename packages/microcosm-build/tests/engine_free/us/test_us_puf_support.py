@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_us_puf_support.py."""
 
 # ruff: noqa: F403, F405
+import math
+
 from test_support.microcosm_build.us_puf_support import *
 
 
@@ -255,6 +257,8 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
         adjusted_gross_income=[0.0, 0.0, 10_000_000.0],
         person_outputs=(
             "home_mortgage_interest",
+            "home_mortgage_points",
+            "mortgage_insurance_premiums",
             "investment_interest_expense",
             "employment_income_before_lsr",
             "short_term_capital_gains",
@@ -290,13 +294,19 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
     ]
 
     raw_total = np.asarray([10_000_000.0, 5_000_000.0, 10_500_000.0])
-    mortgage, investment = split_us_puf_e19200_by_agi_band(
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
         raw_total,
+        np.asarray([0.0, 0.0, 10_000_000.0]),
+    )
+    points, premiums, investment = split_us_puf_e19200_residual_by_agi_band(
+        non_mortgage,
         np.asarray([0.0, 0.0, 10_000_000.0]),
     )
     share = mortgage / raw_total
     expected_before_quarantine = {
         "home_mortgage_interest": mortgage,
+        "home_mortgage_points": points,
+        "mortgage_insurance_premiums": premiums,
         "investment_interest_expense": investment,
         "first_home_mortgage_interest": (
             np.asarray([8_000_000.0, 4_000_000.0, 7_000_000.0]) * share
@@ -347,7 +357,7 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
         field = quarantine["fields"][column]
         screened = expected[[0, 2]]
         assert field["screened_record_count"] == 2
-        assert field["screened_nonzero_record_count"] == 2
+        assert field["screened_nonzero_record_count"] == np.count_nonzero(screened)
         assert field["screened_weight"] == 404.0
         assert field["screened_unweighted_signed_mass"] == pytest.approx(screened.sum())
         assert field["screened_weighted_signed_mass"] == pytest.approx(
@@ -363,6 +373,8 @@ def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
 
     assert puf_support_module.US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS == (
         "home_mortgage_interest",
+        "home_mortgage_points",
+        "mortgage_insurance_premiums",
         "investment_interest_expense",
         "first_home_mortgage_interest",
         "second_home_mortgage_interest",
@@ -392,7 +404,9 @@ def test_puf_tax_unit_donor_rejects_reserved_screen_column_output() -> None:
         )
 
 
-def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
+def test_puf_e19200_split_scales_only_lineage_and_populates_three_residual_leaves() -> (
+    None
+):
     # Pin the lineage tuple by exact membership: an accidental addition (the
     # sol round-1 failure mode was appending investment_interest_expense,
     # invisible behind a zero sentinel) must fail here, not silently carve a
@@ -431,6 +445,8 @@ def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
             "second_home_mortgage_balance": [0.0, 125_000.0],
             "first_home_mortgage_origination_year": [2018.0, 2016.0],
             "second_home_mortgage_origination_year": [0.0, 2020.0],
+            "home_mortgage_points": [0.0, 0.0],
+            "mortgage_insurance_premiums": [0.0, 0.0],
             "investment_interest_expense": [0.0, 0.0],
             puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN: [100.0, 200.0],
             puf_support_module._E19200_AGI_BAND_COLUMN: [0.0, 10_000_000.0],
@@ -450,7 +466,16 @@ def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
             donor[column].to_numpy(),
             original[column].to_numpy() * shares,
         )
-    np.testing.assert_allclose(donor["investment_interest_expense"], non_mortgage)
+    residual_leaves = split_us_puf_e19200_residual_by_agi_band(
+        non_mortgage,
+        np.asarray([0.0, 10_000_000.0]),
+    )
+    for column, values in zip(
+        puf_support_module.US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+        residual_leaves,
+        strict=True,
+    ):
+        np.testing.assert_array_equal(donor[column], values)
     for column in (
         "real_estate_taxes",
         "first_home_mortgage_balance",
@@ -461,6 +486,44 @@ def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
         np.testing.assert_array_equal(donor[column], original[column])
     assert puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor
     assert puf_support_module._E19200_AGI_BAND_COLUMN not in donor
+
+
+def test_puf_e19200_donor_preserves_splitter_mortgage_bits_and_exact_leaf_sum() -> None:
+    totals = np.asarray(
+        [0.0, 1.53, 659_340.46, np.nextafter(0.0, 1.0), np.finfo(np.float64).max]
+    )
+    agi = np.asarray([0.0, 0.0, 10_000_000.0, 50_000.0, 10_000_000.0])
+    mortgage, _residual = split_us_puf_e19200_by_agi_band(totals, agi)
+    reconstructed = totals * np.divide(
+        mortgage, totals, out=np.ones_like(totals), where=totals != 0
+    )
+    assert np.any(reconstructed.view(np.uint64) != mortgage.view(np.uint64))
+    donor = pd.DataFrame(
+        {
+            "home_mortgage_interest": totals,
+            **{
+                column: np.zeros_like(totals)
+                for column in puf_support_module.US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS
+            },
+            puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN: totals,
+            puf_support_module._E19200_AGI_BAND_COLUMN: agi,
+        }
+    )
+
+    puf_support_module._split_us_puf_e19200_components(donor)
+
+    np.testing.assert_array_equal(
+        donor["home_mortgage_interest"].to_numpy().view(np.uint64),
+        mortgage.view(np.uint64),
+    )
+    leaves = donor[
+        [
+            "home_mortgage_interest",
+            *puf_support_module.US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+        ]
+    ].to_numpy()
+    summed = np.asarray([math.fsum(row) for row in leaves])
+    np.testing.assert_array_equal(summed.view(np.uint64), totals.view(np.uint64))
 
 
 def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
@@ -478,13 +541,11 @@ def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
     assert "self_employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "self_employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert "tax_exempt_interest_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-    assert "investment_interest_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-    assert (
-        "investment_interest_expense"
-        in puf_support_module._PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS
-    )
-    assert "investment_interest_expense" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
-    assert "investment_interest_expense" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+    for column in puf_support_module.US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS:
+        assert column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        assert column in puf_support_module._PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS
+        assert column not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        assert column not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
     assert "unemployment_compensation" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     assert (
         "long_term_capital_gains_before_response"

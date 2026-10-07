@@ -180,13 +180,13 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
 
     single = len(module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY)
     joint = len(module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY)
-    assert single == 134
+    assert single == 136
     assert joint == 1
     assert len(contract) == single + joint
-    assert sum(len(row["metric_legs"]) for row in contract.values()) == 372
+    assert sum(len(row["metric_legs"]) for row in contract.values()) == 380
     assert (
         sum(row["metric"] == "monetary_sign_separated" for row in contract.values())
-        == 79
+        == 81
     )
     assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 51
     assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 5

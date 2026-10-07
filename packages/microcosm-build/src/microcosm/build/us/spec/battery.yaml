@@ -343,6 +343,16 @@ metric_registry:
   metric: monetary_sign_separated
 - entity: person
   family: puf_tax_itemization
+  column: home_mortgage_points
+  clone_index: 0
+  metric: monetary_sign_separated
+- entity: person
+  family: puf_tax_itemization
+  column: mortgage_insurance_premiums
+  clone_index: 0
+  metric: monetary_sign_separated
+- entity: person
+  family: puf_tax_itemization
   column: investment_interest_expense
   clone_index: 0
   metric: monetary_sign_separated

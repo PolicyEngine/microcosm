@@ -42,6 +42,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from microcosm.build.us_runtime.puf_interest_components import (
+    US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+)
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
     project_ecps_parity_known_gap_names,
@@ -75,6 +78,7 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
 # Schedule-D leg. These later inputs are hard requirements because the
 # shipped validation provisions must bind.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
+    *US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS[:2],
     "fsla_overtime_premium",
     "qualified_passenger_vehicle_loan_interest",
     "traditional_401k_contributions_desired",
@@ -113,6 +117,21 @@ _RECEIPT_INPUT_NOTE_TAIL = (
 # from today's artifacts is the intended red gate (the #368 SSI-asset
 # pattern, extended by #462 to the capital-gain-distributions route).
 POST_REFERENCE_COLUMN_NOTES = {
+    "home_mortgage_points": (
+        "Deductible points not already carried in home_mortgage_interest "
+        "(Schedule A line 8c), derived from PUF E19200 using published SOI "
+        "Table 2.1 column CN within each AGI band's non-mortgage residual. "
+        "No frozen eCPS nonzero-share reference exists. Required without "
+        "a reviewed exclusion; pending the PolicyEngine-US leaf-input release."
+    ),
+    "mortgage_insurance_premiums": (
+        "Qualified mortgage-insurance premiums (Schedule A line 8d), "
+        "derived from PUF E19200 using published SOI Table 2.1 column CP "
+        "within each AGI band's non-mortgage residual, before any engine "
+        "AGI phase-out. No frozen eCPS nonzero-share reference exists. "
+        "Required without a reviewed exclusion; pending the PolicyEngine-US "
+        "leaf-input release."
+    ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
         "split (memo component of long_term_capital_gains, written by the "
@@ -1616,6 +1635,8 @@ def build_manifest() -> dict:
             "Required surface = input columns in the pinned, sha-verified "
             "ecps_parity_reference.json populated layers, plus the documented "
             "post-reference fsla_overtime_premium, "
+            "home_mortgage_points and mortgage_insurance_premiums from the "
+            "source-backed E19200 decomposition (no frozen eCPS reference), "
             "qualified_passenger_vehicle_loan_interest, five desired "
             "retirement-contribution inputs, "
             "meets_ssi_disability_criteria required by shipped validation "

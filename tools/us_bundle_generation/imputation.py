@@ -67,6 +67,9 @@ from microcosm.fit import DEFAULT_N_ESTIMATORS, DEFAULT_ZERO_ATOL
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
 )
+from tools.us_bundle_generation.pending_engine_inputs import (
+    generator_variable_metadata,
+)
 
 _LEGACY_CLONE_ATTACHMENT_FRACTION = 1.0
 _LEGACY_CLONE_ATTACHMENT_SEED = 578
@@ -413,7 +416,7 @@ def _target(
     entity: str,
     name: str,
 ) -> dict[str, object]:
-    declaration = metadata.variable_metadata(name)
+    declaration = generator_variable_metadata(metadata, name)
     if declaration.entity != entity:
         raise RuntimeError(
             f"Imputation target {entity}.{name} is owned by "
@@ -2013,8 +2016,8 @@ def _split_after() -> list[dict[str, object]]:
         if group.entity == "person"
         and group.family.startswith("puf_tax_itemization__batch_")
     ]
-    if [len(group.targets) for group in late_batches] != [8, 8, 8, 8, 5]:
-        raise RuntimeError("Late PUF itemization is no longer the reviewed 5x37 split.")
+    if [len(group.targets) for group in late_batches] != [8, 8, 8, 8, 7]:
+        raise RuntimeError("Late PUF itemization is no longer the reviewed 5x39 split.")
     result = [
         {
             "family": f"late/{group.entity}/{group.family}",
@@ -2061,13 +2064,13 @@ def _assert_invariants(
         by_stage.setdefault(str(family["stage"]), []).append(family)
     expected = {
         "gap_fill_stacked_spine": (13, 48),
-        "primary_puf_qrf": (1, 65),
-        "late_producer_dag": (19, 70),
+        "primary_puf_qrf": (1, 67),
+        "late_producer_dag": (19, 72),
     }
     expected_dtypes = {
         "gap_fill_stacked_spine": {"bool": 20, "float": 27, "int": 1},
-        "primary_puf_qrf": {"bool": 8, "float": 55, "int": 2},
-        "late_producer_dag": {"bool": 17, "float": 50, "int": 1, "str": 2},
+        "primary_puf_qrf": {"bool": 8, "float": 57, "int": 2},
+        "late_producer_dag": {"bool": 17, "float": 52, "int": 1, "str": 2},
     }
     for stage, (family_count, target_count) in expected.items():
         rows = by_stage.get(stage, [])
@@ -2093,7 +2096,7 @@ def _assert_invariants(
         len(compiled_schedule["edges"]),
         len(compiled_schedule["waves"]),
         len(graph["ownership_matrix"]),
-    ) != (38, 71, 6, 18):
+    ) != (38, 70, 5, 18):
         raise RuntimeError("US producer graph count invariant changed.")
     input_count = sum(len(node["inputs"]) for node in graph["nodes"])
     authored_output_count = sum(len(node["outputs"]) for node in graph["nodes"])
@@ -2121,7 +2124,7 @@ def _assert_invariants(
         late_authored_output_count,
         len(tolerated_receipts),
     )
-    expected_graph_counts = (2744, 92, 227, 35, 0, 213)
+    expected_graph_counts = (2748, 92, 231, 35, 0, 215)
     if graph_counts != expected_graph_counts:
         raise RuntimeError(
             "US producer graph input/output/absence counts changed: "

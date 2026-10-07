@@ -4,6 +4,10 @@
   "reviewed_consumerless_inputs_excluded": [
     "has_marketplace_health_coverage"
   ],
+  "post_reference_inputs_without_nonzero_share_reference": {
+    "home_mortgage_points": "Separate SOI Table 2.1 CN leaf from PUF E19200; the frozen eCPS predates this input. Required in the release coverage manifest without inventing a reference share.",
+    "mortgage_insurance_premiums": "Separate SOI Table 2.1 CP leaf from PUF E19200; the frozen eCPS predates this input. Required in the release coverage manifest without inventing a reference share."
+  },
   "source": {
     "repo_id": "policyengine/policyengine-us-data",
     "repo_type": "model",

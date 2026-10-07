@@ -22,7 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+US_SCHEDULE_SHA256 = "4e5e538d9f7021d7649f06bf7b28c7374ed74b4da242ccd24dd8ccce284bd116"
 
 
 @pytest.fixture(scope="module")
@@ -140,10 +140,10 @@ def test_us_node_slices_are_transitive_and_content_attested(
 def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -> None:
     inventory = compiled_us.typed_inventory
     assert len(inventory["entities"]) == 8
-    assert len(inventory["columns"]) == 176
+    assert len(inventory["columns"]) == 178
     assert len(inventory["artifacts"]) == 84
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 334
+    assert len(inventory["references"]) == 336
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {

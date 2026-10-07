@@ -36,6 +36,9 @@ from microcosm.build.spec_engine.publication_semantics import (
 from microcosm.build.spec_engine.publication_semantics import (
     project_spine_legacy_sampling as _project_spine_legacy_sampling,
 )
+from tools.us_bundle_generation.pending_engine_inputs import (
+    generator_variable_metadata,
+)
 
 __all__ = [
     "build_bundle",
@@ -57,9 +60,7 @@ _CANONICAL_INPUT_PIN_BUILD_ID = "populace-us-2024-pool-inc2-run7"
 _CD_CROSSWALK_PACKAGE = "microcosm.build.us_runtime.data"
 _CD_CROSSWALK_RESOURCE = "congressional_district_vintage_crosswalk.csv"
 _CD_CROSSWALK_PROVENANCE_RESOURCE = f"{_CD_CROSSWALK_RESOURCE}.provenance.json"
-_CD_CROSSWALK_SOURCE_ID = (
-    "us_congressional_district_vintage_crosswalk_117_to_119"
-)
+_CD_CROSSWALK_SOURCE_ID = "us_congressional_district_vintage_crosswalk_117_to_119"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED_INPUT_ROLES = frozenset(
     {
@@ -191,6 +192,7 @@ def _publication_rung_rows(
 ) -> list[dict[str, int | float | str]]:
     return publication_rung_rows(publication)
 
+
 def _compiled_publication_regex(
     *,
     pattern: str,
@@ -203,10 +205,12 @@ def _compiled_publication_regex(
         rung_tokens=rung_tokens,
     )
 
+
 def project_publication_legacy_release(
     publication: Mapping[str, Any],
 ) -> dict[str, Any]:
     return _project_publication_legacy_release(publication)
+
 
 def project_spine_legacy_sampling(
     spine: Mapping[str, Any],
@@ -214,6 +218,7 @@ def project_spine_legacy_sampling(
     publication: Mapping[str, Any],
 ) -> dict[str, Any]:
     return _project_spine_legacy_sampling(spine, publication=publication)
+
 
 def _source_stage_compatibility() -> dict[str, Any]:
     from microcosm.build.source_manifest import SourceManifest
@@ -254,9 +259,7 @@ def _congressional_district_vintage_crosswalk_provenance() -> dict[str, Any]:
         _CD_CROSSWALK_PROVENANCE_RESOURCE,
     )
     expected_digest = payload.get("crosswalk_sha256")
-    if not isinstance(expected_digest, str) or not _SHA256.fullmatch(
-        expected_digest
-    ):
+    if not isinstance(expected_digest, str) or not _SHA256.fullmatch(expected_digest):
         raise ValueError("US CD-vintage crosswalk has no valid crosswalk_sha256.")
     raw = (
         importlib_resources.files(_CD_CROSSWALK_PACKAGE)
@@ -990,7 +993,8 @@ def build_vintages() -> dict[str, Any]:
 def build_catalogs() -> dict[str, Any]:
     """Build the complete physical column contract catalog.
 
-    PolicyEngine metadata covers the 142 modeled inputs.  The producer graph
+    PolicyEngine metadata and reviewed pending declarations cover the modeled
+    inputs. The producer graph
     additionally emits generation-0 Frame structure, linkage, support
     provenance, and resolved weights which are deliberately outside the engine
     variable index; those contracts are derived from the canonical producer
@@ -1013,7 +1017,7 @@ def build_catalogs() -> dict[str, Any]:
     columns: list[dict[str, Any]] = []
     seen: set[str] = set()
     for entry in pool_input_surface():
-        metadata = index.variable_metadata(entry.variable)
+        metadata = generator_variable_metadata(index, entry.variable)
         if metadata.entity != entry.entity:
             raise ValueError(
                 f"Pool catalog entity differs for {entry.variable!r}: "
@@ -1066,7 +1070,7 @@ def build_catalogs() -> dict[str, Any]:
         or output["column"] == "@resolved_weight"
     }
     missing_graph_contracts = graph_physical_keys - seen
-    if len(graph_physical_keys) != 134 or len(missing_graph_contracts) != 34:
+    if len(graph_physical_keys) != 136 or len(missing_graph_contracts) != 34:
         raise ValueError(
             "Canonical producer/catalog closure changed; "
             f"physical_outputs={len(graph_physical_keys)}, "
@@ -1143,8 +1147,8 @@ def build_catalogs() -> dict[str, Any]:
         seen.add(key)
     if not deferred <= {key.split(".", 1)[1] for key in seen}:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
-    if len(seen) != 176:
-        raise ValueError(f"Closed US catalog must contain 176 keys, got {len(seen)}.")
+    if len(seen) != 178:
+        raise ValueError(f"Closed US catalog must contain 178 keys, got {len(seen)}.")
     return {
         "metadata_waivers": [
             {

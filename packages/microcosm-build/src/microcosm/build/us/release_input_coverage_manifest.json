@@ -166,6 +166,10 @@
   "home_mortgage_interest": {
    "status": "required"
   },
+  "home_mortgage_points": {
+   "note": "Deductible points not already carried in home_mortgage_interest (Schedule A line 8c), derived from PUF E19200 using published SOI Table 2.1 column CN within each AGI band's non-mortgage residual. No frozen eCPS nonzero-share reference exists. Required without a reviewed exclusion; pending the PolicyEngine-US leaf-input release.",
+   "status": "required"
+  },
   "hourly_wage": {
    "status": "required"
   },
@@ -276,6 +280,10 @@
    "status": "required"
   },
   "miscellaneous_income": {
+   "status": "required"
+  },
+  "mortgage_insurance_premiums": {
+   "note": "Qualified mortgage-insurance premiums (Schedule A line 8d), derived from PUF E19200 using published SOI Table 2.1 column CP within each AGI band's non-mortgage residual, before any engine AGI phase-out. No frozen eCPS nonzero-share reference exists. Required without a reviewed exclusion; pending the PolicyEngine-US leaf-input release.",
    "status": "required"
   },
   "net_worth": {
@@ -550,11 +558,11 @@
   }
  },
  "counts": {
-  "required": 167,
+  "required": 169,
   "reviewed_exclusion": 7,
-  "total": 174
+  "total": 176
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, home_mortgage_points and mortgage_insurance_premiums from the source-backed E19200 decomposition (no frozen eCPS reference), qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {

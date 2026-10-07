@@ -546,7 +546,7 @@
  ],
  "engine": "policyengine-us",
  "engine_version": "2.2.1",
- "input_count": 926,
+ "input_count": 928,
  "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
  "structural_inputs": [
   {
@@ -1768,6 +1768,10 @@
    "name": "home_is_on_agricultural_land"
   },
   {
+   "entity": "person",
+   "name": "home_mortgage_points"
+  },
+  {
    "entity": "spm_unit",
    "name": "homeowners_association_fees"
   },
@@ -2662,6 +2666,10 @@
   {
    "entity": "spm_unit",
    "name": "months_since_calworks_exit"
+  },
+  {
+   "entity": "person",
+   "name": "mortgage_insurance_premiums"
   },
   {
    "entity": "person",

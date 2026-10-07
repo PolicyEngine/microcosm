@@ -35,6 +35,8 @@ required = {
         "pre_subsidy_rent",
         "self_employment_income_last_year",
         "previous_year_income_available",
+        "home_mortgage_points",
+        "mortgage_insurance_premiums",
         "investment_interest_expense",
         "salt_refund_income",
         "takes_up_medicare_if_eligible",

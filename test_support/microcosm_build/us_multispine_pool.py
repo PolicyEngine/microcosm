@@ -960,7 +960,7 @@ def _assert_pool_transfer_produced_encodings(
     # (microcosm#982).
     assert primary_predictors == puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS
     assert len(primary_predictors) == 8
-    assert len(primary_targets) == 65
+    assert len(primary_targets) == 67
 
     primary_qrf_observations = [
         observation

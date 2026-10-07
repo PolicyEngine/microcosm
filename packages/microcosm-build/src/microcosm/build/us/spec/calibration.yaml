@@ -285,6 +285,7 @@ tail_contracts:
     - has_never_worked
     - health_savings_account_ald
     - home_mortgage_interest
+    - home_mortgage_points
     - hourly_wage
     - investment_income_elected_form_4952
     - investment_interest_expense
@@ -299,6 +300,7 @@ tail_contracts:
     - long_term_capital_gains_on_collectibles
     - meets_ssi_disability_criteria
     - miscellaneous_income
+    - mortgage_insurance_premiums
     - net_worth
     - non_qualified_dividend_income
     - non_sch_d_capital_gains

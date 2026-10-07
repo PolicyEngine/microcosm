@@ -271,6 +271,32 @@ class TestShippedManifest:
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
 
+    def test_e19200_new_leaves_are_required_without_reference_shares(self) -> None:
+        from microcosm.build.us_runtime.puf_interest_components import (
+            US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
+        )
+        from microcosm.build.us_runtime.release_input_coverage import (
+            POST_REFERENCE_ECPS_REQUIRED_INPUTS,
+        )
+
+        manifest = load_release_input_coverage_manifest()
+        reference = json.loads(
+            files("microcosm.build.us")
+            .joinpath("ecps_parity_reference.json")
+            .read_text(encoding="utf-8")
+        )
+        for column in US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS[:2]:
+            assert column in POST_REFERENCE_ECPS_REQUIRED_INPUTS
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+            assert column not in reference["nonzero_shares"]
+            assert (
+                column
+                in reference["post_reference_inputs_without_nonzero_share_reference"]
+            )
+            entry = next(entry for entry in manifest.columns if entry.name == column)
+            assert "No frozen eCPS" in entry.note
+
     def test_post_reference_ssi_disability_criterion_has_unique_probe(self) -> None:
         manifest = load_release_input_coverage_manifest()
         column = "meets_ssi_disability_criteria"

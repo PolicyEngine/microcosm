@@ -572,9 +572,11 @@ from microcosm.build.us_runtime.puf_e01000_reconciliation import (
 from microcosm.build.us_runtime.puf_interest_components import (
     US_PUF_E19200_AGI_BANDS,
     US_PUF_E19200_ALL_RETURNS_COMPONENTS,
+    US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS,
     PufE19200AgiBand,
     PufE19200InterestComponents,
     split_us_puf_e19200_by_agi_band,
+    split_us_puf_e19200_residual_by_agi_band,
 )
 from microcosm.build.us_runtime.puf_source_agi import (
     PUF_AGGREGATE_DISAGGREGATION_SEED,
@@ -1871,6 +1873,7 @@ __all__ = [
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
     "US_PUF_E19200_AGI_BANDS",
     "US_PUF_E19200_ALL_RETURNS_COMPONENTS",
+    "US_PUF_E19200_RESIDUAL_PERSON_OUTPUTS",
     "PUF_AGGREGATE_DISAGGREGATION_SEED",
     "PUF_AGGREGATE_RECIDS",
     "PUF_SOURCE_YEAR",
@@ -1922,6 +1925,7 @@ __all__ = [
     "reform_validation_payload",
     "source_gap_family_ids",
     "split_us_puf_e19200_by_agi_band",
+    "split_us_puf_e19200_residual_by_agi_band",
     "source_year_puf_adjusted_gross_income",
     "select_puf_capital_gains_tail_donors",
     "ECPS_PARITY_KNOWN_GAPS_RESOURCE",
@@ -2391,7 +2395,7 @@ US_DONORS: Mapping[str, DonorSpec] = {
         notes=(
             "Itemized-deduction detail, versioned processed-PUF Section 199A "
             "simulation leaves (carried without redrawing), partnership SE, "
-            "source-year-AGI E19200 mortgage/non-mortgage split, direct "
+            "source-year-AGI E19200 mortgage/points/premiums/investment split, direct "
             "E00800/E03500 alimony, direct E20500 casualty loss, and the E20400 "
             "miscellaneous-expense proxy. The pinned processed PUF uprates its "
             "raw TY2015 rows before seeded disclosure-record replacement and "

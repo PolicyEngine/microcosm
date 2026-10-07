@@ -27,7 +27,7 @@ _PRIMARY_PUF_PRODUCER = "primary_puf_qrf"
 _EDUCATION_SOURCE_PRODUCER = "source:with_us_education_inputs"
 _RETIREMENT_SOURCE_PRODUCER = "source:with_us_retirement_contribution_inputs"
 _TUITION_TRANSFER_PRODUCER = "transfer:person/puf_tax_itemization__batch_2"
-_TRADITIONAL_IRA_TRANSFER_PRODUCER = "transfer:person/puf_tax_itemization__batch_2"
+_TRADITIONAL_IRA_TRANSFER_PRODUCER = "transfer:person/puf_tax_itemization__batch_3"
 _SELF_EMPLOYED_PENSION_TRANSFER_PRODUCER = (
     "transfer:person/puf_tax_itemization__batch_3"
 )

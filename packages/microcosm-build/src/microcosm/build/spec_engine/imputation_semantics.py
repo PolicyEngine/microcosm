@@ -78,8 +78,37 @@ def _legacy_float(value: object, *, location: str) -> float:
     return float(value)
 
 
+def restore_soi_e19200_agi_band_numbers(soi: Mapping[str, object]) -> None:
+    """Restore runtime float identity, including exact zero residual shares."""
+
+    runtime = _mapping_like(soi["runtime_agi_bands"], "runtime SOI AGI bands")
+    for label, rows_value in (
+        ("parsed", soi["agi_bands"]),
+        ("runtime", runtime["agi_bands"]),
+    ):
+        for index, row_value in enumerate(
+            _array_like(rows_value, f"{label} AGI bands")
+        ):
+            row = _mapping_like(row_value, f"{label} AGI band {index}")
+            for key in (
+                "lower_bound",
+                "upper_bound",
+                "deductible_points_residual_share",
+                "qualified_mortgage_insurance_premiums_residual_share",
+                "investment_interest_residual_share",
+                "deductible_points_within_points_and_premiums_share",
+            ):
+                if row.get(key) is not None:
+                    row[key] = _legacy_float(  # type: ignore[index]
+                        row[key], location=f"{label} AGI band {index}/{key}"
+                    )
+    runtime["sha256"] = _canonical_sha256(  # type: ignore[index]
+        {key: value for key, value in runtime.items() if key != "sha256"}
+    )
+
+
 def _restore_primary_tail_legacy_numbers(tail: dict[str, object]) -> None:
-    """Re-inflate only the reviewed float-valued capital-gains fields."""
+    """Re-inflate the reviewed float-valued capital-gains and SOI fields."""
 
     concentration = _mapping_like(
         tail["concentration_gate"], "capital-gains concentration gate"
@@ -99,24 +128,8 @@ def _restore_primary_tail_legacy_numbers(tail: dict[str, object]) -> None:
                 bucket[key] = _legacy_float(  # type: ignore[index]
                     bucket[key], location=f"capital-gains bucket {index}/{key}"
                 )
-
-    soi = _mapping_like(tail["soi_e19200_agi_bands"], "SOI E19200 AGI bands")
-    runtime = _mapping_like(soi["runtime_agi_bands"], "runtime SOI AGI bands")
-    for label, rows_value in (
-        ("parsed", soi["agi_bands"]),
-        ("runtime", runtime["agi_bands"]),
-    ):
-        for index, row_value in enumerate(
-            _array_like(rows_value, f"{label} AGI bands")
-        ):
-            row = _mapping_like(row_value, f"{label} AGI band {index}")
-            for key in ("lower_bound", "upper_bound"):
-                if row.get(key) is not None:
-                    row[key] = _legacy_float(  # type: ignore[index]
-                        row[key], location=f"{label} AGI band {index}/{key}"
-                    )
-    runtime["sha256"] = _canonical_sha256(  # type: ignore[index]
-        {key: value for key, value in runtime.items() if key != "sha256"}
+    restore_soi_e19200_agi_band_numbers(
+        _mapping_like(tail["soi_e19200_agi_bands"], "SOI E19200 AGI bands")
     )
 
 
@@ -1843,4 +1856,5 @@ def project_imputation_legacy_payloads(
 __all__ = [
     "derive_primary_effective_predictor_tuples",
     "project_imputation_legacy_payloads",
+    "restore_soi_e19200_agi_band_numbers",
 ]

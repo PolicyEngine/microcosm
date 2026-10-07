@@ -192,7 +192,7 @@ def test_typed_imputation_reconstructs_all_constants_authority_components(
     assert len(payloads["overlap_ownership"]["ownership"]) == 18
     assert (
         payloads["overlap_ownership"]["sha256"]
-        == "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
+        == "d2a54260c1a4da54a247dcd723134c3b6de5cdaef021fc241d77b9e89d7dd675"
     )
 
 
@@ -310,6 +310,13 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
         "runtime_agi_bands"
     ]
     assert set(runtime_bands) == {"schema_version", "agi_bands"}
+    for band in runtime_bands["agi_bands"]:
+        assert {
+            "deductible_points_residual_share",
+            "qualified_mortgage_insurance_premiums_residual_share",
+            "investment_interest_residual_share",
+            "deductible_points_within_points_and_premiums_share",
+        } <= band.keys()
 
 
 @pytest.mark.parametrize("asset_pin", ["share_asset", "soi_agi_bands"])

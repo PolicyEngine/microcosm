@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf
+  sha256: 9e807e4bb83ded40c177c130515faad2fdcde747c6acb825e0d601e1609538b7
 stage_manifest:
   version: 1
   country: us
@@ -242,8 +242,13 @@ stages:
     published_source_year: 2015
     published_total_column: CF
     published_home_mortgage_column: CH
+    published_deductible_points_column: CN
+    published_mortgage_insurance_premiums_column: CP
+    published_investment_interest_column: CR
     mortgage_output: home_mortgage_interest
-    non_mortgage_output: investment_interest_expense
+    points_output: home_mortgage_points
+    premiums_output: mortgage_insurance_premiums
+    investment_output: investment_interest_expense
     allocation: deterministic proportional allocation within each published AGI band
     outlier_screen_before_split:
       variable: home_mortgage_interest
@@ -284,6 +289,8 @@ stages:
   - charitable_non_cash_donations
   - real_estate_taxes
   - home_mortgage_interest
+  - home_mortgage_points
+  - mortgage_insurance_premiums
   - investment_interest_expense
   - investment_income_elected_form_4952
   - student_loan_interest
@@ -348,6 +355,8 @@ stages:
   - charitable_non_cash_donations
   - real_estate_taxes
   - home_mortgage_interest
+  - home_mortgage_points
+  - mortgage_insurance_premiums
   - investment_interest_expense
   - investment_income_elected_form_4952
   - student_loan_interest
@@ -2407,7 +2416,7 @@ stages:
   notes: This structural stage consumes the mortgage-only lineage already produced by puf_tax_detail's
     source-backed Table 2.1 E19200 decomposition. It combines that lineage with SCF mortgage-debt hints
     to derive mortgage balances and person-carried mortgage inputs; it neither constructs nor overwrites
-    investment_interest_expense.
+    home_mortgage_points, mortgage_insurance_premiums, or investment_interest_expense.
 - stage: acs_rent
   survey: Census ACS 2022
   source: https://www.census.gov/programs-surveys/acs

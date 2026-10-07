@@ -2761,6 +2761,26 @@
                      "home_mortgage_share": {
                       "type": "number"
                      },
+                     "deductible_points_residual_share": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                     },
+                     "qualified_mortgage_insurance_premiums_residual_share": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                     },
+                     "investment_interest_residual_share": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                     },
+                     "deductible_points_within_points_and_premiums_share": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                     },
                      "investment_interest_amount": {
                       "type": "integer"
                      },
@@ -2832,6 +2852,10 @@
                      "deductible_points_amount",
                      "home_mortgage_interest_amount",
                      "home_mortgage_share",
+                     "deductible_points_residual_share",
+                     "qualified_mortgage_insurance_premiums_residual_share",
+                     "investment_interest_residual_share",
+                     "deductible_points_within_points_and_premiums_share",
                      "investment_interest_amount",
                      "label",
                      "lower_bound",
@@ -2934,6 +2958,26 @@
                        "home_mortgage_share": {
                         "type": "number"
                        },
+                       "deductible_points_residual_share": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                       },
+                       "qualified_mortgage_insurance_premiums_residual_share": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                       },
+                       "investment_interest_residual_share": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                       },
+                       "deductible_points_within_points_and_premiums_share": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                       },
                        "investment_interest_amount": {
                         "type": "integer"
                        },
@@ -3005,6 +3049,10 @@
                        "deductible_points_amount",
                        "home_mortgage_interest_amount",
                        "home_mortgage_share",
+                       "deductible_points_residual_share",
+                       "qualified_mortgage_insurance_premiums_residual_share",
+                       "investment_interest_residual_share",
+                       "deductible_points_within_points_and_premiums_share",
                        "investment_interest_amount",
                        "label",
                        "lower_bound",

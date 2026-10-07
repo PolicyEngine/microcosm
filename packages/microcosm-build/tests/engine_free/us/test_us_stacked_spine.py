@@ -1205,7 +1205,7 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         calibration["scope"]["reference"] = "forged"
 
 
-def test_canonical_metric_registry_covers_the_declared_134_target_split() -> None:
+def test_canonical_metric_registry_covers_the_declared_136_target_split() -> None:
     surface = stacked_spine_module.CANONICAL_STACKED_DECLARED_SURFACE
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     surface_targets = {
@@ -1215,9 +1215,9 @@ def test_canonical_metric_registry_covers_the_declared_134_target_split() -> Non
         for target in targets
     }
 
-    assert len(surface_targets) == 134
+    assert len(surface_targets) == 136
     assert Counter(entity for entity, _family, _target, _clone in surface_targets) == {
-        "person": 114,
+        "person": 116,
         "tax_unit": 12,
         "spm_unit": 8,
     }
@@ -1233,7 +1233,7 @@ def test_canonical_metric_registry_covers_the_declared_134_target_split() -> Non
     )
     assert set(registry) == surface_targets
     assert Counter(registry.values()) == {
-        "monetary_sign_separated": 79,
+        "monetary_sign_separated": 81,
         "boolean_incidence": 51,
         "categorical_tvd": 4,
     }
@@ -1274,13 +1274,13 @@ def test_canonical_metric_registry_covers_the_declared_134_target_split() -> Non
         for target in targets
     }
     assert len(gap_targets) == 48
-    assert len(post_puf_targets) == 70
-    assert len(puf_producer_targets) == 43
+    assert len(post_puf_targets) == 72
+    assert len(puf_producer_targets) == 45
     assert len(source_producer_targets) == 29
     assert len(puf_producer_targets & source_producer_targets) == 2
     assert puf_producer_targets | source_producer_targets == post_puf_targets
     assert gap_targets.isdisjoint(post_puf_targets)
-    assert len(gap_targets | post_puf_targets) == 118
+    assert len(gap_targets | post_puf_targets) == 120
     assert gap_targets | post_puf_targets < surface_targets
     assert not {
         "bank_account_assets",
@@ -1304,7 +1304,7 @@ def test_canonical_metric_registry_drives_checkpoint_round_trip(
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     nullable_booleans = _transferred_registry_boolean_targets()
     assert Counter(registry.values()) == {
-        "monetary_sign_separated": 79,
+        "monetary_sign_separated": 81,
         "boolean_incidence": 51,
         "categorical_tvd": 4,
     }
@@ -1472,7 +1472,7 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for (entity, _family, column, _clone_index), metric in registry.items()
     }
-    assert len(by_column) == len(registry) == 134
+    assert len(by_column) == len(registry) == 136
 
     representative = {
         "monetary_sign_separated": pd.Series([1.0, pd.NA], dtype="Float64"),
@@ -1514,11 +1514,11 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         for output in contract.outputs
         if (key := (output.entity, output.column)) in by_column
     ]
-    assert len(registered_occurrences) == 163
+    assert len(registered_occurrences) == 167
     assert Counter(
         metric for _producer, _entity, _column, metric in registered_occurrences
     ) == {
-        "monetary_sign_separated": 120,
+        "monetary_sign_separated": 124,
         "boolean_incidence": 37,
         "categorical_tvd": 6,
     }
@@ -1526,9 +1526,9 @@ def test_registry_drives_every_late_callback_dtype_family_check() -> None:
         (entity, column): metric
         for _producer, entity, column, metric in registered_occurrences
     }
-    assert len(unique_late_targets) == 90
+    assert len(unique_late_targets) == 92
     assert Counter(unique_late_targets.values()) == {
-        "monetary_sign_separated": 67,
+        "monetary_sign_separated": 69,
         "boolean_incidence": 20,
         "categorical_tvd": 3,
     }
@@ -2632,11 +2632,27 @@ def test_gap_fill_rejects_cloned_frames() -> None:
         _gap_fill_with_test_authority(cloned, plan=_GAP_FILL_TEST_PLAN, seed=578)
 
 
-def test_bounded_transfer_group_remaps_canonical_producer_roles() -> None:
+@pytest.mark.parametrize(
+    ("batch", "source_targets"),
+    [
+        (2, ()),
+        (
+            3,
+            (
+                "traditional_ira_contributions_desired",
+                "self_employed_pension_contributions_desired",
+            ),
+        ),
+    ],
+)
+def test_bounded_transfer_group_remaps_canonical_producer_roles(
+    batch: int,
+    source_targets: tuple[str, ...],
+) -> None:
     group = next(
         group
         for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
-        if group.family == "puf_tax_itemization__batch_2"
+        if group.family == f"puf_tax_itemization__batch_{batch}"
     )
 
     puf_roles = stacked_spine_module._producer_role_surface_for_group(
@@ -2648,13 +2664,17 @@ def test_bounded_transfer_group_remaps_canonical_producer_roles() -> None:
         stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE,
     )
 
-    assert "qualified_tuition_expenses" in puf_roles["person"][group.family]
-    assert "traditional_ira_contributions_desired" in puf_roles["person"][group.family]
-    assert source_roles == {
-        "person": {
-            group.family: ("traditional_ira_contributions_desired",),
-        }
-    }
+    if batch == 2:
+        assert {
+            "qualified_tuition_expenses",
+            "home_mortgage_points",
+            "mortgage_insurance_premiums",
+        } <= set(puf_roles["person"][group.family])
+    else:
+        assert set(source_targets) <= set(puf_roles["person"][group.family])
+    assert source_roles == (
+        {"person": {group.family: source_targets}} if source_targets else {}
+    )
 
 
 def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
@@ -7773,7 +7793,7 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     )
     canonical = stacked_completeness_gate(frame)
     assert canonical.passed, canonical.failures
-    assert canonical.details["declared_targets"] == 134
+    assert canonical.details["declared_targets"] == 136
     authority = canonical.details["authority"]
     assert authority["authority_form"] == "CANONICAL"
     assert authority["canonical"] is True
@@ -8261,7 +8281,7 @@ def test_fresh_gate_result_cannot_graft_canonical_authority_onto_test_surface() 
 
     with pytest.raises(
         ValueError,
-        match="must declare exactly 134 targets.*manifest emission is forbidden",
+        match="must declare exactly 136 targets.*manifest emission is forbidden",
     ):
         GateReport((grafted,)).to_manifest()
 
@@ -8396,7 +8416,7 @@ def test_fresh_battery_result_cannot_forge_canonical_coverage_receipts() -> None
 
     with pytest.raises(
         ValueError,
-        match="coverage receipt must bind all 134 targets.*emission is forbidden",
+        match="coverage receipt must bind all 136 targets.*emission is forbidden",
     ):
         GateReport((forged,)).to_manifest()
 
@@ -8810,7 +8830,7 @@ def test_battery_taxable_interest_metric_cannot_be_relabelled_rare_incidence() -
     assert not result.passed
     assert result.details["tested_comparisons"] == 0
     metric_receipt = result.details["authority"]["components"]["metric_registry"]
-    assert metric_receipt["target_count"] == 134
+    assert metric_receipt["target_count"] == 136
     assert any(
         "person/puf_tax_itemization/taxable_interest_income[clone_0]" in failure
         and "authoritative metric 'monetary_sign_separated'" in failure
