@@ -19,18 +19,40 @@ three-leaf vector from either the Federal Reserve Survey of Consumer Finances
 restores the realistic low liquid-asset mass absent from the SCF-only stage.
 
 The SCF side uses the public summary extract (``rscfp2022.dta``) and the
-regime-gated weighted QRF (``microcosm.fit.QRF``). Its targets exactly match
-archived commit ``42ed5d45`` (``utils/asset_imputation.py``):
+regime-gated weighted QRF (``microcosm.fit.QRF``). Its targets match archived
+commit ``42ed5d45`` (``utils/asset_imputation.py``) except ``bond_assets``,
+which also reads U.S. savings bonds:
 
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
   call accounts).
 - ``stock_assets`` ← SCF ``stocks`` + ``nmmf`` (directly-held stock plus
-  stock/non-money-market mutual funds — the one code-level summation the
-  canonical pipeline applies).
-- ``bond_assets`` ← SCF ``bond`` (directly held tax-exempt, mortgage-backed,
-  U.S. government and agency, and corporate and foreign bonds). Bond funds
-  are in ``nmmf``, so they land in ``stock_assets``; U.S. savings bonds are
-  the SCF's separate ``savbnd``, which this stage does not read.
+  stock/non-money-market mutual funds).
+- ``bond_assets`` ← SCF ``bond`` + ``savbnd``. ``bond`` is directly held
+  tax-exempt, mortgage-backed, U.S. government and agency, and corporate and
+  foreign bonds; the Fed's extract macro excludes bond funds and savings bonds
+  from it. ``savbnd`` is U.S. savings bonds (``X3902``). Bond funds are in
+  ``nmmf``, so they land in ``stock_assets``.
+
+The archive read ``bond`` alone and kept ``savbnd`` as ``scf_savings_bonds``,
+a construction-only component of its net-worth reconciliation. Microcosm
+builds none of those components (see ``net_worth`` below), so under the
+archive mapping an SCF-drawn household's savings bonds reached no SSI leaf.
+PolicyEngine-US documents ``bond_assets`` as "Value of bonds and government
+securities. Imputed from SIPP TVAL_BOND." and cites POMS SI 01140.240 (U.S.
+Savings Bonds) and SI 01140.250 (Municipal, Corporate and Government Bonds).
+SIPP 2023 ``TVAL_BOND`` sums the government-securities and municipal/corporate
+bond values, and the 2023 SIPP data dictionary defines government securities
+as "such as savings bonds, T-Bills, T-Bonds, T-Notes" (``EOWN_GOVS``). Reading
+``bond`` + ``savbnd`` gives the SCF half the same concept as the SIPP half and
+the variable's cited sources. If the archive's net-worth components are ever
+built, ``scf_savings_bonds`` must leave that partition, because
+``bond_assets`` now carries ``savbnd``.
+
+Two measurement limits remain. SCF ``X3902`` asks the face value of savings
+bonds, while SIPP asks market value. And neither survey identifies savings
+bonds still in their mandatory retention period (12 months for Series EE and
+I bonds issued on or after 2/1/2003), which POMS SI 01140.240 says are not
+resources. Both affect amounts, not which leaf savings bonds belong to.
 
 The SCF QRF's eight predictors are age, sex, race, marriage, own children,
 employment income, interest/dividend income, and Social Security/pension
@@ -201,12 +223,14 @@ US_SCF_WEALTH_NONCONSTANT_HOUSEHOLD_COLUMNS: tuple[str, ...] = (
     US_SCF_NET_WORTH_OUTPUT_COLUMNS
 )
 
-#: Each output column and the SCF summary-extract components it sums
-#: (retired pipeline @ 42ed5d45, ``utils/asset_imputation.py``).
+#: Each output column and the SCF summary-extract components it sums. These
+#: are the retired pipeline's mappings (42ed5d45, ``utils/asset_imputation.py``)
+#: except ``bond_assets``, which adds U.S. savings bonds (``savbnd``) as the
+#: module docstring explains. No component feeds more than one leaf.
 SCF_FINANCIAL_ASSET_TARGET_COMPONENTS: dict[str, tuple[str, ...]] = {
     "bank_account_assets": ("liq",),
     "stock_assets": ("stocks", "nmmf"),
-    "bond_assets": ("bond",),
+    "bond_assets": ("bond", "savbnd"),
 }
 SCF_NET_WORTH_TARGET_COMPONENTS: dict[str, tuple[str, ...]] = {
     "net_worth": ("networth",),
@@ -560,6 +584,20 @@ def fetch_scf_2022_summary_extract(
     return target
 
 
+def _scf_financial_asset_targets(raw: pd.DataFrame) -> pd.DataFrame:
+    """Sum each SSI leaf's SCF components, sentinel-cleaned, floored at zero."""
+
+    targets = pd.DataFrame(index=raw.index)
+    for output, components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.items():
+        total = np.zeros(len(raw), dtype=np.float64)
+        for component in components:
+            total = total + _replace_sentinels(raw[component]).to_numpy(
+                dtype=np.float64
+            )
+        targets[output] = np.maximum(total, 0.0)
+    return targets
+
+
 def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
     """Read the SCF 2022 summary extract into a financial-asset donor table.
 
@@ -579,10 +617,11 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
 
     raw = pd.read_stata(path, convert_categoricals=False)
     required = {
-        "liq",
-        "stocks",
-        "nmmf",
-        "bond",
+        *(
+            component
+            for components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.values()
+            for component in components
+        ),
         "networth",
         *_SCF_SUMMARY_PREDICTOR_SOURCE_COLUMNS,
     }
@@ -592,15 +631,7 @@ def load_scf_2022_financial_asset_donor(path: str | Path) -> pd.DataFrame:
             f"SCF 2022 summary extract missing required column(s): {missing}."
         )
 
-    donor = pd.DataFrame(index=raw.index)
-    # Targets: component sums, sentinel-cleaned, floored at zero.
-    for output, components in SCF_FINANCIAL_ASSET_TARGET_COMPONENTS.items():
-        total = np.zeros(len(raw), dtype=np.float64)
-        for component in components:
-            total = total + _replace_sentinels(raw[component]).to_numpy(
-                dtype=np.float64
-            )
-        donor[output] = np.maximum(total, 0.0)
+    donor = _scf_financial_asset_targets(raw)
     # SCF networth is already the complete signed balance-sheet aggregate.
     # Preserve negative values: they are indebted-household source signal, not
     # missing-value sentinels.
@@ -1014,9 +1045,10 @@ def _financial_assets_carry_signal(person: pd.DataFrame) -> bool:
     Nonfinite values mark a corrupted surface and force re-imputation. The
     engine-default check is JOINT across the three leaves: a surface where
     every leaf is constant (the all-zero engine default) must be re-imputed,
-    but a single legitimately constant leaf must not force a redraw — bond
-    holdings are ~97% zero in the donor, so a small or chunked frame can
-    draw a constant bond column from a perfectly healthy imputation. A
+    but a single legitimately constant leaf must not force a redraw — about
+    93% of SCF donor households by survey weight hold neither bonds nor
+    savings bonds, so a small or chunked frame can draw a constant bond
+    column from a perfectly healthy imputation. A
     per-leaf nonconstancy test made pass-through platform-dependent (the
     #510 CI failure) and would silently redraw small production chunks;
     flattened cross-leaf uniqueness would accept three DISTINCT constant
