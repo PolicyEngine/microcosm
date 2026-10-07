@@ -80,6 +80,44 @@ def _census_lines(census: dict | None) -> list[str]:
     return lines
 
 
+def _step1b_lines(plans: dict | None) -> list[str]:
+    if not plans:
+        return []
+    lines = ["", "Step 1b picks:", ""]
+    ae = plans.get("ae", {}).get("picks", {})
+    holdout = plans.get("holdout", {}).get("picks", {})
+    picks = {**ae, **holdout}
+    for anchor, name in picks.get("best_e", {}).items():
+        lines.append(f"- best E ({anchor}): {name}; knee λ {picks['knee'][anchor]}")
+    lines.append(f"- best A: {picks.get('best_a')}")
+    if "ae_rule" in picks:
+        lines.append(f"- A×E rule {picks['ae_rule']}, λ × {picks['ae_loss_ratio']:.3f}")
+    lines.append(f"- best A×E: {picks.get('best_ae')}")
+    return lines
+
+
+def _holdout_lines(receipts: dict) -> list[str]:
+    held = {
+        name: receipt["holdout"]["mean"]
+        for name, receipt in receipts.items()
+        if receipt.get("status") == "finished" and receipt.get("holdout")
+    }
+    if not held:
+        return []
+    return [
+        "",
+        "Refit-level holdouts (means over the local folds):",
+        "",
+        *(
+            f"- {name}: held loss {mean['held_loss_rule']:.4f} under its rule, "
+            f"{mean['held_loss_grain_equal']:.4f} under grain_equal; within 10 % "
+            f"{100 * mean['held_within_10pct']:.1f} %, within 25 % "
+            f"{100 * mean['held_within_25pct']:.1f} %"
+            for name, mean in sorted(held.items())
+        ),
+    ]
+
+
 def _failed_lines(receipts: dict) -> list[str]:
     failed = {
         name: receipt["error"]
@@ -118,6 +156,8 @@ def main() -> int:
         [
             *(f"| {line} |" for line in lines),
             *_failed_lines(results.get("receipts", {})),
+            *_step1b_lines(results.get("step1b")),
+            *_holdout_lines(results.get("receipts", {})),
             *_census_lines(results.get("census")),
         ]
     )

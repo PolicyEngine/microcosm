@@ -33,7 +33,9 @@ reference is never re-solved, so every delta is the selection's.
    - controls C1–C5: iterate switch, floor only, floor plateau, optimiser noise;
    - E under `grain_equal`: floor 0 `initial` at 1e-3, 1e-2 and 1e-1 (predicted harmful), floor 0 `uniform` at 1e-2, and floor 0.5 at 1e-3, 3e-3, 1e-2, 3e-2 and 1e-1 for each anchor;
    - A at λ 0: the four rules at floor 0.5, and `grain_family_equal` and `nation_grain_family_equal` at floor 0.
-3. **Step 1b**, written after 1a by the rules below:
+3. **Step 1b**, written by `plan-step1b` straight after 1a by the rules below
+   (`--stage ae` from 1a's scorecard, then `--stage holdout` once the A×E points
+   are scored):
    - A×E: the best A rule × each anchor × 3 λ around that anchor's E knee, with λ scaled by the A rule's loss level at S0;
    - holdout: a refit-level rotated holdout (`mode: refit_holdout`, 5 local folds) for C0, C2, the best E per anchor, the best A and the best A×E.
 4. Report to María. Step 2 (search re-runs) and step 3 (size) run only on her pick.
@@ -41,7 +43,26 @@ reference is never re-solved, so every delta is the selection's.
 **Selection rules** (fixed now):
 - the best E per anchor is the largest λ that still meets criteria 1–5 of the acceptance below;
 - the best A is the rule that meets the most criteria, ties broken by the `grain_equal` yardstick loss;
-- the knee is the largest λ whose criterion-6 count is within 10 % of that anchor's best.
+- the knee is the smallest λ whose criterion-6 count is within 10 % of that anchor's best.
+
+**Readings fixed before any step-1a result** (2026-10-08, with María's go for
+steps 0–1; `plan-step1b` applies them):
+- Best E and the knee are read on each anchor's floor-0.5 ladder (λ 1e-3 to
+  1e-1). The floor-0 E points stay the harm check and are reported beside it.
+- Until this point the knee rule said "largest". That makes the knee the top of
+  the ladder whenever collapse falls with λ, which is not a knee, so it is
+  corrected to "smallest" before any result exists.
+- The A×E points run at floor 0.5, at the knee and its two half-decade
+  neighbours (past the grid's ends when the knee sits on one).
+- The best A×E for the holdout follows the plan's winner rule: criteria 1–5
+  first, then the criterion-6 count, then the `grain_equal` yardstick. No
+  configuration can pass criterion 6 on v6: the census finds 18 constituencies
+  and 11 local authorities whose kept rows cannot reach 25 % of their dense ESS
+  even at equal weights.
+- The λ grid stays as pre-registered. The census puts its penalty pressure
+  λ·P/L at S0 half a decade low for `uniform` and half a decade high for
+  `initial`; the neighbours rule above lets 1b reach half a decade past either
+  end.
 
 ## Acceptance (each configuration against D and S0 of the same baseline)
 
