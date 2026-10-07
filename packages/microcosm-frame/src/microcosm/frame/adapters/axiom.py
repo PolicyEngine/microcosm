@@ -57,14 +57,49 @@ and reform runs construct a second adapter over the reform module — no
 ``materialize(..., reform=...)`` protocol extension is needed for the BE
 validation oracles (microcosm#264), which sequence behind reform modules
 compiled upstream, not behind a protocol change.
+
+Explicit periods
+----------------
+A year label maps to the calendar year and ``YYYY-MM`` to the month unless
+the adapter is given a ``periods`` mapping. With one, every period label must
+appear in it: ``"2026-27"`` resolves to the :class:`AxiomPeriod` bounds the
+caller declared (for example a New Zealand ``tax_year`` from 1 April), and an
+unmapped label fails instead of falling back to a calendar year.
+
+Graph output types
+------------------
+By default :meth:`AxiomEngine.materialize` returns the arrays the dense
+surface returns: judgments as int8 codes, text and dates as Python string
+lists. A graph node may own only a closed set of dtypes, so
+``output_dtypes="graph"`` casts each output to one of them without loss —
+judgments to int64 codes, integers to int64, decimals to float64, booleans
+to bool — and refuses text and date outputs before the engine runs.
+
+Engine references
+-----------------
+``simulate.rules@1`` binds a node to its adapter through the node's
+``engine_ref`` parameter, and its implementation hash covers adapter source,
+not RuleSpec bytes or the native engine build. :func:`axiom_engine_ref` builds
+that reference from the pins that decide the adapter's outputs: the engine
+commit and wheel digest, the RuleSpec commit, the module path and digest, the
+content digest of the whole RuleSpec root, and the adapter's configuration.
+Any edit to a RuleSpec byte therefore moves the reference, and with it every
+node key that names it. The reference also pins the adapter: from then on it
+compiles only from a root whose digest still matches, so a node keyed by the
+reference is never computed from other bytes.
 """
 
+import hashlib
 import json
 import re
+import subprocess
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date
 from functools import cache
 from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -75,12 +110,19 @@ from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import engine_tables, put_frame_table, read_frame_table
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
+from microcosm.graph.canonical import canonical_json
 
 __all__ = [
     "AxiomEngine",
     "AxiomEntityTableDataset",
+    "AxiomPeriod",
     "BE_SCHEMA",
+    "NZ_NESTING",
+    "NZ_SCHEMA",
+    "assert_no_relations",
     "axiom_concept_mapping",
+    "axiom_engine_ref",
+    "rulespec_tree_digest",
 ]
 
 #: The Belgian frame schema for the populace-be pilot: persons in households.
@@ -89,6 +131,16 @@ __all__ = [
 #: units beyond the household enter as group entities when the encoded slice
 #: needs them, mapped via ``entity_names``.
 BE_SCHEMA = EntitySchema(group_entities=("household",))
+
+#: The New Zealand transport schema: persons in households and in benefit
+#: units (``family``, the engine's ``Family`` entity). Only households carry
+#: explicit weights; a family inherits its household's weight through
+#: membership (:meth:`Frame.resolve_weights`).
+NZ_SCHEMA = EntitySchema(group_entities=("household", "family"))
+
+#: Group nesting the New Zealand schema requires: every family lies inside
+#: exactly one household. Pass it as ``AxiomEngine(nesting=NZ_NESTING)``.
+NZ_NESTING: Mapping[str, str] = MappingProxyType({"family": "household"})
 
 #: Engine dtype vocabulary -> kernel dtype kind. ``judgment`` is tri-state
 #: (holds / not holds / undetermined) and materializes as int8 codes
@@ -112,6 +164,78 @@ _WEIGHT_COLUMN_SUFFIX = "_weight"
 # A rulespec country tree: ``nz``, or a subnational ``be-bru`` under ``be``.
 _COUNTRY_TREE = re.compile(r"^([a-z]{2})(?:-[a-z0-9]+)*$")
 _MAPPINGS_DIRECTORY = "axiom_concept_mappings"
+
+#: ``native`` returns the dense surface's arrays unchanged; ``graph`` casts
+#: them to graph-ownable dtypes (see "Graph output types" above).
+_OUTPUT_DTYPE_MODES: tuple[str, ...] = ("native", "graph")
+
+#: Engine dtype -> the owned-column dtype token of its graph-typed output.
+#: Text and date outputs reach Python as string lists and have no entry.
+_GRAPH_DTYPE_BY_ENGINE: dict[str, str] = {
+    "bool": "bool",
+    "integer": "int64",
+    "decimal": "float64",
+    "judgment": "int64",
+}
+_GRAPH_OUTPUT_DTYPES: frozenset[str] = frozenset(_GRAPH_DTYPE_BY_ENGINE)
+
+#: The tri-state judgment codes the dense surface emits.
+_JUDGMENT_CODES = np.asarray((-1, 0, 1), dtype=np.int64)
+
+#: Versioned schema of :func:`axiom_engine_ref` documents.
+_ENGINE_REF_SCHEMA = "microcosm.frame.axiom-engine-ref/1"
+
+# A full git object name (SHA-1 or SHA-256 repositories), lowercase.
+_GIT_COMMIT = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True)
+class AxiomPeriod:
+    """Explicit dense-execution bounds for one policy period.
+
+    Attributes:
+        start: First day, ISO ``YYYY-MM-DD``.
+        end: Last day, ISO ``YYYY-MM-DD``, not before ``start``.
+        kind: The engine's period identifier (for example ``tax_year``), not
+            a display label. No fiscal-year convention is inferred from a
+            year; the caller states the bounds.
+
+    Raises:
+        ValueError: If ``kind`` is empty or padded with whitespace, a date is
+            not a valid ISO ``YYYY-MM-DD`` string, or ``start`` follows
+            ``end``.
+    """
+
+    start: str
+    end: str
+    kind: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.kind, str)
+            or not self.kind.strip()
+            or self.kind != self.kind.strip()
+        ):
+            raise ValueError(
+                "Axiom period kind must be a non-empty string without "
+                "surrounding whitespace."
+            )
+        try:
+            start = date.fromisoformat(self.start)
+            end = date.fromisoformat(self.end)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Axiom period dates must be valid ISO YYYY-MM-DD dates."
+            ) from exc
+        if start.isoformat() != self.start or end.isoformat() != self.end:
+            raise ValueError("Axiom period dates must use ISO YYYY-MM-DD format.")
+        if start > end:
+            raise ValueError("Axiom period start must not follow end.")
+
+    def bounds(self) -> tuple[str, str, str]:
+        """Return the dense executor's ``(start, end, period_kind)`` tuple."""
+        return self.start, self.end, self.kind
 
 
 @cache
@@ -163,6 +287,19 @@ class AxiomEngine:
         arithmetic: ``"decimal"`` (exact, canonical) or ``"f64"`` (faster,
             floating-point rounding) — which dense execution mode
             :meth:`materialize` uses.
+        periods: Optional period label -> :class:`AxiomPeriod` mapping. When
+            given, :meth:`materialize` resolves every label through it and an
+            unmapped label fails, rather than becoming a calendar year or
+            month. Labels compare as strings, so ``2026`` and ``"2026"`` are
+            the same label and may not both appear. :meth:`materialize` also
+            accepts an :class:`AxiomPeriod` directly.
+        nesting: Optional child group -> parent group mapping (for example
+            :data:`NZ_NESTING`). Each declared child group must lie inside
+            exactly one parent group, which :meth:`materialize` and
+            :meth:`write_dataset` check from the person memberships alone.
+        output_dtypes: ``"native"`` (default) returns the dense surface's
+            arrays unchanged; ``"graph"`` casts them to graph-ownable dtypes
+            and refuses text and date outputs (see the module docstring).
 
     The compiled dense programs (one per engine entity) and the module's
     variable metadata are loaded lazily and cached; constructing the adapter
@@ -179,10 +316,18 @@ class AxiomEngine:
         defaults: Mapping[str, object] | None = None,
         entity_names: Mapping[str, str] | None = None,
         arithmetic: str = "decimal",
+        periods: Mapping[int | str, AxiomPeriod] | None = None,
+        nesting: Mapping[str, str] | None = None,
+        output_dtypes: str = "native",
     ) -> None:
         if arithmetic not in ("decimal", "f64"):
             raise ValueError(
                 f"arithmetic must be 'decimal' or 'f64', got {arithmetic!r}."
+            )
+        if output_dtypes not in _OUTPUT_DTYPE_MODES:
+            raise ValueError(
+                f"output_dtypes must be one of {list(_OUTPUT_DTYPE_MODES)}, "
+                f"got {output_dtypes!r}."
             )
         if isinstance(rulespec_roots, (str, Path)):
             raise TypeError(
@@ -215,11 +360,17 @@ class AxiomEngine:
                 f"schema declares {list(schema.entities)}."
             )
         self._arithmetic = arithmetic
+        self._output_dtypes = output_dtypes
+        self._periods = _validated_periods(periods)
+        self._nesting = _validated_nesting(nesting, schema)
         self._frame_entity_by_engine = {
             engine: frame for frame, engine in self._entity_names.items()
         }
         self._programs: dict[str, Any] = {}
         self._metadata: dict[str, Any] | None = None
+        # Set by axiom_engine_ref: the RuleSpec tree digest this adapter's
+        # reference names. Every later compile re-hashes the root against it.
+        self._pinned_tree_sha256: str | None = None
 
     # ------------------------------------------------------------------
     # Variable metadata
@@ -264,6 +415,36 @@ class AxiomEngine:
             dtype=_DTYPE_KIND_BY_ENGINE.get(item.dtype, "str"),
             period=_PERIOD_BY_ENGINE.get(period, "point"),
         )
+
+    def graph_dtype(self, name: str) -> str:
+        """The owned-column dtype token of ``name``'s graph-typed output.
+
+        What a graph node declares in ``Owned(entity, name, dtype)`` when it
+        materializes ``name`` through an ``output_dtypes="graph"`` adapter:
+        ``bool``, ``int64`` (integers and judgment codes), or ``float64``
+        (decimals).
+
+        Raises:
+            ImportError: If ``axiom_rules_engine`` is not installed.
+            ValueError: If the adapter is not ``output_dtypes="graph"`` (its
+                native arrays, int8 judgment codes among them, are not graph
+                dtypes), or the variable is unknown, an input, on an unmapped
+                engine entity, or a text or date output.
+        """
+        if self._output_dtypes != "graph":
+            raise ValueError(
+                "graph_dtype describes output_dtypes='graph' adapters only; this "
+                "adapter returns native engine arrays."
+            )
+        self.variable_metadata(name)
+        engine_dtype = self._derived_metadata()[name].dtype
+        token = _GRAPH_DTYPE_BY_ENGINE.get(engine_dtype)
+        if token is None:
+            raise ValueError(
+                f"{name!r} is a {engine_dtype!r} output; no graph column holds "
+                "text or date values."
+            )
+        return token
 
     def variables(self) -> list[str]:
         """Return the input variables the engine accepts on a dataset.
@@ -332,7 +513,7 @@ class AxiomEngine:
         self,
         bundle: Frame,
         variables: Sequence[str],
-        period: int | str,
+        period: int | str | AxiomPeriod,
     ) -> Mapping[str, np.ndarray]:
         """Compute ``variables`` for ``period`` over the bundle's tables.
 
@@ -344,29 +525,50 @@ class AxiomEngine:
             bundle: A bundle whose entities match the adapter's schema.
             variables: Computed (derived) variable names.
             period: ``2025`` / ``"2025"`` for a calendar year, ``"2025-01"``
-                for a month.
+                for a month, or explicit :class:`AxiomPeriod` bounds. When
+                the adapter has a ``periods`` mapping, a label resolves only
+                through it.
 
         Returns:
             One array per variable, row-aligned to the variable's entity
-            table. Judgment variables come back as int8 codes (``1`` holds,
-            ``-1`` not holds, ``0`` undetermined).
+            table. By default judgment variables come back as int8 codes
+            (``1`` holds, ``-1`` not holds, ``0`` undetermined); with
+            ``output_dtypes="graph"`` they come back as int64 codes and every
+            array holds a graph-ownable dtype.
 
         Raises:
             ImportError: If ``axiom_rules_engine`` is not installed.
             ValueError: If the bundle's entities do not match the schema, a
-                requested variable is unknown or an input, or a computed
-                array's length does not match its entity table.
+                declared nesting or relation column is violated, the period
+                label is unmapped, a requested variable is unknown or an
+                input, a graph-typed output is text, date, or not losslessly
+                castable, or a computed array's length does not match its
+                entity table.
             NotImplementedError: If the compiled module declares relations
                 (cross-entity aggregation batches; not yet wired — the BE
                 pilot slice declares none).
         """
         self._require_schema(bundle)
-        start, end, period_kind = _period_bounds(period)
+        start, end, period_kind = self._materialization_period(period)
 
         by_entity: dict[str, list[str]] = {}
         for name in variables:
             metadata = self.variable_metadata(name)
             by_entity.setdefault(metadata.entity, []).append(name)
+        engine_dtypes: dict[str, str] = {}
+        if self._output_dtypes == "graph":
+            derived = self._derived_metadata()
+            engine_dtypes = {name: derived[name].dtype for name in variables}
+            unsupported = sorted(
+                f"{name} ({dtype})"
+                for name, dtype in engine_dtypes.items()
+                if dtype not in _GRAPH_OUTPUT_DTYPES
+            )
+            if unsupported:
+                raise ValueError(
+                    "output_dtypes='graph' cannot type text or date outputs as "
+                    f"graph columns; refused: {unsupported}."
+                )
 
         results: dict[str, np.ndarray] = {}
         for frame_entity, names in by_entity.items():
@@ -398,8 +600,32 @@ class AxiomEngine:
                         f"{values.shape} but entity {frame_entity!r} has "
                         f"{expected} row(s)."
                     )
+                if self._output_dtypes == "graph":
+                    values = _graph_output(name, engine_dtypes[name], values)
                 results[name] = values
         return results
+
+    def _materialization_period(
+        self, period: int | str | AxiomPeriod
+    ) -> tuple[str, str, str]:
+        """Resolve a period to dense ``(start, end, period_kind)`` bounds.
+
+        Raises:
+            ValueError: If the adapter has a ``periods`` mapping and the label
+                is not in it, or (without one) the label is neither a year
+                nor a month.
+        """
+        if isinstance(period, AxiomPeriod):
+            return period.bounds()
+        if self._periods is not None:
+            bounds = self._periods.get(str(period))
+            if bounds is None:
+                raise ValueError(
+                    f"No explicit Axiom period bounds for {period!r}; the "
+                    f"adapter maps only {sorted(self._periods)}."
+                )
+            return bounds.bounds()
+        return _period_bounds(period)
 
     # ------------------------------------------------------------------
     # Export
@@ -500,6 +726,19 @@ class AxiomEngine:
     # Lazy engine plumbing
     # ------------------------------------------------------------------
 
+    def _module_label(self) -> str:
+        """The module's path under its RuleSpec root, for error messages.
+
+        Many modules share a file name (``core.yaml``), so a message names the
+        relative path; a module under no root falls back to its given path.
+        """
+        module = self._module.resolve()
+        for root in self._rulespec_roots:
+            resolved = root.resolve()
+            if module.is_relative_to(resolved):
+                return module.relative_to(resolved).as_posix()
+        return str(self._module)
+
     def _import_engine(self) -> Any:
         try:
             import axiom_rules_engine
@@ -535,6 +774,8 @@ class AxiomEngine:
                     f"engine entity {engine_entity!r}."
                 )
             return program
+        if self._pinned_tree_sha256 is not None:
+            self._require_pinned_tree()
         engine = self._import_engine()
         try:
             program = engine.CompiledDenseProgram.from_file(
@@ -566,6 +807,25 @@ class AxiomEngine:
             self._metadata = {item.name: item for item in program.derived_metadata}
         return program
 
+    def _require_pinned_tree(self) -> None:
+        """Refuse to compile when the root no longer holds the referenced bytes.
+
+        Once :func:`axiom_engine_ref` has named this adapter's RuleSpec tree,
+        every compile re-hashes the root, so a node keyed by that reference is
+        never computed from other bytes.
+
+        Raises:
+            ValueError: If the root's digest moved since the reference.
+        """
+        current, _ = rulespec_tree_digest(self._rulespec_roots[0].resolve())
+        if current != self._pinned_tree_sha256:
+            raise ValueError(
+                f"RuleSpec root {self._rulespec_roots[0]} changed after this "
+                "adapter's engine_ref named it (tree digest "
+                f"{self._pinned_tree_sha256} -> {current}); construct a new "
+                "adapter and reference."
+            )
+
     def _derived_metadata(self) -> dict[str, Any]:
         """Name -> authoring metadata for every derived rule in the module."""
         if self._metadata is None:
@@ -580,13 +840,76 @@ class AxiomEngine:
                 )
         return self._metadata
 
-    def _require_schema(self, bundle: Frame) -> None:
+    def _require_schema(self, bundle: Frame, *, export: bool = False) -> None:
+        """Refuse a bundle whose entities or group nesting the adapter cannot run.
+
+        Beyond matching the schema's entities, two nesting checks run, both
+        against the person memberships. Weight agreement alone never proves
+        nesting: a family split across two equally weighted households still
+        resolves a family weight.
+
+        * Every child -> parent pair in the adapter's ``nesting`` must nest:
+          all members of one child group share one parent group.
+        * An explicit group-to-group id column ``{group}_{parent}_id`` (for
+          example ``family_household_id``) must sit on ``group``'s table and
+          agree with the members' ``parent`` membership. When ``export`` is
+          true (the :meth:`write_dataset` path), a relation column the export
+          contract requires must be present; a graph node materializing
+          through the adapter need not slice it.
+
+        Raises:
+            ValueError: On an entity mismatch or a violated nesting check.
+        """
         if set(bundle.entities) != set(self._schema.entities):
             raise ValueError(
                 f"Axiom adapter requires the schema entities "
                 f"{list(self._schema.entities)}; bundle has "
                 f"{list(bundle.entities)}."
             )
+        schema = self._schema
+        person = bundle.table(schema.person_entity)
+        for child, parent in self._nesting.items():
+            pairs = pd.DataFrame(
+                {
+                    "child": person[schema.membership_column(child)].to_numpy(),
+                    "parent": person[schema.membership_column(parent)].to_numpy(),
+                }
+            ).drop_duplicates()
+            spanning = pairs.loc[pairs["child"].duplicated(keep=False), "child"]
+            if not spanning.empty:
+                ids = sorted(spanning.unique().tolist())
+                raise ValueError(
+                    f"Every {child!r} must nest in exactly one {parent!r}; "
+                    f"{child} id(s) {ids[:5]} have members in more than one "
+                    f"{parent}."
+                )
+        for group in schema.group_entities:
+            for parent in schema.group_entities:
+                if group == parent:
+                    continue
+                column = f"{group}_{parent}_id"
+                try:
+                    owner = bundle.column_entity(column)
+                except ValueError:
+                    if export and column in self._contract.required:
+                        raise ValueError(
+                            f"Required relation column {column!r} is missing "
+                            f"from entity {group!r}."
+                        ) from None
+                    continue
+                if owner != group:
+                    raise ValueError(
+                        f"{column!r} must be on entity {group!r}, not {owner!r}."
+                    )
+                broadcast = bundle.place(
+                    column, schema.person_entity, how="broadcast"
+                ).table(schema.person_entity)[column]
+                membership = person[schema.membership_column(parent)]
+                if not np.array_equal(broadcast.to_numpy(), membership.to_numpy()):
+                    raise ValueError(
+                        f"{column!r} disagrees with person membership; every "
+                        f"{group!r} must be nested in its declared {parent!r}."
+                    )
 
     def _engine_tables(self, bundle: Frame) -> dict[str, pd.DataFrame]:
         """Copy the bundle's tables and materialize typed weights as columns.
@@ -595,7 +918,7 @@ class AxiomEngine:
         (typed weights authoritative, any existing ``{entity}_weight`` column
         overwritten, never trusted), keyed to this adapter's schema order.
         """
-        self._require_schema(bundle)
+        self._require_schema(bundle, export=True)
         tables = engine_tables(bundle)
         return {name: tables[name] for name in self._schema.entities}
 
@@ -764,6 +1087,215 @@ class AxiomEntityTableDataset:
         return tables, time_period
 
 
+def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
+    """Content digest and payload size of a RuleSpec root directory.
+
+    The formula is the graph's directory source identity
+    (``microcosm.graph.keys``): SHA-256 over a fixed prefix and then, for every
+    regular file in sorted path order, its length-prefixed relative POSIX path
+    and its length-prefixed bytes. The digest therefore equals the content hash
+    :func:`microcosm.graph.keys.source_content_key` binds when the same
+    directory is declared as a graph source. Renaming the root is inert;
+    adding, removing, renaming, or editing any file inside it changes the
+    digest. A ``.git`` directory, if present, is hashed like any other.
+
+    Args:
+        root: The RuleSpec root directory (for example a ``git archive``
+            export of rulespec-nz).
+
+    Returns:
+        ``(sha256 hex digest, total bytes of the hashed files)``.
+
+    Raises:
+        ValueError: If ``root`` is not a directory.
+    """
+    path = Path(root)
+    if not path.is_dir():
+        raise ValueError(f"RuleSpec root {path} is not a directory.")
+    digest = hashlib.sha256(b"microcosm-graph/source-directory/1\0")
+    size = 0
+    files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file())
+    for candidate in files:
+        relative = candidate.relative_to(path).as_posix().encode("utf-8")
+        content = candidate.read_bytes()
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "little"))
+        digest.update(content)
+        size += len(content)
+    return digest.hexdigest(), size
+
+
+def axiom_engine_ref(
+    engine: AxiomEngine,
+    *,
+    engine_commit: str,
+    wheel_sha256: str,
+    rulespec_root: str | Path,
+    rulespec_commit: str,
+) -> str:
+    """The ``engine_ref`` that names one Axiom adapter and the bytes behind it.
+
+    A graph node binds its rules engine through ``params["engine_ref"]``, and
+    that parameter enters the node key. The reference this function returns is
+    canonical JSON of everything that decides the adapter's outputs:
+
+    * the engine (``axiom-rules-engine``), its commit, and the SHA-256 of the
+      wheel built from it;
+    * the RuleSpec commit, the module's path relative to the root, the
+      module's SHA-256, and :func:`rulespec_tree_digest` of the whole root
+      (imports resolve anywhere under it);
+    * the adapter's arithmetic, output dtypes, entity schema, entity names,
+      period map, and declared nesting.
+
+    For a ``git archive`` export (the normal root, with no ``.git``) no
+    absolute path enters the reference: the same tree exported to two places
+    gives the same reference, and editing any byte under the root gives a
+    different one. The commits are declarations taken from the pin file, and
+    the directory digest is the authority.
+
+    A git checkout root is accepted only when clean, with no untracked or
+    ignored files, and at ``rulespec_commit``. Its ``.git`` is then hashed
+    like any other file, as the graph's source key hashes it. That makes the
+    reference specific to one clone: two clones or worktrees of one commit
+    (a worktree's ``.git`` file names an absolute path) and an export of that
+    commit all give different references, and any later git operation in the
+    checkout moves it. Prefer the export.
+
+    The first call pins the adapter to the tree digest it names: it refuses
+    an adapter that has already compiled (those programs were read from bytes
+    no reference names), and from then on every compile, and every later
+    reference to the same adapter, refuses a root whose digest has moved.
+
+    Args:
+        engine: The adapter the reference names.
+        engine_commit: Full lowercase git commit of axiom-rules-engine.
+        wheel_sha256: Lowercase SHA-256 of the installed engine wheel.
+        rulespec_root: The adapter's only RuleSpec root.
+        rulespec_commit: Full lowercase git commit the root was exported from.
+
+    Returns:
+        The reference, a canonical JSON string.
+
+    Raises:
+        TypeError: If ``engine`` is not an :class:`AxiomEngine`.
+        ValueError: If a pin is malformed; ``rulespec_root`` is not the
+            adapter's only root; the module is not a file under it; the root
+            contains a symbolic link (the digest would not cover what it
+            points at); a git checkout root is dirty or at another commit; or
+            the adapter compiled before its first reference, or its root moved
+            after it.
+    """
+    if not isinstance(engine, AxiomEngine):
+        raise TypeError(f"{engine!r} is not an AxiomEngine.")
+    pins = (
+        ("engine_commit", engine_commit, _GIT_COMMIT, "a full lowercase git commit"),
+        (
+            "rulespec_commit",
+            rulespec_commit,
+            _GIT_COMMIT,
+            "a full lowercase git commit",
+        ),
+        ("wheel_sha256", wheel_sha256, _SHA256, "a lowercase SHA-256 hex digest"),
+    )
+    for label, value, pattern, shape in pins:
+        if not isinstance(value, str) or pattern.fullmatch(value) is None:
+            raise ValueError(f"{label} must be {shape}, got {value!r}.")
+    root = Path(rulespec_root)
+    if not root.is_dir():
+        raise ValueError(f"rulespec_root {root} is not a directory.")
+    resolved_root = root.resolve()
+    if tuple(item.resolve() for item in engine._rulespec_roots) != (resolved_root,):
+        raise ValueError(
+            "axiom_engine_ref digests one RuleSpec root, which must be the "
+            "adapter's only root; adapter roots "
+            f"{[str(item) for item in engine._rulespec_roots]}, rulespec_root "
+            f"{root}."
+        )
+    module = engine._module.resolve()
+    if not module.is_file() or not module.is_relative_to(resolved_root):
+        raise ValueError(
+            f"Module {engine._module} is not a file under rulespec_root {root}."
+        )
+    _refuse_symlinks(resolved_root)
+    if (resolved_root / ".git").exists():
+        _require_clean_checkout(resolved_root, rulespec_commit)
+    tree_sha256, tree_bytes = rulespec_tree_digest(resolved_root)
+    if engine._pinned_tree_sha256 is None:
+        if engine._programs:
+            raise ValueError(
+                "axiom_engine_ref must name the adapter's RuleSpec tree before "
+                "the adapter compiles: it has already compiled programs from "
+                "bytes no reference names. Compute the reference on a fresh "
+                "adapter."
+            )
+        engine._pinned_tree_sha256 = tree_sha256
+    elif engine._pinned_tree_sha256 != tree_sha256:
+        raise ValueError(
+            f"RuleSpec root {root} changed after this adapter's engine_ref named "
+            f"it (tree digest {engine._pinned_tree_sha256} -> {tree_sha256}); "
+            "construct a new adapter and reference."
+        )
+    schema = engine._schema
+    periods = (
+        None
+        if engine._periods is None
+        else {
+            label: {"start": item.start, "end": item.end, "kind": item.kind}
+            for label, item in sorted(engine._periods.items())
+        }
+    )
+    document = {
+        "format": _ENGINE_REF_SCHEMA,
+        "engine": "axiom-rules-engine",
+        "engine_commit": engine_commit,
+        "engine_wheel_sha256": wheel_sha256,
+        "rulespec_commit": rulespec_commit,
+        "rulespec_tree_sha256": tree_sha256,
+        "rulespec_tree_bytes": tree_bytes,
+        "module": module.relative_to(resolved_root).as_posix(),
+        "module_sha256": hashlib.sha256(module.read_bytes()).hexdigest(),
+        "arithmetic": engine._arithmetic,
+        "output_dtypes": engine._output_dtypes,
+        "person_entity": schema.person_entity,
+        "group_entities": list(schema.group_entities),
+        "entity_names": dict(sorted(engine._entity_names.items())),
+        "periods": periods,
+        "nesting": dict(sorted(engine._nesting.items())),
+    }
+    return canonical_json(document).decode("utf-8")
+
+
+def assert_no_relations(engine: AxiomEngine, entity: str) -> None:
+    """Refuse a module whose dense program on ``entity`` declares relations.
+
+    The adapter builds no relation batches from frame membership, so a module
+    with dense relations cannot run on the graph. Callers check this when
+    they compose a node, before any data reaches the engine.
+
+    Args:
+        engine: The adapter to check.
+        entity: The frame entity the node materializes (``"family"``).
+
+    Raises:
+        TypeError: If ``engine`` is not an :class:`AxiomEngine`.
+        ImportError: If ``axiom_rules_engine`` is not installed.
+        ValueError: If the module has no derived rules on ``entity``.
+        NotImplementedError: If the program declares relations; the message
+            names the module and the relations.
+    """
+    if not isinstance(engine, AxiomEngine):
+        raise TypeError(f"{engine!r} is not an AxiomEngine.")
+    relations = list(engine._program(entity).relations)
+    if relations:
+        raise NotImplementedError(
+            f"Module {engine._module_label()} declares dense relations "
+            f"{[item.name for item in relations]} on entity {entity!r}; "
+            "relation batches from frame membership are not wired, so it "
+            "cannot run on the graph."
+        )
+
+
 def _period_bounds(period: int | str) -> tuple[str, str, str]:
     """Map a kernel period to dense-execution (start, end, period_kind).
 
@@ -820,3 +1352,192 @@ def _batch_from_table(
                 "be bool, integer, or float columns."
             )
     return batch
+
+
+def _validated_periods(
+    periods: Mapping[int | str, AxiomPeriod] | None,
+) -> dict[str, AxiomPeriod] | None:
+    """Normalize a ``periods`` mapping to string labels, refusing ambiguity.
+
+    Raises:
+        TypeError: If ``periods`` is not a mapping, a label is not an int or
+            a non-empty string, or a value is not an :class:`AxiomPeriod`.
+        ValueError: If the mapping is empty, or two labels share a string
+            form (``2026`` and ``"2026"``).
+    """
+    if periods is None:
+        return None
+    if not isinstance(periods, Mapping):
+        raise TypeError("periods must map period labels to AxiomPeriod bounds.")
+    if not periods:
+        raise ValueError(
+            "periods must map at least one label; omit it to use calendar years "
+            "and months."
+        )
+    resolved: dict[str, AxiomPeriod] = {}
+    for label, bounds in periods.items():
+        if (
+            isinstance(label, bool)
+            or not isinstance(label, int | str)
+            or (isinstance(label, str) and not label)
+        ):
+            raise TypeError(
+                f"periods labels must be ints or non-empty strings, got {label!r}."
+            )
+        if not isinstance(bounds, AxiomPeriod):
+            raise TypeError("periods values must be AxiomPeriod instances.")
+        key = str(label)
+        if key in resolved:
+            raise ValueError(f"Duplicate explicit Axiom period label {key!r}.")
+        resolved[key] = bounds
+    return resolved
+
+
+def _validated_nesting(
+    nesting: Mapping[str, str] | None, schema: EntitySchema
+) -> dict[str, str]:
+    """Validate a child group -> parent group mapping against ``schema``.
+
+    Raises:
+        TypeError: If ``nesting`` is not a mapping.
+        ValueError: If a side is not a group entity of ``schema``, a group
+            maps to itself, or the declared parents form a cycle.
+    """
+    if nesting is None:
+        return {}
+    if not isinstance(nesting, Mapping):
+        raise TypeError("nesting must map child group entities to parent groups.")
+    groups = set(schema.group_entities)
+    resolved: dict[str, str] = {}
+    for child, parent in nesting.items():
+        for side in (child, parent):
+            if not isinstance(side, str) or side not in groups:
+                raise ValueError(
+                    f"nesting names {side!r}, which is not a group entity of "
+                    f"the schema {list(schema.group_entities)}."
+                )
+        if child == parent:
+            raise ValueError(f"nesting maps group {child!r} to itself.")
+        resolved[child] = parent
+    for start in resolved:
+        seen = {start}
+        current = resolved[start]
+        while current in resolved:
+            if current in seen:
+                raise ValueError(f"nesting is cyclic through group {current!r}.")
+            seen.add(current)
+            current = resolved[current]
+    return resolved
+
+
+def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarray:
+    """Cast one dense output array to its graph-ownable dtype without loss.
+
+    Bool stays bool; integers and judgment codes become int64; decimals
+    become float64. Judgment codes must be ``-1``, ``0`` or ``1``. The input
+    must already hold the engine's numpy kind for that dtype: nothing is
+    parsed, rounded, or truncated.
+
+    Raises:
+        ValueError: If ``engine_dtype`` has no graph type, the array's numpy
+            dtype does not match it, or a value would not survive the cast.
+    """
+    if engine_dtype not in _GRAPH_DTYPE_BY_ENGINE:
+        raise ValueError(
+            f"Output {name!r} has engine dtype {engine_dtype!r}, which no graph "
+            "column holds."
+        )
+    kind = values.dtype.kind
+    if engine_dtype == "bool" and kind == "b":
+        return values.astype(np.bool_)
+    if engine_dtype == "decimal" and kind == "f":
+        return values.astype(np.float64)
+    if engine_dtype in ("integer", "judgment") and kind in ("i", "u"):
+        if kind == "u" and values.size and values.max() > np.iinfo(np.int64).max:
+            raise ValueError(
+                f"Output {name!r} holds unsigned values beyond the int64 range."
+            )
+        cast = values.astype(np.int64)
+        if engine_dtype == "judgment" and not np.isin(cast, _JUDGMENT_CODES).all():
+            invalid = sorted(set(np.unique(cast).tolist()) - {-1, 0, 1})
+            raise ValueError(
+                f"Judgment output {name!r} holds codes outside -1/0/1: {invalid[:5]}."
+            )
+        return cast
+    raise ValueError(
+        f"Output {name!r} ({engine_dtype}) arrived as numpy dtype {values.dtype}, "
+        "which does not cast to a graph column without loss."
+    )
+
+
+def _refuse_symlinks(root: Path) -> None:
+    """Refuse a RuleSpec root holding symbolic links.
+
+    The tree digest walks the root without following directory links, so a
+    linked directory's files would reach the engine without entering the
+    reference; a linked file would bind its target's bytes under the link's
+    name. A ``git archive`` export of a RuleSpec repository has none.
+
+    Raises:
+        ValueError: Naming the first link found.
+    """
+    for directory, directories, files in root.walk(follow_symlinks=False):
+        for name in sorted((*directories, *files)):
+            candidate = directory / name
+            if candidate.is_symlink():
+                raise ValueError(
+                    f"RuleSpec root {root} contains the symbolic link "
+                    f"{candidate.relative_to(root).as_posix()}; export the tree "
+                    "without links."
+                )
+
+
+def _require_clean_checkout(root: Path, commit: str) -> None:
+    """Require a git-checkout RuleSpec root to hold exactly ``commit``.
+
+    Ignored files count as changes: the digest hashes them, but the commit
+    does not hold them. ``--no-optional-locks`` stops ``git status``
+    refreshing the index, which would otherwise rewrite ``.git/index`` and
+    move the digest taken next.
+
+    Raises:
+        ValueError: If git fails or times out, the checkout has modified,
+            untracked, or ignored files, or ``HEAD`` is not ``commit``.
+    """
+
+    def git(*args: str) -> str:
+        try:
+            completed = subprocess.run(
+                ["git", "--no-optional-locks", "-C", str(root), *args],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError(
+                f"git is required to verify the RuleSpec checkout {root}."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(
+                f"git {' '.join(args)} timed out in RuleSpec checkout {root}."
+            ) from exc
+        if completed.returncode != 0:
+            raise ValueError(
+                f"git {' '.join(args)} failed in RuleSpec checkout {root}: "
+                f"{completed.stderr.strip()}"
+            )
+        return completed.stdout
+
+    if git("status", "--porcelain=v1", "--untracked-files=all", "--ignored").strip():
+        raise ValueError(
+            f"RuleSpec checkout {root} has modified, untracked, or ignored "
+            f"files that commit {commit} does not hold; reference a git "
+            "archive export instead."
+        )
+    head = git("rev-parse", "--verify", "HEAD^{commit}").strip()
+    if head != commit:
+        raise ValueError(
+            f"RuleSpec checkout {root} is at {head}, not the declared "
+            f"rulespec_commit {commit}."
+        )
