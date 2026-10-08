@@ -9,9 +9,17 @@ from __future__ import annotations
 
 import json
 import re
+from argparse import Namespace
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any, TypedDict
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
+from microcosm.build.graph_publication_types import (
+    PublicationFileRole,
+    PublicationReceipt,
+)
+from microcosm.build.staging_dataset import StagedDatasetDelivery
 from microcosm.build.telemetry_emitter_service.graph_publication import (
     publication_inventory,
 )
@@ -25,7 +33,15 @@ INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
 
 
-def publication_enabled(args) -> bool:
+class GraphEvidenceOutput(TypedDict):
+    """A preserved public file registered in the build's output manifest."""
+
+    path: str
+    sha256: str
+    bytes: int
+
+
+def publication_enabled(args: Namespace) -> bool:
     explicit = getattr(args, "publish_orrery", None)
     if explicit is not None:
         return explicit
@@ -36,7 +52,7 @@ def publication_enabled(args) -> bool:
     )
 
 
-def _urls(value):
+def _urls(value: object) -> Iterator[str]:
     if isinstance(value, dict):
         for key, item in value.items():
             if key == "url" and isinstance(item, str):
@@ -48,7 +64,7 @@ def _urls(value):
             yield from _urls(item)
 
 
-def _output(path, published_root):
+def _output(path: Path, published_root: Path) -> GraphEvidenceOutput:
     info = file_artifact(path)
     return {
         "path": str(published_root / path.name),
@@ -57,7 +73,7 @@ def _output(path, published_root):
     }
 
 
-def finalize_graph(args, record: dict) -> dict:
+def finalize_graph(args: Namespace, record: dict[str, Any]) -> PublicationReceipt:
     """Freeze bytes and a receipt snapshot; retry never rewrites that snapshot.
 
     This runs inside the temporary build directory, including on exceptions.
@@ -68,7 +84,7 @@ def finalize_graph(args, record: dict) -> dict:
     output = Path(args.out)
     published_root = Path(getattr(args, "published_out", output))
     schema_path = output / "graph.schema.json"
-    receipt = {
+    receipt: PublicationReceipt = {
         "version": 1,
         "status": "no_evidence",
         "publication_id": None,
@@ -81,7 +97,10 @@ def finalize_graph(args, record: dict) -> dict:
             schema = json.loads(schema_path.read_bytes())
             index_path = output / "execution.evidence.json"
             execution = None
-            roles = {schema_path.name: "schema", "graph.orrery.json": "graph"}
+            roles: dict[str, PublicationFileRole] = {
+                schema_path.name: "schema",
+                "graph.orrery.json": "graph",
+            }
             if index_path.is_file():
                 store = ContentStore(args.graph_store, create=False)
                 runs = load_run_evidence(index_path, store=store, reference_base=output)
@@ -89,12 +108,13 @@ def finalize_graph(args, record: dict) -> dict:
                 roles[index_path.name] = "index"
                 index = json.loads(index_path.read_bytes())
                 for run in index["runs"]:
-                    for field, role in (
+                    evidence_roles: tuple[tuple[str, PublicationFileRole], ...] = (
                         ("graph", "declaration"),
                         ("manifest", "manifest"),
                         ("binding", "binding"),
                         ("summaries", "summaries"),
-                    ):
+                    )
+                    for field, role in evidence_roles:
                         roles[run[field]["path"]] = role
             payload = orrery_json_from_schema(schema, execution=execution).encode()
             materialize_bytes(payload, output / "graph.orrery.json")
@@ -140,7 +160,9 @@ def finalize_graph(args, record: dict) -> dict:
                         _cache_dir() / TELEMETRY_SPOOL_FILENAME
                     )
                     queue.enqueue(preserved, inventory)
-                    receipt.update(queue.receipt(inventory["publication_id"]))
+                    queued_receipt = queue.receipt(inventory["publication_id"])
+                    assert queued_receipt is not None
+                    receipt.update(queued_receipt)
                 else:
                     receipt.update(emitter.publish_graph(preserved, inventory))
     except Exception:
@@ -181,7 +203,9 @@ def finalize_graph(args, record: dict) -> dict:
     return receipt
 
 
-def stage_graph_evidence(args, output: Path, *, run_id: str) -> dict | None:
+def stage_graph_evidence(
+    args: Namespace, output: Path, *, run_id: str
+) -> StagedDatasetDelivery | None:
     """Stage failure evidence through the existing generic HF bundle adapter."""
     from microcosm.build.staging_dataset import (
         StagedDatasetBundle,
