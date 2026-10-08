@@ -168,7 +168,8 @@ def finalize_graph(args: Namespace, record: dict[str, Any]) -> PublicationReceip
     except Exception:
         # No credential, exception text, paths to raw input data, or signed URL
         # is copied from an exception into public evidence or telemetry.
-        receipt.update(status="failed", error_code="graph_export_or_enqueue_failed")
+        receipt["status"] = "failed"
+        receipt["error_code"] = "graph_export_or_enqueue_failed"
     materialize_bytes(canonical_json(receipt), output / RECEIPT_NAME)
     names.append(RECEIPT_NAME)
     record["orrery_files"] = names
@@ -233,6 +234,7 @@ def stage_graph_evidence(
     )
     if mode == "local_only":
         return local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+    assert repository is not None, "Remote staging requires a repository."
     return stage_bundle(
         bundle,
         storage=HuggingFaceDatasetStorage(repository, api=rowwise_staging._hub_api()),
