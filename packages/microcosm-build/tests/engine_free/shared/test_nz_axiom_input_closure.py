@@ -15,6 +15,7 @@ produce from a concept frame equal the inputs the reproduction harness sent
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -83,6 +84,23 @@ def _payload() -> dict:
 
 
 class TestClosure:
+    def test_every_engine_line_citation_is_pinned_at_the_surface_engine(self) -> None:
+        # A line citation into axiom-rules-engine names one file version only
+        # when a pin records that file at input_surface.engine's commit.
+        payload = _payload()
+        engine = payload["input_surface"]["engine"]
+        pins = payload["engine_source_pins"]["pins"]
+        pinned = {pin["path"] for pin in pins}
+        assert all(
+            pin["repository"] == engine["repository"]
+            and pin["commit"] == engine["commit"]
+            for pin in pins
+        )
+        cited = set(re.findall(r"((?:[\w-]+/)*[\w-]+\.rs):\d", json.dumps(payload)))
+        assert cited, "the closure cites engine source lines"
+        assert cited <= pinned
+        assert pinned <= cited, "every pin is cited"
+
     def test_the_closure_partitions_every_bound_module(self) -> None:
         assert CLOSURE.content_basis is ContentBasis.TRANSPORT
         assert CLOSURE.check(MAPPING, SURFACE) == ()

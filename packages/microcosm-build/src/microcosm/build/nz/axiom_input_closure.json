@@ -46,6 +46,31 @@
   ]
  },
  "engine_optional_evidence": "The axiom-rules-engine commit named in input_surface.engine (the engine that generated the committed input surface) has no optional inputs. A RuleSpec module has no inputs section (RulesDocument holds format, imports, module, units, relations and rules; src/rulespec.rs:361-374), a rule-level default is rejected (RuleSpecError::UnsupportedDefault, src/rulespec.rs:91-94), and the dense batch call collects only the inputs the caller supplies (python-ext/src/lib.rs:458-466). A plain read of an absent input fails every row whose evaluation reaches it with EvalError::MissingInput (src/dense.rs:2790-2803), and that fails the request. The internal input_or_else node that would read a default (src/dense.rs:2805-2811) is never produced from RuleSpec text: formula lowering turns a name no rule defines into a plain input read (src/formula.rs:1400-1413). So no root input of these modules can be verified engine-optional, and this closure classes none as such: an input a run does not encode is defaulted here, with its reason.",
+ "engine_source_pins": {
+  "note": "The axiom-rules-engine source files that engine_optional_evidence and undetermined_judgments cite by line, pinned at input_surface.engine.commit so each line citation names one exact file version.",
+  "pins": [
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "python-ext/src/lib.rs"
+   },
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "src/dense.rs"
+   },
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "src/formula.rs"
+   },
+   {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+    "path": "src/rulespec.rs"
+   }
+  ]
+ },
  "undetermined_judgments": {
   "action": "refuse",
   "alternatives": [
