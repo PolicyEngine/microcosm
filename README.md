@@ -53,6 +53,8 @@ locally and the build continues. This live event path is independent of the
 staging run files described below.
 
 The same process has a separate component for completed Orrery graph output.
+See [the service architecture](docs/build-emitter.md) for component boundaries
+and the extension interface.
 UK full, dense, and national builds export `graph.orrery.json` automatically,
 using the saved graph declaration and recorded execution phases. Before staging
 the artifact bundle on Hugging Face, the build preserves the exact graph and
