@@ -24,8 +24,10 @@ from microcosm.build.telemetry_emitter_service import (
 )
 from microcosm.build.telemetry_emitter_service import collector as collector_module
 from microcosm.build.telemetry_emitter_service import resources as resources_module
+from microcosm.build.telemetry_emitter_service import runtime as runtime_module
 from microcosm.build.telemetry_emitter_service import spool as spool_module
 from microcosm.build.telemetry_emitter_service.constants import (
+    DRAIN_RETRY_SECONDS,
     PRODUCTION_COLLECTOR_URL,
 )
 from microcosm.build.telemetry_emitter_service.database import (
@@ -810,3 +812,100 @@ def test_failure_without_active_stage_only_reports_run_failure():
         ("run", "failed")
     ]
     assert emitter.events[0]["details"]["failed_during"] == "preflight"
+
+
+@pytest.mark.parametrize("drain_seconds", [0.1, 1.0])
+def test_shutdown_retries_wait_after_stop_without_exceeding_deadline(
+    tmp_path, monkeypatch, drain_seconds
+) -> None:
+    clock = SimpleNamespace(now=0.0)
+    attempts: list[float] = []
+
+    def flush_once() -> bool:
+        attempts.append(clock.now)
+        # Simulate a small amount of delivery work, so a broken busy loop
+        # still reaches its deadline without relying on real elapsed time.
+        clock.now += 0.01
+        return False
+
+    def sleep(seconds: float) -> None:
+        clock.now += seconds
+
+    monkeypatch.setattr(
+        runtime_module,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock.now, sleep=sleep),
+    )
+    service = EmitterService(
+        socket_path=tmp_path / "unused.sock",
+        registration=_registration(),
+        spool=SimpleNamespace(has_deliverable=lambda: True),
+        delivery=SimpleNamespace(flush_once=flush_once),
+        sampler=_FakeSampler(),
+        heartbeat_seconds=60,
+        drain_seconds=drain_seconds,
+    )
+    service._stop.set()
+
+    service._drain()
+
+    assert attempts
+    assert all(
+        later - earlier >= DRAIN_RETRY_SECONDS
+        for earlier, later in zip(attempts, attempts[1:], strict=False)
+    )
+    assert clock.now == pytest.approx(drain_seconds)
+
+
+def test_fallback_sampler_retains_reaped_child_cpu(tmp_path, monkeypatch) -> None:
+    proc_root = tmp_path / "proc"
+
+    def write_stat(
+        pid: int,
+        parent_pid: int,
+        user_ticks: int,
+        system_ticks: int,
+        child_user_ticks: int = 0,
+        child_system_ticks: int = 0,
+    ) -> Path:
+        # Fields start at the state after the parenthesized process name.
+        fields = ["0"] * 22
+        fields[0] = "S"
+        fields[1] = str(parent_pid)
+        fields[11:15] = map(
+            str, (user_ticks, system_ticks, child_user_ticks, child_system_ticks)
+        )
+        fields[19] = "1000"
+        fields[21] = "4"
+        path = proc_root / str(pid) / "stat"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{pid} (build worker) {' '.join(fields)}")
+        return path
+
+    write_stat(100, 1, 100, 200)
+    child_path = write_stat(101, 100, 500, 300)
+    monkeypatch.setattr(resources_module, "psutil", None)
+    monkeypatch.setattr(
+        resources_module,
+        "Path",
+        lambda path: proc_root / Path(path).relative_to("/proc"),
+    )
+    monkeypatch.setattr(
+        resources_module,
+        "os",
+        SimpleNamespace(
+            sysconf=lambda name: {"SC_CLK_TCK": 100, "SC_PAGE_SIZE": 4096}[name]
+        ),
+    )
+    sampler = resources_module.ProcessTreeSampler(100)
+
+    before = sampler.sample()
+    child_path.unlink()
+    write_stat(100, 1, 100, 200, child_user_ticks=500, child_system_ticks=300)
+    after = sampler.sample()
+
+    assert before["cpu_user_seconds"] == after["cpu_user_seconds"] == 6.0
+    assert before["cpu_system_seconds"] == after["cpu_system_seconds"] == 5.0
+    assert before["rss_bytes"] == 8 * 4096
+    assert after["rss_bytes"] == 4 * 4096
+    assert after["peak_rss_bytes"] == before["rss_bytes"]

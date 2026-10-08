@@ -12214,7 +12214,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise
     if dry_run_exit is not None:
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.complete()
+            if dry_run_exit == 0:
+                _ACTIVE_EMITTER.complete()
+            else:
+                _ACTIVE_EMITTER.fail(
+                    RuntimeError(f"US dry run returned exit status {dry_run_exit}.")
+                )
         raise SystemExit(dry_run_exit)
     if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
         _ACTIVE_EMITTER.complete()

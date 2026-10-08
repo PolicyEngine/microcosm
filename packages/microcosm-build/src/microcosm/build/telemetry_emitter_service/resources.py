@@ -111,8 +111,8 @@ class ProcessTreeSampler:
                 fields = stat_path.read_text().rsplit(")", 1)[1].split()
                 process_rows[pid] = (
                     int(fields[1]),
-                    int(fields[11]) / clock_ticks,
-                    int(fields[12]) / clock_ticks,
+                    (int(fields[11]) + int(fields[13])) / clock_ticks,
+                    (int(fields[12]) + int(fields[14])) / clock_ticks,
                     int(fields[21]) * page_size,
                 )
             except (OSError, ValueError, IndexError):

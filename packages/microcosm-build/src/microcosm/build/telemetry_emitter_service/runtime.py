@@ -212,4 +212,6 @@ class EmitterService:
         deadline = time.monotonic() + self.drain_seconds
         while self.spool.has_deliverable() and time.monotonic() < deadline:
             if not self.delivery.flush_once():
-                self._stop.wait(DRAIN_RETRY_SECONDS)
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(DRAIN_RETRY_SECONDS, remaining))

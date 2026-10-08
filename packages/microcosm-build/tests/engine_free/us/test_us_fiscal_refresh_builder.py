@@ -16883,3 +16883,37 @@ def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
         main_source
     )
     assert '"soi-congressional-district-2022",' not in main_source
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "expected_status"),
+    [(None, "completed"), (0, "completed"), (1, "failed"), (2, "failed")],
+)
+def test_main_reports_actual_dry_run_outcome(
+    monkeypatch, exit_code, expected_status
+) -> None:
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    builder = _load_builder_module()
+    emitter = FakeTelemetryEmitter(TelemetryRun("dry-run", "US", "us_fiscal_refresh"))
+    emitter.transition_stage("validation")
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", emitter)
+    monkeypatch.setattr(builder, "_ACTIVE_PROGRESS", None)
+    monkeypatch.setattr(builder, "_main", lambda argv: exit_code)
+
+    if exit_code is None:
+        builder.main([])
+    else:
+        with pytest.raises(SystemExit) as result:
+            builder.main([])
+        assert result.value.code == exit_code
+
+    run_events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert len(run_events) == 1
+    assert run_events[0]["status"] == expected_status
+    assert emitter.events[1]["status"] == expected_status
+    assert not emitter.available
+    if expected_status == "failed":
+        assert str(exit_code) in run_events[0]["message"]
+        assert run_events[0]["details"]["failure_class"] == "build_failure"
