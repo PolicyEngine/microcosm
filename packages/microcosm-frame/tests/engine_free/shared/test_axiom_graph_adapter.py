@@ -22,13 +22,15 @@ import re
 import shutil
 import subprocess
 import tarfile
-from collections.abc import Iterable, Mapping
+import unicodedata
+from collections.abc import Collection, Iterable, Mapping
+from itertools import permutations
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import ExportContract, Frame, WeightKind, Weights
@@ -950,6 +952,8 @@ class TestAssertNoRelations:
 
 _MODULE = "zz/policies/tests/toy.yaml"
 _OTHER_MODULE = "zz/policies/tests/other.yaml"
+#: An auxiliary RuleSpec file whose directory and name are spelled in NFD.
+_DECOMPOSED = "zz/re\u0300gles/cafe\u0301.yaml"
 _BASE_TREE = {
     _MODULE: b"format: rulespec/v1\nrules: []\n",
     "zz/policies/shared/rates.yaml": b"format: rulespec/v1\nrules:\n  - name: r\n",
@@ -1896,6 +1900,113 @@ class TestAxiomEngineRefGitCheckout:
         with pytest.raises(ValueError, match=f"{_MODULE} is not the blob"):
             self._checkout_ref(root, head)
 
+    # -- names git and the file system spell differently ---------------------
+
+    def _decomposed_checkout(self, root: Path) -> tuple[Path, str]:
+        """Commit a tree holding ``_DECOMPOSED``; skip unless git records it in NFC.
+
+        Git on macOS with ``core.precomposeunicode=true`` records the NFC
+        spelling, while the file system lists the NFD name the file was
+        created under. Where git records the name as listed, the two never
+        diverge and the case does not arise.
+        """
+
+        _write_tree(root, {**_BASE_TREE, _DECOMPOSED: b"rules: aux\n"})
+        _git(root, "init", "-q")
+        _git(root, "config", "core.precomposeunicode", "true")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", "decomposed names")
+        recorded = _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0")
+        listed = axiom_adapter._checkout_files(root)
+        composed = unicodedata.normalize("NFC", _DECOMPOSED)
+        if composed not in recorded or _DECOMPOSED not in listed:
+            pytest.skip(
+                "git here records the decomposed name as the file system lists "
+                "it, so a commit's NFC name and an NFD file never name one file"
+            )
+        assert composed not in listed and _DECOMPOSED not in recorded
+        assert (root / composed).samefile(root / _DECOMPOSED)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        return root, _git(root, "rev-parse", "HEAD")
+
+    def test_a_clean_checkout_with_decomposed_names_is_accepted(self, tmp_path) -> None:
+        # The review of microcosm#1139: git lists the commit's NFC path, the
+        # file system the NFD one, and both open the same file; comparing the
+        # two path sets as strings refused this clean checkout.
+        root, head = self._decomposed_checkout(tmp_path / "rulespec-git")
+        reference = self._checkout_ref(root, head)
+        assert json.loads(reference)["rulespec_commit"] == head
+        assert self._checkout_ref(root, head) == reference
+
+    @pytest.mark.parametrize("hidden", ["clean-filter edit", "executable bit"])
+    def test_a_hidden_change_to_a_decomposed_file_is_refused(
+        self, tmp_path, hidden
+    ) -> None:
+        # A file paired through an equivalent spelling still has its bytes and
+        # mode checked; the error names the path as the commit records it.
+        root, head = self._decomposed_checkout(tmp_path / "rulespec-git")
+        composed = unicodedata.normalize("NFC", _DECOMPOSED)
+        if hidden == "clean-filter edit":
+            _hide_a_same_size_edit_behind_a_clean_filter(root, _DECOMPOSED)
+            expected = (
+                f"RuleSpec checkout {root.resolve()}: {composed} is not the blob "
+            )
+        else:
+            _hide_an_executable_mode_change(root, 0o755, _DECOMPOSED)
+            expected = (
+                f"RuleSpec checkout {root.resolve()}: {composed} has mode 100755, "
+                "not the mode 100644 "
+            )
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value).startswith(expected)
+
+    def test_one_file_cannot_stand_for_two_committed_spellings(
+        self, checkout, tmp_path
+    ) -> None:
+        # A commit can record one accented name twice, once in NFC and once in NFD,
+        # here with the same bytes. Where the file system opens one file under
+        # both names, the checkout holds one file and git status stays clean;
+        # pairing by normalized name, or letting one file answer for both
+        # paths, would accept it. Where the file system keeps the names apart,
+        # the checkout holds two files and each pairs with its own path.
+        root, _ = checkout
+        composed, decomposed = "caf\u00e9.yaml", "cafe\u0301.yaml"
+        source = tmp_path / "spelled-twice"
+        source.write_bytes(b"spelled: twice\n")
+        blob = _git(root, "hash-object", "-w", "--no-filters", str(source))
+        for name in (composed, decomposed):
+            # Without precomposition git keeps the NFD spelling as given.
+            _git(
+                root,
+                "-c",
+                "core.precomposeunicode=false",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"100644,{blob},{name}",
+            )
+        _git(root, "commit", "-q", "-m", "two spellings")
+        head = _git(root, "rev-parse", "HEAD")
+        _git(root, "reset", "-q", "--hard")
+        recorded = _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0")
+        assert {composed, decomposed} <= set(recorded)
+        assert _git(root, "status", "--porcelain", "--ignored") == ""
+        listed = set(axiom_adapter._checkout_files(root)) & {composed, decomposed}
+        if listed == {composed, decomposed}:
+            assert not (root / composed).samefile(root / decomposed)
+            assert json.loads(self._checkout_ref(root, head))["rulespec_commit"] == head
+            return
+        (lost,) = {composed, decomposed} - listed
+        with pytest.raises(ValueError) as refused:
+            self._checkout_ref(root, head)
+        assert str(refused.value) == (
+            f"RuleSpec checkout {root.resolve()} lacks {lost}, unlike commit "
+            f"{head} (1 path(s) differ), though git status reports no change; "
+            "reference a git archive export instead."
+        )
+
     # -- the invariant -------------------------------------------------------
 
     @settings(
@@ -1910,7 +2021,8 @@ class TestAxiomEngineRefGitCheckout:
     ) -> None:
         """Invariant: a git root is accepted iff it is exactly the declared commit.
 
-        The root is a copy of a committed checkout. The test makes one change
+        The root is a copy of a committed checkout holding ``_DECOMPOSED``,
+        whose NFC record pairs with its NFD file on macOS. The test makes one change
         that leaves it short of exactly the declared commit, or none, and sets
         any subset of git's repository-selecting variables to a clean copy
         at the same commit. The root is accepted iff nothing changed, and
@@ -1960,6 +2072,183 @@ class TestGitBlobId:
                 .strip()
             )
             assert axiom_adapter._git_blob_id(content, algorithm) == expected
+
+
+#: Spellings of one name: canonically equivalent (one NFD form) within a
+#: group, distinct across groups. The third spellings are the Angstrom sign
+#: and combining marks out of canonical order. "Plain" and "plain" differ only
+#: in case, which is not equivalence, though a case-insensitive file system
+#: opens one file under both.
+_NAME_SPELLINGS = (
+    ("caf\u00e9", "cafe\u0301"),
+    ("\u00c5", "A\u030a", "\u212b"),
+    ("\u1e69", "s\u0323\u0307", "s\u0307\u0323"),
+    ("plain",),
+    ("Plain",),
+)
+_DIRECTORY_SPELLINGS = (("r\u00e8gles", "re\u0300gles"),)
+_PATH_SHAPES = st.tuples(
+    st.sampled_from((None, *range(len(_DIRECTORY_SPELLINGS)))),
+    st.integers(0, len(_NAME_SPELLINGS) - 1),
+)
+
+
+def _spellings_of(shape: tuple[int | None, int]) -> list[str]:
+    """Every spelling of one path shape (an optional directory and a name)."""
+
+    directory, name = shape
+    stems = [f"{stem}.yaml" for stem in _NAME_SPELLINGS[name]]
+    if directory is None:
+        return stems
+    return [
+        f"{part}/{stem}" for part in _DIRECTORY_SPELLINGS[directory] for stem in stems
+    ]
+
+
+@st.composite
+def checkout_spellings(draw: st.DrawFn) -> tuple[list[str], list[str]]:
+    """Paths a commit records, and the paths then written, in writing order.
+
+    Each recorded path is written as recorded, respelled within its group, or
+    not at all; up to two further paths are written too. Two recorded paths
+    can be spellings of one name.
+    """
+
+    recorded: dict[str, tuple[int | None, int]] = {}
+    for shape in draw(st.lists(_PATH_SHAPES, min_size=1, max_size=4)):
+        recorded.setdefault(draw(st.sampled_from(_spellings_of(shape))), shape)
+    written = []
+    for path, shape in recorded.items():
+        action = draw(st.sampled_from(("as recorded", "respelled", "absent")))
+        if action == "as recorded":
+            written.append(path)
+        elif action == "respelled":
+            written.append(draw(st.sampled_from(_spellings_of(shape))))
+    for shape in draw(st.lists(_PATH_SHAPES, max_size=2)):
+        written.append(draw(st.sampled_from(_spellings_of(shape))))
+    return list(recorded), draw(st.permutations(written))
+
+
+def _pairs_one_to_one(
+    root: Path, recorded: Collection[str], present: Mapping[str, Path]
+) -> bool:
+    """Brute force: can every recorded path take its own entry, using them all?
+
+    A path may take an entry of the same name, or of a canonically equivalent
+    name when the path opens that entry's file.
+    """
+
+    def may_pair(path: str, entry: str) -> bool:
+        if path == entry:
+            return True
+        if unicodedata.normalize("NFD", path) != unicodedata.normalize("NFD", entry):
+            return False
+        try:
+            return (root / path).samefile(present[entry])
+        except OSError:
+            return False
+
+    paths = sorted(recorded)
+    if len(paths) != len(present):
+        return False
+    return any(
+        all(may_pair(path, entry) for path, entry in zip(paths, order, strict=True))
+        for order in permutations(present)
+    )
+
+
+class TestMatchCheckoutPaths:
+    @pytest.mark.parametrize("composed_file", ["absent", "another file"])
+    def test_an_equivalent_name_pairs_only_with_the_file_its_path_opens(
+        self, tmp_path, composed_file
+    ) -> None:
+        # An entry under an equivalent spelling pairs only when the recorded
+        # path opens that entry's file. ``present`` is built by hand, so the
+        # guard is exercised on every file system: on one that keeps NFC and
+        # NFD names apart, a lone NFD file is exactly the "absent" case.
+        (tmp_path / "other.yaml").write_bytes(b"other\n")
+        if composed_file == "another file":
+            (tmp_path / "caf\u00e9.yaml").write_bytes(b"composed\n")
+        present = {"cafe\u0301.yaml": tmp_path / "other.yaml"}
+        assert axiom_adapter._match_checkout_paths(
+            tmp_path, ["caf\u00e9.yaml"], present
+        ) == ({}, ["caf\u00e9.yaml"], ["cafe\u0301.yaml"])
+
+    def test_an_ambiguous_spelling_pairs_nothing(self, tmp_path) -> None:
+        # Two recorded spellings (NFC and the Angstrom sign) are equivalent to
+        # one NFD entry. Where the file system opens that file under both, either
+        # could take it; neither does, and the refusal names all three.
+        (tmp_path / "A\u030a.yaml").write_bytes(b"one file\n")
+        present = axiom_adapter._checkout_files(tmp_path)
+        assert axiom_adapter._match_checkout_paths(
+            tmp_path, ["\u212b.yaml", "\u00c5.yaml"], present
+        ) == ({}, sorted(["\u212b.yaml", "\u00c5.yaml"]), ["A\u030a.yaml"])
+
+    def test_distinct_nfc_and_nfd_files_are_not_merged(self, tmp_path) -> None:
+        composed, decomposed = "caf\u00e9.yaml", "cafe\u0301.yaml"
+        (tmp_path / composed).write_bytes(b"composed\n")
+        (tmp_path / decomposed).write_bytes(b"decomposed\n")
+        present = axiom_adapter._checkout_files(tmp_path)
+        if len(present) == 1:
+            pytest.skip(
+                "this file system opens one file under both spellings, so it "
+                "cannot hold two files whose names differ only in normalization"
+            )
+        match = axiom_adapter._match_checkout_paths
+        files = {composed: tmp_path / composed, decomposed: tmp_path / decomposed}
+        assert match(tmp_path, [composed], present) == (
+            {composed: files[composed]},
+            [],
+            [decomposed],
+        )
+        assert match(tmp_path, [decomposed], present) == (
+            {decomposed: files[decomposed]},
+            [],
+            [composed],
+        )
+        assert match(tmp_path, [composed, decomposed], present) == (files, [], [])
+
+    @settings(max_examples=150, deadline=None)
+    @given(spellings=checkout_spellings())
+    def test_property_paths_pair_one_to_one_with_the_files_they_open(
+        self, tmp_path_factory, spellings
+    ) -> None:
+        """Invariant: the pairing is one to one and complete iff a pairing exists.
+
+        The files are real, on the test's own file system: where it opens one
+        file under equivalent or case-differing names, writes collide as they
+        would in a checkout. Every pair is a path and an entry of the same
+        name, or of an equivalent name the path opens; no entry pairs twice;
+        the pairs and leftovers partition both sides; and nothing is left
+        over exactly when a brute-force search finds a complete pairing.
+        """
+
+        recorded, written = spellings
+        root = tmp_path_factory.mktemp("spellings")
+        for index, path in enumerate(written):
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_bytes(b"%d\n" % index)
+        present = axiom_adapter._checkout_files(root)
+        paired, lacking, extra = axiom_adapter._match_checkout_paths(
+            root, recorded, present
+        )
+        entry_of = {file: entry for entry, file in present.items()}
+        entries = [entry_of[file] for file in paired.values()]
+        assert len(set(entries)) == len(entries)
+        assert sorted([*paired, *lacking]) == sorted(recorded)
+        assert sorted([*entries, *extra]) == sorted(present)
+        for path, file in paired.items():
+            entry = entry_of[file]
+            assert entry == path or (
+                unicodedata.normalize("NFD", entry)
+                == unicodedata.normalize("NFD", path)
+                and (root / path).samefile(file)
+            )
+        complete = not lacking and not extra
+        assert complete == _pairs_one_to_one(root, recorded, present)
+        event("complete" if complete else "refused")
+        respelled = sum(entry_of[file] != path for path, file in paired.items())
+        event(f"pairs through an equivalent spelling: {respelled}")
 
 
 @pytest.fixture(scope="module")
@@ -2014,13 +2303,21 @@ _OLD_MTIME = 1_600_000_000
 
 
 def _old_mtime_checkout(root: Path) -> tuple[Path, str]:
-    """A committed checkout whose files all carry an old mtime."""
+    """A committed checkout whose files all carry an old mtime.
 
-    _write_tree(root, {**_BASE_TREE, ".gitignore": b"*.local.yaml\n"})
+    It holds ``_DECOMPOSED``, so on macOS, where git records that name in NFC
+    while the file system lists it in NFD, every check pairs the two.
+    """
+
+    _write_tree(
+        root,
+        {**_BASE_TREE, ".gitignore": b"*.local.yaml\n", _DECOMPOSED: b"rules: aux\n"},
+    )
     for path in root.rglob("*"):
         if path.is_file():
             os.utime(path, (_OLD_MTIME, _OLD_MTIME))
     _git(root, "init", "-q")
+    _git(root, "config", "core.precomposeunicode", "true")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "fixture")
     return root, _git(root, "rev-parse", "HEAD")
@@ -2086,26 +2383,30 @@ def _commit_symlink_as_a_plain_file(root: Path) -> str:
     return _git(root, "rev-parse", "HEAD")
 
 
-def _hide_a_same_size_edit_behind_a_clean_filter(root: Path) -> None:
-    """Edit the module, same size, behind a clean filter that undoes the edit."""
+def _hide_a_same_size_edit_behind_a_clean_filter(
+    root: Path, path: str = _MODULE
+) -> None:
+    """Edit ``path``, same size, behind a clean filter that undoes the edit."""
 
     (root / ".git" / "info").mkdir(exist_ok=True)
     (root / ".git" / "info" / "attributes").write_text(
         "*.yaml filter=restore\n", encoding="utf-8"
     )
     _git(root, "config", "filter.restore.clean", "sed s/HIDDEN/rules:/")
-    module = root / _MODULE
+    module = root / path
     content = module.read_bytes()
     edited = content.replace(b"rules:", b"HIDDEN")
     assert len(edited) == len(content) and edited != content
     module.write_bytes(edited)
 
 
-def _hide_an_executable_mode_change(root: Path, mode: int = 0o755) -> None:
-    """Change the module's executable bit while git ignores worktree modes."""
+def _hide_an_executable_mode_change(
+    root: Path, mode: int = 0o755, path: str = _MODULE
+) -> None:
+    """Change ``path``'s executable bit while git ignores worktree modes."""
 
     _git(root, "config", "core.filemode", "false")
-    (root / _MODULE).chmod(mode)
+    (root / path).chmod(mode)
 
 
 def _apply_checkout_change(root: Path, change: str, head: str, tmp_path_factory) -> str:

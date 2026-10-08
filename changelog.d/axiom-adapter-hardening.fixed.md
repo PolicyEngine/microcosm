@@ -10,6 +10,14 @@ executable bit, so a change that
 trusted under `core.trustctime=false`, by a clean filter or by a file system
 monitor, a nested `.git` entry, or a symbolic link held as a plain file under
 `core.symlinks=false`, or an executable-bit change hidden by
-`core.filemode=false`. A referenced adapter also records the file its module
+`core.filemode=false`. Committed paths pair with files one to one: a name git
+records precomposed (usually Unicode NFC) matches the file listed under an
+equivalent NFD name only when that one file opens under both, as on macOS, and
+one directory entry never answers for two committed names. The commit's paths and blob names are read
+from the repository's object database, whose commit and tree objects are not
+rehashed, so this check assumes the database is intact: deliberate
+object-store tampering, such as a nested tree rewritten under its old object
+name, is out of its scope, though the directory digest still pins the bytes
+present. A referenced adapter also records the file its module
 path resolves to, and refuses to compile or take a second reference once the
 path resolves to another file.

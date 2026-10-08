@@ -98,7 +98,8 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Mapping, Sequence
+import unicodedata
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from functools import cache
@@ -1185,10 +1186,20 @@ def axiom_engine_ref(
     tracked file flagged skip-worktree or assume-unchanged (``git status``
     does not report edits to those), and holds outside ``.git`` exactly the
     commit's files, each byte for byte the blob the commit records and with
-    its executable bit. Git runs
+    its executable bit. A recorded name matches a file whose name is the
+    same or, when that one file opens under both, canonically equivalent
+    (git on macOS with ``core.precomposeunicode=true`` records precomposed
+    names, usually NFC, that the file system may list in NFD); one directory
+    entry never answers for two recorded names. Git runs
     without the caller's repository-selecting variables (``GIT_DIR``,
     ``GIT_WORK_TREE`` and the rest of ``git rev-parse --local-env-vars``) and
     without replace refs, so neither can point the check at other objects.
+    The commit's file list and blob names are read through git from the
+    repository's object database, whose commit and tree objects are not
+    rehashed, so the check assumes that database is intact: it does not
+    detect an object rewritten under another object's name (a substituted
+    nested tree, say), though the directory digest still pins the bytes
+    present.
     Its ``.git`` is then hashed
     like any other file, as the graph's source key hashes it. That makes the
     reference specific to one clone: two clones or worktrees of one commit
@@ -1565,7 +1576,12 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
     ``core.trustctime=false``, by a clean filter, or by a file system monitor;
     a nested ``.git`` entry, which git's untracked scan skips; or a committed
     symbolic link held as a plain file under ``core.symlinks=false``; or an
-    executable-bit change hidden by ``core.filemode=false``.
+    executable-bit change hidden by ``core.filemode=false``. Recorded paths
+    pair with files one to one as :func:`_match_checkout_paths` describes,
+    so an NFC name git records matches the one file the file system lists
+    under an equivalent NFD name. The paths and blob names come from
+    ``git ls-tree``, which reads the object database; the commit and tree
+    objects are not rehashed, so an intact object database is assumed.
 
     Raises:
         ValueError: If git fails or times out; the root is not its
@@ -1675,11 +1691,11 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
         fields, path = entry.split("\t", 1)
         mode, _, name = fields.split(" ")
         recorded[path] = (mode, name)
-    present = _checkout_files(root)
-    unexpected = sorted(present.keys() ^ recorded.keys())
+    files, lacking, extra = _match_checkout_paths(root, recorded, _checkout_files(root))
+    unexpected = sorted((*lacking, *extra))
     if unexpected:
         first = unexpected[0]
-        state = "holds" if first in present else "lacks"
+        state = "lacks" if first in lacking else "holds"
         raise ValueError(
             f"RuleSpec checkout {root} {state} {first}, unlike commit {commit} "
             f"({len(unexpected)} path(s) differ), though git status reports no "
@@ -1694,7 +1710,7 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
                 f"mode {mode}, not as a regular file, though the checkout holds "
                 "a plain file there; reference a git archive export instead."
             )
-        file = present[path]
+        file = files[path]
         if not file.is_file() or _git_blob_id(file.read_bytes(), algorithm) != name:
             raise ValueError(
                 f"RuleSpec checkout {root}: {path} is not the blob {name} commit "
@@ -1762,6 +1778,61 @@ def _checkout_files(root: Path) -> dict[str, Path]:
             path = directory / name
             present[path.relative_to(root).as_posix()] = path
     return present
+
+
+def _match_checkout_paths(
+    root: Path, recorded: Collection[str], present: Mapping[str, Path]
+) -> tuple[dict[str, Path], list[str], list[str]]:
+    """Pair each path a commit records with the checkout entry holding it, one to one.
+
+    Git and the file system can spell one file's name differently: on macOS
+    with ``core.precomposeunicode=true``, git records a name in Unicode NFC
+    while the file system lists it as it was created, for instance in NFD,
+    and both spellings open the same file. A recorded path pairs with the
+    entry of the identical name when there is one. Otherwise it pairs with
+    the one remaining entry whose name is canonically equivalent (the same
+    NFD form), and only when ``root / path`` opens that entry's file
+    (:meth:`Path.samefile`). Each entry pairs at most once; when a form has
+    more than one unpaired path or entry, none of them pairs. Nothing is
+    normalized wholesale: where the file system keeps an NFC and an NFD name
+    apart they are two entries, neither standing in for the other, and one
+    file cannot stand in for two recorded spellings. Names that differ in
+    case are not equivalent.
+
+    Args:
+        root: The checkout's top level.
+        recorded: Paths the commit records, POSIX and relative to ``root``.
+        present: :func:`_checkout_files` of ``root``.
+
+    Returns:
+        The entry each paired recorded path names, the recorded paths left
+        unpaired, and the entries left unpaired (as the file system spells
+        them); both lists sorted.
+    """
+
+    paired = {path: present[path] for path in recorded if path in present}
+    lacking: dict[str, list[str]] = {}
+    for path in recorded:
+        if path not in paired:
+            lacking.setdefault(unicodedata.normalize("NFD", path), []).append(path)
+    extra: dict[str, list[str]] = {}
+    for path in present:
+        if path not in paired:
+            extra.setdefault(unicodedata.normalize("NFD", path), []).append(path)
+    unpaired: list[str] = []
+    for form, paths in lacking.items():
+        entries = extra.get(form, [])
+        if len(paths) == 1 and len(entries) == 1:
+            try:
+                same = (root / paths[0]).samefile(present[entries[0]])
+            except OSError:
+                same = False
+            if same:
+                paired[paths[0]] = present[entries.pop()]
+                continue
+        unpaired.extend(paths)
+    leftover = sorted(path for entries in extra.values() for path in entries)
+    return paired, sorted(unpaired), leftover
 
 
 def _git_blob_id(content: bytes, algorithm: str) -> str:
