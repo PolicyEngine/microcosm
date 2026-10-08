@@ -46,11 +46,48 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
-Supported US and UK build commands always start the local telemetry emitter
-service. It reports live progress to the hosted collector when the operator's
+Supported US and UK build commands always start the local build publishing
+service. Its telemetry component reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
+
+The same process has a separate component for completed Orrery graph output.
+UK full, dense, and national builds export `graph.orrery.json` automatically,
+using the saved graph declaration and recorded execution phases. Before staging
+the artifact bundle on Hugging Face, the build preserves the exact graph and
+reviewed evidence, submits a durable publication job, waits at most 30 seconds
+for an initial result, and registers the graph files and `orrery.publication.json`
+receipt in the artifact manifest. The viewer is
+[Microcosm runs](https://microcosm-runs.vercel.app).
+
+Graph publication uses the operator's existing Hugging Face credential through
+the service's shared short-lived collector session. No new producer environment
+variable or shared upload secret is required. Publication IDs are independent
+of telemetry run IDs. Graph jobs are not discarded by telemetry retention or
+missing-credential rules. Their source files remain under the persistent
+attempt directory's `orrery-publication/`, and pending jobs resume when the
+service next starts. To retry one explicitly, including after restoring its
+preserved files on another machine:
+
+```bash
+microcosm-publish-graph --publication-id PUBLICATION_ID \
+  --directory /path/to/attempt/orrery-publication
+```
+
+Retries update `publication.status.json` in that preserved directory, never the
+original artifact bundle's receipt snapshot. A published ID cannot be reused
+for different bytes; changed output needs a new publication ID. Public uploads
+contain only graph declarations, native execution receipts, and reviewed
+aggregate summaries, not H5 files or content-store population payloads.
+
+`--staging-local-only`, `--no-staging`, and `--no-staged-dataset` export the graph
+without submitting a remote publication job. `--no-publish-orrery` independently
+disables graph submission; `--publish-orrery` explicitly enables it even for a
+local-only dataset build. A graph upload failure records a pending/failed receipt
+but does not prevent Hugging Face staging. If a build fails, its saved graph
+evidence is exported and preserved before temporary-directory cleanup; phases
+without recorded execution are not represented as completed.
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. Progress JSON is uploaded to `policyengine/populace-us-staging`

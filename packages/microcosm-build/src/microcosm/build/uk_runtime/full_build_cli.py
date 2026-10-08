@@ -503,6 +503,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default_upload_interval_seconds=STAGING_UPLOAD_INTERVAL_SECONDS,
     )
     add_staged_dataset_arguments(parser, repository=UK_STAGED_DATASET_REPOSITORY)
+    graph_publication = parser.add_mutually_exclusive_group()
+    graph_publication.add_argument(
+        "--publish-orrery",
+        dest="publish_orrery",
+        action="store_true",
+        help="Publish the saved graph, including when dataset staging is local-only.",
+    )
+    graph_publication.add_argument(
+        "--no-publish-orrery",
+        dest="publish_orrery",
+        action="store_false",
+        help="Export graph files locally without submitting a publication job.",
+    )
+    parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
@@ -1064,6 +1078,69 @@ def _release_stem(posture) -> tuple[str, str]:
     )
 
 
+def _run_with_graph_publication(execute, prepared, args, *, telemetry, attempt, record):
+    """Export before temporary files disappear, even if a kernel raises."""
+    from .orrery_publication import (
+        EVIDENCE_MANIFEST_NAME,
+        finalize_graph,
+        stage_graph_evidence,
+    )
+
+    try:
+        status = execute(
+            prepared, args, telemetry=telemetry, attempt=attempt, record=record
+        )
+    except BaseException:
+        finalize_graph(args, record)
+        # A failed build may have no dataset. Preserve only its explicit graph
+        # inventory, not incomplete H5 files or arbitrary temporary JSON.
+        from microcosm.build.artifact_files import publish_staged_bundle
+
+        output = Path(args.published_out)
+        names = [*record.get("orrery_files", []), EVIDENCE_MANIFEST_NAME]
+        staged = {
+            name: args.out / name for name in names if (args.out / name).is_file()
+        }
+        marker = args.out / "orrery.failure.json"
+        materialize_bytes(
+            canonical_json(
+                {
+                    "schema_version": 1,
+                    "kind": "uk_build_failed",
+                    "releasable": False,
+                    "outputs": {
+                        name: file_artifact(path) for name, path in staged.items()
+                    },
+                }
+            ),
+            marker,
+        )
+        staged["manifest"] = marker
+        publish_staged_bundle(
+            staged,
+            {role: output / path.name for role, path in staged.items()},
+            completion_role="manifest",
+        )
+        try:
+            stage_graph_evidence(
+                args,
+                output,
+                run_id=(
+                    telemetry.run_id
+                    if telemetry is not None
+                    else Path(args.attempt_evidence).name
+                ),
+            )
+        except Exception as error:
+            print(
+                f"Graph evidence staging failed ({type(error).__name__}); files remain local.",
+                file=sys.stderr,
+            )
+        raise
+    finalize_graph(args, record)
+    return status
+
+
 def execute_full_build(
     prepared: PreparedUKFullBuild,
     args: argparse.Namespace,
@@ -1099,8 +1176,13 @@ def execute_full_build(
         staged_args.out = Path(temporary)
         staged_args.graph_store = graph_store
         staged_args.published_out = output
-        status = _execute_full_build(
-            prepared, staged_args, telemetry=telemetry, attempt=attempt, record=record
+        status = _run_with_graph_publication(
+            _execute_full_build,
+            prepared,
+            staged_args,
+            telemetry=telemetry,
+            attempt=attempt,
+            record=record,
         )
         if not (staged_args.out / "build.json").exists():
             materialize_bytes(
@@ -1201,6 +1283,13 @@ def _close_attempt(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
     else:
+        from .orrery_publication import stage_graph_evidence
+
+        stage_graph_evidence(
+            args,
+            output,
+            run_id=state.build_id if telemetry is None else telemetry.run_id,
+        )
         finalize_staging_run_bundle(args, telemetry)
     spool_path = record_candidate_attempt(
         state=state,
@@ -1881,8 +1970,13 @@ def execute_national_build(
         staged_args.out = Path(temporary)
         staged_args.graph_store = graph_store
         staged_args.published_out = output
-        status = _execute_national_build(
-            prepared, staged_args, telemetry=telemetry, attempt=attempt, record=record
+        status = _run_with_graph_publication(
+            _execute_national_build,
+            prepared,
+            staged_args,
+            telemetry=telemetry,
+            attempt=attempt,
+            record=record,
         )
         if not (staged_args.out / "build.json").exists():
             materialize_bytes(
@@ -2402,6 +2496,13 @@ def _close_national_attempt(
                 },
             )
     else:
+        from .orrery_publication import stage_graph_evidence
+
+        stage_graph_evidence(
+            args,
+            output,
+            run_id=state.build_id if telemetry is None else telemetry.run_id,
+        )
         finalize_staging_run_bundle(args, telemetry)
     spool_path = record_candidate_attempt(
         state=state,

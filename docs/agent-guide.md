@@ -87,6 +87,20 @@ HTTP requests outside loopback. Tests of actual emitter startup must request
 that opt-in retains credential isolation. Other build tests can inspect
 `fake_telemetry_emitters` without creating sockets or service processes.
 
+The local build publishing process is `microcosm.build.emitter_service`.
+Its component-neutral runtime accepts independent publishers; the composition
+entrypoint installs telemetry and completed Orrery publication components with
+separate workers and queue policies. Shared short-lived authentication lives
+outside both components. The original telemetry imports remain compatibility
+APIs, and the existing SQLite location/migrations remain supported. Add a new
+publisher as a component rather than adding domain-specific branches to the
+runtime. Graph jobs have no telemetry-run foreign key and are not pruned with
+events. UK build completion exports and attempts graph publication before HF
+artifact staging, including preserved evidence for failed builds. Keep retries
+separate from the immutable artifact receipt; see README for the retry command
+and local-only controls. Test service composition and graph delivery in the
+existing engine-free category with fake HTTP, never against the runs app.
+
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.
