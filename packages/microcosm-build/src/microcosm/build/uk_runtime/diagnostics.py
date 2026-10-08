@@ -47,6 +47,7 @@ __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_consumption_drift",
     "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
@@ -619,6 +620,82 @@ def _stratum_columns(columns: Sequence[str]) -> tuple[str, ...]:
     return materialized
 
 
+#: Columns whose level the lcfs_consumption stage sets (energy at DESNZ volume
+#: and QEP prices, road fuel at ONS 07.2.2) and calibration should leave alone.
+_UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
+    "electricity_consumption",
+    "gas_consumption",
+    "domestic_energy_consumption",
+    "petrol_spending",
+    "diesel_spending",
+)
+
+
+def _drift_value(design: float, final: float) -> dict[str, float | None]:
+    return {
+        "design": float(design),
+        "final": float(final),
+        "change": float(final - design),
+        "relative_change": None if design == 0 else float((final - design) / design),
+    }
+
+
+def uk_consumption_drift(
+    household: pd.DataFrame,
+    design_weights: Sequence[float] | np.ndarray,
+    final_weights: Sequence[float] | np.ndarray,
+) -> dict[str, object] | None:
+    """Stage-levelled spend and its composition at design and final weights.
+
+    Report only (microcosm#1113): the stage sets the energy and road-fuel
+    levels, the gas connection and the fuel incidence, so calibration should
+    barely move them. Returns None for a frame without the consumption columns.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+    )
+
+    needed = {
+        *_UK_DRIFT_TOTAL_COLUMNS,
+        *UK_LCFS_COICOP_DIVISION_COLUMNS,
+        "has_fuel_consumption",
+    }
+    if not needed <= set(household.columns):
+        return None
+    design = _as_weights(design_weights)
+    final = _as_weights(final_weights)
+    if design.shape != (len(household),) or final.shape != (len(household),):
+        raise ValueError("UK drift weights must align with the household rows.")
+
+    def column(name: str) -> np.ndarray:
+        return household[name].to_numpy(dtype=np.float64)
+
+    totals = {
+        name: _drift_value(design @ column(name), final @ column(name))
+        for name in _UK_DRIFT_TOTAL_COLUMNS
+    }
+    consumption = sum(column(name) for name in UK_LCFS_COICOP_DIVISION_COLUMNS)
+    totals["consumption"] = _drift_value(design @ consumption, final @ consumption)
+    road_fuel = column("petrol_spending") + column("diesel_spending")
+    flagged = household["has_fuel_consumption"].to_numpy(dtype=bool)
+
+    def share(mask: np.ndarray, base: np.ndarray, weights: np.ndarray) -> float:
+        mass = float(weights[base].sum())
+        return float(weights[mask & base].sum()) / mass if mass > 0 else 0.0
+
+    everyone = np.ones(len(household), dtype=bool)
+    shares = {
+        name: _drift_value(share(mask, base, design), share(mask, base, final))
+        for name, mask, base in (
+            ("gas_connected_households", column("gas_consumption") > 0, everyone),
+            ("fuel_buying_households", road_fuel > 0, everyone),
+            ("fuel_car_households_without_fuel", ~(road_fuel > 0), flagged),
+        )
+    }
+    return {"report_only": True, "totals": totals, "shares": shares}
+
+
 def uk_zero_weight_strata(
     household: pd.DataFrame,
     weights: Sequence[float] | np.ndarray,
@@ -953,6 +1030,9 @@ def uk_calibration_diagnostics_payload(
         )
     if rotated_holdout is not None:
         uk_diagnostics["rotated_holdout"] = dict(rotated_holdout)
+    drift = uk_consumption_drift(household, result.initial_weights, result_weights)
+    if drift is not None:
+        uk_diagnostics["consumption_drift"] = drift
     payload["uk_diagnostics"] = uk_diagnostics
     return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
         mode="python",

@@ -261,7 +261,26 @@ def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> N
     assert areas["bottom_by_fit"][0]["area_code"] == "E14000001"
 
 
-def _diagnostics_case(*, with_skipped: bool = False):
+def _consumption_columns(n: int) -> dict[str, np.ndarray]:
+    """The lcfs_consumption columns the drift block reads, two houses with gas."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+    )
+
+    columns = {name: np.full(n, 10.0) for name in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    columns["electricity_consumption"] = np.full(n, 2.0)
+    columns["gas_consumption"] = np.where(np.arange(n) < 2, 3.0, 0.0)
+    columns["domestic_energy_consumption"] = (
+        columns["electricity_consumption"] + columns["gas_consumption"]
+    )
+    columns["petrol_spending"] = np.where(np.arange(n) % 2 == 0, 4.0, 0.0)
+    columns["diesel_spending"] = np.zeros(n)
+    columns["has_fuel_consumption"] = np.arange(n) % 2 == 0
+    return columns
+
+
+def _diagnostics_case(*, with_skipped: bool = False, with_consumption: bool = False):
     levels_and_weights = (
         ("national", 11.0),
         ("region", 12.0),
@@ -277,6 +296,9 @@ def _diagnostics_case(*, with_skipped: bool = False):
             _CG_COLUMN: [False, False, True, True, False] * 2,
         }
     )
+    if with_consumption:
+        for name, values in _consumption_columns(n_households).items():
+            household[name] = values
     specs = []
     geography = {}
     for row_index, (level, _) in enumerate(levels_and_weights):
@@ -584,6 +606,71 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         },
     ]
     assert json.loads(json.dumps(payload, allow_nan=False)) == payload
+
+
+def test_consumption_drift_compares_design_and_final_weights() -> None:
+    """Stage-levelled spend and composition, design against final (#1113)."""
+
+    from microcosm.build.uk_runtime.diagnostics import uk_consumption_drift
+
+    household = pd.DataFrame(_consumption_columns(4))
+    design = np.array([1.0, 1.0, 1.0, 1.0])
+    final = np.array([2.0, 0.0, 1.0, 1.0])
+
+    drift = uk_consumption_drift(household, design, final)
+
+    assert drift["report_only"] is True
+    assert drift["totals"]["gas_consumption"] == {
+        "design": 6.0,
+        "final": 6.0,
+        "change": 0.0,
+        "relative_change": 0.0,
+    }
+    assert drift["totals"]["petrol_spending"]["final"] == 12.0
+    assert drift["totals"]["petrol_spending"]["relative_change"] == pytest.approx(0.5)
+    assert drift["totals"]["consumption"]["design"] == 4 * 120.0
+    assert drift["shares"]["gas_connected_households"]["design"] == 0.5
+    assert drift["shares"]["gas_connected_households"]["final"] == 0.5
+    assert drift["shares"]["fuel_buying_households"]["final"] == 0.75
+    assert drift["shares"]["fuel_car_households_without_fuel"] == {
+        "design": 0.0,
+        "final": 0.0,
+        "change": 0.0,
+        "relative_change": None,
+    }
+    assert (
+        uk_consumption_drift(household.drop(columns="gas_consumption"), design, final)
+        is None
+    )
+    with pytest.raises(ValueError, match="align"):
+        uk_consumption_drift(household, design[:3], final)
+
+
+def test_payload_carries_the_consumption_drift_when_the_frame_has_it() -> None:
+    result, frame, registry, geography = _diagnostics_case(with_consumption=True)
+
+    payload = uk_calibration_diagnostics_payload(
+        result,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+    )
+
+    drift = payload["uk_diagnostics"]["consumption_drift"]
+    assert set(drift["totals"]) == {
+        "electricity_consumption",
+        "gas_consumption",
+        "domestic_energy_consumption",
+        "petrol_spending",
+        "diesel_spending",
+        "consumption",
+    }
+    assert drift["totals"]["electricity_consumption"]["design"] == pytest.approx(
+        2.0 * frame.n("household")
+    )
+    assert drift["totals"]["electricity_consumption"]["final"] == pytest.approx(
+        2.0 * float(np.sum(frame.weights_for("household").values))
+    )
 
 
 def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
