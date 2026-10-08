@@ -115,8 +115,8 @@ LCFS_ACCOMM_MAP: Mapping[int, str] = {
     8: "OTHER",
 }
 HOUSEHOLD_LCFS_RENAMES = {
-    "g018": "is_adult",
-    "g019": "is_child",
+    "g018": "household_adult_count",
+    "g019": "household_child_count",
     "gorx": "region",
     "a124": "num_vehicles",
     "p389p": "hbai_household_net_income",
@@ -196,17 +196,21 @@ UK_OBR_TOTAL_CATEGORY = "total"
 UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT = frozenset(
     {"electricity_consumption", "gas_consumption", "domestic_energy_consumption"}
 )
+#: The LCFS household's adults (G018) and children (G019), by the age-18 split
+#: the survey counts them with. The recipient counts the same split from
+#: ``age`` rather than the engine's person flags ``is_adult`` and ``is_child``,
+#: which policyengine-uk#1896 deprecates (uk-data#486, microcosm#1095).
+UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE = 18
+UK_LCFS_HOUSEHOLD_COUNT_PREDICTORS = ("household_adult_count", "household_child_count")
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
-    "is_adult",
-    "is_child",
     "employment_income",
     "self_employment_income",
     "private_pension_income",
     "hbai_household_net_income",
 )
 UK_LCFS_CONSUMPTION_PREDICTORS = (
-    "is_adult",
-    "is_child",
+    "household_adult_count",
+    "household_child_count",
     "region",
     "employment_income",
     "self_employment_income",
@@ -1192,6 +1196,19 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             )
         else:
             raise ValueError(f"unsupported LCFS predictor entity {declared!r}.")
+    age = pd.to_numeric(person["age"], errors="raise").to_numpy(dtype=float)
+    adult = age >= UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE
+    for predictor, members in zip(
+        UK_LCFS_HOUSEHOLD_COUNT_PREDICTORS, (adult, ~adult), strict=True
+    ):
+        counted = (
+            pd.Series(members.astype(float))
+            .groupby(person["person_household_id"].to_numpy())
+            .sum()
+        )
+        result[predictor] = (
+            counted.reindex(household["household_id"]).fillna(0.0).to_numpy()
+        )
     for predictor in ("region", "tenure_type", "accommodation_type"):
         if predictor in household:
             result[predictor] = household[predictor].map(_enum_name).to_numpy()

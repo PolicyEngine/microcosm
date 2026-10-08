@@ -576,7 +576,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "hmrc.salary_sacrifice.": 3,
     "_1_000_000_to_inf": 10,
     "slc.": 5,
-    "dwp/uc_payment_dist/": 19,
+    # microcosm#1095 (2026-10-07): two bands whose few supporting awards
+    # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
+    "dwp/uc_payment_dist/": 21,
     "obr.universal_credit_": 2,
     # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
     # is signed out of the reference surface (target_reference_signed_
@@ -635,7 +637,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 62
+    assert len(names) == len(set(names)) == 64
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -717,6 +719,20 @@ def test_packaged_exclusions_load():
         assert "support" in entry["reason"]
     renewed = [e for e in today if e not in thin]
     assert sorted(e["name"] for e in renewed) == sorted(_A16_UNREACHABLE_ROWS[:2])
+    # The engine bump of microcosm#1095 (policyengine-uk 2.122.2) moves every
+    # supporting award out of two more payment bands: the published LHA rates,
+    # the 2019 mixed-age couple saving and Carer Support Payment as unearned
+    # income. They join the class with its expiry.
+    engine_moved = [e for e in exclusions if e["approved_on"] == "2026-10-07"]
+    assert sorted(e["name"] for e in engine_moved) == [
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
+        "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
+    ]
+    for entry in engine_moved:
+        assert entry["tracking"] == "uk-data#452"
+        assert entry["expires_on"] == "2026-11-26"
+        assert "microcosm#1095" in entry["adjudication"]
+        assert "policyengine-uk 2.122.2" in entry["reason"]
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
