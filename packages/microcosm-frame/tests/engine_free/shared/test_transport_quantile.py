@@ -10,7 +10,7 @@ from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import transport
-from microcosm.frame.transport import quantile_map
+from microcosm.frame.transport import _pareto_inverse, quantile_map
 
 
 def _bands():
@@ -81,6 +81,20 @@ def _reference_truncated_pareto(lower, upper, alpha, rank):
         rank = Decimal(rank.numerator) / Decimal(rank.denominator)
         tail = (lower / upper) ** alpha
         return float(lower * (1 - rank * (1 - tail)) ** (-1 / alpha))
+
+
+def _rank_condition(lower, upper, alpha, rank):
+    """d log(x) / d log(rank) of the truncated inverse at ``rank``.
+
+    ``quantile_map`` rounds each rank to float64, so its output can differ from
+    the exact-rank reference by about this factor times 2**-53.
+    """
+    with localcontext() as context:
+        context.prec = 100
+        lower, upper, alpha = map(Decimal.from_float, (lower, upper, alpha))
+        rank = Decimal(rank.numerator) / Decimal(rank.denominator)
+        mass = 1 - (lower / upper) ** alpha
+        return float(rank * mass / (alpha * (1 - rank * mass)))
 
 
 @st.composite
@@ -205,6 +219,7 @@ def test_truncated_pareto_small_alpha_midpoint_matches_decimal(alpha):
 @example(case=(10.0, 100.0, 1e-18, (1, 1)))
 @example(case=(1e-200, 1e200, 1e-18, (1, 3)))
 @example(case=(1e100, 1e300, 50.0, (100, 1)))
+@example(case=(1e-200, 1e200, 10**-2.1, (99, 1)))
 @settings(max_examples=100, deadline=None)
 def test_truncated_pareto_matches_high_precision_reference(case):
     lower, upper, alpha, weights = case
@@ -222,10 +237,14 @@ def test_truncated_pareto_matches_high_precision_reference(case):
     expected = [
         _reference_truncated_pareto(lower, upper, alpha, rank) for rank in ranks
     ]
-    np.testing.assert_allclose(mapped, expected, rtol=1e-12, atol=0)
+    for value, reference, rank in zip(mapped, expected, ranks, strict=True):
+        tolerance = 1e-12 + 4 * _rank_condition(lower, upper, alpha, rank) * 2.0**-53
+        np.testing.assert_allclose(value, reference, rtol=tolerance, atol=0)
 
 
-@pytest.mark.parametrize("alpha", [1e-18, 1e-24, 1e-100])
+@pytest.mark.parametrize(
+    "alpha", [1e-18, 1e-24, 1e-100, 1e-310, 1e-315, 1e-320, 1e-322, 5e-324]
+)
 def test_truncated_pareto_tends_to_log_uniform_as_alpha_tends_to_zero(alpha):
     mapped = quantile_map(
         [1],
@@ -234,6 +253,57 @@ def test_truncated_pareto_tends_to_log_uniform_as_alpha_tends_to_zero(alpha):
         interpolation={"method": "pareto", "alpha": alpha},
     )
     np.testing.assert_allclose(mapped, [10 * (100 / 10) ** 0.5], rtol=1e-12, atol=0)
+
+
+@pytest.mark.parametrize("alpha", [1e-310, 1e-320, 5e-324])
+def test_subnormal_alpha_quartiles_follow_the_log_uniform_limit(alpha):
+    # Below alpha * w = 2**-60 the inverse is the closed-form limit
+    # lower * (upper / lower)**rank; expm1 of a subnormal argument is not.
+    mapped = quantile_map(
+        [1, 2, 3, 4],
+        [1, 1, 1, 1],
+        [{"lower": 10, "upper": 100, "share": 1}],
+        interpolation={"method": "pareto", "alpha": alpha},
+    )
+    expected = [10 * 10 ** (rank / 8) for rank in (1, 3, 5, 7)]
+    np.testing.assert_allclose(mapped, expected, rtol=1e-12, atol=0)
+
+
+def test_ranks_near_one_keep_their_accuracy():
+    # 1 - fraction * mass cancels as fraction -> 1 with mass near 1; the inverse
+    # computes log((1 - fraction) + fraction * exp(-alpha * w)) there instead.
+    fraction = 1 - 2.0**-53
+    lower, upper, alpha = 1e-10, 1e20, 0.5
+    mapped = _pareto_inverse(np.array([fraction]), lower, upper, alpha)
+    with localcontext() as context:
+        context.prec = 100
+        lo, hi, a, f = map(Decimal.from_float, (lower, upper, alpha, fraction))
+        expected = float(lo * (1 - f * (1 - (lo / hi) ** a)) ** (-1 / a))
+    np.testing.assert_allclose(mapped, [expected], rtol=1e-13, atol=0)
+
+
+def test_truncated_values_never_exceed_the_band():
+    mapped = quantile_map(
+        [1, 2],
+        [1e16, 1],
+        [{"lower": 1e-200, "upper": 1e100, "share": 1}],
+        interpolation={"method": "pareto", "alpha": 1e-30},
+    )
+    assert (mapped <= 1e100).all() and (mapped >= 1e-200).all()
+
+
+def test_untruncated_band_reaches_finite_values_through_log_space():
+    # lower * exp(offset) overflows here although the true quantile is finite.
+    mapped = quantile_map(
+        [1, 2],
+        [1, 1],
+        [{"lower": 1e-300, "upper": None, "share": 1}],
+        interpolation={"method": "pareto", "alpha": 1e-3},
+    )
+    expected = [
+        np.exp(np.log(1e-300) - 1000 * np.log1p(-rank)) for rank in (0.25, 0.75)
+    ]
+    np.testing.assert_allclose(mapped, expected, rtol=1e-12, atol=0)
 
 
 def test_pareto_only_changes_the_top_band():

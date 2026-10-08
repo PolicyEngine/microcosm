@@ -104,6 +104,24 @@ def _quantile_label_codes(labels: Sequence[object], size: int, name: str) -> np.
     return codes
 
 
+#: Below this alpha * log(upper / lower) the truncated Pareto equals its
+#: log-uniform limit to within float64 rounding: the dropped term is about
+#: alpha * w / 2 relative, under 2**-61 here.
+_LOG_UNIFORM_LIMIT = 2.0**-60
+
+
+def _log_width(lower: float, upper: float) -> float:
+    """``log(upper / lower)`` without cancellation or overflow."""
+
+    ratio = upper / lower
+    if np.isfinite(ratio) and ratio <= 2:
+        # upper - lower is exact here (Sterbenz), so log1p keeps narrow bands.
+        return float(np.log1p((upper - lower) / lower))
+    if np.isfinite(ratio):
+        return float(np.log(ratio))
+    return float(np.log(upper) - np.log(lower))
+
+
 def _pareto_inverse(
     fraction: np.ndarray, lower: float, upper: float | None, alpha: float
 ) -> np.ndarray:
@@ -111,34 +129,44 @@ def _pareto_inverse(
 
     A finite ``upper`` truncates the distribution to ``[lower, upper]``, whose
     CDF is ``(1 - (lower/x)**alpha) / (1 - (lower/upper)**alpha)``. Writing
-    ``w = log(upper) - log(lower)``, the truncated mass is
-    ``1 - (lower/upper)**alpha = -expm1(-alpha * w)`` and the inverse is
-    ``lower * exp(-log1p(-fraction * mass) / alpha)``. ``expm1`` and ``log1p``
-    keep both steps accurate when ``alpha * w`` is tiny, where subtracting
-    ``(lower/upper)**alpha`` from 1 cancels: at ``alpha=1e-18`` on ``[10, 100]``
-    the naive form returns 10 for the median instead of 31.62. As ``alpha``
-    tends to 0 the truncated Pareto tends to the log-uniform distribution,
-    ``lower * exp(fraction * w)``, which is used when ``alpha * w`` underflows.
-    The result is ``lower * exp(offset)``; where ``exp(offset)`` alone would
-    overflow inside a finite band, it is formed as ``exp(log(lower) + offset)``.
+    ``w = log(upper / lower)``, the truncated mass is
+    ``m = 1 - (lower/upper)**alpha = -expm1(-alpha * w)`` and the inverse is
+    ``lower * exp(-log(1 - fraction * m) / alpha)``.
+
+    - ``expm1`` keeps ``m`` accurate when ``alpha * w`` is tiny, where
+      subtracting ``(lower/upper)**alpha`` from 1 cancels (at ``alpha=1e-18``
+      on ``[10, 100]`` the naive form returns 10 for the median, not 31.62).
+    - ``log(1 - fraction * m)`` is ``log1p(-fraction * m)`` while
+      ``fraction * m <= 1/2``; above that it is computed as
+      ``log((1 - fraction) + fraction * exp(-alpha * w))``, where
+      ``1 - fraction`` is exact, so ranks near 1 keep their accuracy.
+    - As ``alpha`` tends to 0 the truncated Pareto tends to the log-uniform
+      distribution ``lower * exp(fraction * w)``. It is used once
+      ``alpha * w < 2**-60`` (the dropped term is below 2**-61), because
+      ``expm1`` of a subnormal argument keeps only a few bits.
+    - The result is ``lower * exp(offset)``, formed through log space where that
+      product alone would overflow, and a truncated result is clipped to
+      ``[lower, upper]`` (the computed ``w`` can exceed the true one by an ulp).
     """
 
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
         if upper is None:
             offset = -np.log1p(-fraction) / alpha
         else:
-            width = np.log(upper) - np.log(lower)
-            mass = -np.expm1(-alpha * width)
-            if mass == 0:
+            width = _log_width(lower, upper)
+            scaled = alpha * width
+            if scaled < _LOG_UNIFORM_LIMIT:
                 offset = fraction * width
             else:
-                # offset <= width exactly; clamp the last-bit rounding above it.
-                offset = np.minimum(-np.log1p(-fraction * mass) / alpha, width)
+                mass = -np.expm1(-scaled)
+                product = fraction * mass
+                near_one = -np.log((1.0 - fraction) + fraction * np.exp(-scaled))
+                offset = np.where(product > 0.5, near_one, -np.log1p(-product)) / alpha
+                offset = np.minimum(offset, width)
         result = lower * np.exp(offset)
-        if upper is not None:
-            result = np.where(
-                np.isfinite(result), result, np.exp(np.log(lower) + offset)
-            )
+        result = np.where(np.isfinite(result), result, np.exp(np.log(lower) + offset))
+    if upper is not None:
+        result = np.clip(result, lower, upper)
     return result
 
 
@@ -454,15 +482,18 @@ class DonorBank:
 
 #: Line numbers and pointers are validated as float64 (pointer columns can hold
 #: NaN), which represents every integer exactly only below 2**53. A larger value
-#: could round onto a different roster line, so it is refused before conversion.
+#: could round onto a different roster line, so a value at or above it is
+#: refused before conversion.
 _MAX_EXACT_LINE = 2**53
 
 
 def _line_numbers(values: pd.Series, *, pointer: bool = False) -> np.ndarray:
     native = pd.to_numeric(values, errors="raise")
     numbers = native.to_numpy(dtype=np.float64, na_value=np.nan)
-    # Compare in the column's own dtype; infinities fall to the integer check.
-    if ((native.abs() >= _MAX_EXACT_LINE) & ~np.isinf(numbers)).any():
+    # Compare in the column's own dtype (no abs(), which wraps int64's minimum);
+    # infinities fall to the integer check. Only positive values can round onto a
+    # roster line: every pointer <= 0 is absent and every line must be >= 1.
+    if ((native >= _MAX_EXACT_LINE) & ~np.isinf(numbers)).any():
         raise ValueError(f"Donor {values.name} contains invalid line numbers.")
     if pointer:
         # A missing pointer is absent (rows from a vintage without PECOHAB

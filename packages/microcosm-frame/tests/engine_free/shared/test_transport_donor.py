@@ -290,11 +290,24 @@ def test_reader_refuses_invalid_rosters(tmp_path, monkeypatch, change, message):
 def test_line_numbers_float64_cannot_hold_exactly_are_refused(pointer):
     # 2**53 + 1 rounds to 2**53 in float64, so it would point at line 2**53.
     name = "PEPAR1" if pointer else "A_LINENO"
-    for value in (2**53, 2**53 + 1, -(2**53) - 1):
+    for value in (2**53, 2**53 + 1, np.iinfo(np.int64).max):
         with pytest.raises(ValueError, match="invalid line numbers"):
             _line_numbers(pd.Series([1, value], name=name), pointer=pointer)
+    for value in (np.uint64(2**63),):
+        with pytest.raises(ValueError, match="invalid line numbers"):
+            _line_numbers(
+                pd.Series([1, value], dtype=np.uint64, name=name), pointer=pointer
+            )
     largest = _line_numbers(pd.Series([1, 2**53 - 1], name=name), pointer=pointer)
     assert largest.tolist() == [1, 2**53 - 1]
+    # Negative values cannot round onto a roster line: a pointer <= 0 is absent
+    # (int64's minimum included), and a line below 1 is invalid as before.
+    negative = pd.Series([1, -(2**53) - 1, np.iinfo(np.int64).min], name=name)
+    if pointer:
+        assert _line_numbers(negative, pointer=True).tolist() == [1, 0, 0]
+    else:
+        with pytest.raises(ValueError, match="invalid line numbers"):
+            _line_numbers(negative)
 
 
 @pytest.mark.parametrize("column", ["A_SPOUSE", "PECOHAB", "PEPAR1", "PEPAR2"])
@@ -303,12 +316,19 @@ def test_reader_refuses_dangling_pointers_that_float64_would_round_to_a_roster_l
 ):
     tables = _tables()
     person = tables["person"]
-    existing_line = 2**53
+    # The largest exactly representable line, and a pointer one above it: in
+    # float64 the pointer is still distinct, but nothing at or above 2**53 can be
+    # trusted, so the reader must refuse the pointer column itself.
+    existing_line = 2**53 - 1
     person.loc[0, "A_LINENO"] = existing_line
+    household = person["person_household_id"] == person.loc[0, "person_household_id"]
     for pointer_column in ("A_SPOUSE", "PECOHAB", "PEPAR1", "PEPAR2"):
-        # Keep the HDF input's integer identities exact before reader validation.
+        # Keep the HDF input's integer identities exact before reader validation,
+        # and repoint only row 0's household at its new line.
         pointers = person[pointer_column].fillna(0).astype(np.int64)
-        person[pointer_column] = pointers.mask(pointers == 1, existing_line)
+        person[pointer_column] = pointers.mask(
+            household & (pointers == 1), existing_line
+        )
     row = 1 if column in ("A_SPOUSE", "PECOHAB") else 2
     if column == "PECOHAB":
         person.loc[row, "A_SPOUSE"] = 0
@@ -318,7 +338,9 @@ def test_reader_refuses_dangling_pointers_that_float64_would_round_to_a_roster_l
     assert person.loc[row, column] != person.loc[0, "A_LINENO"]
     path = tmp_path / "oversized-roster.h5"
     pin = _write_h5(path, tables)
-    with pytest.raises(ValueError, match="unknown household line|invalid line numbers"):
+    with pytest.raises(
+        ValueError, match=f"Donor {column} contains invalid line numbers"
+    ):
         read_populace_us_donor(path, **pin)
 
 
