@@ -21,6 +21,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.graph_publication_types import (
+    PublicationInventory,
+    PublicationReceipt,
+)
 from microcosm.build.telemetry_emitter_constants import (
     DEFAULT_HEARTBEAT_SECONDS,
     DEFAULT_SEND_TIMEOUT_SECONDS,
@@ -416,8 +420,12 @@ class LocalTelemetryEmitter:
         self._closed = True
 
     def publish_graph(
-        self, directory: Path, inventory: dict, *, wait_seconds: float = 30.0
-    ) -> dict:
+        self,
+        directory: Path,
+        inventory: PublicationInventory,
+        *,
+        wait_seconds: float = 30.0,
+    ) -> PublicationReceipt:
         """Preserve a job first, then wait a bounded time for its first result.
 
         Unlike telemetry, missing credentials never discard this job. Enqueue
@@ -435,10 +443,15 @@ class LocalTelemetryEmitter:
         deadline = time.monotonic() + max(0, wait_seconds)
         while self.available and time.monotonic() < deadline:
             receipt = queue.receipt(inventory["publication_id"])
+            assert receipt is not None, (
+                "A queued graph publication must have a receipt."
+            )
             if receipt.get("attempts", 0) or receipt["status"] == "published":
                 return receipt
             time.sleep(0.1)
-        return queue.receipt(inventory["publication_id"])
+        receipt = queue.receipt(inventory["publication_id"])
+        assert receipt is not None, "A queued graph publication must have a receipt."
+        return receipt
 
     def _close_transition_stage(
         self,
