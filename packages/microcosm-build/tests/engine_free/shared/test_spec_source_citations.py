@@ -40,6 +40,7 @@ from microcosm.build.us_runtime.asec_census_person_columns import (
 )
 from test_support.microcosm_build.spec_source_citations import (
     COUNTRY_PACKAGE_ROOT,
+    MICROCOSM_SHARDS,
     REPOSITORY_ROOT,
     LineCitation,
     commit_pinned_sources,
@@ -147,6 +148,18 @@ def test_the_dotted_symbol_citations_are_scanned(country: str, cited: set[str]) 
         *map(dotted_microcosm_symbols, package_payloads(country).values())
     )
     assert cited <= named
+
+
+def test_only_names_under_a_shard_are_symbol_citations() -> None:
+    assert {"build", "frame", "graph"} <= MICROCOSM_SHARDS
+    text = (
+        "format microcosm.axiom_input_closure.v1, read by "
+        "microcosm.frame.concepts.concept and microcosm.build.us/source_stages.json"
+    )
+    assert dotted_microcosm_symbols({"note": text}) == {
+        "microcosm.frame.concepts.concept",
+        "microcosm.build.us",
+    }
 
 
 @pytest.mark.parametrize(

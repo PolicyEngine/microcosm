@@ -71,6 +71,14 @@ INLINE_COMMIT = re.compile(
 DOTTED_MICROCOSM_SYMBOL = re.compile(
     r"(?<![A-Za-z0-9_./-])microcosm(?:\.[A-Za-z_][A-Za-z0-9_]*)+"
 )
+#: The ``microcosm.<shard>`` namespaces in this checkout. A dotted name under
+#: any other second component, such as the ``microcosm.axiom_input_closure.v1``
+#: format id, names no Python symbol.
+MICROCOSM_SHARDS = frozenset(
+    path.name
+    for path in REPOSITORY_ROOT.glob("packages/microcosm-*/src/microcosm/*")
+    if path.is_dir() and path.name != "__pycache__"
+)
 
 
 class LineCitation(NamedTuple):
@@ -186,12 +194,13 @@ def in_repository_line_citations(
 
 
 def dotted_microcosm_symbols(value: object) -> set[str]:
-    """Every dotted ``microcosm.*`` name in a payload's strings."""
+    """Every dotted ``microcosm.<shard>.*`` name in a payload's strings."""
 
     return {
         match
         for text in nested_strings(value)
         for match in DOTTED_MICROCOSM_SYMBOL.findall(text)
+        if match.split(".")[1] in MICROCOSM_SHARDS
     }
 
 
