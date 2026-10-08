@@ -57,6 +57,7 @@ from microcosm.build.run_outcome import (
     classify_failure,
     classify_return,
 )
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.graph import (
     ArtifactInput,
     ContentStore,
@@ -2680,6 +2681,15 @@ def _dry_run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run one UK build; a SIGTERM is recorded like Ctrl-C, then exits 143."""
+    with raise_on_sigterm():
+        try:
+            return _main(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     validate_cli_args(args)
     posture = posture_of(args)

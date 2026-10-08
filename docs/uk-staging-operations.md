@@ -166,6 +166,14 @@ A run ends in one of three terminal statuses:
   `TERMINATED`, `OUT_OF_MEMORY`, `GRAPH_NODE_FAILED`, `BUILD_FAILED`, ...) and,
   in version 3, a `failure_class`.
 
+A stopped build is a failed run, not a running one. Ctrl-C closes it with
+`INTERRUPTED`; a SIGTERM (a supervisor, a budget stop, `kill`) closes it with
+`TERMINATED`, and the command then exits with status 143. Both record a
+`discarded` Logbook row. The first SIGTERM is handled once: a second one kills
+the process at once, even while the graph store is still settling. SIGKILL and
+out-of-memory kills cannot be caught; for those the hosted emitter's heartbeat
+reports `unexpected_process_exit`, and no Logbook row is written.
+
 The delivery summary (`staging_delivery`) keeps contract version 2: its shape
 did not change, and publication and the release assemblers pin it. Only reviewed aggregate JSON
 artifacts are permitted; population H5 files, NumPy archives, source survey

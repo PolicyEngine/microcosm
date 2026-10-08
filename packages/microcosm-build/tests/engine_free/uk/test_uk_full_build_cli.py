@@ -1,6 +1,8 @@
 """The canonical CLI restores declared files and preserves failure/scope semantics."""
 
 # ruff: noqa: F403, F405
+import os
+import signal
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
@@ -1740,3 +1742,69 @@ def test_a_raised_error_is_classified_in_the_staging_run(tmp_path, monkeypatch):
         "out_of_memory",
     )
     assert spool_rows(out)[0].disposition == "failed"
+
+
+def test_a_sigterm_closes_the_dense_run_as_terminated_and_exits_143(
+    tmp_path, monkeypatch
+):
+    """A supervisor's SIGTERM is recorded like Ctrl-C (a discarded row, a
+    failed staging run) with its own class, and the command exits 143."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    original_run = cli.run_graph
+
+    def terminated(compiled, **kwargs):
+        if "uk.full.gates.calibrated" in {node.id for node in compiled.graph.nodes}:
+            os.kill(os.getpid(), signal.SIGTERM)
+        return original_run(compiled, **kwargs)
+
+    monkeypatch.setattr(cli, "run_graph", terminated)
+    previous_handler = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(SystemExit) as raised:
+        run_dense_main(
+            tmp_path,
+            monkeypatch,
+            "--staging-dir",
+            str(staging_dir),
+            staging="--staging-local-only",
+        )
+    assert raised.value.code == 143
+    assert signal.getsignal(signal.SIGTERM) == previous_handler
+    out = tmp_path / "out"
+    failure = _only_staging_run(staging_dir)["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        "TERMINATED",
+        "terminated",
+    )
+    assert json.loads((out / "failure.json").read_text())["error_type"] == (
+        "BuildTerminatedError"
+    )
+    assert spool_rows(out)[0].disposition == "discarded"
+
+
+def test_a_sigterm_during_the_national_build_records_a_discarded_row(
+    tmp_path, monkeypatch
+):
+    """The national line routes a SIGTERM through its interrupt arm too."""
+    argv = _national_argv(tmp_path)
+    monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
+    monkeypatch.setattr(
+        cli,
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: "prepared",
+    )
+
+    def terminated(prepared, args, *, telemetry=None, attempt=None):
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise AssertionError("SIGTERM did not stop the build")
+
+    monkeypatch.setattr(cli, "execute_national_build", terminated)
+    with pytest.raises(SystemExit) as raised:
+        cli.main(argv)
+    assert raised.value.code == 143
+    out = tmp_path / "out"
+    assert json.loads((out / "failure.json").read_text())["error_type"] == (
+        "BuildTerminatedError"
+    )
+    rows = load_spool_rows(out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]

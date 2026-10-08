@@ -62,6 +62,7 @@ from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
 )
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
@@ -1815,6 +1816,15 @@ def prepare_uk_spine_execution(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Build the spine; a SIGTERM is recorded like Ctrl-C, then exits 143."""
+    with raise_on_sigterm():
+        try:
+            return _main(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     started_at = time.perf_counter()
@@ -2145,6 +2155,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
+    except KeyboardInterrupt as interrupt:
+        # An operator's Ctrl-C or a SIGTERM (BuildTerminatedError) discards the
+        # attempt: the telemetry closes failed (INTERRUPTED or TERMINATED), the
+        # row is recorded, and the interrupt propagates.
+        _close_failed_telemetry(staging_bundle, emitter, interrupt)
+        try:
+            receipt_path = write_error_receipt(
+                error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
+                state=state,
+                pipeline=_PIPELINE,
+                error=interrupt,
+            )
+            apply_error_verdict(
+                state,
+                local_artifact_reference(receipt_path, repository_hint=_REPOSITORY),
+            )
+            _record_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                disposition=classify_failure(interrupt).disposition,
+                predecessor=predecessor,
+                rung=rung,
+                spool_dir=spool_dir,
+            )
+        except Exception:
+            pass
+        raise
     except Exception as error:
         if spine_battery is not None:
             # A run the assembled gate blocked never returned a manifest for
