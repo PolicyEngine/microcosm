@@ -296,7 +296,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         json.loads(node["id"]) == ["operation", "uk.full.national.readback"]
         for node in document["nodes"]
     )
-    assert not list(out.glob("*.orrery.json"))
+    assert (out / "graph.orrery.json").is_file()
 
     # The build record the release-cut certifier reads: the seam's schema.
     record = json.loads((out / "build_record.json").read_text())
@@ -408,7 +408,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     assert manifest["build_kind"] == "uk_national_calibrated_candidate"
     assert manifest["release_role"] == "national"
     assert manifest["release_id"] == UK_NATIONAL_RELEASE_ID
-    assert set(manifest["outputs"]) == {
+    assert {name for name in manifest["outputs"] if not name.startswith("orrery/")} == {
         "dataset",
         "calibration_diagnostics",
         "build_record",
