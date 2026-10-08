@@ -312,6 +312,34 @@ class TestReceiptsWalk:
             top["target_mean_receipts_gbp"], rel=1e-9
         )
 
+    def test_bands_take_their_pris_share_of_the_landlords_here(self) -> None:
+        # microcosm#1106: before calibration the spine carries fewer landlords
+        # than PRIS. Each band takes its share of the landlords present, so a
+        # frame with half PRIS's landlords fills every band to half its count;
+        # filling the published counts would leave the lowest band empty.
+        ids, profit, weights = _landlords()
+        landlords = float(weights[profit > 0].sum())
+        total_profit = float((profit * weights)[profit > 0].sum())
+        facts = _facts(landlords=2.0 * landlords, receipts=4.0 * total_profit)
+        spec = ReceiptsAllocationSpec.from_parameters(
+            _parameters(ALLOCATE_PROPERTY_RENTAL_INCOME_KIND)
+        )
+        allocation = allocate_property_rental_income(
+            person_ids=ids, profit=profit, weights=weights, facts=facts, spec=spec
+        )
+        cells = allocation.receipt["bands_top_down"]
+        largest = float(weights.max())
+
+        assert allocation.receipt["share_scale"] == pytest.approx(0.5)
+        for cell in cells:
+            assert cell["target_landlords"] == pytest.approx(
+                0.5 * cell["published_landlords"]
+            )
+            assert cell["walk_landlords_weight"] == pytest.approx(
+                cell["target_landlords"], abs=2.0 * largest
+            )
+        assert cells[-1]["walk_landlords_weight"] > 0.4 * landlords
+
     def test_receipts_do_not_depend_on_row_order(self) -> None:
         ids, profit, weights = _landlords()
         first, _ = self._allocate(ids, profit, weights)
