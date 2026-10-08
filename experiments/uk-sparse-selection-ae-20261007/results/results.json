@@ -13448,6 +13448,1037 @@
       },
       "wall_seconds": 1509.4384356669616
     },
+    "H_E_unif_f0.5_1e-2": {
+      "baseline": {
+        "digests": {
+          "uk.full.dense/result": "c7d05182c3b918bdba98cfc8462b0f40dba33141e074748ec5bc015e4e294e37",
+          "uk.full.problem/problem": "ad48cdf214cebf68e7b169bd05d03b99ed1bed1557f4cc366448cb988629b8f0",
+          "uk.full.size_draw/draw": "cc59e01047352c8a5bb31a583c7906381bbd3bbcc13528a52978691ff19301cf",
+          "uk.full.size_refit/size": "18fd3ea080da0d2d3913f440f6e5c8ea37375c2938a9b7633b5e575711d888d8",
+          "uk.full.size_refit/solution": "d2e73c702284a7718f221d4ab0b43e29ec610622c740e78a6e7992a9b1578b35",
+          "uk.full.size_search/result": "d2beb4c173ef8eddc5f6af5e9ffb2a4200a78c0926ff5e2056c1cb8ff5d2008e",
+          "uk.full.size_search/selection": "d40064105e8a09db84253871658a63bd1bb0ac4b52a282daa4d3c39ccafd688e"
+        },
+        "run_dir": "uk-local-k25-675d2a3fd",
+        "run_rule": "grain_equal"
+      },
+      "code": {
+        "git_commit": "e7dd2f199049153f3124e83d9e398ac23dc28b46",
+        "git_dirty": false
+      },
+      "experiment": {
+        "baseline_pi_floor": 0.5,
+        "epochs": null,
+        "folds": 5,
+        "initial_lambda": "scaled",
+        "learning_rate": null,
+        "mode": "refit_holdout",
+        "name": "H_E_unif_f0.5_1e-2",
+        "notes": "step 1c, exploratory: the holdout step 1b had no slot for (no L2 point met criteria 1-5)",
+        "refit_l2": {
+          "anchor": "uniform",
+          "lambda": 0.01
+        },
+        "refit_rule": null,
+        "selection_l2": null,
+        "selection_rule": null
+      },
+      "holdout": {
+        "folds": [
+          {
+            "fold": 0,
+            "held_loss_grain_equal": 0.1468319743543519,
+            "held_loss_rule": 0.1468319743543519,
+            "held_within_10pct": 0.6320325592530525,
+            "held_within_25pct": 0.8422312664591812,
+            "n_held": 4177,
+            "training_loss": 0.015710459842212775
+          },
+          {
+            "fold": 1,
+            "held_loss_grain_equal": 0.143880265284812,
+            "held_loss_rule": 0.143880265284812,
+            "held_within_10pct": 0.6485515920517118,
+            "held_within_25pct": 0.8410342350969595,
+            "n_held": 4177,
+            "training_loss": 0.014213723812997419
+          },
+          {
+            "fold": 2,
+            "held_loss_grain_equal": 0.14684729639131883,
+            "held_loss_rule": 0.14684729639131883,
+            "held_within_10pct": 0.6262868087143884,
+            "held_within_25pct": 0.8446253291836247,
+            "n_held": 4177,
+            "training_loss": 0.015586054407558126
+          },
+          {
+            "fold": 3,
+            "held_loss_grain_equal": 0.1432919581344947,
+            "held_loss_rule": 0.1432919581344947,
+            "held_within_10pct": 0.6363418721570505,
+            "held_within_25pct": 0.8498922671774001,
+            "n_held": 4177,
+            "training_loss": 0.01463709185260772
+          },
+          {
+            "fold": 4,
+            "held_loss_grain_equal": 0.14215654987088455,
+            "held_loss_rule": 0.14215654987088455,
+            "held_within_10pct": 0.6432846540579363,
+            "held_within_25pct": 0.844864735456069,
+            "n_held": 4177,
+            "training_loss": 0.014608708484173193
+          }
+        ],
+        "limitation": "support selected with every target visible; ranks refit variants on one support only",
+        "mean": {
+          "held_loss_grain_equal": 0.14460160880717238,
+          "held_loss_rule": 0.14460160880717238,
+          "held_within_10pct": 0.6372994972468279,
+          "held_within_25pct": 0.8445295666746467
+        },
+        "method": "refit_level_rotated_local_folds",
+        "rule": "grain_equal",
+        "seed": 20260529
+      },
+      "peak_rss_bytes": 7431225344,
+      "settings": {
+        "baseline_pi_floor": 0.5,
+        "epochs": 2000,
+        "households": 60000,
+        "learning_rate": 0.15,
+        "pi_hi": 0.5,
+        "seed": 42
+      },
+      "status": "finished",
+      "torch": {
+        "threads": 5,
+        "version": "2.12.0"
+      },
+      "wall_seconds": 1761.0916756250663
+    },
+    "X_gfes_unif_f0.5_0.0021": {
+      "baseline": {
+        "digests": {
+          "uk.full.dense/result": "c7d05182c3b918bdba98cfc8462b0f40dba33141e074748ec5bc015e4e294e37",
+          "uk.full.problem/problem": "ad48cdf214cebf68e7b169bd05d03b99ed1bed1557f4cc366448cb988629b8f0",
+          "uk.full.size_draw/draw": "cc59e01047352c8a5bb31a583c7906381bbd3bbcc13528a52978691ff19301cf",
+          "uk.full.size_refit/size": "18fd3ea080da0d2d3913f440f6e5c8ea37375c2938a9b7633b5e575711d888d8",
+          "uk.full.size_refit/solution": "d2e73c702284a7718f221d4ab0b43e29ec610622c740e78a6e7992a9b1578b35",
+          "uk.full.size_search/result": "d2beb4c173ef8eddc5f6af5e9ffb2a4200a78c0926ff5e2056c1cb8ff5d2008e",
+          "uk.full.size_search/selection": "d40064105e8a09db84253871658a63bd1bb0ac4b52a282daa4d3c39ccafd688e"
+        },
+        "run_dir": "uk-local-k25-675d2a3fd",
+        "run_rule": "grain_equal"
+      },
+      "code": {
+        "git_commit": "e7dd2f199049153f3124e83d9e398ac23dc28b46",
+        "git_dirty": false
+      },
+      "experiment": {
+        "baseline_pi_floor": 0.5,
+        "epochs": null,
+        "folds": 5,
+        "initial_lambda": "scaled",
+        "learning_rate": null,
+        "mode": "refit",
+        "name": "X_gfes_unif_f0.5_0.0021",
+        "notes": "step 1c, exploratory (chosen after step 1, Mar\u00eda 2026-10-08): grain_family_equal_sqrt_count with uniform L2 at 1e-3 x its loss ratio 2.1439",
+        "refit_l2": {
+          "anchor": "uniform",
+          "lambda": 0.002143860725904146
+        },
+        "refit_rule": "grain_family_equal_sqrt_count",
+        "selection_l2": null,
+        "selection_rule": null
+      },
+      "losses": {
+        "family_equal_yardstick": 0.01975890967439081,
+        "grain_equal_yardstick": 0.01994933540090818,
+        "training": 0.01868686810058491
+      },
+      "peak_rss_bytes": 7431225344,
+      "refit_options": {
+        "budget_basis": "nonzero_count",
+        "budget_search": null,
+        "epochs": 2000,
+        "feasible_draw_pi_hi": null,
+        "gate_initialization_supplied": false,
+        "iterate_selection": "closing_state",
+        "iterate_selection_receipt": {},
+        "l1_lambda": 0.0,
+        "l1_penalty": "mean_initial_weight_ratio_abs",
+        "l2_anchor": "uniform",
+        "l2_anchor_weights_supplied": false,
+        "l2_basis": "chi_square",
+        "l2_lambda": 0.002143860725904146,
+        "l2_penalty": "chi_square_uniform_pre_gate_weight_distance",
+        "learning_rate": 0.15,
+        "mass": "free",
+        "mass_parametrization": "projection",
+        "mass_reason": "Rowwise doctrine calibration to bound target family(ies) age_structure/constituency, age_structure/la, census_households/constituency, census_households/la, council_tax/la, hmrc_income_by_area/constituency, hmrc_income_by_area/la, private_rent/la, tenure/la, uc_households/constituency, uc_households/la, national/council_tax_stock, national/dfe_funded_childcare, national/dft_local_bus, national/dwp_attendance_allowance, national/dwp_benefit_cap, national/dwp_housing_benefit, national/dwp_legacy_benefits, national/dwp_pension_credit, national/dwp_state_pension, national/dwp_two_child_limit, national/dwp_universal_credit, national/dwp_workplace_pensions, national/hmrc_cgt, national/hmrc_itl, national/hmrc_salary_sacrifice, national/hmrc_spi, national/hmrc_spi_region, national/hmrc_tfc, national/isc, national/obr, national/ons_employment, national/ons_household_composition, national/ons_land, national/ons_national_accounts, national/ons_population, national/orr_rail, national/scotgov_social_security, national/slc_borrowers, national/slc_repayments, national/slc_student_support; total household mass moved with the targets.",
+        "matrix_format": "sparse_csr",
+        "max_weight_ratio": 10.0,
+        "method": "adam",
+        "seed": 42,
+        "target_loss_scales": {
+          "cap": 10.0,
+          "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
+          "kind": "provided",
+          "max": 7117771000000.0,
+          "median": 13479.0,
+          "min": 2.0,
+          "n": 22053
+        },
+        "target_loss_weights": {
+          "kind": "provided",
+          "max": 0.011111111111111112,
+          "min": 2.9069900317676435e-07,
+          "n": 22053,
+          "sum": 1.0
+        },
+        "target_records": null,
+        "warm_start_weights": {
+          "enabled": false,
+          "kind": null
+        }
+      },
+      "settings": {
+        "baseline_pi_floor": 0.5,
+        "epochs": 2000,
+        "households": 60000,
+        "learning_rate": 0.15,
+        "pi_hi": 0.5,
+        "seed": 42
+      },
+      "size_receipt": {
+        "baseline_floored_rows": 366,
+        "baseline_mass_share_certainties": 0.9932518644029362,
+        "baseline_pi_floor": 0.5,
+        "boundary_draws": 367,
+        "certainty_share": 0.9938833333333333,
+        "certification": "candidate_only_pending_matched_comparison_and_promotion_scorecard",
+        "compact_loss": 0.01868686810058491,
+        "compact_loss_under_dense_weights": 0.01994933540090818,
+        "dense_loss": 0.011256188416808399,
+        "max_target_scaled_change": 162.3169313436374,
+        "method": "contribution_informed_l0_exact_count_refit",
+        "pool_households": 1598525,
+        "protected_carriers": 10451,
+        "realized_households": 60000,
+        "refit_baseline": "normalized_horvitz_thompson_w_over_q_floored",
+        "refit_epochs": 2000,
+        "refit_iterate_selection": "closing_state",
+        "refit_l2": {
+          "anchor": "uniform",
+          "anchor_reference": "normalized_horvitz_thompson_w_over_q_floored_mean",
+          "basis": "chi_square",
+          "chi_square_distance_to_anchor": 1.6750337749995308,
+          "lambda": 0.002143860725904146,
+          "penalty": "chi_square_uniform_pre_gate_weight_distance"
+        },
+        "refit_target_weighting": {
+          "label": null,
+          "n_held_out": 0,
+          "n_targets": 22053,
+          "rule": "grain_family_equal_sqrt_count",
+          "rule_version": 1,
+          "weights_sha256": "cff06998978a64c23cf338c93c171527081b02700170a1352b2c6ca5183960dd"
+        },
+        "requested_households": 60000,
+        "seed": 42,
+        "selection_budget_basis": "open_probability_mass",
+        "selection_budget_search": {
+          "budget_basis": "open_probability_mass",
+          "budget_iters": 10,
+          "evaluations": 1,
+          "feasible_draw_pi_hi": 0.5,
+          "initial_lambda": 1.1547819846894582e-06,
+          "probes": [
+            {
+              "boundary_draw": 367,
+              "boundary_mass": 303.8540862596715,
+              "boundary_max": 0.44934481382369995,
+              "certainty_count": 59633,
+              "feasible": true,
+              "l0_lambda": 1.1547819846894582e-06,
+              "measure": 59910,
+              "verdict": "feasible"
+            }
+          ],
+          "selected_feasible": true,
+          "selected_l0_lambda": 1.1547819846894582e-06,
+          "selected_measure": 59910,
+          "stopped_on": "acceptable_within_tolerance",
+          "target_records": 60000,
+          "tolerance": 3000,
+          "warm_edge_probe": null,
+          "warm_span_decades": 0.5
+        },
+        "selection_epochs": 2000,
+        "selection_feasibility": {
+          "boundary_draw": 49549,
+          "boundary_mass": 49459.015193442174,
+          "boundary_max": 0.9999996423721313,
+          "boundary_positive_gates": 1588074,
+          "budget_search": {
+            "budget_basis": "open_probability_mass",
+            "budget_iters": 10,
+            "evaluations": 1,
+            "feasible_draw_pi_hi": 0.5,
+            "initial_lambda": 1.1547819846894582e-06,
+            "probes": [
+              {
+                "boundary_draw": 367,
+                "boundary_mass": 303.8540862596715,
+                "boundary_max": 0.44934481382369995,
+                "certainty_count": 59633,
+                "feasible": true,
+                "l0_lambda": 1.1547819846894582e-06,
+                "measure": 59910,
+                "verdict": "feasible"
+              }
+            ],
+            "selected_feasible": true,
+            "selected_l0_lambda": 1.1547819846894582e-06,
+            "selected_measure": 59910,
+            "stopped_on": "acceptable_within_tolerance",
+            "target_records": 60000,
+            "tolerance": 3000,
+            "warm_edge_probe": null,
+            "warm_span_decades": 0.5
+          },
+          "budget_search_basis": "open_probability_mass",
+          "budget_search_n_nonzero": 59910,
+          "certainties_at_pi_hi_1": 10451,
+          "feasible_at_pi_hi_1": false,
+          "feasible_at_requested_pi_hi": true,
+          "gates_above": {
+            "0.5": 59633,
+            "0.9": 59611,
+            "0.99": 59454,
+            "0.999": 56078
+          },
+          "max_feasible_households_at_pi_hi_1": 59910,
+          "pi_hi_scan": {
+            "0.5": {
+              "boundary_draw": 367,
+              "boundary_mass": 303.8540862596715,
+              "boundary_max": 0.44934481382369995,
+              "certainties": 59633,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.7": {
+              "boundary_draw": 374,
+              "boundary_mass": 307.96702227956894,
+              "boundary_max": 0.6642483472824097,
+              "certainties": 59626,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.8": {
+              "boundary_draw": 377,
+              "boundary_mass": 310.20862952835205,
+              "boundary_max": 0.7637840509414673,
+              "certainties": 59623,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.9": {
+              "boundary_draw": 389,
+              "boundary_mass": 320.3967851794446,
+              "boundary_max": 0.8898196816444397,
+              "certainties": 59611,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.95": {
+              "boundary_draw": 409,
+              "boundary_mass": 339.0818819797719,
+              "boundary_max": 0.9487322568893433,
+              "certainties": 59591,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.98": {
+              "boundary_draw": 463,
+              "boundary_mass": 391.5184619224751,
+              "boundary_max": 0.9799535274505615,
+              "certainties": 59537,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.99": {
+              "boundary_draw": 546,
+              "boundary_mass": 473.34729979402664,
+              "boundary_max": 0.9898403286933899,
+              "certainties": 59454,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.999": {
+              "boundary_draw": 3922,
+              "boundary_mass": 3842.571042279073,
+              "boundary_max": 0.9989997744560242,
+              "certainties": 56078,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            }
+          },
+          "pi_quantiles": {
+            "p50": 9.193312143906951e-05,
+            "p90": 0.0006212116335518659,
+            "p99": 0.9999693632125854,
+            "p99.9": 1.0
+          },
+          "pi_sum": 59910.01519344218,
+          "pool_households": 1598525,
+          "protected_carriers": 10451,
+          "requested_households": 60000,
+          "requested_pi_hi": 0.5,
+          "requested_pi_hi_verdict": "feasible",
+          "search_pi_hi": 0.5,
+          "selection_l0_lambda": 1.1547819846894582e-06,
+          "smallest_feasible_pi_hi_on_grid": 0.8
+        },
+        "selection_l0_lambda": 1.1547819846894582e-06,
+        "selection_pi_hi": 0.5,
+        "selection_receipt": {
+          "boundary_pool_size": 1538892,
+          "certainty_count": 59633,
+          "design": "sampford",
+          "k": 60000,
+          "pi_hi": 0.5,
+          "seed": 42
+        },
+        "selection_reused": true,
+        "selection_search_pi_hi": 0.5,
+        "stretch_reference": "normalized_horvitz_thompson_w_over_q_floored",
+        "zero_target_rows": 0
+      },
+      "status": "finished",
+      "torch": {
+        "threads": 5,
+        "version": "2.12.0"
+      },
+      "wall_seconds": 315.13226899993606
+    },
+    "X_gfes_unif_f0.5_0.0064": {
+      "baseline": {
+        "digests": {
+          "uk.full.dense/result": "c7d05182c3b918bdba98cfc8462b0f40dba33141e074748ec5bc015e4e294e37",
+          "uk.full.problem/problem": "ad48cdf214cebf68e7b169bd05d03b99ed1bed1557f4cc366448cb988629b8f0",
+          "uk.full.size_draw/draw": "cc59e01047352c8a5bb31a583c7906381bbd3bbcc13528a52978691ff19301cf",
+          "uk.full.size_refit/size": "18fd3ea080da0d2d3913f440f6e5c8ea37375c2938a9b7633b5e575711d888d8",
+          "uk.full.size_refit/solution": "d2e73c702284a7718f221d4ab0b43e29ec610622c740e78a6e7992a9b1578b35",
+          "uk.full.size_search/result": "d2beb4c173ef8eddc5f6af5e9ffb2a4200a78c0926ff5e2056c1cb8ff5d2008e",
+          "uk.full.size_search/selection": "d40064105e8a09db84253871658a63bd1bb0ac4b52a282daa4d3c39ccafd688e"
+        },
+        "run_dir": "uk-local-k25-675d2a3fd",
+        "run_rule": "grain_equal"
+      },
+      "code": {
+        "git_commit": "e7dd2f199049153f3124e83d9e398ac23dc28b46",
+        "git_dirty": false
+      },
+      "experiment": {
+        "baseline_pi_floor": 0.5,
+        "epochs": null,
+        "folds": 5,
+        "initial_lambda": "scaled",
+        "learning_rate": null,
+        "mode": "refit",
+        "name": "X_gfes_unif_f0.5_0.0064",
+        "notes": "step 1c, exploratory (chosen after step 1, Mar\u00eda 2026-10-08): grain_family_equal_sqrt_count with uniform L2 at 3e-3 x its loss ratio 2.1439",
+        "refit_l2": {
+          "anchor": "uniform",
+          "lambda": 0.006431582177712438
+        },
+        "refit_rule": "grain_family_equal_sqrt_count",
+        "selection_l2": null,
+        "selection_rule": null
+      },
+      "losses": {
+        "family_equal_yardstick": 0.022762920736674415,
+        "grain_equal_yardstick": 0.020692479066112,
+        "training": 0.02176113319961273
+      },
+      "peak_rss_bytes": 7431225344,
+      "refit_options": {
+        "budget_basis": "nonzero_count",
+        "budget_search": null,
+        "epochs": 2000,
+        "feasible_draw_pi_hi": null,
+        "gate_initialization_supplied": false,
+        "iterate_selection": "closing_state",
+        "iterate_selection_receipt": {},
+        "l1_lambda": 0.0,
+        "l1_penalty": "mean_initial_weight_ratio_abs",
+        "l2_anchor": "uniform",
+        "l2_anchor_weights_supplied": false,
+        "l2_basis": "chi_square",
+        "l2_lambda": 0.006431582177712438,
+        "l2_penalty": "chi_square_uniform_pre_gate_weight_distance",
+        "learning_rate": 0.15,
+        "mass": "free",
+        "mass_parametrization": "projection",
+        "mass_reason": "Rowwise doctrine calibration to bound target family(ies) age_structure/constituency, age_structure/la, census_households/constituency, census_households/la, council_tax/la, hmrc_income_by_area/constituency, hmrc_income_by_area/la, private_rent/la, tenure/la, uc_households/constituency, uc_households/la, national/council_tax_stock, national/dfe_funded_childcare, national/dft_local_bus, national/dwp_attendance_allowance, national/dwp_benefit_cap, national/dwp_housing_benefit, national/dwp_legacy_benefits, national/dwp_pension_credit, national/dwp_state_pension, national/dwp_two_child_limit, national/dwp_universal_credit, national/dwp_workplace_pensions, national/hmrc_cgt, national/hmrc_itl, national/hmrc_salary_sacrifice, national/hmrc_spi, national/hmrc_spi_region, national/hmrc_tfc, national/isc, national/obr, national/ons_employment, national/ons_household_composition, national/ons_land, national/ons_national_accounts, national/ons_population, national/orr_rail, national/scotgov_social_security, national/slc_borrowers, national/slc_repayments, national/slc_student_support; total household mass moved with the targets.",
+        "matrix_format": "sparse_csr",
+        "max_weight_ratio": 10.0,
+        "method": "adam",
+        "seed": 42,
+        "target_loss_scales": {
+          "cap": 10.0,
+          "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
+          "kind": "provided",
+          "max": 7117771000000.0,
+          "median": 13479.0,
+          "min": 2.0,
+          "n": 22053
+        },
+        "target_loss_weights": {
+          "kind": "provided",
+          "max": 0.011111111111111112,
+          "min": 2.9069900317676435e-07,
+          "n": 22053,
+          "sum": 1.0
+        },
+        "target_records": null,
+        "warm_start_weights": {
+          "enabled": false,
+          "kind": null
+        }
+      },
+      "settings": {
+        "baseline_pi_floor": 0.5,
+        "epochs": 2000,
+        "households": 60000,
+        "learning_rate": 0.15,
+        "pi_hi": 0.5,
+        "seed": 42
+      },
+      "size_receipt": {
+        "baseline_floored_rows": 366,
+        "baseline_mass_share_certainties": 0.9932518644029362,
+        "baseline_pi_floor": 0.5,
+        "boundary_draws": 367,
+        "certainty_share": 0.9938833333333333,
+        "certification": "candidate_only_pending_matched_comparison_and_promotion_scorecard",
+        "compact_loss": 0.02176113319961273,
+        "compact_loss_under_dense_weights": 0.020692479066112,
+        "dense_loss": 0.011256188416808399,
+        "max_target_scaled_change": 145.8065931564197,
+        "method": "contribution_informed_l0_exact_count_refit",
+        "pool_households": 1598525,
+        "protected_carriers": 10451,
+        "realized_households": 60000,
+        "refit_baseline": "normalized_horvitz_thompson_w_over_q_floored",
+        "refit_epochs": 2000,
+        "refit_iterate_selection": "closing_state",
+        "refit_l2": {
+          "anchor": "uniform",
+          "anchor_reference": "normalized_horvitz_thompson_w_over_q_floored_mean",
+          "basis": "chi_square",
+          "chi_square_distance_to_anchor": 0.9440319148076206,
+          "lambda": 0.006431582177712438,
+          "penalty": "chi_square_uniform_pre_gate_weight_distance"
+        },
+        "refit_target_weighting": {
+          "label": null,
+          "n_held_out": 0,
+          "n_targets": 22053,
+          "rule": "grain_family_equal_sqrt_count",
+          "rule_version": 1,
+          "weights_sha256": "cff06998978a64c23cf338c93c171527081b02700170a1352b2c6ca5183960dd"
+        },
+        "requested_households": 60000,
+        "seed": 42,
+        "selection_budget_basis": "open_probability_mass",
+        "selection_budget_search": {
+          "budget_basis": "open_probability_mass",
+          "budget_iters": 10,
+          "evaluations": 1,
+          "feasible_draw_pi_hi": 0.5,
+          "initial_lambda": 1.1547819846894582e-06,
+          "probes": [
+            {
+              "boundary_draw": 367,
+              "boundary_mass": 303.8540862596715,
+              "boundary_max": 0.44934481382369995,
+              "certainty_count": 59633,
+              "feasible": true,
+              "l0_lambda": 1.1547819846894582e-06,
+              "measure": 59910,
+              "verdict": "feasible"
+            }
+          ],
+          "selected_feasible": true,
+          "selected_l0_lambda": 1.1547819846894582e-06,
+          "selected_measure": 59910,
+          "stopped_on": "acceptable_within_tolerance",
+          "target_records": 60000,
+          "tolerance": 3000,
+          "warm_edge_probe": null,
+          "warm_span_decades": 0.5
+        },
+        "selection_epochs": 2000,
+        "selection_feasibility": {
+          "boundary_draw": 49549,
+          "boundary_mass": 49459.015193442174,
+          "boundary_max": 0.9999996423721313,
+          "boundary_positive_gates": 1588074,
+          "budget_search": {
+            "budget_basis": "open_probability_mass",
+            "budget_iters": 10,
+            "evaluations": 1,
+            "feasible_draw_pi_hi": 0.5,
+            "initial_lambda": 1.1547819846894582e-06,
+            "probes": [
+              {
+                "boundary_draw": 367,
+                "boundary_mass": 303.8540862596715,
+                "boundary_max": 0.44934481382369995,
+                "certainty_count": 59633,
+                "feasible": true,
+                "l0_lambda": 1.1547819846894582e-06,
+                "measure": 59910,
+                "verdict": "feasible"
+              }
+            ],
+            "selected_feasible": true,
+            "selected_l0_lambda": 1.1547819846894582e-06,
+            "selected_measure": 59910,
+            "stopped_on": "acceptable_within_tolerance",
+            "target_records": 60000,
+            "tolerance": 3000,
+            "warm_edge_probe": null,
+            "warm_span_decades": 0.5
+          },
+          "budget_search_basis": "open_probability_mass",
+          "budget_search_n_nonzero": 59910,
+          "certainties_at_pi_hi_1": 10451,
+          "feasible_at_pi_hi_1": false,
+          "feasible_at_requested_pi_hi": true,
+          "gates_above": {
+            "0.5": 59633,
+            "0.9": 59611,
+            "0.99": 59454,
+            "0.999": 56078
+          },
+          "max_feasible_households_at_pi_hi_1": 59910,
+          "pi_hi_scan": {
+            "0.5": {
+              "boundary_draw": 367,
+              "boundary_mass": 303.8540862596715,
+              "boundary_max": 0.44934481382369995,
+              "certainties": 59633,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.7": {
+              "boundary_draw": 374,
+              "boundary_mass": 307.96702227956894,
+              "boundary_max": 0.6642483472824097,
+              "certainties": 59626,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.8": {
+              "boundary_draw": 377,
+              "boundary_mass": 310.20862952835205,
+              "boundary_max": 0.7637840509414673,
+              "certainties": 59623,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.9": {
+              "boundary_draw": 389,
+              "boundary_mass": 320.3967851794446,
+              "boundary_max": 0.8898196816444397,
+              "certainties": 59611,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.95": {
+              "boundary_draw": 409,
+              "boundary_mass": 339.0818819797719,
+              "boundary_max": 0.9487322568893433,
+              "certainties": 59591,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.98": {
+              "boundary_draw": 463,
+              "boundary_mass": 391.5184619224751,
+              "boundary_max": 0.9799535274505615,
+              "certainties": 59537,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.99": {
+              "boundary_draw": 546,
+              "boundary_mass": 473.34729979402664,
+              "boundary_max": 0.9898403286933899,
+              "certainties": 59454,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.999": {
+              "boundary_draw": 3922,
+              "boundary_mass": 3842.571042279073,
+              "boundary_max": 0.9989997744560242,
+              "certainties": 56078,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            }
+          },
+          "pi_quantiles": {
+            "p50": 9.193312143906951e-05,
+            "p90": 0.0006212116335518659,
+            "p99": 0.9999693632125854,
+            "p99.9": 1.0
+          },
+          "pi_sum": 59910.01519344218,
+          "pool_households": 1598525,
+          "protected_carriers": 10451,
+          "requested_households": 60000,
+          "requested_pi_hi": 0.5,
+          "requested_pi_hi_verdict": "feasible",
+          "search_pi_hi": 0.5,
+          "selection_l0_lambda": 1.1547819846894582e-06,
+          "smallest_feasible_pi_hi_on_grid": 0.8
+        },
+        "selection_l0_lambda": 1.1547819846894582e-06,
+        "selection_pi_hi": 0.5,
+        "selection_receipt": {
+          "boundary_pool_size": 1538892,
+          "certainty_count": 59633,
+          "design": "sampford",
+          "k": 60000,
+          "pi_hi": 0.5,
+          "seed": 42
+        },
+        "selection_reused": true,
+        "selection_search_pi_hi": 0.5,
+        "stretch_reference": "normalized_horvitz_thompson_w_over_q_floored",
+        "zero_target_rows": 0
+      },
+      "status": "finished",
+      "torch": {
+        "threads": 5,
+        "version": "2.12.0"
+      },
+      "wall_seconds": 329.63816208404023
+    },
+    "X_gfes_unif_f0.5_0.021": {
+      "baseline": {
+        "digests": {
+          "uk.full.dense/result": "c7d05182c3b918bdba98cfc8462b0f40dba33141e074748ec5bc015e4e294e37",
+          "uk.full.problem/problem": "ad48cdf214cebf68e7b169bd05d03b99ed1bed1557f4cc366448cb988629b8f0",
+          "uk.full.size_draw/draw": "cc59e01047352c8a5bb31a583c7906381bbd3bbcc13528a52978691ff19301cf",
+          "uk.full.size_refit/size": "18fd3ea080da0d2d3913f440f6e5c8ea37375c2938a9b7633b5e575711d888d8",
+          "uk.full.size_refit/solution": "d2e73c702284a7718f221d4ab0b43e29ec610622c740e78a6e7992a9b1578b35",
+          "uk.full.size_search/result": "d2beb4c173ef8eddc5f6af5e9ffb2a4200a78c0926ff5e2056c1cb8ff5d2008e",
+          "uk.full.size_search/selection": "d40064105e8a09db84253871658a63bd1bb0ac4b52a282daa4d3c39ccafd688e"
+        },
+        "run_dir": "uk-local-k25-675d2a3fd",
+        "run_rule": "grain_equal"
+      },
+      "code": {
+        "git_commit": "e7dd2f199049153f3124e83d9e398ac23dc28b46",
+        "git_dirty": false
+      },
+      "experiment": {
+        "baseline_pi_floor": 0.5,
+        "epochs": null,
+        "folds": 5,
+        "initial_lambda": "scaled",
+        "learning_rate": null,
+        "mode": "refit",
+        "name": "X_gfes_unif_f0.5_0.021",
+        "notes": "step 1c, exploratory (chosen after step 1, Mar\u00eda 2026-10-08): grain_family_equal_sqrt_count with uniform L2 at 1e-2 x its loss ratio 2.1439",
+        "refit_l2": {
+          "anchor": "uniform",
+          "lambda": 0.021438607259041457
+        },
+        "refit_rule": "grain_family_equal_sqrt_count",
+        "selection_l2": null,
+        "selection_rule": null
+      },
+      "losses": {
+        "family_equal_yardstick": 0.027677444312889182,
+        "grain_equal_yardstick": 0.022866899127277393,
+        "training": 0.02657414097498504
+      },
+      "peak_rss_bytes": 7431225344,
+      "refit_options": {
+        "budget_basis": "nonzero_count",
+        "budget_search": null,
+        "epochs": 2000,
+        "feasible_draw_pi_hi": null,
+        "gate_initialization_supplied": false,
+        "iterate_selection": "closing_state",
+        "iterate_selection_receipt": {},
+        "l1_lambda": 0.0,
+        "l1_penalty": "mean_initial_weight_ratio_abs",
+        "l2_anchor": "uniform",
+        "l2_anchor_weights_supplied": false,
+        "l2_basis": "chi_square",
+        "l2_lambda": 0.021438607259041457,
+        "l2_penalty": "chi_square_uniform_pre_gate_weight_distance",
+        "learning_rate": 0.15,
+        "mass": "free",
+        "mass_parametrization": "projection",
+        "mass_reason": "Rowwise doctrine calibration to bound target family(ies) age_structure/constituency, age_structure/la, census_households/constituency, census_households/la, council_tax/la, hmrc_income_by_area/constituency, hmrc_income_by_area/la, private_rent/la, tenure/la, uc_households/constituency, uc_households/la, national/council_tax_stock, national/dfe_funded_childcare, national/dft_local_bus, national/dwp_attendance_allowance, national/dwp_benefit_cap, national/dwp_housing_benefit, national/dwp_legacy_benefits, national/dwp_pension_credit, national/dwp_state_pension, national/dwp_two_child_limit, national/dwp_universal_credit, national/dwp_workplace_pensions, national/hmrc_cgt, national/hmrc_itl, national/hmrc_salary_sacrifice, national/hmrc_spi, national/hmrc_spi_region, national/hmrc_tfc, national/isc, national/obr, national/ons_employment, national/ons_household_composition, national/ons_land, national/ons_national_accounts, national/ons_population, national/orr_rail, national/scotgov_social_security, national/slc_borrowers, national/slc_repayments, national/slc_student_support; total household mass moved with the targets.",
+        "matrix_format": "sparse_csr",
+        "max_weight_ratio": 10.0,
+        "method": "adam",
+        "seed": 42,
+        "target_loss_scales": {
+          "cap": 10.0,
+          "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
+          "kind": "provided",
+          "max": 7117771000000.0,
+          "median": 13479.0,
+          "min": 2.0,
+          "n": 22053
+        },
+        "target_loss_weights": {
+          "kind": "provided",
+          "max": 0.011111111111111112,
+          "min": 2.9069900317676435e-07,
+          "n": 22053,
+          "sum": 1.0
+        },
+        "target_records": null,
+        "warm_start_weights": {
+          "enabled": false,
+          "kind": null
+        }
+      },
+      "settings": {
+        "baseline_pi_floor": 0.5,
+        "epochs": 2000,
+        "households": 60000,
+        "learning_rate": 0.15,
+        "pi_hi": 0.5,
+        "seed": 42
+      },
+      "size_receipt": {
+        "baseline_floored_rows": 366,
+        "baseline_mass_share_certainties": 0.9932518644029362,
+        "baseline_pi_floor": 0.5,
+        "boundary_draws": 367,
+        "certainty_share": 0.9938833333333333,
+        "certification": "candidate_only_pending_matched_comparison_and_promotion_scorecard",
+        "compact_loss": 0.02657414097498504,
+        "compact_loss_under_dense_weights": 0.022866899127277393,
+        "dense_loss": 0.011256188416808399,
+        "max_target_scaled_change": 151.47736547049135,
+        "method": "contribution_informed_l0_exact_count_refit",
+        "pool_households": 1598525,
+        "protected_carriers": 10451,
+        "realized_households": 60000,
+        "refit_baseline": "normalized_horvitz_thompson_w_over_q_floored",
+        "refit_epochs": 2000,
+        "refit_iterate_selection": "closing_state",
+        "refit_l2": {
+          "anchor": "uniform",
+          "anchor_reference": "normalized_horvitz_thompson_w_over_q_floored_mean",
+          "basis": "chi_square",
+          "chi_square_distance_to_anchor": 0.5101230323958449,
+          "lambda": 0.021438607259041457,
+          "penalty": "chi_square_uniform_pre_gate_weight_distance"
+        },
+        "refit_target_weighting": {
+          "label": null,
+          "n_held_out": 0,
+          "n_targets": 22053,
+          "rule": "grain_family_equal_sqrt_count",
+          "rule_version": 1,
+          "weights_sha256": "cff06998978a64c23cf338c93c171527081b02700170a1352b2c6ca5183960dd"
+        },
+        "requested_households": 60000,
+        "seed": 42,
+        "selection_budget_basis": "open_probability_mass",
+        "selection_budget_search": {
+          "budget_basis": "open_probability_mass",
+          "budget_iters": 10,
+          "evaluations": 1,
+          "feasible_draw_pi_hi": 0.5,
+          "initial_lambda": 1.1547819846894582e-06,
+          "probes": [
+            {
+              "boundary_draw": 367,
+              "boundary_mass": 303.8540862596715,
+              "boundary_max": 0.44934481382369995,
+              "certainty_count": 59633,
+              "feasible": true,
+              "l0_lambda": 1.1547819846894582e-06,
+              "measure": 59910,
+              "verdict": "feasible"
+            }
+          ],
+          "selected_feasible": true,
+          "selected_l0_lambda": 1.1547819846894582e-06,
+          "selected_measure": 59910,
+          "stopped_on": "acceptable_within_tolerance",
+          "target_records": 60000,
+          "tolerance": 3000,
+          "warm_edge_probe": null,
+          "warm_span_decades": 0.5
+        },
+        "selection_epochs": 2000,
+        "selection_feasibility": {
+          "boundary_draw": 49549,
+          "boundary_mass": 49459.015193442174,
+          "boundary_max": 0.9999996423721313,
+          "boundary_positive_gates": 1588074,
+          "budget_search": {
+            "budget_basis": "open_probability_mass",
+            "budget_iters": 10,
+            "evaluations": 1,
+            "feasible_draw_pi_hi": 0.5,
+            "initial_lambda": 1.1547819846894582e-06,
+            "probes": [
+              {
+                "boundary_draw": 367,
+                "boundary_mass": 303.8540862596715,
+                "boundary_max": 0.44934481382369995,
+                "certainty_count": 59633,
+                "feasible": true,
+                "l0_lambda": 1.1547819846894582e-06,
+                "measure": 59910,
+                "verdict": "feasible"
+              }
+            ],
+            "selected_feasible": true,
+            "selected_l0_lambda": 1.1547819846894582e-06,
+            "selected_measure": 59910,
+            "stopped_on": "acceptable_within_tolerance",
+            "target_records": 60000,
+            "tolerance": 3000,
+            "warm_edge_probe": null,
+            "warm_span_decades": 0.5
+          },
+          "budget_search_basis": "open_probability_mass",
+          "budget_search_n_nonzero": 59910,
+          "certainties_at_pi_hi_1": 10451,
+          "feasible_at_pi_hi_1": false,
+          "feasible_at_requested_pi_hi": true,
+          "gates_above": {
+            "0.5": 59633,
+            "0.9": 59611,
+            "0.99": 59454,
+            "0.999": 56078
+          },
+          "max_feasible_households_at_pi_hi_1": 59910,
+          "pi_hi_scan": {
+            "0.5": {
+              "boundary_draw": 367,
+              "boundary_mass": 303.8540862596715,
+              "boundary_max": 0.44934481382369995,
+              "certainties": 59633,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.7": {
+              "boundary_draw": 374,
+              "boundary_mass": 307.96702227956894,
+              "boundary_max": 0.6642483472824097,
+              "certainties": 59626,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.8": {
+              "boundary_draw": 377,
+              "boundary_mass": 310.20862952835205,
+              "boundary_max": 0.7637840509414673,
+              "certainties": 59623,
+              "feasible": true,
+              "reason": "feasible"
+            },
+            "0.9": {
+              "boundary_draw": 389,
+              "boundary_mass": 320.3967851794446,
+              "boundary_max": 0.8898196816444397,
+              "certainties": 59611,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.95": {
+              "boundary_draw": 409,
+              "boundary_mass": 339.0818819797719,
+              "boundary_max": 0.9487322568893433,
+              "certainties": 59591,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.98": {
+              "boundary_draw": 463,
+              "boundary_mass": 391.5184619224751,
+              "boundary_max": 0.9799535274505615,
+              "certainties": 59537,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.99": {
+              "boundary_draw": 546,
+              "boundary_mass": 473.34729979402664,
+              "boundary_max": 0.9898403286933899,
+              "certainties": 59454,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            },
+            "0.999": {
+              "boundary_draw": 3922,
+              "boundary_mass": 3842.571042279073,
+              "boundary_max": 0.9989997744560242,
+              "certainties": 56078,
+              "feasible": false,
+              "reason": "boundary_mass_short"
+            }
+          },
+          "pi_quantiles": {
+            "p50": 9.193312143906951e-05,
+            "p90": 0.0006212116335518659,
+            "p99": 0.9999693632125854,
+            "p99.9": 1.0
+          },
+          "pi_sum": 59910.01519344218,
+          "pool_households": 1598525,
+          "protected_carriers": 10451,
+          "requested_households": 60000,
+          "requested_pi_hi": 0.5,
+          "requested_pi_hi_verdict": "feasible",
+          "search_pi_hi": 0.5,
+          "selection_l0_lambda": 1.1547819846894582e-06,
+          "smallest_feasible_pi_hi_on_grid": 0.8
+        },
+        "selection_l0_lambda": 1.1547819846894582e-06,
+        "selection_pi_hi": 0.5,
+        "selection_receipt": {
+          "boundary_pool_size": 1538892,
+          "certainty_count": 59633,
+          "design": "sampford",
+          "k": 60000,
+          "pi_hi": 0.5,
+          "seed": 42
+        },
+        "selection_reused": true,
+        "selection_search_pi_hi": 0.5,
+        "stretch_reference": "normalized_horvitz_thompson_w_over_q_floored",
+        "zero_target_rows": 0
+      },
+      "status": "finished",
+      "torch": {
+        "threads": 5,
+        "version": "2.12.0"
+      },
+      "wall_seconds": 324.185250874958
+    },
     "control": {
       "accepted_drift_reason": null,
       "digests": {
@@ -15032,6 +16063,153 @@
           }
         },
         "passes": [
+          "local_family_within_10"
+        ]
+      },
+      "X_gfes_unif_f0.5_0.0021": {
+        "all_pass": false,
+        "criteria": {
+          "household_total": {
+            "pass": true,
+            "threshold": 0.01,
+            "value": 0.0009180754768617352
+          },
+          "local_family_within_10": {
+            "pass": true,
+            "threshold": 1.0,
+            "value": 0.06329113924050667,
+            "worst_cell": "constituency/uc_households"
+          },
+          "lone_person_share": {
+            "pass": true,
+            "threshold": 1.0,
+            "value": 0.176705357022644
+          },
+          "nation_shares": {
+            "pass": true,
+            "threshold": 0.05,
+            "value": 0.02551167154347461
+          },
+          "national_past_25": {
+            "pass": false,
+            "threshold": 5,
+            "value": 16
+          },
+          "relative_collapse": {
+            "below_ess_floor": {
+              "constituency": 614,
+              "la": 149
+            },
+            "ess_min": {
+              "constituency": 17.700900206154877,
+              "la": "<10"
+            },
+            "pass": false,
+            "threshold": 0,
+            "value": 816
+          }
+        },
+        "passes": [
+          "household_total",
+          "nation_shares",
+          "lone_person_share",
+          "local_family_within_10"
+        ]
+      },
+      "X_gfes_unif_f0.5_0.0064": {
+        "all_pass": false,
+        "criteria": {
+          "household_total": {
+            "pass": true,
+            "threshold": 0.01,
+            "value": 0.002089530399974612
+          },
+          "local_family_within_10": {
+            "pass": true,
+            "threshold": 1.0,
+            "value": 0.7911392405063333,
+            "worst_cell": "constituency/uc_households"
+          },
+          "lone_person_share": {
+            "pass": false,
+            "threshold": 1.0,
+            "value": 1.5926088491023227
+          },
+          "nation_shares": {
+            "pass": true,
+            "threshold": 0.05,
+            "value": 0.047902595432282945
+          },
+          "national_past_25": {
+            "pass": false,
+            "threshold": 5,
+            "value": 13
+          },
+          "relative_collapse": {
+            "below_ess_floor": {
+              "constituency": 358,
+              "la": 44
+            },
+            "ess_min": {
+              "constituency": 24.78897969201749,
+              "la": "<10"
+            },
+            "pass": false,
+            "threshold": 0,
+            "value": 390
+          }
+        },
+        "passes": [
+          "household_total",
+          "nation_shares",
+          "local_family_within_10"
+        ]
+      },
+      "X_gfes_unif_f0.5_0.021": {
+        "all_pass": false,
+        "criteria": {
+          "household_total": {
+            "pass": true,
+            "threshold": 0.01,
+            "value": 0.00658729906299526
+          },
+          "local_family_within_10": {
+            "pass": true,
+            "threshold": 1.0,
+            "value": 0.9177215189873467,
+            "worst_cell": "constituency/uc_households"
+          },
+          "lone_person_share": {
+            "pass": false,
+            "threshold": 1.0,
+            "value": 3.021236337737548
+          },
+          "nation_shares": {
+            "pass": false,
+            "threshold": 0.05,
+            "value": 0.06813113979964157
+          },
+          "national_past_25": {
+            "pass": false,
+            "threshold": 5,
+            "value": 15
+          },
+          "relative_collapse": {
+            "below_ess_floor": {
+              "constituency": 79,
+              "la": 13
+            },
+            "ess_min": {
+              "constituency": 38.63380178527921,
+              "la": "<10"
+            },
+            "pass": false,
+            "threshold": 0,
+            "value": 88
+          }
+        },
+        "passes": [
+          "household_total",
           "local_family_within_10"
         ]
       }
@@ -21041,6 +22219,552 @@
             "tvd_median": 0.2090598669301661,
             "tvd_p90": 0.2632205153796071,
             "tvd_to_noise_median": 0.9753385906652183
+          }
+        }
+      },
+      "X_gfes_unif_f0.5_0.0021": {
+        "constituency": {
+          "head_age_band": {
+            "areas": 650,
+            "categories": 5,
+            "tvd_max": 0.26516423591377747,
+            "tvd_median": 0.08493198381925982,
+            "tvd_p90": 0.13645362399456407,
+            "tvd_to_noise_median": 0.6757862146870528
+          },
+          "head_age_x_income_decile": {
+            "areas": 650,
+            "categories": 50,
+            "tvd_max": 0.5266105240094013,
+            "tvd_median": 0.3537588327949091,
+            "tvd_p90": 0.43471235387222773,
+            "tvd_to_noise_median": 0.879570035551489
+          },
+          "household_size": {
+            "areas": 650,
+            "categories": 6,
+            "tvd_max": 0.42139676796708436,
+            "tvd_median": 0.09901005161722057,
+            "tvd_p90": 0.17408053572085658,
+            "tvd_to_noise_median": 0.7454815637016474
+          },
+          "household_type": {
+            "areas": 650,
+            "categories": 10,
+            "tvd_max": 0.49796092150022236,
+            "tvd_median": 0.1327043660987089,
+            "tvd_p90": 0.20945254923816892,
+            "tvd_to_noise_median": 0.764035012078149
+          },
+          "income_decile": {
+            "areas": 650,
+            "categories": 10,
+            "tvd_max": 0.3596888677060432,
+            "tvd_median": 0.17965034602674687,
+            "tvd_p90": 0.2509634648301194,
+            "tvd_to_noise_median": 0.9172964004547106
+          },
+          "size_x_income_decile": {
+            "areas": 650,
+            "categories": 60,
+            "tvd_max": 0.6469579275764259,
+            "tvd_median": 0.3563557403553931,
+            "tvd_p90": 0.44248572484774384,
+            "tvd_to_noise_median": 0.8724642006511222
+          },
+          "size_x_tenure": {
+            "areas": 650,
+            "categories": 30,
+            "tvd_max": 0.5474190880366969,
+            "tvd_median": 0.23828821907185027,
+            "tvd_p90": 0.3235934106008212,
+            "tvd_to_noise_median": 0.814452809468837
+          },
+          "tenure": {
+            "areas": 650,
+            "categories": 5,
+            "tvd_max": 0.22964475849680355,
+            "tvd_median": 0.07427252391657194,
+            "tvd_p90": 0.13130627264852812,
+            "tvd_to_noise_median": 0.607686694893215
+          },
+          "tenure_x_head_age": {
+            "areas": 650,
+            "categories": 25,
+            "tvd_max": 0.3737883734536388,
+            "tvd_median": 0.21525977019310769,
+            "tvd_p90": 0.2805705188843222,
+            "tvd_to_noise_median": 0.8053199707770032
+          },
+          "type_x_income_decile": {
+            "areas": 650,
+            "categories": 100,
+            "tvd_max": 0.702285979095633,
+            "tvd_median": 0.40602823805204313,
+            "tvd_p90": 0.4895155119634674,
+            "tvd_to_noise_median": 0.8412956218459522
+          },
+          "type_x_tenure": {
+            "areas": 650,
+            "categories": 50,
+            "tvd_max": 0.5948855346403614,
+            "tvd_median": 0.2874573940510676,
+            "tvd_p90": 0.36981107510688255,
+            "tvd_to_noise_median": 0.8140127024965476
+          }
+        },
+        "la": {
+          "head_age_band": {
+            "areas": 361,
+            "categories": 5,
+            "tvd_max": 0.36403826391064525,
+            "tvd_median": 0.06755670032879824,
+            "tvd_p90": 0.11189124953808492,
+            "tvd_to_noise_median": 0.6799699985104275
+          },
+          "head_age_x_income_decile": {
+            "areas": 361,
+            "categories": 50,
+            "tvd_max": 0.6507543575969156,
+            "tvd_median": 0.2940244223456646,
+            "tvd_p90": 0.36741599533988867,
+            "tvd_to_noise_median": 0.8979071597691588
+          },
+          "household_size": {
+            "areas": 361,
+            "categories": 6,
+            "tvd_max": 0.3833300713372042,
+            "tvd_median": 0.07765865511766318,
+            "tvd_p90": 0.15434290505384882,
+            "tvd_to_noise_median": 0.7596584956004938
+          },
+          "household_type": {
+            "areas": 361,
+            "categories": 10,
+            "tvd_max": 0.5648953757322283,
+            "tvd_median": 0.10382716904816473,
+            "tvd_p90": 0.17274207851854914,
+            "tvd_to_noise_median": 0.7620939063198173
+          },
+          "income_decile": {
+            "areas": 361,
+            "categories": 10,
+            "tvd_max": 0.509701006688854,
+            "tvd_median": 0.14368154095551192,
+            "tvd_p90": 0.19962277732399325,
+            "tvd_to_noise_median": 0.9348626154603543
+          },
+          "size_x_income_decile": {
+            "areas": 361,
+            "categories": 60,
+            "tvd_max": 0.5568527330664753,
+            "tvd_median": 0.2951828805140806,
+            "tvd_p90": 0.3732042696368182,
+            "tvd_to_noise_median": 0.8875583283515609
+          },
+          "size_x_tenure": {
+            "areas": 361,
+            "categories": 30,
+            "tvd_max": 0.5962498995021887,
+            "tvd_median": 0.1866678127729864,
+            "tvd_p90": 0.2604485466083764,
+            "tvd_to_noise_median": 0.8011268887710867
+          },
+          "tenure": {
+            "areas": 361,
+            "categories": 5,
+            "tvd_max": 0.5106369723024318,
+            "tvd_median": 0.020138886053697888,
+            "tvd_p90": 0.04740094053927829,
+            "tvd_to_noise_median": 0.2139394377561955
+          },
+          "tenure_x_head_age": {
+            "areas": 361,
+            "categories": 25,
+            "tvd_max": 0.6475636711835197,
+            "tvd_median": 0.1666421398656973,
+            "tvd_p90": 0.2297570341922798,
+            "tvd_to_noise_median": 0.7927609802028497
+          },
+          "type_x_income_decile": {
+            "areas": 361,
+            "categories": 100,
+            "tvd_max": 0.6518043596684526,
+            "tvd_median": 0.3330566907426106,
+            "tvd_p90": 0.4315215726474535,
+            "tvd_to_noise_median": 0.8671348567969785
+          },
+          "type_x_tenure": {
+            "areas": 361,
+            "categories": 50,
+            "tvd_max": 0.6155551489603507,
+            "tvd_median": 0.23256413107009175,
+            "tvd_p90": 0.3014662016900052,
+            "tvd_to_noise_median": 0.8258794451241638
+          }
+        }
+      },
+      "X_gfes_unif_f0.5_0.0064": {
+        "constituency": {
+          "head_age_band": {
+            "areas": 650,
+            "categories": 5,
+            "tvd_max": 0.24163173526307638,
+            "tvd_median": 0.07192338375721777,
+            "tvd_p90": 0.11762068951821755,
+            "tvd_to_noise_median": 0.6746189988881488
+          },
+          "head_age_x_income_decile": {
+            "areas": 650,
+            "categories": 50,
+            "tvd_max": 0.48782391136034925,
+            "tvd_median": 0.3106035190999125,
+            "tvd_p90": 0.3813820211214528,
+            "tvd_to_noise_median": 0.907306755322796
+          },
+          "household_size": {
+            "areas": 650,
+            "categories": 6,
+            "tvd_max": 0.42405563589904566,
+            "tvd_median": 0.0864274739722144,
+            "tvd_p90": 0.14998006193637642,
+            "tvd_to_noise_median": 0.7728780384656216
+          },
+          "household_type": {
+            "areas": 650,
+            "categories": 10,
+            "tvd_max": 0.5066593285278642,
+            "tvd_median": 0.11449970186016972,
+            "tvd_p90": 0.18552518315629743,
+            "tvd_to_noise_median": 0.7898416424980819
+          },
+          "income_decile": {
+            "areas": 650,
+            "categories": 10,
+            "tvd_max": 0.29196529715662295,
+            "tvd_median": 0.15249914401727185,
+            "tvd_p90": 0.21379142293060793,
+            "tvd_to_noise_median": 0.899363251271148
+          },
+          "size_x_income_decile": {
+            "areas": 650,
+            "categories": 60,
+            "tvd_max": 0.5718350449633373,
+            "tvd_median": 0.3123753967742925,
+            "tvd_p90": 0.38271154430236354,
+            "tvd_to_noise_median": 0.8920497793514219
+          },
+          "size_x_tenure": {
+            "areas": 650,
+            "categories": 30,
+            "tvd_max": 0.5197108354526944,
+            "tvd_median": 0.20833430623434007,
+            "tvd_p90": 0.28300328496426436,
+            "tvd_to_noise_median": 0.8418254876979725
+          },
+          "tenure": {
+            "areas": 650,
+            "categories": 5,
+            "tvd_max": 0.2107435163399432,
+            "tvd_median": 0.06483971140885547,
+            "tvd_p90": 0.10688748697580944,
+            "tvd_to_noise_median": 0.6208800531681447
+          },
+          "tenure_x_head_age": {
+            "areas": 650,
+            "categories": 25,
+            "tvd_max": 0.3420082680068875,
+            "tvd_median": 0.18609460216761148,
+            "tvd_p90": 0.2487065997040727,
+            "tvd_to_noise_median": 0.8179149395329126
+          },
+          "type_x_income_decile": {
+            "areas": 650,
+            "categories": 100,
+            "tvd_max": 0.6830064764637652,
+            "tvd_median": 0.3603312681553432,
+            "tvd_p90": 0.43770158556715055,
+            "tvd_to_noise_median": 0.874703201021857
+          },
+          "type_x_tenure": {
+            "areas": 650,
+            "categories": 50,
+            "tvd_max": 0.5845387363512216,
+            "tvd_median": 0.25255851567410115,
+            "tvd_p90": 0.3254876122680617,
+            "tvd_to_noise_median": 0.8449177287693097
+          }
+        },
+        "la": {
+          "head_age_band": {
+            "areas": 361,
+            "categories": 5,
+            "tvd_max": 0.348533780160142,
+            "tvd_median": 0.05696500789626441,
+            "tvd_p90": 0.09540010266064858,
+            "tvd_to_noise_median": 0.6723519486621542
+          },
+          "head_age_x_income_decile": {
+            "areas": 361,
+            "categories": 50,
+            "tvd_max": 0.696638796177678,
+            "tvd_median": 0.25662659229743817,
+            "tvd_p90": 0.3264541345101504,
+            "tvd_to_noise_median": 0.9291390691592211
+          },
+          "household_size": {
+            "areas": 361,
+            "categories": 6,
+            "tvd_max": 0.3546549764686075,
+            "tvd_median": 0.07051151980184688,
+            "tvd_p90": 0.1312383326431416,
+            "tvd_to_noise_median": 0.8174035730572603
+          },
+          "household_type": {
+            "areas": 361,
+            "categories": 10,
+            "tvd_max": 0.4947103194024619,
+            "tvd_median": 0.09404604966527431,
+            "tvd_p90": 0.15158034494199923,
+            "tvd_to_noise_median": 0.8025624806782904
+          },
+          "income_decile": {
+            "areas": 361,
+            "categories": 10,
+            "tvd_max": 0.5555854452696164,
+            "tvd_median": 0.12261735450469563,
+            "tvd_p90": 0.17324165800874297,
+            "tvd_to_noise_median": 0.9230299807431855
+          },
+          "size_x_income_decile": {
+            "areas": 361,
+            "categories": 60,
+            "tvd_max": 0.5854991374135619,
+            "tvd_median": 0.256409325196849,
+            "tvd_p90": 0.3329299861037013,
+            "tvd_to_noise_median": 0.9069175320103936
+          },
+          "size_x_tenure": {
+            "areas": 361,
+            "categories": 30,
+            "tvd_max": 0.6030268039980449,
+            "tvd_median": 0.16261932624327055,
+            "tvd_p90": 0.22711257953401537,
+            "tvd_to_noise_median": 0.8308081320486103
+          },
+          "tenure": {
+            "areas": 361,
+            "categories": 5,
+            "tvd_max": 0.5664421586930193,
+            "tvd_median": 0.018480367724922203,
+            "tvd_p90": 0.041684153820629184,
+            "tvd_to_noise_median": 0.22280108706852342
+          },
+          "tenure_x_head_age": {
+            "areas": 361,
+            "categories": 25,
+            "tvd_max": 0.693448109764282,
+            "tvd_median": 0.14704303581215167,
+            "tvd_p90": 0.1959261490098482,
+            "tvd_to_noise_median": 0.7941574024584801
+          },
+          "type_x_income_decile": {
+            "areas": 361,
+            "categories": 100,
+            "tvd_max": 0.6976887982492148,
+            "tvd_median": 0.29624047012315663,
+            "tvd_p90": 0.3764393019108346,
+            "tvd_to_noise_median": 0.8937020969213231
+          },
+          "type_x_tenure": {
+            "areas": 361,
+            "categories": 50,
+            "tvd_max": 0.6614395875411131,
+            "tvd_median": 0.20232026986308546,
+            "tvd_p90": 0.26007221765483196,
+            "tvd_to_noise_median": 0.8486209423141364
+          }
+        }
+      },
+      "X_gfes_unif_f0.5_0.021": {
+        "constituency": {
+          "head_age_band": {
+            "areas": 650,
+            "categories": 5,
+            "tvd_max": 0.23503652674975786,
+            "tvd_median": 0.06495046048704509,
+            "tvd_p90": 0.10854923528002687,
+            "tvd_to_noise_median": 0.6931359690286722
+          },
+          "head_age_x_income_decile": {
+            "areas": 650,
+            "categories": 50,
+            "tvd_max": 0.47522244214543286,
+            "tvd_median": 0.2864693891020677,
+            "tvd_p90": 0.3479896845214283,
+            "tvd_to_noise_median": 0.9411962678356154
+          },
+          "household_size": {
+            "areas": 650,
+            "categories": 6,
+            "tvd_max": 0.399310806318942,
+            "tvd_median": 0.08331560706809937,
+            "tvd_p90": 0.15360325322504756,
+            "tvd_to_noise_median": 0.8279066987321053
+          },
+          "household_type": {
+            "areas": 650,
+            "categories": 10,
+            "tvd_max": 0.48722864390074416,
+            "tvd_median": 0.11408724835202402,
+            "tvd_p90": 0.18690766293962355,
+            "tvd_to_noise_median": 0.861981290473885
+          },
+          "income_decile": {
+            "areas": 650,
+            "categories": 10,
+            "tvd_max": 0.30233660647799776,
+            "tvd_median": 0.13856059827642844,
+            "tvd_p90": 0.196584424836927,
+            "tvd_to_noise_median": 0.9272304600733605
+          },
+          "size_x_income_decile": {
+            "areas": 650,
+            "categories": 60,
+            "tvd_max": 0.5046343546709374,
+            "tvd_median": 0.28831406358560274,
+            "tvd_p90": 0.3547705684502135,
+            "tvd_to_noise_median": 0.9289759076686706
+          },
+          "size_x_tenure": {
+            "areas": 650,
+            "categories": 30,
+            "tvd_max": 0.4654273587848689,
+            "tvd_median": 0.19635140822756852,
+            "tvd_p90": 0.2611887093447271,
+            "tvd_to_noise_median": 0.8807588701702012
+          },
+          "tenure": {
+            "areas": 650,
+            "categories": 5,
+            "tvd_max": 0.21415361752699566,
+            "tvd_median": 0.05915635021713494,
+            "tvd_p90": 0.10292248657001245,
+            "tvd_to_noise_median": 0.634468693644175
+          },
+          "tenure_x_head_age": {
+            "areas": 650,
+            "categories": 25,
+            "tvd_max": 0.304158080333363,
+            "tvd_median": 0.167842482900098,
+            "tvd_p90": 0.22614751280001952,
+            "tvd_to_noise_median": 0.8420425532964477
+          },
+          "type_x_income_decile": {
+            "areas": 650,
+            "categories": 100,
+            "tvd_max": 0.6239145982176535,
+            "tvd_median": 0.3360030711448668,
+            "tvd_p90": 0.41039070255899873,
+            "tvd_to_noise_median": 0.9260080342514789
+          },
+          "type_x_tenure": {
+            "areas": 650,
+            "categories": 50,
+            "tvd_max": 0.5514040527188038,
+            "tvd_median": 0.23952393240549144,
+            "tvd_p90": 0.30789954255693747,
+            "tvd_to_noise_median": 0.8926180653885191
+          }
+        },
+        "la": {
+          "head_age_band": {
+            "areas": 361,
+            "categories": 5,
+            "tvd_max": 0.3243245671558049,
+            "tvd_median": 0.052614264415063845,
+            "tvd_p90": 0.0850196714451392,
+            "tvd_to_noise_median": 0.6983713606844172
+          },
+          "head_age_x_income_decile": {
+            "areas": 361,
+            "categories": 50,
+            "tvd_max": 0.7453736138226861,
+            "tvd_median": 0.2366891012645763,
+            "tvd_p90": 0.3011205173235114,
+            "tvd_to_noise_median": 0.9472623565770246
+          },
+          "household_size": {
+            "areas": 361,
+            "categories": 6,
+            "tvd_max": 0.34546652876697465,
+            "tvd_median": 0.07091836948109202,
+            "tvd_p90": 0.1264399584927349,
+            "tvd_to_noise_median": 0.8809482781836103
+          },
+          "household_type": {
+            "areas": 361,
+            "categories": 10,
+            "tvd_max": 0.4069591097146912,
+            "tvd_median": 0.09450161965408131,
+            "tvd_p90": 0.14907627085759306,
+            "tvd_to_noise_median": 0.8964381866325423
+          },
+          "income_decile": {
+            "areas": 361,
+            "categories": 10,
+            "tvd_max": 0.5680710522065227,
+            "tvd_median": 0.11238008670703634,
+            "tvd_p90": 0.16099001900790338,
+            "tvd_to_noise_median": 0.9566646289669819
+          },
+          "size_x_income_decile": {
+            "areas": 361,
+            "categories": 60,
+            "tvd_max": 0.6342339550585699,
+            "tvd_median": 0.23448764015280554,
+            "tvd_p90": 0.302551364304487,
+            "tvd_to_noise_median": 0.9434563808485129
+          },
+          "size_x_tenure": {
+            "areas": 361,
+            "categories": 30,
+            "tvd_max": 0.6517439712952705,
+            "tvd_median": 0.1519125286733164,
+            "tvd_p90": 0.21169554147027742,
+            "tvd_to_noise_median": 0.8848732620502373
+          },
+          "tenure": {
+            "areas": 361,
+            "categories": 5,
+            "tvd_max": 0.6305676891467982,
+            "tvd_median": 0.019432580171767803,
+            "tvd_p90": 0.04053251889987261,
+            "tvd_to_noise_median": 0.26512648227632846
+          },
+          "tenure_x_head_age": {
+            "areas": 361,
+            "categories": 25,
+            "tvd_max": 0.730882083729049,
+            "tvd_median": 0.13298847928617138,
+            "tvd_p90": 0.1745021993716242,
+            "tvd_to_noise_median": 0.8296320482090588
+          },
+          "type_x_income_decile": {
+            "areas": 361,
+            "categories": 100,
+            "tvd_max": 0.746423615894223,
+            "tvd_median": 0.2789385680977216,
+            "tvd_p90": 0.3462494019829653,
+            "tvd_to_noise_median": 0.944312880791361
+          },
+          "type_x_tenure": {
+            "areas": 361,
+            "categories": 50,
+            "tvd_max": 0.6988494500938756,
+            "tvd_median": 0.1937661807100683,
+            "tvd_p90": 0.24875283587252084,
+            "tvd_to_noise_median": 0.9114024598084326
           }
         }
       }
@@ -36788,6 +38512,1223 @@
           "positive_weight_records": 60000,
           "top_1pct_weight_share": 0.060224575975243014,
           "total_weight": 27981967.340280574,
+          "zero_weight_records": 0
+        }
+      },
+      "X_gfes_unif_f0.5_0.0021": {
+        "areas": {
+          "constituency": {
+            "areas": 650,
+            "below_ess_floor": 614,
+            "below_relative_collapse": 512,
+            "ess_median": 35.96698988025372,
+            "ess_min": 17.700900206154877,
+            "ess_p5": 24.221132788075607,
+            "ess_per_row_median": 0.4060862724614419,
+            "ess_to_dense_median": 0.19765456259382924,
+            "rows_median": 88.0,
+            "rows_min": 56,
+            "sources_median": 83.0,
+            "sources_min": 52
+          },
+          "la": {
+            "areas": 361,
+            "below_ess_floor": 149,
+            "below_relative_collapse": 304,
+            "ess_median": 54.3431856059219,
+            "ess_min": "<10",
+            "ess_p5": 31.214110977312004,
+            "ess_per_row_median": 0.404855903765469,
+            "ess_to_dense_median": 0.19503959077066982,
+            "rows_median": 141.0,
+            "rows_min": "<10",
+            "sources_median": 126.0,
+            "sources_min": "<10"
+          }
+        },
+        "chi_square_to_kept_design": 1.9756237806133252,
+        "chi_square_to_start": 1.9697197687228567,
+        "chi_square_to_uniform": 1.6750337749995308,
+        "composition_rows": [
+          {
+            "estimate": 4318662.084829851,
+            "relative_error": 0.0006167944462120143,
+            "target": 4316000.0,
+            "target_name": "ons.household_composition.lone_households_under_65@2025"
+          },
+          {
+            "estimate": 3920616.547221942,
+            "relative_error": -0.07836940591867846,
+            "target": 4254000.0,
+            "target_name": "ons.household_composition.lone_households_over_65@2025"
+          },
+          {
+            "estimate": 816333.6983366301,
+            "relative_error": 0.004100489958954647,
+            "target": 813000.0,
+            "target_name": "ons.household_composition.unrelated_adult_households@2025"
+          },
+          {
+            "estimate": 8174900.480218269,
+            "relative_error": 0.006885143517461378,
+            "target": 8119000.0,
+            "target_name": "ons.household_composition.couple_no_children_households@2025"
+          },
+          {
+            "estimate": 5291982.990694868,
+            "relative_error": -0.0270301543123978,
+            "target": 5439000.0,
+            "target_name": "ons.household_composition.couple_under_3_children_households@2025"
+          },
+          {
+            "estimate": 929534.747789237,
+            "relative_error": -0.001573847702215951,
+            "target": 931000.0,
+            "target_name": "ons.household_composition.couple_3_plus_children_households@2025"
+          },
+          {
+            "estimate": 1872390.9554442766,
+            "relative_error": 0.01319856896335312,
+            "target": 1848000.0,
+            "target_name": "ons.household_composition.couple_non_dependent_children_only_households@2025"
+          },
+          {
+            "estimate": 2184510.4194187373,
+            "relative_error": 0.1904688934162056,
+            "target": 1835000.0,
+            "target_name": "ons.household_composition.lone_parent_dependent_children_households@2025"
+          },
+          {
+            "estimate": 1207486.2906731046,
+            "relative_error": 0.0028955902600536383,
+            "target": 1204000.0,
+            "target_name": "ons.household_composition.lone_parent_non_dependent_children_households@2025"
+          },
+          {
+            "estimate": 245251.1596896276,
+            "relative_error": 0.005127703646014704,
+            "target": 244000.0,
+            "target_name": "ons.household_composition.multi_family_households@2025"
+          }
+        ],
+        "distinct_source_households": 11148,
+        "fit_by_grain_family": {
+          "constituency/age_structure": {
+            "n_targets": 5200,
+            "share_within_10pct": 0.9976923076923077,
+            "share_within_25pct": 0.9990384615384615
+          },
+          "constituency/census_households": {
+            "n_targets": 650,
+            "share_within_10pct": 0.9938461538461538,
+            "share_within_25pct": 1.0
+          },
+          "constituency/hmrc_income_by_area": {
+            "n_targets": 2599,
+            "share_within_10pct": 0.9919199692189303,
+            "share_within_25pct": 0.9984609465178915
+          },
+          "constituency/uc_households": {
+            "n_targets": 3160,
+            "share_within_10pct": 0.980379746835443,
+            "share_within_25pct": 0.9993670886075949
+          },
+          "la/age_structure": {
+            "n_targets": 2872,
+            "share_within_10pct": 0.9975626740947076,
+            "share_within_25pct": 1.0
+          },
+          "la/census_households": {
+            "n_targets": 361,
+            "share_within_10pct": 0.997229916897507,
+            "share_within_25pct": 1.0
+          },
+          "la/council_tax": {
+            "n_targets": 2511,
+            "share_within_10pct": 0.989247311827957,
+            "share_within_25pct": 0.9972122660294703
+          },
+          "la/hmrc_income_by_area": {
+            "n_targets": 1432,
+            "share_within_10pct": 0.9895251396648045,
+            "share_within_25pct": 1.0
+          },
+          "la/private_rent": {
+            "n_targets": 316,
+            "share_within_10pct": 0.9936708860759493,
+            "share_within_25pct": 1.0
+          },
+          "la/tenure": {
+            "n_targets": 1436,
+            "share_within_10pct": 0.9930362116991643,
+            "share_within_25pct": 0.9993036211699164
+          },
+          "la/uc_households": {
+            "n_targets": 348,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/council_tax_stock": {
+            "n_targets": 97,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dfe_funded_childcare": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dft_local_bus": {
+            "n_targets": 9,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_attendance_allowance": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_benefit_cap": {
+            "n_targets": 4,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_housing_benefit": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_legacy_benefits": {
+            "n_targets": 3,
+            "share_within_10pct": 0.6666666666666666,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_pension_credit": {
+            "n_targets": 14,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_state_pension": {
+            "n_targets": 59,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_two_child_limit": {
+            "n_targets": 15,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_universal_credit": {
+            "n_targets": 98,
+            "share_within_10pct": 0.9897959183673469,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_workplace_pensions": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_cgt": {
+            "n_targets": 105,
+            "share_within_10pct": 0.9904761904761905,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_itl": {
+            "n_targets": 33,
+            "share_within_10pct": 0.9393939393939394,
+            "share_within_25pct": 0.9696969696969697
+          },
+          "national/hmrc_salary_sacrifice": {
+            "n_targets": 5,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_spi": {
+            "n_targets": 157,
+            "share_within_10pct": 0.7579617834394905,
+            "share_within_25pct": 0.9490445859872612
+          },
+          "national/hmrc_spi_region": {
+            "n_targets": 360,
+            "share_within_10pct": 0.9388888888888889,
+            "share_within_25pct": 0.9916666666666667
+          },
+          "national/hmrc_tfc": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/isc": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/obr": {
+            "n_targets": 20,
+            "share_within_10pct": 0.85,
+            "share_within_25pct": 0.9
+          },
+          "national/ons_employment": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_household_composition": {
+            "n_targets": 10,
+            "share_within_10pct": 0.9,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_land": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_national_accounts": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_population": {
+            "n_targets": 149,
+            "share_within_10pct": 0.9798657718120806,
+            "share_within_25pct": 0.9932885906040269
+          },
+          "national/orr_rail": {
+            "n_targets": 1,
+            "share_within_10pct": 0.0,
+            "share_within_25pct": 0.0
+          },
+          "national/scotgov_social_security": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_borrowers": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_repayments": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_student_support": {
+            "n_targets": 6,
+            "share_within_10pct": 0.8333333333333334,
+            "share_within_25pct": 1.0
+          }
+        },
+        "household_size_share": {
+          "1": 0.2844890784976108,
+          "2": 0.34273138562288685,
+          "3": 0.16878086738494513,
+          "4": 0.13119043390774418,
+          "5": 0.0464619589674343,
+          "6": 0.026346275619378554
+        },
+        "households": 28961669.374316547,
+        "label": "X_gfes_unif_f0.5_0.0021",
+        "lone_person_share": 0.28448907849761085,
+        "loss_grain_equal_yardstick": 0.01994933540090818,
+        "loss_training_weights": 0.01868686810058491,
+        "nation_capacity_to_dense": {
+          "England": 10.316359031354157,
+          "Northern Ireland": 5.492186749494775,
+          "Scotland": 8.811500771409754,
+          "Wales": 9.126290919533403
+        },
+        "nation_share": {
+          "England": 0.8367668745667576,
+          "Northern Ireland": 0.026178672182809917,
+          "Scotland": 0.08915540506941369,
+          "Wales": 0.047899048181018866
+        },
+        "national_past_25": [
+          {
+            "relative_error": 0.6314150113251362,
+            "target_name": "ons.population.age_80_89_by_region@N92000002@2025"
+          },
+          {
+            "relative_error": 0.598186949754511,
+            "target_name": "hmrc/dividend_income_income_band_200_000_to_300_000@2025"
+          },
+          {
+            "relative_error": 0.47412268675691727,
+            "target_name": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025"
+          },
+          {
+            "relative_error": 0.36117721570205275,
+            "target_name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000009@2025"
+          },
+          {
+            "relative_error": -0.3424336740503512,
+            "target_name": "orr.rail_government_support@2025"
+          },
+          {
+            "relative_error": -0.33848151546096994,
+            "target_name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000008@2025"
+          },
+          {
+            "relative_error": 0.3307228278489203,
+            "target_name": "hmrc/state_pension_income_band_50_000_to_70_000@2025"
+          },
+          {
+            "relative_error": 0.3247119830677696,
+            "target_name": "hmrc/private_pension_income_income_band_50_000_to_70_000@2025"
+          },
+          {
+            "relative_error": 0.30791451647374246,
+            "target_name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000@2025"
+          },
+          {
+            "relative_error": 0.29867341900258465,
+            "target_name": "obr.vat@2025"
+          },
+          {
+            "relative_error": -0.2857571046346471,
+            "target_name": "obr.fuel_duties_cars@2025"
+          },
+          {
+            "relative_error": 0.27578397481974465,
+            "target_name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000@2025"
+          },
+          {
+            "relative_error": -0.2726705616958727,
+            "target_name": "hmrc/employment_income_income_band_500_000_to_1_000_000@2025"
+          },
+          {
+            "relative_error": 0.2640239608521798,
+            "target_name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000003@2025"
+          },
+          {
+            "relative_error": 0.25117328834622876,
+            "target_name": "hmrc/employment_income_count_income_band_1_000_000_to_inf@2025"
+          },
+          {
+            "relative_error": 0.25075598593557635,
+            "target_name": "hmrc/dividend_income_income_band_50_000_to_70_000@2025"
+          }
+        ],
+        "persons": 69260199.91553879,
+        "rows": 60000,
+        "share_at_stretch_cap": 0.00755,
+        "weights": {
+          "effective_sample_size": 22419.187879701793,
+          "ess_fraction": 0.3736531313283632,
+          "max_to_median_positive_weight": 33.71873195084549,
+          "max_weight": 7762.95263671875,
+          "median_positive_weight": 230.2267074584961,
+          "n_records": 60000,
+          "positive_weight_records": 60000,
+          "top_1pct_weight_share": 0.07092042948131681,
+          "total_weight": 28961669.374316547,
+          "zero_weight_records": 0
+        }
+      },
+      "X_gfes_unif_f0.5_0.0064": {
+        "areas": {
+          "constituency": {
+            "areas": 650,
+            "below_ess_floor": 358,
+            "below_relative_collapse": 245,
+            "ess_median": 48.77603160604886,
+            "ess_min": 24.78897969201749,
+            "ess_p5": 34.792384402185405,
+            "ess_per_row_median": 0.5546387174283951,
+            "ess_to_dense_median": 0.2720786987955779,
+            "rows_median": 88.0,
+            "rows_min": 56,
+            "sources_median": 83.0,
+            "sources_min": 52
+          },
+          "la": {
+            "areas": 361,
+            "below_ess_floor": 44,
+            "below_relative_collapse": 145,
+            "ess_median": 73.16503350731617,
+            "ess_min": "<10",
+            "ess_p5": 42.50669783213761,
+            "ess_per_row_median": 0.5538424110136458,
+            "ess_to_dense_median": 0.2631571547689227,
+            "rows_median": 141.0,
+            "rows_min": "<10",
+            "sources_median": 126.0,
+            "sources_min": "<10"
+          }
+        },
+        "chi_square_to_kept_design": 1.1867347824358032,
+        "chi_square_to_start": 1.1812180748077585,
+        "chi_square_to_uniform": 0.9440319148076206,
+        "composition_rows": [
+          {
+            "estimate": 4331030.785724696,
+            "relative_error": 0.003482573152153793,
+            "target": 4316000.0,
+            "target_name": "ons.household_composition.lone_households_under_65@2025"
+          },
+          {
+            "estimate": 3488998.5645343023,
+            "relative_error": -0.1798310849707799,
+            "target": 4254000.0,
+            "target_name": "ons.household_composition.lone_households_over_65@2025"
+          },
+          {
+            "estimate": 812967.7182136128,
+            "relative_error": -3.970699432620442e-05,
+            "target": 813000.0,
+            "target_name": "ons.household_composition.unrelated_adult_households@2025"
+          },
+          {
+            "estimate": 8627637.643975627,
+            "relative_error": 0.06264781918655335,
+            "target": 8119000.0,
+            "target_name": "ons.household_composition.couple_no_children_households@2025"
+          },
+          {
+            "estimate": 5031943.449692774,
+            "relative_error": -0.07484032916110064,
+            "target": 5439000.0,
+            "target_name": "ons.household_composition.couple_under_3_children_households@2025"
+          },
+          {
+            "estimate": 927835.2765359173,
+            "relative_error": -0.003399273323397093,
+            "target": 931000.0,
+            "target_name": "ons.household_composition.couple_3_plus_children_households@2025"
+          },
+          {
+            "estimate": 1971282.8932209788,
+            "relative_error": 0.06671152230572445,
+            "target": 1848000.0,
+            "target_name": "ons.household_composition.couple_non_dependent_children_only_households@2025"
+          },
+          {
+            "estimate": 2288224.995262878,
+            "relative_error": 0.24698909823590082,
+            "target": 1835000.0,
+            "target_name": "ons.household_composition.lone_parent_dependent_children_households@2025"
+          },
+          {
+            "estimate": 1204615.4312841184,
+            "relative_error": 0.0005111555515933918,
+            "target": 1204000.0,
+            "target_name": "ons.household_composition.lone_parent_non_dependent_children_households@2025"
+          },
+          {
+            "estimate": 243174.14926610887,
+            "relative_error": -0.003384634155291514,
+            "target": 244000.0,
+            "target_name": "ons.household_composition.multi_family_households@2025"
+          }
+        ],
+        "distinct_source_households": 11148,
+        "fit_by_grain_family": {
+          "constituency/age_structure": {
+            "n_targets": 5200,
+            "share_within_10pct": 0.9978846153846154,
+            "share_within_25pct": 0.999423076923077
+          },
+          "constituency/census_households": {
+            "n_targets": 650,
+            "share_within_10pct": 0.9923076923076923,
+            "share_within_25pct": 1.0
+          },
+          "constituency/hmrc_income_by_area": {
+            "n_targets": 2599,
+            "share_within_10pct": 0.987687572143132,
+            "share_within_25pct": 0.9988457098884186
+          },
+          "constituency/uc_households": {
+            "n_targets": 3160,
+            "share_within_10pct": 0.9731012658227848,
+            "share_within_25pct": 0.9993670886075949
+          },
+          "la/age_structure": {
+            "n_targets": 2872,
+            "share_within_10pct": 0.9972144846796658,
+            "share_within_25pct": 0.9996518105849582
+          },
+          "la/census_households": {
+            "n_targets": 361,
+            "share_within_10pct": 0.997229916897507,
+            "share_within_25pct": 1.0
+          },
+          "la/council_tax": {
+            "n_targets": 2511,
+            "share_within_10pct": 0.9896455595380327,
+            "share_within_25pct": 0.9972122660294703
+          },
+          "la/hmrc_income_by_area": {
+            "n_targets": 1432,
+            "share_within_10pct": 0.9916201117318436,
+            "share_within_25pct": 1.0
+          },
+          "la/private_rent": {
+            "n_targets": 316,
+            "share_within_10pct": 0.9778481012658228,
+            "share_within_25pct": 1.0
+          },
+          "la/tenure": {
+            "n_targets": 1436,
+            "share_within_10pct": 0.9958217270194986,
+            "share_within_25pct": 0.9993036211699164
+          },
+          "la/uc_households": {
+            "n_targets": 348,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/council_tax_stock": {
+            "n_targets": 97,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dfe_funded_childcare": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dft_local_bus": {
+            "n_targets": 9,
+            "share_within_10pct": 0.8888888888888888,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_attendance_allowance": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_benefit_cap": {
+            "n_targets": 4,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_housing_benefit": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_legacy_benefits": {
+            "n_targets": 3,
+            "share_within_10pct": 0.6666666666666666,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_pension_credit": {
+            "n_targets": 14,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_state_pension": {
+            "n_targets": 59,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_two_child_limit": {
+            "n_targets": 15,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_universal_credit": {
+            "n_targets": 98,
+            "share_within_10pct": 0.9897959183673469,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_workplace_pensions": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_cgt": {
+            "n_targets": 105,
+            "share_within_10pct": 0.9904761904761905,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_itl": {
+            "n_targets": 33,
+            "share_within_10pct": 0.9393939393939394,
+            "share_within_25pct": 0.9696969696969697
+          },
+          "national/hmrc_salary_sacrifice": {
+            "n_targets": 5,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_spi": {
+            "n_targets": 157,
+            "share_within_10pct": 0.7579617834394905,
+            "share_within_25pct": 0.9617834394904459
+          },
+          "national/hmrc_spi_region": {
+            "n_targets": 360,
+            "share_within_10pct": 0.9305555555555556,
+            "share_within_25pct": 0.9944444444444445
+          },
+          "national/hmrc_tfc": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/isc": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/obr": {
+            "n_targets": 20,
+            "share_within_10pct": 0.85,
+            "share_within_25pct": 0.9
+          },
+          "national/ons_employment": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_household_composition": {
+            "n_targets": 10,
+            "share_within_10pct": 0.8,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_land": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_national_accounts": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_population": {
+            "n_targets": 149,
+            "share_within_10pct": 0.9798657718120806,
+            "share_within_25pct": 0.9932885906040269
+          },
+          "national/orr_rail": {
+            "n_targets": 1,
+            "share_within_10pct": 0.0,
+            "share_within_25pct": 0.0
+          },
+          "national/scotgov_social_security": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_borrowers": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_repayments": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_student_support": {
+            "n_targets": 6,
+            "share_within_10pct": 0.8333333333333334,
+            "share_within_25pct": 1.0
+          }
+        },
+        "household_size_share": {
+          "1": 0.270330043576814,
+          "2": 0.36379556967485,
+          "3": 0.1654214062357454,
+          "4": 0.12995008941035888,
+          "5": 0.04500761044333266,
+          "6": 0.025495280658899052
+        },
+        "households": 28927710.907711014,
+        "label": "X_gfes_unif_f0.5_0.0064",
+        "lone_person_share": 0.27033004357681406,
+        "loss_grain_equal_yardstick": 0.020692479066112,
+        "loss_training_weights": 0.02176113319961273,
+        "nation_capacity_to_dense": {
+          "England": 10.316359031354157,
+          "Northern Ireland": 5.492186749494775,
+          "Scotland": 8.811500771409754,
+          "Wales": 9.126290919533403
+        },
+        "nation_share": {
+          "England": 0.8366696593913914,
+          "Northern Ireland": 0.025577161996142236,
+          "Scotland": 0.08997979823741538,
+          "Wales": 0.04777338037505096
+        },
+        "national_past_25": [
+          {
+            "relative_error": 0.5306686031052714,
+            "target_name": "ons.population.age_80_89_by_region@N92000002@2025"
+          },
+          {
+            "relative_error": -0.4921011761368202,
+            "target_name": "orr.rail_government_support@2025"
+          },
+          {
+            "relative_error": 0.49092910000325285,
+            "target_name": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025"
+          },
+          {
+            "relative_error": 0.4456456343313333,
+            "target_name": "hmrc/dividend_income_income_band_200_000_to_300_000@2025"
+          },
+          {
+            "relative_error": 0.36423223537046373,
+            "target_name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000@2025"
+          },
+          {
+            "relative_error": 0.3439866815388042,
+            "target_name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000@2025"
+          },
+          {
+            "relative_error": -0.31844020623185104,
+            "target_name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000008@2025"
+          },
+          {
+            "relative_error": 0.3157862984471868,
+            "target_name": "hmrc/private_pension_income_income_band_50_000_to_70_000@2025"
+          },
+          {
+            "relative_error": -0.30119077538461025,
+            "target_name": "obr.fuel_duties_cars@2025"
+          },
+          {
+            "relative_error": 0.29358084718301286,
+            "target_name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000009@2025"
+          },
+          {
+            "relative_error": -0.2918968356890077,
+            "target_name": "hmrc/employment_income_income_band_500_000_to_1_000_000@2025"
+          },
+          {
+            "relative_error": 0.2909581099430407,
+            "target_name": "obr.vat@2025"
+          },
+          {
+            "relative_error": 0.288335202624375,
+            "target_name": "hmrc/state_pension_income_band_50_000_to_70_000@2025"
+          }
+        ],
+        "persons": 69194954.18478698,
+        "rows": 60000,
+        "share_at_stretch_cap": 0.0035166666666666666,
+        "weights": {
+          "effective_sample_size": 30817.421029212815,
+          "ess_fraction": 0.5136236838202136,
+          "max_to_median_positive_weight": 15.863670298780395,
+          "max_weight": 6006.33544921875,
+          "median_positive_weight": 378.62205505371094,
+          "n_records": 60000,
+          "positive_weight_records": 60000,
+          "top_1pct_weight_share": 0.04992859372430613,
+          "total_weight": 28927710.907711014,
+          "zero_weight_records": 0
+        }
+      },
+      "X_gfes_unif_f0.5_0.021": {
+        "areas": {
+          "constituency": {
+            "areas": 650,
+            "below_ess_floor": 79,
+            "below_relative_collapse": 54,
+            "ess_median": 62.32311455078093,
+            "ess_min": 38.63380178527921,
+            "ess_p5": 46.61655024724021,
+            "ess_per_row_median": 0.7050780404745907,
+            "ess_to_dense_median": 0.34562605407656205,
+            "rows_median": 88.0,
+            "rows_min": 56,
+            "sources_median": 83.0,
+            "sources_min": 52
+          },
+          "la": {
+            "areas": 361,
+            "below_ess_floor": 13,
+            "below_relative_collapse": 34,
+            "ess_median": 96.0809174656203,
+            "ess_min": "<10",
+            "ess_p5": 53.504564004724216,
+            "ess_per_row_median": 0.7055221433275499,
+            "ess_to_dense_median": 0.3363683768375467,
+            "rows_median": 141.0,
+            "rows_min": "<10",
+            "sources_median": 126.0,
+            "sources_min": "<10"
+          }
+        },
+        "chi_square_to_kept_design": 0.6711554855291817,
+        "chi_square_to_start": 0.6681884041332131,
+        "chi_square_to_uniform": 0.5101230323958449,
+        "composition_rows": [
+          {
+            "estimate": 4315284.742570542,
+            "relative_error": -0.00016572229598197426,
+            "target": 4316000.0,
+            "target_name": "ons.household_composition.lone_households_under_65@2025"
+          },
+          {
+            "estimate": 3058091.728112985,
+            "relative_error": -0.281125592827225,
+            "target": 4254000.0,
+            "target_name": "ons.household_composition.lone_households_over_65@2025"
+          },
+          {
+            "estimate": 814760.5069028117,
+            "relative_error": 0.0021654451449098396,
+            "target": 813000.0,
+            "target_name": "ons.household_composition.unrelated_adult_households@2025"
+          },
+          {
+            "estimate": 8932441.26780662,
+            "relative_error": 0.10018983468488969,
+            "target": 8119000.0,
+            "target_name": "ons.household_composition.couple_no_children_households@2025"
+          },
+          {
+            "estimate": 4707726.797791434,
+            "relative_error": -0.13444993605599662,
+            "target": 5439000.0,
+            "target_name": "ons.household_composition.couple_under_3_children_households@2025"
+          },
+          {
+            "estimate": 929641.5397781968,
+            "relative_error": -0.0014591409471569978,
+            "target": 931000.0,
+            "target_name": "ons.household_composition.couple_3_plus_children_households@2025"
+          },
+          {
+            "estimate": 2130231.011229895,
+            "relative_error": 0.15272240867418563,
+            "target": 1848000.0,
+            "target_name": "ons.household_composition.couple_non_dependent_children_only_households@2025"
+          },
+          {
+            "estimate": 2462217.7295167134,
+            "relative_error": 0.34180802698458496,
+            "target": 1835000.0,
+            "target_name": "ons.household_composition.lone_parent_dependent_children_households@2025"
+          },
+          {
+            "estimate": 1203668.682792825,
+            "relative_error": -0.00027518040463046025,
+            "target": 1204000.0,
+            "target_name": "ons.household_composition.lone_parent_non_dependent_children_households@2025"
+          },
+          {
+            "estimate": 243264.3112099357,
+            "relative_error": -0.003015117992066824,
+            "target": 244000.0,
+            "target_name": "ons.household_composition.multi_family_households@2025"
+          }
+        ],
+        "distinct_source_households": 11148,
+        "fit_by_grain_family": {
+          "constituency/age_structure": {
+            "n_targets": 5200,
+            "share_within_10pct": 0.9951923076923077,
+            "share_within_25pct": 0.9988461538461538
+          },
+          "constituency/census_households": {
+            "n_targets": 650,
+            "share_within_10pct": 0.9876923076923076,
+            "share_within_25pct": 1.0
+          },
+          "constituency/hmrc_income_by_area": {
+            "n_targets": 2599,
+            "share_within_10pct": 0.9746056175452097,
+            "share_within_25pct": 0.9973066564063101
+          },
+          "constituency/uc_households": {
+            "n_targets": 3160,
+            "share_within_10pct": 0.9718354430379746,
+            "share_within_25pct": 0.9990506329113924
+          },
+          "la/age_structure": {
+            "n_targets": 2872,
+            "share_within_10pct": 0.9975626740947076,
+            "share_within_25pct": 1.0
+          },
+          "la/census_households": {
+            "n_targets": 361,
+            "share_within_10pct": 0.9916897506925207,
+            "share_within_25pct": 1.0
+          },
+          "la/council_tax": {
+            "n_targets": 2511,
+            "share_within_10pct": 0.9864595778574273,
+            "share_within_25pct": 0.996415770609319
+          },
+          "la/hmrc_income_by_area": {
+            "n_targets": 1432,
+            "share_within_10pct": 0.9818435754189944,
+            "share_within_25pct": 0.9986033519553073
+          },
+          "la/private_rent": {
+            "n_targets": 316,
+            "share_within_10pct": 0.9715189873417721,
+            "share_within_25pct": 0.9873417721518988
+          },
+          "la/tenure": {
+            "n_targets": 1436,
+            "share_within_10pct": 0.9818941504178273,
+            "share_within_25pct": 0.9972144846796658
+          },
+          "la/uc_households": {
+            "n_targets": 348,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/council_tax_stock": {
+            "n_targets": 97,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dfe_funded_childcare": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dft_local_bus": {
+            "n_targets": 9,
+            "share_within_10pct": 0.8888888888888888,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_attendance_allowance": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_benefit_cap": {
+            "n_targets": 4,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_housing_benefit": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_legacy_benefits": {
+            "n_targets": 3,
+            "share_within_10pct": 0.6666666666666666,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_pension_credit": {
+            "n_targets": 14,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_state_pension": {
+            "n_targets": 59,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_two_child_limit": {
+            "n_targets": 15,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_universal_credit": {
+            "n_targets": 98,
+            "share_within_10pct": 0.9693877551020408,
+            "share_within_25pct": 1.0
+          },
+          "national/dwp_workplace_pensions": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_cgt": {
+            "n_targets": 105,
+            "share_within_10pct": 0.9904761904761905,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_itl": {
+            "n_targets": 33,
+            "share_within_10pct": 0.9393939393939394,
+            "share_within_25pct": 0.9696969696969697
+          },
+          "national/hmrc_salary_sacrifice": {
+            "n_targets": 5,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/hmrc_spi": {
+            "n_targets": 157,
+            "share_within_10pct": 0.7643312101910829,
+            "share_within_25pct": 0.9617834394904459
+          },
+          "national/hmrc_spi_region": {
+            "n_targets": 360,
+            "share_within_10pct": 0.9194444444444444,
+            "share_within_25pct": 0.9944444444444445
+          },
+          "national/hmrc_tfc": {
+            "n_targets": 2,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/isc": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/obr": {
+            "n_targets": 20,
+            "share_within_10pct": 0.8,
+            "share_within_25pct": 0.9
+          },
+          "national/ons_employment": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_household_composition": {
+            "n_targets": 10,
+            "share_within_10pct": 0.5,
+            "share_within_25pct": 0.8
+          },
+          "national/ons_land": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_national_accounts": {
+            "n_targets": 2,
+            "share_within_10pct": 0.5,
+            "share_within_25pct": 1.0
+          },
+          "national/ons_population": {
+            "n_targets": 149,
+            "share_within_10pct": 0.9664429530201343,
+            "share_within_25pct": 0.9932885906040269
+          },
+          "national/orr_rail": {
+            "n_targets": 1,
+            "share_within_10pct": 0.0,
+            "share_within_25pct": 0.0
+          },
+          "national/scotgov_social_security": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_borrowers": {
+            "n_targets": 1,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_repayments": {
+            "n_targets": 3,
+            "share_within_10pct": 1.0,
+            "share_within_25pct": 1.0
+          },
+          "national/slc_student_support": {
+            "n_targets": 6,
+            "share_within_10pct": 0.6666666666666666,
+            "share_within_25pct": 1.0
+          }
+        },
+        "household_size_share": {
+          "1": 0.2560437686904618,
+          "2": 0.38041705627451683,
+          "3": 0.16531149081757443,
+          "4": 0.12898295413903044,
+          "5": 0.04393131498867913,
+          "6": 0.025313415089737376
+        },
+        "households": 28797328.31771196,
+        "label": "X_gfes_unif_f0.5_0.021",
+        "lone_person_share": 0.2560437686904618,
+        "loss_grain_equal_yardstick": 0.022866899127277393,
+        "loss_training_weights": 0.02657414097498504,
+        "nation_capacity_to_dense": {
+          "England": 10.316359031354157,
+          "Northern Ireland": 5.492186749494775,
+          "Scotland": 8.811500771409754,
+          "Wales": 9.126290919533403
+        },
+        "nation_share": {
+          "England": 0.8376363215177949,
+          "Northern Ireland": 0.02503374201227515,
+          "Scotland": 0.08910730396450393,
+          "Wales": 0.04822263250542593
+        },
+        "national_past_25": [
+          {
+            "relative_error": -0.6531500033230563,
+            "target_name": "orr.rail_government_support@2025"
+          },
+          {
+            "relative_error": 0.547819147580333,
+            "target_name": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025"
+          },
+          {
+            "relative_error": 0.49774066706829645,
+            "target_name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000@2025"
+          },
+          {
+            "relative_error": 0.42212976698677696,
+            "target_name": "ons.population.age_80_89_by_region@N92000002@2025"
+          },
+          {
+            "relative_error": 0.3741490278407146,
+            "target_name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000@2025"
+          },
+          {
+            "relative_error": 0.34180802698458496,
+            "target_name": "ons.household_composition.lone_parent_dependent_children_households@2025"
+          },
+          {
+            "relative_error": -0.3134118169709632,
+            "target_name": "obr.fuel_duties_cars@2025"
+          },
+          {
+            "relative_error": 0.2912110055628536,
+            "target_name": "obr.vat@2025"
+          },
+          {
+            "relative_error": -0.281125592827225,
+            "target_name": "ons.household_composition.lone_households_over_65@2025"
+          },
+          {
+            "relative_error": 0.28049079790897946,
+            "target_name": "hmrc/private_pension_income_income_band_50_000_to_70_000@2025"
+          },
+          {
+            "relative_error": 0.2798598419953619,
+            "target_name": "hmrc/employment_income_count_income_band_1_000_000_to_inf@2025"
+          },
+          {
+            "relative_error": -0.26885836052914525,
+            "target_name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000008@2025"
+          },
+          {
+            "relative_error": 0.2640211572157143,
+            "target_name": "hmrc/state_pension_income_band_50_000_to_70_000@2025"
+          },
+          {
+            "relative_error": -0.26055537808341384,
+            "target_name": "hmrc/employment_income_income_band_500_000_to_1_000_000@2025"
+          },
+          {
+            "relative_error": -0.25302334938344734,
+            "target_name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000006@2025"
+          }
+        ],
+        "persons": 69121686.8001648,
+        "rows": 60000,
+        "share_at_stretch_cap": 0.00235,
+        "weights": {
+          "effective_sample_size": 39569.78109920435,
+          "ess_fraction": 0.6594963516534059,
+          "max_to_median_positive_weight": 6.845708387239123,
+          "max_weight": 3105.68603515625,
+          "median_positive_weight": 453.66905212402344,
+          "n_records": 60000,
+          "positive_weight_records": 60000,
+          "top_1pct_weight_share": 0.03536834374075727,
+          "total_weight": 28797328.31771196,
           "zero_weight_records": 0
         }
       }

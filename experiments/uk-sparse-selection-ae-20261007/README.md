@@ -142,6 +142,9 @@ receipt with its reason, and the run moves on to the next one.
 | E_unif_f0.5_3e-3 | -0.32 % | 2.46 % | 25.57 % | 200 | 19 | 189 | 6 | 0.0149 | household_total, local_family_within_10 |
 | E_unif_f0_1e-2 | -3.94 % | 2.01 % | 22.57 % | 117 | 13 | 101 | 15 | 0.0230 | – |
 | S0 | -3.47 % | 2.01 % | 23.04 % | 170 | 20 | 158 | 15 | 0.0221 | local_family_within_10 |
+| X_gfes_unif_f0.5_0.0021 | -0.09 % | 2.62 % | 28.45 % | 614 | 149 | 816 | 16 | 0.0199 | household_total, local_family_within_10, lone_person_share, nation_shares |
+| X_gfes_unif_f0.5_0.0064 | -0.21 % | 2.56 % | 27.03 % | 358 | 44 | 390 | 13 | 0.0207 | household_total, local_family_within_10, nation_shares |
+| X_gfes_unif_f0.5_0.021 | -0.66 % | 2.50 % | 25.60 % | 79 | 13 | 88 | 15 | 0.0229 | household_total, local_family_within_10 |
 
 Step 1b picks:
 
@@ -157,6 +160,7 @@ Refit-level holdouts (means over the local folds):
 - H_A_gfes_f0.5: held loss 0.1536 under its rule, 0.2122 under grain_equal; within 10 % 50.7 %, within 25 % 74.6 %
 - H_C0: held loss 0.1146 under its rule, 0.1146 under grain_equal; within 10 % 70.5 %, within 25 % 89.7 %
 - H_C2_f0.5: held loss 0.2024 under its rule, 0.2024 under grain_equal; within 10 % 53.4 %, within 25 % 76.9 %
+- H_E_unif_f0.5_1e-2: held loss 0.1446 under its rule, 0.1446 under grain_equal; within 10 % 63.7 %, within 25 % 84.5 %
 
 Step 0 census:
 
