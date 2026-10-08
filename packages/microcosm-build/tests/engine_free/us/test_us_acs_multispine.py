@@ -400,7 +400,16 @@ def _test_puma_ladder() -> UsPumaLadder:
     )
 
 
-def test_missing_donor_decisions_fail_before_acs_loading(monkeypatch, tmp_path):
+def test_pre_acs_donor_wic_check_preserves_existing_decisions():
+    base = _base_donor_frame()
+    original_person = base.person.copy(deep=True)
+
+    acs_multispine._require_complete_pre_acs_donor_wic_input(base)
+
+    pd.testing.assert_frame_equal(base.person, original_person)
+
+
+def test_missing_pre_acs_donor_decisions_fail_before_acs_loading(monkeypatch, tmp_path):
     from test_support.microcosm_build.us_wic_claim import _replace_person
 
     base = _base_donor_frame()

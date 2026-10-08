@@ -123,7 +123,7 @@ def build_optional_acs_multispine(
 
     # Donors must already carry their qualified decisions. Never regenerate
     # them with ACS categories or silently use the country model's True default.
-    require_complete_us_wic_claim_input(base.table("person"))
+    _require_complete_pre_acs_donor_wic_input(base)
     raw_acs, loader_metadata = build_acs_pums_unit_frame(
         source,
         chunksize=chunksize,
@@ -305,6 +305,11 @@ def build_optional_acs_multispine(
         fit_records=fit_records,
         provenance=provenance,
     )
+
+
+def _require_complete_pre_acs_donor_wic_input(base: Frame) -> None:
+    """Validate donor participation before loading or appending ACS records."""
+    require_complete_us_wic_claim_input(base.table("person"))
 
 
 def _require_recipient_adult_care_structure(
