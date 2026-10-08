@@ -336,6 +336,21 @@ def _plan_step1b(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_names(value: Any) -> Any:
+    """Local run paths reduced to the run's name: a published file names no machine."""
+
+    if isinstance(value, dict):
+        return {
+            key: Path(item).name
+            if key == "run_dir" and isinstance(item, str)
+            else _run_names(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_run_names(item) for item in value]
+    return value
+
+
 def _publish(args: argparse.Namespace) -> int:
     out = args.out.resolve()
     destination = args.to.resolve()
@@ -359,7 +374,9 @@ def _publish(args: argparse.Namespace) -> int:
     if plans:
         published["step1b"] = plans
     destination.mkdir(parents=True, exist_ok=True)
-    controlled = disclosure_controlled(published, minimum_count=args.minimum_count)
+    controlled = disclosure_controlled(
+        _run_names(published), minimum_count=args.minimum_count
+    )
     (destination / "results.json").write_text(_json(controlled), encoding="utf-8")
     sys.stdout.write(f"wrote {destination / 'results.json'}\n")
     return 0

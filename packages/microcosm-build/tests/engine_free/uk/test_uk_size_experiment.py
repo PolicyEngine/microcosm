@@ -523,6 +523,9 @@ def test_tool_records_a_refused_configuration_and_moves_on(
     results = json.loads((published / "results.json").read_text())
     assert set(results) == {"scorecard", "receipts", "census", "step1b"}
     assert set(results["step1b"]) == {"ae", "holdout"}
+    # a published file names no machine: run directories are reduced to names
+    assert str(root) not in (published / "results.json").read_text()
+    assert results["census"]["baseline"]["run_dir"] == "run"
     assert results["receipts"]["bad"]["status"] == "failed"
     assert "traceback" not in results["receipts"]["bad"]
     assert results["census"]["checks"]["passed"] is True
