@@ -576,6 +576,33 @@
       "adjudication": "microcosm#882 (the 2026-09-16 status comment, issuecomment-5694598278, whose next-steps list this repair works, and the repairs plan María approved on 2026-09-16 with her population ruling on the U8 take-up entry; approver as author per the register convention). Expiry 2026-12-08 aligns the whole UC-repair tranche with the zero-band clock already on the register (microcosm#877), so the next spine re-adjudicates them together. Receipts: experiments/882-uc-repairs-receipts.md (R2 and R5, tools/diagnose_uk_benefit_cap.py on the Q50f candidate and the twins).",
       "approved_on": "2026-09-16",
       "expires_on": "2026-12-08"
+    },
+    {
+      "name": "obr.vat",
+      "reason": "Level set by an engine factor, not the weights: policyengine-uk's vat divides household VAT by gov.simulation.microdata_vat_coverage (0.38, a constant since January 2023 with no recorded derivation; policyengine-uk#1996), which folds the household share of VAT receipts (about 70 percent per OBR and the HMRC VAT gap estimates) together with the survey's capture of household spending. The frame's raw household VAT is about 46 percent of the OBR receipts, so the row reads +24.7 percent at design weights and +24.1 percent calibrated on microcosm#1121's head calibration (policyengine-uk 2.122.2), against the 25 percent bound. Fitting it held total consumption 5 percent (GBP 55bn) low on the 2026-09-30 national problem, and a re-solve with the row masked changed no other row's fit (98.5 against 98.4 percent within 10 percent). Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind when a locked policyengine-uk splits the factor into the published household share and a declared survey capture and the row fits.",
+      "tracking": "policyengine-uk#1996",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D3: hold the row out until the engine factor is split. Receipts: experiments/1113-consumption-tax-levels-receipts.md (the masked re-solve of the 2026-09-30 problem and microcosm#1121's head calibration).",
+      "approved_on": "2026-10-08",
+      "expires_on": "2027-01-08"
+    },
+    {
+      "name": "ons.household_electricity_expenditure",
+      "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets electricity spend from DESNZ Energy Trends FY2024-25 domestic volume at QEP FY2024-25 average prices paid (the level the energy_rake gate checks), and ONS Consumer Trends 04.5.1 sits below it on every aligned basis: CY2025 GBP 26.52bn against GBP 29.60bn for Energy Trends volume times QEP unit and fixed costs (0.90), and 1.11 times unit cost alone; meters against households explains about 2 percent. Fitting the row cut electricity 8.6 percent through the weights (82.9 TWh implied against 93.0 TWh on the 2026-09-30 build), and a re-solve with it masked changed no other row's fit. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the microcosm#1113 reconciliation finds a concept difference to bridge.",
+      "tracking": "microcosm#1113",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D1: DESNZ volume at QEP prices stays the level and the ONS rows become diagnostics. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
+      "approved_on": "2026-10-08",
+      "expires_on": "2027-01-08"
+    },
+    {
+      "name": "ons.household_gas_expenditure",
+      "reason": "Published-source residual, not a weight question: the lcfs_consumption stage sets gas spend from DESNZ Energy Trends FY2024-25 domestic volume at QEP FY2024-25 average prices paid over the published gas-connected share, and ONS Consumer Trends 04.5.2 sits below it on every aligned basis: CY2025 GBP 15.34bn against GBP 18.94bn for Energy Trends volume times QEP unit and fixed costs (0.81), and below unit cost alone (0.955). Fitting the row cut gas 18.9 percent through the weights and the gas-connected share from 84.5 to 78.9 percent against the DESNZ meter share the stage imposes; a re-solve with it masked kept the share at 84.6 percent and changed no other row's fit. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; retire if the microcosm#1113 reconciliation finds a concept difference to bridge.",
+      "tracking": "microcosm#1113",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D1: DESNZ volume at QEP prices stays the level and the ONS rows become diagnostics. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
+      "approved_on": "2026-10-08",
+      "expires_on": "2027-01-08"
     }
   ]
 }

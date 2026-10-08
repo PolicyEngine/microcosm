@@ -145,6 +145,11 @@ CONSUMPTION_VARIABLE_RENAMES = {
     "c72212": "diesel_spending",
     "p537": "domestic_energy_consumption",
 }
+#: The twelve COICOP division totals (LCFS p601-p612), in division order: the
+#: columns policyengine-uk's ``consumption`` sums and its VAT base reads.
+UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
+    CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
+)
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
 #: Cars and vans available to the household: LCFS ``a124`` on the donor, the
 #: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
