@@ -279,6 +279,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.pip_dl_category",
     "person.pip_m_category",
     "person.property_finance_costs",
+    "person.property_rental_income",
     "person.receives_benefits_in_own_right",
     "person.rent_paid_as_boarder",
     "person.rent_paid_as_lodger",

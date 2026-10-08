@@ -1,0 +1,2048 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "hmrc_property_rental_income_facts.json",
+  "purpose": "HMRC Property Rental Income Statistics 2026 release, tax year 2024-25 rows the property components stage allocates landlords' receipts from and reports against (microcosm#1106): Table 1 unincorporated landlords by type of tax entity (individuals, partnerships, all; the individuals' share that restates Table 13 on the individuals basis), Table 2 rental income before allowable expenses by type of tax entity (the individuals' receipts the open top band is solved to), Table 6 allowable expenses by type of tax entity (the individuals' share of expenses), Table 8 allowable expenses by expense type, all tax entities (residential finance costs among them, although ITTOIA 2005 s. 272A no longer deducts them) and Table 13 landlords by size of rental income, all tax entities (the eleven bands the receipts walk fills). No value is derived here.",
+  "consumers": [
+    "uk_runtime.hmrc_property_rental",
+    "uk_runtime.property_components"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 344402,
+    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
+    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
+  },
+  "selections": [
+    {
+      "label": "table1_ty2024_landlords_by_tax_entity_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.property_rental_2026.table_1.ty2024"
+      },
+      "row_count": 3
+    },
+    {
+      "label": "table2_ty2024_rental_income_by_tax_entity_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.property_rental_2026.table_2.ty2024"
+      },
+      "row_count": 3
+    },
+    {
+      "label": "table6_ty2024_allowable_expenses_by_tax_entity_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.property_rental_2026.table_6.ty2024"
+      },
+      "row_count": 3
+    },
+    {
+      "label": "table8_ty2024_allowable_expenses_by_expense_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024"
+      },
+      "row_count": 24
+    },
+    {
+      "label": "table13_ty2024_landlords_by_size_of_rental_income",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024"
+      },
+      "row_count": 11
+    }
+  ],
+  "row_count": 44,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0be3cfca02357112dff851ae",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3ec6c35cd33d916661f9a105",
+      "source_record_id": "hmrc.property_rental_2026.table_6.ty2024.all.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_6.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 34750000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_08b34cb0a7dbce92833156e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3ec6c35cd33d916661f9a105",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.all_expense_types.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "all_expense_types",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 34750000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9f3690a9e2896a9d6f184eb9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ca8da4885fd56e157291d361",
+      "source_record_id": "hmrc.property_rental_2026.table_6.ty2024.individual.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_6.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "individual",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "tax_entity_type": "individual"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 30030000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_265310299fc694bb30852898",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce418455ea279a7eb515a140",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.legal_management_and_professional_fees.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "legal_management_and_professional_fees",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "legal_management_and_professional_fees"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 4160000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dd1339101545d58b1c186874",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0127dcbfeed9acfd83d48a96",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.non_residential_finance_costs.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "non_residential_finance_costs",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "non_residential_finance_costs"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1330000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2047d7ebb869b93acf8df02f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c8841f681af8f098df240e53",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.other_allowable_expenses.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "other_allowable_expenses",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "other_allowable_expenses"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 4580000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3f13fc0d641b1856a3f41157",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f735ebfd9f6b48906266b2c",
+      "source_record_id": "hmrc.property_rental_2026.table_6.ty2024.partnership.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_6.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "partnership",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "tax_entity_type": "partnership"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 4720000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_02d8e1510f1742d94136faa9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d0cbbbef62bd653bc8b174c4",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.rent_rates_and_insurance.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "rent_rates_and_insurance",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "rent_rates_and_insurance"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 3810000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1b129a28498f0d3c406ae05a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_359cca144864b81543b38784",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.repairs_and_maintenance.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "repairs_and_maintenance",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "repairs_and_maintenance"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 6410000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b9c719a5d6b045c819614707",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a5d88ebd47e5e198906910a",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.residential_finance_costs.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "residential_finance_costs",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "residential_finance_costs"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 12820000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_df145408e9ff8d6d7e7cc9e6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5051024521f6be292cb98a5e",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.services_including_wages.property_expenses_amount",
+      "concept": "hmrc.property_expenses_amount",
+      "measure_id": "property_expenses_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "services_including_wages",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "services_including_wages"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1640000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d7e2b475ca27c044f4a2f5ef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f945a071e81daae75fc439d",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.all_expense_types.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "all_expense_types",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 2540000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6028c5568d2a7cc1e0db4c86",
+      "semantic_fact_key": "ledger_semantic_fact_v2_151644cad45c954bf84abd3b",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.legal_management_and_professional_fees.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "legal_management_and_professional_fees",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "legal_management_and_professional_fees"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1790000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6bfa13c5b171152cd5bec7a9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_33ea74ff7abeebd5f13c1fa7",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.non_residential_finance_costs.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "non_residential_finance_costs",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "non_residential_finance_costs"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 100000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b938abfc2efe4f0c2d7b0353",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7dd5eb831524da44dfba1d50",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.other_allowable_expenses.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "other_allowable_expenses",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "other_allowable_expenses"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1160000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e6e56342abb9a4df8fe6790",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fed933b0fc4a074a36b56841",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.rent_rates_and_insurance.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "rent_rates_and_insurance",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "rent_rates_and_insurance"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1910000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3813e2de969e2e921358899",
+      "semantic_fact_key": "ledger_semantic_fact_v2_284da1ef67be1c9a2e0496bb",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.repairs_and_maintenance.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "repairs_and_maintenance",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "repairs_and_maintenance"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1920000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dafc7c9140b1d72eb805a964",
+      "semantic_fact_key": "ledger_semantic_fact_v2_12540b2f85267e67c14ca813",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.residential_finance_costs.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "residential_finance_costs",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "residential_finance_costs"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1150000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3bc46bb332083649df08984",
+      "semantic_fact_key": "ledger_semantic_fact_v2_583c7e10bda5c56ea9da801b",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.services_including_wages.expenses_landlord_count",
+      "concept": "hmrc.property_expenses_landlord_count",
+      "measure_id": "expenses_landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "services_including_wages",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "services_including_wages"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 450000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_272d788bcbcb03ca702ab026",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0a8292556ce0f6cae1fd4e8a",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.all_expense_types.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "all_expense_types",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 87.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9ac8a82051297ed12cf057e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d5869314b5e0122dc93fcb2e",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.legal_management_and_professional_fees.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "legal_management_and_professional_fees",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "legal_management_and_professional_fees"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 61.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_14d60b59991266366a027996",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3c0b6f9c91d3ee74a2354cb1",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.non_residential_finance_costs.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "non_residential_finance_costs",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "non_residential_finance_costs"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 3.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1db3f4a747a6ff2be8c2f471",
+      "semantic_fact_key": "ledger_semantic_fact_v2_132f0e1af11425921d0617c9",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.other_allowable_expenses.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "other_allowable_expenses",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "other_allowable_expenses"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 40.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_52055997da3456bbb055816d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d99422f32484142a71f10d63",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.rent_rates_and_insurance.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "rent_rates_and_insurance",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "rent_rates_and_insurance"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 66.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d95e489e7ea0218a92a7f690",
+      "semantic_fact_key": "ledger_semantic_fact_v2_20a651c4e2ac839f1dd38357",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.repairs_and_maintenance.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "repairs_and_maintenance",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "repairs_and_maintenance"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 66.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_387ac49b18282fa458c2149a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_be0353d3c5c724b320477a18",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.residential_finance_costs.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "residential_finance_costs",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "residential_finance_costs"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 39.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_491e744ea3b5528dfe34d7db",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6e6b969e3e257ee3ed15353d",
+      "source_record_id": "hmrc.property_rental_2026.table_8.ty2024.services_including_wages.expenses_landlord_share",
+      "concept": "hmrc.property_expenses_landlord_share",
+      "measure_id": "expenses_landlord_share",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_8.ty2024",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "groupby_value_id": "services_including_wages",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_expense_type": "services_including_wages"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 15.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a6f23d57d690da8808b6b06",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b7fb5478cf3872af8d226b0",
+      "source_record_id": "hmrc.property_rental_2026.table_2.ty2024.all.property_income_amount",
+      "concept": "hmrc.property_income_amount",
+      "measure_id": "property_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_2.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 58990000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_978db11b4c8829ce6e426bf6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea38313a3aefd6833dd62749",
+      "source_record_id": "hmrc.property_rental_2026.table_2.ty2024.individual.property_income_amount",
+      "concept": "hmrc.property_income_amount",
+      "measure_id": "property_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_2.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "individual",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "tax_entity_type": "individual"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 49810000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_911942d2773d4144fc232cc9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f2cb0b8ef4ad8cdb1ae655a6",
+      "source_record_id": "hmrc.property_rental_2026.table_2.ty2024.partnership.property_income_amount",
+      "concept": "hmrc.property_income_amount",
+      "measure_id": "property_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_2.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "partnership",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "tax_entity_type": "partnership"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 9180000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9610abce2477ffb84bee9072",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3589e0eadb29d3d089a0a17b",
+      "source_record_id": "hmrc.property_rental_2026.table_1.ty2024.all.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_1.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 2880000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e47ffa5a653a4eac29901b8a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1778dd3488d43253b23d54a9",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_0_10000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_0_10000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_upper_bound": 10000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 1300000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_53e749163b06fbd82685be88",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3f664b61cb27b92d9ad02c98",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_100000_plus.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_100000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 40000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5d7908eb3cb74c6bb0f0c65",
+      "semantic_fact_key": "ledger_semantic_fact_v2_433456e9b3fac1c6fab49fe6",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_10000_20000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_10000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 10000,
+        "property_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 860000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_09b52ca1b68ccb3aba5787dd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e0bfff8b28f05204102c201e",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_20000_30000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 20000,
+        "property_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 330000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_705be2fa800cfeae3559c1fe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6eeceb656cd6e2f3ace58b70",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_30000_40000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_30000_40000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 30000,
+        "property_income_upper_bound": 40000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 150000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fcbbf66f7850ba13b203f450",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4b6005e9c2ee0133c9538423",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_40000_50000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_40000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 40000,
+        "property_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 80000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ceeebd434e8b36275f962162",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60935459663aa4b0f2029dee",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_50000_60000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_50000_60000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 50000,
+        "property_income_upper_bound": 60000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 50000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f2b1ef7be83d42fc731f1a7c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b894da40534b784994fa55f7",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_60000_70000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_60000_70000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 60000,
+        "property_income_upper_bound": 70000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 30000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_57846a30fead137f6886397f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_488c943e7ce5485a6a5cee14",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_70000_80000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_70000_80000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 70000,
+        "property_income_upper_bound": 80000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 20000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4440bdd15eb9c90e52f31244",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a7a2399ebd8b6c9c9549124",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_80000_90000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_80000_90000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 80000,
+        "property_income_upper_bound": 90000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 10000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b31f15e239f53d947239b6a2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e851355729fa9000dfaf08e4",
+      "source_record_id": "hmrc.property_rental_2026.table_13.ty2024.band_90000_100000.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_13.ty2024",
+        "groupby_dimension": "hmrc.property_income_band",
+        "groupby_value_id": "band_90000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "property_income_lower_bound": 90000,
+        "property_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 10000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_642f3b532484d795fdec62f1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ef912d437ef0f09ab5a266d",
+      "source_record_id": "hmrc.property_rental_2026.table_1.ty2024.individual.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_1.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "individual",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "tax_entity_type": "individual"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 2850000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2dfca9700b141e332ee68b64",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3c3db9c624e7af34057aad61",
+      "source_record_id": "hmrc.property_rental_2026.table_1.ty2024.partnership.landlord_count",
+      "concept": "hmrc.property_income_landlord_count",
+      "measure_id": "landlord_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "landlord"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.property_rental_2026.table_1.ty2024",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "groupby_value_id": "partnership",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "tax_entity_type": "partnership"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC property rental income statistics 2026: unincorporated landlords, property income and allowable expenses",
+        "source_file": "property_rental_income_statistics_tables_2026.ods",
+        "source_sha256": "87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846",
+        "vintage": "property_rental_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-property-rental-income-2026/2026/87627fbf6122a88f9d20ce7c98d31c103d423fb10d66d661d87324d67227c846/property_rental_income_statistics_tables_2026.ods"
+      },
+      "value": 30000
+    }
+  ]
+}

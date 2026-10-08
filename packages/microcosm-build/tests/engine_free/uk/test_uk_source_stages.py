@@ -44,6 +44,9 @@ E5_STAGE_NAMES = [
     # #1003: the Lifetime ISA holdings read the was_wealth household draws.
     "was_lisa",
     "regional_property_uprating",
+    # #1106: landlords' receipts and finance costs follow the uprated rental
+    # property values their coherence receipt reads.
+    "property_components",
 ]
 E6_STAGE_NAMES = [
     "nts_bus_travel",
@@ -238,6 +241,7 @@ class TestUKSourceStagesManifest:
                     "was_lisa": _identity,
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
+                    "property_components": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
                     "etb_services": _identity,

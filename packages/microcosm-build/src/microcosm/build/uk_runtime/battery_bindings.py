@@ -1802,6 +1802,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # LCFS spend column.
                 "period_type",
                 "period_value",
+                # #1106 property_components check: no receipts below profit,
+                # the walk's whole-person rounding in landlord weights.
+                "maximum_rows_receipts_below_profit",
+                "maximum_band_error_in_landlord_weights",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
