@@ -705,7 +705,10 @@ def prepare_full_build(
             ".spine_gates.json"
         )
         sidecar = load_bound_spine_checkpoint(
-            sidecar_path, frame, gate_report_path=gates_path
+            sidecar_path,
+            frame,
+            gate_report_path=gates_path,
+            input_sha256=pins["dataset"]["sha256"],
         )
         spine = bound_spine_graph(frame)
         endpoint = "uk.full.spine_checkpoint"
@@ -1864,7 +1867,12 @@ def prepare_national_build(
     frame, _ = load_uk_national_frame(input_h5)
     sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
     gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
-    load_bound_spine_checkpoint(sidecar_path, frame, gate_report_path=gates_path)
+    load_bound_spine_checkpoint(
+        sidecar_path,
+        frame,
+        gate_report_path=gates_path,
+        input_sha256=pins["dataset"]["sha256"],
+    )
     spine = bound_spine_graph(frame)
     _rules_engine()  # the uk extra must be installed; the identity is provenance
     engine_identity = hashlib.sha256(

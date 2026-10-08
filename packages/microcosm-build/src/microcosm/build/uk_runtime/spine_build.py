@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
+from microcosm.build.artifact_files import file_artifact
 from microcosm.build.country_spec import (
     GatesManifest,
     load_country_spec,
@@ -898,6 +899,15 @@ def _structural_columns(frame) -> frozenset[str]:
     columns = {schema.entity_id_column(entity) for entity in frame.entities}
     columns.update(schema.membership_column(group) for group in schema.group_entities)
     return frozenset(columns)
+
+
+def _write_sha256_file(path: Path, sha256: str) -> Path:
+    """Write ``<path>.sha256`` in the ``sha256sum`` format, atomically."""
+    target = path.with_name(path.name + ".sha256")
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(f"{sha256}  {path.name}\n", encoding="utf-8")
+    temporary.replace(target)
+    return target
 
 
 def _new_build_id(timestamp: datetime) -> str:
@@ -2012,12 +2022,19 @@ def _main(argv: list[str] | None = None) -> int:
         output = write_uk_national_frame(frame, args.spine_h5)
         if args.smoke:
             _mark_non_release_h5(output, build_id=state.build_id)
+        # The output's file digest, measured once its last byte is written
+        # (smoke marking included). The sidecar, the stage event, a
+        # ``<h5>.sha256`` file and the Logbook pipeline verdict carry it, so a
+        # downstream build pins exactly this file.
+        output_file = file_artifact(output)
+        _write_sha256_file(output, str(output_file["sha256"]))
         _record_stage(
             staging_bundle,
             emitter,
             "spine_h5_creation",
             "completed",
-            size_bytes=output.stat().st_size,
+            size_bytes=int(output_file["size_bytes"]),
+            sha256=output_file["sha256"],
         )
         append_phase(state, "spine_written")
         if args.checkpoint_dir is not None:
@@ -2076,6 +2093,7 @@ def _main(argv: list[str] | None = None) -> int:
             "path": str(checkpoint_root / "spine.graph.json"),
             "key": graph_manifest.key,
         }
+        sidecar["output"] = dict(output_file)
         stage_evidence = stored_evidence["stage_evidence"]
         if stage_evidence:
             sidecar["stage_evidence"] = stage_evidence
@@ -2131,6 +2149,7 @@ def _main(argv: list[str] | None = None) -> int:
                 "receipt": local_artifact_reference(
                     sidecar_path, repository_hint=_REPOSITORY
                 ),
+                "artifact_sha256": output_file["sha256"],
             }
         }
         if spine_gate_path.is_file():

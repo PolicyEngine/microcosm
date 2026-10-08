@@ -317,8 +317,15 @@ def load_bound_spine_checkpoint(
     frame: Frame,
     *,
     gate_report_path: Path | None = None,
+    input_sha256: str | None = None,
 ) -> dict[str, object]:
-    """Authenticate a canonical graph checkpoint, without historical bypasses."""
+    """Authenticate a canonical graph checkpoint, without historical bypasses.
+
+    ``input_sha256`` is the measured digest of the H5 being bound. A sidecar
+    that records its spine's file digest (``output.sha256``) must name that
+    same file; older sidecars carry no such key and are bound by content
+    identity alone.
+    """
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 
     path = Path(path)
@@ -331,6 +338,17 @@ def load_bound_spine_checkpoint(
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    recorded = sidecar.get("output")
+    if (
+        input_sha256 is not None
+        and isinstance(recorded, Mapping)
+        and recorded.get("sha256")
+        and recorded["sha256"] != input_sha256
+    ):
+        raise ValueError(
+            "Spine checkpoint sidecar records another H5 file: its output.sha256 "
+            f"{recorded['sha256']} is not the input's {input_sha256}."
+        )
     identity = sidecar.get("uk_frame_content_identity")
     if not isinstance(identity, str) or not identity:
         raise ValueError("Unbound spine checkpoint: no uk_frame_content_identity.")

@@ -2366,6 +2366,22 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
         assert file.attrs["populace_smoke_build_id"].startswith("uk-frs-spine-")
     rows = load_spool_rows(tmp_path / "logbook-spool")
     assert rows[0].rung == "f100"
+    # The written file's digest (after smoke marking) is recorded everywhere
+    # a downstream build or an operator would look for it.
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert sidecar["output"] == {
+        "filename": output.name,
+        "sha256": digest,
+        "size_bytes": output.stat().st_size,
+    }
+    assert (tmp_path / "smoke.h5.sha256").read_text() == f"{digest}  smoke.h5\n"
+    created = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"]) == ("spine_h5_creation", "completed")
+    ]
+    assert created[0]["details"]["sha256"] == digest
+    assert rows[0].gate_verdicts["pipeline"]["artifact_sha256"] == digest
 
 
 def test_driver_records_sanitized_failed_staging_lifecycle(
