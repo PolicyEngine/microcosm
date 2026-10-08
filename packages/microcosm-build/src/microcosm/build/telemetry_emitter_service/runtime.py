@@ -1,4 +1,4 @@
-"""Unix-socket runtime for the telemetry emitter service."""
+"""Existing local service with independent telemetry and graph workers."""
 
 from __future__ import annotations
 
@@ -24,6 +24,10 @@ from microcosm.build.telemetry_emitter_service.constants import (
     SOCKET_LISTEN_BACKLOG,
     UNSUPPORTED_ACTION_ERROR,
     WORKER_INTERVAL_SECONDS,
+)
+from microcosm.build.telemetry_emitter_service.graph_publication import (
+    GRAPH_PUBLICATION_ACTION,
+    GraphPublicationDelivery,
 )
 from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
@@ -80,15 +84,17 @@ class EmitterService:
         self,
         *,
         socket_path: Path,
-        registration: Mapping[str, Any],
+        registration: Mapping[str, Any] | None,
         spool: EventSpool,
         delivery: CollectorDelivery,
         sampler: ProcessTreeSampler,
         heartbeat_seconds: float,
         drain_seconds: float = DEFAULT_DRAIN_SECONDS,
+        graph_delivery: GraphPublicationDelivery | None = None,
     ) -> None:
         self.socket_path = socket_path
-        self.registration = dict(registration)
+        self.registration = dict(registration) if registration is not None else None
+        self.graph_delivery = graph_delivery
         self.spool = spool
         self.delivery = delivery
         self.sampler = sampler
@@ -103,7 +109,8 @@ class EmitterService:
     def run(self) -> None:
         """Serve local messages until the client closes or exits."""
 
-        self.spool.register(self.registration)
+        if self.registration is not None:
+            self.spool.register(self.registration)
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.socket_path.unlink(missing_ok=True)
@@ -112,11 +119,23 @@ class EmitterService:
                 os.chmod(self.socket_path, 0o600)
                 server.listen(SOCKET_LISTEN_BACKLOG)
                 server.settimeout(SOCKET_ACCEPT_TIMEOUT_SECONDS)
-                worker = threading.Thread(target=self._worker, daemon=True)
-                worker.start()
+                workers = []
+                if self.registration is not None:
+                    workers.append(threading.Thread(target=self._worker, daemon=True))
+                if self.graph_delivery is not None:
+                    workers.append(
+                        threading.Thread(target=self._graph_worker, daemon=True)
+                    )
+                for worker in workers:
+                    worker.start()
                 self._serve(server)
-                worker.join(timeout=self.drain_seconds + WORKER_INTERVAL_SECONDS)
+                deadline = (
+                    time.monotonic() + self.drain_seconds + WORKER_INTERVAL_SECONDS
+                )
+                for worker in workers:
+                    worker.join(timeout=max(0, deadline - time.monotonic()))
         finally:
+            self._stop.set()
             self.socket_path.unlink(missing_ok=True)
             try:
                 self.socket_path.parent.rmdir()
@@ -125,6 +144,15 @@ class EmitterService:
 
     def _serve(self, server: socket.socket) -> None:
         while not self._stop.is_set():
+            if not self.sampler.parent_alive():
+                if self.registration is not None:
+                    self.spool.append(
+                        self.registration,
+                        _unexpected_exit_event(self._last_stage),
+                        resources=self.sampler.sample(),
+                    )
+                self._stop.set()
+                break
             try:
                 connection, _ = server.accept()
             except TimeoutError:
@@ -161,7 +189,11 @@ class EmitterService:
 
     def _handle(self, message: Mapping[str, Any]) -> None:
         action = message.get("action")
-        if action == ACTION_EVENT:
+        if action == GRAPH_PUBLICATION_ACTION and self.graph_delivery is not None:
+            self.graph_delivery.queue.enqueue(
+                Path(message["directory"]), message["inventory"]
+            )
+        elif action == ACTION_EVENT and self.registration is not None:
             event = message.get("event")
             if not isinstance(event, Mapping):
                 raise ValueError(EVENT_OBJECT_ERROR)
@@ -198,15 +230,13 @@ class EmitterService:
                 )
                 next_heartbeat = now + self.heartbeat_seconds
             self.delivery.flush_once()
-            if not self.sampler.parent_alive():
-                self.spool.append(
-                    self.registration,
-                    _unexpected_exit_event(self._last_stage),
-                    resources=self.sampler.sample(),
-                )
-                self._stop.set()
-                break
         self._drain()
+
+    def _graph_worker(self) -> None:
+        # Uploads may take much longer than a heartbeat. They never run on the
+        # telemetry worker or the local socket thread. Pending jobs survive exit.
+        while not self._stop.wait(WORKER_INTERVAL_SECONDS):
+            self.graph_delivery.flush_once()
 
     def _drain(self) -> None:
         deadline = time.monotonic() + self.drain_seconds

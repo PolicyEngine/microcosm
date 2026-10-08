@@ -308,7 +308,10 @@ def test_current_pre_alembic_spool_is_adopted_without_losing_events(tmp_path) ->
     path = tmp_path / "events.sqlite3"
     registration = _registration()
     engine = create_engine(sqlite_database_url(path))
-    SpoolModel.metadata.create_all(engine)
+    SpoolModel.metadata.create_all(
+        engine,
+        tables=[TelemetryRunRecord.__table__, TelemetryEventRecord.__table__],
+    )
     with Session(engine) as session, session.begin():
         session.add(
             TelemetryRunRecord(
