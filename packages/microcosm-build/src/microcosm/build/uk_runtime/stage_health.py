@@ -77,6 +77,8 @@ def uk_stage_health_gate(
         return _bus_travel_facts_gate(stage, evidence, parameters)
     if check == "bus_pricing":
         return _bus_pricing_gate(stage, evidence, parameters)
+    if check == "road_fuel_level":
+        return _road_fuel_level_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
         return _bus_support_pricing_gate(stage, evidence, parameters)
     return GateResult(
@@ -2623,6 +2625,104 @@ def _bus_pricing_gate(
                 details["frame_implied_over_published_boardings"][str(label)] = (
                     entry.get("frame_implied_over_published_boardings")
                 )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _road_fuel_level_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The road-fuel step levelled petrol plus diesel to the published ONS spend.
+
+    Fact checks on the ``road_fuel_level`` receipt (microcosm#1113): the ONS
+    COICOP 07.2.2 level is recomputed here from the vendored row through the
+    stage's own declaration (never taken from the receipt) and must equal the
+    receipt's; the levelled prior-weighted total must equal the published
+    spend less the donor's other-fuels share, and the factor must reproduce it
+    from the drawn total, to ``maximum_relative_deviation``. The other-fuels
+    share comes from the licensed LCFS donor, so it is bounded, not recomputed:
+    it must lie in [0, ``maximum_other_fuels_share``].
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    check = "road_fuel_level"
+    receipt = _mapping(
+        evidence.get("road_fuel_level"), label=f"{stage}.road_fuel_level"
+    )
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    maximum_other = _finite_number(
+        parameters.get("maximum_other_fuels_share"),
+        label=f"{stage}.maximum_other_fuels_share",
+    )
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no level_road_fuel operation.")
+    share = _finite_number(
+        receipt.get("other_fuels_share"), label=f"{stage}.other_fuels_share"
+    )
+    failures: list[str] = []
+    if not 0.0 <= share <= maximum_other:
+        failures.append(
+            f"{stage}: other-fuels share {share} is outside [0, {maximum_other}]."
+        )
+        share = min(max(share, 0.0), maximum_other)
+    level = road_fuel_level(declared, other_fuels_share=share)
+
+    def _close(observed: object, value: float) -> bool:
+        return isinstance(observed, int | float) and abs(float(observed) - value) <= (
+            tolerance * max(1.0, abs(value))
+        )
+
+    for key, value in (("published", level.published), ("level", level.level)):
+        if not _close(receipt.get(key), value):
+            failures.append(
+                f"{stage}: road-fuel {key} {receipt.get(key)!r} is not the vendored "
+                f"{value}."
+            )
+    if receipt.get("source_record_id") != level.receipt["source_record_id"]:
+        failures.append(
+            f"{stage}: the receipt names {receipt.get('source_record_id')!r}, not the "
+            f"declared row {level.receipt['source_record_id']!r}."
+        )
+    if not _close(receipt.get("frame_after"), level.level):
+        failures.append(
+            f"{stage}: the levelled road-fuel total {receipt.get('frame_after')!r} is "
+            f"not the level {level.level}."
+        )
+    before = receipt.get("frame_before")
+    factor = receipt.get("factor")
+    if not (
+        isinstance(before, int | float)
+        and isinstance(factor, int | float)
+        and _close(float(before) * float(factor), level.level)
+    ):
+        failures.append(
+            f"{stage}: factor {factor!r} times the drawn total {before!r} does not "
+            f"reproduce the level {level.level}."
+        )
+    details = {
+        "maximum_relative_deviation": tolerance,
+        "published": level.published,
+        "other_fuels_share": share,
+        "level": level.level,
+        "factor": factor,
+        "petrol_share_of_level": receipt.get("petrol_share_of_level"),
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

@@ -22,10 +22,6 @@
       0.0,
       40000
     ],
-    "diesel_spending": [
-      0.0,
-      30000
-    ],
     "education_consumption": [
       0.0,
       200000
@@ -49,10 +45,6 @@
     "miscellaneous_consumption": [
       0.0,
       70000
-    ],
-    "petrol_spending": [
-      0.0,
-      20000
     ],
     "recreation_consumption": [
       0.0,

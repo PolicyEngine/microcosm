@@ -347,6 +347,21 @@
       "notes": "Stage-time fact check on the lcfs bus_pricing receipt (microcosm#930): every area's receipts, boardings, concessionary journeys, trips per resident and population, and the boardings-per-trip and yield factors derived from them, are recomputed from the vendored rows the stage declares and must equal the receipt's; the unpriced regions must be the declared ones (Wales, which keeps the chain's raw draw by María's ruling of 2026-09-17) and the chain must have conditioned on the raw draw. The frame-implied boardings over the published ones are reported per area, not fenced: that ratio is the survey-versus-admin reading the bound receipts targets then act on. A population fact check: the synthetic smoke records it without blocking."
     },
     {
+      "id": "uk_stage_lcfs_consumption_road_fuel_level",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "road_fuel_level",
+        "maximum_relative_deviation": 1e-09,
+        "maximum_other_fuels_share": 0.05
+      },
+      "notes": "Stage-time fact check on the lcfs road_fuel_level receipt (microcosm#1113): the ONS Consumer Trends COICOP 07.2.2 household spend the stage declares is recomputed from the vendored row and must equal the receipt's, and the prior-weighted petrol plus diesel after the step must equal it less the donor's other-fuels share, with the factor reproducing that from the drawn total. The other-fuels share is the LCFS donor's own c72213 share of 07.2.2, licensed microdata the gate cannot recompute, so it is bounded at five percent instead (0.37 percent on the 2023-24 diary). María's ruling of 2026-10-08 set the stage, not the weights, as what levels household road fuel. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
       "id": "uk_stage_etb_vat_support",
       "gate": "stage_health",
       "phase": "transferred",

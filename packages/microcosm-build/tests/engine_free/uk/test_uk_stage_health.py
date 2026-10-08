@@ -1550,6 +1550,65 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
         run(None)
 
 
+def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> None:
+    """The lcfs road_fuel_level receipt is fact-checked at stage time (microcosm#1113)."""
+
+    import pandas as pd
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        level_road_fuel,
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    gate_id = "uk_stage_lcfs_consumption_road_fuel_level"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters["check"] == "road_fuel_level"
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    draws = pd.DataFrame(
+        {"petrol_spending": [900.0, 0.0, 400.0], "diesel_spending": [0.0, 700.0, 0.0]}
+    )
+    _, receipt = level_road_fuel(
+        draws,
+        level=road_fuel_level(declared, other_fuels_share=0.004),
+        weights=np.array([1.0e7, 1.5e7, 2.0e7]),
+    )
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "road_fuel_level": ev},
+            stage="lcfs_consumption",
+            check="road_fuel_level",
+            parameters=parameters,
+        )
+
+    def failing(ev, fragment: str) -> None:
+        result = run(ev)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["level"] == pytest.approx(receipt["level"])
+    failing(
+        {**receipt, "published": receipt["published"] * 1.01}, "road-fuel published"
+    )
+    failing({**receipt, "level": receipt["level"] * 1.01}, "road-fuel level")
+    failing({**receipt, "frame_after": receipt["frame_after"] * 0.99}, "levelled")
+    failing({**receipt, "factor": receipt["factor"] * 1.01}, "does not reproduce")
+    failing({**receipt, "source_record_id": "elsewhere"}, "declared row")
+    failing({**receipt, "other_fuels_share": 0.2}, "other-fuels share")
+    with pytest.raises(ValueError, match="road_fuel_level must be an object"):
+        run(None)
+
+
 def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows() -> (
     None
 ):

@@ -620,6 +620,7 @@ class TestE3ManifestLockstep:
             "price_bus_journeys",
             "fold_into",
             "zero_when_false",
+            "level_road_fuel",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [

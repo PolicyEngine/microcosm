@@ -11124,6 +11124,58 @@
        }
       }
      }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "resource",
+      "concept",
+      "coicop",
+      "period_type",
+      "period_value",
+      "other_fuels_rule",
+      "other_fuels_codes"
+     ],
+     "properties": {
+      "kind": {
+       "const": "level_road_fuel"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "resource": {
+       "type": "string"
+      },
+      "concept": {
+       "type": "string"
+      },
+      "coicop": {
+       "type": "string"
+      },
+      "period_type": {
+       "const": "calendar_year"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "other_fuels_rule": {
+       "type": "string"
+      },
+      "other_fuels_codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
     }
    ],
    "description": "Closed kind-discriminated source artifact and operation records, covering the packaged US, UK, and BE source vocabularies."

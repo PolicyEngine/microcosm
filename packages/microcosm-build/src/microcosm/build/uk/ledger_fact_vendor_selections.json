@@ -376,8 +376,10 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels and its sub-classes 04.5.1 electricity, 04.5.2 gas, 04.5.3 liquid fuels and 04.5.4 solid fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend targets (04.5.1 and 04.5.2 bound per fuel) and the motor-fuel spend diagnostic.",
-      "consumers": [],
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels and its sub-classes 04.5.1 electricity, 04.5.2 gas, 04.5.3 liquid fuels and 04.5.4 solid fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and planned for the domestic energy and motor-fuel spend diagnostics.",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
       "planned_consumers": [
         "uk_aggregate_admin"
       ],

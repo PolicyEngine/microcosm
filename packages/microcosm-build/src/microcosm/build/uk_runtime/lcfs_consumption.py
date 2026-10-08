@@ -165,6 +165,8 @@ UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
 # the register names.
 UK_LCFS_DFT_BUS_JOURNEYS_RESOURCE = UK_DFT_BUS_JOURNEYS_RESOURCE
 UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
+#: ONS Consumer Trends household spending, the road-fuel level (COICOP 07.2.2).
+UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = "ons_household_expenditure_facts.json"
 UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_ROAD_FUEL_RESOURCE,
     UK_LCFS_LICENSED_CARS_RESOURCE,
@@ -174,18 +176,28 @@ UK_LCFS_VENDORED_RESOURCES = (
     UK_NEED_ENERGY_FACTS_RESOURCE,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     UK_QEP_ENERGY_PRICES_RESOURCE,
+    UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE,
 )
+#: The household road-fuel columns the ``level_road_fuel`` step scales.
+UK_LCFS_ROAD_FUEL_COLUMNS = ("petrol_spending", "diesel_spending")
 #: Columns a declared rake or pricing step levels (energy in kWh to the NEED
 #: shape at the DESNZ level; bus fares as journeys times the published
-#: yield, microcosm#930); the committed support bounds leave them alone.
+#: yield, microcosm#930; road fuel to ONS household spending, microcosm#1113);
+#: the committed support bounds leave them alone.
 UK_LCFS_RAKED_COLUMNS = frozenset(
     {
         "electricity_consumption",
         "gas_consumption",
         "domestic_energy_consumption",
         "bus_fare_spending",
+        *UK_LCFS_ROAD_FUEL_COLUMNS,
     }
 )
+LEVEL_ROAD_FUEL_KIND = "level_road_fuel"
+#: The LCFS diary lines inside COICOP 07.2.2 beside petrol (c72211) and diesel
+#: (c72212): other motor fuels and oils, which ONS's 07.2.2 also carries.
+UK_LCFS_OTHER_ROAD_FUEL_CODES = ("c72213",)
+UK_LCFS_ROAD_FUEL_OTHER_SHARE_RULE = "lcfs_donor_other_fuels_share"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 #: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
 #: declared litre-proxy price concepts: HMRC clearances are all road users, the
@@ -267,6 +279,7 @@ class UKLCFSConsumptionResult:
     energy_rake: Mapping[str, Any] | None = None
     fuel_litres_audit: Mapping[str, Any] | None = None
     donor_floor: Mapping[str, Any] | None = None
+    road_fuel_level: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -287,6 +300,8 @@ class UKLCFSConsumptionResult:
             evidence["fuel_litres_audit"] = dict(self.fuel_litres_audit)
         if self.donor_floor is not None:
             evidence["donor_floor"] = dict(self.donor_floor)
+        if self.road_fuel_level is not None:
+            evidence["road_fuel_level"] = dict(self.road_fuel_level)
         return evidence
 
 
@@ -397,6 +412,9 @@ class UKLCFSConsumptionStageTransform:
             ~recipient["has_fuel_consumption"].astype(bool),
             ["petrol_spending", "diesel_spending"],
         ] = 0.0
+        household_draws, road_fuel_level_receipt = lcfs_road_fuel_level(
+            self.stage, household_draws, weights=weights, lcfs_household=lcfs_household
+        )
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
         )
@@ -432,6 +450,7 @@ class UKLCFSConsumptionStageTransform:
             energy_rake=energy_rake_receipt,
             fuel_litres_audit=litres_audit,
             donor_floor=donor_floor_receipt,
+            road_fuel_level=road_fuel_level_receipt,
         )
         return result
 
@@ -553,6 +572,177 @@ def fuel_litres_audit(
         ),
         "gated": False,
     }
+
+
+@dataclass(frozen=True)
+class RoadFuelLevel:
+    """The household road-fuel level the ``level_road_fuel`` step scales to.
+
+    ``published`` is the ONS Consumer Trends COICOP 07.2.2 spend (fuels and
+    lubricants for personal transport equipment); ``other_fuels_share`` the
+    part of it that is neither petrol nor diesel, taken from the LCFS donor's
+    own split of 07.2.2. ``level`` is what the frame's petrol plus diesel
+    totals at prior weights after the step.
+    """
+
+    published: float
+    other_fuels_share: float
+    receipt: Mapping[str, Any]
+
+    @property
+    def level(self) -> float:
+        return self.published * (1.0 - self.other_fuels_share)
+
+
+def road_fuel_level_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``level_road_fuel`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == LEVEL_ROAD_FUEL_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def lcfs_other_road_fuel_share(lcfs_household: pd.DataFrame) -> float:
+    """The donor's weighted share of COICOP 07.2.2 that is neither petrol nor diesel."""
+
+    household = _lowercase(lcfs_household)
+    _require_columns(
+        household, ("weighta", "c72211", "c72212", *UK_LCFS_OTHER_ROAD_FUEL_CODES)
+    )
+    weight = _numeric(household["weighta"]).to_numpy(dtype=float)
+    other = sum(
+        _numeric(household[code]).to_numpy(dtype=float)
+        for code in UK_LCFS_OTHER_ROAD_FUEL_CODES
+    )
+    total = (
+        _numeric(household["c72211"]).to_numpy(dtype=float)
+        + _numeric(household["c72212"]).to_numpy(dtype=float)
+        + other
+    )
+    denominator = float(np.dot(weight, total))
+    if not np.isfinite(denominator) or denominator <= 0:
+        raise ValueError("LCFS donor records no COICOP 07.2.2 road-fuel spend.")
+    return float(np.dot(weight, other)) / denominator
+
+
+def road_fuel_level(
+    parameters: Mapping[str, Any], *, other_fuels_share: float
+) -> RoadFuelLevel:
+    """Resolve the declared ONS road-fuel level from the vendored rows."""
+
+    columns = tuple(str(column) for column in parameters.get("columns", ()))
+    if columns != UK_LCFS_ROAD_FUEL_COLUMNS:
+        raise ValueError(
+            f"{LEVEL_ROAD_FUEL_KIND} must level {UK_LCFS_ROAD_FUEL_COLUMNS}, "
+            f"not {columns}."
+        )
+    resource = str(parameters.get("resource") or "")
+    if resource != UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE:
+        raise ValueError(
+            f"{LEVEL_ROAD_FUEL_KIND} must read {UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE!r}, "
+            f"not {resource!r}."
+        )
+    rule = str(parameters.get("other_fuels_rule") or "")
+    if rule != UK_LCFS_ROAD_FUEL_OTHER_SHARE_RULE:
+        raise ValueError(
+            f"unsupported {LEVEL_ROAD_FUEL_KIND} other_fuels_rule {rule!r}."
+        )
+    codes = tuple(str(code) for code in parameters.get("other_fuels_codes", ()))
+    if codes != UK_LCFS_OTHER_ROAD_FUEL_CODES:
+        raise ValueError(
+            f"{LEVEL_ROAD_FUEL_KIND} other_fuels_codes must be "
+            f"{UK_LCFS_OTHER_ROAD_FUEL_CODES}, not {codes}."
+        )
+    if str(parameters.get("period_type")) != "calendar_year":
+        raise ValueError(f"{LEVEL_ROAD_FUEL_KIND} binds a calendar-year ONS level.")
+    if not 0.0 <= other_fuels_share < 1.0:
+        raise ValueError(f"other-fuels share {other_fuels_share} is outside [0, 1).")
+    period_value = int(parameters["period_value"])
+    rows = vendored_rows(
+        resource,
+        concept=str(parameters["concept"]),
+        period_type="calendar_year",
+        period_value=period_value,
+        geography_id="K02000001",
+        dimensions={"coicop": str(parameters["coicop"]), "frequency": "annual"},
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"{resource}: expected one {parameters['coicop']} row for "
+            f"{period_value}, found {len(rows)}."
+        )
+    published = float(rows[0]["value"])
+    if not np.isfinite(published) or published <= 0:
+        raise ValueError(f"{resource}: the road-fuel level must be positive.")
+    receipt = {
+        "operation": LEVEL_ROAD_FUEL_KIND,
+        "resource": resource,
+        "concept": str(parameters["concept"]),
+        "coicop": str(parameters["coicop"]),
+        "period_type": "calendar_year",
+        "period_value": period_value,
+        "source_record_id": str(rows[0].get("source_record_id", "")),
+        "published": published,
+        "other_fuels_rule": rule,
+        "other_fuels_codes": list(UK_LCFS_OTHER_ROAD_FUEL_CODES),
+        "other_fuels_share": float(other_fuels_share),
+        "level": published * (1.0 - other_fuels_share),
+        "columns": list(UK_LCFS_ROAD_FUEL_COLUMNS),
+    }
+    return RoadFuelLevel(published, float(other_fuels_share), receipt)
+
+
+def level_road_fuel(
+    household_draws: pd.DataFrame,
+    *,
+    level: RoadFuelLevel,
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Scale petrol and diesel by one factor so the prior-weighted total is the level.
+
+    One factor keeps the drawn petrol/diesel mix and every household's
+    relative spend; only the level moves (microcosm#1113: the LCFS diary
+    records about a quarter less road fuel than ONS household spending).
+    """
+
+    columns = list(UK_LCFS_ROAD_FUEL_COLUMNS)
+    weight_values = np.asarray(weights, dtype=float)
+    spend = household_draws[columns].to_numpy(dtype=float)
+    before = float(np.dot(weight_values, spend.sum(axis=1)))
+    if not np.isfinite(before) or before <= 0:
+        raise ValueError("the frame draws no road-fuel spend to level.")
+    factor = level.level / before
+    result = household_draws.copy()
+    result[columns] = spend * factor
+    after = result[columns].to_numpy(dtype=float)
+    petrol = float(np.dot(weight_values, after[:, 0]))
+    receipt = {
+        **dict(level.receipt),
+        "frame_before": before,
+        "factor": float(factor),
+        "frame_after": float(np.dot(weight_values, after.sum(axis=1))),
+        "petrol_share_of_level": petrol / level.level,
+    }
+    return result, receipt
+
+
+def lcfs_road_fuel_level(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    lcfs_household: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Apply the declared ``level_road_fuel`` step (none if undeclared)."""
+
+    parameters = road_fuel_level_operation(stage)
+    if parameters is None:
+        return household_draws, None
+    level = road_fuel_level(
+        parameters, other_fuels_share=lcfs_other_road_fuel_share(lcfs_household)
+    )
+    return level_road_fuel(household_draws, level=level, weights=weights)
 
 
 @dataclass(frozen=True)

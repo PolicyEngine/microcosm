@@ -626,6 +626,9 @@ def _synthetic_lcfs_donor(
         household[code] = rng.uniform(1.0, 200.0, n)
     household["c72211"] = np.where(rows % 4 == 0, 0.0, rng.uniform(5.0, 80.0, n))
     household["c72212"] = np.where(rows % 4 == 0, 0.0, rng.uniform(0.0, 40.0, n))
+    # Other motor fuels inside 07.2.2, deterministic so the draws below keep
+    # their stream.
+    household["c72213"] = np.where(rows % 10 == 1, 0.5, 0.0)
     for code in BUS_FARE_LCFS_CODES:
         household[code] = np.where(rng.random(n) < 0.55, 0.0, rng.uniform(1.0, 30.0, n))
     person = pd.DataFrame(
@@ -781,6 +784,24 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     no_vehicle = household["num_vehicles"].to_numpy() == 0
     assert (out.loc[no_vehicle, "petrol_spending"] == 0.0).all()
     assert 0.95 < evidence["has_fuel_consumption"]["ice_share"]["rate"] < 0.97
+    # Road fuel: petrol plus diesel at prior weights is ONS 07.2.2 for 2024
+    # less the donor's own other-fuels share (#1113).
+    level = evidence["road_fuel_level"]
+    assert level["coicop"] == "07.2.2" and level["period_value"] == 2024
+    weight = donor_household["weighta"].to_numpy()
+    fuels = donor_household[["c72211", "c72212", "c72213"]].to_numpy()
+    assert level["other_fuels_share"] == pytest.approx(
+        weight @ fuels[:, 2] / (weight @ fuels.sum(axis=1))
+    )
+    assert level["level"] == pytest.approx(
+        level["published"] * (1.0 - level["other_fuels_share"])
+    )
+    road_fuel = out[["petrol_spending", "diesel_spending"]].to_numpy().sum(axis=1)
+    assert result.weights_for("household").values @ road_fuel == pytest.approx(
+        level["level"]
+    )
+    assert level["frame_after"] == pytest.approx(level["level"])
+    assert (out.loc[no_vehicle, "diesel_spending"] == 0.0).all()
     # Bus: fares are journeys times the published yield in every priced region;
     # Wales keeps the chain's raw draw, clipped to donor support.
     pricing = evidence["bus_pricing"]
@@ -881,6 +902,161 @@ def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> N
         operations = ()
 
     assert fuel_litres_audit(draws, weights=weights, stage=Stage()) is None
+
+
+def test_road_fuel_level_reads_the_vendored_ons_row() -> None:
+    """The declared level is ONS 07.2.2 for 2024 less the other-fuels share (#1113)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    declared = road_fuel_level_operation(stage)
+    assert declared is not None
+    kinds = [operation.kind for operation in stage.operations]
+    assert kinds.index("level_road_fuel") == kinds.index("zero_when_false") + 1
+
+    level = road_fuel_level(declared, other_fuels_share=0.004)
+
+    (row,) = vendored_rows(
+        "ons_household_expenditure_facts.json",
+        concept="ons.household_expenditure.personal_transport_fuels_lubricants",
+        period_type="calendar_year",
+        period_value=2024,
+        geography_id="K02000001",
+        dimensions={"coicop": "07.2.2", "frequency": "annual"},
+    )
+    assert level.published == float(row["value"])
+    assert level.level == pytest.approx(float(row["value"]) * 0.996)
+    assert level.receipt["source_record_id"] == row["source_record_id"]
+    assert level.receipt["columns"] == ["petrol_spending", "diesel_spending"]
+    assert level.receipt["other_fuels_codes"] == ["c72213"]
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"columns": ["petrol_spending"]}, "must level"),
+        ({"resource": "road_fuel_anchors.json"}, "must read"),
+        ({"other_fuels_rule": "none"}, "unsupported"),
+        ({"other_fuels_codes": ["c72213", "c72214"]}, "other_fuels_codes"),
+        ({"period_type": "fiscal_year"}, "calendar-year"),
+        ({"period_value": 2019}, "expected one"),
+    ],
+)
+def test_road_fuel_level_refuses_a_wrong_declaration(change, match) -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    with pytest.raises(ValueError, match=match):
+        road_fuel_level({**declared, **change}, other_fuels_share=0.0)
+
+
+def test_road_fuel_level_refuses_a_share_outside_the_unit_interval() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    for share in (-0.01, 1.0):
+        with pytest.raises(ValueError, match="outside"):
+            road_fuel_level(declared, other_fuels_share=share)
+
+
+def test_level_road_fuel_scales_both_fuels_by_one_factor() -> None:
+    """One factor: the prior-weighted total is the level and the mix is kept."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        RoadFuelLevel,
+        level_road_fuel,
+    )
+
+    draws = pd.DataFrame(
+        {
+            "petrol_spending": [1000.0, 0.0, 500.0, 0.0],
+            "diesel_spending": [0.0, 300.0, 250.0, 0.0],
+            "food_consumption": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    weights = np.array([2.0, 1.0, 1.0, 5.0])
+    level = RoadFuelLevel(5000.0, 0.02, {"operation": "level_road_fuel"})
+
+    levelled, receipt = level_road_fuel(draws, level=level, weights=weights)
+
+    before = 2.0 * 1000.0 + 300.0 + 750.0
+    assert receipt["frame_before"] == pytest.approx(before)
+    assert receipt["factor"] == pytest.approx(4900.0 / before)
+    assert receipt["frame_after"] == pytest.approx(4900.0)
+    np.testing.assert_allclose(
+        levelled[["petrol_spending", "diesel_spending"]].to_numpy(),
+        draws[["petrol_spending", "diesel_spending"]].to_numpy() * receipt["factor"],
+    )
+    assert receipt["petrol_share_of_level"] == pytest.approx(2500.0 / before)
+    assert levelled["food_consumption"].tolist() == [1.0, 2.0, 3.0, 4.0]
+    assert levelled.loc[3, ["petrol_spending", "diesel_spending"]].tolist() == [
+        0.0,
+        0.0,
+    ]
+    with pytest.raises(ValueError, match="no road-fuel spend"):
+        level_road_fuel(draws * 0.0, level=level, weights=weights)
+
+
+def test_other_road_fuel_share_is_the_donor_weighted_c72213_share() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        lcfs_other_road_fuel_share,
+    )
+
+    donor = pd.DataFrame(
+        {
+            "WEIGHTA": [1.0, 3.0],
+            "C72211": [10.0, 0.0],
+            "C72212": [0.0, 5.0],
+            "C72213": [1.0, 0.0],
+        }
+    )
+    assert lcfs_other_road_fuel_share(donor) == pytest.approx(1.0 / 26.0)
+    with pytest.raises(ValueError, match="no COICOP 07.2.2"):
+        lcfs_other_road_fuel_share(donor.assign(C72211=0.0, C72212=0.0, C72213=0.0))
+    with pytest.raises(ValueError, match="c72213"):
+        lcfs_other_road_fuel_share(donor.drop(columns="C72213"))
+
+
+def test_road_fuel_level_is_a_no_op_when_undeclared() -> None:
+    import dataclasses
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import lcfs_road_fuel_level
+
+    committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    stage = dataclasses.replace(
+        committed,
+        operations=tuple(
+            operation
+            for operation in committed.operations
+            if operation.kind != "level_road_fuel"
+        ),
+    )
+    draws = pd.DataFrame({"petrol_spending": [1.0], "diesel_spending": [2.0]})
+
+    levelled, receipt = lcfs_road_fuel_level(
+        stage, draws, weights=[1.0], lcfs_household=pd.DataFrame()
+    )
+
+    assert receipt is None and levelled is draws
 
 
 def test_recipient_counts_adults_and_children_by_age_not_engine_flags() -> None:
