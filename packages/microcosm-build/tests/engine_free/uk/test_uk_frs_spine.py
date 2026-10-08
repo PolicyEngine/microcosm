@@ -1564,6 +1564,29 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     } <= set(frame.table("household"))
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    for name in (
+        "graph_declaration",
+        "graph_manifest",
+        "graph_schema",
+        "graph_execution_evidence",
+    ):
+        reference = sidecar[name]
+        evidence_path = Path(reference["path"])
+        assert "graph-evidence" in evidence_path.parts
+        assert (
+            hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+            == reference["sha256"]
+        )
+    from microcosm.graph import ContentStore, load_run_evidence
+
+    index_path = Path(sidecar["graph_execution_evidence"]["path"])
+    runs = load_run_evidence(
+        index_path,
+        store=ContentStore(index_path.parents[2] / "node-graph", create=False),
+    )
+    assert set(runs[0].binding["source_identities"]) == {
+        name for node in runs[0].compiled.graph.nodes for name in node.sources
+    }
     assert sidecar["schema_version"] == 2
     assert sidecar["stages"] == list(tool._uk_spine_stage_names(_synthetic_spec(stage)))
     assert sidecar["uk_frame_content_identity"] == uk_frame_content_identity(frame)

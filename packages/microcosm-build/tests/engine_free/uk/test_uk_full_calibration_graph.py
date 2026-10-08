@@ -263,6 +263,89 @@ def binding_solver():
     return value
 
 
+@pytest.mark.parametrize("k", [None, 2, 3])
+def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
+    k, tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime.orrery_contract import UK_SUMMARY_PROVIDERS
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        orrery_document,
+        record_run_binding,
+    )
+
+    graph, endpoints = compiled(k)
+    fixture = tmp_path / "fixture"
+    fixture.write_bytes(b"fixture")
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        graph, sources={"fixture": fixture}, store=store, kernels=registry()
+    )
+    expected = restore_uk_graph_result(
+        source_frame(),
+        problem_payload=store.load_bytes(
+            manifest.nodes[endpoints.problem_producer].opaque_artifacts["problem"]
+        ),
+        result_payload=store.load_bytes(
+            manifest.nodes[endpoints.result_producer].opaque_artifacts["result"]
+        ),
+        solution_payload=store.load_bytes(
+            manifest.nodes[endpoints.solution_producer].opaque_artifacts["solution"]
+        ),
+        original_problem_payload=problem_payload(),
+    )
+    import microcosm.calibrate.solve as solver
+
+    monkeypatch.setattr(
+        solver, "calibrate", lambda *a, **kw: pytest.fail("export reran solver")
+    )
+    run = record_run_binding(graph, manifest, attempt_id="fixture", phase="numerical")
+    evidence = collect_execution_evidence(
+        graph_schema(graph),
+        runs=[run],
+        store=store,
+        artifact_summaries=UK_SUMMARY_PROVIDERS,
+    )
+    summary = next(
+        item["data"]
+        for item in evidence["summaries"]
+        if item["node"] == endpoints.result_producer and item["artifact"] == "result"
+    )
+    rows = summary["tables"]["targets"]
+    assert rows[0]["target"] == expected.diagnostics[0].target
+    assert rows[0]["achieved"] == expected.diagnostics[0].final_estimate
+    assert (
+        rows[0]["residual"]
+        == expected.diagnostics[0].final_estimate - expected.diagnostics[0].target
+    )
+    assert rows[0]["uncertainty"]["status"] == "not_recorded"
+    assert summary["overview"]["final_weights"]["total"] == float(
+        expected.weights.sum()
+    )
+    assert summary["overview"]["final_weights"]["records"] == (3 if k is None else k)
+    if k is not None:
+        size = next(
+            item["data"]["overview"]
+            for item in evidence["summaries"]
+            if item["artifact"] == "size"
+        )
+        assert size["method"] == (
+            "full_pool" if k == 3 else "contribution_informed_l0_exact_count_refit"
+        )
+    serialized = json.dumps(evidence)
+    assert '"household_ids":' not in serialized
+    assert '"pool_row_indices":' not in serialized
+    assert '"inclusion_probabilities":' not in serialized
+    document = orrery_document(graph, execution=evidence)
+    result_node = next(
+        node
+        for node in document["nodes"]
+        if json.loads(node["id"]) == ["operation", endpoints.result_producer]
+    )
+    assert result_node["data"]["artifact_summaries"]
+
+
 def test_reused_draw_skips_rng_and_rejects_changed_binding(monkeypatch):
     frame = source_frame()
     dense = calibrate(frame, targets(), epochs=2)

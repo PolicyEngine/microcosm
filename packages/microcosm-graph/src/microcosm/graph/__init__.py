@@ -164,12 +164,13 @@ def orrery_document(
     *,
     title: str | None = None,
     extensions: Mapping[str, object] | None = None,
+    execution: object | None = None,
 ) -> dict[str, object]:
     """Compile and transform a graph into a complete Orrery document."""
 
     from .orrery import orrery_document as export
 
-    return export(graph, title=title, extensions=extensions)
+    return export(graph, title=title, extensions=extensions, execution=execution)
 
 
 def orrery_json(
@@ -177,12 +178,13 @@ def orrery_json(
     *,
     title: str | None = None,
     extensions: Mapping[str, object] | None = None,
+    execution: object | None = None,
 ) -> str:
     """Compile and return deterministic UTF-8-ready Orrery JSON."""
 
     from .orrery import orrery_json as export
 
-    return export(graph, title=title, extensions=extensions)
+    return export(graph, title=title, extensions=extensions, execution=execution)
 
 
 from .codecs import (  # noqa: E402 - check dependency series before runtime import
@@ -192,6 +194,14 @@ from .codecs import (  # noqa: E402 - check dependency series before runtime imp
     SourceCodecRegistry,
     load_source,
     load_source_bytes,
+)
+from .evidence import (  # noqa: E402
+    ArtifactSummaryContext,
+    RecordedRun,
+    collect_execution_evidence,
+    load_run_evidence,
+    record_run_binding,
+    save_run_evidence,
 )
 from .executor import NodeRejected, run_graph  # noqa: E402
 from .explain import explain_html  # noqa: E402
@@ -207,3 +217,12 @@ from .store import (  # noqa: E402
     StoreUnavailable,
 )
 from .view import describe  # noqa: E402
+
+__all__ += [
+    "ArtifactSummaryContext",
+    "RecordedRun",
+    "collect_execution_evidence",
+    "load_run_evidence",
+    "record_run_binding",
+    "save_run_evidence",
+]

@@ -7,6 +7,7 @@ import hashlib
 import json
 import sys
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -131,6 +132,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.orrery_contract import save_uk_graph_schema
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
@@ -168,7 +170,13 @@ from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
-from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph import (
+    ContentStore,
+    compile_graph,
+    graph_to_json,
+    run_graph,
+    save_run_evidence,
+)
 
 _PIPELINE = "uk-frs-spine"
 _REPOSITORY = next(
@@ -1809,6 +1817,29 @@ def main(argv: list[str] | None = None) -> int:
             decisions=(),
         )
         graph_manifest.save(checkpoint_root / "spine.graph.json")
+        graph_declaration_path = checkpoint_root / "spine.graph-declaration.json"
+        graph_declaration_path.write_text(graph_to_json(graph), encoding="utf-8")
+        save_uk_graph_schema(graph, checkpoint_root, scope="raw_spine", spec=spec)
+        graph_evidence_path = save_run_evidence(
+            compiled_graph,
+            graph_manifest,
+            store=graph_store,
+            directory=checkpoint_root
+            / "graph-evidence"
+            / (graph_attempt_id := uuid.uuid4().hex),
+            attempt_id=graph_attempt_id,
+            phase="spine",
+        )
+        graph_run_reference = json.loads(graph_evidence_path.read_text())["runs"][-1]
+        graph_declaration_path = (
+            graph_evidence_path.parent / graph_run_reference["graph"]["path"]
+        )
+        graph_manifest_path = (
+            graph_evidence_path.parent / graph_run_reference["manifest"]["path"]
+        )
+        graph_schema_path = save_uk_graph_schema(
+            graph, graph_evidence_path.parent, scope="raw_spine", spec=spec
+        )
         final_version = compiled_graph.versions[stage_names[-1]]
         frame = graph_manifest.population(final_version)
         records = _graph_stage_records(
@@ -1921,8 +1952,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
         sidecar["graph_manifest"] = {
-            "path": str(checkpoint_root / "spine.graph.json"),
+            "path": str(graph_manifest_path.resolve()),
             "key": graph_manifest.key,
+            "sha256": hashlib.sha256(graph_manifest_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_declaration"] = {
+            "path": str(graph_declaration_path.resolve()),
+            "sha256": hashlib.sha256(graph_declaration_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_schema"] = {
+            "path": str(graph_schema_path.resolve()),
+            "sha256": hashlib.sha256(graph_schema_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_execution_evidence"] = {
+            "path": str(graph_evidence_path.resolve()),
+            "sha256": hashlib.sha256(graph_evidence_path.read_bytes()).hexdigest(),
         }
         stage_evidence = stored_evidence["stage_evidence"]
         if stage_evidence:
