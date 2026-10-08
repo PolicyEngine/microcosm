@@ -296,7 +296,20 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         json.loads(node["id"]) == ["operation", "uk.full.national.readback"]
         for node in document["nodes"]
     )
-    assert not list(out.glob("*.orrery.json"))
+    assert json.loads((out / "graph.orrery.json").read_bytes()) == document
+    publication_inventory = json.loads((out / "orrery.upload.json").read_bytes())
+    publication_receipt = json.loads((out / "orrery.publication.json").read_bytes())
+    assert publication_receipt["status"] == "skipped"
+    assert publication_receipt["error_code"] == "local_only"
+    assert publication_receipt["recorded_execution"] is True
+    assert manifest["orrery_publication"] == publication_receipt
+    graph_output_names = {
+        *(item["name"] for item in publication_inventory["files"]),
+        "orrery.upload.json",
+        "orrery.publication.json",
+    }
+    for name in graph_output_names:
+        assert manifest["outputs"][f"orrery/{name}"]["sha256"] == _sha(out / name)
 
     # The build record the release-cut certifier reads: the seam's schema.
     record = json.loads((out / "build_record.json").read_text())
@@ -415,7 +428,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         "terminal_gate_report",
         "national_target_registry",
         "national_contract_registry",
-    }
+    } | {f"orrery/{name}" for name in graph_output_names}
     assert manifest["outputs"]["dataset"]["sha256"] == _sha(dataset)
     assert manifest["outputs"]["dataset"]["path"] == str(dataset)
     assert manifest["outputs"]["build_record"]["sha256"] == _sha(
