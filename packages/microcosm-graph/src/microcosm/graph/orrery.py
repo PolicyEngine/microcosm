@@ -60,7 +60,7 @@ def _transport_json(value: object) -> object:
         if child is None or kind is bool:
             result = child
         elif kind is str:
-            _require(len(child) <= 64 * 1024, "string length")
+            _require(len(child) <= 128 * 1024, "string length")
             charge += len(child.encode("utf-8"))
             result = child
         elif kind is int:

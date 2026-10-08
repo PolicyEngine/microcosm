@@ -4,9 +4,12 @@ import json
 
 import pytest
 
-from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
 from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
 from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
+from microcosm.build.uk_runtime.graph_evidence import add_uk_spine_gate_nodes
+from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
 from microcosm.build.uk_runtime.orrery_contract import (
     checkpoint_references,
     save_uk_graph_schema,
@@ -59,13 +62,26 @@ def test_spine_groups_keep_composite_execution_boundaries():
 
 @pytest.mark.parametrize("households", [None, 100])
 def test_complete_dense_and_size_declarations_fit_existing_export_limits(households):
-    graph = uk_full_graph(
+    spine = add_uk_spine_gate_nodes(
+        uk_spine_graph(source_mode="split"),
+        spec=load_country_spec("uk"),
+        engine_identity="declaration-only",
+    )
+    full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2025,
             geography_assignment="legacy",
             calibration=UKGraphCalibrationConfig(dataset_households=households),
-        )
-    ).graph
+        ),
+        spine=spine,
+    )
+    graph = append_uk_full_gate_nodes(
+        full.graph,
+        calibration=full.calibration,
+        spine_stage_names=uk_spine_endpoint(spine).stage_names,
+        engine_identity="declaration-only",
+        review_date="2026-10-08",
+    )
     contract = uk_graph_presentation(graph, scope="full_dense")
     document = orrery_document(graph, extensions={PRESENTATION_EXTENSION: contract})
     assert sum(node["kind"] == "operation" for node in document["nodes"]) == len(
@@ -74,6 +90,12 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
     assert len(document["nodes"]) < 20_000
     assert len(document["edges"]) < 100_000
     assert document["metadata"]["presentation_scope"]["id"] == "full_dense"
+    for node_id in ("uk.full.gates.preflight", "uk.full.gates.calibrated"):
+        operation = next(node for node in document["nodes"] if node["label"] == node_id)
+        assert (
+            operation["data"]["declaration"]["params"]["gate_manifest"]
+            == (graph.node(node_id).params["gate_manifest"])
+        )
 
 
 def test_old_checkpoint_has_an_explicit_missing_boundary(tmp_path):

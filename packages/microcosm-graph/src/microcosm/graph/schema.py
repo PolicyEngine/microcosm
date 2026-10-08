@@ -42,9 +42,9 @@ _ROOT_KEYS = {
 _MAX_ITEMS = 2_000_000
 _MAX_BYTES = 32 * 1024 * 1024
 _MAX_DEPTH = 64
-# Operation parameters can retain serialized gate contracts larger than 16 KB.
+# Operation parameters can retain serialized gate contracts larger than 64 KiB.
 # Keep a scalar bound as well as the total metadata and serialized byte bounds.
-_MAX_STRING = 64 * 1024
+_MAX_STRING = 128 * 1024
 
 
 def _plain_json(value: object) -> object:

@@ -270,8 +270,8 @@ def test_serialized_operation_contracts_survive_schema_and_orrery_round_trip():
     from microcosm.graph.orrery import orrery_document_from_schema
 
     compiled = compiled_graph()
-    # Maintained gate declarations contain serialized contracts around 38 KB.
-    contract = "x" * 40_000
+    # Full UK gate declarations exceed 64 KiB; spine-only gates are smaller.
+    contract = "x" * 70_000
     original = compiled.graph.nodes[0]
     graph = replace(
         compiled.graph,
@@ -293,7 +293,7 @@ def test_serialized_operation_contracts_survive_schema_and_orrery_round_trip():
     oversized = replace(
         graph,
         nodes=(
-            replace(original, params={"contract": "x" * (64 * 1024 + 1)}),
+            replace(original, params={"contract": "x" * (128 * 1024 + 1)}),
             *graph.nodes[1:],
         ),
     )

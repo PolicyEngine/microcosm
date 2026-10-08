@@ -259,14 +259,19 @@ the artifact labels include their producing operation and output name so they
 remain identifiable. Browsing a synthetic saved national run confirmed groups,
 Record fields, separate status badges, Sources links and phase activities.
 
-Measured with the maintained full UK declaration, calibration year 2025 and
-legacy geography assignment: dense export has 5,148 presentation nodes, 18,135
+Measured with the maintained UK numerical declaration, calibration year 2025 and
+legacy geography assignment, before appending terminal gates: dense export has 5,148 presentation nodes, 18,135
 edges and 18,174,094 JSON bytes; the optional size path has 5,408 nodes, 19,702
 edges and 19,588,363 bytes. A synthetic three-household calibration with 22,053
 targets produced a 5,346,758-byte execution snapshot retaining every target row.
 These are declaration and synthetic diagnostic measurements, not a licensed
-population run. Serialized operation contracts can use strings up to 65,536 characters;
-the overall document, complexity, node, and edge limits remain unchanged.
+population run.
+
+Including the maintained spine and full gate batteries, holdout and export
+preparation produces 77 operations, 5,156 presentation nodes, 19,593 edges and
+19,914,678 JSON bytes. The full gate contract contains 65,971 characters.
+Serialized operation contracts can use strings up to 131,072 characters; the
+overall document, complexity, node, and edge limits remain unchanged.
 
 ## Fields and input bindings
 
