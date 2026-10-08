@@ -76,7 +76,7 @@ def test_slow_orrery_worker_does_not_block_another_publisher_or_socket(
     thread.start()
     try:
         assert entered.wait(2)
-        assert other.ran.is_set()
+        assert other.ran.wait(2)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(0.5)
             client.connect(str(service.socket_path))
