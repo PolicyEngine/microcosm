@@ -376,6 +376,20 @@
       "notes": "Stage-time fact check on the lcfs road_fuel_level receipt (microcosm#1113): the ONS Consumer Trends COICOP 07.2.2 household spend the stage declares is recomputed from the vendored row and must equal the receipt's, and the prior-weighted petrol plus diesel after the step must equal it less the donor's other-fuels share, with the factor reproducing that from the drawn total. The other-fuels share is the LCFS donor's own c72213 share of 07.2.2, licensed microdata the gate cannot recompute, so it is bounded at five percent instead (0.37 percent on the 2023-24 diary). María's ruling of 2026-10-08 set the stage, not the weights, as what levels household road fuel. A population fact check: the synthetic smoke records it without blocking."
     },
     {
+      "id": "uk_stage_lcfs_consumption_recomposed_totals",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "recomposed_totals",
+        "maximum_relative_deviation": 1e-09
+      },
+      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the diary energy, petrol and diesel; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas or its petrol and diesel and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend, which leaves the housing total because no frame column carries it, is recomputed from the vendored rows and must equal the receipt's. The two totals carry no committed support bound; this check holds them instead. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
       "id": "uk_stage_etb_vat_support",
       "gate": "stage_health",
       "phase": "transferred",

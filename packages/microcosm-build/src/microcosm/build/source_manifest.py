@@ -144,6 +144,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "iterative_proportional_fit",
         "level_road_fuel",
         "redraw_zero_road_fuel",
+        "recompose_from_remainder",
         "pair_clone_households_to_originals",
         "price_domestic_energy",
         "price_bus_journeys",

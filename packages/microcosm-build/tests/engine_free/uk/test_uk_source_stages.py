@@ -622,6 +622,7 @@ class TestE3ManifestLockstep:
             "zero_when_false",
             "redraw_zero_road_fuel",
             "level_road_fuel",
+            "recompose_from_remainder",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [

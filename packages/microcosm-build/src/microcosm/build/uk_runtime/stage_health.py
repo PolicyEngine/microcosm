@@ -77,6 +77,8 @@ def uk_stage_health_gate(
         return _bus_travel_facts_gate(stage, evidence, parameters)
     if check == "bus_pricing":
         return _bus_pricing_gate(stage, evidence, parameters)
+    if check == "recomposed_totals":
+        return _recomposed_totals_gate(stage, evidence, parameters)
     if check == "road_fuel_incidence":
         return _road_fuel_incidence_gate(stage, evidence, parameters)
     if check == "road_fuel_level":
@@ -2627,6 +2629,119 @@ def _bus_pricing_gate(
                 details["frame_implied_over_published_boardings"][str(label)] = (
                     entry.get("frame_implied_over_published_boardings")
                 )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _recomposed_totals_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every recomposed COICOP total contains its levelled components.
+
+    Checks on the ``recomposed_totals`` receipt (microcosm#1113): each total
+    the stage declares keeps its own draw less the declared drawn parts and
+    adds the declared levelled parts back; no remainder is negative and no
+    household's total is below its components; to
+    ``maximum_relative_deviation``, the weighted remainder equals the drawn
+    total less the drawn parts plus the floored mass, and the weighted total
+    the remainder plus the components; and the uncarried ONS spend is
+    recomputed from the vendored rows through the stage's own declaration.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        recompose_from_remainder_operation,
+        uncarried_spend,
+    )
+
+    check = "recomposed_totals"
+    receipt = _mapping(
+        evidence.get("recomposed_totals"), label=f"{stage}.recomposed_totals"
+    )
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    declared = recompose_from_remainder_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no recompose_from_remainder operation.")
+    parents = _mapping(
+        receipt.get("parents"), label=f"{stage}.recomposed_totals.parents"
+    )
+    declared_parents = declared["parents"]
+    failures: list[str] = []
+    if set(parents) != set(declared_parents):
+        failures.append(
+            f"{stage}: recomposed {sorted(parents)}, not the declared "
+            f"{sorted(declared_parents)}."
+        )
+    for parent in sorted(set(parents) & set(declared_parents)):
+        entry = _mapping(parents[parent], label=f"{stage}.recomposed_totals.{parent}")
+        spec = declared_parents[parent]
+        for key in ("drawn_subtracts", "components"):
+            observed = entry.get(key)
+            expected = spec[key]
+            if (list(observed) if isinstance(observed, list | tuple) else observed) != (
+                list(expected) if isinstance(expected, list | tuple) else expected
+            ):
+                failures.append(
+                    f"{stage}: {parent} {key} {observed!r} is not the declared "
+                    f"{expected!r}."
+                )
+        minimum = _finite_number(
+            entry.get("minimum_remainder"), label=f"{stage}.{parent}.minimum_remainder"
+        )
+        if minimum < 0:
+            failures.append(f"{stage}: {parent} has a negative remainder ({minimum}).")
+        below = entry.get("rows_below_components")
+        if isinstance(below, bool) or not isinstance(below, int) or below != 0:
+            failures.append(
+                f"{stage}: {below!r} households have {parent} below its components."
+            )
+
+        def number(key: str, parent: str = parent, entry=entry) -> float:
+            return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
+
+        remainder = number("weighted_remainder")
+        split = (
+            number("weighted_drawn_total")
+            - number("weighted_drawn_subtracts")
+            + number("weighted_floored_mass")
+        )
+        if abs(remainder - split) > tolerance * max(1.0, abs(remainder)):
+            failures.append(
+                f"{stage}: {parent} remainder {remainder} is not its draw less the "
+                f"drawn parts plus the floored mass ({split})."
+            )
+        total = number("weighted_total")
+        parts = remainder + number("weighted_components")
+        if abs(total - parts) > tolerance * max(1.0, abs(total)):
+            failures.append(
+                f"{stage}: {parent} weighted total {total} is not its remainder plus "
+                f"components {parts}."
+            )
+    uncarried = uncarried_spend(declared)
+    observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")
+    if (
+        observed.get("classes") != uncarried["classes"]
+        or observed.get("total") != uncarried["total"]
+    ):
+        failures.append(
+            f"{stage}: the uncarried spend {observed.get('total')!r} is not the vendored "
+            f"{uncarried['total']}."
+        )
+    details = {
+        "maximum_relative_deviation": tolerance,
+        "parents": sorted(parents),
+        "uncarried_total": uncarried["total"],
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

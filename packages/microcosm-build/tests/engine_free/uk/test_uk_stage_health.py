@@ -1675,6 +1675,101 @@ def test_road_fuel_incidence_gate_holds_every_flagged_household_positive() -> No
         run(None)
 
 
+def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
+    """The lcfs recomposed_totals receipt is checked at stage time (microcosm#1113)."""
+
+    import copy
+
+    import pandas as pd
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        recompose_from_remainder_operation,
+        recompose_parent_totals,
+    )
+
+    gate_id = "uk_stage_lcfs_consumption_recomposed_totals"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters["check"] == "recomposed_totals"
+    declared = recompose_from_remainder_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    drawn = pd.DataFrame(
+        {
+            "domestic_energy_consumption": [2000.0, 900.0],
+            "petrol_spending": [800.0, 0.0],
+            "diesel_spending": [0.0, 700.0],
+        }
+    )
+    draws = pd.DataFrame(
+        {
+            "housing_water_and_electricity_consumption": [7000.0, 600.0],
+            "electricity_consumption": [900.0, 600.0],
+            "gas_consumption": [700.0, 0.0],
+            "transport_consumption": [2000.0, 1000.0],
+            "petrol_spending": [1500.0, 0.0],
+            "diesel_spending": [0.0, 900.0],
+        }
+    )
+    _, receipt = recompose_parent_totals(
+        draws, drawn=drawn, parameters=declared, weights=np.array([2.0, 1.0])
+    )
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "recomposed_totals": ev},
+            stage="lcfs_consumption",
+            check="recomposed_totals",
+            parameters=parameters,
+        )
+
+    def failing(mutate, fragment: str) -> None:
+        tampered = copy.deepcopy(receipt)
+        mutate(tampered)
+        result = run(tampered)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
+    housing = "housing_water_and_electricity_consumption"
+    failing(
+        lambda r: r["parents"][housing].update(minimum_remainder=-1.0),
+        "negative remainder",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(rows_below_components=1),
+        "below its components",
+    )
+    failing(
+        lambda r: r["parents"]["transport_consumption"].update(weighted_total=1.0),
+        "is not its remainder plus components",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(weighted_floored_mass=0.0),
+        "is not its draw less the drawn parts",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(components=["electricity_consumption"]),
+        "components",
+    )
+    failing(
+        lambda r: r["parents"]["transport_consumption"].update(
+            drawn_subtracts=["petrol_spending"]
+        ),
+        "drawn_subtracts",
+    )
+    failing(lambda r: r["parents"].pop("transport_consumption"), "not the declared")
+    failing(lambda r: r["uncarried"].update(total=0.0), "uncarried spend")
+    with pytest.raises(ValueError, match="recomposed_totals must be an object"):
+        run(None)
+
+
 def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows() -> (
     None
 ):

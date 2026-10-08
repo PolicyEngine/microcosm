@@ -820,12 +820,31 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     # The receipts the stage writes are the ones its gates read.
     from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
+    # Totals contain their levelled components (#1113).
+    energy = out[["electricity_consumption", "gas_consumption"]].sum(axis=1)
+    assert (out["housing_water_and_electricity_consumption"] >= energy).all()
+    assert (out["transport_consumption"] >= road_fuel).all()
+    recomposed = evidence["recomposed_totals"]["parents"]
+    assert recomposed["transport_consumption"]["weighted_components"] == (
+        pytest.approx(level["level"])
+    )
+    assert recomposed["housing_water_and_electricity_consumption"][
+        "weighted_total"
+    ] == pytest.approx(
+        result.weights_for("household").values
+        @ out["housing_water_and_electricity_consumption"].to_numpy()
+    )
     gates = [
         gate
         for gate in load_country_spec("uk").gates.gates
-        if gate.id.startswith("uk_stage_lcfs_consumption_road_fuel")
+        if gate.id
+        in {
+            "uk_stage_lcfs_consumption_road_fuel_incidence",
+            "uk_stage_lcfs_consumption_road_fuel_level",
+            "uk_stage_lcfs_consumption_recomposed_totals",
+        }
     ]
-    assert len(gates) == 2
+    assert len(gates) == 3
     for gate in gates:
         checked = uk_stage_health_gate(
             evidence=evidence,
@@ -1294,6 +1313,172 @@ def test_redraw_is_a_no_op_when_undeclared() -> None:
 
     assert result.draws is draws and result.receipt is None
     assert result.fit_weight_records == ()
+
+
+def _recompose_declaration() -> dict:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        recompose_from_remainder_operation,
+    )
+
+    declared = recompose_from_remainder_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    assert declared is not None
+    return declared
+
+
+def test_recompose_writes_each_total_around_its_levelled_parts() -> None:
+    """Totals keep the chain's own split and hold the levelled parts (#1113)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import recompose_parent_totals
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    # The chain's draws of the parts, before any step re-levelled them.
+    drawn = pd.DataFrame(
+        {
+            "domestic_energy_consumption": [2000.0, 900.0, 0.0],
+            "petrol_spending": [800.0, 0.0, 0.0],
+            "diesel_spending": [0.0, 700.0, 0.0],
+        }
+    )
+    # The levelled parts, beside the totals as the chain drew them.
+    draws = pd.DataFrame(
+        {
+            "housing_water_and_electricity_consumption": [7000.0, 600.0, 800.0],
+            "electricity_consumption": [900.0, 600.0, 0.0],
+            "gas_consumption": [700.0, 0.0, 0.0],
+            "transport_consumption": [2000.0, 1000.0, 0.0],
+            "petrol_spending": [1500.0, 0.0, 0.0],
+            "diesel_spending": [0.0, 900.0, 0.0],
+            "food_and_non_alcoholic_beverages_consumption": [1.0, 2.0, 3.0],
+        }
+    )
+    weights = np.array([2.0, 1.0, 3.0])
+
+    out, receipt = recompose_parent_totals(
+        draws, drawn=drawn, parameters=_recompose_declaration(), weights=weights
+    )
+
+    # Housing: 7000 - 2000 + 1600; 600 - 900 floors at 0, + 600; 800 + 0.
+    assert out["housing_water_and_electricity_consumption"].tolist() == [
+        6600.0,
+        600.0,
+        800.0,
+    ]
+    # Transport: 2000 - 800 + 1500; 1000 - 700 + 900; 0.
+    assert out["transport_consumption"].tolist() == [2700.0, 1200.0, 0.0]
+    assert out["food_and_non_alcoholic_beverages_consumption"].tolist() == [
+        1.0,
+        2.0,
+        3.0,
+    ]
+    housing = receipt["parents"]["housing_water_and_electricity_consumption"]
+    assert housing["drawn_subtracts"] == ["domestic_energy_consumption"]
+    assert housing["weighted_drawn_total"] == 2.0 * 7000.0 + 600.0 + 3.0 * 800.0
+    assert housing["rows_floored"] == 1
+    assert housing["weighted_floored_mass"] == 300.0
+    assert housing["weighted_remainder"] == pytest.approx(
+        housing["weighted_drawn_total"]
+        - housing["weighted_drawn_subtracts"]
+        + housing["weighted_floored_mass"]
+    )
+    assert housing["rows_below_components"] == 0
+    transport = receipt["parents"]["transport_consumption"]
+    assert transport["weighted_total"] == 2.0 * 2700.0 + 1200.0
+    assert transport["weighted_components"] == 2.0 * 1500.0 + 900.0
+    uncarried = receipt["uncarried"]
+    expected = [
+        float(
+            vendored_rows(
+                "ons_household_expenditure_facts.json",
+                concept=concept,
+                period_type="calendar_year",
+                period_value=2024,
+                geography_id="K02000001",
+                dimensions={"coicop": coicop, "frequency": "annual"},
+            )[0]["value"]
+        )
+        for coicop, concept in (
+            ("04.5.3", "ons.household_expenditure.liquid_fuels"),
+            ("04.5.4", "ons.household_expenditure.solid_fuels"),
+        )
+    ]
+    assert [entry["value"] for entry in uncarried["classes"]] == expected
+    assert uncarried["total"] == pytest.approx(sum(expected))
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        (
+            lambda d: d["parents"]["transport_consumption"].update(
+                drawn_subtracts=["petrol_spending"]
+            ),
+            "not its draw less",
+        ),
+        (
+            lambda d: d["parents"]["housing_water_and_electricity_consumption"].update(
+                components=["electricity_consumption"]
+            ),
+            "not its draw less",
+        ),
+        (lambda d: d["parents"].pop("transport_consumption"), "must declare"),
+        (
+            lambda d: d["uncarried"].update(resource="family_resources.json"),
+            "not a vendored",
+        ),
+        (
+            lambda d: d["uncarried"]["classes"][0].update(concept="ons.other"),
+            "expected one",
+        ),
+    ],
+)
+def test_recompose_refuses_a_declaration_it_does_not_apply(change, match) -> None:
+    import copy
+
+    from microcosm.build.uk_runtime.lcfs_consumption import recompose_parent_totals
+
+    declared = copy.deepcopy(_recompose_declaration())
+    change(declared)
+    columns = (
+        "housing_water_and_electricity_consumption",
+        "domestic_energy_consumption",
+        "electricity_consumption",
+        "gas_consumption",
+        "transport_consumption",
+        "petrol_spending",
+        "diesel_spending",
+    )
+    draws = pd.DataFrame({column: [1.0] for column in columns})
+    with pytest.raises(ValueError, match=match):
+        recompose_parent_totals(draws, drawn=draws, parameters=declared, weights=[1.0])
+
+
+def test_recompose_is_a_no_op_when_undeclared() -> None:
+    import dataclasses
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        lcfs_recompose_from_remainder,
+    )
+
+    committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    stage = dataclasses.replace(
+        committed,
+        operations=tuple(
+            operation
+            for operation in committed.operations
+            if operation.kind != "recompose_from_remainder"
+        ),
+    )
+    draws = pd.DataFrame({"transport_consumption": [1.0]})
+
+    out, receipt = lcfs_recompose_from_remainder(
+        stage, draws, drawn=draws, weights=[1.0]
+    )
+
+    assert out is draws and receipt is None
 
 
 def test_recipient_counts_adults_and_children_by_age_not_engine_flags() -> None:

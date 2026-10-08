@@ -264,6 +264,33 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "electricity_consumption",
     "gas_consumption",
 )
+RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
+#: The COICOP totals that contain columns the stage levels (microcosm#1113):
+#: each maps to the chain draws subtracted from its own draw to leave its
+#: remainder, and the levelled columns added back. The chain draws each part
+#: after its total, so the split is the chain's own. Housing (p604) nets the
+#: drawn electricity and gas (the chain's domestic-energy target is the diary's
+#: electricity plus gas), so the liquid and solid fuels no column carries stay
+#: in its remainder; transport (p607) nets the drawn petrol and diesel (c72211,
+#: c72212) and keeps other motor fuels.
+UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "housing_water_and_electricity_consumption": (
+        ("domestic_energy_consumption",),
+        ("electricity_consumption", "gas_consumption"),
+    ),
+    "transport_consumption": (
+        ("petrol_spending", "diesel_spending"),
+        ("petrol_spending", "diesel_spending"),
+    ),
+}
+#: The chain draws a recomposition subtracts, kept before any step re-levels them.
+UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
+    dict.fromkeys(
+        column
+        for subtracted, _ in UK_LCFS_RECOMPOSED_PARENTS.values()
+        for column in subtracted
+    )
+)
 UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     "has_fuel_consumption",
@@ -288,6 +315,7 @@ class UKLCFSConsumptionResult:
     donor_floor: Mapping[str, Any] | None = None
     road_fuel_incidence: Mapping[str, Any] | None = None
     road_fuel_level: Mapping[str, Any] | None = None
+    recomposed_totals: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -312,6 +340,8 @@ class UKLCFSConsumptionResult:
             evidence["road_fuel_incidence"] = dict(self.road_fuel_incidence)
         if self.road_fuel_level is not None:
             evidence["road_fuel_level"] = dict(self.road_fuel_level)
+        if self.recomposed_totals is not None:
+            evidence["recomposed_totals"] = dict(self.recomposed_totals)
         return evidence
 
 
@@ -398,6 +428,9 @@ class UKLCFSConsumptionStageTransform:
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
         )
         household_draws = clip_result.clipped
+        # The chain's own draws of the parts later steps re-level, for the
+        # recomposed totals (microcosm#1113).
+        drawn_parts = household_draws[list(UK_LCFS_RECOMPOSED_DRAWN_COLUMNS)].copy()
         energy_rake_receipt = None
         if energy is not None:
             household_draws, energy_rake_receipt = rake_recipient_energy(
@@ -433,6 +466,9 @@ class UKLCFSConsumptionStageTransform:
         household_draws = incidence.draws
         household_draws, road_fuel_level_receipt = lcfs_road_fuel_level(
             self.stage, household_draws, weights=weights, lcfs_household=lcfs_household
+        )
+        household_draws, recomposed_totals_receipt = lcfs_recompose_from_remainder(
+            self.stage, household_draws, drawn=drawn_parts, weights=weights
         )
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
@@ -474,6 +510,7 @@ class UKLCFSConsumptionStageTransform:
             donor_floor=donor_floor_receipt,
             road_fuel_incidence=incidence.receipt,
             road_fuel_level=road_fuel_level_receipt,
+            recomposed_totals=recomposed_totals_receipt,
         )
         return result
 
@@ -961,6 +998,160 @@ def lcfs_road_fuel_level(
         parameters, other_fuels_share=lcfs_other_road_fuel_share(lcfs_household)
     )
     return level_road_fuel(household_draws, level=level, weights=weights)
+
+
+def recompose_from_remainder_operation(
+    stage: SourceStageSpec,
+) -> Mapping[str, Any] | None:
+    """The stage's declared ``recompose_from_remainder`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == RECOMPOSE_FROM_REMAINDER_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
+    """Refuse a declaration that differs from the totals the stage recomposes."""
+
+    parents = parameters.get("parents")
+    if not isinstance(parents, Mapping) or set(parents) != set(
+        UK_LCFS_RECOMPOSED_PARENTS
+    ):
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare "
+            f"{sorted(UK_LCFS_RECOMPOSED_PARENTS)}."
+        )
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        declared = parents[parent]
+        if (
+            not isinstance(declared, Mapping)
+            or tuple(declared.get("drawn_subtracts", ())) != subtracted
+            or tuple(declared.get("components", ())) != components
+        ):
+            raise ValueError(
+                f"{RECOMPOSE_FROM_REMAINDER_KIND} declares {parent!r} as "
+                f"{declared!r}, not its draw less {subtracted} plus {components}."
+            )
+
+
+def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """The published spend inside a recomposed total that no column carries.
+
+    ONS Consumer Trends classes read from the vendored rows the declaration
+    names: the liquid and solid fuels of COICOP 04.5, which have no column of
+    their own and stay inside the housing remainder at the diary's level.
+    """
+
+    spec = parameters.get("uncarried")
+    if not isinstance(spec, Mapping):
+        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare uncarried.")
+    resource = str(spec.get("resource") or "")
+    if resource not in UK_LCFS_VENDORED_RESOURCES:
+        raise ValueError(f"{resource!r} is not a vendored lcfs_consumption resource.")
+    period_value = int(spec["period_value"])
+    classes = []
+    for entry in spec.get("classes", ()):
+        coicop, concept = str(entry["coicop"]), str(entry["concept"])
+        rows = vendored_rows(
+            resource,
+            concept=concept,
+            period_type="calendar_year",
+            period_value=period_value,
+            geography_id="K02000001",
+            dimensions={"coicop": coicop, "frequency": "annual"},
+        )
+        if len(rows) != 1:
+            raise ValueError(
+                f"{resource}: expected one {coicop} row for {period_value}, "
+                f"found {len(rows)}."
+            )
+        classes.append(
+            {
+                "coicop": coicop,
+                "concept": concept,
+                "source_record_id": str(rows[0].get("source_record_id", "")),
+                "value": float(rows[0]["value"]),
+            }
+        )
+    if not classes:
+        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} declares no classes.")
+    return {
+        "resource": resource,
+        "period_value": period_value,
+        "classes": classes,
+        "total": float(sum(entry["value"] for entry in classes)),
+    }
+
+
+def recompose_parent_totals(
+    household_draws: pd.DataFrame,
+    *,
+    drawn: pd.DataFrame,
+    parameters: Mapping[str, Any],
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Write each recomposed total around the levelled parts the stage set.
+
+    A total keeps its own chain draw less the chain's draws of the parts the
+    stage re-levels (``drawn``, kept before any step touched them; floored at
+    zero where the parts outgrow the total), and adds the levelled parts back,
+    so it always contains the electricity, gas, petrol and diesel at their
+    published scale (microcosm#1113). The chain draws each part after, and
+    conditional on, its total, so the remainder is the chain's own split; a
+    remainder drawn as a chain target of its own over-drew the vehicle-purchase
+    tail of transport (10 to 13 percent above the donor in-sample).
+    """
+
+    check_recomposed_parents(parameters)
+    weight = np.asarray(weights, dtype=float)
+    result = household_draws.copy()
+    parents: dict[str, Any] = {}
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        drawn_total = result[parent].to_numpy(dtype=float)
+        drawn_parts = sum(drawn[column].to_numpy(dtype=float) for column in subtracted)
+        rest = np.maximum(drawn_total - drawn_parts, 0.0)
+        parts = sum(result[column].to_numpy(dtype=float) for column in components)
+        total = rest + parts
+        result[parent] = total
+        parents[parent] = {
+            "drawn_subtracts": list(subtracted),
+            "components": list(components),
+            "weighted_drawn_total": float(np.dot(weight, drawn_total)),
+            "weighted_drawn_subtracts": float(np.dot(weight, drawn_parts)),
+            "rows_floored": int((drawn_parts > drawn_total).sum()),
+            "weighted_floored_mass": float(
+                np.dot(weight, np.maximum(drawn_parts - drawn_total, 0.0))
+            ),
+            "weighted_remainder": float(np.dot(weight, rest)),
+            "weighted_components": float(np.dot(weight, parts)),
+            "weighted_total": float(np.dot(weight, total)),
+            "minimum_remainder": float(rest.min()) if rest.size else 0.0,
+            "rows_below_components": int((total < parts).sum()),
+        }
+    receipt = {
+        "operation": RECOMPOSE_FROM_REMAINDER_KIND,
+        "parents": parents,
+        "uncarried": uncarried_spend(parameters),
+    }
+    return result, receipt
+
+
+def lcfs_recompose_from_remainder(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    drawn: pd.DataFrame,
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
+
+    parameters = recompose_from_remainder_operation(stage)
+    if parameters is None:
+        return household_draws, None
+    return recompose_parent_totals(
+        household_draws, drawn=drawn, parameters=parameters, weights=weights
+    )
 
 
 @dataclass(frozen=True)
@@ -1705,11 +1896,16 @@ def support_clip_to_donor(
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """Donor support per clipped column; raked columns carry no bounds."""
+    """Donor support per clipped column.
+
+    Levelled columns carry no bounds, nor do the totals written back around
+    their levelled components, whose coherence the stage's recomposed-totals
+    check holds instead (microcosm#1113).
+    """
 
     ranges: dict[str, tuple[float, float]] = {}
     for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
-        if column in UK_LCFS_RAKED_COLUMNS:
+        if column in UK_LCFS_RAKED_COLUMNS or column in UK_LCFS_RECOMPOSED_PARENTS:
             continue
         values = pd.to_numeric(donor[column], errors="coerce")
         finite = values[np.isfinite(values)]

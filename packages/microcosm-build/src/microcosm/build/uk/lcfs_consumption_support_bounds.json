@@ -38,10 +38,6 @@
       0.0,
       200000
     ],
-    "housing_water_and_electricity_consumption": [
-      -20000,
-      300000
-    ],
     "miscellaneous_consumption": [
       0.0,
       70000
@@ -53,10 +49,6 @@
     "restaurants_and_hotels_consumption": [
       0.0,
       70000
-    ],
-    "transport_consumption": [
-      0.0,
-      200000
     ]
   },
   "chronicle": [
