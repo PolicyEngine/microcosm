@@ -9,8 +9,10 @@ each refusal branch with Hypothesis, so a vacuous pass on today's data cannot
 hide a broken check:
 
 - no resource cites a line of a file in this repository, pinned or not
-  (``in_repository_line_citations``): this repository's sources are cited by
-  symbol;
+  (``in_repository_line_citations``), where a cited path is this
+  repository's when it resolves here or is the tail of two or more
+  components of a file here: this repository's sources are cited by symbol
+  (a bare file name cannot be resolved and falls to the next rule);
 - no resource cites a line of any other source unless the citation's own
   string names a commit, or the resource pins that file in a
   ``path``/``commit`` mapping (``unpinned_line_citations``);
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import json
 
 import pandas as pd
 import pytest
@@ -207,6 +210,11 @@ _LINE_LOCATORS = (
     "{file} (lines {a}-{b})",
     "Lines {a}-{b} of {file}",
     "line {a} in {file}",
+    "`{file}` lines {a}-{b}",
+    "{file}: lines {a}-{b}",
+    "{file}, L{a}",
+    "{file} (L{a})",
+    "line {a} of `{file}`",
 )
 #: Symbol-citation spellings, which carry no line number.
 _SYMBOL_LOCATORS = (
@@ -236,6 +244,8 @@ _BRANCH_NAMES = ("main", "HEAD", "launch/ga-path-execution-gate", "ba6e7d", "")
 #: Files in this checkout, in each path form a citation can use.
 _IN_REPOSITORY_FILES = (
     "packages/microcosm-build/src/microcosm/build/us_runtime/asec_pool.py",
+    "us_runtime/asec_pool.py",
+    "graph/executor.py",
     "microcosm-frame/src/microcosm/frame/concepts.py",
     "microcosm/graph/executor.py",
     "tools/build_us_puf_support_base.py",
@@ -312,6 +322,7 @@ def test_a_line_citation_of_a_file_pinned_at_a_commit_passes(
     as_key: bool,
     commit: str,
 ) -> None:
+    assume(_is_commit_like(commit))
     citation = locator.format(file=f"{directory}{stem}.{suffix}", a=a, b=b)
     document = {
         "source": {
@@ -465,6 +476,31 @@ def test_a_pin_of_another_file_or_at_a_branch_does_not_cover_a_citation(
 @given(
     stem=_STEM,
     suffix=_SUFFIX,
+    locator=st.sampled_from(_LINE_LOCATORS),
+    not_a_commit=st.one_of(
+        st.text(alphabet="0123456789", min_size=7, max_size=40),
+        st.text(alphabet="abcdef", min_size=7, max_size=40),
+        st.text(alphabet="0123456789ABCDEF", min_size=7, max_size=40).filter(
+            lambda value: any(c.isalpha() for c in value)
+        ),
+    ),
+    a=st.integers(1, 99_999),
+)
+def test_a_path_pin_whose_commit_is_no_sha_pins_nothing(
+    stem: str, suffix: str, locator: str, not_a_commit: str, a: int
+) -> None:
+    pin = {"path": f"{stem}.{suffix}", "commit": not_a_commit}
+    citation = locator.format(file=f"{stem}.{suffix}", a=a, b=a)
+    assert commit_pinned_sources({"source": pin}) == set()
+    assert LineCitation(f"{stem}.{suffix}", citation) in unpinned_line_citations(
+        {"source": pin, "note": citation}
+    )
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    stem=_STEM,
+    suffix=_SUFFIX,
     directory=_FOREIGN_DIRECTORY,
     locator=st.sampled_from(_SYMBOL_LOCATORS),
     symbol=_STEM,
@@ -521,6 +557,8 @@ def test_in_repository_paths_resolve_from_the_root_packages_or_a_shard() -> None
         assert resolves_in_repository(file), file
     for file in (
         "concepts.py",
+        "datasets/cps/cps.py",
+        "src/lib.rs",
         "archived_data/datasets/cps/cps.py",
         "targets/sources/obr.py",
         "../microcosm/tools/build_us_puf_support_base.py",
@@ -614,6 +652,18 @@ def test_the_restore_runs_before_the_relationship_fallback() -> None:
     source = inspect.getsource(asec_pool._prepare_year_input)
     restore = source.index("restore_asec_census_person_columns(")
     assert restore < source.index("_with_relationship_recode(person)")
+    assert "Build J predates #720" in contract
+    summary = json.loads(
+        (REPOSITORY_ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()
+    )
+    assert {
+        source["year"]: source["relationship_recode_source"]
+        for source in summary["base_source"]["metadata"]["sources"]
+    } == {
+        2022: "derived:line_spouse_parent",
+        2023: "derived:line_spouse_parent",
+        2024: "source:A_EXPRRP",
+    }
 
 
 @settings(max_examples=100, deadline=None)

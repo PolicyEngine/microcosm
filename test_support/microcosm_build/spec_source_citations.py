@@ -12,20 +12,28 @@ is pinned at a commit, in one of two ways:
   lowercase hex digits with at least one digit and one letter, so a decimal
   amount ("at 2500000") or a word ("at defaced") pins nothing;
 - the resource holds a mapping, at any depth, whose ``path`` names the file
-  and whose ``commit`` is 7-40 hex digits (``source``-style pins, matched by
-  file name).
+  and whose ``commit`` is a sha of the same form (``source``-style pins,
+  matched by file name across the whole resource).
 
-An inline commit pins every citation in its string. A file that resolves in
-this checkout is in-repository, and a line citation of it is refused even
-when pinned; a bare file name cannot be resolved, so it must be pinned.
+An inline commit pins every citation in its string. A cited path is
+in-repository when it resolves in this checkout, or when it has at least two
+components and is the tail of a file here (``us_runtime/asec_pool.py``); a
+line citation of it is refused even when pinned. A bare file name cannot be
+told apart from another repository's, so it must be pinned.
+
+The recognised spellings are the ones ``_LINE_CITATIONS`` documents. A symbol
+between the file and its lines (``x.py some_function, lines 12-19``) is not
+recognised.
 """
 
 from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
 from collections.abc import Iterator, Mapping
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
@@ -47,25 +55,35 @@ _SOURCE = (
 )
 #: A line locator into a source, in each spelling the packages have used or
 #: GitHub produces: ``x.py:12``, ``x.py:12-19``, ``x.py:12,19``, ``x.py#L12``,
-#: ``x.py L12``, ``x.py line 12``, ``x.py, lines 12-19``,
-#: ``x.py (lines 12-19)``, and the reverse ``lines 12-19 of x.py`` and
-#: ``line 12 in x.py``.
+#: ``x.py L12``, ``x.py, L12``, ``x.py (L12)``, ``x.py line 12``,
+#: ``x.py, lines 12-19``, ``x.py: lines 12-19``, ``x.py (lines 12-19)``, and
+#: the reverse ``lines 12-19 of x.py`` and ``line 12 in x.py``. The file name
+#: may be quoted or backticked (```x.py` lines 12-19``).
 _LINE_CITATIONS = (
-    re.compile(_SOURCE + r"(?::|#L|\s+L|,?\s*\(?\s*[Ll]ines?\s+)\d"),
     re.compile(
-        r"\b[Ll]ines?\s+\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+)*\s+(?:of|in)\s+" + _SOURCE
+        _SOURCE + r"[`'\"]?(?::|#L|,?\s*\(?\s*L|,?\s*:?\s*\(?\s*[Ll]ines?\s+)(?=\d)"
+    ),
+    re.compile(
+        r"\b[Ll]ines?\s+\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+)*\s+(?:of|in)\s+[`'\"]?"
+        + _SOURCE
     ),
 )
-#: A commit pin's value in a ``path``/``commit`` mapping. A branch name such
-#: as ``main`` pins nothing.
-_COMMIT_PIN = re.compile(r"[0-9a-fA-F]{7,40}")
-#: A commit named inline. The hex needs a digit and a letter, and must not
-#: run on into a file name (``at a1b2c3d.py:12`` names a file, not a commit).
+#: A commit sha: 7-40 lowercase hex with at least one digit and one letter,
+#: so a decimal amount ("2500000"), a word ("defaced") or a branch name such
+#: as ``main`` is not one.
+_SHA = r"(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}"
+#: A commit pin's value in a ``path``/``commit`` mapping.
+_COMMIT_PIN = re.compile(_SHA)
+#: A commit named inline. The sha must not run on into a file name
+#: (``at a1b2c3d.py:12`` names a file, not a commit).
 INLINE_COMMIT = re.compile(
     r"(?:(?i:\bcommit\s+|\bat\s+)|@|/(?:blob|tree)/)"
-    r"(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}"
-    r"(?![0-9A-Za-z_]|\.[0-9A-Za-z_])"
+    + _SHA
+    + r"(?![0-9A-Za-z_]|\.[0-9A-Za-z_])"
 )
+#: Top-level directories whose files are this repository's sources.
+_SOURCE_ROOTS = ("packages", "tools", "experiments", "test_support", "docs")
+_SKIPPED_DIRECTORIES = {"__pycache__", ".venv", "node_modules", ".git"}
 #: A dotted Microcosm symbol named in prose, such as
 #: ``microcosm.graph.executor._structural_columns``.
 DOTTED_MICROCOSM_SYMBOL = re.compile(
@@ -163,22 +181,35 @@ def unpinned_line_citations(document: object) -> list[LineCitation]:
     ]
 
 
+@cache
+def _repository_path_tails(root: Path) -> frozenset[str]:
+    """Every tail of two or more components of a source file in ``root``."""
+
+    tails: set[str] = set()
+    for top in _SOURCE_ROOTS:
+        for directory, subdirectories, files in os.walk(root / top):
+            subdirectories[:] = [
+                name for name in subdirectories if name not in _SKIPPED_DIRECTORIES
+            ]
+            parts = PurePosixPath(Path(directory).relative_to(root).as_posix()).parts
+            for name in files:
+                path = (*parts, name)
+                tails.update("/".join(path[cut:]) for cut in range(len(path) - 1))
+    return frozenset(tails)
+
+
 def resolves_in_repository(file: str, root: Path = REPOSITORY_ROOT) -> bool:
     """Whether a cited path names a file in this checkout.
 
-    A path resolves from the repository root (``tools/x.py``,
-    ``packages/microcosm-build/src/...``), from ``packages/``, or, for a
-    ``microcosm/...`` module path, from any shard's ``src/``.
+    A path of two or more components resolves when it is the tail of a source
+    file here: ``tools/x.py``, ``packages/microcosm-build/src/...``,
+    ``microcosm/graph/executor.py`` and ``us_runtime/asec_pool.py`` all do.
     """
 
     relative = PurePosixPath(file)
     if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 2:
         return False
-    if (root / relative).is_file() or (root / "packages" / relative).is_file():
-        return True
-    return relative.parts[0] == "microcosm" and any(
-        (shard / "src" / relative).is_file() for shard in (root / "packages").iterdir()
-    )
+    return relative.as_posix() in _repository_path_tails(root)
 
 
 def in_repository_line_citations(
