@@ -52,6 +52,12 @@ from microcosm.build.us_runtime.puma_ladder import (
     us_puma_ladder_assignment_summary,
 )
 from microcosm.build.us_runtime.support_provenance import BASE_ASEC_SUPPORT_CHANNEL
+from microcosm.build.us_runtime.wic_claim import (
+    US_WIC_CLAIM_OUTPUT_COLUMNS,
+    WIC_CLAIM_FNS_SOURCE_URL,
+    require_complete_us_wic_claim_input,
+    with_acs_wic_claim_input,
+)
 from microcosm.frame import Frame
 
 __all__ = ["AcsMultispineResult", "build_optional_acs_multispine"]
@@ -115,6 +121,9 @@ def build_optional_acs_multispine(
             provenance={"enabled": False},
         )
 
+    # Donors must already carry their qualified decisions. Never regenerate
+    # them with ACS categories or silently use the country model's True default.
+    require_complete_us_wic_claim_input(base.table("person"))
     raw_acs, loader_metadata = build_acs_pums_unit_frame(
         source,
         chunksize=chunksize,
@@ -206,6 +215,19 @@ def build_optional_acs_multispine(
     transferred_frame = transferred.frame
     del transferred
 
+    # Pregnancy/parent inputs are now complete. Generate decisions on ACS only,
+    # while its stable Census identities are intact, before donor assembly.
+    transferred_frame = with_acs_wic_claim_input(
+        transferred_frame, seed=seed, time_period=source.vintage
+    )
+    wic_provenance: dict[str, object] = {
+        "seed": seed,
+        "source_year": source.vintage,
+        "person_rows": len(transferred_frame.table("person")),
+        "output_columns": list(US_WIC_CLAIM_OUTPUT_COLUMNS),
+        "category_rates_source": WIC_CLAIM_FNS_SOURCE_URL,
+    }
+
     pool_options: dict[str, Any] = {"acs_share": acs_share}
     if puma_ladder is not None:
         pool_options.update(
@@ -219,12 +241,14 @@ def build_optional_acs_multispine(
         )
     pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
+    require_complete_us_wic_claim_input(pooled.table("person"))
 
     provenance = {
         "enabled": True,
         "acs_share": _json_ready(acs_share),
         "loader": loader_provenance,
         "native_inputs": native_provenance,
+        "wic_claim": wic_provenance,
         "imputed_inputs": imputed_provenance,
         "deferred_inputs": deferred_provenance,
         "adult_care_recipient_gate": _json_ready(adult_care_gate)

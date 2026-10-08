@@ -63,6 +63,8 @@ __all__ = [
     "WIC_CLAIM_ARCHIVED_RANDOMNESS_URL",
     "WIC_CLAIM_FNS_SOURCE_URL",
     "derive_us_wic_claim_from_manifest",
+    "require_complete_us_wic_claim_input",
+    "with_acs_wic_claim_input",
     "us_wic_claim_signal_gate",
     "us_wic_claim_stage_spec",
     "us_wic_claim_summary",
@@ -88,9 +90,7 @@ WIC_CLAIM_FNS_SOURCE_URL = (
 )
 
 US_WIC_CLAIM_STAGE_NAME = "wic_claim_input"
-US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "takes_up_wic_if_eligible",
-)
+US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = ("takes_up_wic_if_eligible",)
 US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS = US_WIC_CLAIM_OUTPUT_COLUMNS
 
 # These are persisted PolicyEngine-facing columns already carried or derived
@@ -525,6 +525,37 @@ def with_us_wic_claim_input(
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def require_complete_us_wic_claim_input(person: pd.DataFrame) -> None:
+    """Reject absent, nullable, or non-boolean participation, without filling."""
+    if _OUTPUT not in person:
+        raise ValueError(f"WIC participation requires person column {_OUTPUT!r}.")
+    if person[_OUTPUT].isna().any():
+        raise ValueError(f"WIC participation {_OUTPUT!r} contains missing values.")
+    if not pd.api.types.is_bool_dtype(person[_OUTPUT].dtype):
+        raise ValueError(f"WIC participation {_OUTPUT!r} must have boolean dtype.")
+
+
+def with_acs_wic_claim_input(frame: Frame, *, seed: int, time_period: int) -> Frame:
+    """Generate ACS decisions after demographic completion, before assembly.
+
+    Require the actual source identity instead of accepting the generic
+    generator's person-id fallback. No donor records may be passed here.
+    Categories, rates, and hash draws remain owned by the existing generator.
+    """
+    person = frame.table("person")
+    missing = [column for column in _SOURCE_IDENTITY_COLUMNS if column not in person]
+    if missing:
+        raise ValueError(
+            f"ACS WIC generation requires source identity columns: {missing}."
+        )
+    identity = person.loc[:, list(_SOURCE_IDENTITY_COLUMNS)]
+    if identity.isna().any(axis=None):
+        raise ValueError("ACS WIC generation requires complete source identity.")
+    result = with_us_wic_claim_input(frame, seed=seed, time_period=time_period)
+    require_complete_us_wic_claim_input(result.table("person"))
+    return result
 
 
 def _person_weights(frame: Frame) -> np.ndarray:
