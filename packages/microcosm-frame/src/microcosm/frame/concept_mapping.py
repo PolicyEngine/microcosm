@@ -1053,8 +1053,9 @@ class GroupMembership:
     (:func:`microcosm.frame.unit_construction.benefit_unit_membership`).
     :meth:`ConceptMapping.encode_groups` checks them against the concept
     frame before using them: membership aligned to the person index, integer
-    ids, members in the household their unit declares, one head per unit and
-    at most one partner, who is the head's partner by the pointers.
+    ids that int64 can hold, members in the household their unit declares,
+    one head per unit and at most one partner, who is the head's partner by
+    the pointers.
 
     Attributes:
         entity: The frame group entity the units are (``family``). The unit
@@ -1792,21 +1793,26 @@ class ConceptMapping:
             memberships: Engine group entity (``Family``) -> its units.
             modules: The RuleSpec modules to encode for; ``None`` encodes all.
             knobs: Declared encoding alternatives; ``None`` is the default.
-            state_bindings: Group inputs fed from model state.
+            state_bindings: Group inputs fed from model state, as any
+                iterable; a one-shot iterator is read once.
             shares: Share and fraction parameters, as for :meth:`encode`.
             take_up_rates: Take-up rates, as for :meth:`encode`.
 
         Raises:
             ValueError: If a membership does not match the frame (a person
                 outside every unit, a unit without exactly one head, members
-                in two households), a state binding feeds an input a concept
-                binding or another state binding also feeds, a knob names an
-                input this call does not produce or cannot change, or a value
-                a transform needs is missing.
+                in two households, an unsigned id above ``2**63 - 1``, which
+                its int64 comparison cannot hold), a state binding feeds an
+                input a concept binding or another state binding also feeds,
+                a knob names an input this call does not produce or cannot
+                change, or a value a transform needs is missing.
         """
 
         knobs = knobs or GroupKnobs()
         selected = None if modules is None else frozenset(modules)
+        # Read twice (to encode, then to find the columns knobs may replace),
+        # so a one-shot iterator is materialized once, here.
+        state_bindings = tuple(state_bindings)
         shares = dict(shares or {})
         rates = dict(take_up_rates or {})
         person = tables["person"]
@@ -2175,6 +2181,19 @@ def _state_column(column: str) -> tuple[str, str]:
     return entity, name
 
 
+#: The largest id a unit table carries: units hold and compare ids as int64.
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+
+def _exceeds_int64(values: pd.Series) -> bool:
+    """Whether an unsigned integer column holds an id int64 cannot hold."""
+
+    if values.dtype.kind != "u":
+        return False
+    present = values.dropna()
+    return len(present) > 0 and int(present.max()) > _INT64_MAX
+
+
 class _Units:
     """A membership checked against a concept frame, as row positions."""
 
@@ -2210,6 +2229,29 @@ class _Units:
                 raise ValueError(
                     f"{membership.entity} {name} must be integers, not {values.dtype}."
                 )
+        # The ids are compared as int64 below. An unsigned id int64 cannot
+        # hold would wrap onto another id (2**64 - 1 onto -1), so a
+        # membership naming no unit could pass; it is refused instead.
+        wide = [
+            name
+            for name, values in (
+                ("person unit ids", membership.person_unit),
+                *((column, units[column]) for column in columns),
+                (f"person.{_PERSON_ID}", person[_PERSON_ID]),
+                (f"person.{_PERSON_HOUSEHOLD_ID}", person[_PERSON_HOUSEHOLD_ID]),
+                *(
+                    (f"person.{column}", person[column])
+                    for column in ("partner_person_id",)
+                    if column in person.columns
+                ),
+            )
+            if _exceeds_int64(values)
+        ]
+        if wide:
+            raise ValueError(
+                f"{membership.entity} ids are compared as int64, and {wide} hold "
+                f"unsigned ids above {_INT64_MAX}, which int64 cannot represent."
+            )
         ids = units[membership.id_column].to_numpy(dtype=np.int64)
         if len(set(ids.tolist())) != len(ids):
             raise ValueError(f"{membership.entity} ids must be unique.")

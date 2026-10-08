@@ -56,6 +56,12 @@ the household the unit nests in (``<entity>_household_id``); consumers read
 those columns rather than rely on the id's value. Units carry no weight of
 their own: a unit takes its household's weight through its members
 (:meth:`~microcosm.frame.bundle.Frame.resolve_weights`).
+
+The unit table and the membership hold ids as ``int64``. The concept-frame
+contract accepts ids of any integer dtype, unsigned ones included; every id
+and pointer this module reads is carried over exactly, and an unsigned id
+above ``2**63 - 1``, which ``int64`` cannot hold, is refused before any
+conversion rather than wrapped to a negative id.
 """
 
 from __future__ import annotations
@@ -69,7 +75,12 @@ from enum import StrEnum
 import numpy as np
 import pandas as pd
 
-from microcosm.frame.concept_mapping import GroupMembership, UnitRole
+from microcosm.frame.concept_mapping import (
+    _INT64_MAX,
+    GroupMembership,
+    UnitRole,
+    _exceeds_int64,
+)
 from microcosm.frame.concepts import (
     HOUSEHOLD_ID_COLUMN,
     PERSON_HOUSEHOLD_ID_COLUMN,
@@ -101,6 +112,11 @@ _PERSON_HOUSEHOLD_ID = PERSON_HOUSEHOLD_ID_COLUMN
 _HOUSEHOLD_ID = HOUSEHOLD_ID_COLUMN
 _ENTITY_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _POINTERS = ("partner_person_id", "parent_1_person_id", "parent_2_person_id")
+#: Every id and pointer column unit construction reads, by concept table.
+_ID_COLUMNS = {
+    "person": (_PERSON_ID, _PERSON_HOUSEHOLD_ID, *_POINTERS),
+    "household": (_HOUSEHOLD_ID, "reference_person_id"),
+}
 
 
 class UnparentedChildPlacement(StrEnum):
@@ -359,8 +375,9 @@ def build_benefit_units(
         ValueError: If a needed column is missing, the frame breaks a
             concept-frame contract (pointers that dangle or leave the
             household, asymmetric partners, parent cycles, a reference person
-            outside their household, bad ages or hours), or the rule refuses
-            a child's placement.
+            outside their household, bad ages or hours), an id or pointer
+            is an unsigned integer above ``2**63 - 1`` (the unit tables hold
+            ``int64`` ids), or the rule refuses a child's placement.
     """
 
     rows = _Pointers.read(person, household, rule)
@@ -400,15 +417,17 @@ def benefit_unit_roles(
         :class:`~microcosm.frame.concept_mapping.UnitRole`.
     """
 
-    ids = person[_PERSON_ID].to_numpy(dtype=np.int64)
+    ids = _int64_ids(person[_PERSON_ID], f"person.{_PERSON_ID}")
     units = _unit_rows(family, membership, rule)
-    head_of = family[rule.head_column].to_numpy(dtype=np.int64)[units]
+    head_of = _int64_ids(family[rule.head_column], rule.head_column)[units]
     is_head = ids == head_of
     # Partner presence is a mask, not a sentinel id: any integer, -1
     # included, can be a person id.
     present = person["partner_person_id"].notna().to_numpy()
     partner = np.zeros(len(ids), dtype=np.int64)
-    partner[present] = person["partner_person_id"][present].to_numpy(dtype=np.int64)
+    partner[present] = _int64_ids(
+        person["partner_person_id"][present], "person.partner_person_id"
+    )
     head_row = pd.Index(ids).get_indexer(head_of)
     found = head_row >= 0
     head_row = np.where(found, head_row, 0)
@@ -488,7 +507,7 @@ def benefit_unit_attributes(
     )
     return pd.DataFrame(
         {
-            rule.id_column: family[rule.id_column].to_numpy(dtype=np.int64),
+            rule.id_column: _int64_ids(family[rule.id_column], rule.id_column),
             "n_members": n_members,
             "n_adults": n_adults,
             "n_dependent_children": n_children,
@@ -554,6 +573,19 @@ class _Pointers:
             "person": person.loc[:, person_columns],
             "household": household.loc[:, [_HOUSEHOLD_ID, "reference_person_id"]],
         }
+        # Validation matches pointers as int64 too, so an id int64 cannot
+        # hold is refused before it, not only before this module's casts.
+        wide = [
+            f"{entity}.{column}"
+            for entity, columns in _ID_COLUMNS.items()
+            for column in columns
+            if _exceeds_int64(subset[entity][column])
+        ]
+        if wide:
+            raise ValueError(
+                f"Benefit units hold ids as int64, and {wide} hold unsigned ids "
+                f"above {_INT64_MAX}, which int64 cannot represent."
+            )
         violations = validate_concept_tables(subset)
         if violations:
             detail = "; ".join(
@@ -562,32 +594,36 @@ class _Pointers:
                 for item in violations
             )
             raise ValueError(f"Benefit units refuse an invalid concept frame: {detail}")
-        ids = person[_PERSON_ID].to_numpy(dtype=np.int64)
+        ids = _int64_ids(person[_PERSON_ID], f"person.{_PERSON_ID}")
         index = pd.Index(ids)
 
-        def rows(values: pd.Series) -> np.ndarray:
+        def rows(table: pd.DataFrame, entity: str, column: str) -> np.ndarray:
+            values = table[column]
             present = values.notna().to_numpy()
             found = np.full(len(values), -1, dtype=np.int64)
             if present.any():
                 found[present] = index.get_indexer(
-                    values[present].to_numpy(dtype=np.int64)
+                    _int64_ids(values[present], f"{entity}.{column}")
                 )
             return found
 
+        household_ids = _int64_ids(
+            person[_PERSON_HOUSEHOLD_ID], f"person.{_PERSON_HOUSEHOLD_ID}"
+        )
         household_rows = pd.Index(
-            household[_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
-        ).get_indexer(person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64))
-        reference_by_household = rows(household["reference_person_id"])
+            _int64_ids(household[_HOUSEHOLD_ID], f"household.{_HOUSEHOLD_ID}")
+        ).get_indexer(household_ids)
+        reference_by_household = rows(household, "household", "reference_person_id")
         return cls(
             ids=ids,
-            household_ids=person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64),
+            household_ids=household_ids,
             age=person["age"].to_numpy(dtype=np.float64),
             hours=None
             if test is None
             else person["usual_weekly_hours"].to_numpy(dtype=np.float64),
-            partner=rows(person["partner_person_id"]),
-            parent_1=rows(person["parent_1_person_id"]),
-            parent_2=rows(person["parent_2_person_id"]),
+            partner=rows(person, "person", "partner_person_id"),
+            parent_1=rows(person, "person", "parent_1_person_id"),
+            parent_2=rows(person, "person", "parent_2_person_id"),
             reference=reference_by_household[household_rows],
         )
 
@@ -675,8 +711,28 @@ def _heads(rows: _Pointers, dependent: np.ndarray, rule: BenefitUnitRule) -> np.
 def _unit_rows(
     family: pd.DataFrame, membership: pd.Series, rule: BenefitUnitRule
 ) -> np.ndarray:
-    unit_ids = family[rule.id_column].to_numpy(dtype=np.int64)
-    rows = pd.Index(unit_ids).get_indexer(membership.to_numpy(dtype=np.int64))
+    unit_ids = _int64_ids(family[rule.id_column], rule.id_column)
+    rows = pd.Index(unit_ids).get_indexer(
+        _int64_ids(membership, rule.membership_column)
+    )
     if (rows < 0).any():
         raise ValueError("A person's unit is missing from the unit table.")
     return rows
+
+
+def _int64_ids(values: pd.Series, label: str) -> np.ndarray:
+    """Integer ids as int64, exactly; an id int64 cannot hold is refused.
+
+    NumPy and pandas cast an unsigned id above ``2**63 - 1`` to a negative
+    one without complaint, so a bare cast could silently rename a person,
+    unit or household.
+    """
+
+    if values.dtype.kind not in "iu":
+        raise ValueError(f"{label} must hold integer ids, found dtype {values.dtype}.")
+    if _exceeds_int64(values):
+        raise ValueError(
+            f"{label} holds ids above {_INT64_MAX}; unit tables hold ids as "
+            "int64, which cannot represent them."
+        )
+    return values.to_numpy(dtype=np.int64)

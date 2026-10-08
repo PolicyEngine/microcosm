@@ -10,7 +10,11 @@ as properties over generated concept frames and unit rules:
   alternative conserves it too;
 - ``sum_over_members`` conserves member totals; ``any_member`` and
   ``reference_member`` read the members and the head;
-- encoding is deterministic and row-aligned to the unit table.
+- encoding is deterministic and row-aligned to the unit table;
+- state bindings given as a list, iterator or generator encode, or are
+  refused, exactly as the same bindings given as a tuple;
+- membership ids of another integer dtype encode exactly as int64 ones, or
+  are refused when they hold an id int64 cannot.
 
 A row-by-row reference written from each rule's documented meaning checks the
 vectorized executor (a differential test), and unit-composition flags are
@@ -19,6 +23,7 @@ the same composition.
 """
 
 import json
+import re
 
 import numpy as np
 import pandas as pd
@@ -461,6 +466,51 @@ class TestExecution:
         )
 
     @PROPERTY
+    @given(
+        case=unit_frames(),
+        picks=st.lists(st.integers(0, len(STATE) - 1), max_size=len(STATE) + 1),
+        knobs=st.sampled_from(
+            [
+                GroupKnobs(),
+                GroupKnobs(state_columns={"household.area": "household.area_alt"}),
+            ]
+        ),
+        kind=st.sampled_from(["list", "iterator", "generator"]),
+    )
+    def test_any_iterable_of_state_bindings_encodes_as_its_tuple(
+        self, case, picks, knobs, kind
+    ) -> None:
+        tables, rule, _, _, group = case
+        states = [STATE[pick] for pick in picks]
+        given_as = {
+            "list": list,
+            "iterator": iter,
+            "generator": lambda items: (item for item in items),
+        }[kind]
+
+        def outcome(bindings):
+            try:
+                encoded = MAPPING.encode_groups(
+                    tables, {"Family": group}, state_bindings=bindings, knobs=knobs
+                )
+            except ValueError as error:
+                return str(error)
+            return encoded
+
+        expected = outcome(tuple(states))
+        got = outcome(given_as(states))
+        if isinstance(expected, str):
+            # a refusal (a binding given twice, or a knob no binding reads)
+            # is the same refusal
+            assert got == expected
+            return
+        assert not isinstance(got, str), got
+        pd.testing.assert_frame_equal(
+            got.tables[rule.entity], expected.tables[rule.entity]
+        )
+        assert got.deferred == expected.deferred
+
+    @PROPERTY
     @given(case=unit_frames())
     def test_encoding_is_deterministic(self, case) -> None:
         tables, rule, _, _, group = case
@@ -469,6 +519,27 @@ class TestExecution:
         pd.testing.assert_frame_equal(
             first.tables[rule.entity], second.tables[rule.entity]
         )
+
+    def test_a_one_shot_iterator_of_state_bindings_takes_a_column_knob(self) -> None:
+        # The bindings are read twice: to encode, then to find the columns a
+        # knob may replace. A spent iterator used to leave the second read
+        # empty, so the area knob was refused as replacing a column no
+        # binding reads.
+        tables, rule, _, _, group = _example()
+        tables = {**tables, "household": tables["household"].assign(area_alt=2)}
+        knobs = GroupKnobs(state_columns={"household.area": "household.area_alt"})
+        expected = MAPPING.encode_groups(
+            tables, {"Family": group}, state_bindings=STATE, knobs=knobs
+        )
+        assert expected.tables[rule.entity]["in_area_1"].tolist() == [False, False]
+        for states in (list(STATE), iter(STATE), (state for state in STATE)):
+            got = MAPPING.encode_groups(
+                tables, {"Family": group}, state_bindings=states, knobs=knobs
+            )
+            pd.testing.assert_frame_equal(
+                got.tables[rule.entity], expected.tables[rule.entity]
+            )
+            assert got.deferred == expected.deferred
 
     def test_unexecutable_group_bindings_are_deferred(self) -> None:
         tables, _, _, _, group = _example()
@@ -762,6 +833,103 @@ class TestRefusals:
         )
         with pytest.raises(ValueError, match="must be integers"):
             MAPPING.encode_groups(tables, {"Family": fractional})
+
+    def test_a_membership_naming_an_unsigned_id_int64_cannot_hold_is_refused(
+        self,
+    ) -> None:
+        # Person 13 becomes -1, so the units are -1 and 10. As uint64, -1 is
+        # 2**64 - 1: a unit that does not exist, which an int64 comparison
+        # used to read back as unit -1 and accept.
+        tables, rule, _, _, _ = _example()
+        person = tables["person"].assign(
+            person_id=tables["person"]["person_id"].replace({13: -1})
+        )
+        tables = {**tables, "person": person}
+        family, membership = build_benefit_units(person, tables["household"], rule)
+        group = benefit_unit_membership(person, family, membership, rule)
+        assert membership.tolist() == [10, 10, 10, -1]
+        unsigned = GroupMembership(
+            entity="family",
+            units=family,
+            person_unit=membership.astype(np.uint64),
+            person_role=group.person_role,
+        )
+        with pytest.raises(ValueError, match=re.escape("['person unit ids']")):
+            MAPPING.encode_groups(tables, {"Family": unsigned})
+        # Likewise a frame whose person -1 is renamed 2**64 - 1: the unit's
+        # head column, -1, no longer names its head.
+        renamed = person.assign(person_id=person["person_id"].astype(np.uint64))
+        with pytest.raises(ValueError, match=re.escape("['person.person_id']")):
+            MAPPING.encode_groups({**tables, "person": renamed}, {"Family": group})
+
+    def test_a_partner_pointer_int64_cannot_hold_is_refused(self) -> None:
+        # Head 10 becomes -1 and partner 11's pointer becomes 2**64 - 1, which
+        # names no person but an int64 read turns into -1: person 11 would pass
+        # as head -1's partner. An int64 pointer naming no person is refused as
+        # before, by the partner rule itself.
+        tables, _, family, _, group = _example()
+        person = tables["person"].copy()
+        for column in ("person_id", "parent_1_person_id", "parent_2_person_id"):
+            person[column] = person[column].replace({10: -1})
+        household = tables["household"].assign(
+            reference_person_id=tables["household"]["reference_person_id"].replace(
+                {10: -1}
+            )
+        )
+        units = family.assign(family_id=[-1, 13], family_head_person_id=[-1, 13])
+        membership = GroupMembership(
+            entity="family",
+            units=units,
+            person_unit=pd.Series([-1, -1, -1, 13], index=person.index, dtype=np.int64),
+            person_role=group.person_role,
+        )
+        wrapped = person.assign(
+            partner_person_id=pd.array([11, 2**64 - 1, None, None], dtype="UInt64")
+        )
+        with pytest.raises(ValueError, match=re.escape("['person.partner_person_id']")):
+            MAPPING.encode_groups(
+                {**tables, "person": wrapped, "household": household},
+                {"Family": membership},
+            )
+        dangling = person.assign(
+            partner_person_id=pd.array([11, 999, None, None], dtype="Int64")
+        )
+        with pytest.raises(ValueError, match="must be its head's partner"):
+            MAPPING.encode_groups(
+                {**tables, "person": dangling, "household": household},
+                {"Family": membership},
+            )
+
+    @PROPERTY
+    @given(case=unit_frames(), dtype=st.sampled_from(["uint64", "UInt64", "Int64"]))
+    def test_membership_ids_are_read_exactly_or_refused(self, case, dtype) -> None:
+        tables, rule, family, membership, group = case
+        columns = (rule.id_column, rule.household_column, rule.head_column)
+
+        def retyped(values: pd.Series) -> pd.Series:
+            # NumPy's cast turns a negative id into one above int64's range.
+            unsigned = dtype.lower().startswith("u")
+            raw = values.to_numpy().astype(np.uint64 if unsigned else np.int64)
+            return pd.Series(raw, index=values.index, name=values.name).astype(dtype)
+
+        units = family.assign(**{column: retyped(family[column]) for column in columns})
+        retyped_group = GroupMembership(
+            entity=group.entity,
+            units=units,
+            person_unit=retyped(membership),
+            person_role=group.person_role,
+        )
+        ids = [value for column in columns for value in family[column].tolist()]
+        if dtype.lower().startswith("u") and min(ids) < 0:
+            with pytest.raises(ValueError, match="int64"):
+                _encode(tables, retyped_group)
+            return
+        expected = _encode(tables, group).tables[rule.entity]
+        got = _encode(tables, retyped_group).tables[rule.entity]
+        assert got[rule.id_column].tolist() == expected[rule.id_column].tolist()
+        pd.testing.assert_frame_equal(
+            got.drop(columns=rule.id_column), expected.drop(columns=rule.id_column)
+        )
 
     def test_roles_must_agree_with_the_partner_pointers(self) -> None:
         tables, _, family, membership, group = _example()

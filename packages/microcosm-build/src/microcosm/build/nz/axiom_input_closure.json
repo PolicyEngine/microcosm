@@ -35,10 +35,10 @@
    "person.receives_supported_living_payment",
    "person.receives_nz_super"
   ],
-  "note": "The person-level receipt flags the receipt layer (takeup.assign@1) writes and the state bindings read. Their names are a contract with that kernel."
+  "note": "The person-level receipt flags the receipt layer (takeup.assign@1, declared but not yet implemented) is to write and the state bindings read. Their names are a contract with that kernel."
  },
  "receipt_requirements": {
-  "note": "What the receipt layer (takeup.assign@1) must enforce because the closure's entitlement defaults leave it to receipt. Each is a modelling default for D1.",
+  "note": "What the receipt layer (takeup.assign@1, declared but not yet implemented) must enforce because the closure's entitlement defaults leave it to receipt. Each is a modelling default for D1.",
   "requirements": [
    "At most one main benefit (Jobseeker Support, Sole Parent Support, Supported Living Payment) per person: Social Security Act 2018 s 18; main_benefit_receiving_another_main_benefit is defaulted false.",
    "Never New Zealand Superannuation and a main benefit for the same person: s 18; main_benefit_receiving_new_zealand_superannuation is defaulted false on transported frames.",
@@ -78,7 +78,7 @@
    "eligible"
   ],
   "new_default": true,
-  "reason": "Entitlement judgments come back as codes 1 (holds), -1 (does not hold) and 0 (undetermined). At the axiom-rules-engine commit named in input_surface.engine, no dense leaf yields an undetermined value: dense input columns are booleans, integers, floats or text, an absent input is an error rather than an unknown, and and/or/not only pass an undetermined item along. With every root input encoded or defaulted by this closure, a 0 cannot arise, so takeup.assign@1 refuses any 0 it sees instead of guessing: a 0 would mean the engine or the closure changed. The alternatives a review could choose are treating 0 as not entitled (understates receipt) or as entitled (overstates it). microcosm.frame.input_closure.resolve_judgments implements all three."
+  "reason": "Entitlement judgments come back as codes 1 (holds), -1 (does not hold) and 0 (undetermined). At the axiom-rules-engine commit named in input_surface.engine, no dense leaf yields an undetermined value: dense input columns are booleans, integers, floats or text, an absent input is an error rather than an unknown, and and/or/not only pass an undetermined item along. With every root input encoded or defaulted by this closure, a 0 cannot arise, so the receipt kernel takeup.assign@1, once implemented, is to refuse any 0 it sees instead of guessing: a 0 would mean the engine or the closure changed. The alternatives a review could choose are treating 0 as not entitled (understates receipt) or as entitled (overstates it). microcosm.frame.input_closure.resolve_judgments implements all three."
  },
  "knobs": [
   {

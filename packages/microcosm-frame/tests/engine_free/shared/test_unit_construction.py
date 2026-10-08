@@ -13,10 +13,14 @@ schema allows rather than a few hand-picked households:
 - units nest in households;
 - family weights are inherited: the sum of family weights equals the sum of
   household weight times units per household;
-- unit ids are deterministic and independent of row order.
+- unit ids are deterministic and independent of row order;
+- ids of every integer dtype the contract accepts are kept exactly, or
+  refused when ``int64`` cannot hold them, and the dtype changes no unit.
 """
 
 import json
+import re
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -26,6 +30,7 @@ from hypothesis import strategies as st
 
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.concept_mapping import UnitRole
+from microcosm.frame.concepts import validate_concept_tables
 from microcosm.frame.unit_construction import (
     BENEFIT_UNIT_RULE_FORMAT,
     BenefitUnitRule,
@@ -46,6 +51,83 @@ PROPERTY = settings(max_examples=150, deadline=None)
 #: Ids may be negative: the concept-frame contract accepts any unique integer,
 #: so no unit reading may treat an id such as -1 as "absent".
 FRAMES = concept_frames(max_households=5, max_members=6, min_id=-(10**9))
+POINTERS = ("partner_person_id", "parent_1_person_id", "parent_2_person_id")
+INT64_MAX = int(np.iinfo(np.int64).max)
+#: Every integer dtype the concept-frame contract accepts for an id column;
+#: pointers take the matching nullable dtype.
+ID_DTYPES = ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
+
+
+def _nullable(dtype: str) -> str:
+    return "U" + dtype[1:].capitalize() if dtype.startswith("u") else dtype.capitalize()
+
+
+@st.composite
+def retyped_frames(draw) -> dict[str, pd.DataFrame]:
+    """A valid frame whose ids and pointers use accepted integer dtypes.
+
+    Person ids (and the pointers that name them) take one dtype and household
+    ids another, so signed and unsigned tables are mixed; ids come from each
+    dtype's whole range, with its edges and int64's edge mixed in.
+    """
+
+    tables = draw(concept_frames(max_households=4, max_members=4))
+    person, household = tables["person"].copy(), tables["household"].copy()
+    person_dtype = draw(st.sampled_from(ID_DTYPES))
+    household_dtype = draw(st.sampled_from(ID_DTYPES))
+
+    def renamed(old: list[int], dtype: str) -> dict[int, int]:
+        info = np.iinfo(dtype)
+        low, high = int(info.min), int(info.max)
+        edges = [
+            value
+            for value in (low, high, 0, -1, INT64_MAX, INT64_MAX + 1)
+            if low <= value <= high
+        ]
+        ids = st.integers(low, high) | st.sampled_from(edges)
+        new = draw(st.lists(ids, min_size=len(old), max_size=len(old), unique=True))
+        return dict(zip(old, new, strict=True))
+
+    persons = renamed(person["person_id"].tolist(), person_dtype)
+    households = renamed(household["household_id"].tolist(), household_dtype)
+    nullable = _nullable(person_dtype)
+
+    def ids(values: pd.Series, names: dict[int, int], dtype: str) -> np.ndarray:
+        return np.array([names[value] for value in values.tolist()], dtype=dtype)
+
+    def pointers(values: pd.Series) -> pd.api.extensions.ExtensionArray:
+        return pd.array(
+            [None if pd.isna(value) else persons[int(value)] for value in values],
+            dtype=nullable,
+        )
+
+    person["person_id"] = ids(person["person_id"], persons, person_dtype)
+    person["person_household_id"] = ids(
+        person["person_household_id"], households, household_dtype
+    )
+    for column in POINTERS:
+        person[column] = pointers(person[column])
+    household["household_id"] = ids(
+        household["household_id"], households, household_dtype
+    )
+    household["reference_person_id"] = pointers(household["reference_person_id"])
+    return {"person": person, "household": household}
+
+
+def _as_int64(person: pd.DataFrame, household: pd.DataFrame):
+    """The same frame with int64 ids and Int64 pointers."""
+
+    person = person.astype(
+        {
+            "person_id": np.int64,
+            "person_household_id": np.int64,
+            **dict.fromkeys(POINTERS, "Int64"),
+        }
+    )
+    household = household.astype(
+        {"household_id": np.int64, "reference_person_id": "Int64"}
+    )
+    return person, household
 
 
 def _rows(person: pd.DataFrame, column: str) -> np.ndarray:
@@ -261,6 +343,53 @@ class TestInvariants:
         assert membership_view.entity == rule.entity
         pd.testing.assert_series_equal(membership_view.person_role, roles)
 
+    @PROPERTY
+    @given(tables=retyped_frames(), rule=unit_rules())
+    def test_ids_of_every_accepted_dtype_are_kept_exactly_or_refused(
+        self, tables, rule
+    ) -> None:
+        person, household = tables["person"], tables["household"]
+        # Python integers throughout, so no cast can make two ids agree.
+        person_ids = person["person_id"].tolist()
+        declared = dict(
+            zip(person_ids, person["person_household_id"].tolist(), strict=True)
+        )
+        household_ids = household["household_id"].tolist()
+        if max(person_ids + household_ids) > INT64_MAX:
+            with pytest.raises(ValueError, match="int64"):
+                build_benefit_units(person, household, rule)
+            return
+        family, membership = build_benefit_units(person, household, rule)
+        # identity: a unit's id is its head's own person id, and it nests in
+        # the household its head declares
+        unit_ids = family[rule.id_column].tolist()
+        unit_households = family[rule.household_column].tolist()
+        assert unit_ids == family[rule.head_column].tolist()
+        assert unit_households == [declared[head] for head in unit_ids]
+        # nesting: each person's unit lies in the person's declared household
+        household_of = dict(zip(unit_ids, unit_households, strict=True))
+        assert [household_of[unit] for unit in membership.tolist()] == [
+            declared[person_id] for person_id in person_ids
+        ]
+        # unit counts: every unit counted once, in its declared household
+        counts = units_per_household(household, family, rule)
+        expected = Counter(unit_households)
+        assert counts.tolist() == [expected[value] for value in household_ids]
+        assert int(counts.sum()) == len(family)
+        # the dtype changes nothing: the same ids as int64 build the same units
+        person_64, household_64 = _as_int64(person, household)
+        family_64, membership_64 = build_benefit_units(person_64, household_64, rule)
+        pd.testing.assert_frame_equal(family, family_64)
+        pd.testing.assert_series_equal(membership, membership_64)
+        pd.testing.assert_series_equal(
+            benefit_unit_roles(person, family, membership, rule),
+            benefit_unit_roles(person_64, family_64, membership_64, rule),
+        )
+        pd.testing.assert_frame_equal(
+            benefit_unit_attributes(person, family, membership, rule),
+            benefit_unit_attributes(person_64, family_64, membership_64, rule),
+        )
+
 
 class TestPlacement:
     RULE = BenefitUnitRule(
@@ -464,6 +593,100 @@ class TestPlacement:
             "split_parents": rule.split_parents,
             "provenance": rule.provenance,
         }
+
+
+class TestIdRange:
+    """Unit tables hold int64 ids; the contract also accepts unsigned ids."""
+
+    RULE = TestPlacement.RULE
+
+    @staticmethod
+    def _one_adult(household_id: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([1], dtype=np.int64),
+                "person_household_id": np.array([household_id], dtype=np.uint64),
+                "age": np.array([30], dtype=np.int64),
+                **{column: pd.array([None], dtype="Int64") for column in POINTERS},
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": np.array([household_id], dtype=np.uint64),
+                "reference_person_id": pd.array([1], dtype="Int64"),
+            }
+        )
+        return person, household
+
+    def test_the_largest_unsigned_id_int64_holds_is_kept_exactly(self) -> None:
+        person, household = self._one_adult(INT64_MAX)
+        family, membership = build_benefit_units(person, household, self.RULE)
+        assert family.to_dict("list") == {
+            "family_id": [1],
+            "family_household_id": [INT64_MAX],
+            "family_head_person_id": [1],
+        }
+        assert membership.tolist() == [1]
+        assert units_per_household(household, family, self.RULE).tolist() == [1]
+
+    @pytest.mark.parametrize("household_id", [INT64_MAX + 1, 2**64 - 1])
+    def test_an_unsigned_household_id_int64_cannot_hold_is_refused(
+        self, household_id
+    ) -> None:
+        # The concept-frame contract accepts this frame. Cast to int64, 2**63
+        # became household -2**63: the unit nested in no household and its
+        # household counted no unit.
+        person, household = self._one_adult(household_id)
+        assert not validate_concept_tables({"person": person, "household": household})
+        columns = "['person.person_household_id', 'household.household_id']"
+        with pytest.raises(ValueError, match=re.escape(columns)):
+            build_benefit_units(person, household, self.RULE)
+
+    def test_an_unsigned_pointer_int64_cannot_hold_is_refused(self) -> None:
+        # 2**64 - 1 names no person here, but cast to int64 it is -1, who is
+        # a person here: the pair would have passed as partners.
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([-1, 5], dtype=np.int64),
+                "person_household_id": np.array([1, 1], dtype=np.int64),
+                "age": np.array([40, 40], dtype=np.int64),
+                "partner_person_id": pd.array([5, 2**64 - 1], dtype="UInt64"),
+                "parent_1_person_id": pd.array([None, None], dtype="Int64"),
+                "parent_2_person_id": pd.array([None, None], dtype="Int64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": np.array([1], dtype=np.int64),
+                "reference_person_id": pd.array([5], dtype="Int64"),
+            }
+        )
+        with pytest.raises(ValueError, match=re.escape("['person.partner_person_id']")):
+            build_benefit_units(person, household, self.RULE)
+
+    def test_unit_readers_refuse_ids_int64_cannot_hold(self) -> None:
+        person, household = TestPlacement._frame(
+            [(-1, 1, 40, None, None, None, 0.0), (5, 1, 40, None, None, None, 0.0)],
+            {1: 5},
+        )
+        family, membership = build_benefit_units(person, household, self.RULE)
+        assert membership.tolist() == [-1, 5]
+        # Unit 2**64 - 1 does not exist; cast to int64 it would be unit -1.
+        wrapped = pd.Series(
+            np.array([2**64 - 1, 5], dtype=np.uint64),
+            index=membership.index,
+            name=membership.name,
+        )
+        for read in (
+            benefit_unit_roles,
+            benefit_unit_attributes,
+            benefit_unit_membership,
+        ):
+            with pytest.raises(ValueError, match="int64"):
+                read(person, family, wrapped, self.RULE)
+        # A float id is refused too: a cast would truncate it.
+        with pytest.raises(ValueError, match="integer ids"):
+            benefit_unit_roles(person, family, membership.astype(float), self.RULE)
 
 
 class TestRuleSerialization:
