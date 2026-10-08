@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1257
+ACTIVE_REFERENCE_COUNT = 1244
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -556,69 +556,6 @@ def test_uk_target_references_bind_the_spi_net_property_amounts_unscaled() -> No
     assert membership["targets"][target_id]["status"] == "active"
 
 
-def test_uk_target_references_bind_the_pris_receipts_counts_and_finance_costs() -> None:
-    """PRIS 2024-25 binds on the landlord inputs policyengine-uk 2.123.0 reads.
-
-    microcosm#1106: individuals' receipts before expenses on
-    property_rental_income, uprated by the engine's index for it; Table 13's
-    eleven landlord counts by size of receipts, restated on the individuals
-    basis by Table 1's share and held at their 2024-25 levels; residential
-    finance costs on property_finance_costs, restated by Table 6's share of
-    expenses and uprated by the engine's mortgage-interest index.
-    """
-
-    resource = _load_uk_resource("target_references.json")
-    references = {
-        reference["name"]: reference
-        for reference in resource["target_references"]
-        if reference["metadata"]["contract_target_id"].startswith("hmrc.pris.")
-    }
-    bands = {name: ref for name, ref in references.items() if ".band_" in name}
-    receipts = references["hmrc.pris.rental_income.individuals"]
-    finance = references["hmrc.pris.residential_finance_costs"]
-
-    assert len(references) == 13
-    assert len(bands) == 11
-    index = "policyengine_uk_parameter:gov.economic_assumptions.indices.obr."
-    assert receipts["uprating_index"] == index + "per_capita.gdp"
-    assert "value_operation" not in receipts
-    assert receipts["ledger_selector"]["dimension_values"] == {
-        "tax_entity_type": "individual"
-    }
-    assert finance["uprating_index"] == index + "mortgage_interest"
-    assert finance["value_operation"] == "scaled_by_ratio"
-    assert [
-        operand.get("aggregate_fact_key") for operand in finance["value_operands"]
-    ] == [
-        None,
-        "ledger.aggregate_fact.v2:9f3690a9e2896a9d6f184eb9",
-        "ledger.aggregate_fact.v2:0be3cfca02357112dff851ae",
-    ]
-    for reference in bands.values():
-        assert reference["value_operation"] == "scaled_by_ratio"
-        assert "uprating_index" not in reference
-        assert (reference["uprating_from_period"], reference["uprating_to_period"]) == (
-            "2024",
-            2025,
-        )
-        assert [
-            operand.get("aggregate_fact_key") for operand in reference["value_operands"]
-        ] == [
-            None,
-            "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1",
-            "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072",
-        ]
-    contract = {
-        target["target_id"]: target
-        for target in _load_uk_resource("uk_population_targets.json")["targets"]
-    }
-    binding = contract["hmrc.pris.landlord_count_by_rental_income_band"]["bindings"][
-        "policyengine"
-    ]
-    assert binding["groupby_variable"] == "property_rental_income"
-    assert binding["band_floor"] == 0
-
-
 def test_uk_target_references_do_not_emit_nan_uc_payment_bands() -> None:
     resource = _load_uk_resource("target_references.json")
 
@@ -845,7 +782,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1257,
+        "active": 1244,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 15,
     }
@@ -875,23 +812,6 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "against this net amount, so it is retired; the receipts bind "
                 "on their own variable (microcosm#1106, María's ruling of "
                 "2026-10-05)."
-            ),
-        },
-        {
-            "family": "hmrc_pris",
-            "status": "active_band_pins_scaled_to_individuals",
-            "active_reference_count": 11,
-            "signed_rationale": (
-                "HMRC Property Rental Income Statistics 2026, tax year "
-                "2024-25 (microcosm#1106): Table 13's landlords by size of "
-                "rental income fan out by the eleven receipts bands on "
-                "property_rental_income, restated from all tax entities to "
-                "individuals by Table 1's share through the scaled_by_ratio "
-                "operation; the lowest band publishes only its upper edge and "
-                "starts at the declared floor of zero. Individuals' receipts "
-                "(Table 2) and residential finance costs (Table 8, restated by "
-                "Table 6's individuals' share of expenses) bind as single "
-                "rows, each uprated by the engine's index for its variable."
             ),
         },
         {

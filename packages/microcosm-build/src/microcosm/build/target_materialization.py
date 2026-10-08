@@ -32,7 +32,6 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 _COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_count"})
 
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
-_BAND_UPPER_BOUND_SUFFIX = "_upper_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
 _RANGE_LABEL = re.compile(
     r"([\d,]+(?:\.\d+)?)\s*(?:to(?:\s+under)?|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
@@ -448,19 +447,6 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
         if not candidates:
             continue
         return _select_band_edge(spec, binding, candidates) * factor
-    # A publisher's lowest band may state only its upper edge ("up to
-    # GBP 10,000", HMRC's property rental income statistics Table 13): the
-    # binding then declares, in source units, the floor that band starts from
-    # (``band_floor``), and only a band publishing an upper edge takes it.
-    if "band_floor" in binding and any(
-        key.startswith(_LEDGER_FILTER_PREFIX)
-        and key.endswith(_BAND_UPPER_BOUND_SUFFIX)
-        for key in metadata
-    ):
-        floor = float(binding["band_floor"])
-        if not math.isfinite(floor):
-            raise ValueError("band_floor must be a finite bound in source units")
-        return floor * factor
     return None
 
 
