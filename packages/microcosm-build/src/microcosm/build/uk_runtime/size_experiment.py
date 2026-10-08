@@ -25,7 +25,10 @@ reads them without writing to either:
 * :func:`run_uk_size_experiment` runs one :class:`UKSizeExperiment`: a refit
   on the stored support under another rule, L2 penalty or baseline floor; a
   new search from the stored dense solve (warm-started) then a draw and a
-  refit; or a refit-level rotated holdout on the stored support.
+  refit; or a refit-level rotated holdout on the stored support. A new search
+  and its draw are saved (:func:`save_uk_size_selection`), so later refits and
+  holdouts name it with ``selection_from`` and run on that selection without
+  searching again (:func:`load_uk_size_selection`).
 
 Each experiment returns its receipt and its weights; the tool
 ``tools/run_uk_size_experiment.py`` writes them outside the repository and the
@@ -100,6 +103,7 @@ from microcosm.calibrate.artifacts import (
     decode_calibration_result,
     decode_problem,
     decode_solution,
+    encode_calibration_result,
 )
 from microcosm.frame import Frame
 from microcosm.graph.canonical import canonical_json
@@ -115,12 +119,15 @@ __all__ = [
     "UK_SIZE_STEP1B_RULES",
     "UKSizeExperiment",
     "UKSizeExperimentBaseline",
+    "UKSizeSelectionSource",
     "build_uk_size_experiment_cache",
     "load_uk_size_experiment_baseline",
+    "load_uk_size_selection",
     "parse_uk_size_experiments",
     "run_uk_size_census",
     "run_uk_size_control",
     "run_uk_size_experiment",
+    "save_uk_size_selection",
     "UKSizeScoringInputs",
     "load_uk_size_scoring_inputs",
     "load_uk_size_weights",
@@ -261,6 +268,37 @@ def build_uk_size_experiment_cache(run_dir: Path, cache_dir: Path) -> dict[str, 
     return manifest
 
 
+def _decode_selection(
+    frame: Frame,
+    problem: OrderedProblem,
+    search_payload: bytes,
+    selection_payload: bytes,
+) -> tuple[UKSizeSelection, dict[str, Any]]:
+    """A size search as the graph's search node encodes it (result + metadata)."""
+
+    meta = json.loads(selection_payload)
+    if meta.get("problem_sha256") != problem.sha256 or meta.get("method") != (
+        "contribution_informed_l0"
+    ):
+        raise ValueError(
+            "the size search is not an informed L0 search of this problem."
+        )
+    protected = np.asarray(meta["protected"], dtype=bool)
+    if protected.shape != (frame.n("household"),):
+        raise ValueError("the size search's protected mask is not aligned to the pool.")
+    search = decode_calibration_result(search_payload, frame=frame, problem=problem)
+    selection = UKSizeSelection(
+        search,
+        protected,
+        int(meta["households"]),
+        int(meta["epochs"]),
+        float(meta["learning_rate"]),
+        int(meta["seed"]),
+        float(meta["pi_hi"]),
+    )
+    return selection, meta
+
+
 @dataclass(frozen=True)
 class UKSizeExperimentBaseline:
     """A finished size build, decoded onto its cached pool skeleton."""
@@ -318,24 +356,10 @@ def load_uk_size_experiment_baseline(
     bound = np.asarray(problem.bindings["target_loss_weights"], dtype=np.float64)
     run_rule = _run_rule(rows, bound)
     dense = decode_calibration_result(payloads["dense"], frame=frame, problem=problem)
-    search = decode_calibration_result(payloads["search"], frame=frame, problem=problem)
-    meta = json.loads(payloads["selection"])
-    if meta.get("problem_sha256") != problem.sha256 or meta.get("method") != (
-        "contribution_informed_l0"
-    ):
-        raise ValueError(
-            "the stored size search is not an informed L0 search of this problem."
-        )
-    protected = np.asarray(meta["protected"], dtype=bool)
-    selection = UKSizeSelection(
-        search,
-        protected,
-        int(meta["households"]),
-        int(meta["epochs"]),
-        float(meta["learning_rate"]),
-        int(meta["seed"]),
-        float(meta["pi_hi"]),
+    selection, meta = _decode_selection(
+        frame, problem, payloads["search"], payloads["selection"]
     )
+    search = selection.selection
     draw = UKSizeDraw.from_payload(payloads["draw"], problem_sha256=problem.sha256)
     if draw is None:
         raise ValueError("the stored run is a full-pool size: no selection to vary.")
@@ -402,7 +426,10 @@ class UKSizeExperiment:
     shortened refit is a plumbing check, not a result; no pre-registered
     experiment sets it). ``initial_lambda`` (selection mode) is a warm-start
     penalty, ``"scaled"`` for the stored search's penalty times the rule's
-    loss ratio at S0, or ``None`` for a cold search.
+    loss ratio at S0, or ``None`` for a cold search. ``selection_from``
+    (modes ``refit`` and ``refit_holdout``) names an earlier selection-mode
+    experiment whose saved search and draw this one refits on, instead of the
+    stored run's.
     """
 
     name: str
@@ -416,6 +443,7 @@ class UKSizeExperiment:
     epochs: int | None = None
     initial_lambda: float | str | None = "scaled"
     folds: int = UK_LOCAL_HOLDOUT_FOLDS
+    selection_from: str | None = None
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -437,6 +465,17 @@ class UKSizeExperiment:
         if self.mode != "selection" and (self.selection_rule or self.selection_l2):
             raise ValueError(
                 f"experiment {self.name}: selection settings need mode 'selection'."
+            )
+        if self.selection_from is not None and (
+            self.mode == "selection"
+            or not self.selection_from
+            or "/" in self.selection_from
+            or self.selection_from in UK_SIZE_EXPERIMENT_RESERVED_NAMES
+            or self.selection_from == self.name
+        ):
+            raise ValueError(
+                f"experiment {self.name}: selection_from names another, earlier "
+                "selection-mode experiment (modes 'refit' and 'refit_holdout')."
             )
         if self.epochs is not None and (
             self.mode == "selection"
@@ -549,6 +588,142 @@ def _stored_refit_l2(size_receipt: Mapping[str, Any]) -> dict[str, Any] | None:
 
 def _stored_selection_l2_kwargs(baseline: UKSizeExperimentBaseline) -> dict[str, Any]:
     return _l2_kwargs("selection", baseline.settings["selection_l2"])
+
+
+#: The files a selection-mode experiment saves its new search and draw in, in
+#: the graph's own encodings (search result, search metadata, draw).
+UK_SIZE_SAVED_SELECTION_FILES = {
+    "search": "search.artifact",
+    "selection": "selection.json",
+    "draw": "draw.json",
+}
+_SAVED_SELECTION_MANIFEST = "source.json"
+
+
+@dataclass(frozen=True)
+class UKSizeSelectionSource:
+    """A size search and its exact-count draw that refits start from.
+
+    ``"stored"`` is the baseline run's own; a selection-mode experiment's is
+    saved in its out directory and named by ``selection_from``. ``weighting``
+    is the target weighting the search ran under (``None``: the dense
+    solve's) and ``l2`` its selection L2 block (``None``: off): a refit on the
+    selection must name both, because the reuse check binds them.
+    """
+
+    name: str
+    selection: UKSizeSelection
+    draw: UKSizeDraw
+    weighting: UKStageTargetWeighting | None
+    l2: Mapping[str, Any] | None
+
+
+def _stored_source(baseline: UKSizeExperimentBaseline) -> UKSizeSelectionSource:
+    return UKSizeSelectionSource(
+        "stored",
+        baseline.selection,
+        baseline.draw,
+        None,
+        baseline.settings["selection_l2"],
+    )
+
+
+def save_uk_size_selection(
+    baseline: UKSizeExperimentBaseline,
+    directory: Path,
+    *,
+    name: str,
+    selection: UKSizeSelection,
+    draw: UKSizeDraw,
+    rule: str | None,
+    l2: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Save a new search and its draw as the graph encodes them (unit-level data).
+
+    The manifest records the search's rule and selection L2 (what a refit on
+    it must name) and each file's digest; :func:`load_uk_size_selection`
+    checks them.
+    """
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    problem = baseline.problem
+    draw_payload = {"method": "exact_count", **asdict(draw)}
+    for key in ("support", "inclusion_probabilities"):
+        draw_payload[key] = np.asarray(draw_payload[key]).tolist()
+    payloads = {
+        "search": encode_calibration_result(
+            selection.selection,
+            entity_ids=problem.entity_ids,
+            problem_sha256=problem.sha256,
+        ),
+        "selection": canonical_json(
+            {
+                "method": "contribution_informed_l0",
+                "problem_sha256": problem.sha256,
+                "protected": np.asarray(selection.protected, dtype=bool).tolist(),
+                "households": int(selection.households),
+                "epochs": int(selection.epochs),
+                "learning_rate": float(selection.learning_rate),
+                "seed": int(selection.seed),
+                "pi_hi": float(selection.search_pi_hi),
+            }
+        ),
+        "draw": canonical_json({"problem_sha256": problem.sha256, **draw_payload}),
+    }
+    digests = {}
+    for key, payload in payloads.items():
+        (directory / UK_SIZE_SAVED_SELECTION_FILES[key]).write_bytes(payload)
+        digests[key] = _sha256_bytes(payload)
+    manifest = {
+        "name": name,
+        "problem_sha256": problem.sha256,
+        "selection_rule": rule,
+        "selection_l2": None if l2 is None else dict(l2),
+        "l0_lambda": float(selection.selection.l0_lambda),
+        "digests": digests,
+    }
+    (directory / _SAVED_SELECTION_MANIFEST).write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return manifest
+
+
+def load_uk_size_selection(
+    baseline: UKSizeExperimentBaseline, directory: Path
+) -> UKSizeSelectionSource:
+    """A saved search and draw, decoded onto the baseline's pool and problem."""
+
+    directory = Path(directory)
+    manifest_path = directory / _SAVED_SELECTION_MANIFEST
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"{directory} holds no saved size selection.")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest["problem_sha256"] != baseline.problem.sha256:
+        raise ValueError(
+            f"the saved selection {manifest['name']!r} is of another problem."
+        )
+    payloads = {}
+    for key, filename in UK_SIZE_SAVED_SELECTION_FILES.items():
+        payload = (directory / filename).read_bytes()
+        if _sha256_bytes(payload) != manifest["digests"][key]:
+            raise ValueError(f"{directory / filename} differs from its saved digest.")
+        payloads[key] = payload
+    selection, _ = _decode_selection(
+        baseline.frame, baseline.problem, payloads["search"], payloads["selection"]
+    )
+    draw = UKSizeDraw.from_payload(
+        payloads["draw"], problem_sha256=baseline.problem.sha256
+    )
+    if draw is None:
+        raise ValueError(f"the saved selection {manifest['name']!r} has no draw.")
+    return UKSizeSelectionSource(
+        str(manifest["name"]),
+        selection,
+        draw,
+        _weighting(baseline, manifest["selection_rule"]),
+        manifest["selection_l2"],
+    )
 
 
 def _refit_settings(
@@ -943,18 +1118,43 @@ def _scaled_initial_lambda(
 
 
 def run_uk_size_experiment(
-    baseline: UKSizeExperimentBaseline, experiment: UKSizeExperiment
+    baseline: UKSizeExperimentBaseline,
+    experiment: UKSizeExperiment,
+    *,
+    source: UKSizeSelectionSource | None = None,
 ) -> dict[str, Any]:
-    """Run one experiment; returns its receipt, its sized result(s) and weights."""
+    """Run one experiment; returns its receipt, its sized result(s) and weights.
+
+    ``source`` is the saved selection ``experiment.selection_from`` names
+    (:func:`load_uk_size_selection`); without ``selection_from`` the refit
+    modes start from the stored run's search and draw. A selection-mode
+    experiment returns its new search and draw beside its refit
+    (``results["selection"]``, ``results["draw"]``) for
+    :func:`save_uk_size_selection`.
+    """
 
     started = time.perf_counter()
+    if experiment.selection_from is None:
+        if source is not None:
+            raise ValueError(
+                f"experiment {experiment.name} names no selection_from; it refits "
+                "on the stored run's selection."
+            )
+        source = _stored_source(baseline)
+    elif source is None or source.name != experiment.selection_from:
+        raise ValueError(
+            f"experiment {experiment.name} refits on the saved selection "
+            f"{experiment.selection_from!r}: load it with load_uk_size_selection."
+        )
     settings = _refit_settings(baseline, experiment)
-    selection = baseline.selection
+    selection = source.selection
     receipt: dict[str, Any] = {
         "status": "finished",
         "experiment": asdict(experiment),
         "settings": dict(settings),
     }
+    if experiment.mode != "selection":
+        receipt["selection_source"] = source.name
     if experiment.learning_rate is not None and experiment.mode != "selection":
         # A refit-only learning-rate perturbation: the stored search keeps its
         # own rate; the refit (which reuses the search's rate) gets this one.
@@ -973,9 +1173,10 @@ def run_uk_size_experiment(
             baseline.frame,
             baseline.dense,
             selection=selection,
-            draw=baseline.draw,
+            draw=source.draw,
+            selection_target_weighting=source.weighting,
             refit_target_weighting=_weighting(baseline, experiment.refit_rule),
-            **_stored_selection_l2_kwargs(baseline),
+            **_l2_kwargs("selection", source.l2),
             **refit_l2,
             **settings,
         )
@@ -1028,7 +1229,7 @@ def run_uk_size_experiment(
             **refit_l2,
             **settings,
         )
-        results = {"refit": sized}
+        results = {"refit": sized, "selection": new_selection, "draw": new_draw}
         receipt["search"] = {
             "l0_lambda": float(new_selection.selection.l0_lambda),
             "budget_search": new_selection.selection.options.get("budget_search"),
@@ -1036,7 +1237,7 @@ def run_uk_size_experiment(
         }
     else:
         results, receipt["holdout"] = _run_holdout(
-            baseline, experiment, selection, settings, refit_l2
+            baseline, experiment, selection, settings, refit_l2, source
         )
         sized = None
     if sized is not None:
@@ -1111,7 +1312,7 @@ def uk_size_failed_receipt(
     }
 
 
-def _run_holdout(baseline, experiment, selection, settings, refit_l2):
+def _run_holdout(baseline, experiment, selection, settings, refit_l2, source):
     local = np.flatnonzero(np.asarray(baseline.rows.local, dtype=bool))
     folds = rotated_folds(
         len(local), n_folds=int(experiment.folds), seed=UK_LOCAL_HOLDOUT_SEED
@@ -1129,9 +1330,10 @@ def _run_holdout(baseline, experiment, selection, settings, refit_l2):
             baseline.frame,
             baseline.dense,
             selection=selection,
-            draw=baseline.draw,
+            draw=source.draw,
+            selection_target_weighting=source.weighting,
             refit_target_weighting=weighting,
-            **_stored_selection_l2_kwargs(baseline),
+            **_l2_kwargs("selection", source.l2),
             **refit_l2,
             **settings,
         )

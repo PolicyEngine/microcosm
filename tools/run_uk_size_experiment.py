@@ -11,7 +11,10 @@ dense reference held fixed. Subcommands, each its own process:
 ``run``          run the declared experiments (JSON list); resumable. A
                  configuration the solver chain refuses is recorded as a
                  failed receipt and the run moves on: no release gate runs
-                 here, and a refusal is a result.
+                 here, and a refusal is a result. A selection-mode
+                 experiment saves its new search and draw under
+                 ``<out>/<name>/selection``; later experiments refit on it
+                 with ``selection_from``.
 ``score``        score D, the reproduced S0 and every finished experiment.
 ``plan-step1b``  write #1124's step 1b from the scored step 1a by the
                  pre-registered rules (``--stage ae``, then ``--stage holdout``).
@@ -28,6 +31,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
+import shutil
 import sys
 import time
 from collections.abc import Sequence
@@ -40,11 +44,13 @@ from microcosm.build.uk_runtime.size_experiment import (
     build_uk_size_experiment_cache,
     load_uk_size_experiment_baseline,
     load_uk_size_scoring_inputs,
+    load_uk_size_selection,
     load_uk_size_weights,
     parse_uk_size_experiments,
     run_uk_size_census,
     run_uk_size_control,
     run_uk_size_experiment,
+    save_uk_size_selection,
     save_uk_size_weights,
     score_uk_size_experiments,
     uk_size_failed_receipt,
@@ -57,6 +63,7 @@ _REPO = Path(__file__).resolve().parents[1]
 _LOCK = Path.home() / ".cache" / "microcosm" / "uk-size-experiment.lock"
 _CONTROL = "control"
 _CENSUS = "census"
+_SELECTION = "selection"
 
 
 def _json(value: Any) -> str:
@@ -217,7 +224,23 @@ def _run(args: argparse.Namespace) -> int:
         if unknown:
             raise SystemExit(f"--only names unknown experiments: {sorted(unknown)}")
         experiments = tuple(e for e in experiments if e.name in set(args.only))
+    # A selection_from names a selection-mode experiment earlier in this file,
+    # or one already saved in --out; anything else is a declaration error.
+    searched: set[str] = set()
+    for experiment in experiments:
+        source = experiment.selection_from
+        saved = (
+            source is not None and (out / source / _SELECTION / "source.json").is_file()
+        )
+        if source is not None and source not in searched and not saved:
+            raise SystemExit(
+                f"experiment {experiment.name}: selection_from {source!r} is neither an "
+                "earlier selection-mode experiment here nor a saved selection in --out."
+            )
+        if experiment.mode == "selection":
+            searched.add(experiment.name)
     failed = []
+    sources = {}
     with _machine_lock():
         baseline = load_uk_size_experiment_baseline(args.run_dir, args.cache_dir)
         for experiment in experiments:
@@ -229,12 +252,22 @@ def _run(args: argparse.Namespace) -> int:
             sys.stdout.flush()
             started = time.perf_counter()
             try:
-                outcome = run_uk_size_experiment(baseline, experiment)
+                source = None
+                if experiment.selection_from is not None:
+                    name = experiment.selection_from
+                    if name not in sources:
+                        sources[name] = load_uk_size_selection(
+                            baseline, out / name / _SELECTION
+                        )
+                    source = sources[name]
+                outcome = run_uk_size_experiment(baseline, experiment, source=source)
             except Exception as error:
                 # A refusal of the solver chain is this configuration's result:
-                # record it and move on (no weights, so it is never scored).
+                # record it and move on (no weights, so it is never scored; no
+                # saved selection, so nothing refits on it).
                 directory.mkdir(parents=True, exist_ok=True)
                 (directory / "weights.npz").unlink(missing_ok=True)
+                shutil.rmtree(directory / _SELECTION, ignore_errors=True)
                 receipt = uk_size_failed_receipt(
                     baseline,
                     experiment,
@@ -250,6 +283,17 @@ def _run(args: argparse.Namespace) -> int:
                 )
                 continue
             directory.mkdir(parents=True, exist_ok=True)
+            if experiment.mode == "selection":
+                save_uk_size_selection(
+                    baseline,
+                    directory / _SELECTION,
+                    name=experiment.name,
+                    selection=outcome["results"]["selection"],
+                    draw=outcome["results"]["draw"],
+                    rule=experiment.selection_rule,
+                    l2=experiment.selection_l2,
+                )
+                sources.pop(experiment.name, None)
             refit = outcome["results"].get("refit")
             if refit is not None:
                 save_uk_size_weights(

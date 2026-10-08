@@ -18,10 +18,12 @@ from microcosm.build.uk_runtime.size_experiment import (
     build_uk_size_experiment_cache,
     load_uk_size_experiment_baseline,
     load_uk_size_scoring_inputs,
+    load_uk_size_selection,
     parse_uk_size_experiments,
     run_uk_size_census,
     run_uk_size_control,
     run_uk_size_experiment,
+    save_uk_size_selection,
     score_uk_size_experiments,
     uk_size_step1b_plan,
     uk_size_weights_of,
@@ -230,6 +232,68 @@ def test_selection_experiment_searches_again_from_the_stored_dense(baseline) -> 
             run_uk_size_experiment(baseline, warm)
 
 
+def test_a_saved_selection_is_refit_without_searching_again(baseline, tmp_path) -> None:
+    searched = UKSizeExperiment(
+        name="s",
+        mode="selection",
+        selection_rule="grain_family_equal",
+        initial_lambda=None,
+    )
+    outcome = run_uk_size_experiment(baseline, searched)
+    manifest = save_uk_size_selection(
+        baseline,
+        tmp_path / "s" / "selection",
+        name="s",
+        selection=outcome["results"]["selection"],
+        draw=outcome["results"]["draw"],
+        rule=searched.selection_rule,
+        l2=searched.selection_l2,
+    )
+    assert manifest["selection_rule"] == "grain_family_equal"
+    source = load_uk_size_selection(baseline, tmp_path / "s" / "selection")
+    assert source.name == "s" and source.weighting.rule == "grain_family_equal"
+    np.testing.assert_array_equal(
+        source.draw.support, outcome["results"]["draw"].support
+    )
+    # the same refit on the saved selection reproduces the search's own refit
+    again = run_uk_size_experiment(
+        baseline, UKSizeExperiment(name="r", selection_from="s"), source=source
+    )
+    refit, first = again["results"]["refit"], outcome["results"]["refit"]
+    assert refit.receipt["selection_reused"] is True
+    assert again["receipt"]["selection_source"] == "s"
+    np.testing.assert_array_equal(refit.support, first.support)
+    np.testing.assert_array_equal(refit.result.weights, first.result.weights)
+    # refits and holdouts on it vary the refit only
+    floored = run_uk_size_experiment(
+        baseline,
+        UKSizeExperiment(name="f", selection_from="s", baseline_pi_floor=0.5),
+        source=source,
+    )
+    np.testing.assert_array_equal(floored["results"]["refit"].support, first.support)
+    held = run_uk_size_experiment(
+        baseline,
+        UKSizeExperiment(name="h", mode="refit_holdout", selection_from="s"),
+        source=source,
+    )
+    for fold in held["results"].values():
+        np.testing.assert_array_equal(fold.support, first.support)
+    # the stored run's selection stays the default, and a mismatch is refused
+    assert (
+        run_uk_size_experiment(baseline, UKSizeExperiment(name="d"))["receipt"][
+            "selection_source"
+        ]
+        == "stored"
+    )
+    with pytest.raises(ValueError, match="load it with"):
+        run_uk_size_experiment(baseline, UKSizeExperiment(name="x", selection_from="s"))
+    with pytest.raises(ValueError, match="names no selection_from"):
+        run_uk_size_experiment(baseline, UKSizeExperiment(name="y"), source=source)
+    (tmp_path / "s" / "selection" / "draw.json").write_text("{}")
+    with pytest.raises(ValueError, match="saved digest"):
+        load_uk_size_selection(baseline, tmp_path / "s" / "selection")
+
+
 def test_experiment_declarations_refuse_unknown_or_inconsistent_settings() -> None:
     parsed = parse_uk_size_experiments(
         [
@@ -259,6 +323,11 @@ def test_experiment_declarations_refuse_unknown_or_inconsistent_settings() -> No
         UKSizeExperiment(name="a", mode="selection", epochs=2)
     with pytest.raises(ValueError, match="refit-only override"):
         UKSizeExperiment(name="a", epochs=0)
+    for bad in ("a", "control", "x/y"):
+        with pytest.raises(ValueError, match="selection_from names another"):
+            UKSizeExperiment(name="a", selection_from=bad)
+    with pytest.raises(ValueError, match="selection_from names another"):
+        UKSizeExperiment(name="a", mode="selection", selection_from="s")
 
 
 def test_an_epoch_override_shortens_only_the_refit(baseline) -> None:
@@ -476,12 +545,12 @@ def test_tool_records_a_refused_configuration_and_moves_on(
     assert tool.main(["census", *common, *exclusive]) == 0
     real = tool.run_uk_size_experiment
 
-    def refusing(baseline, experiment):
+    def refusing(baseline, experiment, **kwargs):
         if experiment.name == "bad":
             raise RuntimeError(
                 "compact refit lost targets or positive household support."
             )
-        return real(baseline, experiment)
+        return real(baseline, experiment, **kwargs)
 
     monkeypatch.setattr(tool, "run_uk_size_experiment", refusing)
     experiments = tmp_path / "experiments.json"
@@ -701,6 +770,67 @@ def test_step1b_reads_its_picks_off_step_1a_by_the_pre_registered_rules() -> Non
     }
     with pytest.raises(ValueError, match="stage must be"):
         uk_size_step1b_plan(scorecard, receipts, census, stage="1c")
+
+
+def test_tool_saves_a_new_selection_and_refits_on_it(
+    built, tmp_path, monkeypatch
+) -> None:
+    root, _ = built
+    tool = _load_tool()
+    monkeypatch.setattr(tool, "_LOCK", tmp_path / "lock")
+    common = ["--run-dir", str(root / "run"), "--cache-dir", str(root / "cache")]
+    out = tmp_path / "out"
+    exclusive = ["--out", str(out), "--confirm-exclusive"]
+    assert tool.main(["control", *common, *exclusive]) == 0
+    experiments = tmp_path / "experiments.json"
+    searched = {
+        "name": "S",
+        "mode": "selection",
+        "selection_rule": "grain_family_equal",
+        "initial_lambda": None,
+    }
+    experiments.write_text(
+        json.dumps(
+            [
+                searched,
+                {"name": "R", "selection_from": "S", "baseline_pi_floor": 0.5},
+                {"name": "H", "mode": "refit_holdout", "selection_from": "S"},
+            ]
+        )
+    )
+    run = ["run", *common, *exclusive, "--experiments", str(experiments)]
+    assert tool.main(run) == 0
+    assert (out / "S" / "selection" / "source.json").is_file()
+    for name in ("R", "H"):
+        receipt = json.loads((out / name / "receipt.json").read_text())
+        assert receipt["status"] == "finished" and receipt["selection_source"] == "S"
+    support = np.load(out / "S" / "weights.npz")["support"]
+    np.testing.assert_array_equal(
+        np.load(out / "R" / "weights.npz")["support"], support
+    )
+    # a later file may refit on the saved selection; an unknown name is refused
+    later = tmp_path / "later.json"
+    later.write_text(json.dumps([{"name": "R2", "selection_from": "S"}]))
+    assert tool.main(["run", *common, *exclusive, "--experiments", str(later)]) == 0
+    unknown = tmp_path / "unknown.json"
+    unknown.write_text(json.dumps([{"name": "R3", "selection_from": "nope"}]))
+    with pytest.raises(SystemExit, match="selection_from 'nope'"):
+        tool.main(["run", *common, *exclusive, "--experiments", str(unknown)])
+    # a search that fails leaves no saved selection, and its dependents fail too
+    real = tool.run_uk_size_experiment
+
+    def refusing(baseline, experiment, **kwargs):
+        if experiment.name == "S":
+            raise RuntimeError("no drawable probe")
+        return real(baseline, experiment, **kwargs)
+
+    monkeypatch.setattr(tool, "run_uk_size_experiment", refusing)
+    assert tool.main([*run, "--force"]) == 0
+    assert json.loads((out / "S" / "receipt.json").read_text())["status"] == "failed"
+    assert not (out / "S" / "selection").exists()
+    dependent = json.loads((out / "R" / "receipt.json").read_text())
+    assert dependent["status"] == "failed"
+    assert "no saved size selection" in dependent["error"]["message"]
 
 
 def _load_tool():
