@@ -80,6 +80,13 @@ parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
 uses the same pinned parser for groups, statuses, activities and artifacts.
 These CI tests perform no browser rendering.
 
+Workspace tests use an in-memory telemetry emitter by default. The shared
+fixture isolates Hugging Face credentials and cache paths and blocks collector
+HTTP requests outside loopback. Tests of actual emitter startup must request
+`real_local_telemetry` and supply an explicit loopback development collector;
+that opt-in retains credential isolation. Other build tests can inspect
+`fake_telemetry_emitters` without creating sockets or service processes.
+
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.

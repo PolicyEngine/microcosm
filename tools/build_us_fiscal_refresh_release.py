@@ -43,6 +43,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
@@ -67,7 +68,11 @@ from microcosm.build.gates import (
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
+from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -1749,7 +1754,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-dir",
         type=Path,
         help=(
-            "Optional local directory for staging telemetry artifacts. Defaults "
+            "Optional local directory for staging run files. Defaults "
             "to <out>/staging/runs/<run_id> when --staging-repo-id is set."
         ),
     )
@@ -1757,7 +1762,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-repo-id",
         default=_env_default("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
-            "Hugging Face dataset repo to upload staging telemetry to while "
+            "Hugging Face dataset repo to upload staging run files to while "
             "the build runs. On by default (uploads are best-effort and never "
             "fail the build); override with POPULACE_STAGING_REPO_ID or "
             "disable with --no-staging. An empty POPULACE_STAGING_REPO_ID is "
@@ -1786,7 +1791,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-staging",
         action="store_true",
-        help="Disable staging telemetry (local staging dir and uploads) for this build.",
+        help=(
+            "Disable staging run files and their uploads for this build; hosted "
+            "telemetry remains active."
+        ),
     )
     parser.add_argument(
         "--staging-prefix",
@@ -1883,7 +1891,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         # effect of a blank repo id.
         parser.error(
             "--staging-repo-id is empty and no --staging-dir is set, so staging "
-            "telemetry would silently do nothing. Pass --no-staging to skip "
+            "run files would have no destination. Pass --no-staging to skip "
             "staging deliberately, or --staging-dir for a local-only run."
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
@@ -5134,7 +5142,12 @@ class _HouseholdBatchedPostExportScorer:
         parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
             key: [] for key in keys
         }
-        for batch_frame in batches:
+        sweep = _WorkCounter(
+            stage_id="post_export_scoring",
+            unit="scoring_batch",
+            total=len(batches),
+        )
+        for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
                 try:
@@ -5160,6 +5173,7 @@ class _HouseholdBatchedPostExportScorer:
                     release_engine_simulation(simulation)
                 del simulation, engine
             _collect_batch_garbage()
+            sweep.advance(pass_name=label, batch=batch, batches=len(batches))
         _collect_family_garbage()
         return {
             key: _concatenate_post_export_parts(key_parts)
@@ -5389,6 +5403,7 @@ def _reform_household_income_tax(
             reform_income_tax[household_positions] = batch_income_tax
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name=reform_spec.measure, batch=batch, batches=len(batches))
     del reform_system
     _collect_family_garbage()
     return reform_income_tax
@@ -6749,6 +6764,7 @@ def _materialize_base_simulation_columns(
                 columns[column] = pool_values
             del batch_columns, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name="base", batch=batch, batches=len(batches))
     _collect_family_garbage()
 
     assert column_order is not None
@@ -6796,6 +6812,20 @@ def _materialize_target_frame(
     _assert_no_formula_owned_columns(base_frame)
     system = CountryTaxBenefitSystem()
     n_households = base_frame.n("household")
+    requested_reform_measures = {spec.measure for spec in target_specs}
+    global _ACTIVE_WORK
+    passes = 1 + sum(
+        spec.measure in requested_reform_measures
+        for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+    )
+    batch_count = len(
+        tuple(_household_position_batches(n_households, maximum_microsim_batch_size))
+    )
+    _ACTIVE_WORK = _WorkCounter(
+        stage_id="target_compilation",
+        unit="engine_batch",
+        total=passes * batch_count,
+    )
     # The base simulation uses the JCT reform loop's household partition.
     base_columns, base_simulation_batching = _materialize_base_simulation_columns(
         base_frame,
@@ -6815,7 +6845,6 @@ def _materialize_target_frame(
     del base_columns
 
     base_income_tax_household = hh["income_tax"].to_numpy(dtype=np.float64)
-    requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
         if target_materialization_cache_context is not None
@@ -6854,6 +6883,11 @@ def _materialize_target_frame(
             if cached is not None:
                 reform_income_tax, cache_digest, cache_path = cached
                 cache_stats["hits"] = int(cache_stats["hits"]) + 1
+                _advance_work(
+                    batch_count,
+                    pass_name=reform_spec.measure,
+                    cached=True,
+                )
                 cache_entry = {
                     "measure": reform_spec.measure,
                     "neutralized_variable": reform_spec.neutralized_variable,
@@ -7986,7 +8020,7 @@ def _record_qrf_tail_concentration_gate(
     allow_concentration: bool,
     terminal_gate_failures: list[str],
     release_dir: Path,
-    telemetry: _TerminalBatchTelemetry,
+    telemetry: _TerminalBatchProgress,
 ) -> list[str]:
     """Evaluate the terminal QRF tail gate and record everything it measured.
 
@@ -8713,7 +8747,7 @@ def _enforce_ssi_take_up_delivery(
     *,
     targets: Mapping[str, float],
     release_dir: Path,
-    telemetry: StagingTelemetry | None,
+    telemetry: _BuildProgress | None,
     enforcement_fences: Mapping[str, str] | None = None,
 ) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
@@ -11062,6 +11096,25 @@ def _default_release_id(
     return f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
 
 
+def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
+    """Choose an attempt id before release inputs have been loaded.
+
+    An explicit staging id remains authoritative, and an explicit release id
+    is already stable enough to identify the attempt. Builds that derive their
+    release id from the input digest need a separate attempt id so telemetry can
+    start before downloading or hashing that input.
+    """
+
+    if args.staging_run_id:
+        return str(args.staging_run_id)
+    if args.release_id:
+        return str(args.release_id)
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"populace-us-build-{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
 def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
     if not release_id.startswith("populace-us-"):
         raise ValueError(
@@ -11255,11 +11308,121 @@ def _assert_exact_k_original_pool_alignment(
         )
 
 
-#: The staging run for the build in flight, so the entry point can mark it
-#: failed on the way out. The build body hands its telemetry object down a
-#: large call stack; a module-level handle avoids threading a second copy back
-#: up purely for the failure path.
-_ACTIVE_TELEMETRY: StagingTelemetry | None = None
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
+
+
+class _BuildProgress:
+    """Report progress to an emitter and, independently, a staging bundle."""
+
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        emitter: LocalTelemetryEmitter,
+        staging_bundle: StagingRunBundleWriter | None,
+        staging_opt_out_reason: str | None = None,
+    ) -> None:
+        self.run_id = run_id
+        self.emitter = emitter
+        self.staging_bundle = staging_bundle
+        self.staging_opt_out_reason = staging_opt_out_reason
+
+    @property
+    def repo_id(self) -> str | None:
+        if self.staging_bundle is None:
+            return None
+        return self.staging_bundle.repo_id
+
+    @property
+    def uploads_succeeded(self) -> int:
+        if self.staging_bundle is None:
+            return 0
+        return self.staging_bundle.uploads_succeeded
+
+    def stage(
+        self,
+        stage: str,
+        *,
+        message: str | None = None,
+        status: str = "running",
+        force_upload: bool = False,
+        **details: Any,
+    ) -> None:
+        self.emitter.transition_stage(
+            stage,
+            status=status,
+            message=message,
+            **details,
+        )
+        if self.staging_bundle is not None:
+            self.staging_bundle.stage(
+                stage,
+                message=message,
+                status=status,
+                force_upload=force_upload,
+                **details,
+            )
+
+    def calibration_progress(self, event: dict[str, object]) -> None:
+        self.emitter.transition_calibration_progress(event)
+        if self.staging_bundle is not None:
+            self.staging_bundle.calibration_progress(event)
+
+    def attach_artifact(
+        self,
+        name: str,
+        path: Path | str,
+        **details: Any,
+    ) -> None:
+        if self.staging_bundle is not None:
+            self.staging_bundle.attach_artifact(name, path, **details)
+
+    def fail(self, error: BaseException) -> None:
+        self.emitter.fail(error)
+        if self.staging_bundle is not None:
+            self.staging_bundle.fail(error)
+
+    def complete(self) -> None:
+        if self.staging_bundle is not None:
+            self.staging_bundle.complete()
+        self.emitter.complete()
+
+
+#: The progress coordinator for the build in flight, so the entry point can
+#: report failure without threading another handle back through the call stack.
+_ACTIVE_PROGRESS: _BuildProgress | None = None
+
+
+class _WorkCounter:
+    """Report completed independent work units through the emitter service."""
+
+    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+        self.stage_id = stage_id
+        self.unit = unit
+        self.total = max(0, int(total))
+        self.done = 0
+        self.started = time.monotonic()
+
+    def advance(self, units: int = 1, **details: object) -> None:
+        self.done = min(self.total, self.done + max(0, int(units)))
+        if _ACTIVE_EMITTER is None:
+            return
+        _ACTIVE_EMITTER.progress(
+            self.stage_id,
+            done=self.done,
+            total=self.total,
+            unit=self.unit,
+            elapsed_seconds=time.monotonic() - self.started,
+            **details,
+        )
+
+
+_ACTIVE_WORK: _WorkCounter | None = None
+
+
+def _advance_work(units: int = 1, **details: object) -> None:
+    if _ACTIVE_WORK is not None:
+        _ACTIVE_WORK.advance(units, **details)
 
 
 class _ReleaseDryRun:
@@ -11268,7 +11431,8 @@ class _ReleaseDryRun:
     ``_main`` runs the release as it would build it, up to the point where the
     staged frame goes to target materialization. It differs in four ways:
 
-    * Nothing is written under ``--out`` and staging telemetry stays off.
+    * Nothing is written under ``--out`` and staging run files stay off;
+      hosted progress reporting remains active.
     * The input-mass, degenerate-input and eCPS parity gates take their
       degraded-mode branch and batch instead of raising, so one report
       carries them with every register.
@@ -11435,7 +11599,7 @@ class _ReleaseDryRun:
 
 
 #: The dry run in flight, so :func:`main` can turn a refusal before the stop
-#: point into that run's report. Like :data:`_ACTIVE_TELEMETRY`, a module-level
+#: point into that run's report. Like :data:`_ACTIVE_PROGRESS`, a module-level
 #: handle rather than a second object threaded back up the build's call stack.
 _ACTIVE_DRY_RUN: _ReleaseDryRun | None = None
 
@@ -11857,15 +12021,20 @@ def _release_dry_run_checks(
     return checks
 
 
-def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
+def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, object]:
     """Record what staging did and distinguish an opt-out from non-delivery.
 
     Uploads are best-effort and self-disable after repeated failures, so a
     configured destination is not evidence that anything reached it.
     """
 
-    if telemetry is None:
-        return {"enabled": False, "reason": "--no-staging"}
+    if telemetry is None or telemetry.staging_bundle is None:
+        reason = (
+            "--no-staging"
+            if telemetry is None
+            else telemetry.staging_opt_out_reason or "--no-staging"
+        )
+        return {"enabled": False, "reason": reason}
     return {
         "enabled": True,
         "run_id": telemetry.run_id,
@@ -11874,18 +12043,27 @@ def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, obj
     }
 
 
-def _staging_telemetry(
+def _build_progress(
     args: argparse.Namespace,
     *,
     release_root: Path,
     release_id: str,
-) -> StagingTelemetry | None:
-    global _ACTIVE_TELEMETRY
+    run_id: str | None = None,
+    emitter: LocalTelemetryEmitter,
+) -> _BuildProgress:
+    global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
-    _ACTIVE_TELEMETRY = None
+    _ACTIVE_PROGRESS = None
+    run_id = run_id or args.staging_run_id or release_id
     if args.no_staging:
-        return None
+        _ACTIVE_PROGRESS = _BuildProgress(
+            run_id=run_id,
+            emitter=emitter,
+            staging_bundle=None,
+            staging_opt_out_reason="--no-staging",
+        )
+        return _ACTIVE_PROGRESS
     if not args.staging_dir and not args.staging_repo_id:
         # The parser rejects this combination, so reaching it means a caller
         # built the namespace directly. Returning None here would reinstate
@@ -11895,9 +12073,8 @@ def _staging_telemetry(
             "empty and staging_dir is unset. Set no_staging to skip staging, "
             "or give a staging_dir for a local-only run."
         )
-    run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    _ACTIVE_TELEMETRY = StagingTelemetry(
+    staging_bundle = StagingRunBundleWriter(
         run_id=run_id,
         candidate_release_id=release_id,
         run_dir=run_dir,
@@ -11905,10 +12082,15 @@ def _staging_telemetry(
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
-    return _ACTIVE_TELEMETRY
+    _ACTIVE_PROGRESS = _BuildProgress(
+        run_id=run_id,
+        emitter=emitter,
+        staging_bundle=staging_bundle,
+    )
+    return _ACTIVE_PROGRESS
 
 
-class _TerminalBatchTelemetry:
+class _TerminalBatchProgress:
     """Turn terminal-batch telemetry crashes into release-gate failures.
 
     The proxy is deliberately scoped to the post-diagnostics terminal batch.
@@ -11919,7 +12101,7 @@ class _TerminalBatchTelemetry:
 
     def __init__(
         self,
-        telemetry: StagingTelemetry | None,
+        telemetry: _BuildProgress | None,
         terminal_gate_failures: list[str],
     ) -> None:
         self._telemetry = telemetry
@@ -12011,10 +12193,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         if dry_run is not None and _is_release_refusal(error):
             # A dry run the release refuses before its stop point: the
             # refusal is the report's certain failure (exit 1), not a crash.
+            if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+                _ACTIVE_EMITTER.fail(
+                    error,
+                    failure_class="dry_run_refusal",
+                )
             raise SystemExit(dry_run.refused(error)) from error
-        if _ACTIVE_TELEMETRY is not None:
+        if _ACTIVE_PROGRESS is not None:
             try:
-                _ACTIVE_TELEMETRY.fail(error)
+                _ACTIVE_PROGRESS.fail(error)
             except Exception as telemetry_error:  # pragma: no cover - defensive
                 # A failing failure-report must not replace the real traceback.
                 print(
@@ -12022,9 +12209,15 @@ def main(argv: Sequence[str] | None = None) -> None:
                     f"{type(telemetry_error).__name__}: {telemetry_error}",
                     file=sys.stderr,
                 )
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
         raise
     if dry_run_exit is not None:
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.complete()
         raise SystemExit(dry_run_exit)
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.complete()
 
 
 def _check_committed_us_ledger_feed_pin(
@@ -12066,7 +12259,26 @@ def _check_committed_us_ledger_feed_pin(
 
 
 def _main(argv: Sequence[str] | None = None) -> int | None:
+    global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
+    _ACTIVE_EMITTER = None
+    _ACTIVE_PROGRESS = None
     args = _parse_args(argv)
+    build_started = time.perf_counter()
+    attempt_started_at = datetime.now(UTC)
+    run_id = _telemetry_run_id(args, timestamp=attempt_started_at)
+    is_dry_run = args.dry_run_gates_report is not None
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="US",
+        pipeline="us_fiscal_refresh",
+        candidate_id=args.release_id,
+        release_id=args.release_id if not is_dry_run else None,
+        run_kind="dry_run" if is_dry_run else "release",
+    )
+    _ACTIVE_EMITTER.transition_stage(
+        "preflight",
+        message="Validating release inputs and configuration.",
+    )
     # --dry-run-gates-report: runs this build up to target materialization and
     # returns the report's exit code from the stop point below (_ReleaseDryRun).
     dry_run = _ReleaseDryRun.start(args, argv)
@@ -12081,7 +12293,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.evidence_release
         else ()
     )
-    build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
     if args.release_id:
@@ -12365,17 +12576,24 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             checkpoint_root.mkdir(parents=True, exist_ok=True)
         artifact_root.mkdir(parents=True, exist_ok=True)
         release_dir.mkdir(parents=True, exist_ok=True)
-    # A dry run writes only its report: no directories under --out, and no
-    # staging run that a dashboard would show as a release attempt.
-    telemetry = (
-        _staging_telemetry(
+    # A dry run writes only its report under --out and creates no staging
+    # artifacts. Hosted telemetry identifies it separately from a release.
+    if dry_run is None:
+        telemetry = _build_progress(
             args,
             release_root=release_root,
             release_id=release_id,
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
         )
-        if dry_run is None
-        else None
-    )
+    else:
+        telemetry = _BuildProgress(
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
+            staging_bundle=None,
+            staging_opt_out_reason="dry run",
+        )
+        _ACTIVE_PROGRESS = telemetry
     if telemetry is not None:
         telemetry.stage(
             "target_registry",
@@ -14899,7 +15117,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # An unbuildable post-export plan refuses here, before the export write,
     # with every other terminal group still evaluated (microcosm#956).
     terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())
-    terminal_batch_telemetry = _TerminalBatchTelemetry(
+    terminal_batch_telemetry = _TerminalBatchProgress(
         telemetry,
         terminal_gate_failures,
     )
@@ -15258,7 +15476,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # The owned failures ride into the release manifest's known_failures
         # block instead of aborting the export; the H5 written below carries
         # the calibrated weights, so the sidecar is not written on this path.
-        # Failures appended AFTER this point (a _TerminalBatchTelemetry crash
+        # Failures appended AFTER this point (a _TerminalBatchProgress crash
         # line, the smoke/take-up/coverage recordings) are owner-checked at
         # their own append sites and again before the manifest write; if one
         # is unowned the run dies post-H5 — weights retained in the written
