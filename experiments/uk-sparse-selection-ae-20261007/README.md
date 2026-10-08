@@ -44,7 +44,19 @@ reference is never re-solved, so every delta is the selection's.
    3e-3 and 1e-2 times its loss ratio at S0 (2.1439), the low-λ region step 1b's knee
    rule skipped, plus the 5-fold holdout of `E_unif_f0.5_1e-2`. Its sets carry the
    prefix `X_`.
-5. Report to María. Step 2 (search re-runs) and step 3 (size) run only on her pick.
+5. **Step 2** (María's go, 2026-10-08: S-A, then S-AE if necessary, unattended):
+   `step2_sa.json` runs the search under `grain_family_equal_sqrt_count` (S-A),
+   warm-started at the stored penalty times the rule's loss ratio, with its own
+   refit under the rule at floor 0. Five refits then run on its saved selection
+   (`selection_from`): S0's own refit (`grain_equal`, floor 0), the rule at floor
+   0.5 with uniform L2 at 0, 3e-3 and 1e-2 times the rule's loss ratio, and
+   `grain_equal` at floor 0.5 with uniform L2 at 1e-2. `step2_sae.json` (S-AE: the
+   same search plus selection-stage L2 at the pool-design anchor, λ 1e-3 times the
+   rule's loss ratio, warm-started the same way, and the same five refits) runs only
+   when no S-A configuration passes all six criteria. Prediction (the plan's): S-A
+   raises the lone-person share and modestly lowers the collapse count. Holdouts can
+   run later on either saved selection without searching again.
+6. Report to María. S-E and step 3 (size) run only on her pick.
 
 **Selection rules** (fixed now):
 - the best E per anchor is the largest λ that still meets criteria 1–5 of the acceptance below;
