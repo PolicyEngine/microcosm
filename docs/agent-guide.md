@@ -14,6 +14,12 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ## Commands
 
+UK build completion exports and stages Orrery graph evidence. Publication uses
+an independent worker inside the existing local service and a durable queue;
+see [configuration and retry](orrery-publication.md). No new producer secret or
+environment variable is required. Keep graph export/publication tests independent
+of the hosted runs app and collector; use synthetic files and fake HTTP.
+
 ```bash
 uv sync --all-packages   # set up the whole workspace
 uv sync --all-packages --locked --extra us  # US engine environment
