@@ -66,9 +66,11 @@ from __future__ import annotations
 
 import inspect
 import math
+import statistics
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
+from fractions import Fraction
 from types import MappingProxyType
 from typing import Any
 
@@ -314,6 +316,22 @@ class _InvalidWeightSummaryError(ValueError):
     """Finite input weights produced an unusable concentration summary."""
 
 
+def _exact_median(positive: np.ndarray) -> float:
+    """The median of positive weights, rounded once from exact arithmetic.
+
+    An odd count's median is its middle weight. An even count's is the
+    midpoint of its two middle weights, formed as a rational number and
+    rounded once to float64: a float ``(a + b) / 2`` overflows near the
+    float64 maximum, and a median rescaled from normalized weights rounds
+    more than once (giving 1.5e-323, not 2e-323, for ``[1e-323, 2.5e-323]``).
+    """
+
+    count = positive.size
+    middle = list(range((count - 1) >> 1, (count >> 1) + 1))
+    central = np.partition(positive, middle)[middle]
+    return float(statistics.median(Fraction(float(value)) for value in central))
+
+
 def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
     """The concentration summary of one shipped weight vector.
 
@@ -321,8 +339,12 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
     zero-weight rows included; the median is over positive weights only, so
     the max-to-median ratio does not depend on how many dead rows ship. An
     all-zero vector is reportable: its median and ratio are ``None``.
-    Concentration is computed after scaling by the largest weight to avoid
-    overflow and underflow. An unrepresentable diagnostic total is ``None``;
+    Concentration (the ESS fraction and the max-to-median ratio) is computed
+    after scaling by the largest weight to avoid overflow and underflow; a
+    positive weight whose scaled value rounds to zero is kept at the smallest
+    subnormal, so scaling never drops positive support. The reported
+    ``median_positive_weight`` is the exact median of the original positive
+    weights, rounded once. An unrepresentable diagnostic total is ``None``;
     invalid concentration summaries are refused rather than compared.
     """
 
@@ -334,7 +356,11 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
     positive_mask = values > 0
     positive_records = int(positive_mask.sum())
     maximum = float(values.max())
-    scaled = values / maximum if maximum > 0 else values
+    if maximum > 0:
+        scaled = values / maximum
+        scaled[positive_mask & (scaled == 0)] = np.finfo(np.float64).smallest_subnormal
+    else:
+        scaled = values
     ess = float(effective_sample_size(scaled))
     record_limit = float(values.size)
     roundoff = math.ulp(record_limit) * record_limit
@@ -350,14 +376,14 @@ def weight_summary(weights: Sequence[float] | np.ndarray) -> dict[str, Any]:
             raise _InvalidWeightSummaryError(
                 "Computed positive-weight ESS must be at least one."
             )
-        # Keep the original mask: positive inputs can normalize to zero.
         scaled_median = float(np.median(scaled[positive_mask]))
         if not math.isfinite(scaled_median) or not 0 < scaled_median <= 1:
             raise _InvalidWeightSummaryError(
                 "Computed positive-weight median must be finite and positive."
             )
         ratio = 1 / scaled_median
-        median = maximum * scaled_median
+        # Not maximum * scaled_median, which rounds the median a second time.
+        median = _exact_median(values[positive_mask])
         if not math.isfinite(ratio) or ratio < 1:
             raise _InvalidWeightSummaryError(
                 "Computed max/positive-median ratio must be finite and at least one."

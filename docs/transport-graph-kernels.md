@@ -282,12 +282,21 @@ keep their fixed semantics: non-negative means at least zero, and
   ESS fraction divides the Kish ESS by every record; the ratio divides the
   maximum by the median positive weight. For a nonzero vector, both
   comparisons use weights normalized by their maximum, retaining the
-  original record count and positive-weight mask. Invalid computed
-  concentration summaries fail closed. The differential tests compare
-  concentration with the UK gates on normalized weights, preserving original
-  positive support, and compare metadata in original units on the original
-  weights. An unrepresentable diagnostic `total_weight` is reported as `null`;
-  it does not change either concentration comparison.
+  original record count and positive-weight mask; a positive weight whose
+  normalized value rounds to zero is kept at the smallest subnormal.
+  Invalid computed concentration summaries fail closed. The reported
+  `median_positive_weight` is the exact median of the original positive
+  weights, rounded once (an even count's midpoint is formed in rational
+  arithmetic), so it neither overflows nor rounds twice among subnormals.
+  The differential tests compare concentration with the UK gates on the same
+  normalized weights and compare metadata in original units on the original
+  weights, across the whole finite non-negative float64 range; there the
+  median must also equal the exact median rounded once, and the UK helper's
+  float median and total wherever those do not overflow. A max-to-median
+  ratio within float rounding of the float64 maximum is taken on the
+  normalized weights, so it can overflow and fail closed although the exact
+  ratio is finite. An unrepresentable diagnostic `total_weight` is reported
+  as `null`; it does not change either concentration comparison.
 
 Two additional frozen bindings remain pending: `support` requires the
 `donor_support_bounds` artifact for realized donor-support evidence, and
@@ -298,8 +307,12 @@ resolve to registered `evidence_absent` outcomes. Their
 evaluators fail even when artifacts are supplied, until the evidence
 checks are implemented. New Zealand keeps both entries applicable, with
 empty parameters and `evidence_absent_blocks: true`: absent evidence or a
-pending evaluator blocks the build, makes the report non-shippable, and
-prevents graph artifact production, even if every other gate passes.
+pending evaluator blocks the build and makes the report non-shippable, even
+if every other gate passes. No release or export artifact is permitted: the
+`gates.battery@1` node still emits its diagnostic `gate_report`, with
+`artifact_permitted: false`, and `export.prepare@1` and
+`transport.package@1` refuse a terminal gate report that does not permit
+the artifact.
 
 `macro_realism` still has no transport binding and remains `not_applicable`
 until destination national-accounts metrics and reviewed bands are packaged.

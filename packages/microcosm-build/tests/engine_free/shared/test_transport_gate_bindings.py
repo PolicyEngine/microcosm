@@ -13,6 +13,12 @@ Invariants, each checked here:
   passes, evidence on the fail side fails, and missing evidence resolves to
   ``evidence_absent``, never ``passed``;
 - the module imports no country runtime;
+- for every finite non-negative weight vector, subnormals included, the
+  reported positive-weight median is the float64 nearest the exact median of
+  the original positive weights (ties to even), and the summary is refused
+  exactly when the exact max/median ratio exceeds the float64 maximum; within
+  a relative 1e-12 of that maximum the max-normalized ratio may round either
+  way, an intended boundary pinned by a deterministic test (Hypothesis);
 - the declared surfaces in NZ ``gates.json`` equal the package resources
   they restate (differential checks against ``source_stages.json`` and
   ``export_contract.json``);
@@ -1275,6 +1281,63 @@ class TestFrameGates:
 _WEIGHTS = st.lists(
     st.floats(min_value=0.0, max_value=1e6, allow_nan=False), min_size=1, max_size=40
 )
+_FLOAT64_MAX = float(np.finfo(np.float64).max)
+#: Every finite non-negative float64, subnormals included, or integer
+#: multiples of one power of two at any scale from the smallest subnormal step
+#: to the float64 maximum (exact values whose ratio stays below 2**53).
+_FULL_RANGE_WEIGHTS = st.one_of(
+    st.lists(
+        st.floats(
+            min_value=0.0,
+            max_value=_FLOAT64_MAX,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+        min_size=1,
+        max_size=40,
+    ),
+    st.builds(
+        lambda units, exponent: [math.ldexp(unit, exponent) for unit in units],
+        st.lists(
+            st.integers(min_value=0, max_value=2**53 - 1), min_size=1, max_size=40
+        ),
+        st.integers(min_value=-1074, max_value=971),
+    ),
+)
+#: Two copies of 2**-1022 + 2**-1073 under a maximum of 4: the exact ratio is
+#: finite, but the normalized median rounds (ties to even) to 2**-1024, whose
+#: reciprocal overflows.
+_AT_THE_FLOAT64_LIMIT = [math.ldexp(1, -1022) + math.ldexp(1, -1073)] * 2 + [4.0]
+
+
+def _exact_median(positive: list[Fraction]) -> Fraction:
+    middle = len(positive) // 2
+    if len(positive) % 2:
+        return positive[middle]
+    return (positive[middle - 1] + positive[middle]) / 2
+
+
+def _near_the_float64_limit(ratio: Fraction) -> bool:
+    """Whether max normalization may round ``ratio`` either side of overflow."""
+
+    limit = Fraction(_FLOAT64_MAX)
+    return abs(ratio - limit) <= limit * Fraction(1, 10**12)
+
+
+def _is_nearest_float(value: float, exact: Fraction) -> bool:
+    """Whether ``value`` is the float64 nearest ``exact``, ties to even."""
+
+    error = abs(Fraction(value) - exact)
+    odd = int(np.float64(value).view(np.int64)) & 1
+    for neighbour in (
+        math.nextafter(value, -math.inf),
+        math.nextafter(value, math.inf),
+    ):
+        if math.isfinite(neighbour):
+            other = abs(Fraction(neighbour) - exact)
+            if other < error or (other == error and odd):
+                return False
+    return True
 
 
 class TestWeightGates:
@@ -1354,6 +1417,78 @@ class TestWeightGates:
         assert summary["ess_fraction"] == pytest.approx(1 / 3)
         assert summary["max_to_median_positive_weight"] == pytest.approx(2.0)
 
+    def test_subnormal_median_is_rounded_once(self) -> None:
+        # The exact midpoint is 3.5 steps of 2**-1074, which rounds to 2e-323;
+        # rescaling a normalized median rounded it twice, to 1.5e-323.
+        summary = weight_summary([1e-323, 2.5e-323])
+        assert summary["median_positive_weight"] == 2e-323
+
+    def test_positive_weights_stay_positive_after_normalization(self) -> None:
+        # Both 5e-324 weights normalize below the smallest subnormal and share
+        # the median with 2**-1021 + 2**-1072; the exact ratio is finite.
+        weights = [5e-324, 5e-324, math.ldexp(1, -1021) + math.ldexp(1, -1072), 4.0]
+        positive = sorted(Fraction(value) for value in weights)
+        ratio = positive[-1] / _exact_median(positive)
+        assert ratio <= Fraction(_FLOAT64_MAX)
+        summary = weight_summary(weights)
+        assert math.isclose(
+            summary["max_to_median_positive_weight"], float(ratio), rel_tol=1e-12
+        )
+        assert weight_ess_gate(weights, minimum_ess_fraction=0.2).passed
+
+    def test_a_ratio_at_the_float64_limit_fails_closed(self) -> None:
+        # Intended: within float rounding of the float64 maximum the ratio is
+        # taken on max-normalized weights, as the UK gates take it in the
+        # differential test. Here it overflows although the exact ratio does
+        # not, so the summary is refused and both gates fail closed.
+        positive = sorted(Fraction(value) for value in _AT_THE_FLOAT64_LIMIT)
+        ratio = positive[-1] / _exact_median(positive)
+        assert ratio <= Fraction(_FLOAT64_MAX)
+        assert _near_the_float64_limit(ratio)
+        with pytest.raises(ValueError, match="Computed max/positive-median ratio"):
+            weight_summary(_AT_THE_FLOAT64_LIMIT)
+        assert not weight_ess_gate(
+            _AT_THE_FLOAT64_LIMIT, minimum_ess_fraction=0.01
+        ).passed
+        assert not weight_ratio_gate(
+            _AT_THE_FLOAT64_LIMIT, maximum_max_to_median_ratio=1e4
+        ).passed
+
+    @PROPERTY
+    @example(weights=[1e-323, 2.5e-323])
+    @example(weights=[_FLOAT64_MAX, _FLOAT64_MAX])
+    @example(weights=[_FLOAT64_MAX / 2, _FLOAT64_MAX])
+    @example(weights=[0.0, 5e-324, _FLOAT64_MAX])
+    @given(weights=_FULL_RANGE_WEIGHTS)
+    def test_property_summary_is_exact_over_the_full_float64_range(
+        self, weights
+    ) -> None:
+        values = [Fraction(value) for value in weights]
+        positive = sorted(value for value in values if value > 0)
+        ratio = positive[-1] / _exact_median(positive) if positive else None
+        assume(ratio is None or not _near_the_float64_limit(ratio))
+        if ratio is not None and ratio > Fraction(_FLOAT64_MAX):
+            with pytest.raises(ValueError, match="Computed"):
+                weight_summary(weights)
+            return
+        summary = weight_summary(weights)
+        assert summary["max_weight"] == max(weights)
+        if not positive:
+            assert summary["median_positive_weight"] is None
+            assert summary["max_to_median_positive_weight"] is None
+            return
+        assert _is_nearest_float(
+            summary["median_positive_weight"], _exact_median(positive)
+        )
+        assert math.isclose(
+            summary["max_to_median_positive_weight"], float(ratio), rel_tol=1e-12
+        )
+        total = sum(values)
+        fraction = total * total / sum(value * value for value in values) / len(values)
+        assert math.isclose(
+            summary["ess_fraction"], float(fraction), rel_tol=1e-12, abs_tol=1e-15
+        )
+
     @PROPERTY
     @given(weights=_WEIGHTS, minimum=st.floats(min_value=1e-6, max_value=1.0))
     def test_property_ess_floor(self, weights, minimum) -> None:
@@ -1371,6 +1506,8 @@ class TestWeightGates:
                 else (positive[middle - 1] + positive[middle]) / 2
             )
             ratio = positive[-1] / median
+            # Overflow at the float64 limit is pinned by a deterministic test.
+            assume(not _near_the_float64_limit(ratio))
             representable = ratio <= Fraction(float(np.finfo(np.float64).max))
         else:
             representable = True
@@ -1402,6 +1539,7 @@ class TestWeightGates:
         assume(
             ratio is None or abs(ratio - Fraction(maximum)) > Fraction(1e-9 * maximum)
         )
+        assume(ratio is None or not _near_the_float64_limit(ratio))
         result = weight_ratio_gate(weights, maximum_max_to_median_ratio=maximum)
         assert result.passed is bool(ratio is not None and ratio <= Fraction(maximum))
         assert result.details["maximum_max_to_median_ratio"] == maximum

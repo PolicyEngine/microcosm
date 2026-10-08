@@ -8,7 +8,11 @@ over ``uk_runtime/diagnostics.uk_weight_summary``). Compare concentration on
 the same relative row weights, normalized for the UK helper so its raw-weight
 arithmetic does not become the numerical oracle. Original-unit metadata still
 agrees on the original weights. Unrepresentable concentration must fail closed
-in the neutral gates. This file holds those checks beside the UK code it reads. The
+in the neutral gates. A second set of properties draws weights from the whole
+finite non-negative float64 range, subnormals included: there the reported
+positive-weight median must equal the exact median rounded once, and the UK
+helper's own float median and total wherever those do not overflow. This file
+holds those checks beside the UK code it reads. The
 neutral module's own tests live in
 ``engine_free/shared/test_transport_gate_bindings.py``.
 """
@@ -16,10 +20,11 @@ neutral module's own tests live in
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.transport.gate_bindings import (
@@ -51,6 +56,47 @@ _SHARED = (
     "max_weight",
     "max_to_median_positive_weight",
 )
+#: Fields reported in the weights' original units, not after normalization.
+_ORIGINAL_UNITS = ("total_weight", "median_positive_weight", "max_weight")
+
+_FLOAT64_MAX = float(np.finfo(np.float64).max)
+#: Every finite non-negative float64, subnormals included.
+_ANY_WEIGHT = st.floats(
+    min_value=0.0, max_value=_FLOAT64_MAX, allow_nan=False, allow_infinity=False
+)
+#: Integer multiples of one power of two, from the smallest subnormal step up
+#: to the float64 maximum. Every value is exact and the ratio stays below
+#: 2**53, so these vectors always summarize, at every binary scale.
+_SCALED_UNITS = st.builds(
+    lambda units, exponent: [math.ldexp(unit, exponent) for unit in units],
+    st.lists(st.integers(min_value=0, max_value=2**53 - 1), min_size=1, max_size=60),
+    st.integers(min_value=-1074, max_value=971),
+)
+_FULL_RANGE_WEIGHTS = st.one_of(
+    st.lists(_ANY_WEIGHT, min_size=1, max_size=60), _SCALED_UNITS
+)
+#: The review's subnormal pair: its exact midpoint, 3.5 steps of 2**-1074,
+#: rounds to 2e-323; rescaling the normalized median gave 1.5e-323.
+_SUBNORMAL_PAIR = [1e-323, 2.5e-323]
+#: Two positive weights that normalize below the smallest subnormal share the
+#: median with 2**-1021 + 2**-1072. Normalized to zero, they push the median's
+#: reciprocal past the float64 maximum; the exact ratio is finite.
+_UNDERFLOWING_MEDIAN = [
+    5e-324,
+    5e-324,
+    math.ldexp(1, -1021) + math.ldexp(1, -1072),
+    4.0,
+]
+
+
+def _exact_positive_median(weights) -> float | None:
+    positive = sorted(Fraction(value) for value in weights if value > 0)
+    if not positive:
+        return None
+    middle = len(positive) // 2
+    if len(positive) % 2:
+        return float(positive[middle])
+    return float((positive[middle - 1] + positive[middle]) / 2)
 
 
 def _same(left: object, right: object) -> bool:
@@ -74,6 +120,8 @@ def _invalid_ratio(summary) -> bool:
 
 
 @PROPERTY
+@example(weights=_SUBNORMAL_PAIR)
+@example(weights=_UNDERFLOWING_MEDIAN)
 @given(weights=_WEIGHTS)
 def test_property_summaries_agree(weights) -> None:
     values, normalized = _uk_weights(weights)
@@ -96,6 +144,7 @@ def test_property_summaries_agree(weights) -> None:
 
 
 @PROPERTY
+@example(weights=_UNDERFLOWING_MEDIAN, minimum=0.2)
 @given(weights=_WEIGHTS, minimum=st.floats(min_value=1e-6, max_value=1.0))
 def test_property_ess_verdicts_agree(weights, minimum) -> None:
     _, normalized = _uk_weights(weights)
@@ -129,3 +178,86 @@ def test_property_ratio_verdicts_agree(weights, maximum) -> None:
             weight_summary(weights)
         assert neutral.passed is False
         assert neutral.failures
+
+
+def test_subnormal_median_is_rounded_once() -> None:
+    neutral = weight_summary(_SUBNORMAL_PAIR)
+    assert neutral["median_positive_weight"] == 2e-323
+    assert (
+        neutral["median_positive_weight"]
+        == uk_weight_summary(_SUBNORMAL_PAIR)["median_positive_weight"]
+    )
+
+
+def test_positive_support_survives_normalization() -> None:
+    _, normalized = _uk_weights(_UNDERFLOWING_MEDIAN)
+    neutral = weight_summary(_UNDERFLOWING_MEDIAN)
+    uk = uk_weight_summary(normalized)
+    assert math.isfinite(uk["max_to_median_positive_weight"])
+    assert (
+        neutral["max_to_median_positive_weight"] == uk["max_to_median_positive_weight"]
+    )
+    assert weight_ess_gate(_UNDERFLOWING_MEDIAN, minimum_ess_fraction=0.2).passed
+    assert uk_weight_ess_gate(normalized, minimum_ess_fraction=0.2).passed
+
+
+@PROPERTY
+@example(weights=_SUBNORMAL_PAIR)
+@example(weights=_UNDERFLOWING_MEDIAN)
+@example(weights=[_FLOAT64_MAX, _FLOAT64_MAX])
+@example(weights=[0.0, 5e-324, _FLOAT64_MAX])
+@given(weights=_FULL_RANGE_WEIGHTS)
+def test_property_summaries_agree_over_the_full_float64_range(weights) -> None:
+    values, normalized = _uk_weights(weights)
+    uk = uk_weight_summary(normalized)
+    if _invalid_ratio(uk):
+        with pytest.raises(ValueError, match="Computed"):
+            weight_summary(values)
+        assert not weight_ess_gate(values, minimum_ess_fraction=1.0).passed
+        assert not weight_ratio_gate(values, maximum_max_to_median_ratio=1.0).passed
+        return
+    neutral = weight_summary(values)
+    for field in _SHARED:
+        if field not in _ORIGINAL_UNITS:
+            assert _same(neutral[field], uk[field]), field
+    median = neutral["median_positive_weight"]
+    assert median == _exact_positive_median(weights)
+    # The UK helper's raw float sum and midpoint overflow near the float64
+    # maximum; wherever they stay finite the original units agree exactly.
+    with np.errstate(over="ignore", invalid="ignore"):
+        original_uk = uk_weight_summary(values)
+    assert neutral["max_weight"] == original_uk["max_weight"]
+    total = original_uk["total_weight"]
+    assert neutral["total_weight"] == (total if math.isfinite(total) else None)
+    uk_median = original_uk["median_positive_weight"]
+    if uk_median is None or math.isfinite(uk_median):
+        assert median == uk_median
+
+
+@PROPERTY
+@example(weights=_UNDERFLOWING_MEDIAN, minimum=0.2, maximum=1e4)
+@given(
+    weights=_FULL_RANGE_WEIGHTS,
+    minimum=st.floats(min_value=1e-6, max_value=1.0),
+    maximum=st.floats(min_value=1e-3, max_value=1e4),
+)
+def test_property_verdicts_agree_over_the_full_float64_range(
+    weights, minimum, maximum
+) -> None:
+    _, normalized = _uk_weights(weights)
+    ess = weight_ess_gate(weights, minimum_ess_fraction=minimum)
+    ratio = weight_ratio_gate(weights, maximum_max_to_median_ratio=maximum)
+    assert (
+        ratio.passed
+        is uk_weight_ratio_gate(normalized, maximum_max_to_median_ratio=maximum).passed
+    )
+    if _invalid_ratio(uk_weight_summary(normalized)):
+        # An unrepresentable ratio refuses the summary: both gates fail closed.
+        assert ess.passed is False
+        assert ess.failures
+        assert ratio.failures
+    else:
+        assert (
+            ess.passed
+            is uk_weight_ess_gate(normalized, minimum_ess_fraction=minimum).passed
+        )
