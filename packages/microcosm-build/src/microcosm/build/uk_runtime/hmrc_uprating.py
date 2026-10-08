@@ -79,6 +79,9 @@ UK_ENGINE_INDEX_PARAMETERS: tuple[str, ...] = (
     "gov.economic_assumptions.indices.obr.per_capita.gdp",
     "gov.economic_assumptions.indices.obr.private_pension_index",
     "gov.economic_assumptions.indices.ons.household_interest_income",
+    # The engine's index for property_finance_costs: the PRIS residential
+    # finance costs move with it (microcosm#1106).
+    "gov.economic_assumptions.indices.obr.mortgage_interest",
     "gov.dwp.state_pension.new_state_pension.amount",
     "gov.hmrc.national_insurance.class_1.rates.employer",
 )
