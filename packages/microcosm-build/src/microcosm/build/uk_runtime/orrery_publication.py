@@ -15,18 +15,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from microcosm.build.artifact_files import file_artifact, materialize_bytes
-from microcosm.build.graph_publication_types import (
+from microcosm_provider_orrery.client import publication_inventory, publish_graph
+from microcosm_provider_orrery.contracts import (
     PublicationFileRole,
     PublicationReceipt,
 )
+
+from microcosm.build.artifact_files import file_artifact, materialize_bytes
 from microcosm.build.staging_dataset import StagedDatasetDelivery
-from microcosm.build.telemetry_emitter import default_spool_path
-from microcosm.build.telemetry_emitter_service.graph_publication import (
-    GRAPH_PUBLICATION_WAIT_SECONDS,
-    GraphPublicationQueue,
-    publication_inventory,
-)
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
@@ -37,6 +33,8 @@ INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
 FAILURE_MARKER_NAME = "orrery.failure.json"
 FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
+# How long a build waits for a first upload result after the durable enqueue.
+GRAPH_PUBLICATION_WAIT_SECONDS = 30.0
 
 
 class GraphEvidenceOutput(TypedDict):
@@ -173,13 +171,7 @@ def finalize_graph(
                 if emitter is None:
                     # Durable enqueue is still possible without a running
                     # emitter; the retry command requires no telemetry run.
-                    queue = GraphPublicationQueue(default_spool_path())
-                    queue.enqueue(preserved, inventory)
-                    queued_receipt = queue.receipt(inventory["publication_id"])
-                    assert queued_receipt is not None, (
-                        "A queued graph publication must have a receipt."
-                    )
-                    receipt.update(queued_receipt)
+                    receipt.update(publish_graph(preserved, inventory, wait_seconds=0))
                 else:
                     receipt.update(
                         emitter.publish_graph(

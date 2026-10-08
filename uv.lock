@@ -800,8 +800,6 @@ name = "microcosm-build"
 version = "0.1.0"
 source = { editable = "packages/microcosm-build" }
 dependencies = [
-    { name = "alembic" },
-    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "jsonschema" },
     { name = "microcosm-calibrate" },
@@ -809,13 +807,15 @@ dependencies = [
     { name = "microcosm-fit" },
     { name = "microcosm-frame" },
     { name = "microcosm-graph" },
+    { name = "microcosm-provider-client" },
+    { name = "microcosm-provider-orrery" },
+    { name = "microcosm-provider-telemetry" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pyyaml" },
     { name = "referencing" },
     { name = "scipy" },
-    { name = "sqlalchemy" },
 ]
 
 [package.optional-dependencies]
@@ -842,10 +842,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.13.3,<2" },
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
-    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "microcosm-calibrate", editable = "packages/microcosm-calibrate" },
@@ -855,6 +853,9 @@ requires-dist = [
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
+    { name = "microcosm-provider-client", git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-client&rev=06e47847983ee67ccdb6a596062251322d07f793" },
+    { name = "microcosm-provider-orrery", git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-orrery&rev=06e47847983ee67ccdb6a596062251322d07f793" },
+    { name = "microcosm-provider-telemetry", git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-telemetry&rev=06e47847983ee67ccdb6a596062251322d07f793" },
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "openpyxl", marker = "extra == 'uk'", specifier = ">=3.1" },
@@ -866,7 +867,6 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
     { name = "referencing", specifier = ">=0.35,<1" },
     { name = "scipy", specifier = ">=1.13" },
-    { name = "sqlalchemy", specifier = ">=2,<3" },
     { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },
 ]
@@ -1079,6 +1079,47 @@ requires-dist = [
 dev = [
     { name = "hypothesis", specifier = ">=6" },
     { name = "pytest", specifier = ">=8" },
+]
+
+[[package]]
+name = "microcosm-provider-client"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-client&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
+dependencies = [
+    { name = "psutil" },
+]
+
+[[package]]
+name = "microcosm-provider-core"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-core&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
+dependencies = [
+    { name = "alembic" },
+    { name = "huggingface-hub" },
+    { name = "sqlalchemy" },
+]
+
+[[package]]
+name = "microcosm-provider-orrery"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-orrery&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
+dependencies = [
+    { name = "httpx" },
+    { name = "microcosm-provider-client" },
+    { name = "microcosm-provider-core" },
+]
+
+[[package]]
+name = "microcosm-provider-telemetry"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microcosm-emitter?subdirectory=packages%2Fprovider-telemetry&rev=06e47847983ee67ccdb6a596062251322d07f793#06e47847983ee67ccdb6a596062251322d07f793" }
+dependencies = [
+    { name = "alembic" },
+    { name = "huggingface-hub" },
+    { name = "microcosm-provider-client" },
+    { name = "microcosm-provider-core" },
+    { name = "psutil" },
+    { name = "sqlalchemy" },
 ]
 
 [[package]]

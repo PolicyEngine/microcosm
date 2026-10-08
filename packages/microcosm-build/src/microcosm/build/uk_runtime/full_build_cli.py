@@ -1174,14 +1174,12 @@ def _publish_failure_evidence(
     temporary JSON are never published.
     """
     from microcosm.build.artifact_files import publish_staged_bundle
-    from microcosm.build.telemetry_emitter_service.graph_publication import (
-        GRAPH_PUBLICATION_WAIT_SECONDS,
-    )
 
     from .orrery_publication import (
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
+        GRAPH_PUBLICATION_WAIT_SECONDS,
         finalize_graph,
         stage_graph_evidence,
     )
