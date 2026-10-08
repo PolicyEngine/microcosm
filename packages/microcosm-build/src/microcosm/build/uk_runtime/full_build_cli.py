@@ -235,8 +235,13 @@ _SUPPORT_ARGUMENTS = dict(
 )
 
 
-def _run_graph_with_progress(compiled, **kwargs):
-    """Run a graph and emit one lightweight update per completed node."""
+def _run_graph_with_progress(compiled, *, execution=None, **kwargs):
+    """Run a graph and emit one lightweight update per completed node.
+
+    ``execution`` (node id to cache hit) collects how this attempt reached each
+    node. The first run to reach a node decides: a later run in the same
+    attempt reports a hit for a node this attempt itself just computed.
+    """
 
     completed = 0
     previous = time.monotonic()
@@ -254,12 +259,84 @@ def _run_graph_with_progress(compiled, **kwargs):
         )
         previous = now
 
-    return run_graph(
+    manifest = run_graph(
         compiled,
         _population_observer=observe,
         _population_observer_detach=False,
         **kwargs,
     )
+    if execution is not None:
+        for node_id, receipt in manifest.nodes.items():
+            execution.setdefault(str(node_id), bool(receipt.hit))
+    return manifest
+
+
+def _attempt_request(bindings: Mapping, state: AttemptState | None, telemetry) -> dict:
+    """The attempt's request evidence: its bindings and the ids that name it.
+
+    The Logbook build id and the staging run id tie the attempt directory to
+    its row and its dashboard run, so a later attempt on the same graph store
+    can name the attempts before it.
+    """
+    return {
+        **bindings,
+        "attempt": {
+            "build_id": None if state is None else state.build_id,
+            "run_id": getattr(telemetry, "run_id", None),
+        },
+    }
+
+
+def _execution_counts(execution: Mapping[str, bool]) -> dict[str, int]:
+    reused = sum(1 for hit in execution.values() if hit)
+    return {
+        "nodes_total": len(execution),
+        "nodes_reused": reused,
+        "nodes_computed": len(execution) - reused,
+    }
+
+
+def _graph_execution(args: argparse.Namespace, execution: Mapping[str, bool]) -> dict:
+    """How this attempt ran its graph: the store, its counts, the attempts before.
+
+    A resumed build reuses the stored results of earlier attempts on the same
+    store; recording the store, the attempt directory, how many nodes were
+    reused rather than computed, and the earlier attempt directories (with the
+    Logbook and staging ids their request evidence carries) links the
+    attempt to the work it built on. It sits outside the run parameters, so
+    the candidate identity is unchanged.
+    """
+    attempt = Path(args.attempt_evidence)
+    earlier = []
+    siblings = attempt.parent.iterdir() if attempt.parent.is_dir() else ()
+    for directory in sorted(
+        (path for path in siblings if path.is_dir() and path != attempt),
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+    ):
+        entry: dict[str, object] = {"directory": str(directory)}
+        try:
+            identity = json.loads((directory / "request.json").read_text()).get(
+                "attempt"
+            )
+        except (OSError, ValueError, AttributeError):
+            identity = None
+        if isinstance(identity, Mapping):
+            entry["build_id"] = identity.get("build_id")
+            entry["run_id"] = identity.get("run_id")
+        earlier.append(entry)
+    return {
+        "graph_store": str(attempt.parent.parent),
+        "attempt_directory": str(attempt),
+        **_execution_counts(execution),
+        "earlier_attempts": earlier,
+    }
+
+
+def _stage_graph_execution(telemetry, record: Mapping) -> None:
+    """Emit the attempt's reuse counts before its staging run closes."""
+    execution = record.get("graph_execution")
+    if execution:
+        stage(telemetry, "graph_execution", "completed", **_execution_counts(execution))
 
 
 def _target_geographies(value: str) -> tuple[str, ...] | None:
@@ -1179,6 +1256,7 @@ def _close_attempt(
 ) -> None:
     """Stage the published bundle, close the telemetry, spool the Logbook row."""
     state: AttemptState = attempt["state"]
+    _stage_graph_execution(telemetry, record)
     manifest = record.get("manifest")
     blocked = bool(record.get("blocking_failures"))
     classified = classify_return(status, record.get("gate_block"))
@@ -1411,6 +1489,7 @@ def _execute_full_build(
     posture = posture_of(args)
     state: AttemptState | None = None if attempt is None else attempt["state"]
     record = {} if record is None else record
+    execution = record.setdefault("graph_execution", {})
     stem, gate_report_name = _release_stem(posture)
     published_root = Path(getattr(args, "published_out", args.out))
     args.out.mkdir(parents=True, exist_ok=True)
@@ -1421,7 +1500,8 @@ def _execute_full_build(
         canonical_json(full.operation_inventory()), args.out / "operations.json"
     )
     materialize_bytes(
-        canonical_json(prepared.bindings), args.attempt_evidence / "request.json"
+        canonical_json(_attempt_request(prepared.bindings, state, telemetry)),
+        args.attempt_evidence / "request.json",
     )
     # Preserve source evidence before downstream transforms can raise. Each is
     # an ancestor-closed checkpoint of this graph, with the same node keys/RNG.
@@ -1440,6 +1520,7 @@ def _execute_full_build(
             store=store,
             kernels=kernels,
             resume=resume,
+            execution=execution,
         )
         _persist_checkpoint(checkpoint, store, args, endpoint)
         resume = "require" if args.resume == "require" else "auto"
@@ -1452,6 +1533,7 @@ def _execute_full_build(
         store=store,
         kernels=kernels,
         resume=resume,
+        execution=execution,
     )
     _persist_checkpoint(preflight, store, args, "preflight")
     _materialize_evidence(preflight, store, args.out)
@@ -1511,6 +1593,7 @@ def _execute_full_build(
         store=store,
         kernels=kernels,
         resume="require" if args.resume == "require" else "auto",
+        execution=execution,
     )
     _persist_checkpoint(manifest, store, args, "numerical")
     _materialize_evidence(manifest, store, args.out)
@@ -1612,6 +1695,7 @@ def _execute_full_build(
         store=store,
         kernels=kernels,
         resume="require" if args.resume == "require" else "auto",
+        execution=execution,
     )
     descriptor = json.loads(
         _payload(manifest, store, "uk.full.export.prepare", "export_descriptor")
@@ -1697,6 +1781,7 @@ def _execute_full_build(
         store=store,
         kernels=kernels,
         resume="auto",
+        execution=execution,
     )
     final.save(args.out / "build.graph.json")
     materialize_bytes(graph_to_json(graph).encode(), args.out / "graph.json")
@@ -1765,6 +1850,7 @@ def _execute_full_build(
         if local_report is not None
         else LOCAL_GATE_REPORT_ABSENCE,
     )
+    rowwise_manifest["execution"] = _graph_execution(args, execution)
     materialize_bytes(
         json_text(rowwise_manifest).encode(), args.out / MANIFEST_FILENAME
     )
@@ -2068,6 +2154,7 @@ def _execute_national_build(
     posture = posture_of(args)
     state: AttemptState | None = None if attempt is None else attempt["state"]
     record = {} if record is None else record
+    execution = record.setdefault("graph_execution", {})
     vintage = args._frs_vintage
     paths = output_paths(args.out, posture=posture, vintage=vintage)
     published_root = Path(getattr(args, "published_out", args.out))
@@ -2081,7 +2168,8 @@ def _execute_national_build(
         canonical_json(national.operation_inventory()), args.out / "operations.json"
     )
     materialize_bytes(
-        canonical_json(prepared.bindings), args.attempt_evidence / "request.json"
+        canonical_json(_attempt_request(prepared.bindings, state, telemetry)),
+        args.attempt_evidence / "request.json",
     )
     build_id = "dry-run" if state is None else state.build_id
     resume = args.resume
@@ -2093,6 +2181,7 @@ def _execute_national_build(
         store=store,
         kernels=kernels,
         resume=resume,
+        execution=execution,
     )
     _persist_checkpoint(checkpoint, store, args, "uk.full.spine_checkpoint")
     resume = "require" if args.resume == "require" else "auto"
@@ -2114,6 +2203,7 @@ def _execute_national_build(
         store=store,
         kernels=kernels,
         resume=resume,
+        execution=execution,
     )
     registry_document = json.loads(
         graph_payload(targets, store, NATIONAL_TARGETS_NODE, "registry")
@@ -2167,6 +2257,7 @@ def _execute_national_build(
         store=store,
         kernels=kernels,
         resume=resume,
+        execution=execution,
     )
     _persist_checkpoint(manifest, store, args, "numerical")
     _materialize_evidence(manifest, store, args.out)
@@ -2335,6 +2426,7 @@ def _execute_national_build(
         store=store,
         kernels=kernels,
         resume="auto",
+        execution=execution,
     )
     _require_gate_kernel_completed(final, NATIONAL_READBACK_NODE)
     readback = json.loads(
@@ -2410,6 +2502,7 @@ def _execute_national_build(
         reported_paths=published,
         graph={"artifacts": graph_keys, "readback": readback},
     )
+    manifest_payload["execution"] = _graph_execution(args, execution)
     materialize_bytes(json_text(manifest_payload).encode(), paths["manifest"])
     record["manifest"] = manifest_payload
     record["build_record"] = build_record
@@ -2458,6 +2551,7 @@ def _close_national_attempt(
 
     posture = posture_of(args)
     state: AttemptState = attempt["state"]
+    _stage_graph_execution(telemetry, record)
     manifest = record.get("manifest")
     classified = classify_return(status, record.get("gate_block"))
     paths = output_paths(output, posture=posture, vintage=args._frs_vintage)

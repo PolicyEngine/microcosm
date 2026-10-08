@@ -353,6 +353,10 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert expected["release_authorized"] is False
     assert expected["release_role"] == "dense"
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
+    cold = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    assert cold["nodes_total"] > 0 and cold["nodes_reused"] == 0
+    assert cold["nodes_computed"] == cold["nodes_total"]
+    assert cold["earlier_attempts"] == []
     for path in out.iterdir():
         if path.is_file():
             path.unlink()
@@ -368,6 +372,14 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert cli.execute_full_build(prepared(tmp_path), args) == 0
     actual = json.loads((out / "build.json").read_text())
     assert actual["content_sha256"] == expected["content_sha256"]
+    # The replay records that it reused the cold attempt's work and names it.
+    replay = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    assert replay["nodes_reused"] > 0
+    assert replay["nodes_total"] == replay["nodes_reused"] + replay["nodes_computed"]
+    assert [Path(item["directory"]).parent for item in replay["earlier_attempts"]] == [
+        Path(replay["attempt_directory"]).parent
+    ]
+    assert replay["graph_store"] == cold["graph_store"]
     # The output names come from the dense posture and the FRS vintage.
     assert (out / f"{STEM}.h5").is_file()
     assert (out / f"{STEM}.holdout.json").is_file()
@@ -998,6 +1010,7 @@ def test_main_stages_the_bundle_locally_with_staging_local_only(
         "calibration",
         "gate_battery",
         "output_bundle",
+        "graph_execution",
         "dataset_staging",
         "complete",
     ]
@@ -1781,6 +1794,40 @@ def test_staging_bundle_finalization_does_not_complete_hosted_run(
     rowwise_staging.finalize_staging_run_bundle(args, None)
     assert emitter.events == []
     assert emitter.available
+
+
+def test_an_attempt_names_itself_and_reports_its_graph_reuse(tmp_path, monkeypatch):
+    """The attempt's request evidence carries its Logbook and staging ids, and
+    the staging run gets the attempt's reuse counts before it closes."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+    )
+    assert status == 0
+    row = spool_rows(out)[0]
+    execution = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    request = json.loads(
+        (Path(execution["attempt_directory"]) / "request.json").read_text()
+    )
+    bundle = _only_staging_run(staging_dir)
+    assert request["attempt"] == {
+        "build_id": row.build_id,
+        "run_id": bundle["run_manifest"]["run_id"],
+    }
+    events = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"]) == ("graph_execution", "completed")
+    ]
+    assert len(events) == 1
+    assert events[0]["details"] == {
+        key: execution[key] for key in ("nodes_total", "nodes_reused", "nodes_computed")
+    }
 
 
 def _only_staging_run(staging_dir: Path):
