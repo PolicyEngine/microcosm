@@ -10,7 +10,6 @@ accident of ``python -m pytest``.
 import importlib.util
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 
@@ -76,7 +75,6 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     from huggingface_hub import constants as hf_constants
 
     from microcosm.build import telemetry_emitter
-    from microcosm.build.telemetry_emitter_service import collector
     from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
@@ -112,38 +110,6 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
         ):
             monkeypatch.setattr(module, "_ACTIVE_EMITTER", None)
 
-    real_post = collector._http_post
-
-    def local_post(url, *args, **kwargs):
-        parsed = urlsplit(url)
-        collector._development_collector_url(f"{parsed.scheme}://{parsed.netloc}")
-        return real_post(url, *args, **kwargs)
-
-    monkeypatch.setattr(collector, "_http_post", local_post)
     yield emitters
     for emitter in emitters:
         emitter.close()
-
-
-@pytest.fixture
-def real_local_telemetry(monkeypatch, fake_telemetry_emitters):
-    """Permit actual startup only with an explicit loopback collector."""
-    from microcosm.build import telemetry_emitter
-    from microcosm.build.telemetry_emitter_service.collector import (
-        _development_collector_url,
-    )
-
-    def start(cls, **kwargs):
-        _development_collector_url(kwargs.get("development_collector_url") or "")
-        return _REAL_TELEMETRY_START(cls, **kwargs)
-
-    monkeypatch.setattr(
-        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(start)
-    )
-
-
-# Save the underlying method before per-test patches so imported aliases and
-# class references all share the same default fake and explicit local opt-in.
-from microcosm.build.telemetry_emitter import LocalTelemetryEmitter  # noqa: E402
-
-_REAL_TELEMETRY_START = LocalTelemetryEmitter.start.__func__

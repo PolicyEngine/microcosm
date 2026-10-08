@@ -13,16 +13,14 @@ class FakeTelemetryEmitter(LocalTelemetryEmitter):
     """Exercise real lifecycle methods without starting a service or socket."""
 
     def __init__(self, run: TelemetryRun) -> None:
-        super().__init__(
-            run=run,
-            process=None,
-            socket_path=Path("/unused-test-telemetry-socket"),
-            runtime_dir=None,
-        )
         self.messages: list[Mapping[str, Any]] = []
+        super().__init__(run=run, transport=self)
 
-    def _send(self, payload: Mapping[str, Any]) -> None:
-        self.messages.append(payload)
+    def send(self, payload: Mapping[str, Any]) -> None:
+        self.messages.append({"action": "event", "event": payload})
+
+    def close(self) -> None:
+        self._closed = True
 
     def publish_graph(
         self, directory: Path, inventory: dict, *, wait_seconds: float = 30.0

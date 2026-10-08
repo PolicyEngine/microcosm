@@ -6,10 +6,11 @@ public-safe file inventory in the attempt directory, attempt publication before
 Hugging Face artifact staging, and register graph/evidence files and an
 `orrery.publication.json` receipt snapshot in the artifact manifest.
 
-The existing local service has two independent workers: live telemetry and
-completed graph publication. Slow uploads cannot delay socket acknowledgement
-or telemetry delivery. This change does not introduce another generic runtime,
-rename the telemetry package, or add compatibility wrappers.
+Microcosm's metadata adapter starts one provider service with two independent
+workers: live telemetry and completed graph publication. The provider packages
+own sockets, authentication, persistence, retries and resource sampling.
+Microcosm retains graph generation, public-file selection and HF staging.
+Slow uploads cannot delay socket acknowledgement or telemetry delivery.
 
 Publication IDs do not depend on telemetry run IDs. Jobs use SQLAlchemy and
 Alembic in the existing local SQLite database. Pending jobs survive missing or
@@ -29,7 +30,7 @@ aggregate summaries can be published publicly.
 | Setting | Source and consumer | Provisioning |
 | --- | --- | --- |
 | `HF_TOKEN` / `HUGGINGFACE_TOKEN` | Existing operator credential, exchanged by the service for a short-lived collector session | Existing environment or Hugging Face login; never committed |
-| Collector origin | Tracked `PRODUCTION_COLLECTOR_URL` in the existing service | No producer variable or destination override |
+| Collector origin | Tracked `PRODUCTION_COLLECTOR_URL` in provider core | No producer variable or destination override |
 | Runs origin | Tracked `DEFAULT_GRAPH_PUBLICATION_ORIGIN` | No new producer variable |
 | `XDG_CACHE_HOME` | Optional existing cache-location setting | Defaults to the user's cache directory |
 
@@ -56,15 +57,31 @@ an upload or stage to Hugging Face.
 ## Retry
 
 ```bash
-microcosm-publish-graph --publication-id PUBLICATION_ID \
+microcosm-provider-publish-graph --publication-id PUBLICATION_ID \
   --directory /path/to/attempt/orrery-publication
 ```
 
 The preserved directory contains `orrery.upload.json` and the exact files.
 Retries update a separate `publication.status.json`, never the original
 HF receipt snapshot. Pending jobs also resume when a subsequent local service
-starts. A job whose preserved directory has been removed stays pending with
-error code `preserved_files_missing` until its files are restored to the same
-directory; it does not stop delivery of other jobs. Moving this
-service into the `microcosm-emitter` package is a separate, deferred consumer
-change; this implementation does not require that package.
+starts. The retry command comes from the provider package; Microcosm does not
+retain a second delivery implementation or a compatibility wrapper.
+
+## Deferred migration prerequisites
+
+This adapter is implemented and tested in a draft PR, not merged or activated.
+It depends on PolicyEngine/microcosm-emitter#4 (stacked on #2).
+The draft uses exact Git source pins in `packages/microcosm-build/pyproject.toml`
+and `uv.lock` because provider version 0.1.0 has not been released by this work.
+Before merge, verify registry-owner configuration, release all four Python
+packages, remove the draft source overrides, regenerate `uv.lock`, update its
+approved worker-identity digest and rerun tests and wheel checks. Merely building
+a Microcosm wheel does not make its unpublished dependencies installable.
+
+The provider rejects unversioned databases without modification. Before switching
+an existing workstation, upgrade any old unversioned queue using the preceding
+Microcosm implementation. Versioned telemetry and graph jobs keep their existing
+IDs, eligibility, path and Alembic revision; do not delete a queue to migrate.
+No new runtime variable, credential, hosted service or infrastructure is required
+by this migration. The previously required hosted authorization/API deployments
+remain prerequisites for remote publication.
