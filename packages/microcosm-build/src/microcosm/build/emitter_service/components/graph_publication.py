@@ -190,6 +190,7 @@ class GraphPublicationQueue:
                 "publication_id": id_,
                 "directory": job.directory,
                 "inventory": job.inventory,
+                "lease_until": job.lease_until,
             }
 
     def receipt(self, id_: str) -> dict | None:
@@ -199,13 +200,33 @@ class GraphPublicationQueue:
             return None if job is None else dict(job.receipt)
 
     def finish(
-        self, id_: str, *, error_code: str | None = None, url: str | None = None
+        self,
+        id_: str,
+        *,
+        error_code: str | None = None,
+        url: str | None = None,
+        expected_lease: float | None = None,
     ) -> None:
         with self._sessions.begin() as session:
-            job = session.get(GraphPublicationJob, id_)
-            job.attempts += 1
-            job.status = "published" if url else "pending"
-            job.lease_until = 0
+            statement = update(GraphPublicationJob).where(
+                GraphPublicationJob.publication_id == id_,
+                GraphPublicationJob.status == "pending",
+            )
+            if expected_lease is not None:
+                statement = statement.where(
+                    GraphPublicationJob.lease_until == expected_lease
+                )
+            job = session.scalar(
+                statement.values(
+                    attempts=GraphPublicationJob.attempts + 1,
+                    status="published" if url else "pending",
+                    lease_until=0,
+                ).returning(GraphPublicationJob)
+            )
+            # Completion is conditional in SQL, not a read-then-write check:
+            # expired workers cannot release another lease or replace success.
+            if job is None:
+                return
             job.next_attempt_at = time.time() + min(300, 2 ** min(job.attempts, 8))
             job.receipt = {
                 "version": 1,
@@ -276,10 +297,13 @@ class GraphPublicationDelivery:
             Path(job["directory"]),
         )
         error = "publication_unavailable"
+        lease = job["lease_until"]
         try:
             status, token = self.credential()
             if token is None:
-                self.queue.finish(id_, error_code=f"credential_{status}")
+                self.queue.finish(
+                    id_, error_code=f"credential_{status}", expected_lease=lease
+                )
                 return False
             current = publication_inventory(
                 directory,
@@ -335,7 +359,9 @@ class GraphPublicationDelivery:
                 "inventory_sha256"
             ) != inventory_digest(inventory):
                 raise ValueError("invalid_publication_response")
-            self.queue.finish(id_, url=f"{self.origin}/runs/{id_}/")
+            self.queue.finish(
+                id_, url=f"{self.origin}/runs/{id_}/", expected_lease=lease
+            )
             return True
         except httpx.HTTPStatusError as exception:
             error = f"publication_http_{exception.response.status_code}"
@@ -345,5 +371,5 @@ class GraphPublicationDelivery:
             error = "publication_network_error"
         except (OSError, ValueError, KeyError, TypeError):
             error = "publication_invalid_evidence_or_response"
-        self.queue.finish(id_, error_code=error)
+        self.queue.finish(id_, error_code=error, expected_lease=lease)
         return False

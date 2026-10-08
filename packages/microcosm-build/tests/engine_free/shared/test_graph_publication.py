@@ -135,6 +135,45 @@ def test_queue_resumes_after_worker_exits_and_keeps_pending_jobs(tmp_path):
     assert GraphPublicationQueue(queue.path).claim() is not None
 
 
+def test_late_failed_attempt_cannot_replace_a_published_receipt(tmp_path):
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    queue.claim(lease_seconds=0)
+    replacement = GraphPublicationQueue(queue.path)
+    replacement.claim()
+    id_ = inventory["publication_id"]
+    replacement.finish(id_, url=f"https://runs.example/runs/{id_}/")
+    published = queue.receipt(id_)
+    queue.finish(id_, error_code="publication_network_error")
+    assert queue.receipt(id_) == published
+    assert json.loads((directory / "publication.status.json").read_bytes()) == published
+
+
+def test_expired_worker_cannot_release_a_replacement_workers_lease(tmp_path):
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    expired = queue.claim(lease_seconds=0)
+    replacement = GraphPublicationQueue(queue.path)
+    current = replacement.claim()
+    id_ = inventory["publication_id"]
+    initial = queue.receipt(id_)
+    queue.finish(
+        id_,
+        error_code="publication_network_error",
+        expected_lease=expired["lease_until"],
+    )
+    assert queue.receipt(id_) == initial
+    assert queue.claim() is None
+    replacement.finish(
+        id_,
+        url=f"https://runs.example/runs/{id_}/",
+        expected_lease=current["lease_until"],
+    )
+    assert queue.receipt(id_)["status"] == "published"
+
+
 def test_telemetry_pruning_cannot_remove_graph_jobs(tmp_path):
     from microcosm.build.telemetry_emitter_service.spool import EventSpool
 

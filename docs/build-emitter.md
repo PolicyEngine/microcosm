@@ -17,6 +17,8 @@ runtime restarts that worker without stopping other components. The service
 checks the build process's lifetime and notifies every component when it exits.
 Shutdown is bounded; unfinished graph jobs retain their bytes and database lease
 and become eligible again after the lease expires.
+Completion updates require the worker's current lease. Expired attempts cannot
+change a newer worker's result, and a published job cannot return to pending.
 
 The shared `CollectorSession` owns short-lived authentication, credential
 refresh, and synchronization between workers. Queue policies stay in the
