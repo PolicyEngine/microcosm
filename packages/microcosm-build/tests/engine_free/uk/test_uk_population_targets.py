@@ -202,8 +202,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # contribution targets and the DWP employee total leave the fit again (their
     # relief-mechanism and gross definitions do not match the engine's columns;
     # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
-    # pension-age Housing Benefit spending.
-    assert len(resource["targets"]) == 392
+    # pension-age Housing Benefit spending; microcosm#1113 adds ONS 07.2.2
+    # household road fuel.
+    assert len(resource["targets"]) == 393
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -217,10 +218,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 341
+    assert len(registry_scope) == 342
     assert len(profile_scope) == 51
-    assert target_ids[:341] == registry_scope
-    assert target_ids[341:] == profile_scope
+    assert target_ids[:342] == registry_scope
+    assert target_ids[342:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -234,7 +235,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     assert len(mapped_target_ids) == 192
-    assert len(unmapped_declarations) == 149
+    assert len(unmapped_declarations) == 150
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -353,7 +354,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 392
+    assert len(target_ids) == 393
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -821,7 +822,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 392
+    assert len(targets) == 393
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

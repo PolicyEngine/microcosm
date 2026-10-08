@@ -6,11 +6,13 @@ coverage factor (policyengine-uk#1996), ``obr.fuel_duties_cars`` by fuel
 that includes business-paid car fuel, and the ONS electricity and gas rows
 by a published-source residual against the stage's DESNZ volume at QEP
 prices. Rows held out of the objective by the measure-exclusion register stay
-measured here: the tool reports each row's estimate on any H5 the engine
-loads, against the value the run's contract registry declares, beside the
-household fuel and energy composition the rows used to pull (gas-connected
-share, fuel-car households with no fuel, consumption total). Development
-diagnostic: it never recalibrates and writes only an aggregate JSON.
+measured here, beside the household road-fuel row (ONS 07.2.2) bound in place
+of the cars receipts: the tool reports each row's estimate on any H5 the
+engine loads, against the value the run's contract registry declares, beside
+the household fuel and energy composition the rows used to pull
+(gas-connected share, fuel-car households with no fuel, consumption total).
+Development diagnostic: it never recalibrates and writes only an aggregate
+JSON.
 """
 
 from __future__ import annotations
@@ -25,12 +27,14 @@ import pandas as pd
 
 from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_COICOP_DIVISION_COLUMNS
 
-#: Held-out rows and the engine variables whose weighted sum measures them.
+#: The held-out rows and the bound road-fuel row that replaced the cars
+#: receipts, with the engine variables whose weighted sum measures each.
 ROWS: Mapping[str, tuple[str, ...]] = {
     "obr.vat": ("vat",),
     "obr.fuel_duties_cars": ("fuel_duty",),
     "ons.household_electricity_expenditure": ("electricity_consumption",),
     "ons.household_gas_expenditure": ("gas_consumption",),
+    "ons.household_road_fuel_expenditure": ("petrol_spending", "diesel_spending"),
 }
 
 

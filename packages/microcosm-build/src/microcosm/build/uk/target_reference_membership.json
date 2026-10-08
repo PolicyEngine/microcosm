@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1254,
-  "contract_target_count": 341,
-  "active_reference_count": 1231,
+  "candidate_count": 1255,
+  "contract_target_count": 342,
+  "active_reference_count": 1232,
   "status_counts": {
-    "active": 1231,
+    "active": 1232,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -1965,6 +1965,10 @@
       "geography_id": "K02000001"
     },
     "ons.household_gas_expenditure": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.household_road_fuel_expenditure": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -4086,6 +4090,7 @@
     "dfi_ni.bus.passenger_receipts",
     "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
+    "ons.household_road_fuel_expenditure",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
     "ons.population.age_0_9_by_region@E12000003",
@@ -19334,6 +19339,21 @@
           "resolved_value": 15339000000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b56be49c552300f6c02fc559"
+        }
+      ]
+    },
+    "ons.household_road_fuel_expenditure": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.household_road_fuel_expenditure",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "resolved_period": 2025,
+          "resolved_value": 35099000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f09d8c219289c6331c51da6"
         }
       ]
     },

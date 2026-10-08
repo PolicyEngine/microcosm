@@ -603,6 +603,15 @@
       "adjudication": "María's ruling of 2026-10-08 on the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D1: DESNZ volume at QEP prices stays the level and the ONS rows become diagnostics. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
       "approved_on": "2026-10-08",
       "expires_on": "2027-01-08"
+    },
+    {
+      "name": "obr.fuel_duties_cars",
+      "reason": "Scope and conversion residual once the stage sets household road fuel: OBR's cars receipts (GBP 14.4bn for FY2024-25, the April 2024 vehicle-type split) include car fuel paid by businesses, and ONS Consumer Trends 07.2.2 for CY2025 at DESNZ 2025 pump prices converts to about GBP 13.5bn of duty, 7 percent below the OBR cars line. With petrol plus diesel levelled to ONS 07.2.2 by the lcfs_consumption stage, the engine's 2025 fuel_duty reads -9.9 percent against the row on its RAC price divisors (-8.1 percent on DESNZ's; policyengine-uk#2169 A), so binding it would pull weight toward fuel buyers to cover business use the household frame does not hold. Before the level step it read -34.5 percent at design weights and -17.7 percent calibrated on microcosm#1121's head, and fitting it raised petrol 21 and diesel 34 percent through the weights; a re-solve of the 2026-09-30 problem with it masked changed no other row's fit. Household road fuel is bound as ons.household_road_fuel_expenditure. Measured on every evaluation with tools/diagnose_uk_consumption_taxes.py; rebind if Microcosm comes to model business use of cars.",
+      "tracking": "microcosm#1113",
+      "approved_by": "juaristi22",
+      "adjudication": "María's approval of 2026-10-08 of the VAT, road fuel and domestic energy plan (microcosm#1113, microcosm#1123 item 3), decision D2, with the binding confirmed on 2026-10-09: the stage sets the household road-fuel level and incidence, and the household-scope ONS 07.2.2 row is bound in place of the OBR cars receipts, which include business fuel. Receipts: experiments/1113-consumption-tax-levels-receipts.md.",
+      "approved_on": "2026-10-08",
+      "expires_on": "2027-01-08"
     }
   ]
 }

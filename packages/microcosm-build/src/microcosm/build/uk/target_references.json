@@ -468,6 +468,7 @@
       "ons.household_composition.unrelated_adult_households": "ons.household_composition",
       "ons.household_electricity_expenditure": "ons.consumer_trends",
       "ons.household_gas_expenditure": "ons.consumer_trends",
+      "ons.household_road_fuel_expenditure": "ons.consumer_trends",
       "ons.land.corporate_land_value": "ons.land",
       "ons.land.household_land_value": "ons.land",
       "ons.land.land_value": "ons.land",
@@ -796,6 +797,7 @@
       "ons.household_composition.unrelated_adult_households": "Unrelated adult households",
       "ons.household_electricity_expenditure": "Electricity (COICOP 04.5.1)",
       "ons.household_gas_expenditure": "Gas (COICOP 04.5.2)",
+      "ons.household_road_fuel_expenditure": "Fuels and lubricants for personal transport (COICOP 07.2.2)",
       "ons.land.corporate_land_value": "Corporate land value",
       "ons.land.household_land_value": "Household land value",
       "ons.land.land_value": "Land value",
@@ -23699,6 +23701,30 @@
         "contract_target_id": "ons.household_gas_expenditure",
         "measure_kind": "prepared_column"
       }
+    },
+    {
+      "name": "ons.household_road_fuel_expenditure",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+        "entity_name": "household",
+        "period_type": "calendar_year",
+        "dimension_values": {
+          "coicop": "07.2.2",
+          "frequency": "annual"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "household",
+      "measure": "ons/household_road_fuel_expenditure",
+      "family": "ons_national_accounts",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.household_road_fuel_expenditure",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum"
     },
     {
       "name": "scotgov.bus.passenger_revenue",

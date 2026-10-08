@@ -1132,8 +1132,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1231
-        )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1232
+        )  # microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
