@@ -206,6 +206,9 @@ UK_LCFS_ROAD_FUEL_REDRAW_RULE = "positive_total_then_petrol_share"
 UK_LCFS_ROAD_FUEL_TOTAL = "road_fuel_total"
 UK_LCFS_PETROL_SHARE = "petrol_share_of_road_fuel"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
+#: How the litres audit reads its per-fuel ratios until a per-fuel cars benchmark
+#: exists: only the all-fuel total compares like with like.
+UK_LITRES_AUDIT_PER_FUEL_BASIS = "uniform cars share, not a per-fuel benchmark"
 #: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
 #: declared litre-proxy price concepts: HMRC clearances are all road users, the
 #: OBR receipts split names the cars share of them.
@@ -630,6 +633,11 @@ def fuel_litres_audit(
         "frame_over_cars_benchmark": (
             frame_total / benchmark_total if benchmark_total > 0 else None
         ),
+        # The per-fuel ratios apply the all-fuel cars share to each fuel's
+        # all-road-user litres, but diesel is mostly vans and lorries, so
+        # only the total is a benchmark (microcosm#1113; a per-fuel cars
+        # split waits on PolicyEngine/chronicle#322).
+        "per_fuel_ratio_basis": UK_LITRES_AUDIT_PER_FUEL_BASIS,
         "gated": False,
     }
 

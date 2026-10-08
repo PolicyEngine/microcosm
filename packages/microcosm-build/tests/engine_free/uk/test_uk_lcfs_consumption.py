@@ -948,6 +948,10 @@ def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> N
     )
     assert set(audit["fuels"]) == {"petrol_spending", "diesel_spending"}
     assert audit["gated"] is False
+    # Only the total compares like with like (#1113).
+    assert audit["per_fuel_ratio_basis"] == (
+        "uniform cars share, not a per-fuel benchmark"
+    )
 
     class Stage:
         operations = ()
