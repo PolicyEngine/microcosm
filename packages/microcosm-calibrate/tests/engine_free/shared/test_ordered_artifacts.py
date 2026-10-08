@@ -101,6 +101,7 @@ def test_problem_target_definitions_do_not_densify_the_whole_sparse_system(monke
 def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
     import microcosm.calibrate.solve as solve
     from microcosm.calibrate import calibrate
+    from microcosm.calibrate.graph_evidence import result_summary_data
 
     frame = Frame(
         {
@@ -113,7 +114,11 @@ def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
         {"household": problem().initial_weights},
         pd.Series(["a", "a"]),
     )
-    bound = decode_problem(encode_problem(problem(), entity_ids=(10, 20)))
+    bound = decode_problem(
+        encode_problem(
+            problem(), entity_ids=(10, 20), target_metadata=({"se": 2.0}, {})
+        )
+    )
     for penalty in (0.0, 0.01):
         result = calibrate(
             frame,
@@ -134,6 +139,17 @@ def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
         np.testing.assert_array_equal(restored.weights, result.weights)
         np.testing.assert_array_equal(restored.loss_trajectory, result.loss_trajectory)
         assert restored.options == result.options
+        summary = result_summary_data(restored, bound)
+        rows = summary["tables"]["targets"]
+        assert rows[0]["uncertainty"] == {"status": "recorded", "se": 2.0}
+        assert rows[1]["uncertainty"] == {"status": "not_recorded"}
+        assert [row["achieved"] for row in rows] == [
+            diagnostic.final_estimate for diagnostic in restored.diagnostics
+        ]
+        assert summary["overview"]["final_weights"]["total"] == pytest.approx(
+            restored.weights.sum()
+        )
+        assert "entity_ids" not in summary and "weights" not in summary
         if penalty:
             np.testing.assert_array_equal(
                 restored.gate_open_probabilities, result.gate_open_probabilities

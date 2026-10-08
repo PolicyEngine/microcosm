@@ -348,6 +348,27 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert expected["readback_passed"] is True
     assert expected["release_authorized"] is False
     assert expected["release_role"] == "dense"
+    from microcosm.graph import (
+        ContentStore,
+        collect_execution_evidence,
+        load_run_evidence,
+    )
+    from microcosm.graph.orrery import orrery_document_from_schema
+
+    schema = json.loads((out / "graph.schema.json").read_bytes())
+    store = ContentStore(out / ".graph-store", create=False)
+    overlay = collect_execution_evidence(
+        schema,
+        runs=load_run_evidence(out / "execution.evidence.json", store=store),
+        store=store,
+    )
+    snapshot = orrery_document_from_schema(schema, execution=overlay)
+    assert any(
+        json.loads(node["id"]) == ["operation", "uk.full.export.readback"]
+        for node in snapshot["nodes"]
+    )
+    assert [phase["phase"] for phase in overlay["phases"]][-2:] == ["export", "final"]
+    assert json.loads((out / "graph.orrery.json").read_bytes()) == snapshot
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
     for path in out.iterdir():
         if path.is_file():
@@ -499,6 +520,135 @@ def test_dry_run_has_no_files_or_kernel_execution(tmp_path, monkeypatch, capsys)
     assert cli.execute_full_build(build, args) == 0
     assert json.loads(capsys.readouterr().out)["default_scope"] == "all_geographies"
     assert not args.out.exists()
+
+
+def test_dense_dry_run_starts_and_finishes_hosted_telemetry(tmp_path, monkeypatch):
+    args = arguments(tmp_path, "--dry-run")
+    events = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            events.append(("stage", stage_id, details))
+
+        def complete(self):
+            events.append(("complete",))
+
+        def close(self):
+            events.append(("close",))
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli,
+        "start_telemetry_emitter",
+        lambda requested, *, build_id, run_kind: (
+            events.append(("start", build_id, run_kind)) or FakeEmitter()
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "_dry_run", lambda requested: events.append(("plan",)) or 0
+    )
+    monkeypatch.setattr(
+        cli,
+        "finalize_staging_run_bundle",
+        lambda requested, telemetry: None,
+    )
+
+    assert cli.main([]) == 0
+    assert [event[0] for event in events] == [
+        "start",
+        "stage",
+        "plan",
+        "complete",
+        "close",
+    ]
+    assert events[0][2] == "dry_run"
+
+
+def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypatch):
+    args = arguments(tmp_path)
+    events = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            events.append(("stage", stage_id, details))
+
+        def fail(self, error):
+            events.append(("failed", None, str(error)))
+
+        def close(self):
+            events.append(("close",))
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli,
+        "start_telemetry_emitter",
+        lambda requested, *, build_id, run_kind: (
+            events.append(("start", build_id, run_kind)) or FakeEmitter()
+        ),
+    )
+
+    def refuse_preflight(requested):
+        events.append(("preflight",))
+        raise RuntimeError("staging credential unavailable")
+
+    monkeypatch.setattr(cli, "preflight_staged_dataset", refuse_preflight)
+    monkeypatch.setattr(
+        cli,
+        "fail_staging_run_bundle",
+        lambda telemetry, error: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "create_staging_run_bundle",
+        lambda *args, **kwargs: pytest.fail("preflight failure reached staging setup"),
+    )
+
+    with pytest.raises(RuntimeError, match="staging credential unavailable"):
+        cli.main([])
+    assert [event[0] for event in events] == [
+        "start",
+        "stage",
+        "preflight",
+        "failed",
+        "close",
+    ]
+    assert events[-2][1] is None
+
+
+def test_hosted_stage_reporting_survives_staging_bundle_refusal(monkeypatch, capsys):
+    from microcosm.build.staging_v2 import StagingContentError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    events = []
+
+    class RefusingBundle:
+        def stage(self, *args, **kwargs):
+            raise StagingContentError("synthetic staging bundle refusal")
+
+    class Emitter:
+        def transition_stage(self, stage_id, **details):
+            events.append((stage_id, details))
+
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
+
+    rowwise_staging.stage(
+        RefusingBundle(),
+        "target_compilation",
+        "started",
+        selected_target_count=10,
+    )
+
+    assert events == [
+        (
+            "target_compilation",
+            {"status": "started", "message": None, "selected_target_count": 10},
+        )
+    ]
+    assert "synthetic staging bundle refusal" in capsys.readouterr().err
 
 
 def test_rejected_output_inside_source_never_writes_failure_sidecar(
@@ -879,11 +1029,11 @@ def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
     from microcosm.build.staging_v2 import StagingContractError
     from microcosm.build.uk_runtime import rowwise_staging
 
-    class Invalid(rowwise_staging.StagingTelemetryV2):
+    class Invalid(rowwise_staging.StagingRunBundleWriterV2):
         def validate_local_bundle(self):
             raise StagingContractError("synthetic bundle defect")
 
-    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Invalid)
+    monkeypatch.setattr(rowwise_staging, "StagingRunBundleWriterV2", Invalid)
     status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
     assert status == 0
     err = capsys.readouterr().err
@@ -902,11 +1052,11 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
     from microcosm.build.staging_v2 import StagingContentError, validate_v2_bundle
     from microcosm.build.uk_runtime import rowwise_staging
 
-    class Refusing(rowwise_staging.StagingTelemetryV2):
+    class Refusing(rowwise_staging.StagingRunBundleWriterV2):
         def calibration_progress(self, event):
             raise StagingContentError("Staging file exceeds the 5242880-byte limit.")
 
-    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Refusing)
+    monkeypatch.setattr(rowwise_staging, "StagingRunBundleWriterV2", Refusing)
     status, out = run_dense_main(
         tmp_path, monkeypatch, staging="--staging-local-only", on_prepare=_drive_epochs
     )
@@ -1415,3 +1565,98 @@ def test_dense_interrupt_records_a_discarded_row_and_re_raises(tmp_path, monkeyp
     assert failure["error_type"] == "KeyboardInterrupt"
     rows = load_spool_rows(args.out / "logbook-spool")
     assert [row.disposition for row in rows] == ["discarded"]
+
+
+@pytest.mark.parametrize("failed", [None, "uk_local_geography_ladder_post_calibration"])
+def test_dense_validation_result_matches_emitted_run_status(
+    tmp_path, monkeypatch, fake_telemetry_emitters, failed
+):
+    status, _ = run_dense_main(tmp_path, monkeypatch, failed=failed)
+    assert status == (1 if failed else 0)
+    events = [
+        event
+        for event in fake_telemetry_emitters[-1].events
+        if event["event_type"] == "run"
+    ]
+    assert [event["status"] for event in events] == [
+        "failed" if failed else "completed"
+    ]
+
+
+@pytest.mark.parametrize("role", ["dense", "national"])
+@pytest.mark.parametrize("outcome", [0, 7, "error", "interrupt"])
+def test_build_lifecycle_handles_returned_errors_and_exceptions(
+    tmp_path, monkeypatch, fake_telemetry_emitters, role, outcome
+):
+    args = (
+        arguments(tmp_path)
+        if role == "dense"
+        else cli.parse_args(_national_argv(tmp_path))
+    )
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cli, "_record_failure", lambda *args, **kwargs: None)
+    prepare_name = "prepare_full_build" if role == "dense" else "prepare_national_build"
+    execute_name = "execute_full_build" if role == "dense" else "execute_national_build"
+    monkeypatch.setattr(cli, prepare_name, lambda *args, **kwargs: object())
+    error = ValueError("synthetic build error")
+    interrupt = KeyboardInterrupt("synthetic interrupt")
+
+    def execute(*args, **kwargs):
+        if outcome == "error":
+            raise error
+        if outcome == "interrupt":
+            raise interrupt
+        return outcome
+
+    monkeypatch.setattr(cli, execute_name, execute)
+    if outcome == "interrupt":
+        with pytest.raises(KeyboardInterrupt) as caught:
+            cli.main([])
+        assert caught.value is interrupt
+    else:
+        assert cli.main([]) == (1 if outcome == "error" else outcome)
+    emitter = fake_telemetry_emitters[-1]
+    events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in events] == [
+        "completed" if outcome == 0 else "failed"
+    ]
+    if outcome == "error":
+        assert events[0]["message"] == str(error)
+    assert not emitter.available
+
+
+@pytest.mark.parametrize("role", ["dense", "national"])
+def test_dry_run_nonzero_result_emits_failure(
+    tmp_path, monkeypatch, fake_telemetry_emitters, role
+):
+    args = (
+        arguments(tmp_path, "--dry-run")
+        if role == "dense"
+        else cli.parse_args(_national_argv(tmp_path, "--dry-run"))
+    )
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    if role == "dense":
+        monkeypatch.setattr(cli, "_dry_run", lambda *args, **kwargs: 7)
+    else:
+        monkeypatch.setattr(
+            cli.national_role, "national_dry_run", lambda *args, **kwargs: 7
+        )
+    assert cli.main([]) == 7
+    events = [
+        event
+        for event in fake_telemetry_emitters[-1].events
+        if event["event_type"] == "run"
+    ]
+    assert [event["status"] for event in events] == ["failed"]
+
+
+def test_staging_bundle_finalization_does_not_complete_hosted_run(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    args = arguments(tmp_path)
+    emitter = rowwise_staging.start_telemetry_emitter(args, build_id="cleanup-only")
+    rowwise_staging.finalize_staging_run_bundle(args, None)
+    assert emitter.events == []
+    assert emitter.available

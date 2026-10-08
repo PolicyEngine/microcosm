@@ -121,15 +121,20 @@ def _stored_fit_weight_records(
     }
 
 
-def test_staging_stage_observer_translates_shared_observation() -> None:
+def test_stage_observer_reports_to_emitter_and_staging_bundle_independently() -> None:
     tool = _load_tool()
-    calls = []
+    bundle_calls = []
+    emitter_calls = []
 
-    class RecordingTelemetry:
+    class RecordingBundle:
         def stage(self, stage_id: str, **payload: object) -> None:
-            calls.append((stage_id, payload))
+            bundle_calls.append((stage_id, payload))
 
-    observer = tool._staging_stage_observer(RecordingTelemetry())
+    class RecordingEmitter:
+        def transition_stage(self, stage_id: str, **payload: object) -> None:
+            emitter_calls.append((stage_id, payload))
+
+    observer = tool._stage_observer(RecordingBundle(), RecordingEmitter())
     observer(
         StageObservation(
             stage_id="frs_spine",
@@ -140,17 +145,21 @@ def test_staging_stage_observer_translates_shared_observation() -> None:
         )
     )
 
-    assert calls == [
+    details = {
+        "elapsed_seconds": 1.25,
+        "entity_row_counts": {"household": 2},
+        "produced_column_count": 4,
+    }
+    assert bundle_calls == [
         (
             "frs_spine",
             {
                 "event_status": "completed",
-                "elapsed_seconds": 1.25,
-                "entity_row_counts": {"household": 2},
-                "produced_column_count": 4,
+                **details,
             },
         )
     ]
+    assert emitter_calls == [("frs_spine", {"status": "completed", **details})]
 
 
 def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:
@@ -1795,6 +1804,29 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     } <= set(frame.table("household"))
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    for name in (
+        "graph_declaration",
+        "graph_manifest",
+        "graph_schema",
+        "graph_execution_evidence",
+    ):
+        reference = sidecar[name]
+        evidence_path = Path(reference["path"])
+        assert "graph-evidence" in evidence_path.parts
+        assert (
+            hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+            == reference["sha256"]
+        )
+    from microcosm.graph import ContentStore, load_run_evidence
+
+    index_path = Path(sidecar["graph_execution_evidence"]["path"])
+    runs = load_run_evidence(
+        index_path,
+        store=ContentStore(index_path.parents[2] / "node-graph", create=False),
+    )
+    assert set(runs[0].binding["source_identities"]) == {
+        name for node in runs[0].compiled.graph.nodes for name in node.sources
+    }
     assert sidecar["schema_version"] == 2
     assert sidecar["stages"] == list(tool._uk_spine_stage_names(_synthetic_spec(stage)))
     assert sidecar["uk_frame_content_identity"] == uk_frame_content_identity(frame)
@@ -1933,6 +1965,56 @@ def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="--spi-tab must be an existing file"):
         tool._validate_args(args)
+
+
+def test_driver_reports_validation_failure_through_early_emitter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    hmrc_ods = tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"
+    hmrc_ods.write_text("synthetic\n", encoding="utf-8")
+    events = []
+
+    class FakeEmitter:
+        available = True
+
+        def __init__(self, run_id: str) -> None:
+            self.run = SimpleNamespace(run_id=run_id)
+
+        def close(self) -> None:
+            events.append(("close",))
+
+        def fail(self, error: BaseException) -> None:
+            events.append(("failed", str(error)))
+
+    def start_emitter(**run):
+        events.append(("started", run["run_id"]))
+        return FakeEmitter(run["run_id"])
+
+    monkeypatch.setattr(tool, "start_local_telemetry_emitter_service", start_emitter)
+    monkeypatch.setattr(tool, "preflight_digest", lambda pipeline: "0" * 64)
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+
+    status = tool.main(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "missing-put2223uk.tab"),
+            "--hmrc-ods",
+            str(hmrc_ods),
+            "--no-staging",
+        ]
+    )
+
+    assert status == 1
+    assert events[0][0] == "started"
+    assert events[1][0] == "failed"
+    assert "--spi-tab must be an existing file" in events[1][1]
 
 
 def test_driver_refuses_misnamed_spi_tab(tmp_path: Path) -> None:
@@ -2830,6 +2912,78 @@ def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
         "lcfs_consumption": [],
     }
     assert "frs_spine" not in records
+
+
+@pytest.mark.parametrize("late_error", [False, True])
+def test_spine_completion_waits_for_attempt_record(
+    tmp_path, monkeypatch, fake_telemetry_emitters, late_error
+):
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    if late_error:
+
+        def fail_record(**kwargs):
+            raise OSError("attempt record unavailable")
+
+        monkeypatch.setattr(tool, "_record_attempt", fail_record)
+    status = tool.main(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+            "--no-staging",
+        ]
+    )
+    assert status == (1 if late_error else 0)
+    emitter = fake_telemetry_emitters[-1]
+    events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in events] == [
+        "failed" if late_error else "completed"
+    ]
+    assert not emitter.available
+
+
+def test_spine_interrupt_fails_emitter_and_preserves_exception(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    tool = _load_tool()
+    interrupt = KeyboardInterrupt("operator stopped build")
+
+    def interrupt_preflight(*args, **kwargs):
+        raise interrupt
+
+    monkeypatch.setattr(tool, "preflight_digest", interrupt_preflight)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(tmp_path),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"),
+                "--no-staging",
+            ]
+        )
+    assert caught.value is interrupt
+    emitter = fake_telemetry_emitters[-1]
+    events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in events] == ["failed"]
+    assert not emitter.available
 
 
 class TestScottishWaterAndSewerage:

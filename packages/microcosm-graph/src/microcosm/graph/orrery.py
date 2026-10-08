@@ -1,7 +1,7 @@
-"""Pure adapter from compiler metadata to Orrery's ``graph-explorer/v1``.
+"""Adapter from compiler metadata and recorded evidence to Orrery.
 
-The adapter presents static declarations. It never opens a source, loads a
-Frame or kernel, or infers execution, verification, or release status.
+Static export never reads population data. The optional execution command
+validates saved manifests and store bytes; it never executes a kernel.
 """
 
 from __future__ import annotations
@@ -14,9 +14,13 @@ import os
 import stat
 from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from .canonical import canonical_json
 from .decl import CompiledGraph, Graph, compile_graph
+from .errors import GraphRuntimeError
+from .orrery_evidence import apply_contracts
+from .presentation import presentation_id, validate_presentation
 from .schema import graph_schema, validate_graph_schema
 from .serialize import graph_from_json
 
@@ -56,7 +60,7 @@ def _transport_json(value: object) -> object:
         if child is None or kind is bool:
             result = child
         elif kind is str:
-            _require(len(child) <= 16_384, "string length")
+            _require(len(child) <= 128 * 1024, "string length")
             charge += len(child.encode("utf-8"))
             result = child
         elif kind is int:
@@ -113,12 +117,10 @@ def _index(values: object, key: str, label: str) -> dict[str, dict[str, object]]
     return result
 
 
-def _id(*parts: str) -> str:
-    return json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
-
-
 def _field_id(field: dict[str, object]) -> str:
-    return _id("field", *(_text(field.get(key), f"field {key}") for key in _FIELD_KEYS))
+    return presentation_id(
+        "field", *(_text(field.get(key), f"field {key}") for key in _FIELD_KEYS)
+    )
 
 
 def _revision(value: object) -> str:
@@ -156,7 +158,7 @@ def _owned_declarations(
 
 
 def orrery_document_from_schema(
-    schema: object, *, title: str | None = None
+    schema: object, *, title: str | None = None, execution: object | None = None
 ) -> dict[str, object]:
     """Transform compiler metadata into a complete Orrery document.
 
@@ -204,7 +206,7 @@ def orrery_document_from_schema(
         data: dict[str, object] | None = None,
     ) -> None:
         facts = {} if data is None else data
-        identity = _id(
+        identity = presentation_id(
             "edge", kind, source, target, _bounded_json(facts, _MAX_OUTPUT_BYTES)
         )
         if identity in edges:
@@ -223,7 +225,7 @@ def orrery_document_from_schema(
 
     for node_id, operation in operations.items():
         node: dict[str, object] = {
-            "id": _id("operation", node_id),
+            "id": presentation_id("operation", node_id),
             "label": node_id,
             "kind": "operation",
             "data": {
@@ -236,7 +238,7 @@ def orrery_document_from_schema(
         add_node(node)
     for source_name, source in sources.items():
         node = {
-            "id": _id("source", source_name),
+            "id": presentation_id("source", source_name),
             "label": source_name,
             "kind": "source",
             "data": {"declaration": source},
@@ -270,7 +272,9 @@ def orrery_document_from_schema(
                 }
             )
             add_edge(
-                _id("operation", _text(field.get("provider"), "field provider")),
+                presentation_id(
+                    "operation", _text(field.get("provider"), "field provider")
+                ),
                 identity,
                 "provided_field",
                 "provenance",
@@ -305,17 +309,17 @@ def orrery_document_from_schema(
         field_id = add_field(field, visible_field=False)
         add_edge(
             field_id,
-            _id("operation", _text(binding.get("node"), "binding node")),
+            presentation_id("operation", _text(binding.get("node"), "binding node")),
             "declared_read",
             "dependency",
             {"read_kind": binding["kind"], "rows": binding["rows"]},
         )
 
     for node_id, operation in operations.items():
-        target = _id("operation", node_id)
+        target = presentation_id("operation", node_id)
         for parent in _array(predecessors[node_id], f"predecessors for {node_id}"):
             add_edge(
-                _id("operation", _text(parent, "predecessor")),
+                presentation_id("operation", _text(parent, "predecessor")),
                 target,
                 "compiled_predecessor",
                 "dependency",
@@ -333,7 +337,7 @@ def orrery_document_from_schema(
                     )
         for source in _array(operation.get("sources"), f"sources for {node_id}"):
             add_edge(
-                _id("source", _text(source, "source reference")),
+                presentation_id("source", _text(source, "source reference")),
                 target,
                 "declared_source",
                 "provenance",
@@ -343,7 +347,7 @@ def orrery_document_from_schema(
         ):
             binding = _object(value, "artifact input")
             add_edge(
-                _id(
+                presentation_id(
                     "operation",
                     _text(binding.get("producer"), "artifact producer"),
                 ),
@@ -363,7 +367,7 @@ def orrery_document_from_schema(
     country = _text(document["country"], "country")
     result: dict[str, object] = {
         "schemaVersion": "graph-explorer/v1",
-        "id": _id("microcosm", country),
+        "id": presentation_id("microcosm", country),
         "title": _text(title, "title")
         if title is not None
         else f"{country.upper()} graph schema",
@@ -400,17 +404,26 @@ def orrery_document_from_schema(
             ],
         },
     }
+    apply_contracts(result, document, execution)
+    _require(len(result["nodes"]) <= _MAX_NODES, "node limit")
     transported_result = _object(_transport_json(result), "Orrery document")
+    for node in transported_result["nodes"]:
+        node["revision"] = _revision(
+            {key: value for key, value in node.items() if key != "revision"}
+        )
     _bounded_json(transported_result, _MAX_OUTPUT_BYTES)
     return transported_result
 
 
-def orrery_json_from_schema(schema: object, *, title: str | None = None) -> str:
+def orrery_json_from_schema(
+    schema: object, *, title: str | None = None, execution: object | None = None
+) -> str:
     """Return deterministic UTF-8-ready JSON for Orrery."""
 
     return (
         _bounded_json(
-            orrery_document_from_schema(schema, title=title), _MAX_OUTPUT_BYTES
+            orrery_document_from_schema(schema, title=title, execution=execution),
+            _MAX_OUTPUT_BYTES,
         )
         + "\n"
     )
@@ -431,11 +444,14 @@ def orrery_document(
     *,
     title: str | None = None,
     extensions: Mapping[str, object] | None = None,
+    execution: object | None = None,
 ) -> dict[str, object]:
     """Compile and transform a graph into a complete Orrery document."""
 
     return orrery_document_from_schema(
-        graph_schema(_compiled(graph), extensions=extensions), title=title
+        graph_schema(_compiled(graph), extensions=extensions),
+        title=title,
+        execution=execution,
     )
 
 
@@ -444,11 +460,14 @@ def orrery_json(
     *,
     title: str | None = None,
     extensions: Mapping[str, object] | None = None,
+    execution: object | None = None,
 ) -> str:
     """Compile and return deterministic UTF-8-ready Orrery JSON."""
 
     return orrery_json_from_schema(
-        graph_schema(_compiled(graph), extensions=extensions), title=title
+        graph_schema(_compiled(graph), extensions=extensions),
+        title=title,
+        execution=execution,
     )
 
 
@@ -479,6 +498,33 @@ def _read_json(path: Path) -> object:
     )
 
 
+def _rebase_references(schema: dict, source: Path, output: Path) -> None:
+    """Keep saved-schema relative links correct beside a relocated export."""
+    contract = validate_presentation(schema)
+    if contract is None:
+        return
+    references = [
+        ref
+        for kind in ("operations", "sources")
+        for record in contract.get(kind, {}).values()
+        for ref in record.get("references", [])
+    ] + [
+        ref
+        for boundary in contract.get("scope", {}).get("boundaries", [])
+        for ref in boundary.get("upstream", [])
+    ]
+    for ref in references:
+        if "url" not in ref:
+            continue
+        parsed = urlsplit(ref["url"])
+        if not parsed.scheme and not parsed.netloc and not parsed.path.startswith("/"):
+            relative = Path(os.path.relpath(source.parent / parsed.path, output.parent))
+            ref["url"] = urlunsplit(
+                ("", "", relative.as_posix(), parsed.query, parsed.fragment)
+            )
+    schema["extensions"]["microcosm.presentation"] = contract
+
+
 def main(argv: list[str] | None = None) -> int:
     """Create Orrery JSON from a graph declaration or compiler schema."""
 
@@ -488,19 +534,45 @@ def main(argv: list[str] | None = None) -> int:
     inputs.add_argument("--schema", type=Path, help="microcosm.graph.schema.v1 JSON")
     parser.add_argument("--output", type=Path, required=True, help="new Orrery JSON")
     parser.add_argument("--title", help="Orrery document title")
+    parser.add_argument(
+        "--evidence", type=Path, help="recorded execution-input.v1 index"
+    )
+    parser.add_argument(
+        "--store", type=Path, help="content store for evidence validation"
+    )
     args = parser.parse_args(argv)
+    if (args.evidence is None) != (args.store is None):
+        parser.error("--evidence and --store must be supplied together")
     try:
         source = args.graph if args.graph is not None else args.schema
         value = _read_json(source)
         if args.graph is not None:
             graph = graph_from_json(canonical_json(value).decode("utf-8"))
-            rendered = orrery_json(graph, title=args.title)
+            schema = graph_schema(_compiled(graph))
         else:
-            rendered = orrery_json_from_schema(value, title=args.title)
+            schema = validate_graph_schema(value)
+            _rebase_references(schema, source, args.output)
+        execution = None
+        if args.evidence is not None:
+            from .evidence import collect_execution_evidence, load_run_evidence
+            from .store import ContentStore
+
+            _require(args.store.is_dir(), "evidence store must exist")
+            store = ContentStore(args.store, create=False)
+            execution = collect_execution_evidence(
+                schema,
+                runs=load_run_evidence(
+                    args.evidence, store=store, reference_base=args.output.parent
+                ),
+                store=store,
+            )
+        rendered = orrery_json_from_schema(
+            schema, title=args.title, execution=execution
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8", newline="\n") as stream:
             stream.write(rendered)
-    except (OSError, TypeError, ValueError, RecursionError) as error:
+    except (OSError, TypeError, ValueError, RecursionError, GraphRuntimeError) as error:
         parser.error(str(error))
     print(f"wrote {args.output}")
     return 0

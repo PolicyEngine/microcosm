@@ -44,16 +44,62 @@ until you restart the kernel, load it by path with
 `load_country_spec(Path(...))` (always re-read), or call
 `microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
 
-## Staging build telemetry
+## Build progress and staging run files
 
-US fiscal refresh builds emit pre-release staging telemetry **by default**:
-progress JSON is uploaded to `policyengine/populace-us-staging` while the build
-runs (best-effort — a missing token or failed upload never fails the build), so
-every candidate shows up on the staging dashboard before it is published.
-Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
-`POPULACE_STAGING_REPO_ID`. An *empty* `POPULACE_STAGING_REPO_ID` is ignored
-rather than read as off, and staging with no destination at all is an argparse
-error — `--no-staging` is the only way a build produces no telemetry.
+Supported US and UK build commands always start the local build publishing
+service. Its telemetry component reports live progress to the hosted collector when the operator's
+existing Hugging Face login is accepted; otherwise it retains the events
+locally and the build continues. This live event path is independent of the
+staging run files described below.
+
+The same process has a separate component for completed Orrery graph output.
+See [the service architecture](docs/build-emitter.md) for component boundaries
+and the extension interface.
+UK full, dense, and national builds export `graph.orrery.json` automatically,
+using the saved graph declaration and recorded execution phases. Before staging
+the artifact bundle on Hugging Face, the build preserves the exact graph and
+reviewed evidence, submits a durable publication job, waits at most 30 seconds
+for an initial result, and registers the graph files and `orrery.publication.json`
+receipt in the artifact manifest. The viewer is
+[Microcosm runs](https://microcosm-runs.vercel.app).
+
+Graph publication uses the operator's existing Hugging Face credential through
+the service's shared short-lived collector session. No new producer environment
+variable or shared upload secret is required. Publication IDs are independent
+of telemetry run IDs. Graph jobs are not discarded by telemetry retention or
+missing-credential rules. Their source files remain under the persistent
+attempt directory's `orrery-publication/`, and pending jobs resume when the
+service next starts. To retry one explicitly, including after restoring its
+preserved files on another machine:
+
+```bash
+microcosm-publish-graph --publication-id PUBLICATION_ID \
+  --directory /path/to/attempt/orrery-publication
+```
+
+Retries update `publication.status.json` in that preserved directory, never the
+original artifact bundle's receipt snapshot. A published ID cannot be reused
+for different bytes; changed output needs a new publication ID. Public uploads
+contain only graph declarations, native execution receipts, and reviewed
+aggregate summaries, not H5 files or content-store population payloads.
+
+`--staging-local-only`, `--no-staging`, and `--no-staged-dataset` export the graph
+without submitting a remote publication job. `--no-publish-orrery` independently
+disables graph submission; `--publish-orrery` explicitly enables it even for a
+local-only dataset build. A graph upload failure records a pending/failed receipt
+but does not prevent Hugging Face staging. If a build fails, its saved graph
+evidence is exported and preserved before temporary-directory cleanup; phases
+without recorded execution are not represented as completed.
+
+US fiscal refresh builds also write pre-release staging run files **by
+default**. Progress JSON is uploaded to `policyengine/populace-us-staging`
+while the build runs (best-effort — a missing token or failed upload never
+fails the build), so every candidate shows up on the staging dashboard before
+it is published. Disable these files with `--no-staging`, or point them
+elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
+`POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
+no destination at all is an argparse error. `--no-staging` does not disable
+the local telemetry emitter service.
 
 The build manifest records what staging did: the run id, the destination, and
 how many files actually reached it, or an explicit `enabled: false` for a
@@ -75,8 +121,8 @@ The UK commands (`tools/build_uk_frs_spine.py`, a shim over the package's
 `uk_runtime.spine_build`, and `microcosm-build-uk` / `tools/build_uk_full.py`,
 whose `--release-role` builds either the national or the dense line;
 `tools/build_uk_rowwise_candidate.py` is a stub over the same driver) stage
-version 2 telemetry to `policyengine/populace-uk-staging` under the same
-switch. The build command also **stages the finished dataset bundle** it built,
+version 2 staging run files to `policyengine/populace-uk-staging` under the
+same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
 it without publishing it: `releases/` and `latest.json` are untouched, the
@@ -203,7 +249,8 @@ weights, calling the release tool's own gate functions (none is
 re-implemented), and exits `1` on any certain failure, `2` on AT-RISK only,
 and `0` when clean. An argparse error also exits `2` but writes no report, so
 the wrapper returns `64` whenever no report was written. It writes only its
-report: nothing under `--out`, no staging telemetry, no receipts. A base or
+report: nothing under `--out`, no staging run files, no receipts. The local
+telemetry emitter service still reports dry-run progress. A base or
 donor that the config does not name locally is still downloaded, into the same
 caches the release uses. A refusal before the stop point becomes the report's
 certain failure. A crash while grading is reported as the dry run's own error,

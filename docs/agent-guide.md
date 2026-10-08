@@ -76,7 +76,30 @@ The Orrery parser compatibility assertion lives in
 engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
-parser to accept it. It performs no browser rendering.
+parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
+uses the same pinned parser for groups, statuses, activities and artifacts.
+These CI tests perform no browser rendering.
+
+Workspace tests use an in-memory telemetry emitter by default. The shared
+fixture isolates Hugging Face credentials and cache paths and blocks collector
+HTTP requests outside loopback. Tests of actual emitter startup must request
+`real_local_telemetry` and supply an explicit loopback development collector;
+that opt-in retains credential isolation. Other build tests can inspect
+`fake_telemetry_emitters` without creating sockets or service processes.
+
+The local build publishing process is `microcosm.build.emitter_service`.
+Its component-neutral runtime accepts independent publishers; the composition
+entrypoint installs telemetry and completed Orrery publication components with
+separate workers and queue policies. Shared short-lived authentication lives
+outside both components. The original telemetry imports remain compatibility
+APIs, and the existing SQLite location/migrations remain supported. Add a new
+publisher as a component rather than adding domain-specific branches to the
+runtime. Graph jobs have no telemetry-run foreign key and are not pruned with
+events. UK build completion exports and attempts graph publication before HF
+artifact staging, including preserved evidence for failed builds. Keep retries
+separate from the immutable artifact receipt; see README for the retry command
+and local-only controls. Test service composition and graph delivery in the
+existing engine-free category with fake HTTP, never against the runs app.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs

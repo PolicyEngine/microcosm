@@ -7,6 +7,8 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "PolicyEngine" }]
 dependencies = [
+    "httpx>=0.28,<1",
+    "alembic>=1.13.3,<2",
     "numpy>=1.26",
     "pandas>=2",
     "scipy>=1.13",
@@ -24,6 +26,7 @@ dependencies = [
     "pyyaml>=6",
     "jsonschema>=4.23,<5",
     "referencing>=0.35,<1",
+    "sqlalchemy>=2,<3",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +51,7 @@ us = [
 uk = ["policyengine-uk>=2.122.2", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
 
 [project.scripts]
+microcosm-publish-graph = "microcosm.build.graph_publication_cli:main"
 microcosm-build-uk = "microcosm.build.uk_runtime.full_build_cli:main"
 microcosm-export-us-l0-refit-h5 = "microcosm.build.us_runtime.l0_refit_export:main"
 
