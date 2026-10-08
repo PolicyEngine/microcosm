@@ -38,7 +38,13 @@ reference is never re-solved, so every delta is the selection's.
    are scored):
    - A×E: the best A rule × each anchor × 3 λ around that anchor's E knee, with λ scaled by the A rule's loss level at S0;
    - holdout: a refit-level rotated holdout (`mode: refit_holdout`, 5 local folds) for C0, C2, the best E per anchor, the best A and the best A×E.
-4. Report to María. Step 2 (search re-runs) and step 3 (size) run only on her pick.
+4. **Step 1c, exploratory** (chosen after step 1 by María, 2026-10-08; not
+   pre-registered, reported apart): `step1c_exploratory.json` runs
+   `grain_family_equal_sqrt_count` at floor 0.5 with the uniform anchor at λ 1e-3,
+   3e-3 and 1e-2 times its loss ratio at S0 (2.1439), the low-λ region step 1b's knee
+   rule skipped, plus the 5-fold holdout of `E_unif_f0.5_1e-2`. Its sets carry the
+   prefix `X_`.
+5. Report to María. Step 2 (search re-runs) and step 3 (size) run only on her pick.
 
 **Selection rules** (fixed now):
 - the best E per anchor is the largest λ that still meets criteria 1–5 of the acceptance below;

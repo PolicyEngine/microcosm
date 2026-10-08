@@ -1,0 +1,42 @@
+[
+  {
+    "name": "X_gfes_unif_f0.5_0.0021",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "refit_l2": {
+      "lambda": 0.002143860725904146,
+      "anchor": "uniform"
+    },
+    "baseline_pi_floor": 0.5,
+    "notes": "step 1c, exploratory (chosen after step 1, María 2026-10-08): grain_family_equal_sqrt_count with uniform L2 at 1e-3 x its loss ratio 2.1439"
+  },
+  {
+    "name": "X_gfes_unif_f0.5_0.0064",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "refit_l2": {
+      "lambda": 0.006431582177712438,
+      "anchor": "uniform"
+    },
+    "baseline_pi_floor": 0.5,
+    "notes": "step 1c, exploratory (chosen after step 1, María 2026-10-08): grain_family_equal_sqrt_count with uniform L2 at 3e-3 x its loss ratio 2.1439"
+  },
+  {
+    "name": "X_gfes_unif_f0.5_0.021",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "refit_l2": {
+      "lambda": 0.021438607259041457,
+      "anchor": "uniform"
+    },
+    "baseline_pi_floor": 0.5,
+    "notes": "step 1c, exploratory (chosen after step 1, María 2026-10-08): grain_family_equal_sqrt_count with uniform L2 at 1e-2 x its loss ratio 2.1439"
+  },
+  {
+    "name": "H_E_unif_f0.5_1e-2",
+    "mode": "refit_holdout",
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "uniform"
+    },
+    "baseline_pi_floor": 0.5,
+    "notes": "step 1c, exploratory: the holdout step 1b had no slot for (no L2 point met criteria 1-5)"
+  }
+]
