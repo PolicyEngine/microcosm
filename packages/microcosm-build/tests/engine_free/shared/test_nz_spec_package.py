@@ -19,12 +19,17 @@ broken check:
   (``modal_area``);
 - every scenario names exactly one method-card row and a tier from
   {entitlement, calibration}, and changes exactly one knob from the centre
-  (``scenario_errors``).
+  (``scenario_errors``);
+- no resource cites a line number of a Python source unless the same
+  resource pins that source at a commit (``unpinned_python_line_citations``):
+  this repository's sources are cited by symbol, because their line numbers
+  move under unrelated edits.
 
 Differential checks compare two records of one fact: the loader's target
 references with a direct parse, the rules bindings' module digests with the
-committed Axiom input surface, and the export contract's formula-owned list
-with the bound variables.
+committed Axiom input surface, the export contract's formula-owned list
+with the bound variables, and the benefit unit rule's symbol citations with
+the sources they name.
 """
 
 from __future__ import annotations
@@ -32,10 +37,13 @@ from __future__ import annotations
 import copy
 import dataclasses
 import hashlib
+import importlib
+import inspect
 import json
 import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from pathlib import PurePosixPath
 from typing import Any
 
 import pytest
@@ -49,6 +57,7 @@ from microcosm.build.ledger_targets import (
     reference_fact_selectors,
 )
 from microcosm.build.spec_engine import load_yaml12
+from microcosm.frame import concepts as frame_concepts
 from test_support.paths import paths_for
 
 _BUILD = paths_for("microcosm-build")
@@ -95,6 +104,20 @@ def _nested_keys(value: object) -> Iterator[str]:
     elif isinstance(value, list):
         for child in value:
             yield from _nested_keys(child)
+
+
+def _nested_strings(value: object) -> Iterator[str]:
+    """Every string in a payload, mapping keys included, at any depth."""
+
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            yield str(key)
+            yield from _nested_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _nested_strings(child)
+    elif isinstance(value, str):
+        yield value
 
 
 def _package_payloads() -> dict[str, object]:
@@ -427,6 +450,102 @@ def scenario_errors(document: Mapping[str, Any]) -> list[str]:
         ):
             errors.append(f"{label}: {knob!r} needs a positive number")
     return errors
+
+
+#: A Python source named in prose: ``concepts.py``, or a path ending in one.
+_PY_SOURCE = r"(?P<file>[A-Za-z0-9_./-]*[A-Za-z0-9_]\.py)(?![A-Za-z0-9_])"
+#: A line locator into a Python source, in each spelling the package has used
+#: or GitHub produces: ``x.py:12``, ``x.py:12-19``, ``x.py#L12``, ``x.py L12``,
+#: ``x.py line 12``, ``x.py, lines 12-19``, ``x.py (lines 12-19)``, and the
+#: reverse ``lines 12-19 of x.py``.
+_PY_LINE_CITATIONS = (
+    re.compile(_PY_SOURCE + r"(?:\s*:\s*|#L|\s+L|,?\s*\(?\s*[Ll]ines?\s+)\d"),
+    re.compile(
+        r"\b[Ll]ines?\s+\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+)*\s+(?:of|in)\s+"
+        + _PY_SOURCE
+    ),
+)
+#: A commit pin. A branch name such as ``main`` pins nothing.
+_COMMIT_PIN = re.compile(r"[0-9a-fA-F]{7,40}")
+
+
+def python_line_citations(value: object) -> list[tuple[str, str]]:
+    """Each (file name, string) where a string cites a line of a Python source."""
+
+    return [
+        (PurePosixPath(match["file"]).name, text)
+        for text in _nested_strings(value)
+        for pattern in _PY_LINE_CITATIONS
+        for match in pattern.finditer(text)
+    ]
+
+
+def commit_pinned_python_sources(value: object) -> set[str]:
+    """File names of the Python sources a payload pins at a commit.
+
+    A pin is a mapping, at any depth, whose ``path`` names a ``.py`` file and
+    whose ``commit`` is 7-40 hex digits.
+    """
+
+    pinned: set[str] = set()
+    if isinstance(value, Mapping):
+        path, commit = value.get("path"), value.get("commit")
+        if (
+            isinstance(path, str)
+            and path.endswith(".py")
+            and isinstance(commit, str)
+            and _COMMIT_PIN.fullmatch(commit)
+        ):
+            pinned.add(PurePosixPath(path).name)
+        for child in value.values():
+            pinned |= commit_pinned_python_sources(child)
+    elif isinstance(value, list):
+        for child in value:
+            pinned |= commit_pinned_python_sources(child)
+    return pinned
+
+
+def unpinned_python_line_citations(document: object) -> list[tuple[str, str]]:
+    """Line citations of Python sources that the document does not pin.
+
+    A line number names code only at a fixed commit. This repository's sources
+    shift under unrelated edits, so a resource cites them by symbol
+    (``concepts.py _pointer("parent_1_person_id")``). A resource cites another
+    repository's source by line only when it also pins that source at a
+    commit, as as_rate_bridge.json's ``source`` does. Pins match by file name.
+    """
+
+    pinned = commit_pinned_python_sources(document)
+    return [
+        (name, text)
+        for name, text in python_line_citations(document)
+        if name not in pinned
+    ]
+
+
+#: A dotted Microcosm symbol named in prose, such as
+#: ``microcosm.graph.executor._structural_columns``.
+_DOTTED_MICROCOSM_SYMBOL = re.compile(
+    r"(?<![A-Za-z0-9_./-])microcosm(?:\.[A-Za-z_][A-Za-z0-9_]*)+"
+)
+
+
+def resolve_dotted_symbol(dotted: str) -> object:
+    """Import the longest module prefix of a dotted name, then get the rest."""
+
+    parts = dotted.split(".")
+    for cut in range(len(parts), 0, -1):
+        name = ".".join(parts[:cut])
+        try:
+            target: object = importlib.import_module(name)
+        except ModuleNotFoundError as error:
+            if error.name != name:
+                raise
+            continue
+        for attribute in parts[cut:]:
+            target = getattr(target, attribute)
+        return target
+    raise ModuleNotFoundError(dotted, name=dotted)
 
 
 # ---------------------------------------------------------------------------
@@ -1472,6 +1591,286 @@ class TestScenarios:
         document = _load("scenarios.json")
         expected = SCENARIO_BREAKERS[branch](document, data)
         assert expected in scenario_errors(document)
+
+
+# ---------------------------------------------------------------------------
+# Source citations
+# ---------------------------------------------------------------------------
+
+
+_PY_STEM = st.from_regex(r"[a-z_][a-z0-9_]{0,15}", fullmatch=True)
+_PY_DIRECTORY = st.sampled_from(
+    (
+        "",
+        "packages/microcosm-frame/src/microcosm/frame/",
+        "microcosm/graph/",
+        "nz-lane/emtr_reproduction/",
+    )
+)
+#: Line-locator spellings: {file} is the cited source, {a} and {b} lines.
+_LINE_LOCATORS = (
+    "{file}:{a}",
+    "{file}:{a}-{b}",
+    "{file}:{a},{b}",
+    "{file}#L{a}",
+    "{file}#L{a}-L{b}",
+    "{file} L{a}",
+    "{file} line {a}",
+    "{file} lines {a}-{b}",
+    "{file}, lines {a}-{b}",
+    "{file} (lines {a}-{b})",
+    "Lines {a}-{b} of {file}",
+    "line {a} in {file}",
+)
+#: Symbol-citation spellings, which carry no line number.
+_SYMBOL_LOCATORS = (
+    "{file} {symbol}",
+    '{file} _pointer("{symbol}")',
+    '{file}, the "# --- Relationships" block',
+    "{file}: {symbol}",
+    "{symbol} in {file} at main",
+)
+#: Prose around a citation. It has no digit, so it can neither extend a
+#: planted line number nor plant a citation of its own.
+_PROSE = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ,;()'\"-_",
+    max_size=40,
+)
+_BRANCH_NAMES = ("main", "HEAD", "launch/ga-path-execution-gate", "ba6e7d", "")
+
+
+def _plant(text: str, depth: int, as_key: bool) -> object:
+    planted: object = {text: "cited"} if as_key else text
+    for level in range(depth):
+        planted = {"level": level, "note": [planted]}
+    return planted
+
+
+class TestSourceCitations:
+    def test_no_resource_cites_a_python_line_it_does_not_pin(self) -> None:
+        offenders = {
+            name: hits
+            for name, payload in _package_payloads().items()
+            if (hits := unpinned_python_line_citations(payload))
+        }
+        assert offenders == {}
+
+    def test_the_harness_line_citations_are_scanned_and_pinned(self) -> None:
+        bridge = _load("as_rate_bridge.json")
+        assert {name for name, _ in python_line_citations(bridge)} == {"run.py"}
+        assert commit_pinned_python_sources(bridge) == {"run.py"}
+        assert re.fullmatch(r"[0-9a-f]{40}", bridge["source"]["commit"])
+
+    @pytest.mark.parametrize(
+        "replaced",
+        [
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py:880-919",
+            "a lone co-resident parent is always parent 1 (the pointer "
+            "definition, concepts.py lines 892-901; the pointer checks ...)",
+            "(microcosm.graph.executor._structural_columns, executor.py lines 636-643)",
+            "(_validate_population_declaration, executor.py lines 1550-1573)",
+            "the conformance harness uses 365/7 weeks (ops main run.py:168)",
+        ],
+    )
+    def test_the_line_citations_the_package_carried_are_refused(
+        self, replaced: str
+    ) -> None:
+        assert unpinned_python_line_citations({"rule": replaced})
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        stem=_PY_STEM,
+        directory=_PY_DIRECTORY,
+        locator=st.sampled_from(_LINE_LOCATORS),
+        a=st.integers(1, 99_999),
+        b=st.integers(1, 99_999),
+        prefix=_PROSE,
+        suffix=_PROSE,
+        depth=st.integers(0, 3),
+        as_key=st.booleans(),
+    )
+    def test_an_unpinned_line_citation_is_refused_at_any_depth(
+        self,
+        stem: str,
+        directory: str,
+        locator: str,
+        a: int,
+        b: int,
+        prefix: str,
+        suffix: str,
+        depth: int,
+        as_key: bool,
+    ) -> None:
+        citation = locator.format(file=f"{directory}{stem}.py", a=a, b=b)
+        text = f"{prefix} {citation} {suffix}"
+        hits = unpinned_python_line_citations(_plant(text, depth, as_key))
+        assert (f"{stem}.py", text) in hits
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        stem=_PY_STEM,
+        directory=_PY_DIRECTORY,
+        pin_directory=_PY_DIRECTORY,
+        locator=st.sampled_from(_LINE_LOCATORS),
+        a=st.integers(1, 99_999),
+        b=st.integers(1, 99_999),
+        depth=st.integers(0, 3),
+        as_key=st.booleans(),
+        commit=_HEX40_TEXT,
+        length=st.integers(7, 40),
+    )
+    def test_a_line_citation_of_a_source_pinned_at_a_commit_passes(
+        self,
+        stem: str,
+        directory: str,
+        pin_directory: str,
+        locator: str,
+        a: int,
+        b: int,
+        depth: int,
+        as_key: bool,
+        commit: str,
+        length: int,
+    ) -> None:
+        citation = locator.format(file=f"{directory}{stem}.py", a=a, b=b)
+        document = {
+            "source": {
+                "repository": "TheAxiomFoundation/ops",
+                "path": f"{pin_directory}{stem}.py",
+                "commit": commit[:length],
+            },
+            "notes": [_plant(citation, depth, as_key)],
+        }
+        assert python_line_citations(document)
+        assert unpinned_python_line_citations(document) == []
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        stem=_PY_STEM,
+        other=_PY_STEM,
+        locator=st.sampled_from(_LINE_LOCATORS),
+        a=st.integers(1, 99_999),
+        b=st.integers(1, 99_999),
+        commit=_HEX40_TEXT,
+        branch=st.sampled_from(_BRANCH_NAMES),
+        pin_other_file=st.booleans(),
+    )
+    def test_a_pin_of_another_file_or_at_a_branch_does_not_cover_a_citation(
+        self,
+        stem: str,
+        other: str,
+        locator: str,
+        a: int,
+        b: int,
+        commit: str,
+        branch: str,
+        pin_other_file: bool,
+    ) -> None:
+        if pin_other_file:
+            assume(other != stem)
+            pin = {"path": f"{other}.py", "commit": commit}
+        else:
+            pin = {"path": f"{stem}.py", "commit": branch}
+        citation = locator.format(file=f"{stem}.py", a=a, b=b)
+        hits = unpinned_python_line_citations({"source": pin, "note": citation})
+        assert (f"{stem}.py", citation) in hits
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        stem=_PY_STEM,
+        directory=_PY_DIRECTORY,
+        locator=st.sampled_from(_SYMBOL_LOCATORS),
+        symbol=_PY_STEM,
+        prefix=_PROSE,
+        suffix=_PROSE,
+    )
+    def test_a_symbol_citation_is_not_a_line_citation(
+        self,
+        stem: str,
+        directory: str,
+        locator: str,
+        symbol: str,
+        prefix: str,
+        suffix: str,
+    ) -> None:
+        citation = locator.format(file=f"{directory}{stem}.py", symbol=symbol)
+        assert python_line_citations({"rule": f"{prefix} {citation} {suffix}"}) == []
+
+    def test_benefit_unit_rule_cites_the_relationship_pointers_by_symbol(
+        self,
+    ) -> None:
+        rule = _load("benefit_unit_rule.json")
+        source = inspect.getsource(frame_concepts)
+        block = source.split("# --- Relationships", 1)[1].split("# --- ", 1)[0]
+        block_pointers = re.findall(r'_pointer\(\s*"(\w+)"', block)
+        assert block_pointers == [
+            "partner_person_id",
+            "parent_1_person_id",
+            "parent_2_person_id",
+            "reference_person_id",
+        ]
+        pointers = rule["pointer_concepts"]
+        named = [
+            pointers["partner"],
+            *pointers["parents"],
+            pointers["household_reference_person"],
+        ]
+        assert named == block_pointers
+        assert pointers["citation"] == (
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py, the "
+            f'"# --- Relationships" block: _pointer("{block_pointers[0]}") '
+            f'through _pointer("{block_pointers[-1]}")'
+        )
+        cited = {
+            name
+            for text in _nested_strings(rule)
+            for name in re.findall(r'_pointer\("(\w+)"\)', text)
+        }
+        assert cited == {
+            "partner_person_id",
+            "parent_1_person_id",
+            "reference_person_id",
+        }
+        (child,) = [
+            row for row in rule["composition"] if row["member"] == "dependent_child"
+        ]
+        assert 'concepts.py _pointer("parent_1_person_id")' in child["rule"]
+        parent_1 = frame_concepts.concept("fact:person.parent_1_person_id")
+        assert "always parent 1" in parent_1.definition
+        assert "concepts.py _check_pointers" in child["rule"]
+        assert callable(frame_concepts._check_pointers)
+
+    def test_every_dotted_microcosm_symbol_in_the_package_resolves(self) -> None:
+        named = {
+            match
+            for payload in _package_payloads().values()
+            for text in _nested_strings(payload)
+            for match in _DOTTED_MICROCOSM_SYMBOL.findall(text)
+        }
+        assert {
+            "microcosm.graph.executor._structural_columns",
+            "microcosm.graph.executor._validate_population_declaration",
+        } <= named
+        unresolved = []
+        for dotted in sorted(named):
+            try:
+                resolve_dotted_symbol(dotted)
+            except (ImportError, AttributeError) as error:
+                unresolved.append(f"{dotted}: {error}")
+        assert unresolved == []
+
+    @pytest.mark.parametrize(
+        ("dotted", "error"),
+        [
+            ("microcosm.graph.executor._no_such_symbol", AttributeError),
+            ("microcosm.no_such_shard.module.symbol", ModuleNotFoundError),
+        ],
+    )
+    def test_an_unresolvable_dotted_symbol_raises(
+        self, dotted: str, error: type[Exception]
+    ) -> None:
+        with pytest.raises(error):
+            resolve_dotted_symbol(dotted)
 
 
 # ---------------------------------------------------------------------------
