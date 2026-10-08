@@ -18,7 +18,11 @@ from scipy import sparse
 
 from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.gate_battery import EvidenceContext
-from microcosm.build.uk_runtime.calibration_run import uk_aggregate_admin_totals
+from microcosm.build.uk_runtime.calibration_run import (
+    uk_aggregate_admin_totals,
+    uk_cgt_projection_artifact,
+)
+from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
@@ -247,6 +251,20 @@ def build_full_gate_context(
     manifest = uk_full_gate_manifest(selection_receipt)
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = dict(supporting_evidence)
+    # The spine checkpoint's build state stands in for the certifier's spine
+    # frame: the input-coverage gate's build-state half reads the stages'
+    # importance weights and mass receipts from it, never from the calibrated
+    # release frame (found by the first graph dense build: every required
+    # family failed on weight kind alone).
+    spine_build_state = artifacts.pop("spine_build_state", None)
+    if spine_build_state is not None:
+        artifacts.setdefault("spine_frame", spine_build_state)
+    # The entrants fence needs the projection; the national seam computes it
+    # in its calibration kernel, the dense battery computes it here.
+    if UK_CGT_PROJECTION_ARTIFACT_KEY not in artifacts:
+        artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY] = uk_cgt_projection_artifact(
+            frame, manifest
+        )
     artifacts.update(
         {
             "stage_evidence": dict(stage_evidence),

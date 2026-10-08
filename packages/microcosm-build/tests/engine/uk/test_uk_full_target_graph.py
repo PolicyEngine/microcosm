@@ -114,7 +114,8 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         source_year=2023,
         expected_constituency_vintage="2024_pcon",
     )
-    prepared_frame, _, national_rows, metrics, _ = target_inputs["measures"](
+    prepared_frame = target_inputs["prepared"](assignment.frame)
+    _, national_rows, metrics, _ = target_inputs["measures"](
         assignment.frame, target_inputs["national"], local_grains=("constituency", "la")
     )
     surface, cross = target_inputs["surface"]()

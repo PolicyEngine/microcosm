@@ -33,7 +33,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 COUNTRY_PACKAGE_ROOT = _TEST_PATHS.package / "src/microcosm/build"
 GOLDEN_ROOT = _TEST_PATHS.tests / "golden"
-GOLDEN_COUNTRIES = ("am", "be")
+GOLDEN_COUNTRIES = ("am", "be", "nz")
 FORBIDDEN_TARGET_VALUE_KEYS = {"value", "values", "observed", "observed_value"}
 
 

@@ -155,6 +155,23 @@ def test_descriptive_fields_are_outside_the_normative_projection() -> None:
     assert "description" not in node.normative()
 
 
+@pytest.mark.parametrize(
+    ("constructor", "label"),
+    [
+        (
+            lambda: SourceRef("survey", "frame-h5", description=" \t"),
+            "SourceRef.description",
+        ),
+        (lambda: Node("node", "k@1", description="\n"), "Node.description"),
+    ],
+)
+def test_descriptions_must_be_empty_or_contain_non_whitespace_text(
+    constructor, label
+) -> None:
+    with pytest.raises(GraphError, match=rf"{label}.*non-whitespace"):
+        constructor()
+
+
 def test_graph_needs_a_create_node() -> None:
     with pytest.raises(GraphError, match="CREATE"):
         compile_graph(Graph("toy", (SRC,), (_fit("fit_a", ("age",), "a"),)))

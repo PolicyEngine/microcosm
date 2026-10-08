@@ -359,6 +359,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--selection-seed", type=int)
     parser.add_argument("--selection-pi-hi", type=float, default=1.0)
     parser.add_argument(
+        "--selection-initial-lambda",
+        type=float,
+        default=None,
+        help=(
+            "Warm-start the informed L0 budget search at this penalty (the "
+            "selected_l0_lambda of a previous search on the same pool and "
+            "targets, microcosm#1115). The search probes it first and stops "
+            "there when the draw is feasible and within tolerance; a stale "
+            "value costs probes, not feasibility (a warm and a cold search may "
+            "settle on different penalties inside the budget window). Requires "
+            "--dataset-households."
+        ),
+    )
+    parser.add_argument(
         "--baseline-pi-floor",
         type=float,
         default=0.0,
@@ -733,6 +747,7 @@ def prepare_full_build(
             dataset_households=args.dataset_households,
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
+            selection_initial_lambda=args.selection_initial_lambda,
             baseline_pi_floor=args.baseline_pi_floor,
             target_weight_rule=args.target_weight_rule,
         ),

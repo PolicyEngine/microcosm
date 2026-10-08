@@ -3,9 +3,8 @@
 ``frs_take_up`` draws ``would_claim_child_benefit`` early, at one flat rate
 over every benefit unit with the FRS reporters added on top, and
 ``child_benefit_opts_out`` at a flat rate over every benefit unit whatever its
-income; the engine pays on the first and never reads the second. This stage
-redraws both once the SPI income chain has set the incomes the charge is
-assessed on, against HMRC's Child Benefit statistics.
+income. This stage redraws both once the SPI income chain has set the incomes
+the charge is assessed on, against HMRC's Child Benefit statistics.
 
 Claims. One temporary engine materialization gives each person's eligibility
 (a child, or a qualifying young person). HMRC publishes the share of eligible
@@ -29,22 +28,31 @@ claiming still falls short of it).
 Opt-outs. HMRC publishes the families registered and, of them, the families
 that opted out of payment because of the High Income Child Benefit Charge.
 That share of the claiming families opts out, drawn among claiming families
-that do not report receipt and whose highest adjusted net income is at or
-above the income at which the charge takes the whole benefit; where that pool
-is lighter than the target the rest is drawn from the families inside the
-taper. A family in the taper still gains from the payment, so the fully
-charged families come first.
+that do not report receipt. For opt-out-aware models, candidates must have a
+positive charge fraction at least as large as the installed
+``opt_out_charge_share``. The default share of one restricts the draw to fully
+charged families; a smaller eligible pool leaves an explicit shortfall. Older
+models retain their fully charged pool followed by a taper fallback. Within
+either contract, fully charged candidates come first.
 
-The engine pays on ``would_claim_child_benefit`` alone, so the stage stores
-``claims and not opted out`` there and the opt-out in
-``child_benefit_opts_out``. A benefit unit with no eligible child keeps its
+Models exposing ``gov.hmrc.child_benefit.opt_out_charge_share`` (UK #2140)
+read claims and opt-outs separately, so ``would_claim_child_benefit`` includes
+registered opted-out families. Older models ignore the opt-out input and need
+the legacy ``claims and not opted out`` payment flag. The installed parameter
+tree selects the encoding and the receipt records it; no dataset-name or
+vintage heuristic is used. A benefit unit with no eligible child keeps its
 early draw and is never opted out.
+
+The in-payment audit counts ``claims and not opted out``. New-contract opt-out
+candidates match the installed baseline payment-suppression rule; the receipt
+is still a draw audit, not a fresh model run or evidence of population fit.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from numbers import Real
 from pathlib import Path
 
 import numpy as np
@@ -100,13 +108,16 @@ CHILD_BENEFIT_CLAIM_RULE = (
 )
 CHILD_BENEFIT_OPT_OUT_RULE = (
     "published opted-out share of registered families, of the claiming "
-    "families; drawn among claiming non-reporting families with the highest "
-    "adjusted net income at or above the full-charge income, then, for any "
-    "remainder, among those inside the taper"
+    "families; drawn among claiming non-reporting families, fully charged first "
+    "then inside the taper; opt-out-aware models restrict both pools to a "
+    "positive charge fraction at least the installed opt_out_charge_share, "
+    "recording any pool shortfall; legacy models retain the unfiltered pools"
 )
 CHILD_BENEFIT_PAYMENT_RULE = (
-    "would_claim_child_benefit = claims and not opted out on families with an "
-    "eligible child; a benefit unit without one keeps its early draw"
+    "would_claim_child_benefit = claims on families with an eligible child "
+    "when the model exposes gov.hmrc.child_benefit.opt_out_charge_share; "
+    "otherwise claims and not opted out for legacy models; a benefit unit "
+    "without an eligible child keeps its early draw"
 )
 
 
@@ -153,12 +164,25 @@ class UKChildBenefitChargeThresholds:
     phase_out_start: float
     phase_out_end: float
     source: str = "caller"
+    supports_opt_out: bool = False
+    opt_out_charge_share: float | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 < self.phase_out_start < self.phase_out_end:
             raise ValueError(
                 "Child Benefit charge thresholds must satisfy 0 < start < end."
             )
+        if self.supports_opt_out:
+            share = self.opt_out_charge_share
+            if (
+                isinstance(share, bool)
+                or not isinstance(share, Real)
+                or not np.isfinite(share)
+            ):
+                raise ValueError(
+                    "Child Benefit opt_out_charge_share must be a finite numeric "
+                    "value when the model supports opt-outs."
+                )
 
 
 def load_child_benefit_statistics() -> UKChildBenefitStatistics:
@@ -235,7 +259,7 @@ def load_child_benefit_statistics() -> UKChildBenefitStatistics:
 def uk_child_benefit_charge_thresholds(
     build_period: int | str,
 ) -> UKChildBenefitChargeThresholds:
-    """Read the charge's taper from the engine at ``{year}-01-01``."""
+    """Read the taper and payment-suppression share from the installed model."""
 
     try:
         import policyengine_uk
@@ -252,9 +276,15 @@ def uk_child_benefit_charge_thresholds(
     )
     instant = f"{int(build_period)}-01-01"
     charge = parameters.gov.hmrc.income_tax.charges.CB_HITC
+    child_benefit = parameters.gov.hmrc.child_benefit
+    supports_opt_out = "opt_out_charge_share" in child_benefit.children
     return UKChildBenefitChargeThresholds(
         phase_out_start=float(charge.phase_out_start(instant)),
         phase_out_end=float(charge.phase_out_end(instant)),
+        supports_opt_out=supports_opt_out,
+        opt_out_charge_share=(
+            child_benefit.opt_out_charge_share(instant) if supports_opt_out else None
+        ),
         source=(
             f"policyengine-uk {metadata.version('policyengine-uk')} "
             f"{CHILD_BENEFIT_CHARGE_PARAMETERS} at {instant}"
@@ -267,6 +297,7 @@ class UKChildBenefitTakeUpResult:
     """Output frame and executed-effect receipt for the Child Benefit redraw."""
 
     frame: Frame
+    claim_export: Mapping[str, object]
     claims: Mapping[str, object]
     opt_outs: Mapping[str, object]
     in_payment: Mapping[str, object]
@@ -281,6 +312,7 @@ class UKChildBenefitTakeUpResult:
             "claim_rule": CHILD_BENEFIT_CLAIM_RULE,
             "opt_out_rule": CHILD_BENEFIT_OPT_OUT_RULE,
             "payment_rule": CHILD_BENEFIT_PAYMENT_RULE,
+            "claim_export": dict(self.claim_export),
             "claims": dict(self.claims),
             "opt_outs": dict(self.opt_outs),
             "in_payment": dict(self.in_payment),
@@ -439,7 +471,8 @@ def redraw_child_benefit_take_up(
     previous_opt_out = (
         benunit[CHILD_BENEFIT_OPT_OUT_OUTPUT].fillna(False).to_numpy(bool)
     )
-    would_claim = np.where(family, paid, previous_claim)
+    exported_claims = claims if thresholds.supports_opt_out else paid
+    would_claim = np.where(family, exported_claims, previous_claim)
     benunit[CHILD_BENEFIT_CLAIM_OUTPUT] = would_claim
     benunit[CHILD_BENEFIT_OPT_OUT_OUTPUT] = opt_out
     result = uk_national_frame(
@@ -458,10 +491,18 @@ def redraw_child_benefit_take_up(
     outside = reporter & ~family
     return UKChildBenefitTakeUpResult(
         frame=result,
+        claim_export={
+            "encoding": (
+                "registered_claims" if thresholds.supports_opt_out else "legacy_payment"
+            ),
+            "supports_opt_out": thresholds.supports_opt_out,
+            "engine_parameters_source": thresholds.source,
+        },
         claims=claim_receipt,
         opt_outs=opt_out_receipt,
         in_payment={
             "weights": "household weights at the stage, before calibration",
+            "basis": "claims and not opted out in the draw; not a model cash rerun",
             "families": paid_families,
             "children": paid_children,
             "published_families": statistics.families_in_payment,
@@ -633,7 +674,7 @@ def assign_child_benefit_opt_outs(
     statistics: UKChildBenefitStatistics,
     thresholds: UKChildBenefitChargeThresholds,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Opt out the published share of claiming families, fully charged first."""
+    """Draw opt-outs from unpaid candidates, retaining the legacy taper fallback."""
 
     claims = np.asarray(claims, dtype=bool)
     reporter = np.asarray(reporter, dtype=bool)
@@ -642,6 +683,21 @@ def assign_child_benefit_opt_outs(
     weights = np.asarray(weights, dtype=np.float64)
     draws = np.asarray(draws, dtype=np.float64)
     candidates = claims & ~reporter
+    if thresholds.supports_opt_out:
+        # The supported build boundary has positive taper width. Match the
+        # installed model's payment-suppression predicate, including share=0:
+        # a family at the charge start must still receive payment.
+        charge_fraction = np.clip(
+            np.maximum(highest_income - thresholds.phase_out_start, 0.0)
+            / (thresholds.phase_out_end - thresholds.phase_out_start),
+            0.0,
+            1.0,
+        )
+        candidates &= (
+            (children > 0)
+            & (charge_fraction > 0)
+            & (charge_fraction >= thresholds.opt_out_charge_share)
+        )
     pools = (
         (
             "fully_charged",
@@ -699,6 +755,11 @@ def assign_child_benefit_opt_outs(
         "charge_income": CHILD_BENEFIT_CHARGE_INCOME_VARIABLE,
         "phase_out_start": thresholds.phase_out_start,
         "phase_out_end": thresholds.phase_out_end,
+        "opt_out_charge_share": (
+            float(thresholds.opt_out_charge_share)
+            if thresholds.supports_opt_out
+            else None
+        ),
         "thresholds_source": thresholds.source,
         "reporters_above_charge_start": float(
             weights[

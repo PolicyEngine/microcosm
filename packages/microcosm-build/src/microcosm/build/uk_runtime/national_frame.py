@@ -481,7 +481,14 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
 
 
 def uk_release_export_frame(frame: Frame) -> Frame:
-    """The frame the release boundary writes: reviewed export exclusions dropped."""
+    """The frame the release boundary writes: reviewed export exclusions dropped.
+
+    The three area codes leave under the consumers' names (microcosm#1114,
+    ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``); a national frame
+    carries none and passes unchanged.
+    """
+
+    from .geography_ladder import export_area_code_columns
 
     tables: dict[str, pd.DataFrame] = {}
     changed = False
@@ -495,6 +502,11 @@ def uk_release_export_frame(frame: Frame) -> Frame:
         if dropped:
             table = table.drop(columns=dropped)
             changed = True
+        if entity == "household":
+            renamed = export_area_code_columns(table)
+            if renamed is not table:
+                table = renamed
+                changed = True
         tables[entity] = table
     if not changed:
         return frame

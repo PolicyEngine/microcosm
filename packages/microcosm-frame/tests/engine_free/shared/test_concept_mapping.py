@@ -11,14 +11,19 @@ mapped input exists in the installed engine is checked by the engine tests.
 
 import copy
 import json
+import re
+from contextlib import contextmanager
 from dataclasses import replace
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from microcosm.frame import concept_mapping as concept_mapping_module
+from microcosm.frame import concepts as concepts_module
 from microcosm.frame.concept_mapping import (
     AllocateToReferencePerson,
     ConceptMapping,
@@ -49,6 +54,7 @@ from microcosm.frame.concepts import (
     AlignmentRelation,
     CanonicalConceptKind,
     ConceptAlignment,
+    TemporalBasis,
     concept,
     derive_take_up_draws,
 )
@@ -70,6 +76,8 @@ PROPERTY = settings(max_examples=100, deadline=None)
 MAPPINGS = concept_mappings()
 mapping_names = st.sampled_from(sorted(MAPPINGS))
 _PARENTS = ("fact:person.parent_1_person_id", "fact:person.parent_2_person_id")
+_LIQUID_ASSETS = "fact:person.liquid_financial_assets"
+_AS_MODULE = "nz/statutes/social_security/accommodation_supplement/core.yaml"
 
 # The round-trip and idempotence properties check exactly the concepts
 # invertible_concepts() returns, so the sets are pinned here: a decoder that
@@ -199,6 +207,29 @@ class TestEveryMapping:
             if places:
                 assert "fact:household.reference_person_id" in binding.reads
 
+    def test_liquid_assets_bind_only_the_nz_cash_asset_test(self) -> None:
+        # Every other mapping lists the concept as unmapped. The one binding
+        # is a group binding, which encode defers until units exist.
+        bound = {
+            name: [binding.ref for binding in mapping.bindings_for(_LIQUID_ASSETS)]
+            for name, mapping in MAPPINGS.items()
+        }
+        assert bound == {
+            "axiom-be": [],
+            "axiom-nz": [
+                InputRef("accommodation_supplement_cash_assets", "Family", _AS_MODULE)
+            ],
+            "policyengine-uk": [],
+            "policyengine-us": [],
+        }
+        nz = MAPPINGS["axiom-nz"]
+        (binding,) = nz.bindings_for(_LIQUID_ASSETS)
+        assert binding.concepts == (_LIQUID_ASSETS,)
+        assert isinstance(binding.transform, Identity)
+        assert binding.group_rule is GroupRule.SUM_OVER_MEMBERS
+        assert binding.relation is AlignmentRelation.APPROXIMATE
+        assert not nz.is_executable(binding)
+
     def test_declarations_match_the_engine_kind(self) -> None:
         for name, mapping in MAPPINGS.items():
             axiom = name.startswith("axiom-")
@@ -269,6 +300,30 @@ class TestExecution:
         for entity in ("person", "household"):
             assert len(first.tables[entity]) == len(tables[entity])
             pd.testing.assert_frame_equal(first.tables[entity], second.tables[entity])
+
+    @PROPERTY
+    @given(name=mapping_names, tables=concept_frames(), data=st.data())
+    def test_liquid_assets_reach_no_executed_input(self, name, tables, data) -> None:
+        # Bound only through a deferred group binding, the concept changes no
+        # encoded column, and no decode recovers it.
+        mapping = MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        with_assets = mapping.encode(tables, **parameters)
+        without = {
+            "person": tables["person"].drop(columns="liquid_financial_assets"),
+            "household": tables["household"],
+        }
+        without_assets = mapping.encode(without, **parameters)
+        for entity in ("person", "household"):
+            pd.testing.assert_frame_equal(
+                with_assets.tables[entity], without_assets.tables[entity]
+            )
+        if name == "axiom-nz":
+            assert "accommodation_supplement_cash_assets" in {
+                binding.engine_input for binding in with_assets.deferred
+            }
+        decoded = mapping.decode(with_assets.tables)
+        assert "liquid_financial_assets" not in decoded["person"].columns
 
     @PROPERTY
     @given(name=mapping_names, tables=concept_frames(), data=st.data())
@@ -880,6 +935,372 @@ class TestTransforms:
         assert out.loc[0, "isa"] == 20.0
         decoded = mapping.decode({"person": out, "household": tables["household"]})
         assert decoded["person"].loc[0, "interest_income"] == 80.0
+
+
+#: The transforms that do arithmetic on a year's amount, and so read annual
+#: flows only.
+_ARITHMETIC = (Scale, Sum, Share, Fraction)
+_NOT_FLOWS = tuple(
+    basis for basis in TemporalBasis if basis is not TemporalBasis.ANNUAL_FLOW
+)
+_COMMITTED = tuple(
+    (name, binding)
+    for name, mapping in sorted(MAPPINGS.items())
+    for binding in mapping.bindings
+)
+_parameter_names = st.text(alphabet="abcdefghijklmnopqrstuvwxyz_.", min_size=1)
+_F6_NOTE = "microcosm#1120 review F6 probe."
+
+
+def _passes_type_checks(kind: type, concept_id: str) -> bool:
+    """Whether a ``kind`` binding accepts ``concept_id`` on all but its basis.
+
+    A scale needs a float; a sum, share or fraction needs an amount. These
+    are the binding checks that ran before the flow rule existed.
+    """
+    item = concept(concept_id)
+    return item.dtype == "float" if kind is Scale else item.monetary is not None
+
+
+#: Each concept that is not an annual flow, under each arithmetic transform
+#: whose type checks it passes, with an annual flow to sum it with.
+_REFUSED_READS = tuple(
+    (kind, item.id)
+    for kind in _ARITHMETIC
+    for item in CONCEPTS
+    if item.temporal_basis is not TemporalBasis.ANNUAL_FLOW
+    and _passes_type_checks(kind, item.id)
+)
+_EXAMPLE_TRANSFORMS = {
+    Scale: Scale(factor=1 / 52),
+    Sum: Sum(),
+    Share: Share(parameter="p"),
+    Fraction: Fraction(parameter="f"),
+}
+
+
+def _arithmetic(kind: type):
+    """Instances of the arithmetic transform ``kind``."""
+    if kind is Scale:
+        return st.floats(min_value=1e-3, max_value=1e3).map(
+            lambda factor: Scale(factor=factor)
+        )
+    if kind is Share:
+        return st.builds(Share, parameter=_parameter_names, complement=st.booleans())
+    if kind is Fraction:
+        return st.builds(Fraction, parameter=_parameter_names)
+    return st.just(Sum())
+
+
+def _refusal(kind: type, concept_id: str, engine_input: str = "x") -> str:
+    """The flow rule's whole message for a ``kind`` binding on ``concept_id``."""
+    name = transform_to_dict(_EXAMPLE_TRANSFORMS[kind])["kind"]
+    basis = concept(concept_id).temporal_basis.value
+    return (
+        rf"^Binding for {re.escape(repr(engine_input))}: a {name} reads annual "
+        rf"flows only, and {re.escape(concept_id)} has temporal basis {basis}\.$"
+    )
+
+
+@contextmanager
+def _redeclared(concept_id: str, basis: TemporalBasis):
+    """Run with ``concept_id`` declared under ``basis``, and nothing else."""
+    registry = dict(concepts_module.CONCEPT_BY_ID)
+    registry[concept_id] = replace(registry[concept_id], temporal_basis=basis)
+    patched = MappingProxyType(registry)
+    with pytest.MonkeyPatch.context() as patch:
+        # concept() reads the first; the mapping module imported the second.
+        patch.setattr(concepts_module, "CONCEPT_BY_ID", patched)
+        patch.setattr(concept_mapping_module, "CONCEPT_BY_ID", patched)
+        yield
+
+
+def _us_reading_the_stock(*bindings) -> dict:
+    """The US mapping's JSON form, edited as review finding F6 edited it.
+
+    Each ``(engine input, concepts, transform)`` becomes a person binding,
+    and the stock leaves ``unmapped``.
+    """
+    edited = MAPPINGS["policyengine-us"].to_dict()
+    for engine_input, concepts, transform in bindings:
+        edited["bindings"].append(
+            {
+                "engine_input": engine_input,
+                "engine_entity": "person",
+                "concepts": list(concepts),
+                "transform": transform_to_dict(transform),
+                "relation": "approximate",
+                "note": _F6_NOTE,
+            }
+        )
+    del edited["unmapped"][_LIQUID_ASSETS]
+    return edited
+
+
+class TestArithmeticReadsAnnualFlows:
+    """A scale, sum, share or fraction reads annual flows only.
+
+    microcosm#1120 added the first stock, ``liquid_financial_assets``. Its
+    review (finding F6) bound the US donor's ``bank_account_assets`` to it,
+    cleared it from ``unmapped``, and found that both ``Scale(1/52)`` and
+    ``Sum(interest_income, liquid_financial_assets)`` validated. A stock has
+    no weekly value and cannot be added to a year's income, so every scale,
+    sum, share or fraction binding now checks the declared temporal basis of
+    each concept it computes from. The household reference person that a
+    binding allocated to the reference unit also reads, to place its value,
+    is not an operand. Other transforms are outside the rule.
+    """
+
+    @PROPERTY
+    @given(data=st.data())
+    def test_arithmetic_on_anything_but_an_annual_flow_is_refused(self, data) -> None:
+        kind = data.draw(st.sampled_from(_ARITHMETIC), label="kind")
+        transform = data.draw(_arithmetic(kind), label="transform")
+        eligible = [item for item in CONCEPTS if _passes_type_checks(kind, item.id)]
+        refused = data.draw(
+            st.sampled_from(
+                [
+                    item
+                    for item in eligible
+                    if item.temporal_basis is not TemporalBasis.ANNUAL_FLOW
+                ]
+            ),
+            label="refused",
+        )
+        flows = [
+            item.id
+            for item in eligible
+            if item.temporal_basis is TemporalBasis.ANNUAL_FLOW
+            and item.entity == refused.entity
+        ]
+        concepts = [refused.id]
+        if kind is Sum:
+            others = data.draw(
+                # Leave one flow out, to stand in for the refused concept below.
+                st.lists(
+                    st.sampled_from(flows),
+                    min_size=1,
+                    max_size=len(flows) - 1,
+                    unique=True,
+                ),
+                label="others",
+            )
+            concepts = data.draw(
+                st.permutations([refused.id, *others]), label="concepts"
+            )
+        with pytest.raises(ValueError, match="annual flows only") as error:
+            _binding(concepts=tuple(concepts), transform=transform)
+        assert refused.id in str(error.value)
+        # Put an annual flow in its place, and the same binding validates.
+        stand_in = data.draw(
+            st.sampled_from([item for item in flows if item not in concepts]),
+            label="stand_in",
+        )
+        swapped = tuple(stand_in if item == refused.id else item for item in concepts)
+        assert _binding(concepts=swapped, transform=transform).concepts == swapped
+
+    @pytest.mark.parametrize(
+        ("kind", "concept_id"),
+        _REFUSED_READS,
+        ids=[f"{kind.__name__}-{concept_id}" for kind, concept_id in _REFUSED_READS],
+    )
+    def test_each_concept_that_is_not_an_annual_flow_is_refused_by_name(
+        self, kind, concept_id
+    ) -> None:
+        # Today: a scale of the stock, usual weekly hours or the take-up seed,
+        # and a sum, share or fraction of the stock.
+        concepts = (concept_id,)
+        if kind is Sum:
+            concepts = ("fact:person.interest_income", concept_id)
+        with pytest.raises(ValueError, match=_refusal(kind, concept_id)):
+            _binding(concepts=concepts, transform=_EXAMPLE_TRANSFORMS[kind])
+        with _redeclared(concept_id, TemporalBasis.ANNUAL_FLOW):
+            _binding(concepts=concepts, transform=_EXAMPLE_TRANSFORMS[kind])
+
+    def test_redeclaring_any_operand_of_any_committed_arithmetic_binding_refuses_it(
+        self,
+    ) -> None:
+        # Exhaustive: every committed scale, sum, share and fraction binding,
+        # every concept it computes from, and every temporal basis that is not
+        # an annual flow. Changing only that concept's declared basis refuses
+        # the binding, so the rule reads the declaration. Redeclaring a
+        # placement pointer the binding also reads leaves it valid.
+        arithmetic = [
+            (name, binding)
+            for name, binding in _COMMITTED
+            if isinstance(binding.transform, _ARITHMETIC)
+        ]
+        assert arithmetic
+        placed = 0
+        for name, binding in arithmetic:
+            assert replace(binding) == binding
+            for concept_id in binding.concepts:
+                for basis in _NOT_FLOWS:
+                    with (
+                        _redeclared(concept_id, basis),
+                        pytest.raises(ValueError, match="annual flows only") as error,
+                    ):
+                        replace(binding)
+                    assert concept_id in str(error.value), (name, binding.ref)
+            for pointer in set(binding.reads) - set(binding.concepts):
+                placed += 1
+                for basis in _NOT_FLOWS:
+                    with _redeclared(pointer, basis):
+                        assert replace(binding) == binding, (name, binding.ref)
+        assert placed
+
+    def test_redeclaring_any_read_of_any_other_committed_binding_keeps_it(
+        self,
+    ) -> None:
+        # The complement, also exhaustive: no other committed binding depends
+        # on the basis of anything it reads (identities, roles, take-up,
+        # recodes, predicates, positivity tests, allocations and the hours
+        # product).
+        others = [
+            (name, binding)
+            for name, binding in _COMMITTED
+            if not isinstance(binding.transform, _ARITHMETIC)
+        ]
+        kinds = {type(binding.transform) for _, binding in others}
+        assert {Identity, Product, AllocateToReferencePerson, Positive} <= kinds
+        for name, binding in others:
+            for concept_id in binding.reads:
+                for basis in _NOT_FLOWS:
+                    with _redeclared(concept_id, basis):
+                        assert replace(binding) == binding, (name, binding.ref, basis)
+
+    @PROPERTY
+    @given(name=mapping_names, data=st.data())
+    def test_a_mapping_feeding_anything_but_an_annual_flow_to_arithmetic_is_refused(
+        self, name, data
+    ) -> None:
+        # The F6 edit generalised to every mapping and its JSON form: point an
+        # arithmetic input at a concept that is not an annual flow, and take
+        # that concept out of ``unmapped``. The edit is applied to every
+        # binding that must stay alike (a share's complement, the same input
+        # in another module), and only edits that would validate if the
+        # concept were an annual flow are kept, so the flow rule is the one
+        # obstacle.
+        mapping = MAPPINGS[name]
+        index = data.draw(
+            st.sampled_from(
+                [
+                    position
+                    for position, binding in enumerate(mapping.bindings)
+                    if isinstance(binding.transform, _ARITHMETIC)
+                ]
+            ),
+            label="binding",
+        )
+        binding = mapping.bindings[index]
+        kind = type(binding.transform)
+        refused = data.draw(
+            st.sampled_from(
+                [concept_id for reader, concept_id in _REFUSED_READS if reader is kind]
+            ),
+            label="refused",
+        )
+        replaced = data.draw(st.sampled_from(binding.concepts), label="replaced")
+
+        def alike(other: InputBinding) -> bool:
+            if isinstance(binding.transform, Share):
+                return (
+                    isinstance(other.transform, Share)
+                    and other.transform.parameter == binding.transform.parameter
+                    and other.module == binding.module
+                )
+            return (other.engine_input, other.engine_entity) == (
+                binding.engine_input,
+                binding.engine_entity,
+            )
+
+        edited = mapping.to_dict()
+        for position, other in enumerate(mapping.bindings):
+            if alike(other):
+                edited["bindings"][position]["concepts"] = [
+                    refused if item == replaced else item for item in other.concepts
+                ]
+        edited["unmapped"].pop(refused, None)
+        if not any(
+            replaced in other.reads for other in mapping.bindings if not alike(other)
+        ):
+            edited["unmapped"][replaced] = "probe"
+        with _redeclared(refused, TemporalBasis.ANNUAL_FLOW):
+            try:
+                ConceptMapping.from_dict(edited)
+            except ValueError:
+                assume(False)
+        with pytest.raises(ValueError, match="annual flows only"):
+            ConceptMapping.from_dict(edited)
+
+    @pytest.mark.parametrize(
+        "bindings",
+        [
+            [("bank_account_assets", (_LIQUID_ASSETS,), Scale(factor=1 / 52))],
+            [
+                (
+                    "bank_account_assets",
+                    ("fact:person.interest_income", _LIQUID_ASSETS),
+                    Sum(),
+                )
+            ],
+            [
+                ("bank_account_assets", (_LIQUID_ASSETS,), Share(parameter="p")),
+                (
+                    "stock_assets",
+                    (_LIQUID_ASSETS,),
+                    Share(parameter="p", complement=True),
+                ),
+            ],
+            [("bank_account_assets", (_LIQUID_ASSETS,), Fraction(parameter="f"))],
+        ],
+        ids=["scale", "sum", "share-pair", "fraction"],
+    )
+    def test_the_review_counterexamples_and_their_analogues_are_refused(
+        self, bindings
+    ) -> None:
+        # The scale and the sum are F6's own; the share pair and the fraction
+        # are the same edit through the other two transforms. Each validates
+        # if the stock is declared an annual flow.
+        engine_input, _, transform = bindings[0]
+        refusal = _refusal(type(transform), _LIQUID_ASSETS, engine_input)
+        with pytest.raises(ValueError, match=refusal):
+            ConceptMapping.from_dict(_us_reading_the_stock(*bindings))
+        with _redeclared(_LIQUID_ASSETS, TemporalBasis.ANNUAL_FLOW):
+            ConceptMapping.from_dict(_us_reading_the_stock(*bindings))
+
+    @pytest.mark.parametrize("transform", [Identity(), Positive()], ids=repr)
+    def test_a_stock_still_reaches_an_engine_unchanged_or_through_a_positivity_test(
+        self, transform
+    ) -> None:
+        mapping = ConceptMapping.from_dict(
+            _us_reading_the_stock(("bank_account_assets", (_LIQUID_ASSETS,), transform))
+        )
+        assert [item.transform for item in mapping.bindings_for(_LIQUID_ASSETS)] == [
+            transform
+        ]
+
+    @pytest.mark.parametrize("name", sorted(MAPPINGS))
+    def test_every_committed_mapping_validates_and_its_arithmetic_reads_flows(
+        self, name
+    ) -> None:
+        # MAPPINGS is built under the rule when this module loads; rebuilding
+        # from JSON here states that every committed mapping still validates.
+        mapping = MAPPINGS[name]
+        assert ConceptMapping.from_dict(json.loads(json.dumps(mapping.to_dict()))) == (
+            mapping
+        )
+        arithmetic = [
+            binding
+            for binding in mapping.bindings
+            if isinstance(binding.transform, _ARITHMETIC)
+        ]
+        assert arithmetic
+        for binding in arithmetic:
+            for concept_id in binding.concepts:
+                assert (
+                    concept(concept_id).temporal_basis is TemporalBasis.ANNUAL_FLOW
+                ), (binding.ref, concept_id)
 
 
 class TestCoverageReport:

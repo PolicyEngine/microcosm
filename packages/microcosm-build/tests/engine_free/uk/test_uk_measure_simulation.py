@@ -1060,3 +1060,255 @@ def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_p
         )
     with pytest.raises(ValueError, match="does not match target period"):
         resolver.counterfactual_delta(_relief_binding("income_tax"), 2024)
+
+
+def _toy_uk_frame_with_native_aliases():
+    """A validated UK national frame as the atomic geography path leaves it:
+    the nation-native alias codes are NA outside their own nation."""
+    from microcosm.build.uk_runtime import uk_national_frame
+    from microcosm.frame import MassChangeRecord, WeightKind
+
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([100, 200, 300], dtype=np.int64),
+            "household_weight": [1.0, 1.0, 1.0],
+            "region": pd.array(
+                ["LONDON", "SCOTLAND", "NORTHERN_IRELAND"], dtype="string"
+            ),
+            "oa_code": pd.array(
+                ["E00000001", "S00090001", "N00000101"], dtype="string"
+            ),
+            "output_area_code": pd.array(
+                ["E00000001", "S00090001", None], dtype="string"
+            ),
+            "data_zone_code": pd.array(
+                [None, "S01006506", "N00000101"], dtype="string"
+            ),
+            "intermediate_zone_code": pd.array(
+                [None, "S02001236", None], dtype="string"
+            ),
+            "super_data_zone_code": pd.array([None, None, "N21000001"], dtype="string"),
+            "district_electoral_area_code": pd.array(
+                [None, None, "N10000101"], dtype="string"
+            ),
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype=np.int64),
+            "person_benunit_id": np.asarray([10, 20, 30], dtype=np.int64),
+            "person_household_id": np.asarray([100, 200, 300], dtype=np.int64),
+            "age": [40, 41, 42],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.asarray([10, 20, 30], dtype=np.int64)})
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2025",
+        weight_kind=WeightKind.IMPORTANCE,
+        mass_log=(MassChangeRecord("household", 3.0, 3.0, 1.0, "toy"),),
+    )
+
+
+def test_scratch_engine_input_leaves_the_native_alias_codes_behind(
+    monkeypatch, tmp_path: Path
+):
+    """microcosm#931 derives nation-native alias codes that are NA outside
+    their own nation; policyengine-uk refuses a dataset with any NaN column,
+    so the scratch export the engine loads drops them like the release export
+    does. The first K=25 dense build from main (2026-10-04) failed on exactly
+    this at ``uk.full.measures``."""
+    loaded = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            loaded.append(dataset)
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    frame = _toy_uk_frame_with_native_aliases()
+    before = frame.table("household").copy(deep=True)
+    resolver = UKMeasureResolver(
+        simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
+    )
+    written = pd.read_hdf(tmp_path / "simulation-input.h5", "household")
+    aliases = [
+        "output_area_code",
+        "data_zone_code",
+        "intermediate_zone_code",
+        "super_data_zone_code",
+        "district_electoral_area_code",
+    ]
+    assert not set(aliases) & set(written.columns)
+    assert not written.isna().any().any()
+    assert written["oa_code"].tolist() == ["E00000001", "S00090001", "N00000101"]
+    assert written["household_id"].tolist() == [100, 200, 300]
+    # The resolver's own frame is untouched; only the engine's copy changed.
+    pd.testing.assert_frame_equal(frame.table("household"), before)
+    assert resolver.frame is frame
+    assert loaded == [str(tmp_path / "simulation-input.h5")]
+    receipt = resolver.receipt()
+    assert receipt["mode"] == "scratch_frame_export"
+    assert receipt["engine_scratch_dropped_columns"] == aliases
+
+
+def test_scratch_engine_input_without_aliases_is_the_frame_itself(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(
+            __version__="9.9.9",
+            Microsimulation=lambda *, dataset: SimpleNamespace(
+                tax_benefit_system=SimpleNamespace(variables={})
+            ),
+        ),
+    )
+    writes = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "write_uk_national_frame",
+        lambda frame, path: writes.append(frame) or path,
+    )
+    frame = FrameStub()
+    resolver = UKMeasureResolver(
+        simulation_source=None, scratch_dir=tmp_path, year=2025, frame=frame
+    )
+    assert writes == [frame]
+    assert "engine_scratch_dropped_columns" not in resolver.receipt()
+
+
+def _tiny_national_frame(weights):
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.frame import WeightKind
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_benunit_id": [10, 10, 20, 20],
+            "person_household_id": [100, 100, 200, 200],
+            "age": [35, 8, 40, 38],
+            "is_benunit_head": [True, False, True, False],
+            "is_parent": [True, False, False, False],
+            "is_uc_claimant": [True, False, True, True],
+        }
+    )
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": [10, 20],
+            "benunit_source_id": [10, 20],
+            "dependent_children": [1, 0],
+            "is_married": [False, False],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [100, 200],
+            "household_source_id": [100, 200],
+            "region": ["WALES", "NORTHERN_IRELAND"],
+            "council_tax": [1200.0, 0.0],
+            "rent": [6000.0, 6000.0],
+            "tenure_type": ["RENT_PRIVATELY", "RENT_PRIVATELY"],
+        }
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period=2024,
+        household_weights=np.asarray(weights, dtype=float),
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+
+
+def test_engine_scratch_frame_scales_household_weights_for_the_engine_only():
+    frame = _tiny_national_frame([250.0, 125.0])
+    before = frame.weights_for("household").values.copy()
+
+    engine_frame, dropped = measure_simulation._engine_scratch_frame(
+        frame, engine_weight_scale=4.0
+    )
+
+    assert dropped == ()
+    np.testing.assert_allclose(
+        engine_frame.weights_for("household").values, before * 4.0
+    )
+    assert (
+        engine_frame.weights_for("household").kind
+        is frame.weights_for("household").kind
+    )
+    assert len(engine_frame.mass_log) == len(frame.mass_log) + 1
+    record = engine_frame.mass_log[-1]
+    assert record.entity == "household"
+    assert record.declared_factor == 4.0
+    assert record.new_total == pytest.approx(record.old_total * 4.0)
+    assert record.reason == measure_simulation.ENGINE_WEIGHT_SCALE_REASON
+    # the resolver's own frame keeps the block's true mass
+    np.testing.assert_array_equal(frame.weights_for("household").values, before)
+    # no scale (or a unit scale) on an alias-free frame: the frame itself
+    assert measure_simulation._engine_scratch_frame(frame)[0] is frame
+    assert (
+        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=1.0)[0]
+        is frame
+    )
+    with pytest.raises(ValueError, match="positive finite"):
+        measure_simulation._engine_scratch_frame(frame, engine_weight_scale=0.0)
+
+
+def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
+    monkeypatch, tmp_path: Path
+):
+    created = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            created.append(dataset)
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    writes = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "write_uk_national_frame",
+        lambda frame, path: writes.append((frame, path)) or path,
+    )
+    monkeypatch.setattr(
+        measure_simulation, "validate_uc_claimant_input", lambda *args, **kwargs: None
+    )
+    frame = _tiny_national_frame([250.0, 125.0])
+
+    resolver = UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=frame,
+        engine_weight_scale=4.0,
+    )
+
+    assert resolver.frame is frame
+    written, _path = writes[0]
+    np.testing.assert_allclose(
+        written.weights_for("household").values,
+        frame.weights_for("household").values * 4.0,
+    )
+    assert resolver.receipt()["engine_weight_scale"] == 4.0
+    assert created == [str(tmp_path / "simulation-input.h5")]
+    with pytest.raises(ValueError, match="scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=frame,
+            engine_weight_scale=4.0,
+        )

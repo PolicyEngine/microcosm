@@ -18,6 +18,7 @@ from microcosm.frame.adapters.axiom_input_surface import (
 )
 from microcosm.frame.concept_mapping import (
     InputDeclaration,
+    InputRef,
     coverage_report,
 )
 from microcosm.frame.concepts import (
@@ -94,6 +95,66 @@ def test_committed_coverage_report_matches_the_surface(country) -> None:
         "Regenerate with: uv run --no-sync python tools/refresh_concept_coverage.py "
         f"--engine axiom-{country}"
     )
+
+
+def test_the_belgian_liquid_asset_reason_names_real_inputs() -> None:
+    # The reason rests on where the movable-capital inputs live: the social
+    # integration means test's on Household, the Brussels APA's on Person.
+    reason = axiom_concept_mapping("be").unmapped["fact:person.liquid_financial_assets"]
+    ris = (
+        "be/regulations/social_integration/resource_calculation.yaml",
+        "be/statutes/social_integration/payable_amount.yaml",
+    )
+    named = {
+        InputRef(
+            "brussels_apa_movable_capital_amount",
+            "Person",
+            "be-bru/statutes/disability/elderly_care_allowance.yaml",
+        ),
+        *(
+            InputRef(
+                f"belgium_social_integration_movable_capital_{name}", "Household", path
+            )
+            for name in ("amount", "numerator_share", "account_holder_count")
+            for path in ris
+        ),
+    }
+    assert named <= set(load_axiom_input_surface("be").refs())
+    for ref in named:
+        assert ref.name in reason
+        # The reason cites federal modules below be/ and keeps be-bru/.
+        assert ref.module.removeprefix("be/") in reason, ref.module
+
+
+def test_the_belgian_liquid_asset_reason_states_the_apa_household_reading() -> None:
+    # A wording pin: the derived APA rules are not on the committed surface.
+    # At b105e2b3 the module turns the input into deemed income and halves
+    # the summed income when both household members are entitled, so it reads
+    # the input as the household's capital, not the beneficiary's alone.
+    reason = axiom_concept_mapping("be").unmapped["fact:person.liquid_financial_assets"]
+    for claim in (
+        "brussels_apa_movable_capital_deemed_annual_income",
+        "brussels_apa_household_income_split_factor",
+        "not the beneficiary's alone",
+    ):
+        assert claim in reason, claim
+
+
+def test_the_nz_cash_asset_note_leaves_membership_to_unit_construction() -> None:
+    # No adapter builds Family units yet, so the note states who is summed as
+    # what the unit-construction step's rule will decide; and s 68(2)(a)(iv)
+    # counts shares in a body the person runs, not a sole trader's non-cash equity.
+    mapping = axiom_concept_mapping("nz")
+    (binding,) = mapping.bindings_for("fact:person.liquid_financial_assets")
+    assert not mapping.is_executable(binding)
+    for claim in (
+        "unit-construction step",
+        "s 68(2)(a)(iv)",
+        "a sole trader's non-cash business equity is in neither",
+    ):
+        assert claim in binding.note, claim
+    assert "is not a member" not in binding.note
+    assert "a dependent child's assets are summed too" not in binding.note
 
 
 @pytest.mark.parametrize("country", COUNTRIES)

@@ -46,6 +46,10 @@ from .calibration_run import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
 
+#: The spine checkpoint's build state the terminal gates read as the spine
+#: frame: household weight kind, period and mass log (microcosm#1115).
+SPINE_BUILD_STATE_TYPE = ArtifactType("microcosm.uk.spine-build-state", 1)
+
 SPINE_GATE_REPORT_TYPE = ArtifactType("microcosm.gate-phase-report", 1)
 
 

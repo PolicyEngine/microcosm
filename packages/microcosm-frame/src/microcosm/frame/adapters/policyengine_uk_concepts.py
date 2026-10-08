@@ -504,6 +504,26 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "input, so the mapping does not target it. Every housing input is "
             "household-level, so nothing is allocated to the reference person."
         ),
+        "fact:person.liquid_financial_assets": (
+            "policyengine-uk holds financial wealth on the household: savings "
+            "('Household liquid savings'), corporate_wealth ('Wealth held in "
+            "corporations directly or through investment funds'), "
+            "gross_financial_wealth and net_financial_wealth are household "
+            "inputs. Its one person-level GBP stock input is "
+            "student_loan_balance, a debt, and no transform puts a person "
+            "amount on a household input. savings and corporate_wealth are two "
+            "of Universal Credit's capital sources "
+            "(gov.dwp.universal_credit.means_test.capital.sources). "
+            "uc_reported_capital (benefit unit; 'Claimant-level capital for "
+            "Universal Credit when household-level asset data cannot be "
+            "attributed across multiple benefit units', default -1) is "
+            "Universal Credit capital: when it is zero or more, "
+            "uc_assessable_capital takes it in place of the household-capital "
+            "proxy it otherwise sums from all of those capital sources, net of "
+            "capital other benefit units report, and apportions by benefit-unit "
+            "adults, so feeding it would be a modelling choice for a UK build, "
+            "not a mapping of this concept."
+        ),
         "fact:person.public_pension_income": (
             "The State Pension is computed from state_pension_reported, which "
             "is formula-owned: the loader accepts it as an override, but it is "

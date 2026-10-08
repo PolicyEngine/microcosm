@@ -78,7 +78,10 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
-from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
+from microcosm.build.uk_runtime.national_frame import (
+    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    _uk_gate_surface,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
@@ -122,6 +125,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_gate,
 )
 from microcosm.calibrate.registry import TargetSpec
+from microcosm.frame import Frame
 
 __all__ = [
     "UK_GATE_REGISTRY",
@@ -226,19 +230,46 @@ def _evaluate_release_input_coverage(
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
     # where they live; the coverage halves read the release frame.
+    # The spine frame itself (the certifier's ``--spine-h5``), or the spine
+    # checkpoint's published build state (weight kind, period, mass log: all
+    # the build-state half reads) when a graph build hands it over.
     spine_frame = context.artifacts.get("spine_frame")
+    if spine_frame is None:
+        # Never the calibrated frame: its weights are the solve's, so the
+        # build-state half would judge the wrong frame (the first K=25 build
+        # failed all 17 families on weight kind that way). The binding's
+        # artifact selector marks the gate evidence_absent before this point;
+        # this refusal is the backstop.
+        raise ValueError(
+            "release_input_coverage needs the spine build state: the certifier "
+            "supplies --spine-h5 and a graph build the checkpoint's "
+            "spine_build_state artifact; none arrived, so the family "
+            "build-state half cannot be evaluated."
+        )
+    if isinstance(spine_frame, Frame):
+        build_state = _uk_gate_surface(spine_frame)
+    else:
+        build_state = spine_frame
     return uk_release_input_coverage_gate(
         _uk_gate_surface(context.frame),
         engine,
         manifest=manifest,
-        build_state_frame=None
-        if spine_frame is None
-        else _uk_gate_surface(spine_frame),
+        build_state_frame=build_state,
     )
 
 
 def _coverage_requires_frame(parameters: Mapping[str, Any]) -> bool:
     return parameters.get("check") != "manifest_current"
+
+
+def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str]:
+    # The preflight check reads the engine and the manifest only; the
+    # evaluation needs the spine build state beside them (microcosm#1115
+    # review): without it the gate is evidence_absent, never a verdict on
+    # the calibrated frame.
+    if parameters.get("check") == "manifest_current":
+        return frozenset({"coverage_engine"})
+    return frozenset({"coverage_engine", "spine_frame"})
 
 
 def _evaluate_source_coverage(
@@ -934,6 +965,10 @@ def _evaluate_degenerate_release_surface(
         _uk_gate_surface(context.frame),
         reviewed_exclusions=resolved,
         now=_exclusion_clock(context),
+        # The release boundary drops these before writing; the certifier never
+        # sees them on the exported H5, so a gate fed the pre-export frame
+        # must not report them (found by the first graph dense build).
+        dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         **kwargs,
     )
 
@@ -1647,6 +1682,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_release_input_coverage,
         parameter_keys=frozenset({"check"}),
         artifact_keys=frozenset({"coverage_engine"}),
+        artifact_selector=_coverage_required_artifacts,
         frame_predicate=_coverage_requires_frame,
         legacy_name="uk_release_input_coverage",
     ),
