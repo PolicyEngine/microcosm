@@ -85,6 +85,37 @@ def test_pension_age_housing_benefit_reads_the_detail_tenure_cells() -> None:
         )
 
 
+def test_pension_age_housing_benefit_spending_reads_the_dwp_calendar_window() -> None:
+    target = _targets()["dwp.hb.amount_pension_age"]
+    selector = target["ledger_selector"]
+    assert selector["source_concept"] == "dwp.benefit_expenditure_amount"
+    assert selector["dimension_values"] == {
+        "benefit_forecast_line": (
+            "housing_benefits__housing_benefitover_pension_credit_qualifying_age"
+        )
+    }
+    # DWP's outturn and forecast tables give each fiscal year its own
+    # measure, so the calendar-2025 window names the measure of each year.
+    assert target["value_operation"] == "calendar_year_window"
+    assert selector["source_measure_id_by_opening_year"] == {
+        "2024": "expenditure_2024",
+        "2025": "expenditure_2025",
+    }
+    assert "source_measure_id" not in selector
+    assert target["assertion_policy"] == "allow_source_projection"
+    assert target["family"] == "dwp_benefit_expenditure"
+    binding = target["bindings"]["policyengine"]
+    assert binding["value_variable"] == "housing_benefit"
+    assert binding["filters"] == [
+        {"variable": "eldest_adult_age", "operator": ">=", "value": 66}
+    ]
+    # Great Britain, the scope of DWP's line (uk-data#490).
+    (condition,) = binding["household_conditions"]
+    assert condition["variable"] == "region"
+    assert "NORTHERN_IRELAND" not in condition["value"]
+    assert len(condition["value"]) == 11
+
+
 def test_winter_fuel_recipients_are_a_diagnostic_never_a_target() -> None:
     contract = load_uk_population_contract()
     assert "dwp.winter_fuel_payment.recipients" not in {

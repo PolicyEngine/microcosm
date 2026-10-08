@@ -983,6 +983,7 @@ def impute_uk_spi_income_support(
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
+    person = _refresh_uc_start_up_period(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -2008,6 +2009,42 @@ def _refresh_carer_take_up_input(
     )
     _assign_spi_values(
         person, spi_people, "would_claim_carers_allowance", refilled, default=False
+    )
+    return person
+
+
+#: employment_status values of the self-employed (FRS EMPSTATI 3 and 4).
+SELF_EMPLOYED_STATUSES = ("FT_SELF_EMPLOYED", "PT_SELF_EMPLOYED")
+
+
+def _refresh_uc_start_up_period(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Clear the UC start-up period where a redrawn row is no longer self-employed.
+
+    The root stage dates the period from the donor's claim and trade; a
+    redrawn row keeps the donor's employment status but takes new imputed
+    income, so the flag survives only while that status or the refilled
+    self-employment income still shows self-employment (uk-data#527).
+    """
+
+    if "uc_is_in_startup_period" not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    still_self_employed = rows["employment_status"].isin(
+        SELF_EMPLOYED_STATUSES
+    ).to_numpy() | (
+        pd.to_numeric(rows["self_employment_income"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy()
+        != 0.0
+    )
+    _assign_spi_values(
+        person,
+        spi_people,
+        "uc_is_in_startup_period",
+        rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
+        default=False,
     )
     return person
 

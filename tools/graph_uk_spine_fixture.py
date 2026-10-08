@@ -364,6 +364,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "MORTINT": 7.0,
                 "STRUINS": 8.0,
                 **{f"CHRGAMT{i}": float(i) for i in range(1, 10)},
+                # Interviews from 15 October 2024 (SAS dates, days since
+                # 1 January 1960).
+                "INTDATE": float(23664 + household_id % 120),
+                # Every eleventh household is shared (HHSTAT 2).
+                "HHSTAT": 2 if household_id % 11 == 0 else 1,
             }
         )
         benunits.append(
@@ -373,6 +378,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "FAMTYPB2": 5,
                 "DEPCHLDB": int(has_child),
                 "TOTCAPB4": 100.0 + household_id,
+                "HBOTHAMT": 0.0,
             }
         )
         adult = {
@@ -392,6 +398,15 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             **({"R02": 7} if has_child else {}),
             "MARITAL": 1 + household_id % 3,
             "EMPSTATI": 1 + household_id % 8,
+            "SAMESIT": 2 if household_id % 2 else 1,
+            "SRENTAMT": "",
+            # CVPAY (below) is board and lodging on odd households, lodging alone
+            # on even ones.
+            "CONVBL": 1 if household_id % 2 else 2,
+            **{
+                f"SDEMP{month:02d}": 3 if household_id % 8 in (2, 3) else 1
+                for month in range(1, 13)
+            },
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
             "FTED": 2,
@@ -425,6 +440,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "SMPADJ": 0.5,
             "TUBORR": 500.0,
             "ACCSSAMT": 1.0,
+            "ACCSSPD": 52.0,
+            # Registered blind (SPCREG1 1) on every seventh adult; the
+            # partial-sight registration (SPCREG2) is never read.
+            "SPCREG1": 1 if household_id % 7 == 0 else 2,
+            "SPCREG2": 1 if household_id % 5 == 0 else 2,
             "GRTDIR1": 2.0,
             "GRTDIR2": 3.0,
             "HEARTVAL": 5.0,
@@ -456,6 +476,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "FSFVVAL": 1.0,
                     "FSBVAL": 2.0,
                     "HEARTVAL": 4.0,
+                    "SPCREG1": 1 if household_id % 9 == 0 else 2,
                 }
             )
         accounts.extend(
@@ -488,6 +509,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BENEFIT": benefit,
                 "VAR2": variant,
                 "BENAMT": amount,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             }
             for benefit, variant, amount in (
                 (14, 1, 2.0),
@@ -499,6 +522,21 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 (3, 0, 7.0),
             )
         )
+        if household_id % 3 == 0:
+            # Universal Credit on every third household: a claim linked to a
+            # recent start, one linked to an old start, and one unlinked.
+            benefits.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "BENEFIT": 95,
+                    "VAR2": 0,
+                    "BENAMT": 8.0,
+                    "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
+                    "UCHOUSEL": 50.0 if household_id % 2 else "",
+                }
+            )
         jobs.append(
             {
                 "SERNUM": household_id,
@@ -508,6 +546,14 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
                 "JOBSECT": 1 + household_id % 2,
+                # Self-employed ("working for myself") where EMPSTATI is.
+                "ETYPE": 4 if household_id % 8 in (2, 3) else 1,
+                "JOBTYPE": 1,
+                "SEEND": "",
+                "SEJBLONG": float(household_id % 3)
+                if household_id % 8 in (2, 3)
+                else "",
+                "JOBBUS": 2 if household_id % 2 else 1,
             }
         )
         pensions.append(

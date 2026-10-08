@@ -489,7 +489,11 @@ _ROOT_PERSON_BOOL = {
     "is_household_head",
     "is_benunit_head",
     "is_parent",
+    "is_blind",
     "is_uc_claimant",
+    "is_claimant_or_partner",
+    "is_hbai_dependent_child",
+    "uc_is_in_startup_period",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -498,6 +502,7 @@ _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
     "is_married": "bool",
     "dependent_children": "int64",
+    "liable_for_share_of_household_rent": "bool",
 }
 _ROOT_HOUSEHOLD_STRING = {
     "region",
@@ -868,10 +873,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     ),
     "uc_capital_coherence": (
         _Cell("benunit", "uc_reported_capital", "float64"),
+        _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
-    "pension_credit_take_up": (_Cell("benunit", "would_claim_pc", "bool"),),
+    "pension_credit_take_up": (
+        _Cell("benunit", "would_claim_pc", "bool"),
+        _Cell("benunit", "has_mixed_age_couple_pension_credit_saving", "bool"),
+    ),
     "child_benefit_take_up": (
         _Cell("benunit", "would_claim_child_benefit", "bool"),
         _Cell("benunit", "child_benefit_opts_out", "bool"),
@@ -992,6 +1001,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # #882: the carer take-up flag follows the refilled Carer's Allowance
     # receipt on the SPI-redrawn rows.
     "would_claim_carers_allowance",
+    # uk-data#527: the UC start-up period holds on a redrawn row only while it
+    # stays self-employed.
+    "uc_is_in_startup_period",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,
