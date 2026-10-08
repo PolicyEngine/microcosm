@@ -19,6 +19,7 @@ from microcosm.frame.adapters.policyengine_us_concepts import (
 from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.concepts import ContentBasis, validate_concept_tables
 from microcosm.frame.transport import (
+    _line_numbers,
     currency_bridge,
     derive_transport_seed,
     quantile_map,
@@ -283,6 +284,42 @@ def test_reader_refuses_invalid_rosters(tmp_path, monkeypatch, change, message):
         person.loc[row, column] = value
     with pytest.raises(ValueError, match=message):
         _fake_donor(monkeypatch, tmp_path, tables)
+
+
+@pytest.mark.parametrize("pointer", [False, True])
+def test_line_numbers_float64_cannot_hold_exactly_are_refused(pointer):
+    # 2**53 + 1 rounds to 2**53 in float64, so it would point at line 2**53.
+    name = "PEPAR1" if pointer else "A_LINENO"
+    for value in (2**53, 2**53 + 1, -(2**53) - 1):
+        with pytest.raises(ValueError, match="invalid line numbers"):
+            _line_numbers(pd.Series([1, value], name=name), pointer=pointer)
+    largest = _line_numbers(pd.Series([1, 2**53 - 1], name=name), pointer=pointer)
+    assert largest.tolist() == [1, 2**53 - 1]
+
+
+@pytest.mark.parametrize("column", ["A_SPOUSE", "PECOHAB", "PEPAR1", "PEPAR2"])
+def test_reader_refuses_dangling_pointers_that_float64_would_round_to_a_roster_line(
+    tmp_path, column
+):
+    tables = _tables()
+    person = tables["person"]
+    existing_line = 2**53
+    person.loc[0, "A_LINENO"] = existing_line
+    for pointer_column in ("A_SPOUSE", "PECOHAB", "PEPAR1", "PEPAR2"):
+        # Keep the HDF input's integer identities exact before reader validation.
+        pointers = person[pointer_column].fillna(0).astype(np.int64)
+        person[pointer_column] = pointers.mask(pointers == 1, existing_line)
+    row = 1 if column in ("A_SPOUSE", "PECOHAB") else 2
+    if column == "PECOHAB":
+        person.loc[row, "A_SPOUSE"] = 0
+    elif column == "PEPAR2":
+        person.loc[row, "PEPAR1"] = -1
+    person.loc[row, column] = existing_line + 1
+    assert person.loc[row, column] != person.loc[0, "A_LINENO"]
+    path = tmp_path / "oversized-roster.h5"
+    pin = _write_h5(path, tables)
+    with pytest.raises(ValueError, match="unknown household line|invalid line numbers"):
+        read_populace_us_donor(path, **pin)
 
 
 @pytest.mark.parametrize(

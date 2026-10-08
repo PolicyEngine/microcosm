@@ -104,6 +104,44 @@ def _quantile_label_codes(labels: Sequence[object], size: int, name: str) -> np.
     return codes
 
 
+def _pareto_inverse(
+    fraction: np.ndarray, lower: float, upper: float | None, alpha: float
+) -> np.ndarray:
+    """Inverse CDF of a Pareto(alpha) band starting at ``lower``.
+
+    A finite ``upper`` truncates the distribution to ``[lower, upper]``, whose
+    CDF is ``(1 - (lower/x)**alpha) / (1 - (lower/upper)**alpha)``. Writing
+    ``w = log(upper) - log(lower)``, the truncated mass is
+    ``1 - (lower/upper)**alpha = -expm1(-alpha * w)`` and the inverse is
+    ``lower * exp(-log1p(-fraction * mass) / alpha)``. ``expm1`` and ``log1p``
+    keep both steps accurate when ``alpha * w`` is tiny, where subtracting
+    ``(lower/upper)**alpha`` from 1 cancels: at ``alpha=1e-18`` on ``[10, 100]``
+    the naive form returns 10 for the median instead of 31.62. As ``alpha``
+    tends to 0 the truncated Pareto tends to the log-uniform distribution,
+    ``lower * exp(fraction * w)``, which is used when ``alpha * w`` underflows.
+    The result is ``lower * exp(offset)``; where ``exp(offset)`` alone would
+    overflow inside a finite band, it is formed as ``exp(log(lower) + offset)``.
+    """
+
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        if upper is None:
+            offset = -np.log1p(-fraction) / alpha
+        else:
+            width = np.log(upper) - np.log(lower)
+            mass = -np.expm1(-alpha * width)
+            if mass == 0:
+                offset = fraction * width
+            else:
+                # offset <= width exactly; clamp the last-bit rounding above it.
+                offset = np.minimum(-np.log1p(-fraction * mass) / alpha, width)
+        result = lower * np.exp(offset)
+        if upper is not None:
+            result = np.where(
+                np.isfinite(result), result, np.exp(np.log(lower) + offset)
+            )
+    return result
+
+
 def _quantile_component(
     magnitudes: np.ndarray,
     weights: np.ndarray,
@@ -131,12 +169,7 @@ def _quantile_component(
         fraction = (ranks[selected] - start) / (boundaries[position] - start)
         if method == "pareto" and position == len(bands) - 1:
             assert alpha is not None
-            # A finite upper bound declares a truncated Pareto distribution.
-            tail = 0.0 if band.upper is None else (band.lower / band.upper) ** alpha
-            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                mapped[selected] = band.lower * np.exp(
-                    -np.log1p(-fraction * (1 - tail)) / alpha
-                )
+            mapped[selected] = _pareto_inverse(fraction, band.lower, band.upper, alpha)
         else:
             assert band.upper is not None
             mapped[selected] = band.lower + fraction * (band.upper - band.lower)
@@ -419,10 +452,18 @@ class DonorBank:
     dropped_parent_cycle_edges: int = 0
 
 
+#: Line numbers and pointers are validated as float64 (pointer columns can hold
+#: NaN), which represents every integer exactly only below 2**53. A larger value
+#: could round onto a different roster line, so it is refused before conversion.
+_MAX_EXACT_LINE = 2**53
+
+
 def _line_numbers(values: pd.Series, *, pointer: bool = False) -> np.ndarray:
-    numbers = pd.to_numeric(values, errors="raise").to_numpy(
-        dtype=np.float64, na_value=np.nan
-    )
+    native = pd.to_numeric(values, errors="raise")
+    numbers = native.to_numpy(dtype=np.float64, na_value=np.nan)
+    # Compare in the column's own dtype; infinities fall to the integer check.
+    if ((native.abs() >= _MAX_EXACT_LINE) & ~np.isinf(numbers)).any():
+        raise ValueError(f"Donor {values.name} contains invalid line numbers.")
     if pointer:
         # A missing pointer is absent (rows from a vintage without PECOHAB
         # leave it NaN).

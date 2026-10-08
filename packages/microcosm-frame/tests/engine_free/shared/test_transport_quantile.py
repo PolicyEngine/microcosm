@@ -1,6 +1,8 @@
 """Declared weighted transport distributions, without country engines."""
 
-from math import fsum
+from decimal import Decimal, localcontext
+from fractions import Fraction
+from math import fsum, log10
 
 import numpy as np
 import pytest
@@ -69,6 +71,37 @@ def _reference_uniform(values, weights, bands, components):
                 break
             start = stop
     return np.array(result)
+
+
+def _reference_truncated_pareto(lower, upper, alpha, rank):
+    """Evaluate the declared CDF directly, independently of float64 arithmetic."""
+    with localcontext() as context:
+        context.prec = 100
+        lower, upper, alpha = map(Decimal.from_float, (lower, upper, alpha))
+        rank = Decimal(rank.numerator) / Decimal(rank.denominator)
+        tail = (lower / upper) ** alpha
+        return float(lower * (1 - rank * (1 - tail)) ** (-1 / alpha))
+
+
+@st.composite
+def _truncated_pareto_cases(draw):
+    lower_exponent = draw(st.integers(-200, 200))
+    width_exponent = draw(st.integers(1, min(400, 300 - lower_exponent)))
+    alpha = draw(
+        st.one_of(
+            st.sampled_from([1e-18, 1e-16, 1e-12, 0.1, 1.0, 50.0]),
+            st.floats(-18, log10(50), allow_nan=False, allow_infinity=False).map(
+                lambda exponent: min(50.0, 10**exponent)
+            ),
+        )
+    )
+    weights = draw(st.tuples(st.integers(1, 100), st.integers(1, 100)))
+    return (
+        10.0**lower_exponent,
+        10.0 ** (lower_exponent + width_exponent),
+        alpha,
+        weights,
+    )
 
 
 def test_synthetic_distribution_round_trip():
@@ -154,6 +187,53 @@ def test_pareto_top_band_uses_explicit_alpha(upper):
         ),
         mapped,
     )
+
+
+@pytest.mark.parametrize("alpha", [1e-18, 1e-16])
+def test_truncated_pareto_small_alpha_midpoint_matches_decimal(alpha):
+    mapped = quantile_map(
+        [1],
+        [1],
+        [{"lower": 10, "upper": 100, "share": 1}],
+        interpolation={"method": "pareto", "alpha": alpha},
+    )
+    expected = _reference_truncated_pareto(10.0, 100.0, alpha, Fraction(1, 2))
+    np.testing.assert_allclose(mapped, [expected], rtol=1e-12, atol=0)
+
+
+@given(_truncated_pareto_cases())
+@example(case=(10.0, 100.0, 1e-18, (1, 1)))
+@example(case=(1e-200, 1e200, 1e-18, (1, 3)))
+@example(case=(1e100, 1e300, 50.0, (100, 1)))
+@settings(max_examples=100, deadline=None)
+def test_truncated_pareto_matches_high_precision_reference(case):
+    lower, upper, alpha, weights = case
+    mapped = quantile_map(
+        [1, 2],
+        weights,
+        [{"lower": lower, "upper": upper, "share": 1}],
+        interpolation={"method": "pareto", "alpha": alpha},
+    )
+    total = sum(weights)
+    ranks = (
+        Fraction(weights[0], 2 * total),
+        Fraction(2 * weights[0] + weights[1], 2 * total),
+    )
+    expected = [
+        _reference_truncated_pareto(lower, upper, alpha, rank) for rank in ranks
+    ]
+    np.testing.assert_allclose(mapped, expected, rtol=1e-12, atol=0)
+
+
+@pytest.mark.parametrize("alpha", [1e-18, 1e-24, 1e-100])
+def test_truncated_pareto_tends_to_log_uniform_as_alpha_tends_to_zero(alpha):
+    mapped = quantile_map(
+        [1],
+        [1],
+        [{"lower": 10, "upper": 100, "share": 1}],
+        interpolation={"method": "pareto", "alpha": alpha},
+    )
+    np.testing.assert_allclose(mapped, [10 * (100 / 10) ** 0.5], rtol=1e-12, atol=0)
 
 
 def test_pareto_only_changes_the_top_band():
