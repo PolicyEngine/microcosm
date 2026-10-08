@@ -63,7 +63,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        # TEAM DECISION (ci-capacity 2026-10-08, not yet agreed): pull requests
+        # test Python 3.14 only, the version the Modal build image uses; main
+        # pushes test both 3.13 and 3.14. To restore both versions on PRs, set
+        # this back to ["3.13", "3.14"].
+        python-version: ${{ fromJSON(case(github.event_name == 'pull_request', '["3.14"]', '["3.13", "3.14"]')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -88,7 +92,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        # TEAM DECISION (ci-capacity 2026-10-08, not yet agreed): pull requests
+        # test Python 3.14 only, the version the Modal build image uses; main
+        # pushes test both 3.13 and 3.14. To restore both versions on PRs, set
+        # this back to ["3.13", "3.14"].
+        python-version: ${{ fromJSON(case(github.event_name == 'pull_request', '["3.14"]', '["3.13", "3.14"]')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -119,7 +127,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        # TEAM DECISION (ci-capacity 2026-10-08, not yet agreed): pull requests
+        # test Python 3.14 only, the version the Modal build image uses; main
+        # pushes test both 3.13 and 3.14. To restore both versions on PRs, set
+        # this back to ["3.13", "3.14"].
+        python-version: ${{ fromJSON(case(github.event_name == 'pull_request', '["3.14"]', '["3.13", "3.14"]')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
