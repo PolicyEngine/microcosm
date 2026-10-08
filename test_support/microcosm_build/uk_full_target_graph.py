@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime.graph_terminal import FULL_GATE_REPORT_TYPE
 from microcosm.build.uk_runtime.local_rowwise import UKRowwiseNationalRows
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import decode_problem
+from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import Frame
 from microcosm.graph import (
     ArtifactInput,
@@ -170,13 +171,14 @@ def target_inputs(monkeypatch, toy_ladder):
             ),
         )
 
-    def measures(frame, national_registry, *, local_grains, **kwargs):
+    def prepared_for(frame):
+        """The pool with the fixture's two national measures materialized."""
         tables = {e: frame.table(e).copy() for e in frame.entities}
         tables["household"]["test_ones"] = 1.0
         tables["household"]["test_london"] = (
             tables["household"]["region"] == "LONDON"
         ).astype(float)
-        prepared = Frame(
+        return Frame(
             tables,
             frame.schema,
             {"household": frame.weights_for("household")},
@@ -184,12 +186,22 @@ def target_inputs(monkeypatch, toy_ladder):
             mass_log=frame.mass_log,
             metadata=frame.metadata,
         )
+
+    def measures(frame, national_registry, *, local_grains, **kwargs):
+        prepared = prepared_for(frame)
+        rows = UKRowwiseNationalRows(
+            national_registry.to_target_set(), national_registry, ("fixture",)
+        )
+        # The kernel receives the compiled national problem, as the per-block
+        # resolver returns it; the fixture compiles its two columns here.
+        problem = (
+            build_constraint_matrix(prepared, rows.targets, "household")
+            if len(rows.targets)
+            else None
+        )
         return (
-            prepared,
-            lambda _: frame,
-            UKRowwiseNationalRows(
-                national_registry.to_target_set(), national_registry, ("fixture",)
-            ),
+            problem,
+            rows,
             {
                 g: pd.DataFrame(
                     {"households": np.ones(frame.n("household"))},
@@ -200,13 +212,14 @@ def target_inputs(monkeypatch, toy_ladder):
             {"fixture": True},
         )
 
-    monkeypatch.setattr(graph_targets, "resolve_uk_full_measures", measures)
+    monkeypatch.setattr(graph_targets, "resolve_uk_full_national_problem", measures)
     return {
         "national": national,
         "local": local,
         "inputs": inputs,
         "surface": surface,
         "measures": measures,
+        "prepared": prepared_for,
     }
 
 

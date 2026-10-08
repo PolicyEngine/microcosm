@@ -1057,18 +1057,24 @@ class TestTerminalCoverageBinding:
             family_coverage={},
         )
         binding = UK_GATE_REGISTRY["release_input_coverage"]
+        # The binding needs the spine build state (microcosm#1115 review);
+        # here the spine frame is the frame itself.
         result = binding.evaluate(
             EvidenceContext(
                 frame=frame,
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "spine_frame": frame,
                 },
             ),
             {},
         )
         direct = uk_release_input_coverage_gate(
-            _uk_gate_surface(frame), engine, manifest=manifest
+            _uk_gate_surface(frame),
+            engine,
+            manifest=manifest,
+            build_state_frame=_uk_gate_surface(frame),
         )
 
         assert direct.name == "uk_release_input_coverage"

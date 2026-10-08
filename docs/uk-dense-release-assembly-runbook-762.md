@@ -51,8 +51,12 @@ solve defaults (K=15, seed 42, 1,500 epochs, learning rate 0.15,
 `grain_equal`), names the outputs `microcosm_uk_2024_25_local.h5` and
 `microcosm_uk_2024_25_local.local_gates.json`, records itself in the
 manifest, and refuses the national role's flags. `--release-candidate` pins
-the doctrine (bound 10, `grain_equal`, K=15, 1500 epochs), resolves the
-engine in a single block, and runs the rotated holdout. Best-effort staging
+the doctrine (bound 10, `grain_equal`, K=15, 1500 epochs) and runs the
+rotated holdout. The engine may resolve in a single block or per clone
+(`--engine-blocks K`): each block's engine weights are scaled to the pool so
+weight-share formulas see the pool's denominator, and the measures receipt
+records whether the blocks were identical copies (an exact representation);
+a per-block run is releasable only when it was. Best-effort staging
 telemetry uploads every 300 s by default on this driver (the Hub allows about
 128 commits per hour per repository).
 Expect about 3.5 hours and 10 GB at K=15 (measured on the rowwise tool; the
@@ -73,7 +77,8 @@ uv run --no-sync python tools/score_uk_local_candidate.py ... --output-json <can
 
 The pre-flight checks the manifest and the signed gate report for everything
 the contract will demand: release posture attested, shippable, every
-release-blocking gate passed, single-block engine, the doctrine values, the
+release-blocking gate passed, an exact engine population (single block, or
+per-block with identical copies scaled to the pool), the doctrine values, the
 A15 census household uprating and A17 tenure application, the measure
 exclusions and their windows, the holdout, the
 Logbook row, the artifact digest.

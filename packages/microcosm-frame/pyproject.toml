@@ -15,7 +15,13 @@ microcosm-graph = { workspace = true }
 
 [project.optional-dependencies]
 us = ["microunit>=0.1.0"]
-policyengine = ["policyengine-us>=2.2.1,<3", "microunit>=0.1.0"]
+# microcosm#1086 (option 2): policyengine installs policyengine-us, so it
+# carries the US side's own policyengine-core pin.
+policyengine = [
+    "policyengine-us>=2.2.1,<3",
+    "policyengine-core==3.32.5",
+    "microunit>=0.1.0",
+]
 uk = ["policyengine-uk>=2.98.0"]
 # The Axiom adapter's PyPI-resolvable dependencies. The engine itself
 # (axiom-rules-engine + its dense native extension) is not on PyPI yet and

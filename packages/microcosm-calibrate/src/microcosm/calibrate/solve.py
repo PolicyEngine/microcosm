@@ -205,6 +205,14 @@ _L0_SEARCH_HI = 1e1
 #: the search's cost at ``budget_iters`` optimizations; ~10 bisection steps cut
 #: the ``log10`` bracket by 2^10, far finer than the count is resolvable.
 _DEFAULT_BUDGET_ITERS = 10
+
+#: Warm start (microcosm#1115): with a user-supplied ``initial_lambda`` the
+#: budget search probes it first and, when that probe misses, brackets the
+#: budget within this many decades of it before interpolating, instead of
+#: re-bisecting the whole ``[_L0_SEARCH_LO, _L0_SEARCH_HI]`` range. Half a
+#: decade (a factor 3.16 either way) covers the drift of a re-solved pool; a
+#: miss beyond it hands the search the global bracket on that side.
+_L0_WARM_SPAN_DECADES = 0.5
 #: What the ``target_records`` budget search measures against the budget.
 BUDGET_BASIS_NONZERO_COUNT = "nonzero_count"
 BUDGET_BASIS_OPEN_PROBABILITY_MASS = "open_probability_mass"
@@ -1446,7 +1454,12 @@ def _search_l0_lambda_for_budget(
         prune_atol: Threshold counting a weight as non-zero (a survivor).
         initial_lambda: A user-supplied ``l0_lambda`` to evaluate first as a warm
             start (clamped into the bracket); ``None`` starts at the bracket
-            mid-point.
+            mid-point. A warm probe that misses is followed by one probe
+            ``_L0_WARM_SPAN_DECADES`` away on the side it steered to: if that
+            edge steers back the search interpolates between the two measured
+            ends (the measure is close to log-linear in the penalty), otherwise
+            it continues on the global bracket beyond the edge. The cold path is
+            unchanged: mid-point first, then bisection.
         budget_iters: Maximum number of optimizations the search may spend.
 
     Returns:
@@ -1655,31 +1668,76 @@ def _search_l0_lambda_for_budget(
         )
 
     # Warm start: evaluate the user's lambda (or the bracket mid-point) first.
-    if initial_lambda is not None and initial_lambda > 0:
+    warm = initial_lambda is not None and initial_lambda > 0
+    global_lo_u, global_hi_u = lo_u, hi_u
+    if warm:
         first_u = min(max(math.log10(initial_lambda), lo_u), hi_u)
     else:
         first_u = (lo_u + hi_u) / 2.0
     iters_left = budget_iters
     n_nonzero, verdict = consider(10.0**first_u)
     iters_left -= 1
+    # The measure at each bracket end (None while unprobed or over-pruned):
+    # the warm path interpolates on them, the cold path never reads them.
+    lo_m: int | None = None
+    hi_m: int | None = None
+    first_m = None if n_nonzero == _over_pruned else int(n_nonzero)
     # Seed the bracket so the side the warm start landed on is tightened. An
     # over-pruned (infeasible) probe groups with "too few survivors".
     if steer(n_nonzero, verdict) == _steer_larger:
-        lo_u = first_u  # too many survivors -> need a larger penalty
+        lo_u, lo_m = first_u, first_m  # too many survivors -> larger penalty
     else:
-        hi_u = first_u  # too few survivors / over-pruned -> need a smaller penalty
+        hi_u, hi_m = first_u, first_m  # too few / over-pruned -> smaller penalty
+    edge_probe: dict[str, object] | None = None
+    if warm and iters_left > 0 and not settled():
+        # The warm probe missed. Probe _L0_WARM_SPAN_DECADES away on the side
+        # it steered to: an edge that steers back closes a narrow bracket
+        # around the budget; one that steers on hands the search the global
+        # bracket beyond the edge, as a cold start would have had.
+        steered_larger = lo_u == first_u
+        if steered_larger:
+            edge_u = min(first_u + _L0_WARM_SPAN_DECADES, global_hi_u)
+        else:
+            edge_u = max(first_u - _L0_WARM_SPAN_DECADES, global_lo_u)
+        if edge_u != first_u:
+            n_nonzero, verdict = consider(10.0**edge_u)
+            iters_left -= 1
+            edge_m = None if n_nonzero == _over_pruned else int(n_nonzero)
+            direction = steer(n_nonzero, verdict)
+            edge_probe = {"l0_lambda": 10.0**edge_u, "steer": direction}
+            if steered_larger:
+                if direction == _steer_smaller:
+                    hi_u, hi_m = edge_u, edge_m
+                elif direction == _steer_larger:
+                    lo_u, lo_m = edge_u, edge_m
+                    hi_u, hi_m = global_hi_u, None
+            else:
+                if direction == _steer_larger:
+                    lo_u, lo_m = edge_u, edge_m
+                elif direction == _steer_smaller:
+                    hi_u, hi_m = edge_u, edge_m
+                    lo_u, lo_m = global_lo_u, None
 
     # Keep searching while no acceptable run is known yet, or the best is
     # outside tolerance, until the iteration budget is spent.
     while iters_left > 0 and not settled():
-        mid_u = (lo_u + hi_u) / 2.0
+        if warm and lo_m is not None and hi_m is not None and lo_m != hi_m:
+            # Interpolate on the measured ends (regula falsi with a progress
+            # safeguard): bisection would spend about six probes halving a
+            # decade down to the draw's window; the secant lands in one or two.
+            aim = target_records + _warm_aim_margin(probes)
+            frac = (lo_m - aim) / (lo_m - hi_m)
+            mid_u = lo_u + (hi_u - lo_u) * min(max(frac, 0.1), 0.9)
+        else:
+            mid_u = (lo_u + hi_u) / 2.0
         n_nonzero, verdict = consider(10.0**mid_u)
         iters_left -= 1
+        mid_m = None if n_nonzero == _over_pruned else int(n_nonzero)
         direction = steer(n_nonzero, verdict)
         if direction == _steer_smaller:
-            hi_u = mid_u  # over-pruned / too few / short mass -> smaller penalty
+            hi_u, hi_m = mid_u, mid_m  # over-pruned / too few / short mass
         elif direction == _steer_larger:
-            lo_u = mid_u  # too many survivors or certainties -> larger penalty
+            lo_u, lo_m = mid_u, mid_m  # too many survivors or certainties
         else:
             break
 
@@ -1712,6 +1770,9 @@ def _search_l0_lambda_for_budget(
                 "feasible_draw_pi_hi": feasible_draw_pi_hi,
                 "evaluations": int(evaluation),
                 "probes": probes,
+                "initial_lambda": float(initial_lambda) if warm else None,
+                "warm_span_decades": _L0_WARM_SPAN_DECADES if warm else None,
+                "warm_edge_probe": edge_probe,
                 "selected_l0_lambda": None if best is None else float(best[2]),
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
@@ -1740,6 +1801,22 @@ def _search_l0_lambda_for_budget(
             raise RuntimeError("L0 budget search lost its gate probabilities.")
         return best
     return best[:4]
+
+
+def _warm_aim_margin(probes: list[dict[str, object]]) -> float:
+    """Where a warm search aims above the budget.
+
+    A feasibility-aware search can only stop inside the draw's window, which
+    runs from the budget up to the budget plus the gates' boundary mass; aim
+    at its middle, taken from the latest probe that measured one. A plain
+    count search aims at the budget itself.
+    """
+
+    for probe in reversed(probes):
+        mass = probe.get("boundary_mass")
+        if isinstance(mass, int | float) and math.isfinite(mass) and mass > 0:
+            return 0.5 * float(mass)
+    return 0.0
 
 
 def _project_to_total(

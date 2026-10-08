@@ -90,6 +90,31 @@ def _check_candidate_chronicle_identity(
             )
 
 
+def _area_code_columns(household: pd.DataFrame) -> dict[str, str]:
+    """The area-code column per ladder name, on either naming.
+
+    Artifacts written since microcosm#1114 carry the consumers' names
+    (``constituency_code_oa``, ``la_code_oa``, ``region_code_oa``); earlier
+    graph exports carry the ladder names. Refuses a table with neither.
+    """
+
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+
+    resolved = {}
+    for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        if export in household.columns:
+            resolved[ladder] = export
+        elif ladder in household.columns:
+            resolved[ladder] = ladder
+        else:
+            raise RuntimeError(
+                f"candidate household table carries neither {export!r} nor {ladder!r}."
+            )
+    return resolved
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     artifact = load_ledger_consumer_artifact(
@@ -251,10 +276,12 @@ def main(argv=None) -> int:
     household = frame.table("household")
     person = frame.table("person")
     hh_index = pd.Index(household["household_id"].to_numpy())
-    assigned_region = household["region_code"].astype(str).map(GSS_REGION_CODES)
+    area_code_columns = _area_code_columns(household)
+    region_column = area_code_columns["region_code"]
+    assigned_region = household[region_column].astype(str).map(GSS_REGION_CODES)
     if assigned_region.isna().any():
         unknown = sorted(
-            household["region_code"].astype(str)[assigned_region.isna()].unique()
+            household[region_column].astype(str)[assigned_region.isna()].unique()
         )
         raise RuntimeError(f"unknown region codes on the household table: {unknown}")
     region_agree = (
@@ -287,8 +314,9 @@ def main(argv=None) -> int:
     rollup_receipt = {
         "rows": int(rollup_mask.sum()),
         "region_source": (
-            "household.region_code (assigned area) mapped through GSS_REGION_CODES"
+            f"household.{region_column} (assigned area) mapped through GSS_REGION_CODES"
         ),
+        "area_code_columns": dict(area_code_columns),
         "frs_region_agreement_share": float(region_agree.mean()),
         "frs_region_agreement_weighted": float(
             weights[region_agree].sum() / weights.sum()
@@ -300,7 +328,10 @@ def main(argv=None) -> int:
 
     print("evaluating the local surface ...", file=sys.stderr, flush=True)
     household = frame.table("household")
-    area_cols = {"constituency": "constituency_code", "la": "local_authority_code"}
+    area_cols = {
+        "constituency": area_code_columns["constituency_code"],
+        "la": area_code_columns["local_authority_code"],
+    }
     local_est: dict[tuple[str, str, str], float] = {}
     for grain, metrics in local_metrics.items():
         codes = household[area_cols[grain]].astype(str).to_numpy()

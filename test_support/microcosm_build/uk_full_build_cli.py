@@ -8,6 +8,7 @@ feed."""
 import hashlib
 import importlib.util
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -308,6 +309,26 @@ def gate_payload(phase, failed=None):
 
 LADDER_TARGET = "ons.census.households@E14000001"
 
+#: The synthetic measures node's engine resolution, as the problem bindings
+#: carry it: ``run_dense_main`` sets the block count from ``--engine-blocks``;
+#: tests flip ``ENGINE_POPULATION_EXACT`` to stage an inexact per-block run.
+ENGINE_BLOCKS = 1
+ENGINE_POPULATION_EXACT = True
+
+
+def measure_resolution_evidence() -> dict:
+    evidence: dict = {"blocks": ENGINE_BLOCKS}
+    if ENGINE_BLOCKS > 1:
+        evidence["engine_population_representation"] = {
+            "mode": "block_weights_scaled_to_pool",
+            "exact": bool(ENGINE_POPULATION_EXACT),
+            "blocks": ENGINE_BLOCKS,
+            "factor_by_block": {
+                str(index): float(ENGINE_BLOCKS) for index in range(ENGINE_BLOCKS)
+            },
+        }
+    return evidence
+
 
 def problem_payload() -> bytes:
     """One ordered local problem over the two fixture households."""
@@ -345,7 +366,7 @@ def problem_payload() -> bytes:
                 "stood_on": {"census_households/constituency": ["fixture"]}
             },
             "rung_surface": {"dropped_cells": 0},
-            "measure_resolution": {"blocks": 1},
+            "measure_resolution": measure_resolution_evidence(),
             "cross_geography": {
                 "unbound_bridges": [],
                 "empty_legs_licensed": [],
@@ -669,6 +690,7 @@ def run_dense_main(
 
     monkeypatch.setattr(cli, "parse_args", lambda argv: args)
     monkeypatch.setattr(cli, "prepare_full_build", prepare)
+    monkeypatch.setattr(sys.modules[__name__], "ENGINE_BLOCKS", int(args.engine_blocks))
     return cli.main([]), args.out
 
 

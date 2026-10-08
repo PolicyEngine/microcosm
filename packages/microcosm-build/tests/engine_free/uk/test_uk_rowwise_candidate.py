@@ -181,14 +181,15 @@ def test_candidate_publication_rolls_back_on_interrupt(
     assert not output_dir.exists()
 
 
-def test_release_verdict_requires_single_block_engine() -> None:
+def test_release_verdict_requires_an_exact_engine_population() -> None:
     builder = rowwise_cli
     releasable, posture = builder._release_verdict(
         sample_fraction=1.0, engine_blocks=1, release_blocking_gates_passed=True
     )
     assert releasable is True and all(posture.values())
-    # A per-block engine resolution never writes a releasable artifact, even
-    # with every release-blocking gate passed on the full rung (#736 erratum).
+    # A per-block engine resolution whose blocks are not shown to represent the
+    # pool exactly never writes a releasable artifact, even with every
+    # release-blocking gate passed on the full rung (#736 erratum).
     releasable, posture = builder._release_verdict(
         sample_fraction=1.0, engine_blocks=15, release_blocking_gates_passed=True
     )
@@ -196,8 +197,20 @@ def test_release_verdict_requires_single_block_engine() -> None:
     assert posture == {
         "full_rung": True,
         "single_block_engine": False,
+        "engine_population_exact": False,
         "release_blocking_gates_passed": True,
     }
+    # The measures loop's record that every block is an identical copy scaled
+    # to the pool makes the per-block resolution exact, and releasable.
+    releasable, posture = builder._release_verdict(
+        sample_fraction=1.0,
+        engine_blocks=15,
+        release_blocking_gates_passed=True,
+        engine_population_exact=True,
+    )
+    assert releasable is True
+    assert posture["single_block_engine"] is False
+    assert posture["engine_population_exact"] is True
     assert (
         builder._release_verdict(
             sample_fraction=0.1, engine_blocks=1, release_blocking_gates_passed=True
