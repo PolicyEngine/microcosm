@@ -2,7 +2,7 @@
   "schema_version": 1,
   "engine": {
     "package": "policyengine-uk",
-    "version": "2.122.2"
+    "version": "2.123.0"
   },
   "basis": "policyengine-uk parameter ratio between 1 January of the fact's opening year and 1 January of the calibration year (the SPI donor rebasing convention)",
   "written_by": "tools/pin_uk_uprating_engine_values.py",
