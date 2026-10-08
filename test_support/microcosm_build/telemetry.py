@@ -24,6 +24,23 @@ class FakeTelemetryEmitter(LocalTelemetryEmitter):
     def _send(self, payload: Mapping[str, Any]) -> None:
         self.messages.append(payload)
 
+    def publish_graph(
+        self, directory: Path, inventory: dict, *, wait_seconds: float = 30.0
+    ) -> dict:
+        self.messages.append(
+            {
+                "action": "graph_publication",
+                "directory": str(directory),
+                "inventory": inventory,
+            }
+        )
+        return {
+            "version": 1,
+            "publication_id": inventory["publication_id"],
+            "status": "pending",
+            "error_code": None,
+        }
+
     @property
     def events(self) -> list[Mapping[str, Any]]:
         return [message["event"] for message in self.messages if "event" in message]
