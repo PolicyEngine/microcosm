@@ -705,8 +705,8 @@ class StagingContentPolicy:
                 self._reject_record_collections(item)
 
 
-class StagingTelemetryV2:
-    """Record, validate, persist, and optionally upload telemetry version 2."""
+class StagingRunBundleWriterV2:
+    """Record, validate, persist, and optionally upload a version 2 run bundle."""
 
     def __init__(
         self,
@@ -743,7 +743,8 @@ class StagingTelemetryV2:
             raise StagingContractError("pipeline_version must be non-empty.")
         if delivery_mode == "disabled":
             raise StagingContractError(
-                "Do not construct telemetry for disabled staging; record an opt-out."
+                "Do not construct a staging run bundle when staging is disabled; "
+                "record an opt-out."
             )
         if delivery_mode == "local_and_remote" and not (repo_id or "").strip():
             raise StagingContractError(

@@ -100,6 +100,12 @@ CALENDAR_YEAR_WINDOW_WEIGHTS: Mapping[int, float] = MappingProxyType(
     {-1: 3 / 12, 0: 9 / 12}
 )
 CALENDAR_YEAR_WINDOW_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year"))
+#: A ``calendar_year_window`` selector key for publishers who give each year
+#: its own measure (DWP's benefit expenditure tables: ``expenditure_2024``,
+#: ``expenditure_2025``). It maps each overlapping year, by its opening year,
+#: to the measure that carries it: a fact matches only the measure its own
+#: year declares, and the window reads the declared measures as one series.
+SOURCE_MEASURE_ID_BY_OPENING_YEAR = "source_measure_id_by_opening_year"
 #: Ordered operand roles of ``scaled_by_ratio``: the published cell the
 #: reference selects, then the two national facts whose quotient translates
 #: it (a subset share of the publisher's universe, so the ratio lies in
@@ -267,6 +273,13 @@ class LedgerTargetReference:
             _validate_scaled_by_ratio_operands(self.name, self.value_operands)
         if self.value_operation == "calendar_year_window":
             _validate_calendar_year_window_reference(self)
+        elif SOURCE_MEASURE_ID_BY_OPENING_YEAR in self.ledger_selector:
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: "
+                f"{SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} composes the years of a "
+                "calendar_year_window; it is refused under value_operation "
+                f"{self.value_operation!r}."
+            )
         if self.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
             _validate_count_x_mean_operands(self.name, self.value_operands)
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
@@ -2680,6 +2693,26 @@ def _validate_calendar_year_window_reference(
             f"LedgerTargetReference {reference.name!r}: calendar_year_window "
             "requires an explicit calendar-year target period."
         )
+    measure_map = reference.ledger_selector.get(SOURCE_MEASURE_ID_BY_OPENING_YEAR)
+    if measure_map is None:
+        return
+    for key in ("source_measure_id", "layout_measure_id"):
+        if reference.ledger_selector.get(key) not in (None, ""):
+            raise ValueError(
+                f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+                f"declares both {key!r} and {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r}; "
+                "the map names each year's measure itself."
+            )
+    if _calendar_year_window_series_count(reference) != 1:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+            f"reads {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} as one series; it "
+            "cannot be combined with a list-valued series key."
+        )
+    # The map's years are checked against the window when it resolves, not
+    # here: a compile may restamp the reference to another period, and a map
+    # without that period's years then defers like any reference without facts.
+    _measure_id_by_opening_year(measure_map)
 
 
 def _calendar_year_window_opening_year(
@@ -2710,8 +2743,11 @@ def _resolve_calendar_year_window_reference_facts(
     months of the year opening in Y-1 and nine of the year opening in Y. The
     resolver takes both facts from one series identity (one publication, one
     measure, one cell) and refuses a window with either year absent, so a
-    partial window never lands as a value. A selector that names several
-    series (a list-valued ``source_concept``, ``source_measure_id`` or
+    partial window never lands as a value. A selector that maps each year to
+    its own measure (``source_measure_id_by_opening_year``) has matched every
+    fact to the measure its year declares, so those measures form the one
+    series and the measure drops out of its identity. A selector that names
+    several series (a list-valued ``source_concept``, ``source_measure_id`` or
     ``source_table``) resolves both years of every one of them, so the window
     of a sum of series is the sum of the windowed series; a series short of a
     year refuses the whole window.
@@ -2719,15 +2755,29 @@ def _resolve_calendar_year_window_reference_facts(
 
     target_year = _calendar_year_from_reference(reference)
     wanted = {target_year + offset for offset in CALENDAR_YEAR_WINDOW_WEIGHTS}
+    measure_map = reference.ledger_selector.get(SOURCE_MEASURE_ID_BY_OPENING_YEAR)
+    if measure_map is not None:
+        declared = sorted(_measure_id_by_opening_year(measure_map))
+        if declared != sorted(wanted):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"of calendar year {target_year} reads the years opening in "
+                f"{sorted(wanted)}; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} maps "
+                f"{declared}."
+            )
     expected_series = _calendar_year_window_series_count(reference)
     partitions: dict[tuple[str, ...], dict[int, list[object]]] = {}
     for fact in eligible_matches:
         opening_year = _calendar_year_window_opening_year(fact, reference)
         if opening_year not in wanted:
             continue
-        partitions.setdefault(_selector_period_invariant_key(fact), {}).setdefault(
-            opening_year, []
-        ).append(fact)
+        series_key = _selector_period_invariant_key(
+            fact,
+            include_measure=(
+                SOURCE_MEASURE_ID_BY_OPENING_YEAR not in reference.ledger_selector
+            ),
+        )
+        partitions.setdefault(series_key, {}).setdefault(opening_year, []).append(fact)
     complete = {key: years for key, years in partitions.items() if set(years) == wanted}
     if not complete or len(complete) != expected_series:
         present = sorted({year for years in partitions.values() for year in years})
@@ -3164,11 +3214,17 @@ def _latest_period_selector_match(
     return None
 
 
-def _selector_period_invariant_key(fact: object) -> tuple[str, ...]:
+def _selector_period_invariant_key(
+    fact: object, *, include_measure: bool = True
+) -> tuple[str, ...]:
     return (
         _source_name(fact),
-        _str_at(fact, "observed_measure", "source_measure_id")
-        or _str_at(fact, "layout", "measure_id"),
+        (
+            _str_at(fact, "observed_measure", "source_measure_id")
+            or _str_at(fact, "layout", "measure_id")
+        )
+        if include_measure
+        else "",
         _source_measure_concept(fact),
         _str_at(fact, "geography", "level"),
         _str_at(fact, "geography", "id"),
@@ -3618,6 +3674,10 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
             if not _dimension_values_match(fact, expected):
                 return False
             continue
+        if key == SOURCE_MEASURE_ID_BY_OPENING_YEAR:
+            if not _measure_by_opening_year_matches(fact, expected):
+                return False
+            continue
         if expected is None or expected == "":
             continue
         candidates = _selector_candidates(fact, str(key))
@@ -3645,7 +3705,7 @@ def fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
 def selector_field_is_supported(key: str) -> bool:
     """Whether ``key`` is in the closed selector vocabulary."""
 
-    if key in {"dimensions", "dimension_values"}:
+    if key in {"dimensions", "dimension_values", SOURCE_MEASURE_ID_BY_OPENING_YEAR}:
         return True
     try:
         _selector_candidates({}, key)
@@ -3707,6 +3767,46 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
     if key == "assertion":
         return (_fact_assertion(fact),)
     raise ValueError(f"Unsupported Ledger fact selector field {key!r}.")
+
+
+def _measure_id_by_opening_year(expected: object) -> dict[int, str]:
+    """Parse a year-to-measure map: four-digit opening years to measure ids."""
+
+    if not isinstance(expected, Mapping) or not expected:
+        raise ValueError(
+            f"Ledger fact selector field {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} "
+            "must be a non-empty mapping of opening year to measure id."
+        )
+    measure_by_year: dict[int, str] = {}
+    for year, measure in expected.items():
+        year_text = str(year)
+        if (
+            isinstance(year, bool)
+            or len(year_text) != 4
+            or not year_text.isdigit()
+            or not isinstance(measure, str)
+            or not measure
+        ):
+            raise ValueError(
+                f"Ledger fact selector field {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} "
+                f"maps {year!r} to {measure!r}; expected a four-digit opening "
+                "year and a non-blank measure id."
+            )
+        measure_by_year[int(year_text)] = measure
+    return measure_by_year
+
+
+def _measure_by_opening_year_matches(fact: object, expected: object) -> bool:
+    """Match an annual fact only to the measure its own opening year declares."""
+
+    measure_by_year = _measure_id_by_opening_year(expected)
+    period_key = _period_key(fact)
+    if not period_key[0] or period_key[1] % 100 != 99:
+        return False
+    measure = measure_by_year.get(period_key[1] // 100)
+    return measure is not None and measure in _selector_candidates(
+        fact, "source_measure_id"
+    )
 
 
 def _dimensions_match(fact: object, expected: object) -> bool:

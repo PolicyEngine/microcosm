@@ -41,7 +41,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -179,10 +179,12 @@ from .rowwise_posture import (
 from .rowwise_staging import (
     STAGED_DATASET_PHASES,
     STAGING_UPLOAD_INTERVAL_SECONDS,
-    create_staging_telemetry,
-    fail_staging_telemetry,
-    finalize_staging_telemetry,
+    create_staging_run_bundle,
+    emit_calibration_progress,
+    fail_staging_run_bundle,
+    finalize_staging_run_bundle,
     gate_statuses,
+    graph_progress,
     preflight_staged_dataset,
     replace_manifest,
     stage,
@@ -190,6 +192,7 @@ from .rowwise_staging import (
     stage_sample,
     staging_delivery,
     staging_epoch_every,
+    start_telemetry_emitter,
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
@@ -215,6 +218,33 @@ __all__ = [
 _SUPPORT_ARGUMENTS = dict(
     zip(ATOMIC_SUPPORT_SYSTEMS, ("ew", "scotland", "ni"), strict=True)
 )
+
+
+def _run_graph_with_progress(compiled, **kwargs):
+    """Run a graph and emit one lightweight update per completed node."""
+
+    completed = 0
+    previous = time.monotonic()
+    total = len(compiled.order)
+
+    def observe(node_id, _population) -> None:
+        nonlocal completed, previous
+        now = time.monotonic()
+        completed += 1
+        graph_progress(
+            node_id=node_id,
+            done=completed,
+            total=total,
+            elapsed_seconds=now - previous,
+        )
+        previous = now
+
+    return run_graph(
+        compiled,
+        _population_observer=observe,
+        _population_observer_detach=False,
+        **kwargs,
+    )
 
 
 def _target_geographies(value: str) -> tuple[str, ...] | None:
@@ -590,6 +620,9 @@ def _solve_observer(args: argparse.Namespace, telemetry):
     from .solve_progress import uk_solve_progress_callback
 
     sinks = [uk_solve_progress_callback(_stderr_progress)]
+    sinks.append(
+        thinned_epochs(emit_calibration_progress, every=staging_epoch_every(args))
+    )
     if telemetry is not None:
         sinks.append(
             thinned_epochs(
@@ -1150,11 +1183,11 @@ def _close_attempt(
             manifest=manifest,
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
-            telemetry=telemetry,
+            staging_bundle=telemetry,
         )
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         try:
-            finalize_staging_telemetry(args, telemetry)
+            finalize_staging_run_bundle(args, telemetry)
         finally:
             manifest["staging_delivery"] = staging_delivery(telemetry)
             manifest["staged_dataset"] = staged_dataset
@@ -1168,7 +1201,7 @@ def _close_attempt(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
     else:
-        finalize_staging_telemetry(args, telemetry)
+        finalize_staging_run_bundle(args, telemetry)
     spool_path = record_candidate_attempt(
         state=state,
         started_at=attempt["started_at"],
@@ -1320,7 +1353,7 @@ def _execute_full_build(
     ):
         if endpoint not in node_ids:
             continue
-        checkpoint = run_graph(
+        checkpoint = _run_graph_with_progress(
             compile_graph(_through(graph, endpoint)),
             sources=sources,
             store=store,
@@ -1334,7 +1367,7 @@ def _execute_full_build(
     # Persist preflight outcomes before any solver can reject them.
     stage(telemetry, "target_compilation", "started")
     preflight_graph = _through(graph, "uk.full.gates.preflight")
-    preflight = run_graph(
+    preflight = _run_graph_with_progress(
         compile_graph(preflight_graph),
         sources=sources,
         store=store,
@@ -1370,7 +1403,7 @@ def _execute_full_build(
         epoch_every=staging_epoch_every(args),
         resumed_from_checkpoint=args.resume_size_checkpoint is not None,
     )
-    manifest = run_graph(
+    manifest = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.gates.calibrated")),
         sources=sources,
         store=store,
@@ -1453,7 +1486,7 @@ def _execute_full_build(
     if not enforcement["artifact_permitted"]:
         return 1
     stage(telemetry, "output_bundle", "started")
-    manifest = run_graph(
+    manifest = _run_graph_with_progress(
         compile_graph(graph),
         sources=sources,
         store=store,
@@ -1534,7 +1567,7 @@ def _execute_full_build(
         spine_provenance=prepared.spine_provenance,
         comparison_sources=tuple(comparisons),
     )
-    final = run_graph(
+    final = _run_graph_with_progress(
         compile_graph(graph),
         sources={
             **sources,
@@ -1931,7 +1964,7 @@ def _execute_national_build(
     resume = args.resume
     # 1. The bound checkpoint: its provenance artifact is the solve's admission.
     stage(telemetry, "input_loading", "started")
-    checkpoint = run_graph(
+    checkpoint = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.spine_checkpoint")),
         sources=sources,
         store=store,
@@ -1958,7 +1991,7 @@ def _execute_national_build(
     )
     # 2. The register: compiled inside the graph, frozen beside the outputs.
     stage(telemetry, "target_compilation", "started")
-    targets = run_graph(
+    targets = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_TARGETS_NODE)),
         sources=sources,
         store=store,
@@ -2014,7 +2047,7 @@ def _execute_national_build(
         epochs=int(args.epochs),
         epoch_every=staging_epoch_every(args),
     )
-    manifest = run_graph(
+    manifest = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_GATES_NODE)),
         sources=sources,
         store=store,
@@ -2175,7 +2208,7 @@ def _execute_national_build(
         size_bytes=paths["dataset"].stat().st_size,
     )
     continued = add_uk_national_readback(graph, population=national.population)
-    final = run_graph(
+    final = _run_graph_with_progress(
         compile_graph(continued),
         sources={**sources, "exported_dataset": paths["dataset"]},
         store=store,
@@ -2322,7 +2355,7 @@ def _close_national_attempt(
             manifest=manifest,
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
-            telemetry=telemetry,
+            staging_bundle=telemetry,
         )
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         evaluation = national_role.evaluate_against_incumbent(
@@ -2335,7 +2368,7 @@ def _close_national_attempt(
             out_dir=output,
         )
         try:
-            finalize_staging_telemetry(args, telemetry)
+            finalize_staging_run_bundle(args, telemetry)
         finally:
             delivery = staging_delivery(telemetry)
             build_record = json.loads(paths["build_record"].read_text())
@@ -2369,7 +2402,7 @@ def _close_national_attempt(
                 },
             )
     else:
-        finalize_staging_telemetry(args, telemetry)
+        finalize_staging_run_bundle(args, telemetry)
     spool_path = record_candidate_attempt(
         state=state,
         started_at=attempt["started_at"],
@@ -2387,29 +2420,62 @@ def _close_national_attempt(
         print(json_text(manifest), end="")
 
 
+def _run_with_telemetry(
+    args: argparse.Namespace, *, build_id: str, operation: Callable[[], int]
+) -> int:
+    """Report the command's actual outcome, then release its telemetry handle."""
+    emitter = start_telemetry_emitter(
+        args,
+        build_id=build_id,
+        run_kind="dry_run" if args.dry_run else "calibration",
+    )
+    emitter.transition_stage(
+        "preflight",
+        message=f"Validating UK {posture_of(args).role} build inputs and configuration.",
+    )
+    try:
+        status = operation()
+    except BaseException as error:
+        if emitter.available:
+            emitter.fail(error)
+        raise
+    else:
+        if emitter.available:
+            if status == 0:
+                emitter.complete()
+            else:
+                emitter.fail(
+                    RuntimeError(f"UK build returned exit status {status}."),
+                    failure_class="build_failure",
+                )
+        return status
+    finally:
+        emitter.close()
+
+
 def _national_main(args: argparse.Namespace) -> int:
-    """The national role's envelope: the seam's attempt id and pipeline, the graph build."""
-    posture = posture_of(args)
-    national_role.require_bound_input(args)
-    if args.dry_run:
-        return national_role.national_dry_run(
-            args,
-            operation_inventory=lambda: prepare_national_build(
-                args
-            ).national.operation_inventory(),
-        )
-    # Argument refusals cost nothing, the occupied output directory included;
-    # the credential check reaches the Hub, so it runs last, still before any
-    # input is read.
-    refuse_occupied_national_output(args)
-    preflight_staged_dataset(args)
+    """Run the national build with one telemetry lifecycle."""
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
+    build_id = new_uk_calibration_attempt_id(timestamp=started_ts)
+    return _run_with_telemetry(
+        args,
+        build_id=build_id,
+        operation=lambda: _national_attempt(
+            args, build_id=build_id, started_at=started_at, started_ts=started_ts
+        ),
+    )
+
+
+def _national_attempt(
+    args: argparse.Namespace, *, build_id: str, started_at: float, started_ts: datetime
+) -> int:
+    """Prepare, execute, and record the national build's artifacts."""
+    posture = posture_of(args)
     digest = preflight_digest(posture.pipeline)
     state = AttemptState(
-        # The attempt id is minted before telemetry opens so the staging run
-        # id and the Logbook row agree, as the seam minted it.
-        build_id=new_uk_calibration_attempt_id(timestamp=started_ts),
+        # The staging run id and Logbook row use the same attempt id.
+        build_id=build_id,
         identity_digest=digest,
         input_pins_digest=digest,
         phases_reached=["attempt_started"],
@@ -2420,8 +2486,31 @@ def _national_main(args: argparse.Namespace) -> int:
             }
         },
     )
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    if args.dry_run:
+        try:
+            status = national_role.national_dry_run(
+                args,
+                operation_inventory=lambda: prepare_national_build(
+                    args
+                ).national.operation_inventory(),
+            )
+        except BaseException as error:
+            fail_staging_run_bundle(None, error)
+            raise
+        finalize_staging_run_bundle(args, None)
+        return status
+
+    try:
+        national_role.require_bound_input(args)
+        # These checks must precede input loading. The emitter is already
+        # running so a refusal is visible as a failed attempt.
+        refuse_occupied_national_output(args)
+        preflight_staged_dataset(args)
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        telemetry = create_staging_run_bundle(args, build_id=state.build_id)
+    except BaseException as error:
+        fail_staging_run_bundle(None, error)
+        raise
     attempt = {
         "state": state,
         "started_at": started_at,
@@ -2446,13 +2535,13 @@ def _national_main(args: argparse.Namespace) -> int:
             pipeline=posture.pipeline,
             disposition="discarded",
         )
-        fail_staging_telemetry(telemetry, interrupt)
+        fail_staging_run_bundle(telemetry, interrupt)
         raise
     except Exception as error:
         _record_failure(
             args, error, state=state, attempt=attempt, pipeline=posture.pipeline
         )
-        fail_staging_telemetry(telemetry, error)
+        fail_staging_run_bundle(telemetry, error)
         print(f"UK national build failed: {error}", file=sys.stderr)
         return 1
 
@@ -2535,22 +2624,30 @@ def main(argv: list[str] | None = None) -> int:
         return _national_main(args)
     if args.candidate_clone_counts is not None and not args.dry_run:
         raise ValueError("--candidate-clone-counts is valid only with --dry-run.")
-    if args.dry_run:
-        # Dry runs plan without solving or writing and record no Logbook
-        # row on any path, so they need no chain configuration.
-        return _dry_run(args)
-    # Argument refusals above cost nothing; the credential check reaches the
-    # Hub, so it runs last, still before any input is read.
-    preflight_staged_dataset(args)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
+    build_id = new_candidate_build_id(
+        seed=args.seed,
+        timestamp=started_ts,
+        rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+    )
+    return _run_with_telemetry(
+        args,
+        build_id=build_id,
+        operation=lambda: _dense_attempt(
+            args, build_id=build_id, started_at=started_at, started_ts=started_ts
+        ),
+    )
+
+
+def _dense_attempt(
+    args: argparse.Namespace, *, build_id: str, started_at: float, started_ts: datetime
+) -> int:
+    """Prepare, execute, and record the dense build's artifacts."""
+    posture = posture_of(args)
     digest = preflight_digest(posture.pipeline)
     state = AttemptState(
-        build_id=new_candidate_build_id(
-            seed=args.seed,
-            timestamp=started_ts,
-            rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
-        ),
+        build_id=build_id,
         identity_digest=digest,
         input_pins_digest=digest,
         phases_reached=["attempt_started"],
@@ -2561,11 +2658,26 @@ def main(argv: list[str] | None = None) -> int:
             }
         },
     )
-    # Logbook chain configuration is validated before any terminal work: a
-    # malformed or conflicting head refuses the run with no row and no side
-    # effects.
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    if args.dry_run:
+        # Dry runs plan without solving or writing and record no Logbook row,
+        # but their hosted telemetry still has a complete lifecycle.
+        try:
+            status = _dry_run(args)
+        except BaseException as error:
+            fail_staging_run_bundle(None, error)
+            raise
+        finalize_staging_run_bundle(args, None)
+        return status
+
+    try:
+        # The credential and chain checks still precede input loading, while
+        # the emitter records their failures.
+        preflight_staged_dataset(args)
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        telemetry = create_staging_run_bundle(args, build_id=state.build_id)
+    except BaseException as error:
+        fail_staging_run_bundle(None, error)
+        raise
     attempt = {
         "state": state,
         "started_at": started_at,
@@ -2589,7 +2701,7 @@ def main(argv: list[str] | None = None) -> int:
             prepared=prepared,
             disposition="discarded",
         )
-        fail_staging_telemetry(telemetry, interrupt)
+        fail_staging_run_bundle(telemetry, interrupt)
         raise
     except Exception as error:
         _record_failure(
@@ -2600,7 +2712,7 @@ def main(argv: list[str] | None = None) -> int:
             pipeline=posture.pipeline,
             prepared=prepared,
         )
-        fail_staging_telemetry(telemetry, error)
+        fail_staging_run_bundle(telemetry, error)
         print(f"UK full build failed: {error}", file=sys.stderr)
         return 1
 

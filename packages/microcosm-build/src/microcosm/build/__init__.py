@@ -190,7 +190,7 @@ from microcosm.build.staging import (  # noqa: E402 - after the compat gate
     LATEST_STAGING_POINTER,
     RUNS_INDEX,
     STAGING_SCHEMA_VERSION,
-    StagingTelemetry,
+    StagingRunBundleWriter,
 )
 
 __version__ = "0.1.0"
@@ -233,7 +233,7 @@ __all__ = [
     "LATEST_STAGING_POINTER",
     "RUNS_INDEX",
     "STAGING_SCHEMA_VERSION",
-    "StagingTelemetry",
+    "StagingRunBundleWriter",
     "TargetCoverageRequirement",
     "TargetFitRequirement",
     "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",

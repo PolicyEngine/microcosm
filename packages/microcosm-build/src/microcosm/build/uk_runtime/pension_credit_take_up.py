@@ -53,6 +53,10 @@ PENSION_CREDIT_ENTITLEMENT_VARIABLES = (
     "savings_credit",
     "is_pension_credit_eligible",
 )
+#: The SI 2019/37 saving for a mixed-age couple (pe-uk#1940), stored at the
+#: survey year so later model years do not re-derive it from a birth year
+#: that moves with the model year (uk-data#519).
+PENSION_CREDIT_MIXED_AGE_SAVING = "has_mixed_age_couple_pension_credit_saving"
 PENSION_CREDIT_REPORTED_ANCHOR = "pension_credit_reported_anchor"
 PENSION_CREDIT_AGGREGATES = {PENSION_CREDIT_REPORTED_ANCHOR: "pension_credit_reported"}
 #: The component bands, in the order DWP reports take-up, with their rules and
@@ -116,7 +120,7 @@ class UKPensionCreditTakeUpStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return ()
+        return (PENSION_CREDIT_MIXED_AGE_SAVING,)
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -151,13 +155,23 @@ def redraw_pension_credit_take_up(
                 f"Pension Credit take-up {label} columns missing: {missing}."
             )
     period = uk_time_period(frame)
-    materialized = engine.materialize(
-        frame, list(PENSION_CREDIT_ENTITLEMENT_VARIABLES), period
-    )
-    missing = sorted(set(PENSION_CREDIT_ENTITLEMENT_VARIABLES) - set(materialized))
+    # The engine's own default for the mixed-age saving, evaluated once at the
+    # frame's survey-year period on the post-SPI receipts and stored, so the
+    # entitlement below and every later model year read the same answer: a
+    # mixed-age couple whose older member was born by 5 February 1954 and who
+    # report Pension Credit, or pension-age Housing Benefit without an
+    # income-related legacy benefit, and no Universal Credit (uk-data#519).
+    requested = [PENSION_CREDIT_MIXED_AGE_SAVING, *PENSION_CREDIT_ENTITLEMENT_VARIABLES]
+    materialized = engine.materialize(frame, requested, period)
+    missing = sorted(set(requested) - set(materialized))
     if missing:
         raise ValueError(f"Pension Credit take-up engine outputs missing: {missing}.")
     count = len(benunit)
+    benunit[PENSION_CREDIT_MIXED_AGE_SAVING] = _aligned(
+        materialized[PENSION_CREDIT_MIXED_AGE_SAVING],
+        count,
+        PENSION_CREDIT_MIXED_AGE_SAVING,
+    ).astype(bool)
     guarantee = _aligned(materialized["guarantee_credit"], count, "guarantee_credit")
     savings = _aligned(materialized["savings_credit"], count, "savings_credit")
     eligible = _aligned(
@@ -303,6 +317,7 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
     kinds = [operation.kind for operation in stage.operations]
     expected_kinds = [
         "materialize_rules_engine_predictors",
+        "materialize_rules_engine_predictors",
         "aggregate_person_to_benunit",
         "assign_component_take_up_residual",
     ]
@@ -311,8 +326,9 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             f"{PENSION_CREDIT_TAKE_UP_STAGE_NAME} operation order drifted: "
             f"expected {expected_kinds}, got {kinds}."
         )
-    materialize, aggregate, assign = stage.operations
+    saving, materialize, aggregate, assign = stage.operations
     expected = {
+        "saving": {"predictors": [PENSION_CREDIT_MIXED_AGE_SAVING]},
         "materialize": {
             "predictors": list(PENSION_CREDIT_ENTITLEMENT_VARIABLES),
             "consumed_only": True,
@@ -333,6 +349,7 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
         },
     }
     actual = {
+        "saving": dict(saving.parameters),
         "materialize": dict(materialize.parameters),
         "aggregate": dict(aggregate.parameters),
         "assign": dict(assign.parameters),
@@ -342,15 +359,18 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             f"{PENSION_CREDIT_TAKE_UP_STAGE_NAME} parameters drifted: expected "
             f"{expected}, got {actual}."
         )
-    if stage.outputs != () or stage.rewrites != (PENSION_CREDIT_TAKE_UP_OUTPUT,):
+    if stage.outputs != (PENSION_CREDIT_MIXED_AGE_SAVING,) or stage.rewrites != (
+        PENSION_CREDIT_TAKE_UP_OUTPUT,
+    ):
         raise ValueError(
-            f"{PENSION_CREDIT_TAKE_UP_STAGE_NAME} must declare no new outputs and "
-            "exactly the would_claim_pc rewrite."
+            f"{PENSION_CREDIT_TAKE_UP_STAGE_NAME} must declare exactly the "
+            f"{PENSION_CREDIT_MIXED_AGE_SAVING} output and the would_claim_pc rewrite."
         )
 
 
 __all__ = [
     "PENSION_CREDIT_ENTITLEMENT_VARIABLES",
+    "PENSION_CREDIT_MIXED_AGE_SAVING",
     "PENSION_CREDIT_TAKE_UP_BANDS",
     "PENSION_CREDIT_TAKE_UP_STAGE_NAME",
     "UKPensionCreditTakeUpResult",
