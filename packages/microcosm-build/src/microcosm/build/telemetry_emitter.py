@@ -158,38 +158,46 @@ class LocalTelemetryEmitter:
             print(NO_LOCAL_SOCKET_WARNING, file=sys.stderr)
             return cls(run=run, process=None, socket_path=None, runtime_dir=None)
 
-        # macOS limits AF_UNIX paths to roughly 100 bytes.  Its default
-        # temporary directory is already long, so use the short system alias.
-        temporary_root = (
-            TEMPORARY_DIRECTORY_ALIAS if TEMPORARY_DIRECTORY_ALIAS.is_dir() else None
-        )
-        runtime_dir = Path(
-            tempfile.mkdtemp(prefix=RUNTIME_DIRECTORY_PREFIX, dir=temporary_root)
-        )
-        runtime_dir.chmod(0o700)
-        socket_path = runtime_dir / SOCKET_FILENAME
-        queue_path = (
-            Path(spool_path) if spool_path else _cache_dir() / TELEMETRY_SPOOL_FILENAME
-        )
-        command = [
-            sys.executable,
-            "-m",
-            TELEMETRY_SERVICE_MODULE,
-            "--socket",
-            str(socket_path),
-            "--spool",
-            str(queue_path),
-            "--registration-json",
-            json.dumps(run.as_registration(), separators=(",", ":")),
-            "--parent-pid",
-            str(os.getpid()),
-            "--heartbeat-seconds",
-            str(heartbeat_seconds),
-        ]
-        if development_collector_url is not None:
-            command.extend(["--development-collector-url", development_collector_url])
+        runtime_dir: Path | None = None
+        socket_path: Path | None = None
         process: subprocess.Popen[bytes] | None = None
         try:
+            # macOS limits AF_UNIX paths to roughly 100 bytes. Its default
+            # temporary directory is already long, so use the short system alias.
+            temporary_root = (
+                TEMPORARY_DIRECTORY_ALIAS
+                if TEMPORARY_DIRECTORY_ALIAS.is_dir()
+                else None
+            )
+            runtime_dir = Path(
+                tempfile.mkdtemp(prefix=RUNTIME_DIRECTORY_PREFIX, dir=temporary_root)
+            )
+            runtime_dir.chmod(0o700)
+            socket_path = runtime_dir / SOCKET_FILENAME
+            queue_path = (
+                Path(spool_path)
+                if spool_path
+                else _cache_dir() / TELEMETRY_SPOOL_FILENAME
+            )
+            command = [
+                sys.executable,
+                "-m",
+                TELEMETRY_SERVICE_MODULE,
+                "--socket",
+                str(socket_path),
+                "--spool",
+                str(queue_path),
+                "--registration-json",
+                json.dumps(run.as_registration(), separators=(",", ":")),
+                "--parent-pid",
+                str(os.getpid()),
+                "--heartbeat-seconds",
+                str(heartbeat_seconds),
+            ]
+            if development_collector_url is not None:
+                command.extend(
+                    ["--development-collector-url", development_collector_url]
+                )
             process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
@@ -229,8 +237,10 @@ class LocalTelemetryEmitter:
         if process is not None:
             _terminate_process(process)
         try:
-            socket_path.unlink(missing_ok=True)
-            runtime_dir.rmdir()
+            if socket_path is not None:
+                socket_path.unlink(missing_ok=True)
+            if runtime_dir is not None:
+                runtime_dir.rmdir()
         except OSError:
             pass
         return cls(run=run, process=None, socket_path=None, runtime_dir=runtime_dir)
@@ -362,17 +372,19 @@ class LocalTelemetryEmitter:
         failure_class: str = "build_failure",
     ) -> None:
         failed_stage = failed_during or self._transition_stage
-        self._close_transition_stage()
+        message = str(error)[:MAX_TELEMETRY_MESSAGE_CHARS]
+        details = {
+            "error_type": type(error).__name__,
+            "failure_class": failure_class,
+            "failed_during": failed_stage,
+        }
+        self._close_transition_stage(status=STATUS_FAILED, message=message, **details)
         self.emit(
             event_type=EVENT_TYPE_RUN,
             stage_id=STAGE_FAILED,
             status=STATUS_FAILED,
-            message=str(error)[:MAX_TELEMETRY_MESSAGE_CHARS],
-            details={
-                "error_type": type(error).__name__,
-                "failure_class": failure_class,
-                "failed_during": failed_stage,
-            },
+            message=message,
+            details=details,
         )
         self.close()
 
@@ -394,12 +406,18 @@ class LocalTelemetryEmitter:
         self._send({"action": ACTION_CLOSE})
         self._closed = True
 
-    def _close_transition_stage(self) -> None:
+    def _close_transition_stage(
+        self,
+        *,
+        status: TelemetryStatus = STATUS_COMPLETED,
+        message: str | None = None,
+        **details: Any,
+    ) -> None:
         if self._transition_stage is None:
             return
         stage_id = self._transition_stage
         self._transition_stage = None
-        self.stage(stage_id, status=STATUS_COMPLETED)
+        self.stage(stage_id, status=status, message=message, **details)
 
     def _send(self, payload: Mapping[str, Any]) -> None:
         if self._socket_path is None:

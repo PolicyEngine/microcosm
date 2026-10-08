@@ -41,7 +41,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -2360,12 +2360,10 @@ def _close_national_attempt(
         print(json_text(manifest), end="")
 
 
-def _national_main(args: argparse.Namespace) -> int:
-    """The national role's envelope: the seam's attempt id and pipeline, the graph build."""
-    posture = posture_of(args)
-    started_at = time.perf_counter()
-    started_ts = datetime.now(UTC)
-    build_id = new_uk_calibration_attempt_id(timestamp=started_ts)
+def _run_with_telemetry(
+    args: argparse.Namespace, *, build_id: str, operation: Callable[[], int]
+) -> int:
+    """Report the command's actual outcome, then release its telemetry handle."""
     emitter = start_telemetry_emitter(
         args,
         build_id=build_id,
@@ -2373,13 +2371,48 @@ def _national_main(args: argparse.Namespace) -> int:
     )
     emitter.transition_stage(
         "preflight",
-        message="Validating UK national build inputs and configuration.",
+        message=f"Validating UK {posture_of(args).role} build inputs and configuration.",
     )
     try:
-        digest = preflight_digest(posture.pipeline)
+        status = operation()
     except BaseException as error:
-        fail_staging_run_bundle(None, error)
+        if emitter.available:
+            emitter.fail(error)
         raise
+    else:
+        if emitter.available:
+            if status == 0:
+                emitter.complete()
+            else:
+                emitter.fail(
+                    RuntimeError(f"UK build returned exit status {status}."),
+                    failure_class="build_failure",
+                )
+        return status
+    finally:
+        emitter.close()
+
+
+def _national_main(args: argparse.Namespace) -> int:
+    """Run the national build with one telemetry lifecycle."""
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    build_id = new_uk_calibration_attempt_id(timestamp=started_ts)
+    return _run_with_telemetry(
+        args,
+        build_id=build_id,
+        operation=lambda: _national_attempt(
+            args, build_id=build_id, started_at=started_at, started_ts=started_ts
+        ),
+    )
+
+
+def _national_attempt(
+    args: argparse.Namespace, *, build_id: str, started_at: float, started_ts: datetime
+) -> int:
+    """Prepare, execute, and record the national build's artifacts."""
+    posture = posture_of(args)
+    digest = preflight_digest(posture.pipeline)
     state = AttemptState(
         # The staging run id and Logbook row use the same attempt id.
         build_id=build_id,
@@ -2538,20 +2571,21 @@ def main(argv: list[str] | None = None) -> int:
         timestamp=started_ts,
         rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
     )
-    emitter = start_telemetry_emitter(
+    return _run_with_telemetry(
         args,
         build_id=build_id,
-        run_kind="dry_run" if args.dry_run else "calibration",
+        operation=lambda: _dense_attempt(
+            args, build_id=build_id, started_at=started_at, started_ts=started_ts
+        ),
     )
-    emitter.transition_stage(
-        "preflight",
-        message="Validating UK dense build inputs and configuration.",
-    )
-    try:
-        digest = preflight_digest(posture.pipeline)
-    except BaseException as error:
-        fail_staging_run_bundle(None, error)
-        raise
+
+
+def _dense_attempt(
+    args: argparse.Namespace, *, build_id: str, started_at: float, started_ts: datetime
+) -> int:
+    """Prepare, execute, and record the dense build's artifacts."""
+    posture = posture_of(args)
+    digest = preflight_digest(posture.pipeline)
     state = AttemptState(
         build_id=build_id,
         identity_digest=digest,

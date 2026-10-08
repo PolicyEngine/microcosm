@@ -2058,8 +2058,6 @@ def main(argv: list[str] | None = None) -> int:
             staging_bundle.validate_local_bundle()
             sidecar["staging_delivery"] = staging_bundle.delivery_summary
             atomic_write_json(sidecar_path, sidecar)
-        if emitter.available:
-            emitter.complete()
         state.artifact_location = local_artifact_reference(
             output,
             repository_hint=_REPOSITORY,
@@ -2094,7 +2092,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
-        return 0
     except Exception as error:
         if spine_battery is not None:
             # A run the assembled gate blocked never returned a manifest for
@@ -2167,6 +2164,17 @@ def main(argv: list[str] | None = None) -> int:
             pass
         print(f"UK FRS spine build failed: {error}", file=sys.stderr)
         return 1
+    except BaseException as error:
+        # Preserve operator interrupts and system exits after recording failure.
+        if emitter.available:
+            emitter.fail(error)
+        raise
+    else:
+        if emitter.available:
+            emitter.complete()
+        return 0
+    finally:
+        emitter.close()
 
 
 if __name__ == "__main__":
