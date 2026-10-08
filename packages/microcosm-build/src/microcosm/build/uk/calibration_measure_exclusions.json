@@ -173,6 +173,24 @@
       "expires_on": "2026-11-26"
     },
     {
+      "name": "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
+      "reason": "Engine-moved support: fewer than 10 FRS households support this band, and under policyengine-uk 2.122.2 none of them stays in it (the same spine under 2.100.0 keeps them, and the band sits at -100% with final estimate 0.0 on arms B0, B2 and head). 2.122.2 reads the published LHA rates, which lower the supporting households' housing element and move their awards to the band below. The same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs support for high awards beyond the would_claim_uc take-up lever.",
+      "tracking": "uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1095 (the B0, B2 and head arms of 2026-10-06 on the second ports PR; same class as the 2026-08-26 microcosm#757 dispositions)",
+      "approved_on": "2026-10-07",
+      "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
+      "reason": "Engine-moved support: fewer than 10 FRS households support this band, and under policyengine-uk 2.122.2 none of them stays in it (the same spine under 2.100.0 keeps them, and the band sits at -100% with final estimate 0.0 on arms B0, B2 and head). 2.122.2 corrects the supporting awards three ways: the 2019 mixed-age couple saving keeps couples who report Pension Credit on it and off UC, the published LHA rates move awards to neighbouring bands, and Carer Support Payment counts as unearned income as Carer's Allowance does. The same class as its 2026-08-26 siblings (uk-data#452): the payment distribution needs support for high awards beyond the would_claim_uc take-up lever.",
+      "tracking": "uk-data#452",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#1095 (the B0, B2 and head arms of 2026-10-06 on the second ports PR; same class as the 2026-08-26 microcosm#757 dispositions)",
+      "approved_on": "2026-10-07",
+      "expires_on": "2026-11-26"
+    },
+    {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
       "reason": "One-sided undershoot: the annual-payment band composition inside the UC caseload is unreachable under the spine's current UC support (the #623-carried catalogue); every cell in this class undershoots on the rebind packet and two sit at -100% with final estimate 0.0. The payment distribution needs element/taper composition support beyond the would_claim_uc take-up lever.",
       "tracking": "uk-data#452",

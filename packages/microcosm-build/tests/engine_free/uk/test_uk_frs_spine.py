@@ -42,8 +42,12 @@ from microcosm.build.uk_runtime.frs_spine import (
     WEEKS_IN_YEAR,
     UKFRSSpineStageTransform,
     _add_benefits,
+    access_fund_annual,
     build_uk_frs_spine_frame,
+    completed_months,
+    parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
+    uc_trade_years,
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -59,6 +63,10 @@ from microcosm.frame import Frame, WeightKind, engine_tables
 # shim over it. Each test still executes its own module copy so per-test
 # monkeypatches never leak through the shared import.
 _TOOL_PATH = Path(spine_build.__file__)
+
+
+#: The fixture households' interview date, 15 October 2024, as a SAS date.
+_FIXTURE_INTERVIEW_SAS_DATE = 23664
 
 
 def _load_tool():
@@ -182,6 +190,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "MORTINT": 7.0,
         "STRUINS": 8.0,
         **{f"CHRGAMT{i}": float(i) for i in range(1, 10)},
+        # 15 October 2024 as a SAS date (days since 1 January 1960).
+        "INTDATE": float(_FIXTURE_INTERVIEW_SAS_DATE),
+        # A conventional household (HHSTAT 1), not a shared one.
+        "HHSTAT": 1,
     }
     household_1 = {
         **household_2,
@@ -229,6 +241,11 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "R02": 7,
         "MARITAL": 1,
         "EMPSTATI": 5,
+        "SAMESIT": 1,
+        **{f"SDEMP{month:02d}": 5 for month in range(1, 13)},
+        "SRENTAMT": "",
+        # CVPAY below is rent paid to the householder as a lodger (CONVBL 2).
+        "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
         "FTED": 2,
@@ -264,6 +281,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SMPADJ": 0.5,
         "TUBORR": 500.0,
         "ACCSSAMT": 1.0,
+        "ACCSSPD": 52.0,
         "GRTDIR1": 2.0,
         "GRTDIR2": 3.0,
         # heartval is on the adult tape too; the three school columns are not.
@@ -313,6 +331,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "FAMTYPB2": 5,
                 "DEPCHLDB": 0,
                 "TOTCAPB4": 222.0,
+                "HBOTHAMT": 0.0,
             },
             {
                 "SERNUM": 1,
@@ -320,6 +339,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "FAMTYPB2": 7,
                 "DEPCHLDB": 1,
                 "TOTCAPB4": 111.0,
+                "HBOTHAMT": 0.0,
             },
         ],
         "househol": [household_2, household_1],
@@ -374,6 +394,11 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "DEDUC1": 2.0,
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
+                "ETYPE": 1,
+                "JOBTYPE": 1,
+                "SEEND": "",
+                "SEJBLONG": "",
+                "JOBBUS": 1,
             }
         ],
         "benefits": [
@@ -384,6 +409,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 14,
                 "VAR2": 1,
                 "BENAMT": 2.0,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -392,6 +419,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 14,
                 "VAR2": 2,
                 "BENAMT": 3.0,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -400,6 +429,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 16,
                 "VAR2": 3,
                 "BENAMT": 4.0,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -408,6 +439,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 16,
                 "VAR2": 4,
                 "BENAMT": 5.0,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -416,6 +449,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 6,
                 "VAR2": 0,
                 "BENAMT": 6.0,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             },
             {
                 "SERNUM": 1,
@@ -424,6 +459,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENEFIT": 3,
                 "VAR2": 0,
                 "BENAMT": 7.0,
+                "UCSTART": "",
+                "UCHOUSEL": "",
             },
         ],
         "maint": [
@@ -959,6 +996,7 @@ def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
         "map_columns",
         "map_coded_amounts",
         "annualize_periodic_amounts",
+        "assign_binary_from_rate",
     }
     assert set(stage.outputs) == set(UKFRSSpineStageTransform.output_columns())
 
@@ -1021,6 +1059,24 @@ def test_root_stage_reports_capital_sentinel_mapping_count(tmp_path: Path) -> No
     }
 
 
+def test_root_stage_reports_the_access_fund_repair(tmp_path: Path) -> None:
+    # Both fixture adults report an annual-coded award of 1 a week, so the
+    # threshold is twice that, annualised, and nothing is repaired.
+    stage = _write_fixture(tmp_path)
+    transform = UKFRSSpineStageTransform(tmp_path, stage=stage)
+
+    transform(uk_frs_spine_seed_frame())
+
+    assert transform.checkpoint_metadata()["evidence"]["access_fund"] == {
+        "paid_awards": 2,
+        "annual_coded_awards": 2,
+        "calendar_month_awards": 0,
+        "repair_multiple": 2.0,
+        "repair_threshold_annual": pytest.approx(2 * WEEKS_IN_YEAR),
+        "repaired_awards": 0,
+    }
+
+
 def test_benunit_capital_maps_unavailable_raw_values_to_named_sentinel(
     tmp_path: Path,
 ) -> None:
@@ -1071,8 +1127,12 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
     assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
-    # ROYYR1 2 only: CVPAY is not income and household 1 does not sub-let.
+    # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
+    # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
+    # does not sub-let.
     assert adult["property_income"] == pytest.approx(2 * WEEKS_IN_YEAR)
+    assert adult["rent_paid_as_lodger"] == pytest.approx(WEEKS_IN_YEAR)
+    assert adult["rent_paid_as_boarder"] == 0
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
     assert adult["private_transfer_income"] == pytest.approx(57 * WEEKS_IN_YEAR)
@@ -1167,6 +1227,177 @@ def test_household_subrent_column_floors_missing_value_codes(
 
     assert household.loc[1, "subrent"] == 0
     assert household.loc[2, "subrent"] == pytest.approx(6 * WEEKS_IN_YEAR)
+
+
+def test_is_blind_reads_blind_registration_on_the_adult_and_child_tabs(
+    tmp_path: Path,
+) -> None:
+    """``is_blind`` is SPCREG1 registration, never partial sight (uk-data#523)."""
+
+    tables = _fixture_tables()
+    adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    # Registered blind; registered partially sighted only; and the child tab
+    # asks the same registration question.
+    adult_1.update({"SPCREG1": 1, "SPCREG2": 2})
+    adult_2.update({"SPCREG1": 2, "SPCREG2": 1})
+    tables["child"][0]["SPCREG1"] = 1
+    stage = _write_fixture(tmp_path / "registered", tables)
+
+    person = build_uk_frs_spine_frame(tmp_path / "registered", stage=stage).table(
+        "person"
+    )
+    blind = person.set_index("person_id")["is_blind"]
+
+    assert blind.dtype == bool
+    assert blind.to_dict() == {1001: True, 1002: True, 2001: False}
+
+    # A person the question was not asked of (blank SPCREG1) is not blind.
+    stage = _write_fixture(tmp_path / "unasked")
+    person = build_uk_frs_spine_frame(tmp_path / "unasked", stage=stage).table("person")
+    assert not person["is_blind"].any()
+
+
+def test_person_types_follow_the_adult_and_child_tables(tmp_path: Path) -> None:
+    """Claimant or partner is the adult table, HBAI dependent child the child
+    table (uk-data#524, uk-data#486), whatever the ages say."""
+
+    tables = _fixture_tables()
+    # A 19-year-old on the child table stays a dependent child, and a
+    # 17-year-old partner on the adult table is a claimant's partner.
+    tables["child"][0]["AGE"] = 19
+    tables["adult"].append(
+        {
+            **tables["adult"][0],
+            "PERSON": 2,
+            "UPERSON": 2,
+            "HRPID": 0,
+            "AGE": 17,
+            "MARITAL": 2,
+            "RELHRP": 2,
+            "R01": 2,
+            "R02": "",
+        }
+    )
+    stage = _write_fixture(tmp_path, tables)
+
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+
+    assert person["is_claimant_or_partner"].to_dict() == {
+        1001: True,
+        1002: False,
+        2001: True,
+        2002: True,
+    }
+    assert (
+        person["is_hbai_dependent_child"] == ~person["is_claimant_or_partner"]
+    ).all()
+    assert person["is_claimant_or_partner"].dtype == bool
+
+
+def test_a_benefit_unit_with_three_adult_records_refuses(tmp_path: Path) -> None:
+    tables = _fixture_tables()
+    for number in (2, 3):
+        tables["adult"].append(
+            {**tables["adult"][0], "PERSON": number, "UPERSON": number, "HRPID": 0}
+        )
+    stage = _write_fixture(tmp_path, tables)
+
+    # The claimant mask refuses it, so adult-table membership is always a
+    # single claimant or a couple (uk-data#524).
+    with pytest.raises(ValueError, match="one or two claimants per benefit unit"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def _shared_household_tables(
+    *, hhstat: int, srentamt: object = "", hbothamt: float = 0.0, uchousel: object = ""
+) -> dict[str, list[dict[str, object]]]:
+    """Household 2 with a second benefit unit (its own adult) beside the first."""
+
+    tables = _fixture_tables()
+    household_2 = next(row for row in tables["househol"] if row["SERNUM"] == 2)
+    household_2["HHSTAT"] = hhstat
+    adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+    tables["adult"].append(
+        {
+            **adult_2,
+            "BENUNIT": 2,
+            "PERSON": 2,
+            "UPERSON": 1,
+            "HRPID": 0,
+            "SRENTAMT": srentamt,
+        }
+    )
+    tables["benunit"].append(
+        {
+            "SERNUM": 2,
+            "BENUNIT": 2,
+            "FAMTYPB2": 5,
+            "DEPCHLDB": 0,
+            "TOTCAPB4": 50.0,
+            "HBOTHAMT": hbothamt,
+        }
+    )
+    tables["benefits"].append(
+        {**_uc_row(2, ""), "BENUNIT": 2, "PERSON": 2, "UCHOUSEL": uchousel}
+    )
+    return tables
+
+
+@pytest.mark.parametrize(
+    ("hhstat", "answers", "liable"),
+    [
+        (2, {"srentamt": 40.0}, True),
+        (2, {"hbothamt": 25.0}, True),
+        (2, {"uchousel": 60.0}, True),
+        (2, {}, False),
+        (1, {"srentamt": 40.0}, False),
+    ],
+)
+def test_a_later_unit_of_a_shared_household_shares_its_rent(
+    tmp_path: Path, hhstat: int, answers: dict, liable: bool
+) -> None:
+    """uk-data#512: shared households only, later units with rent evidence."""
+
+    tables = _shared_household_tables(hhstat=hhstat, **answers)
+    stage = _write_fixture(tmp_path, tables)
+
+    benunit = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("benunit")
+        .set_index("benunit_id")
+    )
+
+    assert benunit["liable_for_share_of_household_rent"].to_dict() == {
+        101: False,
+        201: False,
+        202: liable,
+    }
+
+
+@pytest.mark.parametrize(("convbl", "boarder"), [(1, True), (2, False), ("", False)])
+def test_rent_paid_to_the_householder_splits_on_meals(
+    tmp_path: Path, convbl: object, boarder: bool
+) -> None:
+    tables = _fixture_tables()
+    adult_1 = next(row for row in tables["adult"] if row["SERNUM"] == 1)
+    adult_1.update({"CVPAY": 80.0, "CONVBL": convbl})
+    stage = _write_fixture(tmp_path, tables)
+
+    adult = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+        .loc[1001]
+    )
+
+    paid = 80.0 * WEEKS_IN_YEAR
+    assert adult["rent_paid_as_boarder"] == pytest.approx(paid if boarder else 0.0)
+    assert adult["rent_paid_as_lodger"] == pytest.approx(0.0 if boarder else paid)
 
 
 @pytest.mark.parametrize("couple_has_children", [False, True])
@@ -2438,6 +2669,7 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         [stages[name] for name in tool._uk_spine_stage_names(spec)]
     )
 
+    assert declared["frs_spine"] == {"uc_is_in_startup_period": 0}
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
     assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
     assert declared["was_lisa"] == {"has_lifetime_isa": 0, "lifetime_isa_balance": 0}
@@ -2702,6 +2934,209 @@ class TestScottishWaterAndSewerage:
             scottish_water_and_sewerage_weekly(absent).iloc[0]
         )
         assert result > 0
+
+
+class TestAccessFundAnnual:
+    """The access-fund award: ACCSSAMT annualised, with the calendar-month repair.
+
+    An access-fund award is paid per academic year or term; a calendar-month
+    award that annualises to more than twice every award the tab records as
+    annual is read as the annual award (microcosm#1095, from the review of
+    #1100).
+    """
+
+    @staticmethod
+    def _frame(rows: list[tuple[float, float]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["accssamt", "accsspd"])
+
+    def test_awards_are_annualised_as_the_frs_weeklyised_them(self) -> None:
+        frame = self._frame([(10.0, 52.0), (5.0, 5.0), (0.0, float("nan"))])
+        assert access_fund_annual(frame).tolist() == pytest.approx(
+            [10.0 * WEEKS_IN_YEAR, 5.0 * WEEKS_IN_YEAR, 0.0]
+        )
+
+    def test_monthly_award_above_every_annual_award_is_read_as_annual(self) -> None:
+        # 100 a week from a calendar-month code is about 433 a month; annualised
+        # it is far above the largest annual-coded award, so it is that award.
+        frame = self._frame([(20.0, 52.0), (100.0, 5.0)])
+        result = access_fund_annual(frame)
+        assert result.iloc[0] == pytest.approx(20.0 * WEEKS_IN_YEAR)
+        assert result.iloc[1] == pytest.approx(100.0 * 52 / 12)
+
+    def test_a_monthly_award_within_twice_the_largest_annual_stays(self) -> None:
+        # Annualised, 30 a week is 1.5 times the largest annual-coded award:
+        # large for a monthly payment, but plausible, so it stays as reported.
+        frame = self._frame([(20.0, 52.0), (30.0, 5.0)])
+        assert access_fund_annual(frame).iloc[1] == pytest.approx(30.0 * WEEKS_IN_YEAR)
+
+    def test_monthly_awards_without_an_annual_award_refuse(self) -> None:
+        # The threshold is twice the tab's largest annual-coded award, so a
+        # tab with calendar-month awards and none coded annual cannot set it
+        # (microcosm#1095 review round 1): refuse rather than repair nothing.
+        frame = self._frame([(100.0, 5.0), (3.0, 5.0)])
+        with pytest.raises(ValueError, match="no annual-coded award"):
+            access_fund_annual(frame)
+
+    def test_awards_with_neither_code_need_no_threshold(self) -> None:
+        frame = self._frame([(10.0, 1.0), (5.0, float("nan"))])
+        evidence: dict[str, object] = {}
+        assert access_fund_annual(frame, evidence=evidence).tolist() == pytest.approx(
+            [10.0 * WEEKS_IN_YEAR, 5.0 * WEEKS_IN_YEAR]
+        )
+        assert evidence["repair_threshold_annual"] is None
+        assert evidence["repaired_awards"] == 0
+
+    def test_the_repair_is_recorded_as_evidence(self) -> None:
+        frame = self._frame([(20.0, 52.0), (100.0, 5.0), (30.0, 5.0), (0.0, 5.0)])
+        evidence: dict[str, object] = {}
+        access_fund_annual(frame, evidence=evidence)
+        assert evidence == {
+            "paid_awards": 3,
+            "annual_coded_awards": 1,
+            "calendar_month_awards": 2,
+            "repair_multiple": 2.0,
+            "repair_threshold_annual": pytest.approx(2 * 20.0 * WEEKS_IN_YEAR),
+            "repaired_awards": 1,
+        }
+
+    def test_no_paid_award_records_an_empty_repair(self) -> None:
+        evidence: dict[str, object] = {}
+        access_fund_annual(self._frame([(0.0, float("nan"))]), evidence=evidence)
+        assert evidence["paid_awards"] == 0
+        assert evidence["repair_threshold_annual"] is None
+
+    def test_an_award_without_a_period_code_stays_as_weeklyised(self) -> None:
+        # The 2024-25 tab carries a few awards with no period code; the FRS
+        # has weeklyised them already, and only a calendar-month code can be
+        # repaired.
+        frame = self._frame([(20.0, 52.0), (100.0, float("nan"))])
+        assert access_fund_annual(frame).iloc[1] == pytest.approx(100.0 * WEEKS_IN_YEAR)
+
+    def test_a_tab_without_the_period_column_refuses(self) -> None:
+        frame = pd.DataFrame({"accssamt": [10.0]})
+        with pytest.raises(KeyError, match="ACCSSPD"):
+            access_fund_annual(frame)
+
+
+def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
+    return {
+        "SERNUM": sernum,
+        "BENUNIT": 1,
+        "PERSON": 1,
+        "BENEFIT": 95,
+        "VAR2": 0,
+        "BENAMT": 1.0,
+        "UCSTART": ucstart,
+    }
+
+
+def _self_employed_job(
+    sernum: int, *, years: object, business: bool
+) -> dict[str, object]:
+    return {
+        "SERNUM": sernum,
+        "BENUNIT": 1,
+        "PERSON": 1,
+        "DEDUC1": 0.0,
+        "SPNAMT": 0.0,
+        "SALSAC": "2",
+        "ETYPE": 2 if business else 4,
+        "JOBTYPE": 1,
+        "SEEND": "",
+        "SEJBLONG": years,
+        "JOBBUS": 2 if business else 1,
+    }
+
+
+def _start_up_flags(tmp_path: Path, tables) -> dict[int, bool]:
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    assert person["uc_is_in_startup_period"].dtype == bool
+    return person.set_index("person_id")["uc_is_in_startup_period"].to_dict()
+
+
+class TestUCStartUpPeriod:
+    """The UC start-up period from claim and trade start dates (uk-data#527)."""
+
+    def test_completed_months_counts_whole_calendar_months(self) -> None:
+        later = pd.Series(pd.to_datetime(["2025-03-15", "2025-03-14", "2025-03-31"]))
+        earlier = pd.Series(pd.to_datetime(["2024-03-15", "2024-03-15", "2025-02-28"]))
+
+        assert completed_months(later, earlier).tolist() == [12.0, 11.0, 1.0]
+        missing = pd.Series(pd.to_datetime([None, None, None]))
+        assert np.isnan(completed_months(later, missing)).all()
+
+    def test_claim_start_reads_month_day_year_and_refuses_other_spellings(
+        self,
+    ) -> None:
+        parsed = parse_frs_uc_claim_start(pd.Series(["03/31/2024", " ", None]))
+
+        assert parsed.iloc[0] == pd.Timestamp("2024-03-31")
+        assert parsed.iloc[1:].isna().all()
+        with pytest.raises(ValueError, match="not month/day/year"):
+            parse_frs_uc_claim_start(pd.Series(["2024-03-31"]))
+
+    def test_a_new_engagement_in_a_year_round_trade_does_not_date_it(self) -> None:
+        years = uc_trade_years(
+            np.array([0.0, 0.0, 0.0, 3.0]),
+            describes_business=np.array([False, True, False, False]),
+            self_employed_all_year=np.array([True, True, False, True]),
+        )
+
+        assert np.isnan(years[0])
+        assert years[1:].tolist() == [0.0, 0.0, 3.0]
+
+    def test_a_recent_claim_or_a_new_business_starts_the_period(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        # Household 1: a claim three months before interview; its adult is
+        # self-employed through SEINCAM2, its child is not.
+        tables["benefits"].append(_uc_row(1, "07/15/2024"))
+        # Household 2: a claim two years old, but a business started this year.
+        tables["benefits"].append(_uc_row(2, "09/15/2022"))
+        tables["job"].append(_self_employed_job(2, years=0, business=True))
+
+        flags = _start_up_flags(tmp_path, tables)
+
+        assert flags == {1001: True, 1002: False, 2001: True}
+
+    @pytest.mark.parametrize(("business", "expected"), [(True, True), (False, False)])
+    def test_a_year_round_traders_new_self_employed_job_is_not_a_new_trade(
+        self, tmp_path: Path, business: bool, expected: bool
+    ) -> None:
+        tables = _fixture_tables()
+        adult_2 = next(row for row in tables["adult"] if row["SERNUM"] == 2)
+        adult_2.update({"EMPSTATI": 3, "SAMESIT": 2})
+        tables["benefits"].append(_uc_row(2, "09/15/2022"))
+        tables["job"].append(_self_employed_job(2, years=0, business=business))
+
+        assert _start_up_flags(tmp_path, tables)[2001] is expected
+
+    @pytest.mark.parametrize(
+        ("linked_start", "expected"), [("07/15/2024", True), ("09/15/2022", False)]
+    )
+    def test_an_unlinked_claim_is_drawn_at_the_linked_share(
+        self, tmp_path: Path, linked_start: str, expected: bool
+    ) -> None:
+        # The one linked self-employed claim sets the share to 1 or 0, so the
+        # unlinked unit's draw is certain either way.
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, linked_start))
+        tables["benefits"].append(_uc_row(2, ""))
+
+        assert _start_up_flags(tmp_path, tables)[2001] is expected
+
+    def test_without_the_raw_date_columns_the_spine_refuses(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        for row in tables["job"]:
+            del row["SEJBLONG"]
+        stage = _write_fixture(tmp_path, tables)
+
+        with pytest.raises(KeyError, match="job.sejblong"):
+            build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:

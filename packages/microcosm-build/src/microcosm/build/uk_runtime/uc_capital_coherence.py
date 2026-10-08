@@ -44,7 +44,10 @@ from microcosm.frame import Frame
 UC_CAPITAL_REDRAW_OUTPUT = "frs_benunit_capital"
 UC_CAPITAL_REDRAW_SEED = 0
 UC_CAPITAL_REDRAW_SALT = UC_CAPITAL_REDRAW_OUTPUT
-UC_CAPITAL_COHERENCE_OUTPUT_COLUMNS = ("uc_reported_capital",)
+UC_CAPITAL_COHERENCE_OUTPUT_COLUMNS = (
+    "uc_reported_capital",
+    "pension_credit_reported_capital",
+)
 #: Every SPI benefit unit is redrawn: the channel's incomes are SPI draws,
 #: so a copied FRS capital answer no longer belongs to the unit (uk-data#495,
 #: microcosm#1095). Donors are the base units with an available answer.
@@ -220,6 +223,11 @@ def cohere_uc_capital(
     refreshed_would_claim = previous_would_claim | reporter
     benunit[UC_CAPITAL_REDRAW_OUTPUT] = capital
     benunit["uc_reported_capital"] = capital.copy()
+    # Pension Credit reads the same recorded capital (pe-uk#2018 and #2070,
+    # uk-data#513): 0 or more replaces every capital source in its assessable
+    # capital, and the unavailable sentinel -1 is the engine's own default, so
+    # the household proxy applies there.
+    benunit["pension_credit_reported_capital"] = capital.copy()
     benunit["would_claim_uc"] = refreshed_would_claim
 
     result_frame = uk_national_frame(
