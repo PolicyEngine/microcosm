@@ -123,6 +123,33 @@ def test_every_dotted_microcosm_symbol_resolves(country: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("country", "cited"),
+    [
+        (
+            "nz",
+            {
+                "microcosm.graph.executor._structural_columns",
+                "microcosm.graph.executor._validate_population_declaration",
+            },
+        ),
+        (
+            "us",
+            {
+                "microcosm.build.us_runtime.asec_pool.load_asec_h5_tables",
+                "microcosm.build.us_runtime.asec_pool._prepare_year_input",
+                "microcosm.build.us_runtime.asec_pool._with_relationship_recode",
+            },
+        ),
+    ],
+)
+def test_the_dotted_symbol_citations_are_scanned(country: str, cited: set[str]) -> None:
+    named = set().union(
+        *map(dotted_microcosm_symbols, package_payloads(country).values())
+    )
+    assert cited <= named
+
+
+@pytest.mark.parametrize(
     ("dotted", "error"),
     [
         ("microcosm.graph.executor._no_such_symbol", AttributeError),
