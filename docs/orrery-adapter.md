@@ -265,7 +265,8 @@ edges and 18,174,094 JSON bytes; the optional size path has 5,408 nodes, 19,702
 edges and 19,588,363 bytes. A synthetic three-household calibration with 22,053
 targets produced a 5,346,758-byte execution snapshot retaining every target row.
 These are declaration and synthetic diagnostic measurements, not a licensed
-population run. Existing limits stay unchanged.
+population run. Serialized operation contracts can use strings up to 65,536 characters;
+the overall document, complexity, node, and edge limits remain unchanged.
 
 ## Fields and input bindings
 

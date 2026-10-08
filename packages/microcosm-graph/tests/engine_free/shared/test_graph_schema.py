@@ -264,3 +264,38 @@ def test_extensions_are_detached_bounded_json():
     invalid["extensions"] = {"bad": float("nan")}
     with pytest.raises(ValueError, match="finite"):
         validate_graph_schema(invalid)
+
+
+def test_serialized_operation_contracts_survive_schema_and_orrery_round_trip():
+    from microcosm.graph.orrery import orrery_document_from_schema
+
+    compiled = compiled_graph()
+    # Maintained gate declarations contain serialized contracts around 38 KB.
+    contract = "x" * 40_000
+    original = compiled.graph.nodes[0]
+    graph = replace(
+        compiled.graph,
+        nodes=(
+            replace(original, params={**original.params, "contract": contract}),
+            *compiled.graph.nodes[1:],
+        ),
+    )
+    schema = graph_schema(compile_graph(graph))
+    assert validate_graph_schema(schema) == schema
+    document = orrery_document_from_schema(schema)
+    operation = next(
+        node
+        for node in document["nodes"]
+        if node["kind"] == "operation" and node["label"] == original.id
+    )
+    assert operation["data"]["declaration"]["params"]["contract"] == contract
+
+    oversized = replace(
+        graph,
+        nodes=(
+            replace(original, params={"contract": "x" * (64 * 1024 + 1)}),
+            *graph.nodes[1:],
+        ),
+    )
+    with pytest.raises(ValueError, match="length limit"):
+        graph_schema(compile_graph(oversized))
