@@ -1,11 +1,11 @@
 {
- "compiled_count": 1244,
+ "compiled_count": 1257,
  "counts_by_kind": {
   "calibration_drift": 566,
   "fixture_only": 42,
-  "ledger_only": 649
+  "ledger_only": 662
  },
- "difference_count": 1257,
+ "difference_count": 1270,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1973,6 +1973,97 @@
    "name": "hmrc.itl.total_income_by_total_income_band.band_50000_100000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1286458.3333333335,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_0_10000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39583.333333333336,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_100000_plus",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 851041.6666666667,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_10000_20000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 326562.5,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_20000_30000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 148437.5,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_30000_40000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 79166.66666666667,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_40000_50000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 49479.16666666667,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_50000_60000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 29687.5,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_60000_70000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19791.666666666668,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_70000_80000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9895.833333333334,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_80000_90000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9895.833333333334,
+   "name": "hmrc.pris.landlord_count_by_rental_income_band.band_90000_100000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 51991610879.87771,
+   "name": "hmrc.pris.rental_income.individuals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12133372580.605513,
+   "name": "hmrc.pris.residential_finance_costs",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",

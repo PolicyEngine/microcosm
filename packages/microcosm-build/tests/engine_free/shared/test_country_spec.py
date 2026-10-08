@@ -1135,7 +1135,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1244
+            len(references) == 1257
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1156,7 +1156,9 @@ class TestExistingPackagesGeneralize:
         # income-tax relief total on salary sacrifice in place of the amount row;
         # microcosm#1095: Great Britain pension-age Housing Benefit spending;
         # microcosm#1106: the 13 SPI Table 3.7 net property-income amounts by
-        # total-income band, bound unscaled once the x1.9 exclusion retired
+        # total-income band, bound unscaled once the x1.9 exclusion retired,
+        # and 13 PRIS 2024-25 rows (individuals' receipts, the eleven landlord
+        # counts by size of receipts and residential finance costs)
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

@@ -78,6 +78,10 @@
         "provider_id": "hmrc",
         "label": "Capital Gains Tax"
       },
+      "hmrc.property_rental_income_statistics": {
+        "provider_id": "hmrc",
+        "label": "Property Rental Income Statistics"
+      },
       "hmrc.salary_sacrifice_income_tax_relief": {
         "provider_id": "hmrc",
         "label": "Salary-sacrifice Income Tax relief"

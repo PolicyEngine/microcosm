@@ -78,6 +78,10 @@
         "provider_id": "hmrc",
         "label": "Capital Gains Tax"
       },
+      "hmrc.property_rental_income_statistics": {
+        "provider_id": "hmrc",
+        "label": "Property Rental Income Statistics"
+      },
       "hmrc.salary_sacrifice_income_tax_relief": {
         "provider_id": "hmrc",
         "label": "Salary-sacrifice Income Tax relief"
@@ -369,6 +373,9 @@
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.pris.landlord_count_by_rental_income_band": "hmrc.property_rental_income_statistics",
+      "hmrc.pris.rental_income.individuals": "hmrc.property_rental_income_statistics",
+      "hmrc.pris.residential_finance_costs": "hmrc.property_rental_income_statistics",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
@@ -698,6 +705,9 @@
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
       "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
+      "hmrc.pris.landlord_count_by_rental_income_band": "Landlords by size of rental income",
+      "hmrc.pris.rental_income.individuals": "Individuals' rental income before expenses",
+      "hmrc.pris.residential_finance_costs": "Residential finance costs",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
@@ -4056,6 +4066,646 @@
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.rental_income.individuals",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_amount",
+        "groupby_dimension": "hmrc.tax_entity_type",
+        "dimension_values": {
+          "tax_entity_type": "individual"
+        },
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/pris_rental_income_individuals",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.rental_income.individuals",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_10000_20000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 10000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_10000_20000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_100000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_100000_plus",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_20000_30000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_20000_30000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_30000_40000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_30000_40000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_40000_50000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 40000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_40000_50000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_50000_60000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_50000_60000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_60000_70000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 60000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_60000_70000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_70000_80000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 70000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_70000_80000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_80000_90000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 80000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_80000_90000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_90000_100000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_lower_bound": 90000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_90000_100000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_0_10000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_landlord_count",
+        "groupby_dimension": "hmrc.property_income_band",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "property_income_upper_bound": 10000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.pris.landlord_count_by_rental_income_band.band_0_10000",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.landlord_count_by_rental_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_income_landlord_count",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.residential_finance_costs",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_expenses_amount",
+        "groupby_dimension": "hmrc.property_expense_type",
+        "dimension_values": {
+          "property_expense_type": "residential_finance_costs"
+        },
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/pris_residential_finance_costs",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.residential_finance_costs",
+        "measure_kind": "prepared_column",
+        "observation_basis": "all_tax_entities_2024_scaled_to_individuals_by_table6_expense_share"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.mortgage_interest",
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.property_expenses_amount",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9f3690a9e2896a9d6f184eb9"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.property_expenses_amount",
+          "groupby_dimension": "hmrc.tax_entity_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0be3cfca02357112dff851ae"
+        }
+      ],
+      "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
     {

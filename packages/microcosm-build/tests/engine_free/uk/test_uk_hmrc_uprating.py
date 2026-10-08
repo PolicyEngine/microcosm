@@ -14,7 +14,8 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         UK_SPI_STATE_PENSION_AMOUNT_INDEX_CONCEPT,
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
-    assert len(UK_ENGINE_INDEX_PARAMETERS) == 7
+    assert len(UK_ENGINE_INDEX_PARAMETERS) == 8
+
 
 def test_engine_index_moves_the_amount_by_the_parameter_ratio_and_receipts_it() -> None:
     registry = TargetRegistry(
@@ -46,6 +47,7 @@ def test_engine_index_moves_the_amount_by_the_parameter_ratio_and_receipts_it() 
     assert spec.metadata["uprating_index_engine"].startswith("policyengine-uk ")
     assert "2026-09-22" in spec.metadata["uprating_adjudication"]
 
+
 def test_engine_index_applier_passes_through_a_reference_declaring_another_index() -> (
     None
 ):
@@ -63,6 +65,7 @@ def test_engine_index_applier_passes_through_a_reference_declaring_another_index
         )
         is registry
     )
+
 
 def test_a_fact_opening_in_the_calibration_year_binds_as_published_with_a_receipt() -> (
     None
@@ -87,6 +90,7 @@ def test_a_fact_opening_in_the_calibration_year_binds_as_published_with_a_receip
     ).specs
     assert count.value == 7.0 and count.metadata["uprating_factor"] == "1"
 
+
 def test_a_fact_opening_after_the_calibration_year_is_refused() -> None:
     registry = TargetRegistry(
         (_spec(name="x", value=1.0, lower_bound=20_000, period="2026"),), country="uk"
@@ -99,6 +103,7 @@ def test_a_fact_opening_after_the_calibration_year_is_refused() -> None:
             parameter_path=EARNINGS,
             parameter_value=_fake_parameter,
         )
+
 
 def test_count_growth_uses_the_containing_table_2_5_band_and_the_calendar_window() -> (
     None
@@ -139,6 +144,7 @@ def test_count_growth_uses_the_containing_table_2_5_band_and_the_calendar_window
     assert million.metadata["uprating_index_itl_bands"] == "1000000-2000000;2000000-inf"
     assert CALENDAR_YEAR_WINDOW_WEIGHTS == {-1: 0.25, 0: 0.75}
 
+
 def test_count_growth_refuses_a_band_without_a_vendored_count() -> None:
     registry = TargetRegistry(
         (_spec(name="x", value=1.0, lower_bound=12_570),), country="uk"
@@ -150,6 +156,7 @@ def test_count_growth_refuses_a_band_without_a_vendored_count() -> None:
             registry,
             count_rows=_count_rows(),
         )
+
 
 def test_every_spi_band_maps_to_table_2_5_bands_that_tile_the_range() -> None:
     assert sorted(SPI_BAND_TO_ITL_BANDS) == [
@@ -171,6 +178,7 @@ def test_every_spi_band_maps_to_table_2_5_bands_that_tile_the_range() -> None:
         assert bands[0][0] <= lower
         for (_a_low, a_high), (b_low, _) in zip(bands, bands[1:], strict=False):
             assert a_high == b_low
+
 
 def test_itl_bands_spanned_tiles_every_spi_band_and_the_regional_open_top_band() -> (
     None
@@ -203,6 +211,7 @@ def test_itl_bands_spanned_tiles_every_spi_band_and_the_regional_open_top_band()
     with pytest.raises(ValueError, match="no declared Table 2.5 band"):
         itl_bands_spanned(250_000, None)
 
+
 def test_a_regional_open_top_band_sums_every_table_2_5_band_above_it() -> None:
     rows = _count_rows()
     for year, value in ((2023, 100.0), (2024, 110.0), (2025, 120.0)):
@@ -229,6 +238,7 @@ def test_a_regional_open_top_band_sums_every_table_2_5_band_above_it() -> None:
     assert spec.metadata["uprating_index_itl_bands"] == (
         "200000-500000;500000-1000000;1000000-2000000;2000000-inf"
     )
+
 
 def test_state_pension_amount_moves_with_its_count_rows_recipients_and_the_rate() -> (
     None

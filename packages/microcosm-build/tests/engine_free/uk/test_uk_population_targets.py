@@ -67,6 +67,7 @@ POLICYENGINE_BINDING_KEYS = {
     "affected_flag_variable",
     "band",
     "band_filter_dimension",
+    "band_floor",
     "band_period_factor",
     "band_upper_bound",
     "band_upper_bound_inclusive",
@@ -202,8 +203,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # contribution targets and the DWP employee total leave the fit again (their
     # relief-mechanism and gross definitions do not match the engine's columns;
     # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
-    # pension-age Housing Benefit spending.
-    assert len(resource["targets"]) == 392
+    # pension-age Housing Benefit spending; microcosm#1106 adds the three PRIS
+    # landlord targets.
+    assert len(resource["targets"]) == 395
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -217,10 +219,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 341
+    assert len(registry_scope) == 344
     assert len(profile_scope) == 51
-    assert target_ids[:341] == registry_scope
-    assert target_ids[341:] == profile_scope
+    assert target_ids[:344] == registry_scope
+    assert target_ids[344:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -234,7 +236,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     assert len(mapped_target_ids) == 192
-    assert len(unmapped_declarations) == 149
+    assert len(unmapped_declarations) == 152
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -353,7 +355,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 392
+    assert len(target_ids) == 395
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -444,6 +446,8 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         "individuals_observed_disposal_year_2024_liability_by_age_band",
         "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain",
         "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share",
+        "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share",
+        "all_tax_entities_2024_scaled_to_individuals_by_table6_expense_share",
         "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
         "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
         "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
@@ -821,7 +825,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 392
+    assert len(targets) == 395
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

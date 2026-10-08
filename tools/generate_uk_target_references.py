@@ -45,6 +45,7 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     {
         "affected_flag_variable",
         "band",
+        "band_floor",
         "band_filter_dimension",
         "band_period_factor",
         "band_upper_bound",
@@ -815,6 +816,23 @@ def _add_uk_membership_accounting(
                 "against this net amount, so it is retired; the receipts bind "
                 "on their own variable (microcosm#1106, María's ruling of "
                 "2026-10-05)."
+            ),
+        },
+        {
+            "family": "hmrc_pris",
+            "status": "active_band_pins_scaled_to_individuals",
+            "active_reference_count": fanout_counts.get("hmrc_pris", 0),
+            "signed_rationale": (
+                "HMRC Property Rental Income Statistics 2026, tax year "
+                "2024-25 (microcosm#1106): Table 13's landlords by size of "
+                "rental income fan out by the eleven receipts bands on "
+                "property_rental_income, restated from all tax entities to "
+                "individuals by Table 1's share through the scaled_by_ratio "
+                "operation; the lowest band publishes only its upper edge and "
+                "starts at the declared floor of zero. Individuals' receipts "
+                "(Table 2) and residential finance costs (Table 8, restated by "
+                "Table 6's individuals' share of expenses) bind as single "
+                "rows, each uprated by the engine's index for its variable."
             ),
         },
         {

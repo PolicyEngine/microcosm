@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1266,
-  "contract_target_count": 341,
-  "active_reference_count": 1244,
+  "candidate_count": 1279,
+  "contract_target_count": 344,
+  "active_reference_count": 1257,
   "status_counts": {
-    "active": 1244,
+    "active": 1257,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 15
   },
@@ -179,6 +179,18 @@
       "geography_id": "K02000001"
     },
     "hmrc.spi.property_income.count_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.pris.rental_income.individuals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.pris.landlord_count_by_rental_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.pris.residential_finance_costs": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -5112,6 +5124,77 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "factor": "1.21716287215412",
       "value_before_uprating": "226000.0"
+    },
+    {
+      "name": "hmrc.pris.rental_income.individuals",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.04379865247697",
+      "value_before_uprating": "49810000000.0"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_10000_20000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_100000_plus",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_20000_30000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_30000_40000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_40000_50000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_50000_60000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_60000_70000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_70000_80000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_80000_90000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_90000_100000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.landlord_count_by_rental_income_band.band_0_10000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.pris.residential_finance_costs",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.mortgage_interest",
+      "factor": "1.09519886555473",
+      "value_before_uprating": "11078693525.179855"
     },
     {
       "name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
@@ -13261,6 +13344,161 @@
             "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
             "factor": "1.21716287215412",
             "value_before_uprating": "226000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.pris.rental_income.individuals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.pris.rental_income.individuals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 51991610879.87771,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_978db11b4c8829ce6e426bf6",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.04379865247697",
+            "value_before_uprating": "49810000000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.pris.landlord_count_by_rental_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_10000_20000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 851041.6666666667,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d5d7908eb3cb74c6bb0f0c65"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_100000_plus",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 39583.333333333336,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_53e749163b06fbd82685be88"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_20000_30000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 326562.5,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_09b52ca1b68ccb3aba5787dd"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_30000_40000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 148437.5,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_705be2fa800cfeae3559c1fe"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_40000_50000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 79166.66666666667,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fcbbf66f7850ba13b203f450"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_50000_60000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 49479.16666666667,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ceeebd434e8b36275f962162"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_60000_70000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 29687.5,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2b1ef7be83d42fc731f1a7c"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_70000_80000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 19791.666666666668,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_57846a30fead137f6886397f"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_80000_90000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 9895.833333333334,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4440bdd15eb9c90e52f31244"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_90000_100000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 9895.833333333334,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b31f15e239f53d947239b6a2"
+        },
+        {
+          "name": "hmrc.pris.landlord_count_by_rental_income_band.band_0_10000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1286458.3333333335,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e47ffa5a653a4eac29901b8a"
+        }
+      ]
+    },
+    "hmrc.pris.residential_finance_costs": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.pris.residential_finance_costs",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 12133372580.605513,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b9c719a5d6b045c819614707",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.mortgage_interest",
+            "factor": "1.09519886555473",
+            "value_before_uprating": "11078693525.179855"
           }
         }
       ]
@@ -29506,6 +29744,12 @@
       "status": "active_strict_band_pins",
       "active_reference_count": 182,
       "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins. The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts bind on their own variable (microcosm#1106, Mar\u00eda's ruling of 2026-10-05)."
+    },
+    {
+      "family": "hmrc_pris",
+      "status": "active_band_pins_scaled_to_individuals",
+      "active_reference_count": 11,
+      "signed_rationale": "HMRC Property Rental Income Statistics 2026, tax year 2024-25 (microcosm#1106): Table 13's landlords by size of rental income fan out by the eleven receipts bands on property_rental_income, restated from all tax entities to individuals by Table 1's share through the scaled_by_ratio operation; the lowest band publishes only its upper edge and starts at the declared floor of zero. Individuals' receipts (Table 2) and residential finance costs (Table 8, restated by Table 6's individuals' share of expenses) bind as single rows, each uprated by the engine's index for its variable."
     },
     {
       "family": "hmrc_itl",
