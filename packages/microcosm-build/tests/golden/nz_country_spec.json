@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "df8850d5893e9311882573ff6b4baa41c9dda41f6838d9a140199ddf0cc7fd48",
+  "fingerprint": "b7a6622b1602bf3eebcfa8ceb7000c2460f0cbe1d39d0e60cccdaa8f5e5c1ca6",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -37,7 +37,7 @@
     "as_area_crosswalk.json": "cfb76c99898204598b0609e5462b2fba9d081872a13ac5dd973cb406bb6f7469",
     "as_rate_bridge.json": "5eea897159508fb71820f22cd8ccf4993075a750462bd97312d9e89ab01cba15",
     "axiom_rules_bindings.json": "72905af77132ff6a3c01ada4b6210be4c369d9c6dc49dc8c1b673e4bac0b5fb1",
-    "benefit_unit_rule.json": "9e507e78f180566a1eece74da2a35d88478dbe13487c3a64ee2b76c9ecc7a653",
+    "benefit_unit_rule.json": "2dcc3a890a4b11c3905550e0933e30305e8f5f6144a1af433cec720f710dc49f",
     "country_package.json": "b83de9e12238b41481810ddb7fbdbaaa71d457cbfa9da83f3f53cbf479cee43b",
     "currency_bridge.json": "aa6a4b286a6a1a015088f32ac013148553422c3d45eeef7d7a15af08388857ca",
     "export_contract.json": "f0629a3990a47f3f94114c4d7b6680636ef7b1bd34bb8e950976d3065f029fda",
@@ -46,7 +46,7 @@
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
     "precal_references.json": "43b13849e3d74ebca7d7a9d46817463e3ad1333c3aedd7a3eac39e870510fba0",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
-    "scenarios.json": "5dbf2b9603fa55fd9abd7319e188f882ffe471e99e7d691b81980522a9bef82f",
+    "scenarios.json": "1ca4227290e1a8755886c030e9e6b93ce8fa427238b53ad7671971341af0435b",
     "source_stages.json": "cc1eef0769c79917f33c5ba0f99edf861070143168db48e0145b71efeee751d1",
     "spec/bundle.yaml": "25ef74ecbc00c3f2ecca2d30ddd5e46a582657863c217da33ee9a396569d2cf2",
     "spec/catalogs.yaml": "3ab2025af39cba93ead707b9463e428430a45b30696a43d0906cbcd97ed36631",

@@ -184,14 +184,14 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_obr_national_insurance",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni, obr.ni_employee, obr.ni_employer, and obr.ni_self_employed.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/obr.py:348; Microcosm target ids obr.ni, obr.ni_employee, obr.ni_employer, and obr.ni_self_employed.",
     },
     {
         "concern_id": "national_obr_national_insurance_class_3",
         "status": "reviewed_exclusion",
         "classification": "not_modeled",
         "reason": "The incumbent deliberately skipped Class 3 and no Microcosm dataset path exists.",
-        "evidence": "uk-data targets/sources/obr.py:402-409 and uk-data#88.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/obr.py:402-409 and uk-data#88.",
         "fence": _fence(
             "uk-data skipped the Class 3 OBR row pending uk-data#88.",
             "Avoid pretending voluntary Class 3 contributions are represented by another NIC variable.",
@@ -202,31 +202,31 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_obr_council_tax",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/obr.py:284; Microcosm target ids obr.council_tax and country legs obr.council_tax_{england,scotland,wales}.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/obr.py:284; Microcosm target ids obr.council_tax and country legs obr.council_tax_{england,scotland,wales}.",
     },
     {
         "concern_id": "national_obr_welfare",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/obr.py:458 welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/obr.py:458 welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets.",
     },
     {
         "concern_id": "national_tv_licence_and_policy_statics",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/obr.py:617-728; Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/obr.py:570-728; Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
     },
     {
         "concern_id": "national_hmrc_spi_income_bands",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/hmrc_spi.py:230; Microcosm HMRC SPI amount/count-by-total-income-band targets and replay fences.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/hmrc_spi.py:230; Microcosm HMRC SPI amount/count-by-total-income-band targets and replay fences.",
     },
     {
         "concern_id": "national_hmrc_cgt_size_bands",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/hmrc_cgt.py:195; Microcosm hmrc_cgt_conditioning_facts.json (vendored HMRC Table 2.1a 2024-25 rows read by the donor stage and the amounts redraw) and uk_population_targets.json CGT rows.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/hmrc_cgt.py:196; Microcosm hmrc_cgt_conditioning_facts.json (vendored HMRC Table 2.1a 2024-25 rows read by the donor stage and the amounts redraw) and uk_population_targets.json CGT rows.",
     },
     {
         "concern_id": "national_hmrc_salary_sacrifice",
@@ -265,7 +265,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "routed",
         "classification": "national_grain_follow_up",
         "reason": "The incumbent England-national tenure controls are not part of the current national contract; local tenure is declared separately.",
-        "evidence": "uk-data targets/sources/ons_tenure.py:69; Microcosm local ons.tenure.* contract rows.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/ons_tenure.py:69; Microcosm local ons.tenure.* contract rows.",
         "fence": _fence(
             "uk-data calibrated five England tenure controls.",
             "Preserve an England-level representation check independently of the local Census tenure surface.",
@@ -318,7 +318,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_council_tax_stock",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/voa_council_tax.py:235,275; Microcosm mhclg.council_tax_stock.* (England, composed from the MHCLG taxbase authority rows per region), welshgov.council_tax_stock.* and scotgov.council_tax_stock.* targets on the councils' taxbase basis (microcosm#929).",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/voa_council_tax.py:235,275; Microcosm mhclg.council_tax_stock.* (England, composed from the MHCLG taxbase authority rows per region), welshgov.council_tax_stock.* and scotgov.council_tax_stock.* targets on the councils' taxbase basis (microcosm#929).",
     },
     {
         "concern_id": "national_housing_rate_headcount_products",
@@ -360,7 +360,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "local_council_tax_band_counts",
         "status": "ported_local_declared",
         "classification": "local_registry_family",
-        "evidence": "uk-data targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..i contract rows (mhclg, welshgov and scotgov by_area families) bind 2,511 authority cells on the taxbase basis with the 296 English band-H cells and Shetland's band-H cell signed deferred (microcosm#929).",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..i contract rows (mhclg, welshgov and scotgov by_area families) bind 2,511 authority cells on the taxbase basis with the 296 English band-H cells and Shetland's band-H cell signed deferred (microcosm#929).",
     },
     {
         "concern_id": "local_private_rent_pipr",
@@ -434,7 +434,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "routed",
         "classification": "imputation_anchor",
         "reason": "The £21.6bn rail anchor belongs to WS-E/F (#148), not the local target solve.",
-        "evidence": "uk-data datasets/imputations/services/services.py:18; Chronicle transport facts landed in #200/#202.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 datasets/imputations/services/services.py:18; Chronicle transport facts landed in #200/#202.",
         "fence": _fence(
             "uk-data rescaled rail_usage to a national subsidy total.",
             "Anchor the imputed service-consumption mass.",
@@ -446,7 +446,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "routed",
         "classification": "imputation_anchor",
         "reason": "BUS05 subsidy/fare totals are consumed by the #789 rows; the NTS0705 quintile gradient remains routed to WS-E/F (#148).",
-        "evidence": "uk-data datasets/imputations/services/services.py:33 and datasets/imputations/consumption.py:790,830; Chronicle#200/#202.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 datasets/imputations/services/services.py:33 and datasets/imputations/consumption.py:790,830; Chronicle#200/#202.",
         "fence": _fence(
             "uk-data post-imputation-rescaled bus subsidy and fares, including London share and quintile rates.",
             "Preserve service-consumption totals and distribution.",
@@ -458,7 +458,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "reviewed_exclusion",
         "classification": "untargeted_both_sides",
         "reason": "Education spending was imputed but its aggregate test was commented out; corrected post-ebf733c DfE entitlement data from uk-data#474 remains input-side.",
-        "evidence": "uk-data datasets/imputations/frs_only.py and uk-data tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
+        "evidence": "uk-data at 8629dbbfe82727278d47ee5ff09fd1da4acefa38 datasets/imputations/services/services.py:137-148 and tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
         "fence": _fence(
             "uk-data imputed DfE education spending without an active calibration target.",
             "Retain the imputed input while avoiding an unsupported aggregate claim.",

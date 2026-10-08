@@ -305,7 +305,8 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
                 '"BEA personal interest/dividends include imputed interest, '
                 "pension-plan dividends, and trust flows, so those macro totals "
                 "should not directly calibrate tax/CPS interest and dividend "
-                'variables" (loss.py:67-70, added by PR #1059)'
+                'variables" (utils/loss.py:67-70 at '
+                "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, added by PR #1059)"
             ),
             verdict_basis=(
                 "us-data itself declined it as a direct target (PR #1059): a "

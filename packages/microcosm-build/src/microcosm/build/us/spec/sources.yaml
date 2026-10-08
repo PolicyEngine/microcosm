@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf
+  sha256: 41e8194a6206ff84a287317ebb0fb39a083d2a8811ed013e22f4a21cc1255d18
 stage_manifest:
   version: 1
   country: us
@@ -825,11 +825,12 @@ stages:
   - workers_compensation
   nonnegative_outputs:
   - workers_compensation
-  notes: Exact annual person-level WC_VAL carry from archived cps.py lines 1559-1571; code-1 DIS_VAL slots
-    remain excluded from the separate disability_benefits leaf rather than added here. The CPS-only workers_compensation
-    output is replaced on the PUF support half with the archived eight predictors and at most 5,000 ASEC
-    training people (extended_cps.py lines 135-194, 234-248, 639-745, and 1014-1073). Microcosm pins 100
-    trees and typed person weights as reproducibility hardening.
+  notes: Exact annual person-level WC_VAL carry from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe
+    datasets/cps/cps.py lines 1559-1571; code-1 DIS_VAL slots remain excluded from the separate disability_benefits
+    leaf rather than added here. The CPS-only workers_compensation output is replaced on the PUF support
+    half with the archived eight predictors and at most 5,000 ASEC training people (datasets/cps/extended_cps.py
+    lines 135-194, 234-248, 639-745, and 1014-1073). Microcosm pins 100 trees and typed person weights
+    as reproducibility hardening.
 - stage: weeks_unemployed_input
   survey: Census CPS ASEC
   source: https://www.census.gov/programs-surveys/cps.html
@@ -907,18 +908,18 @@ stages:
   - weeks_unemployed
   nonnegative_outputs:
   - weeks_unemployed
-  notes: Restores the final retired eCPS person-year weeks_unemployed input. Archived cps.py lines 1438-1442
-    carries Census ASEC LKWEEKS directly, mapping only the historical -1 not-in-universe sentinel to zero;
-    the SHA-pinned 2023 ASEC public-use archive supplies the omitted 2022-income-year source rows exactly.
-    Its 146,133 person records match the locked 2022 H5 one-for-one on PH_SEQ, P_SEQ, A_LINENO, A_AGE,
-    A_FNLWGT, UC_VAL, and WKSWORK. The source has 4,200 positive LKWEEKS rows, range 0--51, 3.1456094276%
-    A_FNLWGT-weighted positive support, and 172,563,622.04 weighted person-weeks; Census allocation flags
-    are retained because the retired direct carry did not filter them. Archived calibration/puf_impute.py
-    lines 703-785 replaces only the PUF support half with a QRF using age, sex, three tax-unit roles,
-    joint filing, and unemployment compensation, caps training at 5,000 ASEC people, clips predictions
-    to 0--52, and forces predictions to zero without positive unemployment compensation. Microcosm pins
-    100 trees and typed person weights as reproducibility hardening, and rounds its interpolating QRF
-    draws back to the source's integer-week domain; no 2022 source value is filled statistically.
+  notes: Restores the final retired eCPS person-year weeks_unemployed input. Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe
+    datasets/cps/cps.py lines 1438-1442 carries Census ASEC LKWEEKS directly, mapping only the historical
+    -1 not-in-universe sentinel to zero; the SHA-pinned 2023 ASEC public-use archive supplies the omitted
+    2022-income-year source rows exactly. Its 146,133 person records match the locked 2022 H5 one-for-one
+    on PH_SEQ, P_SEQ, A_LINENO, A_AGE, A_FNLWGT, UC_VAL, and WKSWORK. The source has 4,200 positive LKWEEKS
+    rows, range 0--51, 3.1456094276% A_FNLWGT-weighted positive support, and 172,563,622.04 weighted person-weeks;
+    Census allocation flags are retained because the retired direct carry did not filter them. Archived
+    calibration/puf_impute.py lines 703-785 replaces only the PUF support half with a QRF using age, sex,
+    three tax-unit roles, joint filing, and unemployment compensation, caps training at 5,000 ASEC people,
+    clips predictions to 0--52, and forces predictions to zero without positive unemployment compensation.
+    Microcosm pins 100 trees and typed person weights as reproducibility hardening, and rounds its interpolating
+    QRF draws back to the source's integer-week domain; no 2022 source value is filled statistically.
 - stage: capital_gain_distributions
   survey: IRS SOI Sales of Capital Assets (TY2015) + Pub 1304 Table 1.4
   source: https://www.irs.gov/statistics/soi-tax-stats-sales-of-capital-assets-reported-on-individual-tax-returns
@@ -1242,16 +1243,16 @@ stages:
     the explicitly requested immutable pu2023.csv artifact replaces that commit''s later pu2024 default.
     The full SCF joins all five implicates to the summary extract on (y1, yy1). Archived commit 42ed5d45
     utils/asset_imputation.py lines 15-19 maps summary-extract networth directly to the scf_net_worth
-    QRF anchor; calibration/source_impute.py lines 1146-1164 fits that anchor with these eight predictors
-    and calibration/source_impute.py lines 1324-1338 forces its construction-only balance-sheet components
-    to sum back to it before exporting net_worth. Microcosm therefore persists that signed household anchor
-    directly, including indebted households, without manufacturing or exporting the internal scf_* components.
-    Legacy auto_loan_balance preserves the retired pipeline''s name for original financed amounts, not
-    remaining principal. Auto outputs and net_worth stay Household-grain; only the three SSI liquid-asset
-    leaves are head-carried to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS''s approximately
-    six million qualifying loans issued annually and is bounded by total auto-loan interest. Negative
-    amount/rate codes are floored at the source boundary for the nonnegative auto outputs; signed net_worth
-    is never clipped.'
+    QRF anchor; calibration/source_impute.py lines 1146-1164 add that anchor to the QRF outputs, lines
+    1227-1240 fit it with these eight predictors (SCF_PREDICTORS, lines 168-177), and calibration/source_impute.py
+    lines 1324-1338 forces its construction-only balance-sheet components to sum back to it before exporting
+    net_worth. Microcosm therefore persists that signed household anchor directly, including indebted
+    households, without manufacturing or exporting the internal scf_* components. Legacy auto_loan_balance
+    preserves the retired pipeline''s name for original financed amounts, not remaining principal. Auto
+    outputs and net_worth stay Household-grain; only the three SSI liquid-asset leaves are head-carried
+    to Person. The OBBBA qualifying-interest proxy uses Treasury/IRS''s approximately six million qualifying
+    loans issued annually and is bounded by total auto-loan interest. Negative amount/rate codes are floored
+    at the source boundary for the nonnegative auto outputs; signed net_worth is never clipped.'
 - stage: ssi_disability_criteria
   survey: Census SIPP
   source: https://www.census.gov/programs-surveys/sipp.html
@@ -1597,23 +1598,25 @@ stages:
   outputs:
   - takes_up_ssi_if_eligible
   notes: Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit
-    42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL
-    reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py
-    lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population
-    administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target
-    method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment,
-    by the three published age bands; those recipient counts enter the build only as ledger-fed calibration
-    registry targets (role ssa_ssi_age_band_recipients, microcosm#469 and microcosm#470), never as count-matching
-    goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws
-    once against the documented band prior — the anchored-mass-corrected count-truthful threshold (band
-    target minus basis reporter floor) over (basis candidate capacity minus basis reporter floor) on weighted
-    uncapped_ssi > 0 candidates, zero once the reporter floor meets the target, falling back to the basis
-    reporter share of capacity when capacity cannot subsample the target — seeded and stable per person_source_id,
-    with the decision fanned identically to both support clones. The capacity basis is this frame's weights
-    by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (microcosm#507/#508);
-    either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release
-    weights are gated per enforced band (18_64, 65_plus) within a documented relative tolerance; the under-18
-    band is fenced pending microcosm#453/#509 and its gap ships in the release scorecard.
+    42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py lines 1497-1499 map the direct ASEC
+    SSI_VAL reporter signal to the temporary ssi_reported anchor, line 584 loads the retired SSI rate,
+    lines 650-657 derive the take-up leaf from both, and lines 759-766 drop the anchor and save the leaf;
+    datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age
+    0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines
+    41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024,
+    Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts
+    enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients,
+    microcosm#469 and microcosm#470), never as count-matching goals in this stage. Direct SSI_VAL reporters
+    remain true. Every other source-person identity draws once against the documented band prior — the
+    anchored-mass-corrected count-truthful threshold (band target minus basis reporter floor) over (basis
+    candidate capacity minus basis reporter floor) on weighted uncapped_ssi > 0 candidates, zero once
+    the reporter floor meets the target, falling back to the basis reporter share of capacity when capacity
+    cannot subsample the target — seeded and stable per person_source_id, with the decision fanned identically
+    to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's
+    delivered-weight us_ssi_take_up.json diagnostics (microcosm#507/#508); either way the draw happens
+    exactly once, with no reconcile loop. Delivered recipients on release weights are gated per enforced
+    band (18_64, 65_plus) within a documented relative tolerance; the under-18 band is fenced pending
+    microcosm#453/#509 and its gap ships in the release scorecard.
 - stage: sipp_tips
   survey: Census SIPP
   source: https://www.census.gov/programs-surveys/sipp.html
@@ -1879,9 +1882,10 @@ stages:
     files on PERIDNUM, requires I_ERNVAL == I_SEVAL == 0 on the prior record, treats only -1/-9999 as
     unavailable, records availability before falling back to current WSAL_VAL/SEMP_VAL, and preserves
     signed self-employment losses. After support cloning, datasets/cps/extended_cps.py lines 140-194,
-    639-745, and 1014-1073 jointly QRF-imputes both earnings leaves onto the PUF half from the exact eight
-    predictors with a 5,000-person cap. Microcosm adds typed design weights. The archived finalizer drops
-    formula-owned employment_income_last_year; the signed self-employment leaf and availability flag persist.
+    234-248, 639-745, and 1014-1073 jointly QRF-imputes both earnings leaves onto the PUF half from the
+    exact eight predictors with a 5,000-person cap. Microcosm adds typed design weights. The archived
+    finalizer drops formula-owned employment_income_last_year; the signed self-employment leaf and availability
+    flag persist.
 - stage: immigration_status
   survey: CPS ASEC + published unauthorized-population estimates
   source: https://www.pewresearch.org/short-reads/2024/07/22/what-we-know-about-unauthorized-immigrants-living-in-the-us/
@@ -2330,14 +2334,15 @@ stages:
   outputs:
   - takes_up_wic_if_eligible
   notes: 'The retired eCPS derives PolicyEngine-US wic_category_str and assigns a stable seeded Bernoulli
-    at category-specific rates (archived cps.py lines 684-691, wic_takeup.yaml lines 1-33, and randomness.py
-    lines 5-28). The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%,
-    all postpartum 68.9%, breastfeeding 66.3%, infants 78.4%, and children 46.0%. Microcosm deliberately
-    runs this stage after pregnancy; the retired file computed WIC categories before its later pregnancy
-    seed, which accidentally made the pregnant rate unreachable. The hermetic sources carry no breastfeeding
-    assessment, so breastfeeding remains unavailable and mothers of infants use FNS''s all-postpartum
-    rate rather than an invented breastfeeding status. Stable source-identity hashes preserve paired support-clone
-    outcomes. The separate is_wic_at_nutritional_risk input remains a reviewed source-unavailability exclusion.'
+    at category-specific rates (archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, datasets/cps/cps.py
+    lines 684-691, parameters/take_up/wic_takeup.yaml lines 1-33, and utils/randomness.py lines 5-28).
+    The archived rates exactly match USDA FNS CY2022 average-month coverage: pregnant 45.6%, all postpartum
+    68.9%, breastfeeding 66.3%, infants 78.4%, and children 46.0%. Microcosm deliberately runs this stage
+    after pregnancy; the retired file computed WIC categories before its later pregnancy seed, which accidentally
+    made the pregnant rate unreachable. The hermetic sources carry no breastfeeding assessment, so breastfeeding
+    remains unavailable and mothers of infants use FNS''s all-postpartum rate rather than an invented
+    breastfeeding status. Stable source-identity hashes preserve paired support-clone outcomes. The separate
+    is_wic_at_nutritional_risk input remains a reviewed source-unavailability exclusion.'
 - stage: snap_abawd_discretionary_exemption
   survey: Census CPS ASEC + statutory exemption cap (7 U.S.C. 2015(o)(6))
   source: https://www.law.cornell.edu/uscode/text/7/2015#o_6
@@ -2560,13 +2565,14 @@ stages:
   - pre_subsidy_rent
   notes: Exact CPS H_TENURE and SPM carries plus the archived 10-predictor ACS rent QRF. receives_housing_assistance
     receives the retired second-stage CPS-to-PUF QRF, and takes_up_housing_assistance_if_eligible is kept
-    exactly equal to that measured/imputed receipt anchor. Archived cps.py lines 664-682 preserved reporters
-    before adding eligible nonreporters from a 0.50 draw; parameters/take_up/housing_assistance.yaml lines
-    12-15 say 0.50 was an ad hoc eCPS benchmark adjustment pending fuller calibration. Archived db/etl_housing_assistance.py
-    lines 35-169 use a live HUD workbook to produce household-grain state counts, not SPM-unit recipient
-    identities; that workbook is not pinned in the hermetic build and allocating its counts to SPM units
-    would synthesize recipients. Microcosm never turns a reporter off and does not add unobserved take-up.
-    Rent and both tenure enums are cloned unchanged.
+    exactly equal to that measured/imputed receipt anchor. Archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe
+    datasets/cps/cps.py lines 664-682 preserved reporters before adding eligible nonreporters from a 0.50
+    draw; parameters/take_up/housing_assistance.yaml lines 12-15 say 0.50 was an ad hoc eCPS benchmark
+    adjustment pending fuller calibration. Archived db/etl_housing_assistance.py lines 35-169 use a live
+    HUD workbook to produce household-grain state counts, not SPM-unit recipient identities; that workbook
+    is not pinned in the hermetic build and allocating its counts to SPM units would synthesize recipients.
+    Microcosm never turns a reporter off and does not add unobserved take-up. Rent and both tenure enums
+    are cloned unchanged.
 - stage: vehicle_assets
   survey: Census SIPP
   source: https://www.census.gov/programs-surveys/sipp.html

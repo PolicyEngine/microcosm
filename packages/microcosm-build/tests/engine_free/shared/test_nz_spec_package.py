@@ -19,12 +19,18 @@ broken check:
   (``modal_area``);
 - every scenario names exactly one method-card row and a tier from
   {entitlement, calibration}, and changes exactly one knob from the centre
-  (``scenario_errors``).
+  (``scenario_errors``);
+- the source-citation invariants every country package shares (no line
+  citation of this repository's files, no unpinned line citation of another
+  repository's, every dotted ``microcosm.*`` name resolves) are stated and
+  tested once, in ``test_spec_source_citations.py``; this file keeps the NZ
+  regression vectors and the harness pin.
 
 Differential checks compare two records of one fact: the loader's target
 references with a direct parse, the rules bindings' module digests with the
-committed Axiom input surface, and the export contract's formula-owned list
-with the bound variables.
+committed Axiom input surface, the export contract's formula-owned list
+with the bound variables, and the benefit unit rule's symbol citations with
+the sources they name.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import hashlib
+import inspect
 import json
 import math
 import re
@@ -49,6 +56,13 @@ from microcosm.build.ledger_targets import (
     reference_fact_selectors,
 )
 from microcosm.build.spec_engine import load_yaml12
+from microcosm.frame import concepts as frame_concepts
+from test_support.microcosm_build.spec_source_citations import (
+    commit_pinned_sources,
+    line_citations,
+    nested_strings,
+    unpinned_line_citations,
+)
 from test_support.paths import paths_for
 
 _BUILD = paths_for("microcosm-build")
@@ -1472,6 +1486,81 @@ class TestScenarios:
         document = _load("scenarios.json")
         expected = SCENARIO_BREAKERS[branch](document, data)
         assert expected in scenario_errors(document)
+
+
+# ---------------------------------------------------------------------------
+# Source citations
+# ---------------------------------------------------------------------------
+
+
+class TestSourceCitations:
+    def test_the_harness_line_citations_are_scanned_and_pinned(self) -> None:
+        bridge = _load("as_rate_bridge.json")
+        assert {citation.name for citation in line_citations(bridge)} == {"run.py"}
+        assert "run.py" in commit_pinned_sources(bridge)
+        assert bridge["source"]["path"].endswith("/run.py")
+        assert re.fullmatch(r"[0-9a-f]{40}", bridge["source"]["commit"])
+        assert unpinned_line_citations(bridge) == []
+
+    @pytest.mark.parametrize(
+        "replaced",
+        [
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py:880-919",
+            "a lone co-resident parent is always parent 1 (the pointer "
+            "definition, concepts.py lines 892-901; the pointer checks ...)",
+            "(microcosm.graph.executor._structural_columns, executor.py lines 636-643)",
+            "(_validate_population_declaration, executor.py lines 1550-1573)",
+            "the conformance harness uses 365/7 weeks (ops main run.py:168)",
+        ],
+    )
+    def test_the_line_citations_the_package_carried_are_refused(
+        self, replaced: str
+    ) -> None:
+        assert unpinned_line_citations({"rule": replaced})
+
+    def test_benefit_unit_rule_cites_the_relationship_pointers_by_symbol(
+        self,
+    ) -> None:
+        rule = _load("benefit_unit_rule.json")
+        source = inspect.getsource(frame_concepts)
+        block = source.split("# --- Relationships", 1)[1].split("# --- ", 1)[0]
+        block_pointers = re.findall(r'_pointer\(\s*"(\w+)"', block)
+        assert block_pointers == [
+            "partner_person_id",
+            "parent_1_person_id",
+            "parent_2_person_id",
+            "reference_person_id",
+        ]
+        pointers = rule["pointer_concepts"]
+        named = [
+            pointers["partner"],
+            *pointers["parents"],
+            pointers["household_reference_person"],
+        ]
+        assert named == block_pointers
+        assert pointers["citation"] == (
+            "packages/microcosm-frame/src/microcosm/frame/concepts.py, the "
+            f'"# --- Relationships" block: _pointer("{block_pointers[0]}") '
+            f'through _pointer("{block_pointers[-1]}")'
+        )
+        cited = {
+            name
+            for text in nested_strings(rule)
+            for name in re.findall(r'_pointer\("(\w+)"\)', text)
+        }
+        assert cited == {
+            "partner_person_id",
+            "parent_1_person_id",
+            "reference_person_id",
+        }
+        (child,) = [
+            row for row in rule["composition"] if row["member"] == "dependent_child"
+        ]
+        assert 'concepts.py _pointer("parent_1_person_id")' in child["rule"]
+        parent_1 = frame_concepts.concept("fact:person.parent_1_person_id")
+        assert "always parent 1" in parent_1.definition
+        assert "concepts.py _check_pointers" in child["rule"]
+        assert callable(frame_concepts._check_pointers)
 
 
 # ---------------------------------------------------------------------------
