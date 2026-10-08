@@ -683,9 +683,9 @@
       "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit."
     },
     "unmapped_declarations": {
-      "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
+      "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them.",
+      "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them.",
+      "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them.",
       "ons.population.female_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
       "ons.population.male_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
       "hmrc.tfc.government_top_up": "Post-freeze fact family, no uk-data metric.",
@@ -835,23 +835,23 @@
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
         "contract_target_id": "hmrc.salary_sacrifice.it_relief_basic_rate",
-        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them."
       },
       "hmrc/salary_sacrifice_it_relief_higher_rate": {
         "contract_target_id": "hmrc.salary_sacrifice.it_relief_higher_rate",
-        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them."
       },
       "hmrc/salary_sacrifice_it_relief_additional_rate": {
         "contract_target_id": "hmrc.salary_sacrifice.it_relief_additional_rate",
-        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them."
       },
       "hmrc/salary_sacrifice_employee_nics_relief": {
         "contract_target_id": "hmrc.salary_sacrifice.nics_relief_employee",
-        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them."
       },
       "hmrc/salary_sacrifice_employer_nics_relief": {
         "contract_target_id": "hmrc.salary_sacrifice.nics_relief_employer",
-        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are dropped by the catch-all except Exception in uk-data targets/sources/hmrc_salary_sacrifice.py lines 34-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3, which only logs the download error and returns the salary_sacrifice_contributions target alone, so build_loss_matrix.py never receives them."
       }
     },
     "accounting_notes": {
@@ -2200,7 +2200,7 @@
         "policyengine": {
           "metric_name": "obr/council_tax",
           "value_variable": "council_tax_less_benefit",
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -2243,7 +2243,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_england",
@@ -2286,7 +2286,7 @@
               "equals": "SCOTLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_scotland",
@@ -2329,7 +2329,7 @@
               "equals": "WALES"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (uk-data targets/compute/council_tax.py:21-43 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_wales",
@@ -2426,7 +2426,7 @@
               "map_to": "household"
             }
           ],
-          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (uk-data targets/compute/income.py:98-102 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
         },
         "axiom": {
           "metric_name": "obr/esa",
@@ -2868,7 +2868,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Split of UC spend by benefit-cap status (uk-data targets/compute/benefits.py:101-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_in_cap",
@@ -2948,7 +2948,7 @@
               "map_to": "benunit"
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
+          "notes": "Split of UC spend by benefit-cap status (uk-data targets/compute/benefits.py:101-109 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane). Scoped to Great Britain (microcosm#1095, uk-data#490): OBR table 4.9 reports this line inside 'DWP social security', whose figures cover Great Britain and residents overseas (DWP benefit expenditure and caseload tables, Spring 2026, Notes 3), and lists Northern Ireland social security on rows of its own, so the model column sums Great Britain households only. The Chronicle fact still carries the UK code K02000001."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_outside_cap",
@@ -3091,7 +3091,7 @@
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (uk-data targets/compute/income.py:23-50 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_basic_rate",
@@ -3133,7 +3133,7 @@
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (uk-data targets/compute/income.py:23-50 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_higher_rate",
@@ -3174,7 +3174,7 @@
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (uk-data targets/compute/income.py:23-50 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_additional_rate",
@@ -3210,7 +3210,7 @@
           "output_variable": "ni_employee",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "NICs relief attributed to salary sacrifice (compute/income.py:59-68). uk-data's SPP-Review-based obr/salary_sacrifice_employee_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the microcosm#622 parity gate."
+          "notes": "NICs relief attributed to salary sacrifice (uk-data targets/compute/income.py:59-68 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). uk-data's SPP-Review-based obr/salary_sacrifice_employee_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the microcosm#622 parity gate."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_employee_nics_relief",
@@ -3246,7 +3246,7 @@
           "output_variable": "ni_employer",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "NICs relief attributed to salary sacrifice (compute/income.py:59-68). uk-data's SPP-Review-based obr/salary_sacrifice_employer_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the microcosm#622 parity gate."
+          "notes": "NICs relief attributed to salary sacrifice (uk-data targets/compute/income.py:59-68 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). uk-data's SPP-Review-based obr/salary_sacrifice_employer_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the microcosm#622 parity gate."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_employer_nics_relief",
@@ -3293,7 +3293,7 @@
           "from_entity": "person",
           "map_to": "household",
           "threshold_price_base_year": 2023,
-          "notes": "The GBP 2,000 cap is defined at FRS base-year (2023) prices; deflate salary-sacrifice amounts before banding (compute/income.py:71-95)."
+          "notes": "The GBP 2,000 cap is defined at FRS base-year (2023) prices; deflate salary-sacrifice amounts before banding (uk-data targets/compute/income.py:71-95 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "obr/salary_sacrifice_users_below_cap",
@@ -3336,7 +3336,7 @@
           "from_entity": "person",
           "map_to": "household",
           "threshold_price_base_year": 2023,
-          "notes": "The GBP 2,000 cap is defined at FRS base-year (2023) prices; deflate salary-sacrifice amounts before banding (compute/income.py:71-95)."
+          "notes": "The GBP 2,000 cap is defined at FRS base-year (2023) prices; deflate salary-sacrifice amounts before banding (uk-data targets/compute/income.py:71-95 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "obr/salary_sacrifice_users_above_cap",
@@ -3373,7 +3373,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/employment_income_income_band",
@@ -3461,7 +3461,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_income_band",
@@ -3549,7 +3549,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/dividend_income_income_band",
@@ -3637,7 +3637,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). The x1.9 property-income undercount adjustment is a populace-side value declaration, not a fact property."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The x1.9 property-income undercount adjustment is a populace-side value declaration, not a fact property."
         },
         "axiom": {
           "metric_name": "hmrc/property_income_income_band",
@@ -3725,7 +3725,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/private_pension_income_income_band",
@@ -3813,7 +3813,7 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "hmrc/state_pension_income_band",
@@ -4044,7 +4044,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "0/1 household indicator, not a benunit headcount (compute/benefits.py:14-21). The publisher's GBP 320.9m total-reduction companion is a computed annualization - excluded per the facts-only ADR. Scoped to Great Britain (microcosm#1095, uk-data#490): the DWP benefit cap statistics cover Great Britain (K03000001), so the model counts Great Britain households only."
+          "notes": "0/1 household indicator, not a benunit headcount (uk-data targets/compute/benefits.py:14-21 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). The publisher's GBP 320.9m total-reduction companion is a computed annualization - excluded per the facts-only ADR. Scoped to Great Britain (microcosm#1095, uk-data#490): the DWP benefit cap statistics cover Great Britain (K03000001), so the model counts Great Britain households only."
         },
         "axiom": {
           "metric_name": "dwp/benefit_capped_households",
@@ -5749,7 +5749,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (uk-data targets/compute/benefits.py:84-98 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5841,7 +5841,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (uk-data targets/compute/benefits.py:84-98 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5933,7 +5933,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (uk-data targets/compute/benefits.py:84-98 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -6025,7 +6025,7 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (uk-data targets/compute/benefits.py:84-98 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -10760,7 +10760,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "Household indicator (compute/demographics.py:60-77)."
+          "notes": "Household indicator (uk-data targets/compute/demographics.py:60-77 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "ons/scotland_households_3plus_children",
@@ -11180,7 +11180,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "Bound on the frame column household.ons_household_type == 'lone_parent_non_dependent_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a lone parent whose children in the household are all non-dependent. The summed-age head-age proxy inherited from uk-data compute/households.py:45-52 is retired; the relationship grid makes the cell exact."
+          "notes": "Bound on the frame column household.ons_household_type == 'lone_parent_non_dependent_children_households', written by the frs_relationships stage (microcosm#791) from the FRS household grid (relhrp, R01-R14); the value is Chronicle's ons.household_type dimension value id, so the contract row, the frame and the published fact share one string and no engine variable is involved. ONS dependency is under 16, or 16-18 in full-time education (the engine's is_child, age under 18, is not used). Exactly one family, a lone parent whose children in the household are all non-dependent. The summed-age head-age proxy inherited from uk-data targets/compute/households.py:45-52 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3 is retired; the relationship grid makes the cell exact."
         },
         "axiom": {
           "metric_name": "ons/lone_parent_non_dependent_children_households",
@@ -13191,7 +13191,7 @@
           "value_variable": "savings_interest_income",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (sources/ons_savings.py:39-44)."
+          "notes": "uk-data holds the last actual flat for later years - a populace-side declaration (uk-data targets/sources/ons_savings.py:39-44 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "ons/savings_interest_income",
@@ -13264,7 +13264,7 @@
         "policyengine": {
           "metric_name": "ons/land_value",
           "value_variable": "land_value",
-          "notes": "National balance sheet land series for the total_economy sector; uk-data carries the last estimate flat to later years (populace-side declaration, sources/_land.py:52-73)."
+          "notes": "National balance sheet land series for the total_economy sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:48-52 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "ons/land_value",
@@ -13294,7 +13294,7 @@
         "policyengine": {
           "metric_name": "ons/household_land_value",
           "value_variable": "household_land_value",
-          "notes": "National balance sheet land series for the households_and_npish sector; uk-data carries the last estimate flat to later years (populace-side declaration, sources/_land.py:52-73)."
+          "notes": "National balance sheet land series for the households_and_npish sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:54-59 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "ons/household_land_value",
@@ -13324,7 +13324,7 @@
         "policyengine": {
           "metric_name": "ons/corporate_land_value",
           "value_variable": "corporate_land_value",
-          "notes": "National balance sheet land series for the non_financial_corporations sector; uk-data carries the last estimate flat to later years (populace-side declaration, sources/_land.py:52-73)."
+          "notes": "National balance sheet land series for the non_financial_corporations sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:60-65 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "ons/corporate_land_value",
@@ -13357,7 +13357,7 @@
           "value_variable": "student_loan_repayment",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One fact per devolved country (Scotland, Wales, Northern Ireland); the resolved geography binds the model country filter (compute/other.py:116-137)."
+          "notes": "One fact per devolved country (Scotland, Wales, Northern Ireland); the resolved geography binds the model country filter (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/devolved",
@@ -13522,7 +13522,7 @@
             "plan_2_full_time",
             "plan_2_part_time"
           ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (compute/other.py:116-137)."
+          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england/plan_2",
@@ -13583,7 +13583,7 @@
             "plan_3_postgraduate_masters",
             "plan_3_postgraduate_doctoral"
           ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (compute/other.py:116-137)."
+          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england/postgraduate",
@@ -13644,7 +13644,7 @@
             "plan_5_full_time",
             "plan_5_part_time"
           ],
-          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (compute/other.py:116-137)."
+          "notes": "Publisher splits full-time/part-time (and masters/doctoral) products the model does not distinguish; the listed source lines sum to this target (uk-data targets/compute/other.py:116-137 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/student_loan_repayment/england/plan_5",
@@ -13696,7 +13696,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96)."
+          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; uk-data targets/compute/other.py:77-96 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/plan_2_borrowers_above_threshold",
@@ -13744,7 +13744,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113)."
+          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (uk-data targets/compute/other.py:99-113 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/plan_2_borrowers_liable",
@@ -13797,7 +13797,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; compute/other.py:77-96)."
+          "notes": "England borrowers on this plan earning above the repayment threshold (proxied by positive repayments, matching what the FRS captures via PAYE; uk-data targets/compute/other.py:77-96 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/plan_5_borrowers_above_threshold",
@@ -13845,7 +13845,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (compute/other.py:99-113)."
+          "notes": "England borrowers on this plan liable to repay, including below-threshold holders (uk-data targets/compute/other.py:99-113 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "slc/plan_5_borrowers_liable",

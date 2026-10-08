@@ -607,8 +607,17 @@ def test_esi_exclusion_pins_complete_hermetic_source_unavailability_evidence() -
             "NOW_HIPAID",
             "NOW_GRPFTYP",
         ]
-    assert "buildj_base.sh lines 65-69" in evidence["hermetic_build_contract"]
-    assert "base_j.summary.json lines 55-75" in evidence["hermetic_build_contract"]
+    contract = evidence["hermetic_build_contract"]
+    assert "--asec-h5 2024=, 2023=, and 2022= arguments" in contract
+    assert "base_source.sources[].sha256" in contract
+    summary = json.loads(
+        (ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()
+    )
+    assert [len(source["sha256"]) for source in summary["base_source"]["sources"]] == [
+        64,
+        64,
+        64,
+    ]
     build_script = (ROOT / "experiments/build_j_recert/buildj_base.sh").read_text()
     for year in (2022, 2023, 2024):
         assert f'--asec-h5 {year}="$USD/census_cps_{year}.h5"' in build_script
