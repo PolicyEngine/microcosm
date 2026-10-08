@@ -69,6 +69,20 @@ def test_integration_job_is_uk_selected_and_read_only() -> None:
     assert "run: bash tools/run_integration_tests.sh" in integration
 
 
+def test_every_workflow_job_caps_its_runtime() -> None:
+    """A hung job must not hold an org-shared runner for GitHub's 6-hour default."""
+    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+    jobs = "\n" + workflow.split("\njobs:\n", maxsplit=1)[1]
+    names = ci_test_plan.workflow_job_names(workflow)
+
+    assert names
+    for name, following in zip(names, (*names[1:], None), strict=True):
+        block = jobs.split(f"\n  {name}:\n", maxsplit=1)[1]
+        if following is not None:
+            block = block.split(f"\n  {following}:\n", maxsplit=1)[0]
+        assert "\n    timeout-minutes: " in f"\n{block}", name
+
+
 def test_workflow_uses_one_country_selector_only_for_country_jobs() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     selector = workflow.split("\n  select-countries:\n", maxsplit=1)[1].split(
