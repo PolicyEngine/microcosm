@@ -831,10 +831,7 @@
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
-      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11).",
-      "hmrc.pris.rental_income.individuals": "New declaration backed by HMRC Property Rental Income Statistics 2026 facts (tax year 2024-25) on the landlord inputs policyengine-uk 2.123.0 reads (microcosm#1106). The incumbent registry carried no PRIS row: it used PRIS only for the x1.9 scaling of the SPI net amounts, retired in the same issue.",
-      "hmrc.pris.landlord_count_by_rental_income_band": "New declaration backed by HMRC Property Rental Income Statistics 2026 facts (tax year 2024-25) on the landlord inputs policyengine-uk 2.123.0 reads (microcosm#1106). The incumbent registry carried no PRIS row: it used PRIS only for the x1.9 scaling of the SPI net amounts, retired in the same issue.",
-      "hmrc.pris.residential_finance_costs": "New declaration backed by HMRC Property Rental Income Statistics 2026 facts (tax year 2024-25) on the landlord inputs policyengine-uk 2.123.0 reads (microcosm#1106). The incumbent registry carried no PRIS row: it used PRIS only for the x1.9 scaling of the SPI net amounts, retired in the same issue."
+      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -911,9 +908,6 @@
       "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc.spi.property_income.amount_by_total_income_band",
       "hmrc.spi.property_income.count_by_total_income_band",
-      "hmrc.pris.rental_income.individuals",
-      "hmrc.pris.landlord_count_by_rental_income_band",
-      "hmrc.pris.residential_finance_costs",
       "hmrc.spi.private_pension_income.amount_by_total_income_band",
       "hmrc.spi.private_pension_income.count_by_total_income_band",
       "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -3713,192 +3707,6 @@
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
-    },
-    {
-      "target_id": "hmrc.pris.rental_income.individuals",
-      "family": "hmrc_pris",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.income.property_rental.amount"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/pris_rental_income_individuals",
-          "value_variable": "property_rental_income",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Property Rental Income Statistics 2026, Table 2: individuals' rental income from property businesses before allowable expenses, 2024-25. Partnerships are left out (the spine carries individuals). property_rental_income is the receipts the property_components stage gives every landlord with a profit (microcosm#1106, María's ruling of 2026-10-05: the receipts bind on their own variable, UK individuals' total only); landlords without profit, whose loss counts as zero, carry none, so their receipts are a residual this row cannot reach on those records."
-        },
-        "axiom": {
-          "metric_name": "hmrc/pris_rental_income_individuals",
-          "status": "pending",
-          "value_rule": "uk.income.property_rental.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.property_income_amount",
-        "groupby_dimension": "hmrc.tax_entity_type",
-        "dimension_values": {
-          "tax_entity_type": "individual"
-        },
-        "entity_name": "tax_unit",
-        "period_type": "tax_year",
-        "period_value": 2024
-      },
-      "category_id": "hmrc.property_rental_income_statistics",
-      "label": "Individuals' rental income before expenses",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "selector_note": "Uprated from the 2024-25 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2024 and 1 January 2025: the index the engine uprates property_rental_income by, the same as property_income's, so uprated receipts never fall below uprated profit."
-    },
-    {
-      "target_id": "hmrc.pris.landlord_count_by_rental_income_band",
-      "family": "hmrc_pris",
-      "geography_levels": [
-        "country"
-      ],
-      "value_operation": "scaled_by_ratio",
-      "value_operands": [
-        {
-          "role": "base"
-        },
-        {
-          "role": "numerator",
-          "source_concept": "hmrc.property_income_landlord_count",
-          "groupby_dimension": "hmrc.tax_entity_type",
-          "entity_name": "tax_unit",
-          "geography_level": "country",
-          "geography_id": "K02000001",
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:642f3b532484d795fdec62f1"
-        },
-        {
-          "role": "denominator",
-          "source_concept": "hmrc.property_income_landlord_count",
-          "groupby_dimension": "hmrc.tax_entity_type",
-          "entity_name": "tax_unit",
-          "geography_level": "country",
-          "geography_id": "K02000001",
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:9610abce2477ffb84bee9072"
-        }
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "groupby_dimension": "hmrc.property_income_band",
-        "filters": [
-          {
-            "concept": "uk.income.property_rental.amount",
-            "operator": ">",
-            "value": 0
-          }
-        ],
-        "observation_basis": "all_tax_entities_by_size_of_rental_income_2024_scaled_to_individuals_by_table1_share"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/pris_landlord_count_rental_income_band",
-          "groupby_variable": "property_rental_income",
-          "band_floor": 0,
-          "filters": [
-            {
-              "variable": "property_rental_income",
-              "operator": ">",
-              "value": 0
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Property Rental Income Statistics 2026, Table 13: landlords by size of rental income before expenses, 2024-25, all tax entities (2.88m), restated on the individuals basis by Table 1's individuals/all share (2.85m of 2.88m) through the scaled_by_ratio operation, on the declared assumption that partnerships spread across bands like all tax entities. Partnerships' mean receipts are several times individuals', so the assumption overstates individuals in the top bands. Banded on property_rental_income; the lowest band publishes only its upper edge (up to GBP 10,000) and starts at the declared band_floor of 0. PRIS counts landlords whose expenses exceed their receipts, who carry no receipts on the spine (microcosm#1106)."
-        },
-        "axiom": {
-          "metric_name": "hmrc/pris_landlord_count_rental_income_band",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.property_income_landlord_count",
-        "groupby_dimension": "hmrc.property_income_band",
-        "entity_name": "tax_unit",
-        "period_type": "tax_year",
-        "period_value": 2024
-      },
-      "category_id": "hmrc.property_rental_income_statistics",
-      "label": "Landlords by size of rental income",
-      "selector_note": "Held at the 2024-25 counts for the 2025 calibration period: HMRC publishes no projection of landlord counts, and the bands are fixed in nominal pounds."
-    },
-    {
-      "target_id": "hmrc.pris.residential_finance_costs",
-      "family": "hmrc_pris",
-      "geography_levels": [
-        "country"
-      ],
-      "value_operation": "scaled_by_ratio",
-      "value_operands": [
-        {
-          "role": "base"
-        },
-        {
-          "role": "numerator",
-          "source_concept": "hmrc.property_expenses_amount",
-          "groupby_dimension": "hmrc.tax_entity_type",
-          "entity_name": "tax_unit",
-          "geography_level": "country",
-          "geography_id": "K02000001",
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:9f3690a9e2896a9d6f184eb9"
-        },
-        {
-          "role": "denominator",
-          "source_concept": "hmrc.property_expenses_amount",
-          "groupby_dimension": "hmrc.tax_entity_type",
-          "entity_name": "tax_unit",
-          "geography_level": "country",
-          "geography_id": "K02000001",
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:0be3cfca02357112dff851ae"
-        }
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.income.property_finance_costs.amount",
-        "observation_basis": "all_tax_entities_2024_scaled_to_individuals_by_table6_expense_share"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/pris_residential_finance_costs",
-          "value_variable": "property_finance_costs",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Property Rental Income Statistics 2026, Table 8: residential finance costs declared by landlords, 2024-25, all tax entities (GBP 12.82bn), restated on the individuals basis by Table 6's individuals' share of allowable expenses (30.03 of 34.75) through the scaled_by_ratio operation. ITTOIA 2005 s. 272A restricts these costs and s. 274A relieves them as a tax reduction, the concept property_finance_costs holds (PolicyEngine/policyengine-uk#2172); non-residential finance costs stay deductible and are not this row. The costs are declared before the s. 274AA limits; the engine applies the limits itself (microcosm#1106)."
-        },
-        "axiom": {
-          "metric_name": "hmrc/pris_residential_finance_costs",
-          "status": "pending",
-          "value_rule": "uk.income.property_finance_costs.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.property_expenses_amount",
-        "groupby_dimension": "hmrc.property_expense_type",
-        "dimension_values": {
-          "property_expense_type": "residential_finance_costs"
-        },
-        "entity_name": "tax_unit",
-        "period_type": "tax_year",
-        "period_value": 2024
-      },
-      "category_id": "hmrc.property_rental_income_statistics",
-      "label": "Residential finance costs",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.mortgage_interest",
-      "selector_note": "Uprated from the 2024-25 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.mortgage_interest between 1 January 2024 and 1 January 2025: the index the engine uprates property_finance_costs by."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -30254,10 +30062,6 @@
       "hmrc.capital_gains_tax": {
         "provider_id": "hmrc",
         "label": "Capital Gains Tax"
-      },
-      "hmrc.property_rental_income_statistics": {
-        "provider_id": "hmrc",
-        "label": "Property Rental Income Statistics"
       },
       "hmrc.salary_sacrifice_income_tax_relief": {
         "provider_id": "hmrc",
