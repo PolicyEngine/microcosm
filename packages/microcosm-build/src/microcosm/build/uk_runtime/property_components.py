@@ -37,10 +37,13 @@ profit, so the stage constructs them from PRIS 2024-25 (the vendored
 ``hmrc_property_rental_income_facts.json``), the way the CGT stage allocates
 its Table 3 bands: landlords are ranked by profit (both channels, after the
 add-back), walked top band first into Table 13's eleven bands of rental
-income at their individuals-basis landlord counts (one seeded systematic
-offset, whole persons), and given receipts linear in their weight-ranked
-position within the band, from its upper bound for the highest profit down
-to its lower bound, never below their profit. The open top band takes
+income (one seeded systematic offset, whole persons), and given receipts
+linear in their weight-ranked position within the band, from its upper bound
+for the highest profit down to its lower bound, never below their profit.
+Each band is filled to its share of PRIS's individual landlords applied to
+the spine's own landlord weight, not to PRIS's count: before calibration the
+spine carries fewer landlords than PRIS (2.21m against 2.85m), and filling
+the published counts would push every profit rank into a higher band. The open top band takes
 receipts proportional to profit, ``max(100,000, k x profit)``, with ``k >= 1``
 solved so that receipts reach the individuals' Table 2 total. Receipts less
 profit are the deductible expenses: PRIS's allowable expenses other than
@@ -652,10 +655,11 @@ def allocate_property_rental_income(
     """Receipts for every person with ``profit`` above zero (zero elsewhere).
 
     Ranked by profit (person id breaks ties), walked top band first into
-    Table 13's bands at their individuals-basis counts, linear within a
-    bounded band from its upper bound down, never below profit; the open top
-    band takes ``max(lower bound, k x profit)`` with ``k`` solved to the
-    individuals' receipts total.
+    Table 13's bands, each filled to its share of the individuals-basis
+    landlords times the landlords' weight here, linear within a bounded band
+    from its upper bound down, never below profit; the open top band takes
+    ``max(lower bound, k x profit)`` with ``k`` solved so that receipts per
+    landlord reach the individuals' Table 2 receipts per landlord.
     """
 
     profit = np.asarray(profit, dtype=float)
@@ -669,10 +673,16 @@ def allocate_property_rental_income(
         raise PropertyComponentsError("no landlord with profit above zero to allocate.")
     order = landlord[np.lexsort((ids[landlord], -profit[landlord]))]
     ranked_weights = weights[order]
+    landlord_weight = float(ranked_weights.sum())
+    published_landlords = float(sum(band.landlords for band in bands))
+    if not landlord_weight > 0.0 or not published_landlords > 0.0:
+        raise PropertyComponentsError("the walk needs positive landlord weight.")
+    # Each band's share of the published landlords, applied to this frame's.
+    share_scale = landlord_weight / published_landlords
     offset = float(np.random.default_rng(spec.walk_seed).random())
     band_index = _walk_bands(
         ranked_weights,
-        [band.landlords for band in top_down[:-1]] + [np.inf],
+        [band.landlords * share_scale for band in top_down[:-1]] + [np.inf],
         offset,
     )
     cells: list[dict[str, Any]] = []
@@ -686,7 +696,8 @@ def allocate_property_rental_income(
         cell: dict[str, Any] = {
             "lower_bound": band.lower_bound,
             "upper_bound": band.upper_bound,
-            "target_landlords": band.landlords,
+            "published_landlords": band.landlords,
+            "target_landlords": band.landlords * share_scale,
             "walk_landlords_weight": float(weights[members].sum()),
             "walk_records": int(len(members)),
         }
@@ -760,6 +771,12 @@ def allocate_property_rental_income(
             "PRIS 2024-25 Table 13 (all tax entities) x Table 1 individuals' "
             "share of landlords"
         ),
+        "band_mass_rule": (
+            "each band's share of the individuals-basis landlords times the "
+            "landlords' weight here"
+        ),
+        "share_scale": share_scale,
+        "published_individual_landlords": published_landlords,
         "individuals_landlord_share": facts.individuals_share("landlords"),
         "bands_top_down": cells,
         "rows_floored_at_profit": floored_rows,
