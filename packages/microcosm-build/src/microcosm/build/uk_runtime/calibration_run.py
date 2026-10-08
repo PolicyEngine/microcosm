@@ -884,20 +884,24 @@ def finalize_uk_scoped_gate_report(
     posture: str,
     scope_exclusions: Mapping[str, str],
     aggregate_admin_measurement: object,
+    resign: bool = True,
 ) -> None:
     """Graft the scoped-report trio onto a battery payload and re-sign it.
 
     Every scoped UK producer (the calibration seam, the release-cut
-    certification) declares its posture, the rationale for each gate it
-    does not run, and its admin-anchor measurement receipt, then signs the
-    augmented bytes. One implementation, shared, so the parts the
-    certification composes over cannot drift apart in shape.
+    certification, the dense line's local battery) declares its posture,
+    the rationale for each gate it does not run, and its admin-anchor
+    measurement receipt, then signs the augmented bytes. One
+    implementation, shared, so the parts the certification composes over
+    cannot drift apart in shape. ``resign=False`` grafts the trio onto a
+    report that stays unsigned (its attestation keeps ``signing_error``).
     """
 
     payload["posture"] = posture
     payload["scope_exclusions"] = dict(scope_exclusions)
     payload["aggregate_admin_measurement"] = aggregate_admin_measurement
-    resign_uk_gate_report(payload)
+    if resign:
+        resign_uk_gate_report(payload)
 
 
 def resign_uk_gate_report(payload: dict[str, object]) -> None:

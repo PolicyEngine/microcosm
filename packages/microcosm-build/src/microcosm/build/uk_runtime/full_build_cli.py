@@ -41,7 +41,7 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -133,6 +133,7 @@ from .graph_national import (
     national_result_from_manifest,
     national_run_config,
     register_uk_national_kernels,
+    replay_uk_dense_gate_battery,
     replay_uk_national_gate_battery,
     uk_national_graph,
 )
@@ -222,6 +223,11 @@ __all__ = [
     "prepare_national_build",
     "uk_rowwise_posture",
 ]
+
+#: The graph's full terminal gate document (every declared UK gate), as the
+#: evidence materialization names it. The package binds its bytes; the signed
+#: local battery report takes the posture's ``*.local_gates.json`` name.
+FULL_GATE_REPORT_FILENAME = "uk.full.gates.calibrated.gate_report.json"
 
 #: CLI labels for the three UK atomic-area support systems, in SYSTEMS order.
 _SUPPORT_ARGUMENTS = dict(
@@ -1234,27 +1240,52 @@ def _apply_graph_gate_verdicts(
     report_path: Path,
     *,
     outcome_index: Mapping[str, int] | None = None,
+    scoped_report_path: Path | None = None,
+    scoped_gate_ids: Collection[str] = (),
 ) -> None:
     """Record each gate's verdict with a receipt that resolves in its report.
 
     A battery report keys its gates (``#/gates/<id>``); a graph gate document
     lists outcomes (``#/report/outcomes/<index>``), so its caller passes the
-    outcome positions.
+    outcome positions. Gates a signed scoped report also carries (the dense
+    line's local battery) point at that report instead.
     """
     receipt = local_artifact_reference(report_path, repository_hint=REPOSITORY)
+    scoped_receipt = (
+        None
+        if scoped_report_path is None
+        else local_artifact_reference(scoped_report_path, repository_hint=REPOSITORY)
+    )
 
-    def pointer(gate_id: str) -> str:
+    def reference(gate_id: str) -> str:
+        if scoped_receipt is not None and gate_id in scoped_gate_ids:
+            return f"{scoped_receipt}#/gates/{gate_id}"
         if outcome_index is not None and gate_id in outcome_index:
-            return f"#/report/outcomes/{outcome_index[gate_id]}"
-        return f"#/gates/{gate_id}"
+            return f"{receipt}#/report/outcomes/{outcome_index[gate_id]}"
+        return f"{receipt}#/gates/{gate_id}"
 
     state.gate_verdicts = {
         str(gate_id): {
             "verdict": str(payload["status"]),
-            "receipt": f"{receipt}{pointer(str(gate_id))}",
+            "receipt": reference(str(gate_id)),
         }
         for gate_id, payload in gate_rows.items()
     }
+
+
+#: Why a filtered dense build ships no local gate report.
+LOCAL_GATE_REPORT_ABSENCE = (
+    "The target filter selected no local targets, so the local fit claim the "
+    "signed local gate report attests does not apply; no report is written."
+)
+
+
+def _local_gate_report_state(report: Mapping | None) -> str:
+    """How the build left its local gate report: signed, unsigned, or absent."""
+    if report is None:
+        return "not_written"
+    attestation = report.get("attestation") or {}
+    return "unsigned" if "signing_error" in attestation else "signed"
 
 
 def _graph_gate_rows(document: Mapping) -> tuple[dict, dict[str, int]]:
@@ -1487,9 +1518,10 @@ def _execute_full_build(
     gate_report_bytes = _payload(
         manifest, store, "uk.full.gates.calibrated", "gate_report"
     )
+    full_gate_report_path = args.out / FULL_GATE_REPORT_FILENAME
     gate_report_path = args.out / gate_report_name
     terminal_files["full_gates"] = {
-        **materialize_bytes(gate_report_bytes, gate_report_path),
+        **materialize_bytes(gate_report_bytes, full_gate_report_path),
         "graph_artifact_key": manifest.nodes[
             "uk.full.gates.calibrated"
         ].opaque_artifacts["gate_report"],
@@ -1523,10 +1555,18 @@ def _execute_full_build(
             append_phase(state, "size_selection_checkpointed")
     _, enforcement = decode_full_gate_report(gate_report_bytes)
     gate_document = json.loads(gate_report_bytes)
-    gate_rows = {
-        str(outcome["id"]): {k: v for k, v in outcome.items() if k != "id"}
-        for outcome in gate_document["report"]["outcomes"]
-    }
+    # The signed local battery report, written before any refusal so a
+    # blocked candidate leaves it too; the graph's enforcement still decides
+    # the exit status. A filtered build that drops the local fit claim writes
+    # none.
+    local_report = replay_uk_dense_gate_battery(
+        gate_document,
+        report_path=gate_report_path,
+        release_id=None if state is None else state.build_id,
+        release_candidate=bool(args.release_candidate),
+        posture=posture,
+    )
+    gate_rows, gate_index = _graph_gate_rows(gate_document)
     record["gate_rows"] = gate_rows
     record["blocking_failures"] = list(enforcement["enforced_blocking"])
     record["gate_statuses"] = gate_statuses({"gates": gate_rows})
@@ -1535,7 +1575,16 @@ def _execute_full_build(
             "terminal", enforcement["enforced_blocking"]
         )
     if state is not None:
-        _apply_graph_gate_verdicts(state, gate_rows, published_root / gate_report_name)
+        _apply_graph_gate_verdicts(
+            state,
+            gate_rows,
+            published_root / FULL_GATE_REPORT_FILENAME,
+            outcome_index=gate_index,
+            scoped_report_path=None
+            if local_report is None
+            else published_root / gate_report_name,
+            scoped_gate_ids=posture.gate_scope,
+        )
         append_phase(
             state,
             "candidate_blocked"
@@ -1549,6 +1598,7 @@ def _execute_full_build(
         gate_statuses=record["gate_statuses"],
         blocking_failure_count=len(enforcement["enforced_blocking"]),
         diagnostic_failure_count=len(enforcement["diagnostic_failures"]),
+        local_gate_report=_local_gate_report_state(local_report),
     )
     if not enforcement["artifact_permitted"]:
         return 1
@@ -1606,7 +1656,7 @@ def _execute_full_build(
             ),
         ),
         evidence_files={
-            "full_gates": gate_report_name,
+            "full_gates": FULL_GATE_REPORT_FILENAME,
             "diagnostics": terminal_files["calibration_diagnostics"]["filename"],
             "holdout": terminal_files["holdout"]["filename"],
             "target_diagnostics": terminal_files["target_diagnostics"]["filename"],
@@ -1615,7 +1665,7 @@ def _execute_full_build(
         },
     )
     evidence_sources = {
-        "exported_evidence_full_gates": gate_report_path,
+        "exported_evidence_full_gates": full_gate_report_path,
         "exported_evidence_diagnostics": args.out
         / terminal_files["calibration_diagnostics"]["filename"],
         "exported_evidence_holdout": args.out / terminal_files["holdout"]["filename"],
@@ -1672,7 +1722,10 @@ def _execute_full_build(
         "calibration_diagnostics": output_record(
             args.out / terminal_files["calibration_diagnostics"]["filename"]
         ),
-        "local_gate_report": output_record(gate_report_path),
+        "local_gate_report": None
+        if local_report is None
+        else output_record(gate_report_path),
+        "full_gate_report": output_record(full_gate_report_path),
         "solve_diagnostics": output_record(
             args.out / terminal_files["target_diagnostics"]["filename"]
         ),
@@ -1705,6 +1758,9 @@ def _execute_full_build(
         code={"git_commit": git_commit(), "git_dirty": git_dirty()},
         runtime=runtime_provenance(),
         created_at=datetime.now(UTC).isoformat(),
+        local_gate_report_absence=None
+        if local_report is not None
+        else LOCAL_GATE_REPORT_ABSENCE,
     )
     materialize_bytes(
         json_text(rowwise_manifest).encode(), args.out / MANIFEST_FILENAME
@@ -1731,7 +1787,11 @@ def _execute_full_build(
         telemetry,
         "output_bundle",
         "completed",
-        output_bytes={key: int(entry["bytes"]) for key, entry in outputs.items()},
+        output_bytes={
+            key: int(entry["bytes"])
+            for key, entry in outputs.items()
+            if entry is not None
+        },
     )
     return (
         0 if package["readback_passed"] and not enforcement["enforced_blocking"] else 1

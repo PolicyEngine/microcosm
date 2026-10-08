@@ -428,32 +428,14 @@ def test_preflight_does_not_infer_tenure_success_from_ladder_uprating(tmp_path):
     assert not any("A15" in failure for failure in failures)
 
 
-def _resign(report: dict, *, release_id: str) -> dict:
-    """The fixture report re-signed for another attempt id."""
-
-    import hashlib
-    import hmac
-
-    from microcosm.build.gate_battery import _canonical_json_bytes
-
-    signed = json.loads(json.dumps(report))
-    signed["release_id"] = release_id
-    signed["attestation"]["release_id"] = release_id
-    signed["attestation"]["signature"] = None
-    signed["attestation"]["signature"] = hmac.new(
-        base64.b64decode(KEY), _canonical_json_bytes(signed), hashlib.sha256
-    ).hexdigest()
-    return signed
-
-
 def test_graph_built_manifest_passes_the_candidate_preflight(
     tmp_path: Path, monkeypatch
 ) -> None:
     """The graph driver's projected manifest is the schema the pre-flight reads.
 
-    The graph's own gate report is the full-build battery document, not the
-    signed local battery report; the signed report is supplied here as the
-    certification step will, under the graph's ``*.local_gates.json`` name.
+    The build signs its own local battery report under the posture's
+    ``*.local_gates.json`` name, bound to its Logbook attempt; nothing is
+    signed by hand.
     """
 
     pytest.importorskip("tables")
@@ -466,9 +448,8 @@ def test_graph_built_manifest_passes_the_candidate_preflight(
     out = graph_dense_bundle(tmp_path, monkeypatch, "--release-candidate")
     module = _load()
     build_id = load_spool_rows(out / "logbook-spool")[0].build_id
-    (out / f"{STEM}.local_gates.json").write_text(
-        json.dumps(_resign(_signed_report(), release_id=build_id))
-    )
+    report = json.loads((out / f"{STEM}.local_gates.json").read_text())
+    assert report["release_id"] == build_id and report["shippable"] is True
     manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["release_role"] == "dense"
     assert manifest["parameters"]["release_candidate"] is True

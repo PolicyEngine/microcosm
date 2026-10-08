@@ -1,6 +1,7 @@
 """The canonical CLI restores declared files and preserves failure/scope semantics."""
 
 # ruff: noqa: F403, F405
+import base64
 import os
 import signal
 from types import SimpleNamespace
@@ -9,8 +10,9 @@ import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
-def test_geography_assignment_arguments_are_closed(tmp_path):
+def test_geography_assignment_arguments_are_closed(tmp_path, monkeypatch):
     """Atomic is the default; the cross-flag rules live in the validator."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     assert arguments(tmp_path).geography_assignment == "atomic"
     cli.validate_cli_args(arguments(tmp_path))
     legacy = arguments(tmp_path, "--geography-assignment", "legacy", supports=())
@@ -373,10 +375,133 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert not (out / "microcosm_uk_2025.h5").exists()
 
 
+def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(
+    tmp_path, monkeypatch
+):
+    """The six local outcomes of the graph's terminal document become a signed
+    battery report bound to the attempt, which the dense contract verifies."""
+    from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
+    from microcosm.data.contract import _check_uk_dense_gate_report
+
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    document = json.loads(gate_payload("terminal", release_candidate=True))
+    path = tmp_path / f"{STEM}.local_gates.json"
+    report = replay_uk_dense_gate_battery(
+        document,
+        report_path=path,
+        release_id="uk-local-candidate-f100-s0-test",
+        release_candidate=True,
+    )
+    assert json.loads(path.read_text()) == report
+    assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
+    assert report["posture"] == "local_candidate"
+    assert report["shippable"] is True and "signing_error" not in report["attestation"]
+    failures: list[str] = []
+    _check_uk_dense_gate_report(
+        report, failures=failures, attempt_id="uk-local-candidate-f100-s0-test"
+    )
+    assert failures == []
+    # A dev-posture document cannot be replayed as a release candidate.
+    with pytest.raises(ValueError, match="another release posture"):
+        replay_uk_dense_gate_battery(
+            json.loads(gate_payload("terminal")),
+            report_path=path,
+            release_id="uk-local-candidate-f100-s0-test",
+            release_candidate=True,
+        )
+
+
+def test_the_dense_gate_replay_stays_unsigned_without_a_key_or_an_attempt(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime.graph_national import (
+        UK_DENSE_UNBOUND_RELEASE_ID,
+        replay_uk_dense_gate_battery,
+    )
+    from microcosm.data.contract import _check_uk_dense_gate_report
+
+    document = json.loads(gate_payload("terminal", release_candidate=True))
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    unbound = replay_uk_dense_gate_battery(
+        document,
+        report_path=tmp_path / "unbound.local_gates.json",
+        release_id=None,
+        release_candidate=True,
+    )
+    assert unbound["release_id"] == UK_DENSE_UNBOUND_RELEASE_ID
+    assert unbound["attestation"]["signature"] is None
+    assert "No Logbook attempt" in unbound["attestation"]["signing_error"]
+    assert unbound["shippable"] is False
+    monkeypatch.delenv(SIGNING_KEY_ENV)
+    keyless = replay_uk_dense_gate_battery(
+        document,
+        report_path=tmp_path / "keyless.local_gates.json",
+        release_id="uk-local-candidate-f100-s0-test",
+        release_candidate=True,
+    )
+    assert keyless["attestation"]["signature"] is None
+    assert SIGNING_KEY_ENV in keyless["attestation"]["signing_error"]
+    assert keyless["shippable"] is False and keyless["posture"] == "local_candidate"
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    failures: list[str] = []
+    _check_uk_dense_gate_report(keyless, failures=failures)
+    assert any("signing error" in line for line in failures)
+
+
+def test_a_filtered_build_writes_no_local_gate_report(tmp_path, monkeypatch):
+    """No local targets, no local fit claim: the replay writes nothing rather
+    than filling the excluded local gates in as not applicable."""
+    from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
+
+    national_only = {
+        **support.SELECTION,
+        "selector": {"geography_levels": ["country"], "explicit": False},
+        "included": [{"name": "count", "period": 2025, "geography_level": "country"}],
+    }
+    monkeypatch.setattr(support, "SELECTION", national_only)
+    path = tmp_path / f"{STEM}.local_gates.json"
+    assert (
+        replay_uk_dense_gate_battery(
+            json.loads(gate_payload("terminal")),
+            report_path=path,
+            release_id="uk-local-candidate-f100-s0-test",
+            release_candidate=False,
+        )
+        is None
+    )
+    assert not path.exists()
+
+
+def test_a_release_candidate_needs_the_signing_key_and_local_targets(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv(SIGNING_KEY_ENV, raising=False)
+    release = arguments(tmp_path, "--release-candidate")
+    with pytest.raises(ValueError, match="needs the UK gate signing key"):
+        cli.validate_cli_args(release)
+    monkeypatch.setenv(SIGNING_KEY_ENV, base64.b64encode(b"\x05" * 16).decode())
+    with pytest.raises(ValueError, match="exactly 32 bytes"):
+        cli.validate_cli_args(release)
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    cli.validate_cli_args(release)
+    with pytest.raises(ValueError, match="--target-geographies without"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--target-geographies",
+                "country,region",
+            )
+        )
+    cli.validate_cli_args(
+        arguments(tmp_path, "--release-candidate", "--target-geographies", "la")
+    )
+
+
 def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     pytest.importorskip("tables")
     args = arguments(tmp_path, "--release-candidate")
-    assert cli.execute_full_build(prepared(tmp_path), args) == 0
+    assert cli.execute_full_build(prepared(tmp_path, release_candidate=True), args) == 0
     out = args.out
     manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["schema_version"] == 4
@@ -687,10 +812,19 @@ def test_main_runs_the_logbook_envelope_around_a_dense_build(tmp_path, monkeypat
     assert row.disposition == "iterating"
     assert row.artifact_location.endswith(f"{STEM}.h5")
     assert "published" in row.phases_reached
+    # The six local gates resolve in the signed local report; every other
+    # gate in the graph's full document, by its outcome position.
     assert row.gate_verdicts and all(
-        item["verdict"] == "passed" and ".local_gates.json#/gates/" in item["receipt"]
-        for item in row.gate_verdicts.values()
+        item["verdict"] == "passed" for item in row.gate_verdicts.values()
     )
+    for gate_id, item in row.gate_verdicts.items():
+        if gate_id in UK_LOCAL_GATE_SCOPE:
+            assert item["receipt"].endswith(f".local_gates.json#/gates/{gate_id}")
+        else:
+            assert (
+                f"{cli.FULL_GATE_REPORT_FILENAME}#/report/outcomes/"
+                in (item["receipt"])
+            )
     manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["staging_delivery"]["enabled"] is False
     assert manifest["staged_dataset"]["status"] == "skipped"
@@ -1370,10 +1504,13 @@ def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, 
     report = json.loads(
         Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
     )
-    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    # The local battery report carries the graph's outcomes for its six
+    # gates, blocked ones included, and is never shippable.
+    assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
     for gate_id in ("uk_local_area_support", "uk_local_weight_ratio"):
-        assert outcomes[gate_id]["criticality"] == "release_blocking"
-        assert outcomes[gate_id]["status"] == "failed"
+        assert report["gates"][gate_id]["criticality"] == "release_blocking"
+        assert report["gates"][gate_id]["status"] == "failed"
+    assert report["shippable"] is False
     assert spool_rows(out)[0].disposition == "failed"
 
 
