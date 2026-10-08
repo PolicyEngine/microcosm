@@ -434,6 +434,7 @@ _fail_staging_run_bundle = fail_staging_run_bundle
 def finalize_staging_run_bundle(
     args: argparse.Namespace, staging_bundle: StagingRunBundleWriterV2 | None
 ) -> None:
+    """Finalize staging files; only the caller can determine build success."""
     if staging_bundle is not None:
         try:
             staging_bundle.complete(
@@ -452,8 +453,6 @@ def finalize_staging_run_bundle(
                     staging_bundle.validate_local_bundle()
                 except StagingContractError as error:
                     _warn_telemetry("the local staging bundle does not validate", error)
-    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-        _ACTIVE_EMITTER.complete()
 
 
 _finalize_staging_run_bundle = finalize_staging_run_bundle

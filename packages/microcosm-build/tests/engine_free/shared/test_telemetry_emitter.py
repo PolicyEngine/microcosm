@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from alembic import command
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 from sqlalchemy.orm import Session
@@ -518,7 +519,7 @@ def test_resource_sampler_keeps_reaped_child_cpu_monotonic(monkeypatch) -> None:
 
 
 def test_emitter_startup_timeout_terminates_and_reaps_service(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, real_local_telemetry
 ) -> None:
     class FakeProcess:
         def __init__(self):
@@ -573,7 +574,9 @@ class _FakeDelivery:
         return False
 
 
-def test_local_socket_acknowledges_after_durable_queue(tmp_path) -> None:
+def test_local_socket_acknowledges_after_durable_queue(
+    tmp_path, real_local_telemetry
+) -> None:
     socket_path = (
         Path(tempfile.mkdtemp(prefix="microcosm-test-", dir="/tmp")) / "e.sock"
     )
@@ -612,7 +615,7 @@ def test_local_socket_acknowledges_after_durable_queue(tmp_path) -> None:
 
 
 def test_subprocess_exchanges_ambient_token_and_delivers_events(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, real_local_telemetry
 ) -> None:
     requests: list[tuple[str, str, dict[str, object]]] = []
 
@@ -684,3 +687,126 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
     assert events[0]["message"] == BUILD_STARTED_MESSAGE
     assert events[-1]["message"] == BUILD_COMPLETED_MESSAGE
     assert events[-1]["status"] == "completed"
+
+
+def test_failure_marks_active_stage_failed_before_run_failure():
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    emitter = FakeTelemetryEmitter(TelemetryRun("failed-build", "GB", "test"))
+    emitter.transition_stage("calibration")
+    emitter.fail(ValueError("invalid calibration"))
+
+    assert [(event["event_type"], event["status"]) for event in emitter.events] == [
+        ("stage", "started"),
+        ("stage", "failed"),
+        ("run", "failed"),
+    ]
+    assert emitter.events[1]["message"] == "invalid calibration"
+    assert emitter.events[1]["details"]["error_type"] == "ValueError"
+    assert emitter.events[2]["details"]["failed_during"] == "calibration"
+    assert not emitter.available
+
+
+@pytest.mark.parametrize("failure_point", ["mkdtemp", "chmod", "cache_dir"])
+def test_early_startup_failure_returns_disabled_handle(
+    tmp_path, monkeypatch, capsys, real_local_telemetry, failure_point
+):
+    from microcosm.build import telemetry_emitter as module
+
+    runtime_dir = tmp_path / "runtime"
+
+    def make_runtime(**kwargs):
+        runtime_dir.mkdir()
+        return str(runtime_dir)
+
+    def fail(*args, **kwargs):
+        raise OSError("telemetry setup refused")
+
+    monkeypatch.setattr(module.tempfile, "mkdtemp", make_runtime)
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda *a, **kw: pytest.fail("spawned after failed setup"),
+    )
+    if failure_point == "mkdtemp":
+        monkeypatch.setattr(module.tempfile, "mkdtemp", fail)
+    elif failure_point == "chmod":
+        monkeypatch.setattr(Path, "chmod", fail)
+    else:
+        monkeypatch.setattr(module, "_cache_dir", fail)
+
+    emitter = LocalTelemetryEmitter.start(
+        run_id="failed-start",
+        country_code="GB",
+        pipeline="test",
+        development_collector_url="http://127.0.0.1:1",
+    )
+
+    assert not emitter.available
+    assert not runtime_dir.exists()
+    assert "warning" in capsys.readouterr().err.lower()
+    emitter.close()
+
+
+def test_default_fixture_intercepts_preimported_entrypoint_and_class(
+    monkeypatch, fake_telemetry_emitters
+):
+    from microcosm.build import telemetry_emitter as module
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    monkeypatch.setenv("HF_TOKEN", "hf-ambient-must-not-be-used")
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda *a, **kw: pytest.fail("test spawned real emitter"),
+    )
+    for start in (
+        rowwise_staging.start_local_telemetry_emitter_service,
+        LocalTelemetryEmitter.start,
+    ):
+        emitter = start(run_id="fake", country_code="GB", pipeline="test")
+        assert isinstance(emitter, FakeTelemetryEmitter)
+        assert emitter in fake_telemetry_emitters
+
+
+def test_default_fixture_isolates_cached_huggingface_credentials(tmp_path):
+    from huggingface_hub import constants, get_token
+
+    assert Path(constants.HF_TOKEN_PATH).is_relative_to(tmp_path)
+    assert get_token() is None
+
+
+@pytest.mark.parametrize("collector_url", [None, "https://collector.example"])
+def test_real_service_opt_in_requires_explicit_loopback(
+    real_local_telemetry, collector_url
+):
+    with pytest.raises(ValueError, match="loopback"):
+        LocalTelemetryEmitter.start(
+            run_id="isolated",
+            country_code="GB",
+            pipeline="test",
+            development_collector_url=collector_url,
+        )
+
+
+def test_close_does_not_report_success():
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    emitter = FakeTelemetryEmitter(TelemetryRun("cleanup", "GB", "test"))
+    emitter.transition_stage("calibration")
+    emitter.close()
+    assert [(event["event_type"], event["status"]) for event in emitter.events] == [
+        ("stage", "started")
+    ]
+
+
+def test_failure_without_active_stage_only_reports_run_failure():
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    emitter = FakeTelemetryEmitter(TelemetryRun("failed", "GB", "test"))
+    emitter.fail(ValueError("before first stage"), failed_during="preflight")
+    assert [(event["event_type"], event["status"]) for event in emitter.events] == [
+        ("run", "failed")
+    ]
+    assert emitter.events[0]["details"]["failed_during"] == "preflight"

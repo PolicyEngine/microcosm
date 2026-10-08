@@ -2543,6 +2543,78 @@ def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
     assert "frs_spine" not in records
 
 
+@pytest.mark.parametrize("late_error", [False, True])
+def test_spine_completion_waits_for_attempt_record(
+    tmp_path, monkeypatch, fake_telemetry_emitters, late_error
+):
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    if late_error:
+
+        def fail_record(**kwargs):
+            raise OSError("attempt record unavailable")
+
+        monkeypatch.setattr(tool, "_record_attempt", fail_record)
+    status = tool.main(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+            "--no-staging",
+        ]
+    )
+    assert status == (1 if late_error else 0)
+    emitter = fake_telemetry_emitters[-1]
+    events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in events] == [
+        "failed" if late_error else "completed"
+    ]
+    assert not emitter.available
+
+
+def test_spine_interrupt_fails_emitter_and_preserves_exception(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    tool = _load_tool()
+    interrupt = KeyboardInterrupt("operator stopped build")
+
+    def interrupt_preflight(*args, **kwargs):
+        raise interrupt
+
+    monkeypatch.setattr(tool, "preflight_digest", interrupt_preflight)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(tmp_path),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"),
+                "--no-staging",
+            ]
+        )
+    assert caught.value is interrupt
+    emitter = fake_telemetry_emitters[-1]
+    events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in events] == ["failed"]
+    assert not emitter.available
+
+
 class TestScottishWaterAndSewerage:
     """The FRS 2024-25 cell retirement, at the three shapes the tab presents.
 
