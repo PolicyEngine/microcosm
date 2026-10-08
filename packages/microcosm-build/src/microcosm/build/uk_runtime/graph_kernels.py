@@ -51,6 +51,8 @@ from . import (
     frs_education,
     frs_hmrc_source,
     frs_take_up,
+    hmrc_property_rental,
+    spi_income,
     spi_support,
     uc_capital_coherence,
     uc_relationships,
@@ -90,6 +92,7 @@ _STAGE_MODULES = {
     "was_lisa": "was_lisa",
     "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
+    "property_components": "property_components",
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
@@ -127,6 +130,10 @@ _STAGE_HELPER_MODULES = {
     # The LISA stage reads its household donor through the WAS cleaning and its
     # household predictors through the WAS recipient surface.
     "was_lisa": (uk_engine_adapter, was_wealth),
+    # Landlords' receipts read the vendored PRIS rows through their typed
+    # loader, the tape through the income stage's preparation and uprating,
+    # and the support channel's names (microcosm#1106).
+    "property_components": (hmrc_property_rental, spi_income, spi_support),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     "lcfs_consumption": (uk_engine_adapter,),
     "etb_vat": (uk_engine_adapter,),
@@ -365,6 +372,22 @@ def _fixture_cgt_distribution(path: Path):
     )
 
 
+def _fixture_property_rental_facts(path: Path):
+    from .hmrc_property_rental import HMRCPropertyRentalBand, HMRCPropertyRentalFacts
+
+    payload = dict(_json_mapping(path, label="PRIS property rental facts"))
+    raw_bands = payload.pop("receipts_bands")
+    if not isinstance(raw_bands, list):
+        raise ValueError("UK parity fixture PRIS receipts_bands must be a list.")
+    return HMRCPropertyRentalFacts(
+        **payload,
+        receipts_bands=tuple(
+            HMRCPropertyRentalBand(**dict(_mapping(row, label="Table 13 band")))
+            for row in raw_bands
+        ),
+    )
+
+
 def _fixture_asset_type_facts(path: Path):
     from .cgt_asset_type import (
         HMRCCGTAssetTypeFacts,
@@ -457,6 +480,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
+    from .property_components import UKPropertyComponentsStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -521,6 +545,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     cgt_asset_type_facts = _fixture_asset_type_facts(
         _fixture_input(source, inputs, "cgt_asset_type_facts")
+    )
+    property_rental_facts = _fixture_property_rental_facts(
+        _fixture_input(source, inputs, "property_rental_facts")
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
@@ -594,6 +621,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
                 stage=stages["regional_property_uprating"]
+            ),
+            "property_components": UKPropertyComponentsStageTransform(
+                stage=stages["property_components"],
+                spi_tab_path=spi_path,
+                donor_table=spi_donor,
+                facts=property_rental_facts,
             ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],

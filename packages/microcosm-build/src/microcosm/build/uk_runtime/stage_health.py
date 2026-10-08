@@ -79,6 +79,8 @@ def uk_stage_health_gate(
         return _bus_pricing_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
         return _bus_support_pricing_gate(stage, evidence, parameters)
+    if check == "property_components":
+        return _property_components_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -2736,3 +2738,87 @@ def _bus_support_pricing_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _property_components_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Landlords' receipts keep their invariants (microcosm#1106).
+
+    No receipts below profit (the engine would read them as unknown). The
+    walk fills every Table 13 band above the lowest to its individuals-basis
+    count up to whole-person rounding: a band's mass sits within the declared
+    number of the largest landlord weight of its target, since each band
+    boundary is reached within one person. The open top band's profit
+    multiplier stays below its declared cap, so the band reaches the
+    individuals' receipts total rather than stopping at the cap.
+    """
+
+    check = "property_components"
+    receipts = _mapping(evidence.get("receipts"), label=f"{stage}.receipts")
+    failures: list[str] = []
+    maximum_below = int(parameters["maximum_rows_receipts_below_profit"])
+    below = int(
+        _finite_number(
+            receipts.get("rows_receipts_below_profit"),
+            label=f"{stage}.receipts.rows_receipts_below_profit",
+        )
+    )
+    if below > maximum_below:
+        failures.append(
+            f"{stage}: {below} rows carry receipts below profit "
+            f"(allowed {maximum_below})."
+        )
+    factor = _finite_number(
+        parameters["maximum_band_error_in_landlord_weights"],
+        label=f"{stage}.maximum_band_error_in_landlord_weights",
+    )
+    largest = _finite_number(
+        receipts.get("largest_landlord_weight"),
+        label=f"{stage}.receipts.largest_landlord_weight",
+    )
+    bands = receipts.get("bands_top_down")
+    if not isinstance(bands, list) or not bands:
+        raise ValueError(f"{stage}.receipts.bands_top_down must be a non-empty list.")
+    errors = []
+    for band in bands[:-1]:
+        band = _mapping(band, label=f"{stage}.receipts.bands_top_down[]")
+        target = _finite_number(
+            band.get("target_landlords"), label=f"{stage} band target"
+        )
+        walked = _finite_number(
+            band.get("walk_landlords_weight"), label=f"{stage} band mass"
+        )
+        error = abs(walked - target)
+        errors.append({"lower_bound": band.get("lower_bound"), "error_weight": error})
+        if error > factor * largest:
+            failures.append(
+                f"{stage}: the band from {band.get('lower_bound')} holds "
+                f"{walked:.1f} landlords against {target:.1f}, beyond "
+                f"{factor} x the largest landlord weight {largest:.1f}."
+            )
+    top = _mapping(bands[0], label=f"{stage}.receipts.bands_top_down[0]")
+    multiplier = _finite_number(
+        top.get("profit_multiplier"), label=f"{stage} top-band multiplier"
+    )
+    bounds = receipts.get("top_band_multiplier_bounds")
+    if not isinstance(bounds, list) or len(bounds) != 2:
+        raise ValueError(f"{stage}.receipts.top_band_multiplier_bounds must be a pair.")
+    cap = _finite_number(bounds[1], label=f"{stage} top-band multiplier cap")
+    if multiplier >= cap:
+        failures.append(
+            f"{stage}: the top band's profit multiplier {multiplier} reached its "
+            f"cap {cap}; the receipts total is out of reach."
+        )
+    details = {
+        "rows_receipts_below_profit": below,
+        "largest_landlord_weight": largest,
+        "band_errors": errors,
+        "top_band_multiplier": multiplier,
+        "top_band_multiplier_cap": cap,
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)

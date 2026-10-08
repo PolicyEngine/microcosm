@@ -1792,6 +1792,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1063 wealth_coherence check: the reviewed excess of owner
                 # households without a main-residence value over the donor's.
                 "maximum_owner_share_without_main_residence_excess",
+                # #1106 property_components check: no receipts below profit,
+                # the walk's whole-person rounding in landlord weights.
+                "maximum_rows_receipts_below_profit",
+                "maximum_band_error_in_landlord_weights",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

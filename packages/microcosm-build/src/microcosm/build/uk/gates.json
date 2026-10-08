@@ -179,6 +179,20 @@
       "notes": "Stage-time support-clip health gate over the WAS Lifetime ISA receipt (microcosm#1003): the balance is drawn from the QRF fitted on the credible donor holders, so every draw lies inside their realised range and non-holders are zero; the zero allowances make any clip a signal."
     },
     {
+      "id": "uk_stage_property_components",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "property_components",
+        "check": "property_components",
+        "maximum_rows_receipts_below_profit": 0,
+        "maximum_band_error_in_landlord_weights": 2.0
+      },
+      "notes": "Stage-time gate over the landlords' receipts and finance costs receipt (microcosm#1106). No row may carry property_rental_income below its property_income: the engine reads such receipts as unknown and withholds the property allowance. Every PRIS Table 13 band above the lowest holds its individuals-basis landlord count to within twice the largest landlord weight, the whole-person rounding of the walk (each band boundary is reached within one person; the lowest band takes the remainder). The open top band's profit multiplier must stay below the declared cap, so the band reaches the individuals' Table 2 receipts rather than stopping at the cap. The finance-cost incidence, its realisation by cell, the totals against PRIS, the channel split, the residuals and the coherence share are recorded in the receipt and carry no threshold."
+    },
+    {
       "id": "uk_stage_nts_bus_travel_support",
       "gate": "stage_health",
       "phase": "transferred",
@@ -930,6 +944,7 @@
           "person.pip_dl_category",
           "person.pip_m_category",
           "person.property_finance_costs",
+          "person.property_rental_income",
           "person.receives_benefits_in_own_right",
           "person.rent_paid_as_boarder",
           "person.rent_paid_as_lodger",

@@ -1049,6 +1049,57 @@
           "expected_row_count": 21
         }
       ]
+    },
+    {
+      "resource": "hmrc_property_rental_income_facts.json",
+      "purpose": "HMRC Property Rental Income Statistics 2026 release, tax year 2024-25 rows the property components stage allocates landlords' receipts from and reports against (microcosm#1106): Table 1 unincorporated landlords by type of tax entity (individuals, partnerships, all; the individuals' share that restates Table 13 on the individuals basis), Table 2 rental income before allowable expenses by type of tax entity (the individuals' receipts the open top band is solved to), Table 6 allowable expenses by type of tax entity (the individuals' share of expenses), Table 8 allowable expenses by expense type, all tax entities (residential finance costs among them, although ITTOIA 2005 s. 272A no longer deducts them) and Table 13 landlords by size of rental income, all tax entities (the eleven bands the receipts walk fills). No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_property_rental",
+        "uk_runtime.property_components"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table1_ty2024_landlords_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_1.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table2_ty2024_rental_income_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_2.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table6_ty2024_allowable_expenses_by_tax_entity_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_6.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table8_ty2024_allowable_expenses_by_expense_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_8.ty2024"
+          },
+          "expected_row_count": 24
+        },
+        {
+          "label": "table13_ty2024_landlords_by_size_of_rental_income",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.property_rental_2026.table_13.ty2024"
+          },
+          "expected_row_count": 11
+        }
+      ]
     }
   ]
 }

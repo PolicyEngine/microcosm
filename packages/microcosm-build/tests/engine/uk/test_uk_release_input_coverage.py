@@ -466,6 +466,7 @@ class TestUKManifest:
                 "was_wealth",
                 "was_lisa",
                 "regional_property_uprating",
+                "property_components",
                 "nts_bus_travel",
                 "lcfs_consumption",
                 "etb_vat",
