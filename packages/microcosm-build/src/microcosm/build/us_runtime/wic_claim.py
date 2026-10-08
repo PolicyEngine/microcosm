@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from importlib.resources import files
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -64,6 +65,7 @@ __all__ = [
     "WIC_CLAIM_FNS_SOURCE_URL",
     "derive_us_wic_claim_from_manifest",
     "require_complete_us_wic_claim_input",
+    "require_complete_us_wic_claim_h5",
     "with_acs_wic_claim_input",
     "us_wic_claim_signal_gate",
     "us_wic_claim_stage_spec",
@@ -556,6 +558,32 @@ def with_acs_wic_claim_input(frame: Frame, *, seed: int, time_period: int) -> Fr
     result = with_us_wic_claim_input(frame, seed=seed, time_period=time_period)
     require_complete_us_wic_claim_input(result.table("person"))
     return result
+
+
+def require_complete_us_wic_claim_h5(path: Path) -> int:
+    """Check persisted participation in bounded row batches; return row count.
+
+    Table-format H5 reads only the participation column. Fixed-format H5
+    requires all columns for each row batch; pandas cannot project columns
+    from that format. Numeric/boolean blocks are sliced, but pandas may
+    unpickle an entire fixed-format object block despite the row bounds.
+    """
+    with pd.HDFStore(path, mode="r") as store:
+        if "/person" not in store.keys():
+            raise ValueError("WIC participation requires a person H5 table.")
+        storer = store.get_storer("person")
+        rows = int(storer.nrows if storer.is_table else storer.shape[0])
+        if rows == 0:
+            raise ValueError("WIC participation cannot certify an empty person table.")
+        for start in range(0, rows, 65_536):
+            if storer.is_table:
+                person = store.select(
+                    "person", start=start, stop=start + 65_536, columns=[_OUTPUT]
+                )
+            else:
+                person = store.select("person", start=start, stop=start + 65_536)
+            require_complete_us_wic_claim_input(person)
+    return rows
 
 
 def _person_weights(frame: Frame) -> np.ndarray:

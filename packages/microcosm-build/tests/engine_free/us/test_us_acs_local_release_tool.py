@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import wic_claim
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -33,6 +34,7 @@ requires_pytables = pytest.mark.skipif(
 #: The stored-input contract's real entry points, kept before the autouse
 #: fixture below replaces them, for the tests that pin the contract itself.
 _REAL_REQUIRE_H5_STORED_INPUTS = stored_inputs.require_h5_stored_inputs
+_REAL_REQUIRE_WIC_H5 = wic_claim.require_complete_us_wic_claim_h5
 #: A policyengine-us stand-in for the package stage's stored-input contract.
 _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
     label="policyengine-us 2.2.1",
@@ -67,6 +69,9 @@ def _stored_input_contract_passes(monkeypatch):
     against :data:`_PACKAGE_ENGINE`."""
 
     monkeypatch.setattr(stored_inputs, "installed_us_engine", lambda: _PACKAGE_ENGINE)
+    # Placeholder-byte tests do not exercise H5 participation. Dedicated
+    # packaging tests below restore the real validator against actual H5.
+    monkeypatch.setattr(wic_claim, "require_complete_us_wic_claim_h5", lambda path: 0)
     monkeypatch.setattr(
         stored_inputs,
         "require_h5_stored_inputs",
@@ -124,13 +129,17 @@ def test_household_chunks_refuse_population_aggregates(monkeypatch, tmp_path) ->
     monkeypatch.setattr(module, "project_input_only", lambda frame, **kw: (frame, {}))
     monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *args, **kw: None)
     specs = (fixtures._variable("aggregate_total", base_variable="aggregate_probe"),)
+    from test_support.microcosm_build.us_wic_claim import _replace_person
+
+    frame = fixtures._nested_frame()
+    frame = _replace_person(frame, frame.person.assign(takes_up_wic_if_eligible=False))
 
     with pytest.raises(
         ValueError,
         match=rf"household batch 1/1 computed .*{aggregate}@2024",
     ):
         module.materialize_chunked(
-            fixtures._nested_frame(),
+            frame,
             specs,
             hh_chunk=2,
             batch=2,
@@ -984,6 +993,7 @@ def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
             "person_marital_unit_id": ids,
             "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
             "hours_worked_last_week": np.asarray(last_week, dtype=float),
+            "takes_up_wic_if_eligible": np.zeros(n, dtype=bool),
         }
     )
     tables = {
@@ -1436,6 +1446,9 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
     monkeypatch.setattr(
         stored_inputs, "require_h5_stored_inputs", _REAL_REQUIRE_H5_STORED_INPUTS
     )
+    monkeypatch.setattr(
+        wic_claim, "require_complete_us_wic_claim_h5", _REAL_REQUIRE_WIC_H5
+    )
     module = _load_tool_module()
     args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
     result = module.do_package(args)
@@ -1451,6 +1464,7 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "registered_non_variables": [],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
+            "wic_participation_person_rows": 8,
         }
 
 
@@ -1535,6 +1549,81 @@ def test_package_refuses_a_stale_stored_input_before_any_release_dir(
     _refresh_package_evidence_bindings(module, args)
     result = module.do_package(args)
     assert Path(result["release_dir"]).is_dir()
+
+
+@requires_pytables
+@pytest.mark.parametrize("values", [None, [False, None] * 4, ["False", "True"] * 4])
+def test_package_refuses_incomplete_wic_before_creating_release_directory(
+    tmp_path, monkeypatch, values
+):
+    from test_support.microcosm_build.us_wic_claim import _replace_person
+
+    monkeypatch.setattr(
+        wic_claim, "require_complete_us_wic_claim_h5", _REAL_REQUIRE_WIC_H5
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    frame = _plausible_hours_frame()
+    person = frame.person.drop(columns="takes_up_wic_if_eligible")
+    if values is not None:
+        person["takes_up_wic_if_eligible"] = values
+    _write_frame_h5(args.out_h5, _replace_person(frame, person))
+    with pytest.raises(SystemExit, match="WIC participation"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+
+@pytest.mark.parametrize("values", [None, [False, None], ["False", "True"]])
+def test_reviewed_null_register_cannot_default_fill_wic(tmp_path, values):
+    from test_support.microcosm_build.us_wic_claim import _frame, _replace_person
+
+    module = _load_tool_module()
+    frame = _frame([{}, {}])
+    person = frame.person.copy()
+    if values is not None:
+        person["takes_up_wic_if_eligible"] = values
+    summary = tmp_path / "summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "person",
+                        "column": "takes_up_wic_if_eligible",
+                        "default": True,
+                    }
+                ]
+            }
+        )
+    )
+    original = person.copy(deep=True)
+    manifest = tmp_path / "fills.json"
+    with pytest.raises(ValueError, match="WIC participation"):
+        module.fill_reviewed_nulls(
+            _replace_person(frame, person), summary, manifest_path=manifest
+        )
+    pd.testing.assert_frame_equal(person, original)
+    assert not manifest.exists()
+
+
+def test_consumer_export_refuses_missing_wic_before_writing(tmp_path, monkeypatch):
+    from test_support.microcosm_build.us_wic_claim import _frame
+
+    module = _load_tool_module()
+    frame = _frame([{}])
+    monkeypatch.setattr(module, "_load_staging_frame", lambda path: frame)
+    monkeypatch.setattr(
+        module,
+        "_require_local_hours",
+        lambda *args: pytest.fail("must refuse WIC first"),
+    )
+    args = SimpleNamespace(
+        out_h5=tmp_path / "output.h5", staging_h5=tmp_path / "input.h5"
+    )
+    with pytest.raises(ValueError, match="WIC participation"):
+        module._write_calibrated_artifact(args, np.ones(1), {}, {})
+    assert not args.out_h5.exists()
 
 
 def _refresh_package_evidence_bindings(module, args) -> None:
