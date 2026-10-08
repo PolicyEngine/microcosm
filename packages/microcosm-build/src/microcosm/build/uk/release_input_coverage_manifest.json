@@ -330,7 +330,9 @@
    "status": "required"
   },
   "property_wealth": {
-   "status": "required"
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "status": "reviewed_exclusion",
+   "tracking_note": "microcosm#1106 (the uk-data#543 defect): the release and calibration boundaries drop the WAS total, and policyengine-uk sums main_residence_value, other_residential_property_value and non_residential_property_value, which stay required."
   },
   "rail_subsidy_spending": {
    "status": "required"
@@ -445,11 +447,11 @@
   }
  },
  "counts": {
-  "required": 145,
-  "reviewed_exclusion": 0,
+  "required": 144,
+  "reviewed_exclusion": 1,
   "total": 145
  },
- "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' when the sha-pinned candidate evidence records non-default signal on at least the reviewed owning-entity effective-mass share OR the column is pinned in restored_required_columns after a source-family restoration; all remaining surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. The final release gate applies the same effective-mass floor, and distributional restorations must pass it on their required source channel.",
+ "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' when the sha-pinned candidate evidence records non-default signal on at least the reviewed owning-entity effective-mass share OR the column is pinned in restored_required_columns after a source-family restoration; all remaining surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note, except the engine_derived_exclusions, which are reviewed_exclusion with their own reason because the engine computes them from persisted inputs. The final release gate applies the same effective-mass floor, and distributional restorations must pass it on their required source channel.",
  "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
  "effective_mass_coverage": {
   "minimum_nondefault_mass_share": 1e-06,

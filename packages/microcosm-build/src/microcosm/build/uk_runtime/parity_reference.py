@@ -21,6 +21,7 @@ __all__ = [
     "EfrsParityKnownGap",
     "EfrsParityReference",
     "EfrsParitySource",
+    "load_efrs_engine_derived_exclusions",
     "load_efrs_parity_known_gaps",
     "load_efrs_parity_reference",
 ]
@@ -179,7 +180,9 @@ def load_efrs_parity_reference(
     }
     expected_entities = {"person", "benunit", "household"}
     invalid_entities = {
-        name: entity for name, entity in entities.items() if entity not in expected_entities
+        name: entity
+        for name, entity in entities.items()
+        if entity not in expected_entities
     }
     if invalid_entities:
         raise ValueError(
@@ -205,33 +208,59 @@ def load_efrs_parity_reference(
     )
 
 
+def _ledger_entries(
+    raw: object, *, section: str, resource: str
+) -> tuple[EfrsParityKnownGap, ...]:
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"{resource}: {section!r} must be a JSON object.")
+    entries: list[EfrsParityKnownGap] = []
+    for variable, entry in sorted(raw.items()):
+        if not isinstance(entry, Mapping):
+            raise ValueError(
+                f"{resource}: entry for {variable!r} must be a JSON object."
+            )
+        entries.append(
+            EfrsParityKnownGap(
+                variable=str(variable),
+                reason=_require_str(
+                    entry.get("reason"),
+                    field_name=f"{section}[{variable}].reason",
+                    resource=resource,
+                ),
+                tracking_note=_require_str(
+                    entry.get("tracking_note"),
+                    field_name=f"{section}[{variable}].tracking_note",
+                    resource=resource,
+                ),
+            )
+        )
+    return tuple(entries)
+
+
 def load_efrs_parity_known_gaps(
     resource: str = EFRS_PARITY_KNOWN_GAPS_RESOURCE,
 ) -> tuple[EfrsParityKnownGap, ...]:
     """Load the canonical UK exclusion ledger (which may honestly be empty)."""
     payload = _resource_payload(resource)
-    raw_gaps = payload.get("known_gaps")
-    if not isinstance(raw_gaps, Mapping):
-        raise ValueError(f"{resource}: 'known_gaps' must be a JSON object.")
-    gaps: list[EfrsParityKnownGap] = []
-    for variable, entry in sorted(raw_gaps.items()):
-        if not isinstance(entry, Mapping):
-            raise ValueError(
-                f"{resource}: entry for {variable!r} must be a JSON object."
-            )
-        gaps.append(
-            EfrsParityKnownGap(
-                variable=str(variable),
-                reason=_require_str(
-                    entry.get("reason"),
-                    field_name=f"known_gaps[{variable}].reason",
-                    resource=resource,
-                ),
-                tracking_note=_require_str(
-                    entry.get("tracking_note"),
-                    field_name=f"known_gaps[{variable}].tracking_note",
-                    resource=resource,
-                ),
-            )
-        )
-    return tuple(gaps)
+    return _ledger_entries(
+        payload.get("known_gaps"), section="known_gaps", resource=resource
+    )
+
+
+def load_efrs_engine_derived_exclusions(
+    resource: str = EFRS_PARITY_KNOWN_GAPS_RESOURCE,
+) -> tuple[EfrsParityKnownGap, ...]:
+    """Load the reference inputs a release leaves for the engine to derive.
+
+    These are not parity debt. The enhanced FRS persists them, but
+    policyengine-uk computes them from inputs the candidate does persist, and a
+    persisted copy would override the formula (microcosm#1106: a saved
+    ``property_wealth`` overrides the engine's sum of the three property
+    components and is never uprated). A ledger without the section has none.
+    """
+    payload = _resource_payload(resource)
+    return _ledger_entries(
+        payload.get("engine_derived_exclusions", {}),
+        section="engine_derived_exclusions",
+        resource=resource,
+    )

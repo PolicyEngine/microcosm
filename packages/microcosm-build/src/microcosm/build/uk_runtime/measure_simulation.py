@@ -18,6 +18,7 @@ from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
 from microcosm.build.uk_runtime.national_frame import (
+    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     load_uk_national_frame,
     write_uk_national_frame,
 )
@@ -359,6 +360,14 @@ def _engine_scratch_frame(
 ) -> tuple[Any, tuple[str, ...]]:
     """The frame a scratch-mode engine loads, and the columns it leaves behind.
 
+    The scratch H5 is an engine boundary like the release export, so the
+    release export's reviewed drops (``UK_RELEASE_EXPORT_DROPPED_COLUMNS``)
+    leave here too. Among them ``property_wealth`` is formula-owned in
+    policyengine-uk: a persisted copy would override the engine's sum of the
+    three persisted property components in the calibration year
+    (microcosm#1106). The resolver's own frame keeps every column;
+    frame-column measures read it.
+
     The nation-native alias codes of the derived geography layers
     (microcosm#931) are NA outside their own nation by design and are never
     engine inputs; the single-year dataset policyengine-uk loads refuses any
@@ -373,18 +382,30 @@ def _engine_scratch_frame(
     the pool's and the formula is exact for identical clone copies. The
     scaling is declared on the engine frame's mass log.
 
-    A frame carrying no alias columns and no scale is returned as is.
+    A frame carrying none of those columns and no scale is returned as is.
     """
 
-    household = frame.table("household")
+    trimmed: dict[str, pd.DataFrame] = {}
+    for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items():
+        table = frame.table(entity)
+        present = [column for column in columns if column in table.columns]
+        if present:
+            trimmed[entity] = table.drop(columns=present)
+    household = trimmed.get("household", frame.table("household"))
     kept = without_uk_native_alias_columns(household)
     scale = None if engine_weight_scale is None else float(engine_weight_scale)
     if scale is not None and not (np.isfinite(scale) and scale > 0.0):
         raise ValueError("engine weight scale must be a positive finite factor.")
-    if kept is household and (scale is None or scale == 1.0):
+    if not trimmed and kept is household and (scale is None or scale == 1.0):
         return frame, ()
-    dropped = tuple(c for c in household.columns if c not in kept.columns)
+    dropped = tuple(
+        column
+        for entity in UK_RELEASE_EXPORT_DROPPED_COLUMNS
+        for column in frame.table(entity).columns
+        if entity in trimmed and column not in trimmed[entity].columns
+    ) + tuple(c for c in household.columns if c not in kept.columns)
     tables = {name: frame.table(name) for name in frame.entities}
+    tables.update(trimmed)
     tables["household"] = kept
     weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
     mass_log = frame.mass_log

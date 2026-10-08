@@ -875,11 +875,87 @@ def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Pat
     assert direct.receipt()["mode"] == "direct_h5"
     assert direct.receipt()["policyengine_uk_version"] == "9.9.9"
     assert scratch.receipt()["mode"] == "scratch_frame_export"
+    # A frame carrying no export-dropped column is written as it is.
+    assert "engine_scratch_dropped_columns" not in scratch.receipt()
     assert writes == [(frame, tmp_path / "simulation-input.h5")]
     assert created == [
         str(tmp_path / "input.h5"),
         str(tmp_path / "simulation-input.h5"),
     ]
+
+
+def test_scratch_engine_input_leaves_property_wealth_to_the_engine(
+    monkeypatch, tmp_path: Path
+):
+    """microcosm#1106: a persisted ``property_wealth`` overrides the engine's
+    sum of the three property components and is never uprated, so the scratch
+    H5 the calibration engine loads drops it, as the release export does. The
+    resolver's own frame keeps it, and the receipt names what was left out."""
+
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    writes = []
+    monkeypatch.setattr(
+        measure_simulation,
+        "write_uk_national_frame",
+        lambda frame, path: writes.append(frame) or path,
+    )
+    components = (
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [40, 50],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "main_residence_value": [300_000.0, 0.0],
+                "other_residential_property_value": [150_000.0, 0.0],
+                "non_residential_property_value": [0.0, 20_000.0],
+                # The WAS total also counts owned land and the remainder.
+                "property_wealth": [480_000.0, 20_000.0],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 1.0]),
+    )
+
+    resolver = UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=frame,
+    )
+
+    (written,) = writes
+    household = written.table("household")
+    assert "property_wealth" not in household.columns
+    for component in components:
+        assert household[component].tolist() == (
+            frame.table("household")[component].tolist()
+        )
+    assert written.weights_for("household").values.tolist() == [1.0, 1.0]
+    assert resolver.frame is frame
+    assert "property_wealth" in resolver.frame.table("household").columns
+    assert resolver.receipt()["engine_scratch_dropped_columns"] == ["property_wealth"]
 
 
 def _resolver_over(sim, monkeypatch, tmp_path: Path) -> UKMeasureResolver:

@@ -463,6 +463,18 @@ def _write_uk_single_year_tables(
 #: five internal disability carriers (``frs_disability``'s
 #: ``UK_INTERNAL_DISABILITY_REPORTED_COLUMNS``) are stage-internal inputs
 #: that the export registers keep off the release (review of #1089).
+#:
+#: ``household.property_wealth`` (microcosm#1106, the uk-data#543 defect) is
+#: formula-owned in policyengine-uk: it adds ``residential_property_value``
+#: (itself ``main_residence_value`` + ``other_residential_property_value``)
+#: and ``non_residential_property_value``. A persisted copy overrides that
+#: sum, and the variable has no uprating index, so a saved WAS total stays at
+#: its base-year level in every later year while the components grow (the
+#: published aa31bdf6 year files hold it at growth 1.0000 from 2026 to 2030
+#: against 1.1303 for the sum), and it also counts ``owned_land`` and the
+#: ``other_property_value`` remainder the engine sum leaves out. The spine
+#: keeps it (the WAS stage's identity gate, donor-range cap and later
+#: segments read it); the engine derives it from the persisted components.
 UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "incapacity_benefit_reported",
@@ -477,6 +489,7 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # converted record's pay, and is no engine input.
         "salary_sacrifice_pre_conversion_pay",
     ),
+    "household": ("property_wealth",),
 }
 
 

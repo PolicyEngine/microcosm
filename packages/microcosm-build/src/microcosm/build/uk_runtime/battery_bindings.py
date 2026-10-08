@@ -81,6 +81,7 @@ from microcosm.build.uk_runtime.local_targets import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     _uk_gate_surface,
+    uk_release_export_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -229,7 +230,11 @@ def _evaluate_release_input_coverage(
         )
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
-    # where they live; the coverage halves read the release frame.
+    # where they live; the coverage halves read the frame the release writes.
+    # On the full build the terminal gates hold the raw calibrated frame, so
+    # the export drops leave first: a column the release drops (the
+    # formula-owned property_wealth, microcosm#1106) is a reviewed exclusion,
+    # and the raw frame would otherwise report it as a stale exclusion.
     # The spine frame itself (the certifier's ``--spine-h5``), or the spine
     # checkpoint's published build state (weight kind, period, mass log: all
     # the build-state half reads) when a graph build hands it over.
@@ -251,7 +256,7 @@ def _evaluate_release_input_coverage(
     else:
         build_state = spine_frame
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(context.frame),
+        _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
         manifest=manifest,
         build_state_frame=build_state,

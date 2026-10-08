@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime import (
     UKReleaseInputCoverageManifest,
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
     load_uk_release_input_coverage_manifest,
