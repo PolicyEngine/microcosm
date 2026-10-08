@@ -624,8 +624,11 @@ def _synthetic_lcfs_donor(
         "p612",
     ):
         household[code] = rng.uniform(1.0, 200.0, n)
-    household["c72211"] = np.where(rows % 4 == 0, 0.0, rng.uniform(5.0, 80.0, n))
-    household["c72212"] = np.where(rows % 4 == 0, 0.0, rng.uniform(0.0, 40.0, n))
+    # No fuel without a car, and half the one-car diaries record no purchase
+    # either (the two-week diary's zeros the road-fuel redraw corrects).
+    no_fuel = (rows % 4 == 0) | (rows % 8 == 1)
+    household["c72211"] = np.where(no_fuel, 0.0, rng.uniform(5.0, 80.0, n))
+    household["c72212"] = np.where(no_fuel, 0.0, rng.uniform(0.0, 40.0, n))
     # Other motor fuels inside 07.2.2, deterministic so the draws below keep
     # their stream.
     household["c72213"] = np.where(rows % 10 == 1, 0.5, 0.0)
@@ -748,7 +751,11 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
-    assert len(transform.fit_weight_records) == 18
+    # The 18 chain targets, then the road-fuel redraw's total and petrol share.
+    assert len(transform.fit_weight_records) == 20
+    assert transform.fit_weight_records[-1].fit_name.endswith(
+        ":petrol_share_of_road_fuel"
+    )
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
     )
@@ -802,6 +809,31 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     )
     assert level["frame_after"] == pytest.approx(level["level"])
     assert (out.loc[no_vehicle, "diesel_spending"] == 0.0).all()
+    # Incidence: every flagged fuel-car household carries road fuel (#1113).
+    flagged = out["has_fuel_consumption"].to_numpy(dtype=bool)
+    assert (road_fuel[flagged] > 0).all() and (road_fuel[~flagged] == 0).all()
+    incidence = evidence["road_fuel_incidence"]
+    assert incidence["flagged_zero_before"] > 0
+    assert incidence["flagged_zero_after"] == 0
+    assert incidence["regimes"]["road_fuel_total"] == "positive_only"
+    assert level["frame_before"] == pytest.approx(incidence["weighted_total_after"])
+    # The receipts the stage writes are the ones its gates read.
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    gates = [
+        gate
+        for gate in load_country_spec("uk").gates.gates
+        if gate.id.startswith("uk_stage_lcfs_consumption_road_fuel")
+    ]
+    assert len(gates) == 2
+    for gate in gates:
+        checked = uk_stage_health_gate(
+            evidence=evidence,
+            stage="lcfs_consumption",
+            check=gate.parameters["check"],
+            parameters=gate.parameters,
+        )
+        assert checked.passed, checked.failures
     # Bus: fares are journeys times the published yield in every priced region;
     # Wales keeps the chain's raw draw, clipped to donor support.
     pricing = evidence["bus_pricing"]
@@ -918,7 +950,8 @@ def test_road_fuel_level_reads_the_vendored_ons_row() -> None:
     declared = road_fuel_level_operation(stage)
     assert declared is not None
     kinds = [operation.kind for operation in stage.operations]
-    assert kinds.index("level_road_fuel") == kinds.index("zero_when_false") + 1
+    assert kinds.index("redraw_zero_road_fuel") == kinds.index("zero_when_false") + 1
+    assert kinds.index("level_road_fuel") == kinds.index("redraw_zero_road_fuel") + 1
 
     level = road_fuel_level(declared, other_fuels_share=0.004)
 
@@ -1057,6 +1090,210 @@ def test_road_fuel_level_is_a_no_op_when_undeclared() -> None:
     )
 
     assert receipt is None and levelled is draws
+
+
+_ROAD_FUEL = ["petrol_spending", "diesel_spending"]
+
+
+def _road_fuel_sides(
+    seed: int = 5,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """A donor with none, petrol, diesel and both, and zeroed recipient draws."""
+
+    rng = np.random.default_rng(seed)
+
+    def side(n: int) -> pd.DataFrame:
+        rows = np.arange(n)
+        return pd.DataFrame(
+            {
+                "household_adult_count": 1 + rows % 3,
+                "household_child_count": rows % 2,
+                "region": np.array(["LONDON", "WALES", "SCOTLAND"])[rows % 3],
+                "employment_income": rng.uniform(0.0, 5e4, n),
+                "self_employment_income": rng.uniform(0.0, 5e3, n),
+                "private_pension_income": rng.uniform(0.0, 1e4, n),
+                "hbai_household_net_income": rng.uniform(1e4, 6e4, n),
+                "tenure_type": np.array(["OWNED_OUTRIGHT", "RENT_PRIVATELY"])[rows % 2],
+                "accommodation_type": np.array(["FLAT", "HOUSE_DETACHED"])[rows % 2],
+                "num_vehicles": rows % 3,
+            }
+        )
+
+    donor = side(200)
+    kind = np.arange(200) % 4
+    donor["petrol_spending"] = np.where(kind % 2 == 1, rng.uniform(300, 2e3, 200), 0.0)
+    donor["diesel_spending"] = np.where(kind >= 2, rng.uniform(300, 2e3, 200), 0.0)
+    donor["household_weight"] = rng.uniform(500.0, 2000.0, 200)
+    recipient = side(40)
+    recipient["has_fuel_consumption"] = recipient["num_vehicles"].to_numpy() > 0
+    rows = np.arange(40)
+    draws = pd.DataFrame(
+        {
+            "petrol_spending": np.where(rows % 4 == 1, 800.0, 0.0),
+            "diesel_spending": np.where(rows % 4 == 2, 600.0, 0.0),
+            "food_and_non_alcoholic_beverages_consumption": 1.0 + rows,
+        }
+    )
+    draws.loc[~recipient["has_fuel_consumption"], _ROAD_FUEL] = 0.0
+    return donor, recipient, draws
+
+
+def _redraw_declaration() -> dict:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_incidence_operation,
+    )
+
+    declared = road_fuel_incidence_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    assert declared is not None
+    return {**declared, "n_estimators": 10}
+
+
+def test_redraw_gives_every_flagged_household_road_fuel() -> None:
+    """Zero draws among flagged households come from the positive-fuel donors (#1113)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import redraw_zero_road_fuel
+
+    donor, recipient, draws = _road_fuel_sides()
+    flagged = recipient["has_fuel_consumption"].to_numpy(dtype=bool)
+    weights = np.linspace(1.0, 2.0, 40)
+
+    result = redraw_zero_road_fuel(
+        draws,
+        donor=donor,
+        recipient=recipient,
+        flagged=flagged,
+        household_ids=np.arange(101, 141),
+        weights=weights,
+        parameters=_redraw_declaration(),
+    )
+
+    before = draws[_ROAD_FUEL].to_numpy()
+    after = result.draws[_ROAD_FUEL].to_numpy()
+    zero = flagged & (before.sum(axis=1) == 0)
+    assert zero.sum() > 0
+    assert (after.sum(axis=1)[flagged] > 0).all()
+    assert (after.sum(axis=1)[~flagged] == 0).all() and (after >= 0).all()
+    np.testing.assert_array_equal(after[~zero], before[~zero])
+    donor_total = donor[_ROAD_FUEL].to_numpy().sum(axis=1)
+    assert after.sum(axis=1)[zero].max() <= donor_total.max() + 1e-9
+    assert result.draws["food_and_non_alcoholic_beverages_consumption"].equals(
+        draws["food_and_non_alcoholic_beverages_consumption"]
+    )
+    receipt = result.receipt
+    assert receipt["flagged_zero_before"] == int(zero.sum())
+    assert receipt["flagged_zero_after"] == 0 and receipt["unflagged_with_fuel"] == 0
+    assert receipt["flagged_zero_share_before"] == pytest.approx(
+        weights[zero].sum() / weights[flagged].sum()
+    )
+    assert receipt["training_rows"] == int((donor_total > 0).sum())
+    assert receipt["regimes"] == {
+        "road_fuel_total": "positive_only",
+        "petrol_share_of_road_fuel": "zero_inflated_positive",
+    }
+    assert receipt["mean_positive_before"] == pytest.approx(
+        weights[flagged & ~zero]
+        @ before.sum(axis=1)[flagged & ~zero]
+        / weights[flagged & ~zero].sum()
+    )
+    assert receipt["weighted_total_after"] == pytest.approx(weights @ after.sum(axis=1))
+    assert [record.fit_name for record in result.fit_weight_records] == [
+        "uk_lcfs_2023_24_consumption:road_fuel_total",
+        "uk_lcfs_2023_24_consumption:petrol_share_of_road_fuel",
+    ]
+
+
+def test_redraw_is_keyed_on_household_identity_not_row_order() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import redraw_zero_road_fuel
+
+    donor, recipient, draws = _road_fuel_sides()
+    flagged = recipient["has_fuel_consumption"].to_numpy(dtype=bool)
+    ids = np.arange(101, 141)
+    weights = np.linspace(1.0, 2.0, 40)
+    parameters = _redraw_declaration()
+    base = redraw_zero_road_fuel(
+        draws,
+        donor=donor,
+        recipient=recipient,
+        flagged=flagged,
+        household_ids=ids,
+        weights=weights,
+        parameters=parameters,
+    )
+    order = np.random.default_rng(0).permutation(40)
+
+    shuffled = redraw_zero_road_fuel(
+        draws.iloc[order].reset_index(drop=True),
+        donor=donor,
+        recipient=recipient.iloc[order].reset_index(drop=True),
+        flagged=flagged[order],
+        household_ids=ids[order],
+        weights=weights[order],
+        parameters=parameters,
+    )
+
+    np.testing.assert_allclose(
+        shuffled.draws[_ROAD_FUEL].to_numpy(),
+        base.draws[_ROAD_FUEL].to_numpy()[order],
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"columns": ["petrol_spending"]}, "must redraw"),
+        ({"flag": "num_vehicles"}, "has_fuel_consumption"),
+        ({"rule": "zero_inflated"}, "unsupported"),
+        ({"seed": "0"}, "integer seed"),
+        ({"salt": ""}, "salt"),
+    ],
+)
+def test_redraw_refuses_a_wrong_declaration(change, match) -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import redraw_zero_road_fuel
+
+    donor, recipient, draws = _road_fuel_sides()
+    with pytest.raises(ValueError, match=match):
+        redraw_zero_road_fuel(
+            draws,
+            donor=donor,
+            recipient=recipient,
+            flagged=recipient["has_fuel_consumption"].to_numpy(dtype=bool),
+            household_ids=np.arange(40),
+            weights=np.ones(40),
+            parameters={**_redraw_declaration(), **change},
+        )
+
+
+def test_redraw_is_a_no_op_when_undeclared() -> None:
+    import dataclasses
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import lcfs_road_fuel_incidence
+
+    committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    stage = dataclasses.replace(
+        committed,
+        operations=tuple(
+            operation
+            for operation in committed.operations
+            if operation.kind != "redraw_zero_road_fuel"
+        ),
+    )
+    donor, recipient, draws = _road_fuel_sides()
+
+    result = lcfs_road_fuel_incidence(
+        stage,
+        draws,
+        donor=donor,
+        recipient=recipient,
+        household_ids=np.arange(40),
+        weights=np.ones(40),
+    )
+
+    assert result.draws is draws and result.receipt is None
+    assert result.fit_weight_records == ()
 
 
 def test_recipient_counts_adults_and_children_by_age_not_engine_flags() -> None:

@@ -198,6 +198,13 @@ LEVEL_ROAD_FUEL_KIND = "level_road_fuel"
 #: (c72212): other motor fuels and oils, which ONS's 07.2.2 also carries.
 UK_LCFS_OTHER_ROAD_FUEL_CODES = ("c72213",)
 UK_LCFS_ROAD_FUEL_OTHER_SHARE_RULE = "lcfs_donor_other_fuels_share"
+REDRAW_ZERO_ROAD_FUEL_KIND = "redraw_zero_road_fuel"
+UK_LCFS_ROAD_FUEL_REDRAW_RULE = "positive_total_then_petrol_share"
+#: The redraw's chain targets: the household's road-fuel total, positive by
+#: construction of the training set, then the petrol share of it (zero for a
+#: diesel-only household).
+UK_LCFS_ROAD_FUEL_TOTAL = "road_fuel_total"
+UK_LCFS_PETROL_SHARE = "petrol_share_of_road_fuel"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 #: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
 #: declared litre-proxy price concepts: HMRC clearances are all road users, the
@@ -279,6 +286,7 @@ class UKLCFSConsumptionResult:
     energy_rake: Mapping[str, Any] | None = None
     fuel_litres_audit: Mapping[str, Any] | None = None
     donor_floor: Mapping[str, Any] | None = None
+    road_fuel_incidence: Mapping[str, Any] | None = None
     road_fuel_level: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
@@ -300,6 +308,8 @@ class UKLCFSConsumptionResult:
             evidence["fuel_litres_audit"] = dict(self.fuel_litres_audit)
         if self.donor_floor is not None:
             evidence["donor_floor"] = dict(self.donor_floor)
+        if self.road_fuel_incidence is not None:
+            evidence["road_fuel_incidence"] = dict(self.road_fuel_incidence)
         if self.road_fuel_level is not None:
             evidence["road_fuel_level"] = dict(self.road_fuel_level)
         return evidence
@@ -412,6 +422,15 @@ class UKLCFSConsumptionStageTransform:
             ~recipient["has_fuel_consumption"].astype(bool),
             ["petrol_spending", "diesel_spending"],
         ] = 0.0
+        incidence = lcfs_road_fuel_incidence(
+            self.stage,
+            household_draws,
+            donor=donor,
+            recipient=recipient,
+            household_ids=frame.table("household")["household_id"].to_numpy(),
+            weights=weights,
+        )
+        household_draws = incidence.draws
         household_draws, road_fuel_level_receipt = lcfs_road_fuel_level(
             self.stage, household_draws, weights=weights, lcfs_household=lcfs_household
         )
@@ -439,7 +458,10 @@ class UKLCFSConsumptionStageTransform:
             ),
         )
         validate_uk_national_frame(result)
-        self.last_fit_weight_records = imputation.fit_weight_records
+        self.last_fit_weight_records = (
+            *imputation.fit_weight_records,
+            *incidence.fit_weight_records,
+        )
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
             support_clip=clip_result.receipt,
@@ -450,6 +472,7 @@ class UKLCFSConsumptionStageTransform:
             energy_rake=energy_rake_receipt,
             fuel_litres_audit=litres_audit,
             donor_floor=donor_floor_receipt,
+            road_fuel_incidence=incidence.receipt,
             road_fuel_level=road_fuel_level_receipt,
         )
         return result
@@ -572,6 +595,201 @@ def fuel_litres_audit(
         ),
         "gated": False,
     }
+
+
+@dataclass(frozen=True)
+class RoadFuelIncidence:
+    """Road-fuel draws after the incidence redraw, its receipt and fit records."""
+
+    draws: pd.DataFrame
+    receipt: Mapping[str, Any] | None
+    fit_weight_records: tuple[FitWeightRecord, ...] = ()
+
+
+def road_fuel_incidence_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``redraw_zero_road_fuel`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == REDRAW_ZERO_ROAD_FUEL_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def redraw_zero_road_fuel(
+    household_draws: pd.DataFrame,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    flagged: np.ndarray,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+    parameters: Mapping[str, Any],
+) -> RoadFuelIncidence:
+    """Give every household the fuel flag marks a positive road-fuel spend.
+
+    The LCFS diary covers two weeks, so about a third of car-owning donors
+    record no fuel purchase and the chain reproduces that zero share among the
+    households the fuel flag marks as buying petrol or diesel; over a year
+    such a car is refuelled. For a flagged household whose chain draw is zero,
+    petrol plus diesel is redrawn from the donor's conditional distribution
+    among households with positive road fuel, on the chain's predictors: a
+    weighted regime-gated QRF draws the total, positive by construction, then
+    the petrol share of it (which keeps diesel-only and mixed households), at
+    quantiles keyed on the household id. Positive draws are kept; the level
+    step then rescales the total (microcosm#1113).
+    """
+
+    from microcosm.fit.qrf import Regime, RegimeGatedQRF
+
+    columns = tuple(str(column) for column in parameters.get("columns", ()))
+    if columns != UK_LCFS_ROAD_FUEL_COLUMNS:
+        raise ValueError(
+            f"{REDRAW_ZERO_ROAD_FUEL_KIND} must redraw {UK_LCFS_ROAD_FUEL_COLUMNS}, "
+            f"not {columns}."
+        )
+    if parameters.get("flag") != "has_fuel_consumption":
+        raise ValueError(
+            f"{REDRAW_ZERO_ROAD_FUEL_KIND} must redraw the has_fuel_consumption "
+            "households."
+        )
+    rule = str(parameters.get("rule") or "")
+    if rule != UK_LCFS_ROAD_FUEL_REDRAW_RULE:
+        raise ValueError(f"unsupported {REDRAW_ZERO_ROAD_FUEL_KIND} rule {rule!r}.")
+    seed = parameters.get("seed")
+    n_estimators = parameters.get("n_estimators")
+    salt = parameters.get("salt")
+    if not isinstance(seed, int) or not isinstance(n_estimators, int):
+        raise ValueError(f"{REDRAW_ZERO_ROAD_FUEL_KIND} needs integer seed and trees.")
+    if not isinstance(salt, str) or not salt:
+        raise ValueError(f"{REDRAW_ZERO_ROAD_FUEL_KIND} needs a declared salt.")
+    flagged = np.asarray(flagged, dtype=bool)
+    weight = np.asarray(weights, dtype=float)
+    spend = household_draws[list(columns)].to_numpy(dtype=float)
+    before = spend.sum(axis=1)
+    zero = flagged & ~(before > 0)
+    redrawn = household_draws.copy()
+    regimes: dict[str, str] | None = None
+    training_rows = 0
+    records: tuple[FitWeightRecord, ...] = ()
+    if zero.any():
+        donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
+            donor, recipient
+        )
+        donor_total = donor_encoded["petrol_spending"].to_numpy(
+            dtype=float
+        ) + donor_encoded["diesel_spending"].to_numpy(dtype=float)
+        positive = donor_total > 0
+        training_rows = int(positive.sum())
+        if training_rows == 0:
+            raise ValueError("LCFS donor records no positive road-fuel spend.")
+        train = donor_encoded.loc[positive, [*predictors, "household_weight"]]
+        train = train.reset_index(drop=True)
+        train[UK_LCFS_ROAD_FUEL_TOTAL] = donor_total[positive]
+        train[UK_LCFS_PETROL_SHARE] = (
+            donor_encoded.loc[positive, "petrol_spending"].to_numpy(dtype=float)
+            / donor_total[positive]
+        )
+        targets = [UK_LCFS_ROAD_FUEL_TOTAL, UK_LCFS_PETROL_SHARE]
+        fitted = RegimeGatedQRF(n_estimators=n_estimators, seed=seed).fit(
+            train, list(predictors), targets, weights="household_weight"
+        )
+        regimes = {target: str(regime) for target, regime in fitted.regimes().items()}
+        if regimes[UK_LCFS_ROAD_FUEL_TOTAL] != Regime.POSITIVE_ONLY:
+            raise ValueError(
+                f"the road-fuel total fitted regime {regimes[UK_LCFS_ROAD_FUEL_TOTAL]!r}"
+                f", not {Regime.POSITIVE_ONLY!r}."
+            )
+        ids = np.asarray(household_ids)[zero]
+        drawn = fitted.predict_from_uniforms(
+            recipient_encoded.loc[zero, list(predictors)].reset_index(drop=True),
+            quantiles={
+                target: stable_identity_uniforms(
+                    ids, seed=seed, salt=f"{salt}:{target}"
+                )
+                for target in targets
+            },
+            sign_uniforms={
+                target: stable_identity_uniforms(
+                    ids, seed=seed, salt=f"{salt}:{target}:sign"
+                )
+                for target in targets
+            },
+        )
+        total = drawn[UK_LCFS_ROAD_FUEL_TOTAL].to_numpy(dtype=float)
+        share = np.clip(drawn[UK_LCFS_PETROL_SHARE].to_numpy(dtype=float), 0.0, 1.0)
+        rows = np.flatnonzero(zero)
+        redrawn.iloc[rows, redrawn.columns.get_loc("petrol_spending")] = share * total
+        redrawn.iloc[rows, redrawn.columns.get_loc("diesel_spending")] = (
+            1.0 - share
+        ) * total
+        records = tuple(
+            FitWeightRecord(
+                f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", fitted.weight_kind
+            )
+            for target in targets
+        )
+    after_spend = redrawn[list(columns)].to_numpy(dtype=float)
+    after = after_spend.sum(axis=1)
+
+    def weighted_mean(values: np.ndarray, mask: np.ndarray) -> float | None:
+        mass = float(weight[mask].sum())
+        return float(np.dot(weight[mask], values[mask]) / mass) if mass > 0 else None
+
+    flagged_mass = float(weight[flagged].sum())
+    redrawn_total = float(np.dot(weight[zero], after[zero]))
+    receipt = {
+        "operation": REDRAW_ZERO_ROAD_FUEL_KIND,
+        "rule": rule,
+        "seed": seed,
+        "salt": salt,
+        "n_estimators": n_estimators,
+        "columns": list(columns),
+        "regimes": regimes,
+        "training_rows": training_rows,
+        "flagged_households": int(flagged.sum()),
+        "flagged_zero_before": int(zero.sum()),
+        "flagged_zero_share_before": (
+            float(weight[zero].sum()) / flagged_mass if flagged_mass > 0 else 0.0
+        ),
+        "flagged_zero_after": int((flagged & ~(after > 0)).sum()),
+        "unflagged_with_fuel": int((~flagged & (after > 0)).sum()),
+        "mean_positive_before": weighted_mean(before, flagged & (before > 0)),
+        "mean_redrawn": weighted_mean(after, zero),
+        "mean_flagged_after": weighted_mean(after, flagged),
+        "redrawn_petrol_share": (
+            float(np.dot(weight[zero], after_spend[zero, 0])) / redrawn_total
+            if redrawn_total > 0
+            else None
+        ),
+        "weighted_total_before": float(np.dot(weight, before)),
+        "weighted_total_after": float(np.dot(weight, after)),
+    }
+    return RoadFuelIncidence(redrawn, receipt, records)
+
+
+def lcfs_road_fuel_incidence(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+) -> RoadFuelIncidence:
+    """Apply the declared ``redraw_zero_road_fuel`` step (none if undeclared)."""
+
+    parameters = road_fuel_incidence_operation(stage)
+    if parameters is None:
+        return RoadFuelIncidence(household_draws, None)
+    return redraw_zero_road_fuel(
+        household_draws,
+        donor=donor,
+        recipient=recipient,
+        flagged=recipient["has_fuel_consumption"].to_numpy(dtype=bool),
+        household_ids=household_ids,
+        weights=weights,
+        parameters=parameters,
+    )
 
 
 @dataclass(frozen=True)

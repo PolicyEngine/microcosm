@@ -347,6 +347,20 @@
       "notes": "Stage-time fact check on the lcfs bus_pricing receipt (microcosm#930): every area's receipts, boardings, concessionary journeys, trips per resident and population, and the boardings-per-trip and yield factors derived from them, are recomputed from the vendored rows the stage declares and must equal the receipt's; the unpriced regions must be the declared ones (Wales, which keeps the chain's raw draw by María's ruling of 2026-09-17) and the chain must have conditioned on the raw draw. The frame-implied boardings over the published ones are reported per area, not fenced: that ratio is the survey-versus-admin reading the bound receipts targets then act on. A population fact check: the synthetic smoke records it without blocking."
     },
     {
+      "id": "uk_stage_lcfs_consumption_road_fuel_incidence",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "road_fuel_incidence",
+        "maximum_flagged_zero_share": 0.5
+      },
+      "notes": "Stage-time check on the lcfs road_fuel_incidence receipt (microcosm#1113): the redraw ran with the declared rule, seed, salt and trees; after it no household the fuel flag marks as buying petrol or diesel carries zero road fuel and no unflagged household carries any; the total model fitted the positive-only regime. The chain's zero share among flagged households is the two-week diary's artefact the step corrects (about a third at prior weights on the 2026-10-08 spine); above one half the chain itself would be at fault, so the gate fails there instead of redrawing it away. María's ruling of 2026-10-08 set every fuel-car household to a positive annual spend. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
       "id": "uk_stage_lcfs_consumption_road_fuel_level",
       "gate": "stage_health",
       "phase": "transferred",

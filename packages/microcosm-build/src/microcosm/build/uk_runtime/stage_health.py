@@ -77,6 +77,8 @@ def uk_stage_health_gate(
         return _bus_travel_facts_gate(stage, evidence, parameters)
     if check == "bus_pricing":
         return _bus_pricing_gate(stage, evidence, parameters)
+    if check == "road_fuel_incidence":
+        return _road_fuel_incidence_gate(stage, evidence, parameters)
     if check == "road_fuel_level":
         return _road_fuel_level_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
@@ -2625,6 +2627,91 @@ def _bus_pricing_gate(
                 details["frame_implied_over_published_boardings"][str(label)] = (
                     entry.get("frame_implied_over_published_boardings")
                 )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _road_fuel_incidence_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every household the fuel flag marks carries road fuel after the redraw.
+
+    Checks on the ``road_fuel_incidence`` receipt (microcosm#1113): the redraw
+    ran with the stage's declared rule, seed, salt and trees; no flagged
+    household is left at zero and no unflagged household carries fuel; the
+    total model fitted the positive-only regime; and the chain's zero share
+    among flagged households, the diary artefact the step corrects, is at most
+    ``maximum_flagged_zero_share`` (a larger share would mean the chain, not
+    the two-week diary, is at fault).
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ROAD_FUEL_TOTAL,
+        road_fuel_incidence_operation,
+    )
+
+    check = "road_fuel_incidence"
+    receipt = _mapping(
+        evidence.get("road_fuel_incidence"), label=f"{stage}.road_fuel_incidence"
+    )
+    maximum_zero_share = _finite_number(
+        parameters.get("maximum_flagged_zero_share"),
+        label=f"{stage}.maximum_flagged_zero_share",
+    )
+    declared = road_fuel_incidence_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no redraw_zero_road_fuel operation.")
+    failures: list[str] = []
+    for key in ("rule", "seed", "salt", "n_estimators"):
+        if receipt.get(key) != declared.get(key):
+            failures.append(
+                f"{stage}: the redraw ran with {key} {receipt.get(key)!r}, not the "
+                f"declared {declared.get(key)!r}."
+            )
+    for key in ("flagged_zero_after", "unflagged_with_fuel"):
+        value = receipt.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    zero_before = receipt.get("flagged_zero_before")
+    if isinstance(zero_before, bool) or not isinstance(zero_before, int):
+        failures.append(f"{stage}: flagged_zero_before {zero_before!r} is not a count.")
+    elif zero_before > 0:
+        regimes = receipt.get("regimes")
+        regime = (
+            regimes.get(UK_LCFS_ROAD_FUEL_TOTAL)
+            if isinstance(regimes, Mapping)
+            else None
+        )
+        if regime != "positive_only":
+            failures.append(
+                f"{stage}: the road-fuel total fitted regime {regime!r}, not "
+                "'positive_only'."
+            )
+    share = _finite_number(
+        receipt.get("flagged_zero_share_before"),
+        label=f"{stage}.flagged_zero_share_before",
+    )
+    if not 0.0 <= share <= maximum_zero_share:
+        failures.append(
+            f"{stage}: the chain left {share:.4f} of flagged households at zero road "
+            f"fuel, outside [0, {maximum_zero_share}]."
+        )
+    details = {
+        "maximum_flagged_zero_share": maximum_zero_share,
+        "flagged_households": receipt.get("flagged_households"),
+        "flagged_zero_before": zero_before,
+        "flagged_zero_share_before": share,
+        "mean_positive_before": receipt.get("mean_positive_before"),
+        "mean_redrawn": receipt.get("mean_redrawn"),
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

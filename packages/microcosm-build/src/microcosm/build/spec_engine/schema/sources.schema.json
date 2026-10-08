@@ -11176,6 +11176,47 @@
        }
       }
      }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "flag",
+      "rule",
+      "seed",
+      "salt",
+      "n_estimators"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_zero_road_fuel"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "flag": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      }
+     }
     }
    ],
    "description": "Closed kind-discriminated source artifact and operation records, covering the packaged US, UK, and BE source vocabularies."

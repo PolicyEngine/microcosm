@@ -127,13 +127,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5289ea684304066ab7541fa184861a1c4dae72bf3ae200386f0d8a4ba0ec660a"
+    "22ccc5fa198f562af475c419c25c1781dc0c7c2e2ca06545de540fb2b2c11e08"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2ebb6b81d44a82905bec15f64634283eb011c460db3f70a74ff5230c903ad914"
+    "94f76b7ce2e76727bfbe91ca2726e05c8399ad9783972ea7d3cc865771d87b55"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "3e04fbeb7f058269547937323829772807604f26c508755a73402e7554c9b2ab"
+    "c6cfff6fdf1d4e87c6cc4ebca1b9ed74134dcd585e1b2c914f893e7907925460"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -170,6 +170,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_road_fuel_incidence": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
@@ -1270,6 +1275,7 @@ def _gate_battery_payload(
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
         "uk_stage_lcfs_consumption_bus_pricing": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_road_fuel_incidence": "lcfs_consumption",
         "uk_stage_lcfs_consumption_road_fuel_level": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",

@@ -1790,6 +1790,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1113 road_fuel_incidence check: the ceiling on the chain's
+                # zero share among flagged fuel-car households.
+                "maximum_flagged_zero_share",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

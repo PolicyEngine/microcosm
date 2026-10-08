@@ -1609,6 +1609,72 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
         run(None)
 
 
+def test_road_fuel_incidence_gate_holds_every_flagged_household_positive() -> None:
+    """The lcfs road_fuel_incidence receipt is checked at stage time (microcosm#1113)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_incidence_operation,
+    )
+
+    gate_id = "uk_stage_lcfs_consumption_road_fuel_incidence"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters["check"] == "road_fuel_incidence"
+    declared = road_fuel_incidence_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    receipt = {
+        **{key: declared[key] for key in ("rule", "seed", "salt", "n_estimators")},
+        "regimes": {
+            "road_fuel_total": "positive_only",
+            "petrol_share_of_road_fuel": "zero_inflated_positive",
+        },
+        "flagged_households": 100,
+        "flagged_zero_before": 34,
+        "flagged_zero_share_before": 0.343,
+        "flagged_zero_after": 0,
+        "unflagged_with_fuel": 0,
+        "mean_positive_before": 1500.0,
+        "mean_redrawn": 900.0,
+    }
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "road_fuel_incidence": ev},
+            stage="lcfs_consumption",
+            check="road_fuel_incidence",
+            parameters=parameters,
+        )
+
+    def failing(ev, fragment: str) -> None:
+        result = run(ev)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["flagged_zero_share_before"] == 0.343
+    failing({**receipt, "flagged_zero_after": 1}, "flagged_zero_after is 1")
+    failing({**receipt, "unflagged_with_fuel": 2}, "unflagged_with_fuel is 2")
+    failing({**receipt, "salt": "other"}, "the redraw ran with salt")
+    failing({**receipt, "n_estimators": 4}, "the redraw ran with n_estimators")
+    failing(
+        {**receipt, "regimes": {"road_fuel_total": "zero_inflated_positive"}},
+        "fitted regime",
+    )
+    failing({**receipt, "flagged_zero_share_before": 0.6}, "outside [0, 0.5]")
+    failing({**receipt, "flagged_zero_before": 3.0}, "is not a count")
+    # Nothing to redraw needs no fitted model.
+    nothing = {**receipt, "flagged_zero_before": 0, "regimes": None}
+    assert run({**nothing, "flagged_zero_share_before": 0.0}).passed
+    with pytest.raises(ValueError, match="road_fuel_incidence must be an object"):
+        run(None)
+
+
 def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows() -> (
     None
 ):
