@@ -381,7 +381,14 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
             }
         ),
         benunit=pd.DataFrame({"benunit_id": [1, 2]}),
-        household=pd.DataFrame({"household_id": [1, 2], "region": ["LONDON"] * 2}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON"] * 2,
+                "main_residence_value": [300_000.0, 0.0],
+                "property_wealth": [350_000.0, 0.0],
+            }
+        ),
         time_period="2024",
         household_weights=np.asarray([1.0, 2.0]),
     )
@@ -389,12 +396,16 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         "person.age",
         "person.incapacity_benefit_reported",
         "household.region",
+        "household.main_residence_value",
+        "household.property_wealth",
         "household.household_weight",
     }
     exported = uk_release_export_frame(frame)
+    # microcosm#1106: the WAS total leaves; its engine components stay.
     assert uk_export_candidate_columns(exported) == {
         "person.age",
         "household.region",
+        "household.main_residence_value",
         "household.household_weight",
     }
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]

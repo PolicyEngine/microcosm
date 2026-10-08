@@ -579,10 +579,15 @@ class TestUKSurfaceAdapter:
         spine_person = spine.table("person").copy()
         spine_person["sic_industry_division"] = [1.0, 2.0, 3.0, 4.0]
         spine_person[UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0]] = 0.0
+        # microcosm#1106: the WAS property_wealth total is the first household
+        # column the export drops; the was_wealth stage declares it
+        # non-negative, so the certifier reads it from the spine.
+        spine_household = spine.table("household").copy()
+        spine_household["property_wealth"] = [5.0, 0.0, 7.0, 0.0]
         spine = uk_national_frame(
             person=spine_person,
             benunit=spine.table("benunit"),
-            household=spine.table("household"),
+            household=spine_household,
             time_period="2023",
             household_weights=spine.weights_for("household").values,
         )
@@ -591,6 +596,7 @@ class TestUKSurfaceAdapter:
             [
                 "salary_sacrifice_pre_conversion_pay",
                 UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+                "property_wealth",
                 "sic_industry_division",
                 "never_declared",
             ],
@@ -600,7 +606,9 @@ class TestUKSurfaceAdapter:
         assert set(found) == {
             "salary_sacrifice_pre_conversion_pay",
             UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+            "property_wealth",
         }
+        assert found["property_wealth"].tolist() == [5.0, 0.0, 7.0, 0.0]
         assert found["salary_sacrifice_pre_conversion_pay"].tolist() == [
             0.0,
             30.0,
@@ -1086,6 +1094,68 @@ class TestTerminalCoverageBinding:
         assert result.passed == direct.passed
         assert result.failures == direct.failures
         assert dict(result.details) == dict(direct.details)
+
+    def test_terminal_mode_reads_the_frame_the_release_writes(self) -> None:
+        # microcosm#1106: the full build's terminal gates hold the raw
+        # calibrated frame, which still carries the WAS property_wealth total
+        # the release export drops. A reviewed exclusion that the raw frame
+        # still populates reads as stale; the binding reads the export frame.
+        person, benunit, household = _tables()
+        household["main_residence_value"] = [300_000.0, 0.0, 150_000.0, 0.0]
+        household["property_wealth"] = [350_000.0, 0.0, 160_000.0, 0.0]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class Engine(_TerminalCoverageEngine):
+            def variables(self):
+                return [
+                    "employment_income",
+                    "main_residence_value",
+                    "property_wealth",
+                ]
+
+            def variable_entities(self, names):
+                return {
+                    name: "person" if name == "employment_income" else "household"
+                    for name in names
+                }
+
+        engine = Engine()
+        manifest = UKReleaseInputCoverageManifest(
+            reference={"source": "test"},
+            candidate_evidence={"source": "test"},
+            columns=(
+                UKReleaseInputColumn("employment_income", "required"),
+                UKReleaseInputColumn("main_residence_value", "required"),
+                UKReleaseInputColumn(
+                    "property_wealth",
+                    "reviewed_exclusion",
+                    reason="formula-owned in policyengine-uk",
+                    tracking_note="microcosm#1106",
+                ),
+            ),
+            family_coverage={},
+        )
+        raw = uk_release_input_coverage_gate(
+            _uk_gate_surface(frame), engine, manifest=manifest
+        )
+        result = UK_GATE_REGISTRY["release_input_coverage"].evaluate(
+            EvidenceContext(
+                frame=frame,
+                artifacts={
+                    "coverage_engine": engine,
+                    "coverage_manifest": manifest,
+                    # The spine build state the family half reads (#1115).
+                    "spine_frame": frame,
+                },
+            ),
+            {},
+        )
+
+        assert raw.passed is False
+        assert any("property_wealth" in failure for failure in raw.failures)
+        assert result.passed is True, result.failures
 
 
 class TestPreflightBindings:

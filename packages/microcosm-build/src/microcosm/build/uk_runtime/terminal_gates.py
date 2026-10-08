@@ -362,6 +362,12 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "The enhanced FRS stores this legacy reported-benefit input as an "
         "all-zero layer; the candidate must drop dead zero layers."
     ),
+    "household.property_wealth": (
+        "policyengine-uk derives property_wealth from main_residence_value, "
+        "other_residential_property_value and non_residential_property_value; "
+        "a persisted copy overrides that sum and has no uprating index, so the "
+        "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
 }
 
 _STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {

@@ -437,11 +437,18 @@ class TestUKManifest:
         assert_uk_release_input_coverage_manifest_current(
             engine=_StubEngine({}, set(manifest.declared_columns))
         )
-        assert manifest.required_columns == frozenset(
-            load_efrs_parity_reference().populated_layers
+        # microcosm#1106: property_wealth is formula-owned in policyengine-uk,
+        # so the release leaves it to the engine; it is an engine-derived
+        # exclusion, not parity debt, and its components stay required.
+        assert manifest.required_columns == (
+            frozenset(load_efrs_parity_reference().populated_layers)
+            - {"property_wealth"}
         )
-        assert manifest.reviewed_exclusions == {}
+        assert set(manifest.reviewed_exclusions) == {"property_wealth"}
         assert load_efrs_parity_known_gaps() == ()
+        assert [gap.variable for gap in load_efrs_engine_derived_exclusions()] == [
+            "property_wealth"
+        ]
         assert manifest.required_build_stages == frozenset(
             {
                 "frs_hmrc_spine_leaves",
@@ -770,7 +777,15 @@ class TestUKManifest:
             reference["engine"]["formula_owned_persisted_overrides_included"]
         )
         assert len(overrides) == 13
-        assert overrides <= set(manifest.required_columns)
+        # The one exception is declared: property_wealth, whose persisted copy
+        # overrides the engine's component sum and is never uprated, so the
+        # release leaves it to the formula (microcosm#1106). Every other
+        # formula-owned override stays required.
+        engine_derived = {gap.variable for gap in load_efrs_engine_derived_exclusions()}
+        assert engine_derived == {"property_wealth"}
+        assert engine_derived <= overrides
+        assert overrides - engine_derived <= set(manifest.required_columns)
+        assert engine_derived.isdisjoint(manifest.required_columns)
 
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
         engine = PolicyEngineUKCoverageEngine()

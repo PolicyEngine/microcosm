@@ -631,6 +631,12 @@
   }
  },
  "description": "Canonical UK enhanced-FRS parity debt ledger. A reference-populated loader input appears in known_gaps when neither the sha-pinned certified Microcosm UK candidate nor a pinned post-candidate source-family restoration carries non-default signal on the reviewed minimum share of effective population mass.",
+ "engine_derived_exclusions": {
+  "property_wealth": {
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "tracking_note": "microcosm#1106 (the uk-data#543 defect): the release and calibration boundaries drop the WAS total, and policyengine-uk sums main_residence_value, other_residential_property_value and non_residential_property_value, which stay required."
+  }
+ },
  "exclusion_policy": {
   "reason": "not yet ported from enhanced FRS pipeline — pending review",
   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
