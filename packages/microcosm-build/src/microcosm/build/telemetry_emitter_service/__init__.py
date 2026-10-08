@@ -1,17 +1,22 @@
-"""Local service that queues and delivers Microcosm telemetry."""
+"""Compatibility exports for #1099 telemetry clients.
 
-from microcosm.build.telemetry_emitter_service.collector import CollectorDelivery
-from microcosm.build.telemetry_emitter_service.constants import (
-    PRODUCTION_COLLECTOR_URL,
-)
-from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
-from microcosm.build.telemetry_emitter_service.runtime import EmitterService
-from microcosm.build.telemetry_emitter_service.spool import EventSpool
+Lazy loading keeps the general emitter's authentication independent of the
+telemetry package's import order.
+"""
 
-__all__ = [
-    "CollectorDelivery",
-    "EmitterService",
-    "EventSpool",
-    "PRODUCTION_COLLECTOR_URL",
-    "ProcessTreeSampler",
-]
+from importlib import import_module
+
+_EXPORTS = {
+    "CollectorDelivery": "collector",
+    "EmitterService": "runtime",
+    "EventSpool": "spool",
+    "PRODUCTION_COLLECTOR_URL": "constants",
+    "ProcessTreeSampler": "resources",
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    return getattr(import_module(f"{__name__}.{_EXPORTS[name]}"), name)

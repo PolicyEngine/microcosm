@@ -119,12 +119,14 @@ class LocalTelemetryEmitter:
         socket_path: Path | None,
         runtime_dir: Path | None,
         send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
+        spool_path: Path | None = None,
     ) -> None:
         self.run = run
         self._process = process
         self._socket_path = socket_path
         self._runtime_dir = runtime_dir
         self._send_timeout_seconds = send_timeout_seconds
+        self._spool_path = spool_path
         self._closed = False
         self._warned = False
         self._transition_stage: str | None = None
@@ -212,6 +214,7 @@ class LocalTelemetryEmitter:
                         process=process,
                         socket_path=socket_path,
                         runtime_dir=runtime_dir,
+                        spool_path=queue_path,
                     )
                     emitter.emit(
                         event_type=EVENT_TYPE_RUN,
@@ -243,7 +246,13 @@ class LocalTelemetryEmitter:
                 runtime_dir.rmdir()
         except OSError:
             pass
-        return cls(run=run, process=None, socket_path=None, runtime_dir=runtime_dir)
+        return cls(
+            run=run,
+            process=None,
+            socket_path=None,
+            runtime_dir=runtime_dir,
+            spool_path=Path(spool_path) if spool_path else None,
+        )
 
     @property
     def available(self) -> bool:
@@ -405,6 +414,31 @@ class LocalTelemetryEmitter:
             return
         self._send({"action": ACTION_CLOSE})
         self._closed = True
+
+    def publish_graph(
+        self, directory: Path, inventory: dict, *, wait_seconds: float = 30.0
+    ) -> dict:
+        """Preserve a job first, then wait a bounded time for its first result.
+
+        Unlike telemetry, missing credentials never discard this job. Enqueue
+        directly into the service's shared SQLite database so a socket timeout
+        or unavailable service cannot lose the publication request.
+        """
+        from microcosm.build.emitter_service.components.graph_publication import (
+            GraphPublicationQueue,
+        )
+
+        queue = GraphPublicationQueue(
+            self._spool_path or _cache_dir() / TELEMETRY_SPOOL_FILENAME
+        )
+        queue.enqueue(directory, inventory)
+        deadline = time.monotonic() + max(0, wait_seconds)
+        while self.available and time.monotonic() < deadline:
+            receipt = queue.receipt(inventory["publication_id"])
+            if receipt.get("attempts", 0) or receipt["status"] == "published":
+                return receipt
+            time.sleep(0.1)
+        return queue.receipt(inventory["publication_id"])
 
     def _close_transition_stage(
         self,

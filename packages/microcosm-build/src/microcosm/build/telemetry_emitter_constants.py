@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-TELEMETRY_SERVICE_MODULE: Final = "microcosm.build.telemetry_emitter_service"
+TELEMETRY_SERVICE_MODULE: Final = "microcosm.build.emitter_service"
 TELEMETRY_CACHE_PARTS: Final = ("microcosm", "telemetry")
 TELEMETRY_SPOOL_FILENAME: Final = "events.sqlite3"
-RUNTIME_DIRECTORY_PREFIX: Final = "microcosm-telemetry-"
+RUNTIME_DIRECTORY_PREFIX: Final = "microcosm-emitter-"
 SOCKET_FILENAME: Final = "emitter.sock"
 TEMPORARY_DIRECTORY_ALIAS: Final = Path("/tmp")
 

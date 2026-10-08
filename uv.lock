@@ -770,6 +770,7 @@ version = "0.1.0"
 source = { editable = "packages/microcosm-build" }
 dependencies = [
     { name = "alembic" },
+    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "jsonschema" },
     { name = "microcosm-calibrate" },
@@ -812,6 +813,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13.3,<2" },
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "microcosm-calibrate", editable = "packages/microcosm-calibrate" },

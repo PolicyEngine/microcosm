@@ -4,6 +4,22 @@ from __future__ import annotations
 
 from typing import Final
 
+from microcosm.build.emitter_service.constants import (
+    DEFAULT_DRAIN_SECONDS as DEFAULT_DRAIN_SECONDS,
+)
+from microcosm.build.emitter_service.constants import (
+    SOCKET_ACCEPT_TIMEOUT_SECONDS as SOCKET_ACCEPT_TIMEOUT_SECONDS,
+)
+from microcosm.build.emitter_service.constants import (
+    SOCKET_CONNECTION_TIMEOUT_SECONDS as SOCKET_CONNECTION_TIMEOUT_SECONDS,
+)
+from microcosm.build.emitter_service.constants import (
+    SOCKET_LISTEN_BACKLOG as SOCKET_LISTEN_BACKLOG,
+)
+from microcosm.build.emitter_service.constants import (
+    WORKER_INTERVAL_SECONDS as WORKER_INTERVAL_SECONDS,
+)
+
 RETENTION_DAYS: Final = 7
 MAX_QUEUED_BYTES: Final = 100 * 1024 * 1024
 BATCH_SIZE: Final = 100
@@ -55,12 +71,7 @@ DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
 
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
-DEFAULT_DRAIN_SECONDS: Final = 15.0
 MINIMUM_HEARTBEAT_SECONDS: Final = 1.0
-SOCKET_LISTEN_BACKLOG: Final = 16
-SOCKET_ACCEPT_TIMEOUT_SECONDS: Final = 0.5
-SOCKET_CONNECTION_TIMEOUT_SECONDS: Final = 0.25
-WORKER_INTERVAL_SECONDS: Final = 1.0
 DRAIN_RETRY_SECONDS: Final = 0.5
 
 EVENT_OBJECT_ERROR: Final = "event must be an object"

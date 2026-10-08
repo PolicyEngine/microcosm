@@ -5,6 +5,34 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Final, Literal
 
+from microcosm.build.emitter_protocol import (
+    ACTION_CLOSE as ACTION_CLOSE,
+)
+from microcosm.build.emitter_protocol import (
+    ACTION_PING as ACTION_PING,
+)
+from microcosm.build.emitter_protocol import (
+    LOCAL_ACKNOWLEDGEMENT_ERROR as LOCAL_ACKNOWLEDGEMENT_ERROR,
+)
+from microcosm.build.emitter_protocol import (
+    LOCAL_ACKNOWLEDGEMENT_OK as LOCAL_ACKNOWLEDGEMENT_OK,
+)
+from microcosm.build.emitter_protocol import (
+    LOCAL_ACKNOWLEDGEMENT_READ_BYTES as LOCAL_ACKNOWLEDGEMENT_READ_BYTES,
+)
+from microcosm.build.emitter_protocol import (
+    LOCAL_MESSAGE_DELIMITER as LOCAL_MESSAGE_DELIMITER,
+)
+from microcosm.build.emitter_protocol import (
+    LOCAL_PING_MESSAGE as LOCAL_PING_MESSAGE,
+)
+from microcosm.build.emitter_protocol import (
+    LOCAL_SOCKET_READ_BYTES as LOCAL_SOCKET_READ_BYTES,
+)
+from microcosm.build.emitter_protocol import (
+    MAX_LOCAL_MESSAGE_BYTES as MAX_LOCAL_MESSAGE_BYTES,
+)
+
 type TelemetryAction = Literal["event", "close", "ping"]
 type TelemetryEventType = Literal[
     "run", "stage", "progress", "calibration", "heartbeat"
@@ -14,8 +42,6 @@ type TelemetryStatus = Literal["started", "progress", "completed", "failed"]
 TELEMETRY_SCHEMA_VERSION: Final = 1
 
 ACTION_EVENT: Final = "event"
-ACTION_CLOSE: Final = "close"
-ACTION_PING: Final = "ping"
 
 EVENT_TYPE_RUN: Final = "run"
 EVENT_TYPE_STAGE: Final = "stage"
@@ -40,19 +66,12 @@ UNEXPECTED_PROCESS_EXIT_MESSAGE: Final = (
     "The build process exited without reporting completion."
 )
 
-LOCAL_ACKNOWLEDGEMENT_OK: Final = b"ok\n"
-LOCAL_ACKNOWLEDGEMENT_ERROR: Final = b"error\n"
-LOCAL_MESSAGE_DELIMITER: Final = b"\n"
-LOCAL_PING_MESSAGE: Final = b'{"action":"ping"}\n'
 
 MAX_TELEMETRY_TEXT_CHARS: Final = 2_000
 MAX_TELEMETRY_MESSAGE_CHARS: Final = 500
 MAX_TELEMETRY_DETAILS_DEPTH: Final = 6
 MAX_TELEMETRY_COLLECTION_ITEMS: Final = 200
 MAX_TELEMETRY_DETAILS_BYTES: Final = 8_192
-MAX_LOCAL_MESSAGE_BYTES: Final = 1_048_576
-LOCAL_SOCKET_READ_BYTES: Final = 65_536
-LOCAL_ACKNOWLEDGEMENT_READ_BYTES: Final = 16
 
 SEQUENTIAL_STATUS_MAP: Final = MappingProxyType(
     {
