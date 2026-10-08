@@ -292,6 +292,29 @@ def test_truncated_values_never_exceed_the_band():
     assert (mapped <= 1e100).all() and (mapped >= 1e-200).all()
 
 
+def test_narrow_band_maps_without_refusal_and_stays_accurate():
+    # log(upper) - log(lower) loses the width of a band this narrow; log1p of
+    # the exact difference keeps it, so distinct ranks stay distinct.
+    lower, upper, alpha = 1e300, 1e300 * (1 + 1e-14), 2.0
+    mapped = quantile_map(
+        [1, 2, 3, 4],
+        [1, 1, 1, 1],
+        [{"lower": lower, "upper": upper, "share": 1}],
+        interpolation={"method": "pareto", "alpha": alpha},
+    )
+    assert ((mapped >= lower) & (mapped <= upper)).all()
+    expected = [
+        _reference_truncated_pareto(lower, upper, alpha, Fraction(rank, 8))
+        for rank in (1, 3, 5, 7)
+    ]
+    np.testing.assert_allclose(mapped, expected, rtol=1e-12, atol=0)
+
+
+def test_rounding_above_the_band_is_clipped():
+    mapped = _pareto_inverse(np.array([1 - 2.0**-53]), 1e-300, 1e-299, 0.1)
+    assert mapped[0] <= 1e-299
+
+
 def test_untruncated_band_reaches_finite_values_through_log_space():
     # lower * exp(offset) overflows here although the true quantile is finite.
     mapped = quantile_map(

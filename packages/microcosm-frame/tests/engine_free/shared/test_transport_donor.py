@@ -311,14 +311,14 @@ def test_line_numbers_float64_cannot_hold_exactly_are_refused(pointer):
 
 
 @pytest.mark.parametrize("column", ["A_SPOUSE", "PECOHAB", "PEPAR1", "PEPAR2"])
-def test_reader_refuses_dangling_pointers_that_float64_would_round_to_a_roster_line(
-    tmp_path, column
-):
+def test_reader_refuses_pointer_columns_at_or_above_2_53(tmp_path, column):
     tables = _tables()
     person = tables["person"]
-    # The largest exactly representable line, and a pointer one above it: in
-    # float64 the pointer is still distinct, but nothing at or above 2**53 can be
-    # trusted, so the reader must refuse the pointer column itself.
+    # The largest exactly representable line, and a pointer one above it. A real
+    # rounding collision needs a line at or above 2**53 too, which the A_LINENO
+    # guard refuses first, so this checks the pointer guard as a second line of
+    # defence: each pointer column is refused by its own name. (9df282d3 also
+    # refused this input, but as an unknown household line.)
     existing_line = 2**53 - 1
     person.loc[0, "A_LINENO"] = existing_line
     household = person["person_household_id"] == person.loc[0, "person_household_id"]
