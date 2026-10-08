@@ -22,6 +22,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.run_outcome import GateBlock, classify_failure
 from microcosm.build.staging_dataset import (
     StagedDatasetBundle,
     disabled_staged_dataset,
@@ -54,6 +55,7 @@ __all__ = [
     "STAGING_MAX_EPOCH_ROWS",
     "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
+    "block_staging_run_bundle",
     "create_staging_run_bundle",
     "emit_calibration_progress",
     "fail_staging_run_bundle",
@@ -415,20 +417,94 @@ _gate_statuses = gate_statuses
 def fail_staging_run_bundle(
     staging_bundle: StagingRunBundleWriterV2 | None, error: BaseException
 ) -> None:
+    """Close both telemetry destinations for a build that raised.
+
+    The error is classified once (:func:`classify_failure`): a gate refusal
+    anywhere in its cause chain closes the run as ``blocked``; anything else is a
+    ``failed`` run with its error code and failure class.
+    """
+
+    classified = classify_failure(error)
+    if classified.block is not None:
+        _close_blocked(
+            staging_bundle, classified.block, gate_statuses=None, read_back=False
+        )
+        return
     if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-        _ACTIVE_EMITTER.fail(error)
+        _ACTIVE_EMITTER.fail(
+            error,
+            failure_class=classified.failure_class or "error",
+            error_code=classified.error_code,
+        )
     if staging_bundle is None:
         return
     if staging_bundle.status != "running":
         return
     try:
-        staging_bundle.fail(error)
+        staging_bundle.fail(
+            error,
+            error_code=classified.error_code or "BUILD_FAILED",
+            failure_class=classified.failure_class,
+        )
         staging_bundle.validate_local_bundle()
     except Exception:
         pass
 
 
+def block_staging_run_bundle(
+    args: argparse.Namespace,
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    block: GateBlock,
+    *,
+    gate_statuses: Mapping[str, str] | None = None,
+) -> None:
+    """Close both telemetry destinations for a build its gates refused."""
+
+    _close_blocked(
+        staging_bundle,
+        block,
+        gate_statuses=gate_statuses,
+        read_back=bool(getattr(args, "staging_read_back", False)),
+    )
+
+
+def _close_blocked(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    block: GateBlock,
+    *,
+    gate_statuses: Mapping[str, str] | None,
+    read_back: bool,
+) -> None:
+    if staging_bundle is not None and staging_bundle.status == "running":
+        try:
+            staging_bundle.block(
+                phase=block.phase,
+                blocking_gate_ids=list(block.blocking_gate_ids),
+                blocking_failure_count=block.blocking_failure_count,
+                gate_statuses=gate_statuses,
+            )
+        except StagingContractError as error:
+            _warn_telemetry("could not close the staging run as blocked", error)
+        else:
+            try:
+                if read_back:
+                    staging_bundle.verify_remote()
+            finally:
+                try:
+                    staging_bundle.validate_local_bundle()
+                except StagingContractError as error:
+                    _warn_telemetry("the local staging bundle does not validate", error)
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.block(
+            phase=block.phase,
+            blocking_gate_ids=list(block.blocking_gate_ids),
+            blocking_failure_count=block.blocking_failure_count,
+            gate_statuses=gate_statuses,
+        )
+
+
 _fail_staging_run_bundle = fail_staging_run_bundle
+_block_staging_run_bundle = block_staging_run_bundle
 
 
 def finalize_staging_run_bundle(

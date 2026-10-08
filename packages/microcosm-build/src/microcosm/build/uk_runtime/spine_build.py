@@ -49,6 +49,7 @@ from microcosm.build.observation import (
     StageObserver,
 )
 from microcosm.build.plan import StageRecord
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
@@ -900,6 +901,58 @@ def _structural_columns(frame) -> frozenset[str]:
 
 def _new_build_id(timestamp: datetime) -> str:
     return f"uk-frs-spine-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
+
+
+def _close_failed_telemetry(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    error: BaseException,
+    *,
+    rung_abort: bool = False,
+) -> None:
+    """Close both telemetry destinations for a spine build that raised.
+
+    A spine gate refusal closes the run as ``blocked`` at its gate phase; a rung
+    abort and every other error close it ``failed`` with a classified code.
+    """
+    classified = classify_failure(error)
+    if classified.block is not None and not rung_abort:
+        block = classified.block
+        if staging_bundle is not None and staging_bundle.status == "running":
+            try:
+                staging_bundle.block(
+                    phase=block.phase,
+                    blocking_gate_ids=list(block.blocking_gate_ids),
+                    blocking_failure_count=block.blocking_failure_count,
+                )
+                staging_bundle.validate_local_bundle()
+            except Exception:
+                pass
+        if emitter is not None and emitter.available:
+            emitter.block(
+                phase=block.phase,
+                blocking_gate_ids=list(block.blocking_gate_ids),
+                blocking_failure_count=block.blocking_failure_count,
+            )
+        return
+    error_code, failure_class = (
+        ("RUNG_ABORTED", "aborted")
+        if rung_abort
+        else (
+            classified.error_code or "BUILD_FAILED",
+            classified.failure_class or "error",
+        )
+    )
+    if staging_bundle is not None and staging_bundle.status == "running":
+        try:
+            staging_bundle.fail(
+                error, error_code=error_code, failure_class=failure_class
+            )
+            staging_bundle.validate_local_bundle()
+        except Exception:
+            pass
+    if emitter is not None and emitter.available:
+        emitter.fail(error, failure_class=failure_class, error_code=error_code)
 
 
 def _record_attempt(
@@ -2103,17 +2156,11 @@ def main(argv: list[str] | None = None) -> int:
                 materialize_blocked_spine_gate_report(error, battery=spine_battery)
             except GateBatteryBlockedError as blocked:
                 error = blocked
-        if staging_bundle is not None and staging_bundle.status == "running":
-            try:
-                staging_bundle.fail(error)
-                staging_bundle.validate_local_bundle()
-            except Exception:
-                pass
-        if emitter.available:
-            emitter.fail(error)
-        if _is_sampled(args) and _exception_chain_contains(
+        rung_abort = _is_sampled(args) and _exception_chain_contains(
             error, _RUNG_NAMED_EDGE_SIGNATURE
-        ):
+        )
+        _close_failed_telemetry(staging_bundle, emitter, error, rung_abort=rung_abort)
+        if rung_abort:
             rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
             receipt = _rung_abort_receipt(args, error=error)
             atomic_write_json(rung_abort_path, receipt)

@@ -53,8 +53,11 @@ repositories accept the new fixture manifest in their respective feature
 branches.
 
 Version 1 fixtures describe current US output and remain fixed during the UK
-implementation. Version 2 fixtures include successful spine, calibration,
-sanitized failure, delivery-failure, and incompatible-version cases.
+implementation. Version 2 fixtures (successful spine, calibration, sanitized
+failure, delivery-failure, and incompatible-version cases) are frozen: the UK
+writer now emits version 3, and the version 2 bytes stay only to prove old runs
+still read. Version 3 fixtures add a `blocked` run and a failure that carries
+its `failure_class`.
 
 The implementation separates versioned file serialization from country
 configuration. `microcosm.build.staging_storage` owns repository access and
@@ -66,7 +69,8 @@ shared modules contain no UK repository or environment defaults. The two
 serializers remain separate because version 1 and version 2 intentionally
 write different files.
 
-Regenerate and verify the canonical version 2 bytes with:
+Regenerate and verify the canonical version 3 bytes with (the generator no
+longer writes version 2):
 
 ```bash
 uv run python tools/generate_staging_contract_fixtures.py
@@ -120,12 +124,12 @@ The two UK commands (`tools/build_uk_frs_spine.py`, a shim over
 in either release role, `national` or `dense`; `tools/build_uk_rowwise_candidate.py`
 is a stub over the same driver) support these staging modes:
 
-- Default: local version 2 files plus best-effort delivery to
+- Default: local version 3 files plus best-effort delivery to
   `policyengine/populace-uk-staging`.
 - `--staging-local-only`: the same validated files without constructing a
   remote client.
-- `--no-staging`: no telemetry files, with a version 2 opt-out object written
-  into build evidence.
+- `--no-staging`: no telemetry files, with an opt-out delivery object (delivery
+  contract version 2) written into build evidence.
 
 Common options are `--staging-dir`, `--staging-repo-id`,
 `--staging-run-id`, `--staging-candidate-id`,
@@ -133,7 +137,7 @@ Common options are `--staging-dir`, `--staging-repo-id`,
 repository identifier is invalid in remote mode. Authenticated read-back is
 valid only in remote mode.
 
-Version 2 storage uses the fixed repository prefix `runs/`. Individual runs
+Version 2 and 3 storage use the fixed repository prefix `runs/`. Individual runs
 cannot select another prefix, so consumers can enumerate that subtree without
 traversing the rest of the repository.
 
@@ -146,8 +150,24 @@ runs/<run_id>/events.ndjson
 runs/<run_id>/calibration_progress.json  # calibration runs only
 ```
 
-Every JSON document and event declares its schema name and version 2. Unknown
-schema names or versions are incompatible data. Only reviewed aggregate JSON
+Every JSON document and event declares its schema name and version (3 for
+new runs; version 2 runs stay valid, but one run never mixes versions). Unknown
+schema names or versions are incompatible data.
+
+A run ends in one of three terminal statuses:
+
+- `completed`: the build finished and its gates passed;
+- `blocked` (version 3): the build reached a gate decision and the gates refused
+  the candidate. The run carries `block` (`phase`, `blocking_failure_count`,
+  `blocking_gate_ids`) and ends with a `blocked` event that also lists the gate
+  statuses. A dense build refused at the preflight gates is blocked at phase
+  `preflight`;
+- `failed`: the build raised. `failure` carries an `error_code` (`INTERRUPTED`,
+  `TERMINATED`, `OUT_OF_MEMORY`, `GRAPH_NODE_FAILED`, `BUILD_FAILED`, ...) and,
+  in version 3, a `failure_class`.
+
+The delivery summary (`staging_delivery`) keeps contract version 2: its shape
+did not change, and publication and the release assemblers pin it. Only reviewed aggregate JSON
 artifacts are permitted; population H5 files, NumPy archives, source survey
 tables, row-level extracts, archives, credentials, and environment data are
 rejected before remote storage is called.

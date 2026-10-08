@@ -49,6 +49,14 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
+from microcosm.build.run_outcome import (
+    BuildRefusedError,
+    Classified,
+    GateBlock,
+    RunOutcome,
+    classify_failure,
+    classify_return,
+)
 from microcosm.graph import (
     ArtifactInput,
     ContentStore,
@@ -178,6 +186,7 @@ from .rowwise_posture import (
 from .rowwise_staging import (
     STAGED_DATASET_PHASES,
     STAGING_UPLOAD_INTERVAL_SECONDS,
+    block_staging_run_bundle,
     create_staging_run_bundle,
     emit_calibration_progress,
     fail_staging_run_bundle,
@@ -1162,6 +1171,7 @@ def _close_attempt(
     state: AttemptState = attempt["state"]
     manifest = record.get("manifest")
     blocked = bool(record.get("blocking_failures"))
+    classified = classify_return(status, record.get("gate_block"))
     if manifest is not None:
         append_phase(state, "published")
         args._gate_report = {"gates": record.get("gate_rows", {})}
@@ -1174,7 +1184,7 @@ def _close_attempt(
         )
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         try:
-            finalize_staging_run_bundle(args, telemetry)
+            _close_staging(args, telemetry, classified, record)
         finally:
             manifest["staging_delivery"] = staging_delivery(telemetry)
             manifest["staged_dataset"] = staged_dataset
@@ -1188,14 +1198,14 @@ def _close_attempt(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
     else:
-        finalize_staging_run_bundle(args, telemetry)
+        _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
         state=state,
         started_at=attempt["started_at"],
         started_ts=attempt["started_ts"],
         seed=args.seed,
         code_pin=str(attempt["code_pin"]),
-        disposition="failed" if (blocked or status != 0) else "iterating",
+        disposition=classified.disposition,
         predecessor=attempt["predecessor"],
         spool_dir=output / "logbook-spool",
         rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
@@ -1209,19 +1219,73 @@ def _close_attempt(
             f"written, artifact unreleasable: {record['blocking_failures'][:5]}",
             file=sys.stderr,
         )
+    elif classified.block is not None:
+        print(
+            f"Gate battery refused the candidate at {classified.block.phase}: "
+            f"{list(classified.block.blocking_gate_ids)[:5]}",
+            file=sys.stderr,
+        )
 
 
 def _apply_graph_gate_verdicts(
-    state: AttemptState, gate_rows: dict, report_path: Path
+    state: AttemptState,
+    gate_rows: dict,
+    report_path: Path,
+    *,
+    outcome_index: Mapping[str, int] | None = None,
 ) -> None:
+    """Record each gate's verdict with a receipt that resolves in its report.
+
+    A battery report keys its gates (``#/gates/<id>``); a graph gate document
+    lists outcomes (``#/report/outcomes/<index>``), so its caller passes the
+    outcome positions.
+    """
     receipt = local_artifact_reference(report_path, repository_hint=REPOSITORY)
+
+    def pointer(gate_id: str) -> str:
+        if outcome_index is not None and gate_id in outcome_index:
+            return f"#/report/outcomes/{outcome_index[gate_id]}"
+        return f"#/gates/{gate_id}"
+
     state.gate_verdicts = {
         str(gate_id): {
             "verdict": str(payload["status"]),
-            "receipt": f"{receipt}#/gates/{gate_id}",
+            "receipt": f"{receipt}{pointer(str(gate_id))}",
         }
         for gate_id, payload in gate_rows.items()
     }
+
+
+def _graph_gate_rows(document: Mapping) -> tuple[dict, dict[str, int]]:
+    """A graph gate document's outcomes as rows by gate id, with their positions."""
+    outcomes = document["report"]["outcomes"]
+    rows = {
+        str(outcome["id"]): {k: v for k, v in outcome.items() if k != "id"}
+        for outcome in outcomes
+    }
+    return rows, {str(outcome["id"]): index for index, outcome in enumerate(outcomes)}
+
+
+def _close_staging(
+    args: argparse.Namespace, telemetry, classified: Classified, record: dict
+) -> None:
+    """Close both telemetry destinations the way the attempt ended."""
+    if classified.outcome is RunOutcome.BLOCKED:
+        block_staging_run_bundle(
+            args,
+            telemetry,
+            classified.block,
+            gate_statuses=record.get("gate_statuses"),
+        )
+    elif classified.outcome is RunOutcome.COMPLETED:
+        finalize_staging_run_bundle(args, telemetry)
+    else:
+        fail_staging_run_bundle(
+            telemetry,
+            BuildRefusedError(
+                "The build returned a non-zero status without a recorded gate block."
+            ),
+        )
 
 
 def _materialize_size_checkpoint(
@@ -1369,10 +1433,33 @@ def _execute_full_build(
         )
     if state is not None:
         append_phase(state, "targets_bound")
-    _, admission = decode_full_gate_report(
-        _payload(preflight, store, "uk.full.gates.preflight", "gate_report")
+    preflight_bytes = _payload(
+        preflight, store, "uk.full.gates.preflight", "gate_report"
     )
+    _, admission = decode_full_gate_report(preflight_bytes)
     if not admission["artifact_permitted"]:
+        # Refused before solving: a gate block at phase ``preflight``, recorded
+        # the way the terminal battery's is, so no record reads it as a pass.
+        preflight_rows, preflight_index = _graph_gate_rows(json.loads(preflight_bytes))
+        blocking = list(admission["enforced_blocking"]) or ["unidentified_gate"]
+        record["gate_rows"] = preflight_rows
+        record["gate_statuses"] = gate_statuses({"gates": preflight_rows})
+        record["gate_block"] = GateBlock.of("preflight", blocking)
+        if state is not None:
+            _apply_graph_gate_verdicts(
+                state,
+                preflight_rows,
+                published_root / "uk.full.gates.preflight.gate_report.json",
+                outcome_index=preflight_index,
+            )
+            append_phase(state, "candidate_blocked_at_preflight")
+        stage(
+            telemetry,
+            "preflight_gates",
+            "completed",
+            gate_statuses=record["gate_statuses"],
+            blocking_failure_count=len(blocking),
+        )
         return 1
     stage(
         telemetry,
@@ -1441,6 +1528,11 @@ def _execute_full_build(
     }
     record["gate_rows"] = gate_rows
     record["blocking_failures"] = list(enforcement["enforced_blocking"])
+    record["gate_statuses"] = gate_statuses({"gates": gate_rows})
+    if enforcement["enforced_blocking"]:
+        record["gate_block"] = GateBlock.of(
+            "terminal", enforcement["enforced_blocking"]
+        )
     if state is not None:
         _apply_graph_gate_verdicts(state, gate_rows, published_root / gate_report_name)
         append_phase(
@@ -1453,7 +1545,7 @@ def _execute_full_build(
         telemetry,
         "gate_battery",
         "completed",
-        gate_statuses=gate_statuses({"gates": gate_rows}),
+        gate_statuses=record["gate_statuses"],
         blocking_failure_count=len(enforcement["enforced_blocking"]),
         diagnostic_failure_count=len(enforcement["diagnostic_failures"]),
     )
@@ -2109,6 +2201,18 @@ def _execute_national_build(
         written = json.loads(gate_report_path.read_text(encoding="utf-8"))
         gate_rows = written.get("gates", {})
         record["gate_report"] = written
+        record["gate_statuses"] = gate_statuses({"gates": gate_rows})
+        record["gate_block"] = GateBlock.of(
+            blocked.phase,
+            blocked.blocking_gate_ids
+            or [
+                gate_id
+                for gate_id, row in gate_rows.items()
+                if row.get("status") not in {"passed", "not_applicable"}
+            ]
+            or ["unidentified_gate"],
+            blocking_failure_count=len(blocked.failures),
+        )
         if state is not None:
             _apply_graph_gate_verdicts(
                 state, gate_rows, published_root / gate_report_path.name
@@ -2120,6 +2224,7 @@ def _execute_national_build(
             "release_check_evaluation",
             "completed",
             check_count=len(gate_rows),
+            gate_statuses=record["gate_statuses"],
             blocking_failure_count=len(blocked.failures),
         )
         print(
@@ -2285,7 +2390,7 @@ def _close_national_attempt(
     posture = posture_of(args)
     state: AttemptState = attempt["state"]
     manifest = record.get("manifest")
-    blocked = bool(record.get("blocking_failures"))
+    classified = classify_return(status, record.get("gate_block"))
     paths = output_paths(output, posture=posture, vintage=args._frs_vintage)
     if manifest is not None:
         append_phase(state, "published")
@@ -2308,7 +2413,7 @@ def _close_national_attempt(
             out_dir=output,
         )
         try:
-            finalize_staging_run_bundle(args, telemetry)
+            _close_staging(args, telemetry, classified, record)
         finally:
             delivery = staging_delivery(telemetry)
             build_record = json.loads(paths["build_record"].read_text())
@@ -2342,14 +2447,14 @@ def _close_national_attempt(
                 },
             )
     else:
-        finalize_staging_run_bundle(args, telemetry)
+        _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
         state=state,
         started_at=attempt["started_at"],
         started_ts=attempt["started_ts"],
         seed=args.seed,
         code_pin=str(attempt["code_pin"]),
-        disposition="failed" if (blocked or status != 0) else "iterating",
+        disposition=classified.disposition,
         predecessor=attempt["predecessor"],
         spool_dir=output / "logbook-spool",
         rung="f100",
@@ -2376,8 +2481,23 @@ def _run_with_telemetry(
     try:
         status = operation()
     except BaseException as error:
+        # The attempt's own close-out has normally closed the emitter with its
+        # classification already; an error raised before the attempt took over
+        # (its preflight digest, say) is classified the same way here.
         if emitter.available:
-            emitter.fail(error)
+            classified = classify_failure(error)
+            if classified.block is not None:
+                emitter.block(
+                    phase=classified.block.phase,
+                    blocking_gate_ids=list(classified.block.blocking_gate_ids),
+                    blocking_failure_count=classified.block.blocking_failure_count,
+                )
+            else:
+                emitter.fail(
+                    error,
+                    failure_class=classified.failure_class or "build_failure",
+                    error_code=classified.error_code,
+                )
         raise
     else:
         if emitter.available:
@@ -2466,20 +2586,25 @@ def _national_attempt(
     except KeyboardInterrupt as interrupt:
         # An operator interrupt is a discarded attempt, not a failed one; the
         # seam recorded the row so and re-raised (every terminal disposition
-        # records a row), and the staging run closes as failed.
+        # records a row), and the staging run closes as failed (INTERRUPTED).
         _record_failure(
             args,
             interrupt,
             state=state,
             attempt=attempt,
             pipeline=posture.pipeline,
-            disposition="discarded",
+            disposition=classify_failure(interrupt).disposition,
         )
         fail_staging_run_bundle(telemetry, interrupt)
         raise
     except Exception as error:
         _record_failure(
-            args, error, state=state, attempt=attempt, pipeline=posture.pipeline
+            args,
+            error,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            disposition=classify_failure(error).disposition,
         )
         fail_staging_run_bundle(telemetry, error)
         print(f"UK national build failed: {error}", file=sys.stderr)
@@ -2639,7 +2764,7 @@ def _dense_attempt(
             attempt=attempt,
             pipeline=posture.pipeline,
             prepared=prepared,
-            disposition="discarded",
+            disposition=classify_failure(interrupt).disposition,
         )
         fail_staging_run_bundle(telemetry, interrupt)
         raise
@@ -2651,6 +2776,7 @@ def _dense_attempt(
             attempt=attempt,
             pipeline=posture.pipeline,
             prepared=prepared,
+            disposition=classify_failure(error).disposition,
         )
         fail_staging_run_bundle(telemetry, error)
         print(f"UK full build failed: {error}", file=sys.stderr)

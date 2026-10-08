@@ -26,7 +26,14 @@ from microcosm.build.staging_storage import (
     HuggingFaceDatasetStorage,
 )
 
+#: The delivery summary's contract version. Its shape has not changed since version 2,
+#: and publishers and release assemblers pin it, so it does not follow the documents.
 STAGING_CONTRACT_VERSION = 2
+#: The schema version of the run documents this writer emits. Version 3 adds the
+#: ``blocked`` run status with its ``block`` details, and ``failure_class`` on failures.
+STAGING_DOCUMENT_VERSION = 3
+#: Document versions this module reads: every historical run stays valid.
+SUPPORTED_DOCUMENT_VERSIONS = (2, 3)
 DEFAULT_STAGING_PREFIX = "runs"
 
 RUN_MANIFEST_SCHEMA = "microcosm.staging.run-manifest"
@@ -35,7 +42,7 @@ CALIBRATION_PROGRESS_SCHEMA = "microcosm.staging.calibration-progress"
 EVENT_SCHEMA = "microcosm.staging.event"
 
 DeliveryMode = Literal["local_and_remote", "local_only", "disabled"]
-LifecycleStatus = Literal["running", "completed", "failed"]
+LifecycleStatus = Literal["running", "completed", "blocked", "failed"]
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -207,12 +214,12 @@ def _normalized_content_key(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "_", with_word_boundaries.lower()).strip("_")
 
 
-def _schema_identity(name: str) -> dict[str, Any]:
+def _schema_identity(name: str, version: int) -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
             "schema_name": {"const": name},
-            "schema_version": {"const": STAGING_CONTRACT_VERSION},
+            "schema_version": {"const": version},
         },
         "required": ["schema_name", "schema_version"],
     }
@@ -297,6 +304,34 @@ _FAILURE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+_FAILURE_SCHEMA_V3: dict[str, Any] = {
+    **_FAILURE_SCHEMA,
+    "properties": {
+        **_FAILURE_SCHEMA["properties"],
+        "failure_class": {
+            "type": ["string", "null"],
+            "pattern": "^[a-z][a-z0-9_]*$",
+        },
+    },
+    "required": [*_FAILURE_SCHEMA["required"], "failure_class"],
+}
+
+#: Why a run's gates refused its candidate (version 3). ``phase`` names the gate
+#: phase that refused it (``preflight``, ``terminal``, a spine phase).
+_BLOCK_SCHEMA: dict[str, Any] = {
+    "type": ["object", "null"],
+    "properties": {
+        "phase": _SAFE_ID_SCHEMA,
+        "blocking_failure_count": {"type": "integer", "minimum": 1},
+        "blocking_gate_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1, "maxLength": 200},
+        },
+    },
+    "required": ["phase", "blocking_failure_count", "blocking_gate_ids"],
+    "additionalProperties": False,
+}
+
 _PIPELINE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -305,6 +340,15 @@ _PIPELINE_SCHEMA: dict[str, Any] = {
     },
     "required": ["id", "version"],
     "additionalProperties": False,
+}
+
+_RUN_STATUSES: dict[int, list[str]] = {
+    2: ["running", "completed", "failed"],
+    3: ["running", "completed", "blocked", "failed"],
+}
+_EVENT_STATUSES: dict[int, list[str]] = {
+    2: ["started", "completed", "failed", "progress"],
+    3: ["started", "completed", "failed", "progress", "blocked"],
 }
 
 _RUN_FIELDS: dict[str, Any] = {
@@ -328,8 +372,9 @@ def _object_schema(
     name: str,
     properties: Mapping[str, Any],
     required: list[str],
+    version: int,
 ) -> dict[str, Any]:
-    identity = _schema_identity(name)
+    identity = _schema_identity(name, version)
     return {
         "type": "object",
         "properties": {**identity["properties"], **properties},
@@ -338,111 +383,149 @@ def _object_schema(
     }
 
 
-SCHEMAS: dict[str, dict[str, Any]] = {
-    RUN_MANIFEST_SCHEMA: _object_schema(
-        RUN_MANIFEST_SCHEMA,
-        {
-            **_RUN_FIELDS,
-            "sample": _SAMPLE_SCHEMA,
-            "delivery": _DELIVERY_SCHEMA,
-            "artifacts": {"type": "array", "items": _ARTIFACT_SCHEMA},
-            "failure": _FAILURE_SCHEMA,
-            "paths": {
-                "type": "object",
-                "properties": {
-                    "progress": {"type": "string"},
-                    "events": {"type": "string"},
-                    "calibration_progress": {"type": ["string", "null"]},
-                },
-                "required": ["progress", "events", "calibration_progress"],
-                "additionalProperties": False,
-            },
-        },
-        [*_RUN_REQUIRED, "sample", "delivery", "artifacts", "failure", "paths"],
-    ),
-    PROGRESS_SCHEMA: _object_schema(
-        PROGRESS_SCHEMA,
-        {
-            **_RUN_FIELDS,
-            "sample": _SAMPLE_SCHEMA,
-            "delivery": _DELIVERY_SCHEMA,
-            "message": {"type": ["string", "null"], "maxLength": 500},
-            "details": {"type": "object"},
-            "failure": _FAILURE_SCHEMA,
-        },
-        [
-            *_RUN_REQUIRED,
-            "sample",
-            "delivery",
-            "message",
-            "details",
-            "failure",
-        ],
-    ),
-    CALIBRATION_PROGRESS_SCHEMA: _object_schema(
-        CALIBRATION_PROGRESS_SCHEMA,
-        {
-            "run_id": _SAFE_ID_SCHEMA,
-            "candidate_id": _SAFE_ID_SCHEMA,
-            "updated_at": _TIMESTAMP_SCHEMA,
-            "events": {
-                "type": "array",
-                "items": {
+def _schemas(version: int) -> dict[str, dict[str, Any]]:
+    """The four document schemas of one contract version."""
+
+    run_fields = {**_RUN_FIELDS, "status": {"enum": _RUN_STATUSES[version]}}
+    failure_schema = _FAILURE_SCHEMA if version == 2 else _FAILURE_SCHEMA_V3
+    block = {} if version == 2 else {"block": _BLOCK_SCHEMA}
+    block_required = [] if version == 2 else ["block"]
+    return {
+        RUN_MANIFEST_SCHEMA: _object_schema(
+            RUN_MANIFEST_SCHEMA,
+            {
+                **run_fields,
+                "sample": _SAMPLE_SCHEMA,
+                "delivery": _DELIVERY_SCHEMA,
+                "artifacts": {"type": "array", "items": _ARTIFACT_SCHEMA},
+                "failure": failure_schema,
+                **block,
+                "paths": {
                     "type": "object",
                     "properties": {
-                        "timestamp": _TIMESTAMP_SCHEMA,
-                        "epoch": {"type": ["integer", "null"], "minimum": 0},
-                        "epochs": {"type": ["integer", "null"], "minimum": 0},
-                        "phase": {"type": ["string", "null"]},
-                        "loss": {"type": ["number", "null"]},
-                        "iteration": {"type": ["integer", "null"], "minimum": 0},
-                        "budget_search": {"type": ["integer", "null"], "minimum": 0},
-                        "budget_iteration": {"type": ["integer", "null"], "minimum": 0},
-                        "budget_iters": {"type": ["integer", "null"], "minimum": 0},
-                        "l0_lambda": {"type": ["number", "null"]},
+                        "progress": {"type": "string"},
+                        "events": {"type": "string"},
+                        "calibration_progress": {"type": ["string", "null"]},
                     },
-                    "required": [
-                        "timestamp",
-                        "epoch",
-                        "epochs",
-                        "phase",
-                        "loss",
-                        "iteration",
-                        "budget_search",
-                        "budget_iteration",
-                        "budget_iters",
-                        "l0_lambda",
-                    ],
+                    "required": ["progress", "events", "calibration_progress"],
                     "additionalProperties": False,
                 },
             },
-        },
-        ["run_id", "candidate_id", "updated_at", "events"],
-    ),
-    EVENT_SCHEMA: _object_schema(
-        EVENT_SCHEMA,
-        {
-            "sequence": {"type": "integer", "minimum": 1},
-            "timestamp": _TIMESTAMP_SCHEMA,
-            "event_type": {"enum": ["stage", "calibration"]},
-            "run_id": _SAFE_ID_SCHEMA,
-            "stage_id": _SAFE_ID_SCHEMA,
-            "status": {"enum": ["started", "completed", "failed", "progress"]},
-            "message": {"type": ["string", "null"], "maxLength": 500},
-            "details": {"type": "object"},
-        },
-        [
-            "sequence",
-            "timestamp",
-            "event_type",
-            "run_id",
-            "stage_id",
-            "status",
-            "message",
-            "details",
-        ],
-    ),
+            [
+                *_RUN_REQUIRED,
+                "sample",
+                "delivery",
+                "artifacts",
+                "failure",
+                *block_required,
+                "paths",
+            ],
+            version,
+        ),
+        PROGRESS_SCHEMA: _object_schema(
+            PROGRESS_SCHEMA,
+            {
+                **run_fields,
+                "sample": _SAMPLE_SCHEMA,
+                "delivery": _DELIVERY_SCHEMA,
+                "message": {"type": ["string", "null"], "maxLength": 500},
+                "details": {"type": "object"},
+                "failure": failure_schema,
+                **block,
+            },
+            [
+                *_RUN_REQUIRED,
+                "sample",
+                "delivery",
+                "message",
+                "details",
+                "failure",
+                *block_required,
+            ],
+            version,
+        ),
+        CALIBRATION_PROGRESS_SCHEMA: _object_schema(
+            CALIBRATION_PROGRESS_SCHEMA,
+            {
+                "run_id": _SAFE_ID_SCHEMA,
+                "candidate_id": _SAFE_ID_SCHEMA,
+                "updated_at": _TIMESTAMP_SCHEMA,
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp": _TIMESTAMP_SCHEMA,
+                            "epoch": {"type": ["integer", "null"], "minimum": 0},
+                            "epochs": {"type": ["integer", "null"], "minimum": 0},
+                            "phase": {"type": ["string", "null"]},
+                            "loss": {"type": ["number", "null"]},
+                            "iteration": {"type": ["integer", "null"], "minimum": 0},
+                            "budget_search": {
+                                "type": ["integer", "null"],
+                                "minimum": 0,
+                            },
+                            "budget_iteration": {
+                                "type": ["integer", "null"],
+                                "minimum": 0,
+                            },
+                            "budget_iters": {
+                                "type": ["integer", "null"],
+                                "minimum": 0,
+                            },
+                            "l0_lambda": {"type": ["number", "null"]},
+                        },
+                        "required": [
+                            "timestamp",
+                            "epoch",
+                            "epochs",
+                            "phase",
+                            "loss",
+                            "iteration",
+                            "budget_search",
+                            "budget_iteration",
+                            "budget_iters",
+                            "l0_lambda",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            ["run_id", "candidate_id", "updated_at", "events"],
+            version,
+        ),
+        EVENT_SCHEMA: _object_schema(
+            EVENT_SCHEMA,
+            {
+                "sequence": {"type": "integer", "minimum": 1},
+                "timestamp": _TIMESTAMP_SCHEMA,
+                "event_type": {"enum": ["stage", "calibration"]},
+                "run_id": _SAFE_ID_SCHEMA,
+                "stage_id": _SAFE_ID_SCHEMA,
+                "status": {"enum": _EVENT_STATUSES[version]},
+                "message": {"type": ["string", "null"], "maxLength": 500},
+                "details": {"type": "object"},
+            },
+            [
+                "sequence",
+                "timestamp",
+                "event_type",
+                "run_id",
+                "stage_id",
+                "status",
+                "message",
+                "details",
+            ],
+            version,
+        ),
+    }
+
+
+SCHEMAS_BY_VERSION: dict[int, dict[str, dict[str, Any]]] = {
+    version: _schemas(version) for version in SUPPORTED_DOCUMENT_VERSIONS
 }
+#: The schemas of the documents this writer emits.
+SCHEMAS: dict[str, dict[str, Any]] = SCHEMAS_BY_VERSION[STAGING_DOCUMENT_VERSION]
 
 
 def validate_staging_delivery(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -544,17 +627,19 @@ def disabled_staging_delivery(reason: str) -> dict[str, Any]:
     )
 
 
-def validate_v2_document(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate one independently identified version 2 document."""
+def validate_staging_document(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one independently identified staging document (version 2 or 3)."""
 
     normalized = _jsonable(payload)
     name = normalized.get("schema_name")
     version = normalized.get("schema_version")
-    if name not in _SCHEMA_NAMES or version != STAGING_CONTRACT_VERSION:
+    if name not in _SCHEMA_NAMES or version not in SCHEMAS_BY_VERSION:
         raise StagingContractError(
             f"Unsupported staging schema identity: {name!r} version {version!r}."
         )
-    validator = Draft202012Validator(SCHEMAS[name], format_checker=FormatChecker())
+    validator = Draft202012Validator(
+        SCHEMAS_BY_VERSION[version][name], format_checker=FormatChecker()
+    )
     errors = sorted(
         validator.iter_errors(normalized), key=lambda error: list(error.path)
     )
@@ -568,18 +653,29 @@ def validate_v2_document(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "non_release must be true exactly when release_id is absent."
             )
         delivery = validate_staging_delivery(normalized["delivery"])
-        if (
-            normalized["status"] == "running"
-            and delivery["read_back"] != "not_requested"
-        ):
+        status = normalized["status"]
+        if status == "running" and delivery["read_back"] != "not_requested":
             raise StagingContractError(
                 "Running staging runs cannot report completed remote read-back."
             )
-        if normalized["status"] == "failed" and normalized["failure"] is None:
+        if status == "failed" and normalized["failure"] is None:
             raise StagingContractError("Failed runs require sanitized failure data.")
-        if normalized["status"] != "failed" and normalized["failure"] is not None:
+        if status != "failed" and normalized["failure"] is not None:
             raise StagingContractError("Non-failed runs cannot contain failure data.")
+        if version >= 3:
+            if status == "blocked" and normalized["block"] is None:
+                raise StagingContractError(
+                    "Blocked runs require the gate phase and gates that refused them."
+                )
+            if status != "blocked" and normalized["block"] is not None:
+                raise StagingContractError(
+                    "Non-blocked runs cannot contain block data."
+                )
     return normalized
+
+
+#: The version 2 name, kept for callers that predate version 3.
+validate_v2_document = validate_staging_document
 
 
 @dataclass(frozen=True)
@@ -706,7 +802,11 @@ class StagingContentPolicy:
 
 
 class StagingRunBundleWriterV2:
-    """Record, validate, persist, and optionally upload a version 2 run bundle."""
+    """Record, validate, persist, and optionally upload a staging run bundle.
+
+    Writes version 3 documents (``STAGING_DOCUMENT_VERSION``); the delivery summary
+    keeps contract version 2.
+    """
 
     def __init__(
         self,
@@ -782,6 +882,7 @@ class StagingRunBundleWriterV2:
         self.details: dict[str, Any] = {}
         self.sample: dict[str, Any] | None = None
         self.failure: dict[str, Any] | None = None
+        self.block_details: dict[str, Any] | None = None
         self._artifacts: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
@@ -940,12 +1041,19 @@ class StagingRunBundleWriterV2:
         error: BaseException,
         *,
         error_code: str = "BUILD_FAILED",
+        failure_class: str | None = None,
         local_diagnostic_reference: str | None = None,
     ) -> None:
         self._require_running("record a failure")
         error_code = error_code.strip().upper()
         if not re.fullmatch(r"[A-Z0-9_]+", error_code):
             raise StagingContractError("error_code must contain only A-Z, 0-9, and _.")
+        if failure_class is not None and not re.fullmatch(
+            r"[a-z][a-z0-9_]*", failure_class
+        ):
+            raise StagingContractError(
+                "failure_class must be a lowercase identifier (a-z, 0-9, _)."
+            )
         error_type = type(error).__name__
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", error_type):
             error_type = "BuildError"
@@ -962,12 +1070,17 @@ class StagingRunBundleWriterV2:
             "local_diagnostic_reference": _safe_local_reference(
                 local_diagnostic_reference
             ),
+            "failure_class": failure_class,
         }
         self._append_event(
             stage_id="failed",
             status="failed",
             message=self.message,
-            details={"error_code": error_code, "error_type": error_type},
+            details={
+                "error_code": error_code,
+                "error_type": error_type,
+                "failure_class": failure_class,
+            },
             timestamp=self.updated_at,
         )
         self._persist_bundle()
@@ -990,11 +1103,64 @@ class StagingRunBundleWriterV2:
         self._persist_bundle()
         self._terminal_upload()
 
+    def block(
+        self,
+        *,
+        phase: str,
+        blocking_gate_ids: list[str] | tuple[str, ...],
+        blocking_failure_count: int | None = None,
+        gate_statuses: Mapping[str, str] | None = None,
+    ) -> None:
+        """Close the run as ``blocked``: it reached a gate decision and the gates
+        refused its candidate. Distinct from ``failed``, where the build raised."""
+
+        self._require_running("record a gate block")
+        phase = _safe_identifier(phase, label="block phase")
+        gate_ids = [str(gate_id) for gate_id in blocking_gate_ids]
+        count = (
+            len(gate_ids) if blocking_failure_count is None else blocking_failure_count
+        )
+        if (
+            isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 1
+            or any(not gate_id for gate_id in gate_ids)
+        ):
+            raise StagingContractError(
+                "A gate block needs at least one blocking failure and non-empty gate ids."
+            )
+        self.status = "blocked"
+        self.current_stage = "blocked"
+        self.updated_at = self._clock()
+        self.message = f"The gates refused the candidate at {phase}."
+        self.block_details = {
+            "phase": phase,
+            "blocking_failure_count": int(count),
+            "blocking_gate_ids": gate_ids,
+        }
+        details: dict[str, Any] = dict(self.block_details)
+        if gate_statuses is not None:
+            details["gate_statuses"] = {
+                str(gate_id): str(status) for gate_id, status in gate_statuses.items()
+            }
+        details = _jsonable(details)
+        self._content_policy.validate_payload(details)
+        self.details = details
+        self._append_event(
+            stage_id="blocked",
+            status="blocked",
+            message=self.message,
+            details=details,
+            timestamp=self.updated_at,
+        )
+        self._persist_bundle()
+        self._terminal_upload()
+
     def verify_remote(self) -> None:
         if self.status == "running":
             raise StagingContractError(
-                "Authenticated remote read-back requires a completed or failed "
-                "staging run."
+                "Authenticated remote read-back requires a completed, blocked or "
+                "failed staging run."
             )
         if self._transport is None:
             raise StagingReadBackError("Remote read-back requires remote staging mode.")
@@ -1036,7 +1202,7 @@ class StagingRunBundleWriterV2:
             )
 
     def validate_local_bundle(self) -> dict[str, Any]:
-        return validate_v2_bundle(
+        return validate_staging_bundle(
             self.local_dir,
             self.run_id,
             content_policy=self._content_policy,
@@ -1054,7 +1220,7 @@ class StagingRunBundleWriterV2:
     ) -> None:
         event = {
             "schema_name": EVENT_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
+            "schema_version": STAGING_DOCUMENT_VERSION,
             "sequence": len(self._events) + 1,
             "timestamp": timestamp,
             "event_type": event_type,
@@ -1065,7 +1231,7 @@ class StagingRunBundleWriterV2:
             "details": _jsonable(details),
         }
         self._content_policy.validate_payload(event["details"])
-        self._events.append(validate_v2_document(event))
+        self._events.append(validate_staging_document(event))
 
     def _run_fields(self) -> dict[str, Any]:
         return {
@@ -1091,12 +1257,13 @@ class StagingRunBundleWriterV2:
         )
         return {
             "schema_name": RUN_MANIFEST_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
+            "schema_version": STAGING_DOCUMENT_VERSION,
             **self._run_fields(),
             "sample": self.sample,
             "delivery": self.delivery_summary,
             "artifacts": list(self._artifacts),
             "failure": self.failure,
+            "block": self.block_details,
             "paths": {
                 "progress": f"{self.repo_run_prefix}/progress.json",
                 "events": f"{self.repo_run_prefix}/events.ndjson",
@@ -1107,19 +1274,20 @@ class StagingRunBundleWriterV2:
     def _progress(self) -> dict[str, Any]:
         return {
             "schema_name": PROGRESS_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
+            "schema_version": STAGING_DOCUMENT_VERSION,
             **self._run_fields(),
             "sample": self.sample,
             "delivery": self.delivery_summary,
             "message": self.message,
             "details": self.details,
             "failure": self.failure,
+            "block": self.block_details,
         }
 
     def _calibration_progress(self) -> dict[str, Any]:
         return {
             "schema_name": CALIBRATION_PROGRESS_SCHEMA,
-            "schema_version": STAGING_CONTRACT_VERSION,
+            "schema_version": STAGING_DOCUMENT_VERSION,
             "run_id": self.run_id,
             "candidate_id": self.candidate_id,
             "updated_at": self.updated_at,
@@ -1136,7 +1304,7 @@ class StagingRunBundleWriterV2:
                 self._calibration_progress()
             )
         for path, payload in documents.items():
-            validate_v2_document(payload)
+            validate_staging_document(payload)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(_json_bytes(payload))
         (self.run_dir / "events.ndjson").write_bytes(_ndjson_bytes(self._events))
@@ -1264,13 +1432,13 @@ class StagingRunBundleWriterV2:
         self._reconcile_remote_delivery_metadata()
 
 
-def validate_v2_bundle(
+def validate_staging_bundle(
     local_dir: Path | str,
     run_id: str,
     *,
     content_policy: StagingContentPolicy | None = None,
 ) -> dict[str, Any]:
-    """Validate a complete locally stored version 2 bundle."""
+    """Validate a complete locally stored bundle (version 2 or 3, not mixed)."""
 
     run_id = _safe_identifier(run_id, label="run_id")
     prefix = DEFAULT_STAGING_PREFIX
@@ -1283,7 +1451,7 @@ def validate_v2_bundle(
     }
     for label, (path, schema_name) in required.items():
         try:
-            payload = validate_v2_document(json.loads(path.read_text()))
+            payload = validate_staging_document(json.loads(path.read_text()))
         except OSError as exc:
             raise StagingContractError(
                 f"Missing required staging file: {path}."
@@ -1294,7 +1462,7 @@ def validate_v2_bundle(
     event_path = run_dir / "events.ndjson"
     try:
         events = [
-            validate_v2_document(json.loads(line))
+            validate_staging_document(json.loads(line))
             for line in event_path.read_text().splitlines()
             if line
         ]
@@ -1324,7 +1492,16 @@ def validate_v2_bundle(
             raise StagingContractError(
                 f"Run manifest {field} path does not identify the validated run."
             )
-    for field in (*_RUN_REQUIRED, "sample", "delivery", "failure"):
+    version = manifest["schema_version"]
+    if any(
+        document["schema_version"] != version
+        for document in (documents["progress"], *events)
+    ):
+        raise StagingContractError("A staging run cannot mix contract versions.")
+    compared = (*_RUN_REQUIRED, "sample", "delivery", "failure")
+    if version >= 3:
+        compared = (*compared, "block")
+    for field in compared:
         if documents["run_manifest"][field] != documents["progress"][field]:
             raise StagingContractError(f"Bundle disagrees on {field}.")
     calibration_path = manifest["paths"]["calibration_progress"]
@@ -1338,13 +1515,15 @@ def validate_v2_bundle(
                 "Calibration progress path does not identify the validated run."
             )
         try:
-            calibration = validate_v2_document(
+            calibration = validate_staging_document(
                 json.loads((root / calibration_path).read_text())
             )
         except OSError as exc:
             raise StagingContractError(
                 f"Missing calibration progress file: {root / calibration_path}."
             ) from exc
+        if calibration["schema_version"] != version:
+            raise StagingContractError("A staging run cannot mix contract versions.")
         if calibration["schema_name"] != CALIBRATION_PROGRESS_SCHEMA:
             raise StagingContractError(
                 "Calibration progress has the wrong schema identity."
@@ -1388,6 +1567,10 @@ def validate_v2_bundle(
         policy.validate_artifact_payload(json.loads(data))
     documents["events"] = events
     return documents
+
+
+#: The version 2 name, kept for callers that predate version 3.
+validate_v2_bundle = validate_staging_bundle
 
 
 def _optional_int(value: Any) -> int | None:

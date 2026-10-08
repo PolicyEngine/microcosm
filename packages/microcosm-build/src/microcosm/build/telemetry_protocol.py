@@ -9,7 +9,7 @@ type TelemetryAction = Literal["event", "close", "ping"]
 type TelemetryEventType = Literal[
     "run", "stage", "progress", "calibration", "heartbeat"
 ]
-type TelemetryStatus = Literal["started", "progress", "completed", "failed"]
+type TelemetryStatus = Literal["started", "progress", "completed", "failed", "blocked"]
 
 TELEMETRY_SCHEMA_VERSION: Final = 1
 
@@ -27,15 +27,19 @@ STATUS_STARTED: Final = "started"
 STATUS_PROGRESS: Final = "progress"
 STATUS_COMPLETED: Final = "completed"
 STATUS_FAILED: Final = "failed"
+#: The run reached a gate decision and the gates refused its candidate.
+STATUS_BLOCKED: Final = "blocked"
 
 STAGE_CREATED: Final = "created"
 STAGE_CALIBRATING: Final = "calibrating"
 STAGE_COMPLETE: Final = "complete"
 STAGE_FAILED: Final = "failed"
+STAGE_BLOCKED: Final = "blocked"
 
 CALIBRATION_EVENT_KIND: Final = "calibration_epoch"
 BUILD_STARTED_MESSAGE: Final = "Microcosm build started."
 BUILD_COMPLETED_MESSAGE: Final = "Microcosm build completed."
+BUILD_BLOCKED_MESSAGE: Final = "The gates refused the candidate at {phase}."
 UNEXPECTED_PROCESS_EXIT_MESSAGE: Final = (
     "The build process exited without reporting completion."
 )

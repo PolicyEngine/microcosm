@@ -555,8 +555,8 @@ def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypa
         def transition_stage(self, stage_id, **details):
             events.append(("stage", stage_id, details))
 
-        def fail(self, error):
-            events.append(("failed", None, str(error)))
+        def fail(self, error, **classification):
+            events.append(("failed", None, str(error), classification))
 
         def close(self):
             events.append(("close",))
@@ -596,6 +596,8 @@ def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypa
         "close",
     ]
     assert events[-2][1] is None
+    # Raised before the attempt took over, the error is classified all the same.
+    assert events[-2][3] == {"failure_class": "error", "error_code": "BUILD_FAILED"}
 
 
 def test_hosted_stage_reporting_survives_staging_bundle_refusal(monkeypatch, capsys):
@@ -1557,8 +1559,9 @@ def test_dense_validation_result_matches_emitted_run_status(
         for event in fake_telemetry_emitters[-1].events
         if event["event_type"] == "run"
     ]
+    # A candidate the gates refused is a blocked run, not a failed one.
     assert [event["status"] for event in events] == [
-        "failed" if failed else "completed"
+        "blocked" if failed else "completed"
     ]
 
 
@@ -1639,3 +1642,101 @@ def test_staging_bundle_finalization_does_not_complete_hosted_run(
     rowwise_staging.finalize_staging_run_bundle(args, None)
     assert emitter.events == []
     assert emitter.available
+
+
+def _only_staging_run(staging_dir: Path):
+    from microcosm.build.staging_v2 import validate_staging_bundle
+
+    runs = sorted(path.name for path in (staging_dir / "runs").iterdir())
+    assert len(runs) == 1
+    return validate_staging_bundle(staging_dir, runs[0])
+
+
+def test_a_gate_block_closes_the_staging_run_as_blocked(tmp_path, monkeypatch):
+    """The terminal battery's refusal is a ``blocked`` run, not a completed one,
+    and the Logbook row records the same end as ``failed``."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+        failed=(("uk_local_area_support", "ESS 42.3 < 50"),),
+    )
+    assert status == 1
+    bundle = _only_staging_run(staging_dir)
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["failure"] is None
+    assert bundle["progress"]["block"] == {
+        "phase": "terminal",
+        "blocking_failure_count": 1,
+        "blocking_gate_ids": ["uk_local_area_support"],
+    }
+    terminal = bundle["events"][-1]
+    assert (terminal["stage_id"], terminal["status"]) == ("blocked", "blocked")
+    assert terminal["details"]["gate_statuses"]["uk_local_area_support"] == "failed"
+    assert spool_rows(out)[0].disposition == "failed"
+
+
+def test_a_preflight_refusal_is_blocked_at_preflight_not_passed(tmp_path, monkeypatch):
+    """Refused before solving, the run closes ``blocked`` at phase ``preflight``
+    with the refusing gate, and its Logbook receipts resolve in the preflight
+    gate document."""
+    pytest.importorskip("tables")
+    gate = "uk_target_surface_local_default_2025"
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+        failed=gate,
+    )
+    assert status == 1
+    bundle = _only_staging_run(staging_dir)
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["block"]["phase"] == "preflight"
+    assert bundle["progress"]["block"]["blocking_gate_ids"] == [gate]
+    stages = [event["stage_id"] for event in bundle["events"]]
+    assert "preflight_gates" in stages and "calibration" not in stages
+    row = spool_rows(out)[0]
+    assert row.disposition == "failed"
+    assert "candidate_blocked_at_preflight" in row.phases_reached
+    report_path = out / "uk.full.gates.preflight.gate_report.json"
+    assert report_path.is_file()
+    receipt = row.gate_verdicts[gate]["receipt"]
+    assert receipt.startswith(local_ref(report_path))
+    index = int(receipt.rsplit("/", 1)[1])
+    outcome = json.loads(report_path.read_text())["report"]["outcomes"][index]
+    assert outcome["id"] == gate and row.gate_verdicts[gate]["verdict"] == "failed"
+
+
+def test_a_raised_error_is_classified_in_the_staging_run(tmp_path, monkeypatch):
+    """A build that raises closes ``failed`` with a mapped code and class."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    original_run = cli.run_graph
+
+    def run_out_of_memory(compiled, **kwargs):
+        if "uk.full.gates.calibrated" in {node.id for node in compiled.graph.nodes}:
+            raise MemoryError("pool too large")
+        return original_run(compiled, **kwargs)
+
+    monkeypatch.setattr(cli, "run_graph", run_out_of_memory)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+    )
+    assert status == 1
+    failure = _only_staging_run(staging_dir)["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        "OUT_OF_MEMORY",
+        "out_of_memory",
+    )
+    assert spool_rows(out)[0].disposition == "failed"

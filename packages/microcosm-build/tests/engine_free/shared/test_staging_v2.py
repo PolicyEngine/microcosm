@@ -24,11 +24,14 @@ from microcosm.build.staging_v2 import (
     EVENT_SCHEMA,
     PROGRESS_SCHEMA,
     RUN_MANIFEST_SCHEMA,
+    STAGING_CONTRACT_VERSION,
+    STAGING_DOCUMENT_VERSION,
     StagingContentError,
     StagingContractError,
     StagingReadBackError,
     StagingRunBundleWriterV2,
     disabled_staging_delivery,
+    validate_staging_bundle,
     validate_staging_delivery,
     validate_v2_bundle,
     validate_v2_document,
@@ -226,7 +229,9 @@ def test_failure_uses_sanitized_contract_fields(tmp_path):
         "error_type": "RuntimeError",
         "message": "The build failed during input_verification.",
         "local_diagnostic_reference": "diagnostics/local-error.txt",
+        "failure_class": None,
     }
+    assert progress["block"] is None
     assert "licensed" not in serialized
     assert "secret-value" not in serialized
     assert "traceback" not in serialized.lower()
@@ -293,7 +298,7 @@ def test_unknown_schema_version_is_incompatible():
         validate_v2_document(
             {
                 "schema_name": RUN_MANIFEST_SCHEMA,
-                "schema_version": 3,
+                "schema_version": 999,
             }
         )
 
@@ -402,7 +407,7 @@ def test_remote_read_back_requires_a_final_run_status(tmp_path):
         upload_interval_seconds=0,
     )
 
-    with pytest.raises(StagingContractError, match="completed or failed"):
+    with pytest.raises(StagingContractError, match="completed, blocked or failed"):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "not_requested"
@@ -618,7 +623,7 @@ def test_canonical_version_2_fixture_cases_validate():
         validate_v2_document(cases["unknown_version"])
 
 
-@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
 def test_contract_fixture_checksums_are_pinned(version):
     fixture_dir = FIXTURE_ROOT / version
     for line in (fixture_dir / "SHA256SUMS").read_text().splitlines():
@@ -628,7 +633,126 @@ def test_contract_fixture_checksums_are_pinned(version):
         ).hexdigest() == (expected)
 
 
-def test_canonical_version_2_fixtures_are_reproducible():
+def test_canonical_version_3_fixture_cases_validate():
+    v3 = FIXTURE_ROOT / "v3"
+    completed = validate_staging_bundle(v3 / "completed-spine", "uk-spine-v3-fixture")
+    calibration = validate_staging_bundle(
+        v3 / "calibration", "uk-calibration-v3-fixture"
+    )
+    failed = validate_staging_bundle(v3 / "failed", "uk-failed-v3-fixture")
+    blocked = validate_staging_bundle(v3 / "blocked", "uk-blocked-v3-fixture")
+
+    assert completed["progress"]["schema_version"] == STAGING_DOCUMENT_VERSION == 3
+    assert completed["progress"]["delivery"]["contract_version"] == 2
+    assert completed["progress"]["block"] is None
+    assert calibration["calibration_progress"]["schema_version"] == 3
+    assert failed["progress"]["failure"]["failure_class"] == "error"
+    assert failed["events"][-1]["details"]["failure_class"] == "error"
+    assert blocked["progress"]["status"] == "blocked"
+    assert blocked["progress"]["failure"] is None
+    assert blocked["run_manifest"]["block"] == {
+        "phase": "terminal",
+        "blocking_failure_count": 1,
+        "blocking_gate_ids": ["uk_target_fit"],
+    }
+    terminal = blocked["events"][-1]
+    assert (terminal["stage_id"], terminal["status"]) == ("blocked", "blocked")
+    assert terminal["details"]["gate_statuses"]["uk_target_fit"] == "failed"
+
+
+def test_delivery_contract_stays_version_2_while_documents_move_to_3():
+    """Publishers and release assemblers pin the delivery summary's version."""
+
+    assert STAGING_CONTRACT_VERSION == 2
+    assert disabled_staging_delivery("--no-staging")["contract_version"] == 2
+
+
+def test_blocked_run_closes_with_its_gate_phase(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.stage("gate_battery", event_status="completed")
+    telemetry.block(
+        phase="preflight",
+        blocking_gate_ids=["uk_target_surface", "uk_support"],
+        gate_statuses={"uk_target_surface": "failed", "uk_support": "failed"},
+    )
+
+    bundle = telemetry.validate_local_bundle()
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["block"]["phase"] == "preflight"
+    assert bundle["progress"]["block"]["blocking_failure_count"] == 2
+    with pytest.raises(StagingContractError, match="status is 'blocked'"):
+        telemetry.complete()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"phase": "terminal", "blocking_gate_ids": []},
+        {"phase": "terminal", "blocking_gate_ids": [""]},
+        {"phase": "../x", "blocking_gate_ids": ["uk_target_fit"]},
+        {"phase": "terminal", "blocking_gate_ids": ["a"], "blocking_failure_count": 0},
+    ],
+)
+def test_block_refuses_an_empty_or_unsafe_block(tmp_path, kwargs):
+    telemetry = _recorder(tmp_path)
+    with pytest.raises(StagingContractError):
+        telemetry.block(**kwargs)
+
+
+def test_failure_class_is_recorded_and_checked(tmp_path):
+    telemetry = _recorder(tmp_path)
+    with pytest.raises(StagingContractError, match="failure_class"):
+        telemetry.fail(RuntimeError("x"), failure_class="Not A Class")
+    telemetry.fail(
+        KeyboardInterrupt(), error_code="INTERRUPTED", failure_class="interrupted"
+    )
+    failure = telemetry.validate_local_bundle()["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        "INTERRUPTED",
+        "interrupted",
+    )
+
+
+def test_version_3_documents_keep_failure_and_block_apart(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.block(phase="terminal", blocking_gate_ids=["uk_target_fit"])
+    manifest = telemetry.validate_local_bundle()["run_manifest"]
+
+    with pytest.raises(StagingContractError, match="Blocked runs require"):
+        validate_v2_document({**manifest, "block": None})
+    failed = {
+        **manifest,
+        "status": "failed",
+        "failure": {
+            "error_code": "BUILD_FAILED",
+            "error_type": "RuntimeError",
+            "message": "The build failed during gate_battery.",
+            "local_diagnostic_reference": None,
+            "failure_class": None,
+        },
+    }
+    with pytest.raises(StagingContractError, match="Non-blocked runs"):
+        validate_v2_document(failed)
+    with pytest.raises(StagingContractError, match="failure"):
+        validate_v2_document(
+            {**failed, "block": None, "failure": {**failed["failure"], "extra": 1}}
+        )
+
+
+def test_a_run_cannot_mix_contract_versions(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.complete()
+    progress_path = telemetry.run_dir / "progress.json"
+    progress = json.loads(progress_path.read_text())
+    progress["schema_version"] = 2
+    progress.pop("block")
+    progress_path.write_text(json.dumps(progress))
+
+    with pytest.raises(StagingContractError, match="mix contract versions"):
+        telemetry.validate_local_bundle()
+
+
+def test_canonical_version_3_fixtures_are_reproducible():
     subprocess.run(
         [
             sys.executable,

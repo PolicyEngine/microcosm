@@ -1963,8 +1963,8 @@ def test_driver_reports_validation_failure_through_early_emitter(
         def close(self) -> None:
             events.append(("close",))
 
-        def fail(self, error: BaseException) -> None:
-            events.append(("failed", str(error)))
+        def fail(self, error: BaseException, **classification) -> None:
+            events.append(("failed", str(error), classification))
 
     def start_emitter(**run):
         events.append(("started", run["run_id"]))
@@ -1992,6 +1992,7 @@ def test_driver_reports_validation_failure_through_early_emitter(
     assert events[0][0] == "started"
     assert events[1][0] == "failed"
     assert "--spi-tab must be an existing file" in events[1][1]
+    assert events[1][2] == {"failure_class": "error", "error_code": "BUILD_FAILED"}
 
 
 def test_driver_refuses_misnamed_spi_tab(tmp_path: Path) -> None:
