@@ -58,8 +58,8 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 @dataclass
-class StagingTelemetry:
-    """Write and optionally upload build-run telemetry.
+class StagingRunBundleWriter:
+    """Write and optionally upload a build's staging run bundle.
 
     Args:
         run_id: Stable id for this build attempt.
