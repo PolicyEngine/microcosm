@@ -344,9 +344,26 @@ The transport build driver (`tools/build_transport.py`, a shim over
 `transport_graph.json` spec resource and runs it locally: every file it
 writes, including its `.graph-store`, lies under `--out`, and it has no
 upload or staging path. It refuses before reading any graph source while the
-country spec still has unresolved evidence, and names each missing item.
+country spec still has unresolved evidence: every selected resource/reference
+set and every null scenario knob is checked before donor preparation.
 Tests for it run on the engine-free toy package in
-`test_support/microcosm_build/transport_composed.py`.
+`test_support/microcosm_build/transport_composed.py`. The rules registry checks
+module hashes and binds the RuleSpec tree digest. Engine commit and wheel
+SHA-256 pins, and the RuleSpec commit for exported trees, are format-checked
+caller declarations; installed engine provenance is not checked.
+Fresh driver runs write identical HDF5 bytes with object timestamps disabled;
+readback keys continue to include the complete container bytes. CREATE's column
+inventory is cached by implementation, parameters and source bytes. A cold
+build runs CREATE twice (inventory probe and graph execution); warm inventory
+lookups hash the inputs without running the probe. Cold `--resume require`
+refuses before preparation. Output directories must also be disjoint from a
+local `--spec-dir`.
+G7 extensions can wrap a factory in `TransportExtension` to declare additional
+sources and ordered checkpoints. Source names must be new; skeleton predecessor
+sets must stay identical. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. `transport_rules_node` supplies
+the prepared engine reference and period from the binding, so extensions do
+not repeat period values.
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)

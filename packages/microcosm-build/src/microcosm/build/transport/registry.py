@@ -1,8 +1,11 @@
-"""Explicit transport registrations and authenticated rules-engine bindings.
+"""Explicit transport registrations and checked rules-engine bindings.
 
 Registries are local to a run. All rules bindings share one routing kernel;
 adding a binding against the same RuleSpec tree and pins leaves existing
-references unchanged. Kernel implementation identity binds adapter classes,
+references unchanged. Engine commit and wheel SHA-256 pins, and the RuleSpec
+commit for exported trees, are format-checked caller declarations. Module
+bytes and tree contents are hashed; installed engine provenance is not checked.
+Kernel implementation identity binds adapter classes,
 never spec data, so adding a binding of an existing class leaves it unchanged.
 The AS bridge and gap kernels are registered by their owning package when
 that package is available; this module
@@ -45,11 +48,15 @@ from .target_kernels import register_target_kernels
 from .terminal_kernels import register_terminal_kernels
 
 __all__ = [
+    "PYTHON_ENGINE_REF_FORMAT",
     "TransportRegistry",
     "build_transport_registry",
     "register_transport_population_kernels",
     "transport_entity_schema",
 ]
+
+#: Public format identity for an injected pure-Python rules-engine reference.
+PYTHON_ENGINE_REF_FORMAT = "microcosm.transport.python-rules-engine-ref/1"
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _COMMIT = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
@@ -223,8 +230,11 @@ def build_transport_registry(
 
     Real adapters use the schema and unit nesting of
     :func:`transport_entity_schema` for ``unit_rule`` (the frame CREATE
-    builds), explicit periods, graph output dtypes, authenticated module
-    bytes and :func:`axiom_engine_ref`. References are pinned before any
+    builds), explicit periods, graph output dtypes, checked module bytes and
+    :func:`axiom_engine_ref`. Engine commit and wheel SHA-256 pins, and the
+    RuleSpec commit for exported trees, are format-checked caller declarations.
+    The module hash and tree digest bind the actual RuleSpec bytes. References
+    are pinned before any
     relation check compiles a program. An injected adapter must report the
     same schema.
 
@@ -326,7 +336,7 @@ def build_transport_registry(
             )
             reference = canonical_json(
                 {
-                    "format": "microcosm.transport.python-rules-engine-ref/1",
+                    "format": PYTHON_ENGINE_REF_FORMAT,
                     "engine": "python-rules-engine",
                     "adapter": f"{type(engine).__module__}.{type(engine).__qualname__}",
                     "adapter_identity": identity,

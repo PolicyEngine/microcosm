@@ -44,6 +44,7 @@ from microcosm.build.transport.compose import (
     transport_endpoints,
     transport_pending_outputs,
     transport_resource,
+    transport_rules_node,
 )
 from microcosm.build.transport.registry import (
     TransportRegistry,
@@ -200,7 +201,7 @@ class ToyRulesEngine:
     def variable_metadata(self, name: str) -> VariableMetadata:
         row = self.program()["outputs"][name]
         kind = "float" if row["dtype"] == "float64" else "int"
-        return VariableMetadata(name, self.binding["entity"], kind, "year")
+        return VariableMetadata(name, self.program()["entity"], kind, "year")
 
     def variables(self) -> Sequence[str]:
         return tuple(
@@ -214,7 +215,7 @@ class ToyRulesEngine:
         self, bundle: Frame, variables: Sequence[str], period: int | str
     ) -> Mapping[str, np.ndarray]:
         self.calls.append((tuple(variables), period))
-        table = bundle.table(self.binding["entity"])
+        table = bundle.table(self.program()["entity"])
         result = {}
         for name in variables:
             row = self.program()["outputs"][name]
@@ -841,22 +842,23 @@ def toy_extension(spec, config, skeleton: Graph) -> tuple[Node, ...]:
         inputs=(Slice("person", ("age",)),),
     )
     outputs = PROGRAMS["family_housing"]["outputs"]
-    rules = Node(
-        "nz.test.scn.rules",
-        "simulate.rules_by_ref@1",
-        population=branch.id,
-        sources=("rulespec_nz",),
-        # A family-only engine node still slices one person data column:
-        # the kernel context holds only the entities a node reads or owns.
-        inputs=(Slice("person", ("age",)), Slice("family", FAMILY_INPUTS)),
-        outputs=tuple(
-            Owned("family", name, row["dtype"]) for name, row in outputs.items()
+    rules = transport_rules_node(
+        spec,
+        config,
+        "family_housing",
+        Node(
+            "nz.test.scn.rules",
+            "simulate.rules_by_ref@1",
+            population=branch.id,
+            sources=("rulespec_nz",),
+            # A family-only engine node still slices one person data column:
+            # the kernel context holds only the entities a node reads or owns.
+            inputs=(Slice("person", ("age",)), Slice("family", FAMILY_INPUTS)),
+            outputs=tuple(
+                Owned("family", name, row["dtype"]) for name, row in outputs.items()
+            ),
+            params={"variables": tuple(outputs)},
         ),
-        params={
-            "engine_ref": config.engine_refs["family_housing"],
-            "period": PERIOD,
-            "variables": tuple(outputs),
-        },
     )
     validate = Node(
         "nz.test.validate",
@@ -890,7 +892,13 @@ def write_rulespec_tree(root: Path) -> list[dict]:
     for name, program in PROGRAMS.items():
         path = root / program["path"]
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = canonical_json({"outputs": program["outputs"], "relations": []})
+        payload = canonical_json(
+            {
+                "entity": program["entity"],
+                "outputs": program["outputs"],
+                "relations": [],
+            }
+        )
         path.write_bytes(payload)
         rows.append(
             {

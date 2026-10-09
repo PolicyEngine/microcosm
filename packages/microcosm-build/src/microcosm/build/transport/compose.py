@@ -13,21 +13,30 @@ explicit selection:
   ``"value"`` (the JSON value, lists as tuples), ``"json"`` (an object as
   canonical JSON text) or ``"sha256"`` (the SHA-256 of the whole resource's
   bytes, so the node's key moves with that one resource only).
-- ``{"prepared": "engine_refs"}`` is the canonical JSON of the authenticated
+- ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
 
 So a node binds exactly the resources it selects. The graph resource's own
 digest and the country spec's fingerprint enter no node: editing one
-resource re-keys only the nodes that select it and their descendants.
+resource re-keys only the nodes that select the changed data and their
+descendants. Selector-shaped objects inside selected resource data remain
+literal data; they cannot introduce hidden resource dependencies.
+Objects in selected lists remain objects and are subject to the graph's
+scalar/tuple parameter boundary; encode an enclosing object as JSON when
+structured data must enter a node.
 
 A rules node names its binding (``rules_binding``) instead of an engine
-reference. Composition supplies the authenticated ``engine_ref`` and the
+reference. Composition supplies the prepared ``engine_ref`` and the
 binding's period, and every rules node runs through the one
 ``simulate.rules_by_ref@1`` router.
 
 ``TransportGraphConfig.extensions`` is the extension point for the package
 that adds the entitlement chain. Each extension is a factory called with
-the spec, the config and the composed skeleton; it returns new nodes only.
+the spec, the config and the composed skeleton; it returns new nodes.
+Wrap a factory in :class:`TransportExtension` to declare additional sources
+and checkpoints, run after calibration and before export. The public
+:func:`transport_rules_node` supplies a rules node's engine ref and period
+from its binding, including for extension nodes.
 Composition refuses an extension whose nodes change any skeleton node's
 compiled predecessors (for example a new member of a calibration base
 version), so an extension can never re-key the skeleton.
@@ -42,7 +51,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -78,6 +87,7 @@ __all__ = [
     "SKELETON_KERNELS",
     "TransportGraphConfig",
     "TransportGraphExtension",
+    "TransportExtension",
     "compose_transport_graph",
     "CreateDeclaration",
     "load_transport_spec",
@@ -86,7 +96,9 @@ __all__ = [
     "transport_graph_document",
     "transport_pending_outputs",
     "transport_resource",
+    "transport_rules_node",
     "validate_transport_activation",
+    "validate_transport_calibration_ancestry",
 ]
 
 #: The spec resource that declares the skeleton.
@@ -186,15 +198,51 @@ class TransportGraphExtension(Protocol):
 
 
 @dataclass(frozen=True)
+class TransportExtension:
+    """A node factory with additional local sources and ordered checkpoints.
+
+    Sources must have new names, so they cannot replace a skeleton input.
+    Checkpoints name nodes in the extended graph and run after calibration,
+    before the skeleton H5 is written; they cannot read the exported dataset.
+    The factory receives a deep copy of the caller's spec.
+    """
+
+    factory: TransportGraphExtension
+    sources: tuple[SourceRef, ...] = ()
+    checkpoints: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not callable(self.factory):
+            raise TypeError("An extension factory must be callable.")
+        if not isinstance(self.sources, tuple) or any(
+            not isinstance(source, SourceRef) for source in self.sources
+        ):
+            raise TypeError("Extension sources must be a tuple of SourceRefs.")
+        if not isinstance(self.checkpoints, tuple):
+            raise TypeError("Extension checkpoints must be a tuple of node ids.")
+        for checkpoint in self.checkpoints:
+            _safe_node_id(checkpoint)
+
+    def __call__(
+        self,
+        spec: Mapping[str, object],
+        config: TransportGraphConfig,
+        skeleton: Graph,
+    ) -> tuple[Node, ...]:
+        return self.factory(spec, config, skeleton)
+
+
+@dataclass(frozen=True)
 class TransportGraphConfig:
     """What preparation supplies; every country value stays in the spec.
 
     Attributes:
-        engine_refs: Binding id -> authenticated engine reference, from
+        engine_refs: Binding id -> prepared engine reference, from
             :func:`microcosm.build.transport.registry.build_transport_registry`.
         create_outputs: CREATE's declared column inventory, prepared from
             the pinned donor (every loaded column must be declared).
         extensions: Node factories appended after the skeleton, in order.
+            A :class:`TransportExtension` also declares sources and checkpoints.
     """
 
     engine_refs: Mapping[str, str]
@@ -209,7 +257,7 @@ class TransportGraphConfig:
             or not value
             for key, value in self.engine_refs.items()
         ):
-            raise ValueError("engine_refs must map binding ids to authenticated refs.")
+            raise ValueError("engine_refs must map binding ids to prepared refs.")
         if (
             not isinstance(self.create_outputs, tuple)
             or not self.create_outputs
@@ -238,6 +286,8 @@ def _sequence(value: object, label: str) -> Sequence:
 
 
 def _stem(name: str) -> str:
+    if not isinstance(name, str) or not name:
+        raise ValueError("A resource selection must name a nonempty string.")
     return name.removesuffix(".json")
 
 
@@ -340,18 +390,32 @@ def _selected_resources(document: Mapping) -> set[str]:
     return names
 
 
-def validate_transport_activation(spec: Mapping[str, object]) -> None:
-    """Refuse unresolved country evidence, naming every missing item at once.
+def _null_paths(value: object, path: str = "") -> Iterator[str]:
+    if value is None:
+        yield path
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            yield from _null_paths(item, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, list | tuple):
+        for index, item in enumerate(value):
+            yield from _null_paths(item, f"{path}[{index}]")
 
-    The items are the skeleton declaration and every resource it selects,
-    the dependent-child age limit of the benefit-unit rule (``max_age``, or
-    the proposal's ``age_limit_years``), any reference not marked active,
-    an executable receipt contract (``receipt_contract.json``), the engine
-    commit and wheel pins, and a scenario knob still awaiting evidence
-    (``rent_stock_factor``). Nothing here picks a value for a missing item.
+
+def validate_transport_activation(spec: Mapping[str, object]) -> None:
+    """Refuse unresolved declaration resources and country evidence before I/O.
+
+    Check every selected reference resource, the mandatory pre-calibration,
+    target and hold-out reference sets, and every null scenario knob. Missing
+    resources are the declaration's explicit selections, including selections
+    inside parameter lists; selected resource data remains literal data.
     """
 
     missing = []
+    selected = (
+        _selected_resources(transport_resource(spec, GRAPH_RESOURCE))
+        if _has_resource(spec, GRAPH_RESOURCE)
+        else set()
+    )
     for name in ("benefit_unit_rule", "axiom_rules_bindings", "scenarios"):
         if not _has_resource(spec, name):
             missing.append(f"{name}.json")
@@ -363,7 +427,18 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         age_key = "max_age" if "max_age" in child else "age_limit_years"
         if child.get(age_key) is None:
             missing.append(f"benefit_unit_rule.dependent_child.{age_key}")
-    for resource in ("precal_references", "target_references", "holdout_references"):
+    reference_resources = {
+        "precal_references",
+        "target_references",
+        "holdout_references",
+    }
+    reference_resources.update(
+        name
+        for name in selected
+        if _has_resource(spec, name)
+        and "target_references" in transport_resource(spec, name)
+    )
+    for resource in sorted(reference_resources):
         if not _has_resource(spec, resource):
             missing.append(f"{resource}.json")
             continue
@@ -403,12 +478,11 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         for row in _sequence(rows, "scenarios.scenarios"):
             scenario = _mapping(row, "scenario")
             knobs = _mapping(scenario.get("knobs", {}), "scenario.knobs")
-            if "rent_stock_factor" in knobs and knobs["rent_stock_factor"] is None:
-                missing.append(f"scenario {scenario.get('id', '?')} rent_stock_factor")
+            for path in _null_paths(knobs):
+                missing.append(f"scenario {scenario.get('id', '?')} {path}")
     if not _has_resource(spec, GRAPH_RESOURCE):
         missing.append(f"{GRAPH_RESOURCE}.json (the skeleton declaration)")
     else:
-        selected = _selected_resources(transport_resource(spec, GRAPH_RESOURCE))
         missing.extend(
             f"{name}.json (selected by {GRAPH_RESOURCE}.json)"
             for name in sorted(selected)
@@ -434,8 +508,246 @@ def transport_graph_document(spec: Mapping[str, object]) -> Mapping:
     return document
 
 
-def transport_endpoints(spec: Mapping[str, object]) -> dict[str, object]:
-    """The ordered checkpoints: geography, calibration, then the terminals."""
+def _ancestor_closure(
+    predecessors: Mapping[str, Sequence[str]], roots: set[str]
+) -> set[str]:
+    ancestors = set()
+    pending = list(roots)
+    while pending:
+        name = pending.pop()
+        if name in ancestors:
+            continue
+        if name not in predecessors:
+            raise ValueError(f"Calibration endpoint {name!r} is not a declared node.")
+        ancestors.add(name)
+        pending.extend(predecessors[name])
+    return ancestors
+
+
+def _embeds_engine_ref(
+    value: object,
+    references: set[str],
+    unit_modules: frozenset[str] = frozenset(),
+) -> bool:
+    if not references and not unit_modules:
+        return False
+    if isinstance(value, Mapping):
+        if unit_modules:
+            from microcosm.frame.adapters.axiom import _ENGINE_REF_SCHEMA
+
+            from .registry import PYTHON_ENGINE_REF_FORMAT
+
+            module = None
+            if value.get("format") == _ENGINE_REF_SCHEMA:
+                module = value.get("module")
+            elif value.get("format") == PYTHON_ENGINE_REF_FORMAT:
+                binding = value.get("binding")
+                if isinstance(binding, Mapping):
+                    module = binding.get("rulespec_path")
+            if isinstance(module, str) and module in unit_modules:
+                return True
+        return any(
+            _embeds_engine_ref(item, references, unit_modules)
+            for pair in value.items()
+            for item in pair
+        )
+    if isinstance(value, list | tuple):
+        return any(_embeds_engine_ref(item, references, unit_modules) for item in value)
+    if not isinstance(value, str):
+        return False
+    if any(
+        reference in value or json.dumps(reference, ensure_ascii=False)[1:-1] in value
+        for reference in references
+    ):
+        return True
+    try:
+        decoded = json.loads(value)
+    except (ValueError, TypeError):
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(value):
+            if character not in {"{", '"'}:
+                continue
+            try:
+                embedded, _ = decoder.raw_decode(value, index)
+            except ValueError:
+                continue
+            if _embeds_engine_ref(embedded, references, unit_modules):
+                return True
+        return False
+    return decoded != value and _embeds_engine_ref(decoded, references, unit_modules)
+
+
+def validate_transport_calibration_ancestry(
+    spec: Mapping[str, object],
+    *,
+    graph: Graph | None = None,
+    config: TransportGraphConfig | None = None,
+) -> None:
+    """Refuse hold-out or benefit-unit engine semantics upstream of calibration.
+
+    Without a graph, check the declaration's structural-base membership and
+    artifact ancestry. This permits a packaged declaration check before donor
+    preparation. Canonical engine-reference documents are matched to the
+    benefit-unit bindings' module paths even before references are prepared.
+    A composed graph also checks its exact compiled predecessors and the
+    prepared references, including references embedded in JSON text.
+    Benefit-unit attributes remain allowed; excluded columns are the unit
+    rules bindings' outputs and the group encoder's declared outputs.
+    """
+    if not _has_resource(spec, GRAPH_RESOURCE):
+        return
+    document = transport_graph_document(spec)
+    rows = {
+        row["id"]: row
+        for row in (
+            _mapping(item, "transport node")
+            for item in _sequence(document.get("nodes"), "transport nodes")
+        )
+    }
+    unit_entity = transport_resource(spec, "benefit_unit_rule").get("entity")
+    bindings = transport_resource(spec, "axiom_rules_bindings").get("bindings", ())
+    unit_bindings = {
+        row["id"]: row
+        for row in _sequence(bindings, "axiom_rules_bindings.bindings")
+        if isinstance(row, Mapping) and row.get("entity") == unit_entity
+    }
+    unit_modules = frozenset(
+        row["rulespec_path"]
+        for row in unit_bindings.values()
+        if isinstance(row.get("rulespec_path"), str)
+    )
+    forbidden_columns = {
+        (unit_entity, variable)
+        for row in unit_bindings.values()
+        for variable in row.get("variables", ())
+    }
+    for row in rows.values():
+        if row.get("kernel") == "concepts.encode_groups@1":
+            forbidden_columns.update(
+                (output["entity"], output["column"])
+                for output in row.get("outputs", ())
+                if output.get("entity") == unit_entity
+            )
+    references = {
+        row["engine_ref"]
+        for row in unit_bindings.values()
+        if isinstance(row.get("engine_ref"), str) and row["engine_ref"]
+    }
+    if config is not None:
+        references.update(
+            config.engine_refs[name]
+            for name in unit_bindings
+            if name in config.engine_refs
+        )
+    endpoints = _mapping(document.get("endpoints"), "transport endpoints")
+    roots = {
+        row["id"]
+        for row in rows.values()
+        if isinstance(row.get("kernel"), str) and row["kernel"].startswith("calibrate.")
+    }
+    if isinstance(endpoints.get("calibration"), str):
+        roots.add(endpoints["calibration"])
+    predecessors = {name: set() for name in rows}
+    for name, row in rows.items():
+        base = row.get("base")
+        if isinstance(base, str):
+            predecessors[name].add(base)
+            predecessors[name].update(
+                item["id"] for item in rows.values() if item.get("population") == base
+            )
+        elif isinstance(row.get("population"), str):
+            predecessors[name].add(row["population"])
+        predecessors[name].update(
+            edge["producer"] for edge in row.get("artifact_inputs", ())
+        )
+    for name in _ancestor_closure(predecessors, roots):
+        row = rows[name]
+        reason = None
+        if row.get("rules_binding") in unit_bindings:
+            reason = "benefit-unit rules binding"
+        for value in _mapping(row.get("params", {}), "node params").values():
+            for selection in _selections(value):
+                if selection.get("prepared") == "engine_refs":
+                    reason = "prepared engine_refs map"
+                if isinstance(selection.get("resource"), str):
+                    resource = _stem(selection["resource"])
+                    if resource == "holdout_references":
+                        reason = "holdout_references selection"
+                    if (
+                        resource == GRAPH_RESOURCE
+                        and selection.get("encoding") == "sha256"
+                    ):
+                        reason = "graph resource's own digest"
+                    if selection.get("encoding", "value") != "sha256" and _has_resource(
+                        spec, resource
+                    ):
+                        selected = transport_resource(spec, resource)
+                        for component in selection.get("path", ()):
+                            if (
+                                not isinstance(selected, Mapping)
+                                or component not in selected
+                            ):
+                                selected = None
+                                break
+                            selected = selected[component]
+                        if _embeds_engine_ref(selected, references, unit_modules):
+                            reason = "selected data embedding a benefit-unit engine reference"
+        columns = {
+            (item["entity"], column)
+            for item in row.get("inputs", ())
+            for column in item["columns"]
+        }
+        columns.update(
+            (item["entity"], item["column"]) for item in row.get("outputs", ())
+        )
+        if columns & forbidden_columns:
+            reason = "benefit-unit engine input or output column"
+        if any(
+            isinstance(source, str) and "holdout" in source.lower()
+            for source in row.get("sources", ())
+        ):
+            reason = "hold-out source"
+        if _embeds_engine_ref(row.get("params", {}), references, unit_modules):
+            reason = "embedded benefit-unit engine reference"
+        if reason:
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} carries {reason}."
+            )
+    if graph is None:
+        return
+    compiled = compile_graph(graph)
+    roots.update(
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    )
+    for node in graph.nodes:
+        if node.kernel == "concepts.encode_groups@1":
+            forbidden_columns.update(
+                (item.entity, item.column)
+                for item in node.outputs
+                if item.entity == unit_entity
+            )
+    for name in _ancestor_closure(compiled.predecessors, roots):
+        node = graph.node(name)
+        columns = {
+            (item.entity, column) for item in node.inputs for column in item.columns
+        }
+        columns.update((item.entity, item.column) for item in node.outputs)
+        if (
+            any("holdout" in source.lower() for source in node.sources)
+            or _embeds_engine_ref(node.params, references, unit_modules)
+            or columns & forbidden_columns
+        ):
+            raise ValueError(
+                f"Transport calibration ancestry: node {name!r} carries hold-out or benefit-unit engine semantics."
+            )
+
+
+def transport_endpoints(
+    spec: Mapping[str, object],
+    *,
+    extensions: tuple[TransportGraphExtension, ...] = (),
+) -> dict[str, object]:
+    """Geography, calibration, extension checkpoints, then export and terminals."""
 
     values = _mapping(
         transport_graph_document(spec).get("endpoints"), "transport endpoints"
@@ -452,10 +764,19 @@ def transport_endpoints(spec: Mapping[str, object]) -> dict[str, object]:
         not isinstance(name, str) or not name for name in terminals
     ):
         raise ValueError("Terminal endpoints must be a nonempty list of node ids.")
+    checkpoints = tuple(
+        checkpoint
+        for extension in extensions
+        if isinstance(extension, TransportExtension)
+        for checkpoint in extension.checkpoints
+    )
+    if len(set(checkpoints)) != len(checkpoints):
+        raise ValueError("Extension checkpoints must name distinct nodes.")
     return {
         "geography": values["geography"],
         "calibration": values["calibration"],
         "terminal": terminals,
+        "checkpoints": checkpoints,
     }
 
 
@@ -469,6 +790,15 @@ def transport_pending_outputs(spec: Mapping[str, object]) -> tuple[str, ...]:
     return values
 
 
+def _literal_data(value: object) -> object:
+    """Convert selected JSON sequences without resolving selector-shaped data."""
+    if isinstance(value, list | tuple):
+        return tuple(_literal_data(item) for item in value)
+    if isinstance(value, Mapping):
+        return {key: _literal_data(item) for key, item in value.items()}
+    return value
+
+
 def _param(
     spec: Mapping[str, object],
     value: object,
@@ -479,6 +809,8 @@ def _param(
     if not isinstance(value, Mapping):
         return value
     if set(value) == {"prepared"}:
+        if value["prepared"] in {"fingerprint", "spec_fingerprint"}:
+            raise ValueError("The whole-spec fingerprint cannot enter node parameters.")
         if value["prepared"] not in _PREPARED:
             raise ValueError(f"Unknown prepared parameter {value['prepared']!r}.")
         if engine_refs is None:
@@ -494,6 +826,10 @@ def _param(
     encoding = value.get("encoding", "value")
     if encoding not in _ENCODINGS:
         raise ValueError(f"Unknown resource encoding {encoding!r}.")
+    if _stem(name) == GRAPH_RESOURCE and encoding == "sha256":
+        raise ValueError(
+            "The graph resource's own digest cannot enter node parameters."
+        )
     document: object = transport_resource(spec, name)
     path = tuple(_sequence(value.get("path", ()), "resource selection path"))
     if encoding == "sha256":
@@ -514,7 +850,7 @@ def _param(
         raise ValueError(
             f"Resource {name!r} value selection is an object; use json encoding."
         )
-    return _param(spec, document, engine_refs)
+    return _literal_data(document)
 
 
 def _artifact_type(value: object) -> ArtifactType:
@@ -582,12 +918,74 @@ def _rules_params(
     }
 
 
+def transport_rules_node(
+    spec: Mapping[str, object],
+    config: TransportGraphConfig,
+    binding_id: str,
+    node: Node,
+) -> Node:
+    """Bind an extension's rules node to its prepared engine ref and period.
+
+    ``node`` supplies its inputs, owned outputs, population and sources. Its
+    params may contain only ``variables`` (a subset of the binding's outputs);
+    omitting them selects every binding variable. The node must use the one
+    rules router and own exactly the selected variables. Callers supply no
+    engine reference or period: both come from the named binding.
+    """
+
+    if not isinstance(node, Node):
+        raise TypeError("A transport rules node must be a Node.")
+    _safe_node_id(node.id)
+    declaration = {
+        "id": node.id,
+        "kernel": node.kernel,
+        "rules_binding": binding_id,
+        "outputs": [{"column": output.column} for output in node.outputs],
+    }
+    return replace(
+        node,
+        params=_rules_params(spec, declaration, dict(node.params), config),
+    )
+
+
+def _check_extension_checkpoints(spec, config, graph, compiled) -> None:
+    checkpoints = transport_endpoints(spec, extensions=config.extensions)["checkpoints"]
+    if not set(checkpoints) <= set(compiled.order):
+        raise ValueError("Extension checkpoints must name nodes in the extended graph.")
+    exported = {
+        name
+        for node in graph.nodes
+        if node.kernel == "export.readback@1"
+        for name in node.sources
+    }
+    for name in _ancestor_closure(compiled.predecessors, set(checkpoints)):
+        if exported.intersection(graph.node(name).sources):
+            raise ValueError("Extension checkpoints must precede export readback.")
+
+
+def _safe_node_id(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value == "."
+        or "/" in value
+        or "\\" in value
+        or "\x00" in value
+        or ".." in value
+    ):
+        raise ValueError(
+            f"Transport node id {value!r} must be a safe filename without path separators, NUL or '..'."
+        )
+    return value
+
+
 def _node(
     spec: Mapping[str, object],
     row: Mapping,
     config: TransportGraphConfig,
     types: Mapping[tuple[str, str], ArtifactType],
 ) -> Node:
+    _safe_node_id(row.get("id"))
     unknown = set(row) - _NODE_FIELDS
     if unknown:
         raise ValueError(
@@ -674,8 +1072,9 @@ class CreateDeclaration:
 def skeleton_create_declaration(spec: Mapping[str, object]) -> CreateDeclaration:
     """The declared CREATE with its parameters resolved, for preparation.
 
-    Preparation runs this kernel once to read CREATE's column inventory,
-    which the composed CREATE node must then declare.
+    Preparation uses the stored CREATE column inventory when its implementation,
+    parameters and source bytes match; a cold inventory runs the kernel once.
+    The composed CREATE node must declare that inventory.
     """
 
     validate_transport_activation(spec)
@@ -692,7 +1091,7 @@ def skeleton_create_declaration(spec: Mapping[str, object]) -> CreateDeclaration
         )
     row = rows[0]
     return CreateDeclaration(
-        id=row["id"],
+        id=_safe_node_id(row.get("id")),
         kernel=row["kernel"],
         params=MappingProxyType(
             {
@@ -718,6 +1117,7 @@ def compose_transport_graph(
         raise TypeError("config must be a TransportGraphConfig.")
     validate_transport_activation(spec)
     document = transport_graph_document(spec)
+    validate_transport_calibration_ancestry(spec, config=config)
     rows = tuple(
         _mapping(row, "transport node")
         for row in _sequence(document.get("nodes"), "transport nodes")
@@ -739,28 +1139,44 @@ def compose_transport_graph(
         mass_partition=None if partition is None else tuple(partition),
     )
     compiled = compile_graph(skeleton)
+    validate_transport_calibration_ancestry(spec, graph=skeleton, config=config)
     endpoints = transport_endpoints(spec)
     named = {endpoints["geography"], endpoints["calibration"], *endpoints["terminal"]}
     if not named <= set(compiled.order):
         raise ValueError("Transport endpoints must name declared skeleton nodes.")
     transport_pending_outputs(spec)
     additional: list[Node] = []
+    additional_sources: list[SourceRef] = []
+    source_names = {source.name for source in skeleton.sources}
     for factory in config.extensions:
-        nodes = factory(spec, config, skeleton)
+        if isinstance(factory, TransportExtension):
+            for source in factory.sources:
+                if source.name in source_names:
+                    raise ValueError(
+                        f"Extension source {source.name!r} must have a new name."
+                    )
+                source_names.add(source.name)
+                additional_sources.append(source)
+        nodes = factory(json.loads(canonical_json(spec)), config, skeleton)
         if not isinstance(nodes, tuple) or any(
             not isinstance(node, Node) for node in nodes
         ):
             raise TypeError("A transport extension must return a tuple of Nodes.")
+        for node in nodes:
+            _safe_node_id(node.id)
         additional.extend(nodes)
-    if not additional:
+    if not additional and not additional_sources:
+        _check_extension_checkpoints(spec, config, skeleton, compiled)
         return skeleton
     graph = Graph(
         skeleton.country,
-        skeleton.sources,
+        (*skeleton.sources, *additional_sources),
         (*skeleton.nodes, *additional),
         skeleton.mass_partition,
     )
     extended = compile_graph(graph)
+    _check_extension_checkpoints(spec, config, graph, extended)
+    validate_transport_calibration_ancestry(spec, graph=graph, config=config)
     for node in skeleton.nodes:
         if extended.predecessors[node.id] != compiled.predecessors[node.id]:
             raise ValueError(

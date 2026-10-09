@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import hashlib
 import json
 import re
 import shutil
@@ -50,6 +51,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.transport import cli as cli_module
+from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport.cli import (
     EXPORT_FILENAME,
     execute_transport_graph,
@@ -76,6 +78,7 @@ from microcosm.graph import (
     NodeRejectedError,
     Owned,
     Slice,
+    SourceRef,
     StoreMissError,
     compile_graph,
     graph_to_json,
@@ -86,7 +89,9 @@ from test_support.microcosm_build.transport_composed import (
     FAMILY_INPUTS,
     PROGRAMS,
     SHARED_PATH,
+    _blueprint,
     make_composed_fixture,
+    toy_extension,
 )
 from test_support.microcosm_build.transport_graph import descendants
 from test_support.paths import paths_for
@@ -284,13 +289,25 @@ def _selected_resources(spec) -> list[str]:
     return sorted(names)
 
 
+# Inventory changes no selectors; the blueprint needs one household column
+# to construct its input slices, without running CREATE during collection.
+SELECTED_RESOURCES = _selected_resources(
+    {
+        "resources": {
+            "transport_graph": _blueprint((Owned("household", "rent", "float64"),))
+        }
+    }
+)
+
+
+@pytest.mark.parametrize("resource", SELECTED_RESOURCES)
 @PROPERTY
-@given(data=st.data(), note=st.text(alphabet="abcdef", min_size=1, max_size=8))
+@given(note=st.text(alphabet="abcdef", min_size=1, max_size=8))
 def test_one_resource_edit_rekeys_exactly_its_selectors_and_descendants(
-    composed, data, note
+    composed, resource, note
 ):
     """The graph binds each resource only through the nodes that select it."""
-    resource = data.draw(st.sampled_from(_selected_resources(composed.spec)))
+    assert set(SELECTED_RESOURCES) == set(_selected_resources(composed.spec))
     spec = copy.deepcopy(composed.spec)
     spec["resources"][resource]["zz_hypothesis_note"] = note
     graph = composed.graph(extended=True)
@@ -531,6 +548,86 @@ def test_holdout_and_family_semantics_have_no_calibration_ancestry(composed):
     )
 
 
+@pytest.mark.parametrize(
+    "violation",
+    ["prepared", "embedded_ref", "holdout_resource", "holdout_source", "graph_digest"],
+)
+def test_compose_refuses_contaminated_calibration_ancestry(composed, violation):
+    spec = copy.deepcopy(composed.spec)
+    row = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["id"] == "nz.targets.problem"
+    )
+    if violation == "holdout_source":
+        row["sources"] = ["nz_holdout_facts"]
+    else:
+        row["params"]["contamination"] = {
+            "prepared": {"prepared": "engine_refs"},
+            "embedded_ref": json.dumps(
+                {"nested": [composed.registry.engine_refs["family_housing"]]}
+            ),
+            "holdout_resource": {
+                "resource": "holdout_references",
+                "encoding": "sha256",
+            },
+            "graph_digest": {"resource": "transport_graph", "encoding": "sha256"},
+        }[violation]
+    with pytest.raises(ValueError, match="calibration ancestry|graph resource.*digest"):
+        compose_transport_graph(spec, composed.config)
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        {"resource": "holdout_references", "encoding": "sha256"},
+        {"prepared": "engine_refs"},
+    ],
+)
+def test_selected_lists_keep_selector_shaped_objects_literal(composed, literal):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["calibration"]["literal"] = [[literal]]
+    result = compose_module._param(
+        spec,
+        {"resource": "calibration", "path": ["literal"]},
+        composed.config.engine_refs,
+    )
+    assert result == ((literal,),)
+
+
+@pytest.mark.parametrize("gap", ["mass", "scenario", "resource"])
+def test_activation_names_generic_selected_gaps_before_donor_read(
+    composed, monkeypatch, gap
+):
+    spec = copy.deepcopy(composed.spec)
+    if gap == "mass":
+        spec["resources"]["mass_references"]["target_references"][0]["metadata"][
+            "activation_status"
+        ] = "placeholder"
+        match = "placeholder reference mass_references"
+    elif gap == "scenario":
+        spec["resources"]["scenarios"]["scenarios"] = [
+            {"id": "SX", "knobs": {"other_factor": None}}
+        ]
+        match = "scenario SX other_factor"
+    else:
+        spec["resources"]["transport_graph"]["nodes"][0]["params"]["missing"] = [
+            {"resource": "absent_resource", "encoding": "sha256"}
+        ]
+        match = "absent_resource.json"
+
+    def unread(*args, **kwargs):
+        pytest.fail("activation must refuse before CREATE reads the donor")
+
+    monkeypatch.setattr(cli_module, "prepare_create_outputs", unread)
+    with pytest.raises(ValueError, match=match):
+        prepare_transport_build(
+            spec,
+            sources=composed.sources,
+            engines_by_binding=composed.engines_by_binding,
+        )
+
+
 class _IllegalOwner(KernelBase):
     ref = "test.illegal_owner@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -671,12 +768,48 @@ def test_e3_require_refuses_a_cold_store_and_creates_nothing(composed, tmp_path)
     assert not out.exists()
 
 
-def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path):
+def test_cli_fresh_builds_have_identical_h5_bytes_and_every_node_key(
+    composed, tmp_path
+):
     graph = composed.graph(extended=True)
+    first_out, second_out = tmp_path / "first", tmp_path / "second"
+    first = execute_transport_graph(
+        graph,
+        composed.registry,
+        composed.sources,
+        out=first_out,
+        endpoints=composed.endpoints,
+    )
+    # HDF5 object timestamps have second resolution; cross that boundary.
+    time.sleep(1.1)
+    second = execute_transport_graph(
+        graph,
+        composed.registry,
+        composed.sources,
+        out=second_out,
+        endpoints=composed.endpoints,
+    )
+    assert (first_out / EXPORT_FILENAME).read_bytes() == (
+        second_out / EXPORT_FILENAME
+    ).read_bytes()
+    assert _keys(first) == _keys(second)
+
+
+def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path):
+    extension = compose_module.TransportExtension(
+        toy_extension,
+        checkpoints=("nz.test.scn.rules", "nz.test.validate.compare"),
+    )
+    graph = compose_transport_graph(
+        composed.spec, replace(composed.config, extensions=(extension,))
+    )
+    endpoints = compose_module.transport_endpoints(
+        composed.spec, extensions=(extension,)
+    )
     out = tmp_path / "out"
     options = {
         "out": out,
-        "endpoints": composed.endpoints,
+        "endpoints": endpoints,
         "pending_outputs": composed.pending_outputs,
     }
     inputs = _inventory(composed.root)
@@ -685,7 +818,7 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
         composed.registry,
         composed.sources,
         out=out,
-        endpoints=composed.endpoints,
+        endpoints=endpoints,
         pending_outputs=composed.pending_outputs,
     )
     assert _inventory(composed.root) == inputs
@@ -705,6 +838,8 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
     for name in (
         "checkpoint-geography.json",
         "checkpoint-calibration.json",
+        "checkpoint-extension-0.json",
+        "checkpoint-extension-1.json",
         "checkpoint-export-prepared.json",
         "checkpoint-terminal-0.json",
         "checkpoint-terminal-1.json",
@@ -723,7 +858,7 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
         composed.registry,
         composed.sources,
         out=out,
-        endpoints=composed.endpoints,
+        endpoints=endpoints,
         pending_outputs=composed.pending_outputs,
         resume="require",
     )
@@ -851,6 +986,7 @@ def test_packaged_holdout_references_are_disjoint_from_calibration_references():
 
     calibration = names("target_references") | names("precal_references")
     assert names("holdout_references").isdisjoint(calibration)
+    compose_module.validate_transport_calibration_ancestry(spec)
 
 
 # ---------------------------------------------------------------------------
@@ -900,3 +1036,580 @@ def test_transport_python_has_no_policy_literal_or_remote_path():
                 name
             )
             assert "publish_staged_bundle" not in imported, name
+
+
+def _write_local_transport_spec(root, spec):
+    directory = root / spec["country"]
+    directory.mkdir(parents=True)
+    names = []
+    for name, document in spec["resources"].items():
+        filename = name + ".json"
+        names.append(filename)
+        (directory / filename).write_text(json.dumps(document), encoding="utf-8")
+    (directory / "country_package.json").write_text(
+        json.dumps(
+            {
+                "country": spec["country"],
+                "policy": "Synthetic transport test package.",
+                "resources": names,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return directory
+
+
+def test_cli_main_require_refuses_before_preparing_or_reading_sources(
+    tmp_path, monkeypatch, capsys
+):
+    calls = []
+
+    def prepare(*args, **kwargs):
+        calls.append("prepare")
+        raise ValueError("CREATE probe ran")
+
+    monkeypatch.setattr(cli_module, "prepare_transport_build", prepare)
+    out = tmp_path / "out"
+    assert (
+        cli_module.main(["--country", "nz", "--out", str(out), "--resume", "require"])
+        == 1
+    )
+    assert "cold transport graph store" in capsys.readouterr().err
+    assert calls == []
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("relation", ["inside", "contains", "same"])
+def test_cli_main_refuses_output_overlap_with_spec_dir(
+    tmp_path, relation, monkeypatch, capsys
+):
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    out = {"inside": spec_dir / "out", "contains": tmp_path, "same": spec_dir}[relation]
+    calls = []
+
+    def load(source):
+        calls.append(source)
+        raise ValueError("spec was read")
+
+    monkeypatch.setattr(cli_module, "load_transport_spec", load)
+    assert cli_module.main(["--spec-dir", str(spec_dir), "--out", str(out)]) == 1
+    assert "--out overlaps --spec-dir" in capsys.readouterr().err
+    assert calls == []
+
+
+@pytest.mark.parametrize("filename", ["../escape", "nested/file", ".", "..", ""])
+def test_cli_destination_refuses_escaping_names(tmp_path, filename):
+    out = tmp_path / "out"
+    out.mkdir()
+    with pytest.raises(ValueError, match="simple filename"):
+        cli_module._destination(out, filename)
+
+
+@pytest.mark.parametrize("filename", ["graph.json", ".graph-store"])
+def test_cli_destination_refuses_symlinks(tmp_path, filename):
+    out = tmp_path / "out"
+    out.mkdir()
+    target = tmp_path / "outside"
+    target.write_bytes(b"preserved")
+    (out / filename).symlink_to(target)
+    with pytest.raises(ValueError, match="outside --out"):
+        cli_module._destination(out, filename)
+    assert target.read_bytes() == b"preserved"
+
+
+@pytest.mark.parametrize("missing", ["unknown_variable", "unit_rule", "kernel"])
+def test_cli_main_turns_key_errors_into_refusals(
+    composed, tmp_path, monkeypatch, capsys, missing
+):
+    spec = copy.deepcopy(composed.spec)
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    if missing == "unknown_variable":
+        spec["resources"]["axiom_rules_bindings"]["bindings"][0]["variables"].append(
+            "unknown_variable"
+        )
+    elif missing == "unit_rule":
+        create = next(row for row in rows if row["kernel"] == "transport.create@1")
+        create["params"]["renamed_unit_rule"] = create["params"].pop("unit_rule")
+    else:
+        next(row for row in rows if row["id"] == "nz.targets.problem").pop("kernel")
+    monkeypatch.setattr(cli_module, "load_transport_spec", lambda source: spec)
+    build_registry = cli_module.build_transport_registry
+
+    def injected_registry(bindings, root, *, unit_rule, engines_by_binding=None):
+        return build_registry(
+            bindings,
+            root,
+            unit_rule=unit_rule,
+            engines_by_binding=composed.engines_by_binding,
+        )
+
+    monkeypatch.setattr(cli_module, "build_transport_registry", injected_registry)
+    out = tmp_path / "out"
+    argv = ["--country", "nz", "--out", str(out)]
+    for name, path in composed.sources.items():
+        argv.extend(["--source", f"{name}={path}"])
+    assert cli_module.main(argv) == 1
+    error = capsys.readouterr().err
+    assert "transport build refused:" in error
+    assert missing in error
+    assert "Traceback" not in error
+    assert not (out / EXPORT_FILENAME).exists()
+
+
+def test_cli_main_and_path_loader_success(composed, tmp_path, monkeypatch, capsys):
+    # Real Path loading, registry preparation and execution; only the injected
+    # engine seam replaces Axiom with the fixture's pure-Python adapters.
+    directory = _write_local_transport_spec(tmp_path / "spec", composed.spec)
+    loaded = load_transport_spec(directory)
+    assert loaded["country"] == composed.spec["country"]
+    assert loaded["resources"] == composed.spec["resources"]
+    for name in loaded["resources"]:
+        assert (
+            loaded["resource_hashes"][name]
+            == hashlib.sha256((directory / (name + ".json")).read_bytes()).hexdigest()
+        )
+    build_registry = cli_module.build_transport_registry
+    observe_warm = []
+    calls = []
+
+    def injected_registry(bindings, root, *, unit_rule, engines_by_binding=None):
+        registry = build_registry(
+            bindings,
+            root,
+            unit_rule=unit_rule,
+            engines_by_binding=composed.engines_by_binding,
+        )
+        if observe_warm:
+            for ref in registry.kernels.refs():
+                kernel = registry.kernels.get(ref)
+                run = kernel.run
+
+                def counted(context, _run=run, _ref=ref):
+                    calls.append(_ref)
+                    return _run(context)
+
+                monkeypatch.setattr(kernel, "run", counted)
+        return registry
+
+    monkeypatch.setattr(cli_module, "build_transport_registry", injected_registry)
+    out = tmp_path / "out"
+    argv = ["--spec-dir", str(directory), "--out", str(out)]
+    for name, path in composed.sources.items():
+        argv.extend(["--source", f"{name}={path}"])
+    assert cli_module.main(argv) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "Transport skeleton written" in captured.out
+    assert "Not yet produced:" in captured.out
+    assert (out / EXPORT_FILENAME).is_file()
+    assert json.loads((out / "manifest.json").read_bytes())["nodes"]
+    observe_warm.append(True)
+    assert cli_module.main([*argv, "--resume", "require"]) == 0
+    assert capsys.readouterr().err == ""
+    assert calls == []
+
+
+def test_cli_main_invalid_arguments_are_a_refusal(capsys):
+    assert cli_module.main(["--country", "nz"]) == 1
+    assert "transport build refused:" in capsys.readouterr().err
+
+
+def test_cli_main_help_succeeds(capsys):
+    assert cli_module.main(["--help"]) == 0
+    captured = capsys.readouterr()
+    assert "usage:" in captured.out
+    assert captured.err == ""
+
+
+def test_cli_main_refuses_store_symlink_before_loading_spec(
+    tmp_path, monkeypatch, capsys
+):
+    out = tmp_path / "out"
+    out.mkdir()
+    target = tmp_path / "outside"
+    target.mkdir()
+    (target / "preserved").write_bytes(b"preserved")
+    (out / ".graph-store").symlink_to(target, target_is_directory=True)
+    calls = []
+
+    def load(source):
+        calls.append(source)
+        raise ValueError("spec was read")
+
+    monkeypatch.setattr(cli_module, "load_transport_spec", load)
+    assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
+    assert "outside --out" in capsys.readouterr().err
+    assert calls == []
+    assert (target / "preserved").read_bytes() == b"preserved"
+
+
+def test_create_inventory_cache_reuses_warm_without_running_create(
+    composed, tmp_path, monkeypatch
+):
+    store = ContentStore(tmp_path / "inventory")
+    calls = []
+    create = cli_module.TRANSPORT_CREATE.run
+
+    def counted(context):
+        calls.append(context.node.id)
+        return create(context)
+
+    monkeypatch.setattr(cli_module.TRANSPORT_CREATE, "run", counted)
+    first = prepare_create_outputs(
+        composed.spec, composed.sources, inventory_store=store
+    )
+    assert calls == ["nz.create"]
+    for resume in ("auto", "require"):
+        assert (
+            prepare_create_outputs(
+                composed.spec, composed.sources, inventory_store=store, resume=resume
+            )
+            == first
+        )
+    assert calls == ["nz.create"]
+    # Source paths are descriptive; moving identical bytes retains the hit.
+    copied = tmp_path / "moved-facts.jsonl"
+    copied.write_bytes(composed.sources["nz_calibration_facts"].read_bytes())
+    moved = {**composed.sources, "nz_calibration_facts": copied}
+    assert (
+        prepare_create_outputs(
+            composed.spec, moved, inventory_store=store, resume="require"
+        )
+        == first
+    )
+    assert calls == ["nz.create"]
+    assert (
+        prepare_create_outputs(
+            composed.spec, composed.sources, inventory_store=store, resume="forbid"
+        )
+        == first
+    )
+    assert calls == ["nz.create", "nz.create"]
+
+
+def test_create_inventory_cache_binds_actual_source_bytes(
+    composed, tmp_path, monkeypatch
+):
+    store = ContentStore(tmp_path / "inventory")
+    calls = []
+    create = cli_module.TRANSPORT_CREATE.run
+
+    def counted(context):
+        calls.append(context.node.id)
+        return create(context)
+
+    monkeypatch.setattr(cli_module.TRANSPORT_CREATE, "run", counted)
+    first = prepare_create_outputs(
+        composed.spec, composed.sources, inventory_store=store
+    )
+    # An inert extra newline preserves facts and column inventory, but changes
+    # source bytes. A cache keyed only by declared pins would silently hit.
+    changed = tmp_path / "changed-facts.jsonl"
+    changed.write_bytes(composed.sources["nz_calibration_facts"].read_bytes() + b"\n")
+    sources = {**composed.sources, "nz_calibration_facts": changed}
+    with pytest.raises(StoreMissError, match="this CREATE inventory"):
+        prepare_create_outputs(
+            composed.spec, sources, inventory_store=store, resume="require"
+        )
+    assert calls == ["nz.create"]
+    assert (
+        prepare_create_outputs(composed.spec, sources, inventory_store=store) == first
+    )
+    assert calls == ["nz.create", "nz.create"]
+
+
+def test_prepare_does_not_create_inventory_store_before_activation(tmp_path):
+    inventory = tmp_path / "inventory"
+    with pytest.raises(ValueError, match="not activated"):
+        prepare_transport_build(
+            load_transport_spec("nz"), sources={}, inventory_store=inventory
+        )
+    assert not inventory.exists()
+
+
+def test_prepare_build_reuses_inventory_without_running_create(
+    composed, tmp_path, monkeypatch
+):
+    inventory = tmp_path / "inventory"
+    calls = []
+    create = cli_module.TRANSPORT_CREATE.run
+
+    def counted(context):
+        calls.append(context.node.id)
+        return create(context)
+
+    monkeypatch.setattr(cli_module.TRANSPORT_CREATE, "run", counted)
+    options = {
+        "sources": composed.sources,
+        "engines_by_binding": composed.engines_by_binding,
+        "inventory_store": inventory,
+    }
+    first = prepare_transport_build(composed.spec, **options)
+    second = prepare_transport_build(composed.spec, **options, resume="require")
+    assert graph_to_json(first.graph) == graph_to_json(second.graph)
+    assert calls == ["nz.create"]
+
+
+@pytest.mark.parametrize(
+    "node_id",
+    [
+        "../escape",
+        "nested/node",
+        "nested\\node",
+        "..",
+        "unsafe..node",
+        "unsafe\x00node",
+    ],
+)
+@pytest.mark.parametrize("extension", [False, True])
+def test_compose_refuses_unsafe_node_ids(composed, node_id, extension):
+    spec = copy.deepcopy(composed.spec)
+    config = composed.config
+    if extension:
+
+        def factory(spec, config, skeleton):
+            return (replace(skeleton.node("nz.as"), id=node_id),)
+
+        config = replace(config, extensions=(factory,))
+    else:
+        rows = spec["resources"]["transport_graph"]["nodes"]
+        row = next(item for item in rows if item["id"] == "nz.targets.problem")
+        row["id"] = node_id
+        for item in rows:
+            for edge in item.get("artifact_inputs", ()):
+                if edge["producer"] == "nz.targets.problem":
+                    edge["producer"] = node_id
+    with pytest.raises(ValueError, match="safe filename"):
+        compose_transport_graph(spec, config)
+
+
+def test_extension_factories_receive_independent_spec_copies(composed):
+    before = copy.deepcopy(composed.spec)
+    observed = []
+
+    def first(spec, config, skeleton):
+        spec["resources"]["calibration"]["private_edit"] = "extension-local"
+        return ()
+
+    def second(spec, config, skeleton):
+        observed.append(copy.deepcopy(spec))
+        return ()
+
+    compose_transport_graph(
+        composed.spec, replace(composed.config, extensions=(first, second))
+    )
+    assert composed.spec == before
+    assert observed == [before]
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        {"resource": "transport_graph", "encoding": "sha256"},
+        {"prepared": "spec_fingerprint"},
+    ],
+)
+def test_compose_refuses_global_declaration_identities(composed, selector):
+    spec = copy.deepcopy(composed.spec)
+    # Put it outside calibration ancestry, proving the global refusal.
+    row = next(
+        item
+        for item in spec["resources"]["transport_graph"]["nodes"]
+        if item["id"] == "nz.package"
+    )
+    row["params"]["forbidden_identity"] = selector
+    with pytest.raises(
+        ValueError, match="graph resource.*digest|whole-spec fingerprint"
+    ):
+        compose_transport_graph(spec, composed.config)
+
+
+@pytest.mark.parametrize("prefixed", [False, True, "escaped"])
+@pytest.mark.parametrize("adapter", ["python", "axiom"])
+@pytest.mark.parametrize("selected", [False, True])
+def test_public_declaration_check_refuses_unit_ref_without_config(
+    composed, selected, adapter, prefixed
+):
+    spec = copy.deepcopy(composed.spec)
+    reference = composed.registry.engine_refs["family_housing"]
+    bindings = spec["resources"]["axiom_rules_bindings"]["bindings"]
+    if adapter == "axiom":
+        from microcosm.frame.adapters.axiom import _ENGINE_REF_SCHEMA
+
+        binding = next(row for row in bindings if row["id"] == "family_housing")
+        reference = json.dumps(
+            {"format": _ENGINE_REF_SCHEMA, "module": binding["rulespec_path"]}
+        )
+    if prefixed == "escaped":
+        reference = f"prefix {json.dumps(reference)} suffix"
+    elif prefixed:
+        reference = f"prefix {reference} suffix"
+    row = next(
+        item
+        for item in spec["resources"]["transport_graph"]["nodes"]
+        if item["id"] == "nz.targets.problem"
+    )
+    if selected:
+        # Selector-shaped objects in the selected data are literal, but an
+        # actual embedded forbidden engine reference still contaminates it.
+        spec["resources"]["calibration"]["literal_ref"] = [{"nested": reference}]
+        row["params"]["contamination"] = {
+            "resource": "calibration",
+            "path": ["literal_ref"],
+        }
+    else:
+        row["params"]["contamination"] = json.dumps({"nested": [reference]})
+    validator = getattr(compose_module, "validate_transport_calibration_ancestry", None)
+    assert callable(validator), "composition must expose its declaration ancestry check"
+    with pytest.raises(ValueError, match="calibration ancestry"):
+        validator(spec)
+
+
+def test_extension_rules_helper_uses_the_binding_period_and_ref(composed):
+    spec = copy.deepcopy(composed.spec)
+    bindings = spec["resources"]["axiom_rules_bindings"]
+    family = next(row for row in bindings["bindings"] if row["id"] == "family_housing")
+    previous = family["period"]
+    family["period"] = "custom-bound-period"
+    bindings["periods"][family["period"]] = dict(bindings["periods"][previous])
+    fixture = composed.reprepare(spec)
+    unbound = Node(
+        "nz.test.helper.rules",
+        "simulate.rules_by_ref@1",
+        population="nz.as",
+        sources=("rulespec_nz",),
+        inputs=(Slice("person", ("age",)), Slice("family", FAMILY_INPUTS)),
+        outputs=tuple(
+            Owned("family", name, row["dtype"])
+            for name, row in PROGRAMS["family_housing"]["outputs"].items()
+        ),
+    )
+    bound = compose_module.transport_rules_node(
+        spec, fixture.config, "family_housing", unbound
+    )
+    assert bound.params["engine_ref"] == fixture.config.engine_refs["family_housing"]
+    assert bound.params["period"] == "custom-bound-period"
+    assert bound.params["variables"] == tuple(family["variables"])
+    assert bound.inputs == unbound.inputs
+    assert bound.outputs == unbound.outputs
+    assert bound.sources == unbound.sources
+    # The fixture extension itself must also take the period from the binding.
+    assert (
+        fixture.graph(extended=True).node("nz.test.scn.rules").params["period"]
+        == "custom-bound-period"
+    )
+    with pytest.raises(ValueError, match="may set only variables"):
+        compose_module.transport_rules_node(
+            spec,
+            fixture.config,
+            "family_housing",
+            replace(unbound, params={"period": previous}),
+        )
+
+
+def test_extension_sources_rekey_only_their_own_nodes(composed, tmp_path):
+    from microcosm.build.transport.codecs import FACTS_SOURCE_CODEC
+
+    def factory(spec, config, skeleton):
+        return tuple(
+            replace(node, sources=("scenario_facts",))
+            if node.id == "nz.test.validate.compare"
+            else node
+            for node in toy_extension(spec, config, skeleton)
+        )
+
+    extension = compose_module.TransportExtension(
+        factory, sources=(SourceRef("scenario_facts", FACTS_SOURCE_CODEC),)
+    )
+    config = replace(composed.config, extensions=(extension,))
+    extra = tmp_path / "scenario-facts.jsonl"
+    extra.write_bytes(composed.sources["nz_holdout_facts"].read_bytes())
+    fixture = replace(composed, sources={**composed.sources, "scenario_facts": extra})
+    skeleton = _declared_keys(composed.graph(), fixture)
+    graph = compose_transport_graph(composed.spec, config)
+    first = _declared_keys(graph, fixture)
+    assert {source.name for source in graph.sources} == {
+        source.name for source in composed.graph().sources
+    } | {"scenario_facts"}
+    assert {name: first[name] for name in skeleton} == skeleton
+    before_source = source_content_key("scenario_facts", extra)
+    extra.write_bytes(extra.read_bytes() + b"\n")
+    assert source_content_key("scenario_facts", extra) != before_source
+    second = _declared_keys(graph, fixture)
+    assert {name for name in first if first[name] != second[name]} == {
+        "nz.test.validate.compare"
+    }
+    assert {name: second[name] for name in skeleton} == skeleton
+
+
+@pytest.mark.parametrize("collision", ["skeleton", "extension"])
+def test_extension_sources_cannot_replace_declared_inputs(composed, collision):
+    def empty(spec, config, skeleton):
+        return ()
+
+    source = (
+        composed.graph().sources[0]
+        if collision == "skeleton"
+        else SourceRef("scenario_facts", "raw-bytes-v1")
+    )
+    extension = compose_module.TransportExtension(empty, sources=(source,))
+    extensions = (extension,) if collision == "skeleton" else (extension, extension)
+    with pytest.raises(ValueError, match="must have a new name"):
+        compose_transport_graph(
+            composed.spec, replace(composed.config, extensions=extensions)
+        )
+
+
+@pytest.mark.parametrize(
+    "checkpoint,match",
+    [
+        ("missing.checkpoint", "extended graph"),
+        ("nz.export.readback", "precede export readback"),
+    ],
+)
+def test_extension_checkpoints_are_checked_before_execution(
+    composed, checkpoint, match
+):
+    extension = compose_module.TransportExtension(
+        lambda spec, config, skeleton: (), checkpoints=(checkpoint,)
+    )
+    with pytest.raises(ValueError, match=match):
+        compose_transport_graph(
+            composed.spec, replace(composed.config, extensions=(extension,))
+        )
+
+
+def test_extension_checkpoints_are_returned_in_declaration_order(composed):
+    extension = compose_module.TransportExtension(
+        toy_extension, checkpoints=("nz.test.scn.rules", "nz.test.validate.compare")
+    )
+    extensions = (extension,)
+    endpoints = compose_module.transport_endpoints(composed.spec, extensions=extensions)
+    assert endpoints["checkpoints"] == extension.checkpoints
+    duplicate = replace(
+        extension, checkpoints=("nz.test.scn.rules", "nz.test.scn.rules")
+    )
+    with pytest.raises(ValueError, match="distinct nodes"):
+        compose_module.transport_endpoints(composed.spec, extensions=(duplicate,))
+
+
+@pytest.mark.parametrize("failure_type", [ImportError, NotImplementedError])
+def test_cli_main_refuses_unavailable_rules_engine(
+    composed, tmp_path, monkeypatch, capsys, failure_type
+):
+    monkeypatch.setattr(cli_module, "load_transport_spec", lambda source: composed.spec)
+
+    def unavailable(*args, **kwargs):
+        raise failure_type("rules engine unavailable")
+
+    monkeypatch.setattr(cli_module, "build_transport_registry", unavailable)
+    out = tmp_path / "out"
+    argv = ["--country", "nz", "--out", str(out)]
+    for name, path in composed.sources.items():
+        argv.extend(["--source", f"{name}={path}"])
+    assert cli_module.main(argv) == 1
+    assert (
+        "transport build refused: rules engine unavailable" in capsys.readouterr().err
+    )
+    assert not (out / EXPORT_FILENAME).exists()

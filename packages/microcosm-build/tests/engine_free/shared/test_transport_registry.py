@@ -1,4 +1,4 @@
-"""Authenticated transport bindings with three engine-free adapters in one run."""
+"""Checked transport bindings with three engine-free adapters in one run."""
 
 from __future__ import annotations
 
@@ -54,6 +54,10 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.codecs import load_raw_bytes
+from test_support.microcosm_build.transport_composed import (
+    ToyRulesEngine,
+    write_rulespec_tree,
+)
 from test_support.microcosm_build.transport_population import UNIT_RULE
 
 
@@ -82,7 +86,7 @@ class _ToyEngine:
     def variable_metadata(self, name: str) -> VariableMetadata:
         if name not in self.binding["variables"]:
             raise ValueError(f"Unknown toy output {name!r}")
-        return VariableMetadata(name, self.binding["entity"], "float", "year")
+        return VariableMetadata(name, self._program()["entity"], "float", "year")
 
     def variables(self) -> Sequence[str]:
         return (self._program()["input"],)
@@ -94,7 +98,7 @@ class _ToyEngine:
         self, bundle: Frame, variables: Sequence[str], period: int | str
     ) -> Mapping[str, np.ndarray]:
         program = self._program()
-        values = bundle.table(self.binding["entity"])[program["input"]].to_numpy(
+        values = bundle.table(program["entity"])[program["input"]].to_numpy(
             dtype=np.float64
         )
         return {
@@ -118,7 +122,12 @@ def _fixture(tmp_path: Path):
         ("housing", "family", "cost", 4.0),
     ):
         payload = json.dumps(
-            {"input": column, "coefficient": coefficient, "relations": []},
+            {
+                "entity": entity,
+                "input": column,
+                "coefficient": coefficient,
+                "relations": [],
+            },
             sort_keys=True,
         ).encode()
         module = root / f"{name}.yaml"
@@ -379,8 +388,26 @@ def test_missing_pin_names_the_activation_gap(tmp_path, section, field):
         )
 
 
-@pytest.mark.parametrize("problem", ["hash", "path", "period", "duplicate", "entity"])
-def test_malformed_binding_is_refused(tmp_path, problem):
+@pytest.mark.parametrize(
+    ("problem", "match"),
+    [
+        ("hash", r"rules binding 'main_benefit'\.sha256 does not match"),
+        (
+            "path",
+            r"rules binding 'main_benefit'\.rulespec_path must be a canonical relative path",
+        ),
+        (
+            "period",
+            r"rules binding 'main_benefit'\.period 'unmapped' has no explicit period bounds",
+        ),
+        ("duplicate", r"axiom_rules_bindings\.bindings repeats a binding id"),
+        (
+            "entity",
+            r"rules binding 'main_benefit'\.engine_entity disagrees with entity_names",
+        ),
+    ],
+)
+def test_malformed_binding_is_refused(tmp_path, problem, match):
     root, document, engines = _fixture(tmp_path)
     first = document["bindings"][0]
     if problem == "hash":
@@ -393,14 +420,47 @@ def test_malformed_binding_is_refused(tmp_path, problem):
         document["bindings"].append(dict(first))
     else:
         first["engine_entity"] = "Family"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=match):
         build_transport_registry(
             document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
         )
 
 
-@pytest.mark.parametrize("problem", ["root", "schema", "relations", "identity", "keys"])
-def test_injected_adapter_contract_is_checked(tmp_path, problem):
+@pytest.mark.parametrize("toy", ["registry", "composed"])
+def test_injected_adapter_entity_is_independent_of_binding(tmp_path, toy):
+    root, document, engines = _fixture(tmp_path)
+    if toy == "composed":
+        document["bindings"] = write_rulespec_tree(root)
+        engines = {row["id"]: ToyRulesEngine(root, row) for row in document["bindings"]}
+    first = document["bindings"][0]
+    first["entity"] = "family"
+    first["engine_entity"] = "Family"
+    with pytest.raises(ValueError, match="belongs to another entity"):
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
+
+
+@pytest.mark.parametrize(
+    ("problem", "match"),
+    [
+        (
+            "root",
+            "rules binding 'housing' engine root must equal the resolved RuleSpec tree",
+        ),
+        (
+            "schema",
+            "rules binding 'housing' engine schema does not match the transport schema",
+        ),
+        ("relations", "relations"),
+        (
+            "identity",
+            r"rules binding 'housing' injected engine must expose cache_identity\(\)",
+        ),
+        ("keys", "engines_by_binding must cover exactly the declared binding ids"),
+    ],
+)
+def test_injected_adapter_contract_is_checked(tmp_path, problem, match):
     root, document, engines = _fixture(tmp_path)
     engine = engines["housing"]
     if problem == "root":
@@ -415,7 +475,7 @@ def test_injected_adapter_contract_is_checked(tmp_path, problem):
         engine.cache_identity = None
     else:
         engines.pop("housing")
-    with pytest.raises((TypeError, ValueError, NotImplementedError)):
+    with pytest.raises((TypeError, ValueError, NotImplementedError), match=match):
         build_transport_registry(
             document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
         )

@@ -24,18 +24,21 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
+from microcosm.frame import Frame
+from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
+from microcosm.frame.materialize import put_frame_table
 from microcosm.frame.rules import RulesEngine
 from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import (
     ContentStore,
     Graph,
-    GraphRuntimeError,
     KernelContext,
     Node,
     Owned,
@@ -47,7 +50,8 @@ from microcosm.graph import (
     graph_to_json,
     run_graph,
 )
-from microcosm.graph.canonical import canonical_json
+from microcosm.graph.canonical import canonical_json, sha256_domain
+from microcosm.graph.keys import source_content_key
 
 from .codecs import RULESPEC_SOURCE_CODEC
 from .compose import (
@@ -79,6 +83,7 @@ __all__ = [
 #: The skeleton's exported dataset, written under ``--out``.
 EXPORT_FILENAME = "skeleton.h5"
 _STORE = ".graph-store"
+_CREATE_INVENTORY_FORMAT = "microcosm.transport.create-inventory/1"
 _CONTENT_BASIS = (
     "Transported donor support records reweighted to destination facts; "
     "not observed destination microdata."
@@ -97,22 +102,57 @@ class PreparedTransportBuild:
 
 
 def prepare_create_outputs(
-    spec: Mapping[str, object], sources: Mapping[str, str | Path]
+    spec: Mapping[str, object],
+    sources: Mapping[str, str | Path],
+    *,
+    inventory_store: ContentStore | None = None,
+    resume: ResumePolicy = "auto",
 ) -> tuple[Owned, ...]:
-    """CREATE's column inventory, read by running its kernel once.
+    """CREATE's column inventory, cached by its implementation and input bytes.
 
     The executor requires CREATE to declare every column it loads, and the
     columns depend on the pinned donor file. This runs ``transport.create@1``
     on the declared parameters and sources (the kernel itself checks the
     donor's size and SHA-256) and declares every non-structural column of
     the frame it returns, with its dtype. The frame is then discarded; the
-    graph's own CREATE recomputes it under the executor.
+    graph's own CREATE recomputes it under the executor. A cold CLI build
+    therefore executes CREATE twice. A warm inventory lookup hashes every
+    CREATE source but does not construct the frame or run CREATE. Without an
+    ``inventory_store``, each call runs the probe; ``require`` needs a stored
+    inventory, and ``forbid`` recomputes it even if its key already exists.
     """
 
+    if resume not in {"auto", "require", "forbid"}:
+        raise ValueError("resume must be 'auto', 'require' or 'forbid'.")
+    if resume == "require" and inventory_store is None:
+        raise StoreMissError("--resume require needs a CREATE inventory store.")
     declaration = skeleton_create_declaration(spec)
     missing = sorted(set(declaration.sources) - set(sources))
     if missing:
         raise ValueError(f"CREATE needs local paths for sources {missing}.")
+    inventory_key = None
+    if inventory_store is not None:
+        inventory_key = sha256_domain(
+            _CREATE_INVENTORY_FORMAT,
+            canonical_json(
+                {
+                    "kernel": declaration.kernel,
+                    "implementation_hash": TRANSPORT_CREATE.implementation_hash(),
+                    "params": declaration.params,
+                    "sources": {
+                        name: source_content_key(name, sources[name])
+                        for name in declaration.sources
+                    },
+                }
+            ),
+        )
+        if resume != "forbid" and inventory_store.has(inventory_key):
+            cached = inventory_store.load_json(
+                inventory_key, kind=_CREATE_INVENTORY_FORMAT
+            )
+            return tuple(Owned(**row) for row in cached["columns"])
+        if resume == "require":
+            raise StoreMissError("--resume require needs this CREATE inventory.")
     # A probe node: CREATE reads only its params and declared sources. It
     # declares no outputs, so it is never part of a graph.
     probe = Node(
@@ -139,13 +179,26 @@ def prepare_create_outputs(
         },
         **{group: {schema.id_column(group)} for group in schema.group_entities},
     }
-    return tuple(
+    outputs = tuple(
         Owned(entity, column, str(table[column].dtype))
         for entity in schema.entities
         for table in (frame.table(entity),)
         for column in table.columns
         if column not in structural[entity]
     )
+    if inventory_store is not None:
+        inventory_store.put_json(
+            inventory_key,
+            {
+                "columns": [
+                    {"entity": item.entity, "column": item.column, "dtype": item.dtype}
+                    for item in outputs
+                ]
+            },
+            kind=_CREATE_INVENTORY_FORMAT,
+            verify_existing=resume != "forbid",
+        )
+    return outputs
 
 
 def _rules_source(spec: Mapping[str, object]) -> str:
@@ -166,6 +219,8 @@ def prepare_transport_build(
     sources: Mapping[str, str | Path],
     engines_by_binding: Mapping[str, RulesEngine] | None = None,
     extensions: tuple[TransportGraphExtension, ...] = (),
+    inventory_store: ContentStore | str | Path | None = None,
+    resume: ResumePolicy = "auto",
 ) -> PreparedTransportBuild:
     """Check activation, build the registry and CREATE inventory, then compose.
 
@@ -174,10 +229,30 @@ def prepare_transport_build(
     (which the run writes) to a local path. ``engines_by_binding`` is the
     registry's seam for pure-Python adapters; without it, Axiom adapters are
     built for every binding. The registry's schema comes from the same
-    benefit-unit rule CREATE is given.
+    benefit-unit rule CREATE is given. ``inventory_store`` may be a content
+    store or its local directory; a directory is created only after activation
+    succeeds. The CLI uses its graph store to cache the inventory. A cold build
+    runs a full CREATE probe before graph execution; a warm build hashes the
+    CREATE sources and reuses the stored inventory without running the probe.
     """
 
     validate_transport_activation(spec)
+    if resume not in {"auto", "require", "forbid"}:
+        raise ValueError("resume must be 'auto', 'require' or 'forbid'.")
+    if resume == "require":
+        root = (
+            inventory_store.root
+            if isinstance(inventory_store, ContentStore)
+            else Path(inventory_store)
+            if inventory_store is not None
+            else None
+        )
+        if root is None or _store_is_cold(root):
+            raise StoreMissError(
+                "--resume require refuses a cold transport graph store."
+            )
+    if isinstance(inventory_store, str | Path):
+        inventory_store = ContentStore(Path(inventory_store))
     paths = {name: Path(path).resolve() for name, path in sources.items()}
     rules_source = _rules_source(spec)
     if rules_source not in paths:
@@ -194,7 +269,9 @@ def prepare_transport_build(
         spec,
         TransportGraphConfig(
             engine_refs=registry.engine_refs,
-            create_outputs=prepare_create_outputs(spec, paths),
+            create_outputs=prepare_create_outputs(
+                spec, paths, inventory_store=inventory_store, resume=resume
+            ),
             extensions=extensions,
         ),
     )
@@ -207,7 +284,7 @@ def prepare_transport_build(
         graph,
         registry,
         MappingProxyType(paths),
-        MappingProxyType(transport_endpoints(spec)),
+        MappingProxyType(transport_endpoints(spec, extensions=extensions)),
         transport_pending_outputs(spec),
     )
 
@@ -240,17 +317,23 @@ def _destination(out: Path, filename: str) -> Path:
     return path
 
 
-def _check_disjoint(out: Path, sources: Mapping[str, Path]) -> None:
+def _check_disjoint(
+    out: Path, sources: Mapping[str, Path], *, spec_dir: Path | None = None
+) -> None:
     """Refuse an output directory that overlaps an input.
 
     Writing inside an input tree would change the bytes a source names (a
     RuleSpec directory is hashed whole), and an input inside ``--out`` could
-    be overwritten by an output.
+    be overwritten by an output. A local ``--spec-dir`` is also an input tree.
     """
 
     for name, path in sources.items():
         if path.is_relative_to(out) or out.is_relative_to(path):
             raise ValueError(f"--out overlaps the input of source {name!r}: {path}.")
+    if spec_dir is not None:
+        directory = spec_dir.resolve()
+        if directory.is_relative_to(out) or out.is_relative_to(directory):
+            raise ValueError(f"--out overlaps --spec-dir: {directory}.")
 
 
 def _store_is_cold(root: Path) -> bool:
@@ -283,6 +366,51 @@ def _run(graph: Graph, registry, sources, store, resume) -> RunManifest:
         kernels=registry.kernels,
         resume=resume,
     )
+
+
+class _TimestampFreeHDFStore(pd.HDFStore):
+    """Disable object timestamps and unused pandas search indexes."""
+
+    def put(self, key: str, value: pd.DataFrame | pd.Series, **options) -> None:
+        options["track_times"] = False
+        options["index"] = False
+        super().put(key, value, **options)
+
+
+def _materialize_deterministic_export(
+    frame: Frame, descriptor: Mapping[str, object], path: Path
+) -> dict[str, object]:
+    """Validate through G5b, then rewrite the same tables without timestamps.
+
+    The reader consumes whole tables, so query indexes are unnecessary.
+    Table order, row order, values, dtypes and period follow the validated
+    export, including its shared dtype boundary. Readback still hashes the
+    complete H5 container. A changed export costs one additional complete
+    H5 read and rewrite; unchanged exports use the existing readback path.
+    The intermediate H5 stays under --out and is removed on exit.
+    """
+
+    with TemporaryDirectory(prefix=".export-", dir=path.parent) as scratch:
+        staged = Path(scratch) / "validated.h5"
+        materialize_export(frame, descriptor, staged)
+        dataset = AxiomEntityTableDataset(file_path=staged)
+        path.unlink(missing_ok=True)
+        with _TimestampFreeHDFStore(str(path), mode="w") as store:
+            for entity in descriptor["entities"]:
+                put_frame_table(
+                    store,
+                    entity,
+                    dataset.tables[entity],
+                    preferred_format="table",
+                    data_columns=True,
+                )
+            store.put("_time_period", pd.Series([dataset.time_period]), format="table")
+        report = validate_export(path, descriptor)
+        if report["passed"] is not True:
+            raise ValueError(
+                f"The deterministic skeleton H5 failed readback: {report['failures']}."
+            )
+    return file_artifact(path)
 
 
 def execute_transport_graph(
@@ -326,10 +454,19 @@ def execute_transport_graph(
     checkpoints = [
         ("geography", endpoints["geography"]),
         ("calibration", endpoints["calibration"]),
+        *(
+            (f"extension-{index}", endpoint)
+            for index, endpoint in enumerate(endpoints.get("checkpoints", ()))
+        ),
     ]
     terminals = [("terminal", endpoint) for endpoint in endpoints["terminal"]]
     for _, endpoint in (*checkpoints, *terminals):
         through(graph, endpoint)
+    for label, endpoint in checkpoints:
+        if label.startswith("extension-") and any(
+            export_source in node.sources for node in through(graph, endpoint).nodes
+        ):
+            raise ValueError("Extension checkpoints must precede export readback.")
     store_root = output / _STORE
     if resume == "require" and _store_is_cold(store_root):
         raise StoreMissError("--resume require refuses a cold transport graph store.")
@@ -369,7 +506,7 @@ def execute_transport_graph(
         )
     else:
         version = compiled.versions[prepare.id]
-        materialize_export(
+        _materialize_deterministic_export(
             prepared.populations[version], json.loads(descriptor_bytes), exported
         )
     materialize_bytes(descriptor_bytes, descriptor_path)
@@ -465,10 +602,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI; return 0 on success and 1 on a refused build."""
 
-    args = parse_args(argv)
     try:
+        args = parse_args(argv)
+    except SystemExit as error:
+        if error.code == 0:
+            return 0
+        print(
+            "transport build refused: invalid command-line arguments.", file=sys.stderr
+        )
+        return 1
+    try:
+        output = args.out.resolve()
+        sources = {name: path.resolve() for name, path in args.source}
+        _check_disjoint(output, sources, spec_dir=args.spec_dir)
+        store_root = _destination(output, _STORE)
+        if args.resume == "require" and _store_is_cold(store_root):
+            raise StoreMissError(
+                "--resume require refuses a cold transport graph store."
+            )
         spec = load_transport_spec(args.spec_dir if args.spec_dir else args.country)
-        prepared = prepare_transport_build(spec, sources=dict(args.source))
+        prepared = prepare_transport_build(
+            spec, sources=sources, inventory_store=store_root, resume=args.resume
+        )
         execute_transport_graph(
             prepared.graph,
             prepared.registry,
@@ -478,7 +633,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             pending_outputs=prepared.pending_outputs,
             resume=args.resume,
         )
-    except (GraphRuntimeError, ValueError, TypeError, OSError) as error:
+    except Exception as error:
         print(f"transport build refused: {error}", file=sys.stderr)
         return 1
     print(f"Transport skeleton written under {args.out}.")
