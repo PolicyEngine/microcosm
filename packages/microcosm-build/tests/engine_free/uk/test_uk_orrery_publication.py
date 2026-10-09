@@ -52,8 +52,8 @@ def test_local_export_preserves_exact_graph_without_a_run_id_or_network(
     monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
     (args.out / "private.h5").write_bytes(b"licensed population")
     (args.out / "raw.json").write_text('{"person_id":123}')
-    record = {}
-    receipt = orrery_publication.finalize_graph(args, record)
+    result = orrery_publication.finalize_graph(args, manifest=None)
+    receipt = result.receipt
     assert receipt["status"] == "skipped"
     assert receipt["recorded_execution"] is False
     preserved = args.attempt_evidence / "orrery-publication"
@@ -78,7 +78,7 @@ def test_publication_precedes_manifest_registration_and_receipt_is_a_snapshot(
     events = []
 
     class Emitter:
-        def publish_graph(self, directory, inventory):
+        def publish_graph(self, directory, inventory, *, wait_seconds):
             assert not (args.out / "orrery.publication.json").exists()
             events.append("publication_attempt")
             return {
@@ -89,8 +89,7 @@ def test_publication_precedes_manifest_registration_and_receipt_is_a_snapshot(
 
     monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
     manifest = {"outputs": {}}
-    record = {"manifest": manifest}
-    receipt = orrery_publication.finalize_graph(args, record)
+    receipt = orrery_publication.finalize_graph(args, manifest=manifest).receipt
     events.append("registered")
     assert events == ["publication_attempt", "registered"]
     assert receipt["status"] == "pending"
@@ -108,24 +107,108 @@ def test_publication_precedes_manifest_registration_and_receipt_is_a_snapshot(
     assert (args.out / "orrery.publication.json").read_bytes() == snapshot
 
 
+def fail(*args, **kwargs):
+    raise RuntimeError("kernel failed")
+
+
 def test_failure_path_preserves_graph_before_temporary_cleanup(tmp_path, monkeypatch):
     args = fixture(tmp_path)
-    calls = []
+    staged = []
     monkeypatch.setattr(
-        orrery_publication, "stage_graph_evidence", lambda *a, **k: calls.append("hf")
+        orrery_publication,
+        "stage_graph_evidence",
+        lambda args, output, **kwargs: staged.append(output),
     )
-
-    def fail(*a, **k):
-        raise RuntimeError("kernel failed")
 
     with pytest.raises(RuntimeError, match="kernel failed"):
         full_build_cli._run_with_graph_publication(
             fail, None, args, telemetry=None, attempt=None, record={}
         )
-    assert calls == ["hf"]
-    assert (args.published_out / "graph.orrery.json").is_file()
-    assert (args.published_out / "orrery.evidence-manifest.json").is_file()
-    assert (args.published_out / "orrery.failure.json").is_file()
+    bundle = args.attempt_evidence / orrery_publication.FAILURE_BUNDLE_DIRECTORY
+    assert staged == [bundle]
+    assert (bundle / "graph.orrery.json").is_file()
+    assert (bundle / "orrery.evidence-manifest.json").is_file()
+    assert (bundle / "orrery.failure.json").is_file()
+    evidence = json.loads((bundle / "orrery.evidence-manifest.json").read_bytes())
+    assert {entry["path"] for entry in evidence["outputs"].values()} == {
+        str(bundle / name) for name in evidence["outputs"]
+    }
+
+
+def test_failure_leaves_an_earlier_successful_bundle_unchanged(tmp_path, monkeypatch):
+    args = fixture(tmp_path)
+    monkeypatch.setattr(
+        orrery_publication, "stage_graph_evidence", lambda *a, **k: None
+    )
+    args.published_out.mkdir()
+    previous = {
+        "build.json": b'{"kind":"previous-complete-build"}',
+        "graph.orrery.json": b'{"previous":"graph"}',
+        "orrery.publication.json": b'{"previous":"receipt"}',
+    }
+    for name, payload in previous.items():
+        (args.published_out / name).write_bytes(payload)
+
+    with pytest.raises(RuntimeError, match="kernel failed"):
+        full_build_cli._run_with_graph_publication(
+            fail, None, args, telemetry=None, attempt=None, record={}
+        )
+    assert {
+        path.name: path.read_bytes() for path in args.published_out.iterdir()
+    } == previous
+
+
+def test_interrupt_preserves_local_evidence_without_waiting_or_staging(
+    tmp_path, monkeypatch
+):
+    args = fixture(tmp_path)
+    args.publish_orrery = True
+    waits = []
+
+    class Emitter:
+        def publish_graph(self, directory, inventory, *, wait_seconds):
+            waits.append(wait_seconds)
+            return {
+                "publication_id": inventory["publication_id"],
+                "status": "pending",
+                "error_code": None,
+            }
+
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
+    monkeypatch.setattr(
+        orrery_publication,
+        "stage_graph_evidence",
+        lambda *a, **k: pytest.fail("An interrupt started Hugging Face staging"),
+    )
+
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        full_build_cli._run_with_graph_publication(
+            interrupt, None, args, telemetry=None, attempt=None, record={}
+        )
+    assert waits == [0]
+    bundle = args.attempt_evidence / orrery_publication.FAILURE_BUNDLE_DIRECTORY
+    assert (bundle / "graph.orrery.json").is_file()
+
+
+def test_failure_evidence_error_does_not_replace_the_build_error(
+    tmp_path, monkeypatch, capsys
+):
+    args = fixture(tmp_path)
+
+    def broken(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(orrery_publication, "finalize_graph", broken)
+    with pytest.raises(RuntimeError, match="kernel failed"):
+        full_build_cli._run_with_graph_publication(
+            fail, None, args, telemetry=None, attempt=None, record={}
+        )
+    assert "Graph failure evidence was not preserved (OSError)" in (
+        capsys.readouterr().err
+    )
 
 
 @pytest.mark.parametrize(

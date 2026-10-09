@@ -297,3 +297,62 @@ def test_retry_cli_reuses_identity_and_leaves_hf_snapshot_unchanged(
     )
     assert calls == [inventory["publication_id"]]
     assert snapshot.read_text() == '{"status":"pending"}'
+
+
+def test_deleted_preserved_directory_is_retained_without_stopping_delivery(
+    tmp_path, monkeypatch
+):
+    import shutil
+
+    from microcosm.build.telemetry_emitter_service.graph_publication import time
+
+    clock = [1000.0]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    (tmp_path / "removed").mkdir()
+    (tmp_path / "kept").mkdir()
+    removed, removed_inventory = source(tmp_path / "removed")
+    queue.enqueue(removed, removed_inventory)
+    clock[0] = 1001.0
+    kept, kept_inventory = source(tmp_path / "kept")
+    queue.enqueue(kept, kept_inventory)
+    shutil.rmtree(removed)
+    delivery = GraphPublicationDelivery(
+        queue, credential=lambda: ("missing", None), origin="https://runs.example"
+    )
+
+    assert delivery.flush_once() is False
+    receipt = queue.receipt(removed_inventory["publication_id"])
+    assert receipt["status"] == "pending"
+    assert receipt["error_code"] == "preserved_files_missing"
+    assert receipt["attempts"] == 1
+    # The failed job backs off, so the next claim reaches the other job.
+    assert queue.claim().publication_id == kept_inventory["publication_id"]
+
+
+def test_status_file_failure_does_not_roll_back_the_queue_result(tmp_path):
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    claimed = queue.claim()
+    (directory / "publication.status.json").mkdir()
+    queue.finish(
+        claimed.publication_id,
+        url="https://runs.example/runs/published/",
+        expected_lease=claimed.lease_until,
+    )
+    receipt = queue.receipt(claimed.publication_id)
+    assert receipt["status"] == "published"
+    assert list(directory.glob("*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["http://runs.example", "https://runs.example/path", "https://user@runs.example"],
+)
+def test_delivery_rejects_non_origin_destinations(tmp_path, origin):
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    with pytest.raises(ValueError, match="service URL"):
+        GraphPublicationDelivery(
+            queue, credential=lambda: ("missing", None), origin=origin
+        )

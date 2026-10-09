@@ -103,3 +103,40 @@ def test_both_workers_share_one_collector_exchange():
         thread.join(2)
     assert results == [("ok", "synthetic-session")] * 2
     assert len(calls) == 1
+
+
+def test_graph_worker_survives_a_local_queue_error(tmp_path, capsys):
+    from sqlalchemy.exc import OperationalError
+
+    attempts = []
+    recovered = threading.Event()
+
+    class GraphDelivery:
+        def flush_once(self):
+            attempts.append(None)
+            if len(attempts) == 1:
+                raise OperationalError("UPDATE", {}, Exception("database is locked"))
+            recovered.set()
+            return False
+
+    service = EmitterService(
+        socket_path=tmp_path / "unused.sock",
+        registration=None,
+        spool=EventSpool(tmp_path / "events.sqlite3"),
+        delivery=None,
+        graph_delivery=GraphDelivery(),
+        sampler=None,
+        heartbeat_seconds=60,
+        drain_seconds=0,
+    )
+    worker = threading.Thread(
+        target=service._graph_worker, args=(service.graph_delivery,)
+    )
+    worker.start()
+    try:
+        assert recovered.wait(10)
+    finally:
+        service._stop.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert "graph publication hit a local queue error" in capsys.readouterr().err

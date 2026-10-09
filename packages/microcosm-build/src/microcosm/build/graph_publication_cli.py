@@ -6,11 +6,10 @@ import argparse
 import json
 from pathlib import Path
 
-from microcosm.build.telemetry_emitter import _cache_dir
-from microcosm.build.telemetry_emitter_constants import TELEMETRY_SPOOL_FILENAME
+from microcosm.build.telemetry_emitter import default_spool_path
 from microcosm.build.telemetry_emitter_service.auth import (
     CollectorSession,
-    _collector_origin,
+    validated_origin,
 )
 from microcosm.build.telemetry_emitter_service.constants import PRODUCTION_COLLECTOR_URL
 from microcosm.build.telemetry_emitter_service.graph_publication import (
@@ -22,9 +21,7 @@ from microcosm.build.telemetry_emitter_service.graph_publication import (
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--spool", type=Path, default=_cache_dir() / TELEMETRY_SPOOL_FILENAME
-    )
+    parser.add_argument("--spool", type=Path, default=default_spool_path())
     parser.add_argument("--publication-id", required=True)
     parser.add_argument(
         "--directory",
@@ -42,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     if queue.receipt(args.publication_id) is None:
         parser.error("Publication job not found; supply its preserved directory.")
     queue.retry(args.publication_id)
-    session = CollectorSession(_collector_origin(PRODUCTION_COLLECTOR_URL))
+    session = CollectorSession(validated_origin(PRODUCTION_COLLECTOR_URL))
     delivery = GraphPublicationDelivery(
         queue,
         credential=session.credential,
@@ -52,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     # Explicit retries process this job only, not unrelated pending jobs.
     delivery.flush_once(publication_id=args.publication_id)
     receipt = queue.receipt(args.publication_id)
+    assert receipt is not None, "A queued graph publication must have a receipt."
     print(json.dumps(receipt, sort_keys=True))
     return 0 if receipt["status"] == "published" else 1
 

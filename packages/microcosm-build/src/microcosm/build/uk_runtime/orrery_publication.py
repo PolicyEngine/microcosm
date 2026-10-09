@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import re
 from argparse import Namespace
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -20,7 +21,10 @@ from microcosm.build.graph_publication_types import (
     PublicationReceipt,
 )
 from microcosm.build.staging_dataset import StagedDatasetDelivery
+from microcosm.build.telemetry_emitter import default_spool_path
 from microcosm.build.telemetry_emitter_service.graph_publication import (
+    GRAPH_PUBLICATION_WAIT_SECONDS,
+    GraphPublicationQueue,
     publication_inventory,
 )
 from microcosm.graph import ContentStore
@@ -31,6 +35,8 @@ from microcosm.graph.orrery import orrery_json_from_schema
 RECEIPT_NAME = "orrery.publication.json"
 INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
+FAILURE_MARKER_NAME = "orrery.failure.json"
+FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
 
 
 class GraphEvidenceOutput(TypedDict):
@@ -39,6 +45,14 @@ class GraphEvidenceOutput(TypedDict):
     path: str
     sha256: str
     bytes: int
+
+
+@dataclass(frozen=True)
+class GraphFinalization:
+    """The build-directory files written for one graph and its receipt snapshot."""
+
+    files: tuple[str, ...]
+    receipt: PublicationReceipt
 
 
 def publication_enabled(args: Namespace) -> bool:
@@ -73,16 +87,27 @@ def _output(path: Path, published_root: Path) -> GraphEvidenceOutput:
     }
 
 
-def finalize_graph(args: Namespace, record: dict[str, Any]) -> PublicationReceipt:
+def finalize_graph(
+    args: Namespace,
+    *,
+    manifest: MutableMapping[str, Any] | None,
+    published_root: Path | None = None,
+    wait_seconds: float = GRAPH_PUBLICATION_WAIT_SECONDS,
+) -> GraphFinalization:
     """Freeze bytes and a receipt snapshot; retry never rewrites that snapshot.
 
     This runs inside the temporary build directory, including on exceptions.
-    Graph publication failure does not replace a dataset's scientific verdict.
+    A dataset ``manifest``, when the build produced one, registers the graph
+    files and receipt. Graph publication failure does not replace a dataset's
+    scientific verdict. ``published_root`` is where the registered files will
+    be published, by default the build's output directory. ``wait_seconds``
+    bounds the wait for a first upload result after the job is durably queued.
     """
     from . import rowwise_staging
 
     output = Path(args.out)
-    published_root = Path(getattr(args, "published_out", output))
+    if published_root is None:
+        published_root = Path(getattr(args, "published_out", output))
     schema_path = output / "graph.schema.json"
     receipt: PublicationReceipt = {
         "version": 1,
@@ -144,27 +169,23 @@ def finalize_graph(args: Namespace, record: dict[str, Any]) -> PublicationReceip
                 "recorded_execution": execution is not None,
             }
             if publication_enabled(args):
-                emitter = rowwise_staging._ACTIVE_EMITTER
+                emitter = rowwise_staging.active_telemetry_emitter()
                 if emitter is None:
                     # Durable enqueue is still possible without a running
                     # emitter; the retry command requires no telemetry run.
-                    from microcosm.build.telemetry_emitter import _cache_dir
-                    from microcosm.build.telemetry_emitter_constants import (
-                        TELEMETRY_SPOOL_FILENAME,
-                    )
-                    from microcosm.build.telemetry_emitter_service.graph_publication import (
-                        GraphPublicationQueue,
-                    )
-
-                    queue = GraphPublicationQueue(
-                        _cache_dir() / TELEMETRY_SPOOL_FILENAME
-                    )
+                    queue = GraphPublicationQueue(default_spool_path())
                     queue.enqueue(preserved, inventory)
                     queued_receipt = queue.receipt(inventory["publication_id"])
-                    assert queued_receipt is not None
+                    assert queued_receipt is not None, (
+                        "A queued graph publication must have a receipt."
+                    )
                     receipt.update(queued_receipt)
                 else:
-                    receipt.update(emitter.publish_graph(preserved, inventory))
+                    receipt.update(
+                        emitter.publish_graph(
+                            preserved, inventory, wait_seconds=wait_seconds
+                        )
+                    )
     except Exception:
         # No credential, exception text, paths to raw input data, or signed URL
         # is copied from an exception into public evidence or telemetry.
@@ -172,9 +193,6 @@ def finalize_graph(args: Namespace, record: dict[str, Any]) -> PublicationReceip
         receipt["error_code"] = "graph_export_or_enqueue_failed"
     materialize_bytes(canonical_json(receipt), output / RECEIPT_NAME)
     names.append(RECEIPT_NAME)
-    record["orrery_files"] = names
-    record["orrery_publication"] = receipt
-    manifest = record.get("manifest")
     if manifest is not None:
         from .rowwise_cli import MANIFEST_FILENAME, json_text
 
@@ -201,7 +219,7 @@ def finalize_graph(args: Namespace, record: dict[str, Any]) -> PublicationReceip
             "outputs": {name: _output(output / name, published_root) for name in names},
         }
         materialize_bytes(canonical_json(evidence), output / EVIDENCE_MANIFEST_NAME)
-    return receipt
+    return GraphFinalization(files=tuple(names), receipt=receipt)
 
 
 def stage_graph_evidence(
