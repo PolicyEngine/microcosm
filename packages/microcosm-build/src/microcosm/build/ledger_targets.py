@@ -3290,8 +3290,16 @@ def _strip_trailing_vintage_year(piece: str) -> str:
     return match.group(1) if match else piece
 
 
+#: A numeric month beside its year (``03_2025``, ``2025-03``) in a layout value:
+#: ONS's June 2026 public sector employment edition keys its quarter rows so,
+#: where the March 2026 edition wrote ``dec2024`` (microcosm#1123).
+_NUMERIC_MONTH_YEAR = re.compile(
+    r"^(?:(?:0[1-9]|1[0-2])[_-]?(?:19|20)[0-9]{2}|(?:19|20)[0-9]{2}[_-]?(?:0[1-9]|1[0-2]))$"
+)
+
+
 def _normalized_period_bearing_id(value: str) -> str:
-    if _is_period_token(value):
+    if _is_period_token(value) or _NUMERIC_MONTH_YEAR.match(value.strip().lower()):
         return ""
     return _normalized_record_set_part(value)
 
