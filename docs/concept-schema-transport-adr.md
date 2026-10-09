@@ -11,7 +11,7 @@ bank from its pinned donor: 166,321 persons, 57,240 households, 57,240 heads,
 74,572 partner pointers, 62,096 `parent_1_person_id` pointers and 43,731
 `parent_2_person_id` pointers, after dropping two parent edges. Concept
 validation reports no violations. Benefit-unit construction from the concept
-pointers, which step 6 below encodes, is built for New Zealand. The composed
+pointers, which step 6 below relies on, is built for New Zealand. The composed
 transport pipeline remains a design, and no build has migrated.
 **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
 international populations and law-anchored concepts. **Amended 2026-10-07:**

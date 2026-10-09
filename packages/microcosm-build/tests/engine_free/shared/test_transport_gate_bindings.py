@@ -16,9 +16,9 @@ Invariants, each checked here:
 - for every finite non-negative weight vector, subnormals included, the
   reported positive-weight median is the float64 nearest the exact median of
   the original positive weights (ties to even), and the summary is refused
-  exactly when the exact max/median ratio exceeds the float64 maximum; within
-  a relative 1e-12 of that maximum the max-normalized ratio may round either
-  way, an intended boundary pinned by a deterministic test (Hypothesis);
+  when the max-normalized ratio is unrepresentable; near the float64 maximum,
+  normalization can round a finite exact ratio to an overflowing reciprocal,
+  a refusal-only boundary pinned by a deterministic test (Hypothesis);
 - the declared surfaces in NZ ``gates.json`` equal the package resources
   they restate (differential checks against ``source_stages.json`` and
   ``export_contract.json``);
@@ -1318,7 +1318,7 @@ def _exact_median(positive: list[Fraction]) -> Fraction:
 
 
 def _near_the_float64_limit(ratio: Fraction) -> bool:
-    """Whether max normalization may round ``ratio`` either side of overflow."""
+    """Whether normalization can cause refusal near the float64 overflow limit."""
 
     limit = Fraction(_FLOAT64_MAX)
     return abs(ratio - limit) <= limit * Fraction(1, 10**12)
@@ -1459,6 +1459,7 @@ class TestWeightGates:
     @example(weights=[_FLOAT64_MAX, _FLOAT64_MAX])
     @example(weights=[_FLOAT64_MAX / 2, _FLOAT64_MAX])
     @example(weights=[0.0, 5e-324, _FLOAT64_MAX])
+    @example(weights=[5e-324, 1e300])
     @given(weights=_FULL_RANGE_WEIGHTS)
     def test_property_summary_is_exact_over_the_full_float64_range(
         self, weights
