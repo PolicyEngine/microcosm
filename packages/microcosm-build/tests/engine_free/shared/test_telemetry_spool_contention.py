@@ -44,6 +44,7 @@ from microcosm.build.telemetry_emitter_service.collector import CollectorDeliver
 from microcosm.build.telemetry_emitter_service.constants import (
     DATABASE_TIMEOUT_SECONDS,
     PRUNE_INTERVAL_SECONDS,
+    PRUNE_STEP_SECONDS,
     READY_DEADLINE_MARGIN_SECONDS,
     RETENTION_DAYS,
     SPOOL_LOCKED_EXIT_STATUS,
@@ -744,23 +745,28 @@ def test_appends_never_prune(tmp_path, monkeypatch) -> None:
 
 @given(
     gaps=st.lists(st.floats(0, 3 * PRUNE_INTERVAL_SECONDS), max_size=30),
-    failures=st.lists(st.booleans(), max_size=30),
+    results=st.lists(
+        st.sampled_from(["finished", "unfinished", "failed"]), max_size=30
+    ),
 )
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
-def test_prune_runs_at_most_once_per_interval_counting_failures(
-    monkeypatch, gaps, failures
+def test_prune_runs_once_per_interval_until_a_backlog_is_drained(
+    monkeypatch, gaps, results
 ) -> None:
     clock = SimpleNamespace(now=1_000.0)
     monkeypatch.setattr(
         spool_module, "time", SimpleNamespace(monotonic=lambda: clock.now)
     )
-    attempts: list[float] = []
-    outcomes = iter(failures)
+    attempts: list[tuple[float, str]] = []
+    outcomes = iter(results)
 
-    def prune() -> None:
-        attempts.append(clock.now)
-        if next(outcomes, False):
+    def prune(*, time_budget_seconds):
+        assert time_budget_seconds == PRUNE_STEP_SECONDS
+        result = next(outcomes, "finished")
+        attempts.append((clock.now, result))
+        if result == "failed":
             raise _lock_error()
+        return result == "finished"
 
     # prune_if_due reads only the schedule and prune, so no database is needed.
     spool = EventSpool.__new__(EventSpool)
@@ -774,13 +780,19 @@ def test_prune_runs_at_most_once_per_interval_counting_failures(
         with contextlib.suppress(OperationalError):
             spool.prune_if_due()
 
-    # Reference schedule: the first call prunes; later calls prune once the
-    # interval has passed since the previous attempt, whether or not it failed.
+    # Reference schedule: the first call prunes. A later call prunes at once
+    # when the previous prune ran out of its step; otherwise once the interval
+    # has passed since the previous attempt, whether it finished or failed.
     expected: list[float] = []
     for now in calls:
-        if not expected or now - expected[-1] >= PRUNE_INTERVAL_SECONDS:
+        previous = attempts[len(expected) - 1] if expected else None
+        if (
+            previous is None
+            or previous[1] == "unfinished"
+            or now - previous[0] >= PRUNE_INTERVAL_SECONDS
+        ):
             expected.append(now)
-    assert attempts == expected
+    assert [at for at, _ in attempts] == expected
 
 
 # --- Lock-error classification ------------------------------------------------
@@ -1363,9 +1375,10 @@ def _stamp(age_days: float, index: int) -> str:
     run_ages=st.lists(st.floats(0, 2 * RETENTION_DAYS), min_size=3, max_size=3),
     cap_fraction=st.floats(0, 1.2),
     batch_rows=st.integers(1, 4),
+    step_budget=st.sampled_from([0.0, math.inf]),
 )
 def test_batched_prune_matches_the_single_pass_retention_rule(
-    tmp_path_factory, events, run_ages, cap_fraction, batch_rows
+    tmp_path_factory, events, run_ages, cap_fraction, batch_rows, step_budget
 ) -> None:
     """Differential: the batched prune keeps exactly what one pass would.
 
@@ -1434,9 +1447,15 @@ def test_batched_prune_matches_the_single_pass_retention_rule(
         with (
             mock.patch.object(spool_module, "MAX_QUEUED_BYTES", cap),
             mock.patch.object(spool_module, "PRUNE_BATCH_ROWS", batch_rows),
+            mock.patch.object(spool_module, "PRUNE_BATCH_PAUSE_SECONDS", 0.0),
             mock.patch.object(spool_module, "datetime", frozen_now),
         ):
-            spool.prune()
+            # A zero budget stops after every batch, so the prune is resumed
+            # call by call until it reports that it finished.
+            calls = 1
+            while not spool.prune(time_budget_seconds=step_budget):
+                calls += 1
+                assert calls <= len(events) + 3
         with spool._session_factory() as session:
             kept_events = set(
                 session.scalars(select(TelemetryEventRecord.event_id)).all()
@@ -1469,3 +1488,81 @@ def test_batched_prune_matches_the_single_pass_retention_rule(
     assert kept_runs == expected_runs
     # Each transaction deleted at most one batch.
     assert all(deleted <= batch_rows for deleted in batches)
+
+
+def test_a_prune_with_nothing_to_remove_only_reads(tmp_path) -> None:
+    """An idle prune runs every minute in every service; it takes no lock."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    try:
+        registration = _registration()
+        spool.register(registration)
+        spool.append(registration, _event())
+        with _write_lock(spool_path):
+            started = time.monotonic()
+            assert spool.prune() is True
+            assert time.monotonic() - started < 1.0
+        assert spool.has_pending()
+    finally:
+        _close(spool)
+
+
+def test_prune_pauses_between_batches_outside_the_process_lock(
+    tmp_path, monkeypatch
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    pauses: list[bool] = []
+    try:
+        registration = _registration()
+        spool.register(registration)
+        for _ in range(5):
+            spool.append(registration, _event())
+        expired = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS + 1)).isoformat()
+        with spool._session_factory.begin() as session:
+            session.query(TelemetryEventRecord).update({"created_at": expired})
+
+        def pause(seconds: float) -> None:
+            # This build's event path takes the same lock, so it must be free.
+            pauses.append(spool._lock._is_owned())
+
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_ROWS", 2)
+        monkeypatch.setattr(
+            spool_module,
+            "time",
+            SimpleNamespace(monotonic=time.monotonic, sleep=pause),
+        )
+        assert spool.prune() is True
+        assert not spool.has_pending()
+    finally:
+        _close(spool)
+
+    # Five rows in batches of two: a pause after each full batch, never while
+    # this process holds its lock.
+    assert pauses == [False, False]
+
+
+def test_a_prune_out_of_time_stops_between_batches_and_resumes(
+    tmp_path, monkeypatch
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    try:
+        registration = _registration()
+        spool.register(registration)
+        for _ in range(5):
+            spool.append(registration, _event())
+        expired = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS + 1)).isoformat()
+        with spool._session_factory.begin() as session:
+            session.query(TelemetryEventRecord).update({"created_at": expired})
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_ROWS", 2)
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_PAUSE_SECONDS", 0.0)
+
+        remaining = []
+        while not spool.prune(time_budget_seconds=0.0):
+            remaining.append(len(spool.batch("run-a", "producer-a", limit=10)))
+        remaining.append(len(spool.batch("run-a", "producer-a", limit=10)))
+    finally:
+        _close(spool)
+
+    # One batch per call: five rows go two, two, then one.
+    assert remaining == [3, 1, 0]
