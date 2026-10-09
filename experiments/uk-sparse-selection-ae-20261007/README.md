@@ -154,6 +154,12 @@ receipt with its reason, and the run moves on to the next one.
 | E_unif_f0.5_3e-3 | -0.32 % | 2.46 % | 25.57 % | 200 | 19 | 189 | 6 | 0.0149 | household_total, local_family_within_10 |
 | E_unif_f0_1e-2 | -3.94 % | 2.01 % | 22.57 % | 117 | 13 | 101 | 15 | 0.0230 | – |
 | S0 | -3.47 % | 2.01 % | 23.04 % | 170 | 20 | 158 | 15 | 0.0221 | local_family_within_10 |
+| SA | -1.21 % | 2.08 % | 27.08 % | 148 | 21 | 132 | 69 | 0.0382 | – |
+| SA_f0.5 | -0.23 % | 2.66 % | 29.28 % | 610 | 147 | 859 | 14 | 0.0188 | household_total, local_family_within_10, lone_person_share, nation_shares |
+| SA_f0.5_u0.0064 | -0.49 % | 2.62 % | 28.62 % | 152 | 25 | 187 | 28 | 0.0242 | household_total, lone_person_share, nation_shares |
+| SA_f0.5_u0.021 | -0.34 % | 2.57 % | 27.82 % | 33 | 13 | 93 | 35 | 0.0296 | household_total, local_family_within_10, lone_person_share, nation_shares |
+| SA_ge_f0 | -2.12 % | 1.98 % | 26.72 % | 153 | 20 | 143 | 47 | 0.0302 | – |
+| SA_ge_f0.5_u1e-2 | -0.51 % | 2.44 % | 27.03 % | 68 | 18 | 122 | 7 | 0.0167 | household_total, local_family_within_10 |
 | X_gfes_unif_f0.5_0.0021 | -0.09 % | 2.62 % | 28.45 % | 614 | 149 | 816 | 16 | 0.0199 | household_total, local_family_within_10, lone_person_share, nation_shares |
 | X_gfes_unif_f0.5_0.0064 | -0.21 % | 2.56 % | 27.03 % | 358 | 44 | 390 | 13 | 0.0207 | household_total, local_family_within_10, nation_shares |
 | X_gfes_unif_f0.5_0.021 | -0.66 % | 2.50 % | 25.60 % | 79 | 13 | 88 | 15 | 0.0229 | household_total, local_family_within_10 |
