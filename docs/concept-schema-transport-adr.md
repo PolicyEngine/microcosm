@@ -10,15 +10,18 @@ recorded for D1 method card d1043. The full reader smoke test returns a valid
 bank from its pinned donor: 166,321 persons, 57,240 households, 57,240 heads,
 74,572 partner pointers, 62,096 `parent_1_person_id` pointers and 43,731
 `parent_2_person_id` pointers, after dropping two parent edges. Concept
-validation reports no violations. The composed transport pipeline below
-remains a design, and no build has migrated. **Date:** 2026-09-28. **Source:** Max's 27 September rulings on
+validation reports no violations. Benefit-unit construction from the concept
+pointers, which step 6 below encodes, is built for New Zealand. The composed
+transport pipeline remains a design, and no build has migrated.
+**Date:** 2026-09-28. **Source:** Max's 27 September rulings on
 international populations and law-anchored concepts. **Amended 2026-10-07:**
 schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
-Zealand mapping binds it, as a deferred `Family` binding; the other three
-mappings list it as unmapped with a reason. A scale, sum, share or fraction now
-computes from annual flows only (invariant 11), so none of them can rescale the
-stock, add it to a year's income, or split it.
+Zealand mapping binds it, as a `Family` binding that `encode_groups` executes
+on built benefit units; the other three mappings list it as unmapped with a
+reason. A scale, sum, scaled sum, share or fraction now computes from annual
+flows only (invariant 11), so none of them can rescale the stock, add it to a
+year's income, or split it.
 
 ## Context
 
@@ -43,7 +46,9 @@ observes and that keep their meaning across countries. There are 29, on two
 entities. Engine group entities (tax units, benefit units, SPM units,
 families) are engine constructs built from relationships. Today the US unit
 operator builds them from raw CPS roster columns, and the UK adapter requires
-them already present. Building them from the concept pointers is future work.
+them already present. `microcosm.frame.unit_construction` builds benefit units
+from the concept pointers under a declared rule; tax units and SPM units are
+not yet built from them.
 
 | Topic | Concepts |
 |---|---|
@@ -138,9 +143,10 @@ binds engine inputs to concepts. Each binding states:
 
 - the transform: identity, recode, a share pair, a fraction of an amount
   another input holds whole, a fixed scale (annual to weekly or monthly), a
-  positivity test, sum, product, allocation to the reference person, a
-  predicate, a relationship role, a co-resident child count, or a take-up
-  threshold. A scale, sum, share or fraction computes from annual flows only;
+  positivity test, sum, a sum then a fixed scale, product, allocation to the
+  reference person, a predicate, a relationship role, a co-resident child
+  count, a take-up threshold, or a test of a built unit's composition. A scale,
+  sum, scaled sum, share or fraction computes from annual flows only;
 - the relation, in the same vocabulary;
 - the evidence, quoting the engine's own definition or how builds populate the
   input.
@@ -149,10 +155,13 @@ No name is matched. Every concept is either bound or listed as unmapped with a
 reason, so each gap is a stated decision: policyengine-uk computes the State
 Pension from a formula-owned variable, for example, and rulespec-nz has no
 input that reads sex. A binding's `reads` also counts the pointers it uses to
-place values, such as the household reference person that allocation reads. Bindings on engine group entities declare
-how member values collapse. The mapping only declares that rule. Applying it
-needs engine unit membership, which no adapter yet builds from concepts, so
-encoding reports these bindings as deferred.
+place values, such as the household reference person that allocation reads.
+Bindings on engine group entities declare how member values collapse onto the
+unit: summed, any member, the head's value, the household's value on every
+unit, or a household amount allocated to the unit holding the reference person.
+`encode` reports these bindings as deferred, since a concept frame carries no
+units; `encode_groups` executes them once a unit-construction step has built
+the units (step 6).
 
 Inputs differ in what the engine declares about them. PolicyEngine inputs are
 typed: the engine declares their entity, dtype and period. It has no structured,
@@ -222,9 +231,20 @@ it relies on.
    and tenure and rents.
 6. **Encode for the target engine.** The target adapter's mapping turns the
    calibrated concept frame into its inputs (`ConceptMapping.encode`), for
-   example `axiom:nz` for rulespec-nz. Bindings on group entities wait for a
-   unit-construction step that builds the target's units from the concept
-   pointers; that step does not exist yet.
+   example `axiom:nz` for rulespec-nz. Bindings on group entities run through
+   `ConceptMapping.encode_groups` on units built from the concept pointers:
+   `microcosm.frame.unit_construction` builds benefit units (an adult, their
+   partner and their dependent children; every other adult is their own unit)
+   under a rule the country pack declares, since who counts as a dependent
+   child is law. `encode_groups` also executes declared state bindings, which
+   feed a group input from model state (a receipt flag the take-up step
+   assigned, an area the geography step assigned) rather than from a concept,
+   and takes the scenario knobs (where a household's rent goes, whether an
+   asset test applies, which area assignment, a rent factor). An Axiom engine
+   fails a request that reaches an input it was not given, so an Axiom
+   country pack also closes every root input of each module it binds
+   (`microcosm.frame.input_closure`): each is encoded or defaulted with its
+   reason, and the closure is checked against the committed input surface.
 7. **Label the tier.** Every release carries a `ContentBasis`: `own_data`,
    `transport` or `aggregates_only`. The code calls it content basis, not tier,
    because the repository already has evidence-tier releases, target
@@ -260,7 +280,12 @@ These hold for every input and are tested (Hypothesis properties unless noted):
    from concepts that do not decode cannot be re-encoded), and encoding is
    deterministic and row-aligned.
 4. **Conservation.** Allocation to the reference person preserves every
-   household amount, and each share pair sums back to its concept.
+   household amount, and each share pair sums back to its concept. On built
+   units, allocation to the reference unit puts each household amount on
+   exactly the unit holding the reference person, its per-adult alternative
+   spreads it over the household's units, and both preserve it; a sum over
+   members preserves the members' total, and a household value is constant
+   within its household.
 5. **Monotone take-up.** A higher rate never takes a record out of a program.
    Rate 0 takes up nobody and rate 1 takes up everybody. Draws lie on [0, 1),
    are deterministic, do not depend on other records, and differ by program key.
@@ -285,10 +310,11 @@ These hold for every input and are tested (Hypothesis properties unless noted):
 10. **Serialization.** Every mapping, transform, alignment and coverage report
     round-trips through JSON. Malformed input raises `ValueError` and never
     another exception, whatever is corrupted; a missing, unexpected or
-    wrongly typed field is named.
-11. **Arithmetic reads annual flows.** A scale, sum, share or fraction binding
-    computes only from concepts whose declared temporal basis is
-    `annual_flow`: every concept in its `concepts`. A stock such as
+    wrongly typed field is named. So do unit rules, state bindings and input
+    closures.
+11. **Arithmetic reads annual flows.** A scale, sum, scaled sum, share or
+    fraction binding computes only from concepts whose declared temporal basis
+    is `annual_flow`: every concept in its `concepts`. A stock such as
     `liquid_financial_assets` has no weekly value and cannot be added to a
     year's income. The rule also refuses a scale of a usual rate or a
     persistent draw. The household reference person that a binding allocated
@@ -307,6 +333,22 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     through an identity whose group rule sums it over a family's members, and
     policyengine-uk's hours input is a product of usual weekly hours and
     weeks worked.
+12. **Units.** Benefit units partition persons: every person is in exactly
+    one unit, every unit has a head and at most one partner, partners share a
+    unit and the partner role goes to the head's partner alone, every
+    dependent child shares a unit with a co-resident parent (or, with none,
+    with the household reference person), and units nest in households,
+    whatever unique integer ids the persons carry, negative ones included.
+    Units carry no weights; each takes its household's, so the sum of unit
+    weights is the sum over households of household weight times
+    units in the household. Unit ids are deterministic and independent of
+    row order. Group encoding agrees with a row-by-row reference, and its
+    unit-composition flags agree with the unit attributes computed
+    separately.
+13. **Input closure** (engine-free). An Axiom country pack's closure puts
+    every root input of every module it binds, as the committed surface
+    lists them, in exactly one class (encoded or defaulted), and an input is
+    concept-encoded exactly when the mapping binds it.
 
 ## Consequences
 
@@ -334,12 +376,13 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   `DonorBank.dropped_parent_cycle_edges` exposes the number of dropped edges.
   Longer cycles and other inconsistent relationships still fail validation.
 - The consuming builder supplies the destination frame declaration after
-  transport. Transport still needs a unit-construction step that builds engine
-  units from the concept pointers (until it exists, 13 of New Zealand's 80 and
-  46 of Belgium's 105 module bindings, and the take-up and housing bindings on
-  US and UK group entities, stay deferred), and a country pack with geography,
-  targets and an engine adapter. The schema was the one piece that belongs in
-  the core from the start.
+  transport. New Zealand's group bindings now execute on benefit units built
+  from the concept pointers. Belgium's group bindings (46 of its 105 module
+  bindings), and the take-up and housing bindings on US and UK group entities,
+  still wait for a step that builds those engines' units from the pointers, so
+  they stay deferred. Transport also still needs a country pack with
+  geography, targets and an engine adapter. The schema was the one piece that
+  belongs in the core from the start.
 - Open questions this does not settle: whether take-up propensities persist or
   are chosen at simulation time (#360), and how the Belgian population-input
   boundary treats `takes_up_*` names (#824). The Axiom concept-coverage

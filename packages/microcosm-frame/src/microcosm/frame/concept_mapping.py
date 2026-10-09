@@ -12,10 +12,13 @@ Bindings on the engine's person and household entities execute here:
 columns, and :meth:`ConceptMapping.decode` recovers every concept whose
 bindings are invertible. Bindings on engine group entities (tax units,
 benefit units, SPM units, families) need unit membership that a concept frame
-does not carry; they declare a :class:`GroupRule` and are reported as
-deferred rather than executed. No adapter applies group rules yet: that is
-the work of a future unit-construction step that builds engine units from
-the relationship pointers.
+does not carry; they declare a :class:`GroupRule`, and :meth:`encode`
+reports them as deferred. :meth:`ConceptMapping.encode_groups` executes them
+once a unit-construction step has built the units from the relationship
+pointers (:mod:`microcosm.frame.unit_construction` builds benefit units) and
+hands their :class:`GroupMembership` over. It also executes declared state
+bindings (:class:`StateBinding`), which feed group inputs from model state
+(receipt flags, an assigned area) rather than from concepts.
 
 :func:`coverage_report` compares a mapping with an engine's input surface:
 which inputs each concept feeds, which inputs no concept covers, and which
@@ -59,12 +62,16 @@ from microcosm.frame.schema import VariableMetadata
 
 __all__ = [
     "AllocateToReferencePerson",
+    "Allocation",
     "ConceptMappedEngine",
     "ConceptMapping",
     "CoresidentChildCount",
     "CoverageReport",
+    "EncodedGroupInputs",
     "EncodedInputs",
     "Fraction",
+    "GroupKnobs",
+    "GroupMembership",
     "GroupRule",
     "Identity",
     "InputBinding",
@@ -78,9 +85,15 @@ __all__ = [
     "Recode",
     "RelationshipRole",
     "Role",
+    "ScaledSum",
     "Share",
+    "StateBinding",
+    "StateTest",
     "Sum",
     "TakeUpThreshold",
+    "UnitComposition",
+    "UnitFeature",
+    "UnitRole",
     "bind",
     "coverage_report",
     "rules_engine_input_refs",
@@ -111,8 +124,8 @@ class InputDeclaration(StrEnum):
 class GroupRule(StrEnum):
     """How a binding on an engine group entity collapses member values.
 
-    This module declares the rule; it does not apply it. Applying it needs
-    engine unit membership, which no adapter builds from concepts yet.
+    :meth:`ConceptMapping.encode_groups` applies every rule except
+    :attr:`PERSON_ROLE`, given the units' :class:`GroupMembership`.
     """
 
     #: Sum the members' values.
@@ -203,6 +216,25 @@ class Share:
 @dataclass(frozen=True)
 class Sum:
     """The engine input is the sum of several annual-flow amount concepts."""
+
+
+@dataclass(frozen=True)
+class ScaledSum:
+    """The engine input is the sum of annual-flow amount concepts times a factor.
+
+    A rule can state a total in another period than the concepts: the weekly
+    sum of two annual home payments is ``(interest + principal) / 52``. One
+    binding has one transform, so :class:`Sum` and :class:`Scale` cannot be
+    chained; this is the two applied in that order. Not invertible.
+    """
+
+    factor: float
+
+    def __post_init__(self) -> None:
+        factor = float(self.factor)
+        if not math.isfinite(factor) or factor <= 0:
+            raise ValueError(f"A scale factor must be finite and positive: {factor}.")
+        object.__setattr__(self, "factor", factor)
 
 
 @dataclass(frozen=True)
@@ -327,6 +359,54 @@ class TakeUpThreshold:
     program: str
 
 
+class UnitRole(StrEnum):
+    """A person's place in an engine unit built from the pointers."""
+
+    #: The unit's reference member.
+    HEAD = "head"
+    #: The head's co-resident partner, in the head's unit.
+    PARTNER = "partner"
+    #: A dependent child of the unit's adults (or placed with them).
+    DEPENDENT_CHILD = "dependent_child"
+
+
+class UnitFeature(StrEnum):
+    """A composition test on a built unit, read from its members' roles."""
+
+    #: The unit has a partner besides its head.
+    HAS_PARTNER = "has_partner"
+    #: The unit has at least one dependent child.
+    HAS_DEPENDENT_CHILD = "has_dependent_child"
+    #: The unit has at least two dependent children.
+    TWO_OR_MORE_DEPENDENT_CHILDREN = "two_or_more_dependent_children"
+    #: The unit has one adult (no partner) and at least one dependent child.
+    SOLE_PARENT = "sole_parent"
+
+
+@dataclass(frozen=True)
+class UnitComposition:
+    """A boolean group input: the built unit passes a composition test.
+
+    The unit is built from the relationship pointers, age and the household
+    reference person under a declared rule (who counts as a dependent child
+    is law, so it lives in the rule, not here; a rule with a
+    financial-independence test also reads usual weekly hours). The value is
+    the unit's own, the same for every member, so its binding takes the
+    :attr:`GroupRule.REFERENCE_MEMBER` rule. It needs unit membership and runs
+    only in :meth:`ConceptMapping.encode_groups`.
+    """
+
+    feature: UnitFeature
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "feature", UnitFeature(self.feature))
+
+    @property
+    def concepts(self) -> tuple[str, ...]:
+        """The concepts unit construction reads."""
+        return _UNIT_CONCEPTS
+
+
 Transform = (
     Identity
     | Recode
@@ -336,11 +416,13 @@ Transform = (
     | Scale
     | Sum
     | Product
+    | ScaledSum
     | AllocateToReferencePerson
     | Predicate
     | RelationshipRole
     | CoresidentChildCount
     | TakeUpThreshold
+    | UnitComposition
 )
 
 #: Serialized transform kind -> transform class.
@@ -358,6 +440,8 @@ _TRANSFORM_KINDS: dict[str, type] = {
     "fraction": Fraction,
     "positive": Positive,
     "scale": Scale,
+    "scaled_sum": ScaledSum,
+    "unit_composition": UnitComposition,
 }
 _KIND_BY_TRANSFORM: dict[type, str] = {
     cls: kind for kind, cls in _TRANSFORM_KINDS.items()
@@ -386,8 +470,10 @@ def transform_to_dict(transform: Transform) -> dict[str, object]:
             out["max_child_age"] = transform.max_child_age
     elif isinstance(transform, Fraction):
         out["parameter"] = transform.parameter
-    elif isinstance(transform, Scale):
+    elif isinstance(transform, Scale | ScaledSum):
         out["factor"] = transform.factor
+    elif isinstance(transform, UnitComposition):
+        out["feature"] = transform.feature.value
     elif isinstance(transform, CoresidentChildCount) and transform.max_age is not None:
         out["max_age"] = transform.max_age
     elif isinstance(transform, TakeUpThreshold):
@@ -402,6 +488,8 @@ _TRANSFORM_FIELDS: dict[str, frozenset[str]] = {
     "relationship_role": frozenset({"role", "max_child_age"}),
     "fraction": frozenset({"parameter"}),
     "scale": frozenset({"factor"}),
+    "scaled_sum": frozenset({"factor"}),
+    "unit_composition": frozenset({"feature"}),
     "coresident_child_count": frozenset({"max_age"}),
     "take_up_threshold": frozenset({"program"}),
 }
@@ -483,11 +571,13 @@ def _read_transform(data: object) -> Transform:
         )
     if kind == "fraction":
         return Fraction(parameter=text("parameter"))
-    if kind == "scale":
+    if kind in ("scale", "scaled_sum"):
         factor = required("factor")
         if isinstance(factor, bool) or not isinstance(factor, int | float):
             raise ValueError("A scale factor must be a number.")
-        return Scale(factor=factor)
+        return _TRANSFORM_KINDS[kind](factor=factor)
+    if kind == "unit_composition":
+        return UnitComposition(feature=UnitFeature(text("feature")))
     if kind == "coresident_child_count":
         return CoresidentChildCount(max_age=optional_age("max_age"))
     if kind == "take_up_threshold":
@@ -514,6 +604,14 @@ _ROLE_CONCEPTS: dict[Role, tuple[str, ...]] = {
     Role.NO_PARTNER: ("fact:person.partner_person_id",),
 }
 _PARENT_CONCEPTS = ("fact:person.parent_1_person_id", "fact:person.parent_2_person_id")
+#: What unit construction reads: the person pointers, age and the household
+#: reference person (:mod:`microcosm.frame.unit_construction`).
+_UNIT_CONCEPTS = (
+    "fact:person.age",
+    "fact:person.partner_person_id",
+    *_PARENT_CONCEPTS,
+    "fact:household.reference_person_id",
+)
 
 
 class InputRef(NamedTuple):
@@ -710,7 +808,9 @@ class InputBinding:
         """The entity whose rows the transform produces values on."""
         if isinstance(self.transform, AllocateToReferencePerson):
             return "person"
-        if isinstance(self.transform, RelationshipRole | CoresidentChildCount):
+        if isinstance(
+            self.transform, RelationshipRole | CoresidentChildCount | UnitComposition
+        ):
             return "person"
         entities = {concept(concept_id).entity for concept_id in self.concepts}
         if len(entities) != 1:
@@ -743,15 +843,16 @@ def bind(
 
 
 #: Transforms that do arithmetic on a year's amount: a scale restates it per
-#: week or month, a sum adds amounts, and a share or fraction splits one. Each
-#: reads annual flows only, so none of them takes a stock (a value at the
-#: reference date), a usual rate or a persistent draw by accident; a binding
-#: that needs one needs a new transform. The rule checks the concepts a
+#: week or month, a sum adds amounts (and a scaled sum scales the total), and
+#: a share or fraction splits one. Each reads annual flows only, so none of
+#: them takes a stock (a value at the reference date), a usual rate or a
+#: persistent draw by accident; a binding that needs one needs a new transform.
+#: The rule checks the concepts a
 #: binding computes from (``concepts``), not the household reference person a
 #: binding allocated to the reference unit also reads to place its value. A
 #: product is outside the rule: it multiplies a usual rate (weekly hours) by
 #: weeks.
-_FLOW_TRANSFORMS = (Scale, Sum, Share, Fraction)
+_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, Share, Fraction)
 
 
 def _check_transform_arity(binding: InputBinding) -> None:
@@ -786,7 +887,9 @@ def _check_transform_arity(binding: InputBinding) -> None:
                 f"Binding for {name!r}: a recode must map exactly the "
                 f"concept's domain {list(domain)}."
             )
-    if isinstance(transform, Share | Fraction | Sum | AllocateToReferencePerson):
+    if isinstance(
+        transform, Share | Fraction | Sum | ScaledSum | AllocateToReferencePerson
+    ):
         for item in items:
             if item.monetary is None:
                 raise ValueError(f"Binding for {name!r}: {item.id} is not an amount.")
@@ -799,8 +902,10 @@ def _check_transform_arity(binding: InputBinding) -> None:
             f"Binding for {name!r}: only float concepts scale; a scaled count "
             "would not decode to whole numbers."
         )
-    if isinstance(transform, Sum) and len(items) < 2:
+    if isinstance(transform, Sum | ScaledSum) and len(items) < 2:
         raise ValueError(f"Binding for {name!r}: a sum reads two or more amounts.")
+    if isinstance(transform, ScaledSum) and len({item.entity for item in items}) != 1:
+        raise ValueError(f"Binding for {name!r}: a sum adds amounts on one entity.")
     if isinstance(transform, _FLOW_TRANSFORMS):
         for item in items:
             if item.temporal_basis is not TemporalBasis.ANNUAL_FLOW:
@@ -839,6 +944,13 @@ def _check_transform_arity(binding: InputBinding) -> None:
                 f"Binding for {name!r}: role {transform.role.value} reads "
                 f"{transform.concepts}."
             )
+    if isinstance(transform, UnitComposition) and (
+        binding.concepts != transform.concepts
+    ):
+        raise ValueError(
+            f"Binding for {name!r}: a unit composition reads what unit "
+            f"construction reads: {transform.concepts}."
+        )
     if isinstance(transform, CoresidentChildCount) and (
         binding.concepts != transform.concepts
     ):
@@ -855,6 +967,13 @@ def _check_transform_arity(binding: InputBinding) -> None:
 
 def _check_group_rule(engine: str, binding: InputBinding) -> None:
     rule = binding.group_rule
+    if isinstance(binding.transform, UnitComposition):
+        if rule is not GroupRule.REFERENCE_MEMBER:
+            raise ValueError(
+                f"{engine}: {binding.engine_input!r} is a unit's own composition; "
+                "it takes the reference_member rule."
+            )
+        return
     items = [concept(concept_id) for concept_id in binding.concepts]
     household_only = all(item.entity == "household" for item in items)
     amounts = all(item.monetary is not None for item in items)
@@ -907,7 +1026,309 @@ class EncodedInputs:
             each carrying the frame's id columns plus the engine inputs that
             live on the engine's person or household entity.
         deferred: Bindings on engine group entities, which need engine unit
-            membership and were not executed.
+            membership and were not executed here; group encoding
+            (:meth:`ConceptMapping.encode_groups`) executes them on built
+            units.
+    """
+
+    tables: Mapping[str, pd.DataFrame]
+    deferred: tuple[InputBinding, ...]
+
+
+class Allocation(StrEnum):
+    """Where an allocated household amount goes among the household's units."""
+
+    #: All of it on the unit that contains the household's reference person.
+    REFERENCE_UNIT = "reference_unit"
+    #: Shared among the household's units in proportion to their adults
+    #: (heads and partners); every unit has at least one.
+    PER_ADULT_SHARE = "per_adult_share"
+
+
+@dataclass(frozen=True, eq=False)
+class GroupMembership:
+    """An engine group entity's units, and who belongs to them.
+
+    A unit-construction step builds these from the relationship pointers
+    (:func:`microcosm.frame.unit_construction.benefit_unit_membership`).
+    :meth:`ConceptMapping.encode_groups` checks them against the concept
+    frame before using them: membership aligned to the person index, integer
+    ids that int64 can hold, members in the household their unit declares,
+    one head per unit and at most one partner, who is the head's partner by
+    the pointers.
+
+    Attributes:
+        entity: The frame group entity the units are (``family``). The unit
+            table carries ``<entity>_id``, ``<entity>_household_id`` and
+            ``<entity>_head_person_id``.
+        units: One row per unit.
+        person_unit: Each person's unit id, aligned to the person table.
+        person_role: Each person's :class:`UnitRole` value, aligned likewise.
+    """
+
+    entity: str
+    units: pd.DataFrame
+    person_unit: pd.Series
+    person_role: pd.Series
+
+    @property
+    def id_column(self) -> str:
+        """The unit table's id column."""
+        return f"{self.entity}_id"
+
+    @property
+    def household_column(self) -> str:
+        """The unit table's column naming the household each unit nests in."""
+        return f"{self.entity}_household_id"
+
+    @property
+    def head_column(self) -> str:
+        """The unit table's column naming each unit's head."""
+        return f"{self.entity}_head_person_id"
+
+
+@dataclass(frozen=True, kw_only=True)
+class GroupKnobs:
+    """Declared alternatives for how group inputs are encoded.
+
+    Every knob names the engine inputs (or the state column) it changes, so
+    a scenario is data: a country pack translates its own knob names (rent
+    allocation, asset test, area column, rent factor) into these. A knob that
+    names an input the call does not produce is refused.
+
+    Attributes:
+        allocation: Engine input -> where its household amount goes; inputs
+            not named here go to the reference unit.
+        zeroed: Numeric engine inputs set to zero (an asset test switched off
+            by giving every unit no assets).
+        factors: Numeric engine input -> a factor every unit's value is
+            multiplied by (a stock adjustment to rents).
+        state_columns: A state binding's declared column -> the column read
+            instead, both ``<entity>.<column>`` (an alternative area
+            assignment).
+    """
+
+    allocation: Mapping[str, Allocation] = field(default_factory=dict)
+    zeroed: frozenset[str] = frozenset()
+    factors: Mapping[str, float] = field(default_factory=dict)
+    state_columns: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "allocation",
+            MappingProxyType(
+                {name: Allocation(mode) for name, mode in self.allocation.items()}
+            ),
+        )
+        object.__setattr__(self, "zeroed", frozenset(self.zeroed))
+        factors = {}
+        for name, factor in self.factors.items():
+            if isinstance(factor, bool) or not isinstance(factor, int | float):
+                raise ValueError(f"The factor for {name!r} must be a number.")
+            if not math.isfinite(factor) or factor < 0:
+                raise ValueError(
+                    f"The factor for {name!r} must be finite and non-negative."
+                )
+            factors[name] = float(factor)
+        object.__setattr__(self, "factors", MappingProxyType(factors))
+        for declared, used in self.state_columns.items():
+            for column in (declared, used):
+                _state_column(column)
+            if declared.split(".")[0] != used.split(".")[0]:
+                raise ValueError(
+                    f"State column {declared!r} cannot be read from another "
+                    f"entity's {used!r}."
+                )
+        object.__setattr__(
+            self, "state_columns", MappingProxyType(dict(self.state_columns))
+        )
+        overlap = self.zeroed & set(self.factors)
+        if overlap:
+            raise ValueError(f"Inputs {sorted(overlap)} are both zeroed and scaled.")
+
+    def targets(self) -> frozenset[str]:
+        """Every engine input a knob changes."""
+        return frozenset(self.allocation) | self.zeroed | frozenset(self.factors)
+
+
+class StateTest(StrEnum):
+    """How a state binding reads its model-state columns."""
+
+    #: True when any of the boolean columns is true.
+    ANY_TRUE = "any_true"
+    #: True when the one column equals the binding's value.
+    EQUALS = "equals"
+
+
+#: The group rules a state binding may take, by the state's entity.
+_STATE_RULES = {
+    "person": (GroupRule.ANY_MEMBER, GroupRule.REFERENCE_MEMBER),
+    "household": (GroupRule.HOUSEHOLD_VALUE,),
+}
+
+
+@dataclass(frozen=True, kw_only=True)
+class StateBinding:
+    """A group engine input fed from model state rather than concepts.
+
+    Model state is a column a graph node computed (a receipt flag assigned by
+    take-up, an area assigned by geography), not a survey fact, so it has no
+    concept and no place in a :class:`ConceptMapping`. The country pack
+    declares these with their evidence, and
+    :meth:`ConceptMapping.encode_groups` executes them alongside the
+    mapping's group bindings: the test gives a boolean per person or
+    household, the group rule collapses it onto the unit, and ``negate``
+    flips the result (a unit with no recipient is a non-beneficiary unit).
+
+    Attributes:
+        engine_input: The engine input's name.
+        engine_entity: The engine group entity the input lives on.
+        columns: The state columns read, each ``<entity>.<column>`` on the
+            frame's ``person`` or ``household`` table (one entity).
+        test: How the columns give a boolean.
+        group_rule: How the boolean collapses onto the unit.
+        note: The evidence for the binding and any difference in meaning.
+        value: The value :attr:`StateTest.EQUALS` compares with.
+        negate: Whether the collapsed value is negated.
+        module: For module-scoped engines, the RuleSpec module.
+        canonical_input: For Axiom, the engine's canonical request name.
+    """
+
+    engine_input: str
+    engine_entity: str
+    columns: tuple[str, ...]
+    test: StateTest
+    group_rule: GroupRule
+    note: str
+    value: bool | int | str | None = None
+    negate: bool = False
+    module: str | None = None
+    canonical_input: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "test", StateTest(self.test))
+        object.__setattr__(self, "group_rule", GroupRule(self.group_rule))
+        object.__setattr__(self, "columns", tuple(self.columns))
+        name = self.engine_input
+        if not name or not self.engine_entity:
+            raise ValueError("A state binding names its engine input and entity.")
+        if not self.note:
+            raise ValueError(f"State binding for {name!r} needs a note.")
+        if not self.columns or len(set(self.columns)) != len(self.columns):
+            raise ValueError(f"State binding for {name!r} reads distinct columns.")
+        entities = {_state_column(column)[0] for column in self.columns}
+        if len(entities) != 1:
+            raise ValueError(f"State binding for {name!r} reads columns on one entity.")
+        entity = entities.pop()
+        if self.group_rule not in _STATE_RULES[entity]:
+            allowed = [rule.value for rule in _STATE_RULES[entity]]
+            raise ValueError(
+                f"State binding for {name!r}: {entity} state collapses by "
+                f"{allowed}, not {self.group_rule.value!r}."
+            )
+        if self.test is StateTest.EQUALS:
+            if len(self.columns) != 1 or self.value is None:
+                raise ValueError(
+                    f"State binding for {name!r}: equals compares one column "
+                    "with a value."
+                )
+            if isinstance(self.value, float):
+                raise ValueError(
+                    f"State binding for {name!r} compares with an exact value."
+                )
+        elif self.value is not None:
+            raise ValueError(f"State binding for {name!r}: any_true takes no value.")
+        if not isinstance(self.negate, bool):
+            raise ValueError(f"State binding for {name!r}: negate is true or false.")
+
+    @property
+    def ref(self) -> InputRef:
+        """The engine input this binding feeds."""
+        return InputRef(self.engine_input, self.engine_entity, self.module)
+
+    @property
+    def entity(self) -> str:
+        """The frame entity whose state the binding reads."""
+        return _state_column(self.columns[0])[0]
+
+    def to_dict(self) -> dict[str, object]:
+        """A JSON-ready form, omitting absent optional fields."""
+        out: dict[str, object] = {
+            "engine_input": self.engine_input,
+            "engine_entity": self.engine_entity,
+            "columns": list(self.columns),
+            "test": self.test.value,
+            "group_rule": self.group_rule.value,
+            "note": self.note,
+        }
+        if self.value is not None:
+            out["value"] = self.value
+        if self.negate:
+            out["negate"] = True
+        if self.module is not None:
+            out["module"] = self.module
+        if self.canonical_input is not None:
+            out["canonical_input"] = self.canonical_input
+        return out
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> StateBinding:
+        """The state binding ``data`` describes (see :meth:`to_dict`).
+
+        Raises:
+            ValueError: If ``data`` is not an object, or a field is missing,
+                unexpected or malformed.
+        """
+        with _parsing("state binding"):
+            fields = _record_fields(
+                data,
+                "state binding",
+                required=(
+                    "engine_input",
+                    "engine_entity",
+                    "columns",
+                    "test",
+                    "group_rule",
+                    "note",
+                ),
+                optional=("value", "negate", "module", "canonical_input"),
+            )
+            _text_fields(
+                fields,
+                "state binding",
+                (
+                    "engine_input",
+                    "engine_entity",
+                    "test",
+                    "group_rule",
+                    "note",
+                    "module",
+                    "canonical_input",
+                ),
+            )
+            columns = fields["columns"]
+            if not isinstance(columns, list | tuple) or not all(
+                isinstance(column, str) for column in columns
+            ):
+                raise ValueError("A state binding's 'columns' must list columns.")
+            fields["columns"] = tuple(columns)
+            value = fields.get("value")
+            if value is not None and not isinstance(value, bool | int | str):
+                raise ValueError("A state binding's 'value' must be exact.")
+            return cls(**fields)
+
+
+@dataclass(frozen=True, eq=False)
+class EncodedGroupInputs:
+    """Engine group inputs computed from a concept frame and its units.
+
+    Attributes:
+        tables: One table per frame group entity encoded (``family``), row
+            aligned to that membership's unit table, with the unit id column
+            plus the engine inputs.
+        deferred: Group bindings not executed: their engine entity has no
+            membership here, or they take the per-person ``person_role`` rule.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -1032,6 +1453,11 @@ class ConceptMapping:
         if on_group and isinstance(binding.transform, AllocateToReferencePerson):
             raise ValueError(
                 f"{self.engine}: allocation targets the engine's person entity."
+            )
+        if not on_group and isinstance(binding.transform, UnitComposition):
+            raise ValueError(
+                f"{self.engine}: {binding.engine_input!r} tests a unit's "
+                "composition, so it lives on an engine group entity."
             )
         if on_group:
             _check_group_rule(self.engine, binding)
@@ -1288,7 +1714,8 @@ class ConceptMapping:
 
         Every executable binding whose concepts are all present in ``tables``
         is computed. Bindings on engine group entities are returned as
-        deferred. Share parameters and take-up rates are needed only for the
+        deferred (:meth:`encode_groups` executes them on built units). Share
+        parameters and take-up rates are needed only for the
         bindings that use them. A take-up rate of ``None`` marks a program
         the caller leaves unseeded: its flag is not written, so the engine
         applies its own default.
@@ -1324,6 +1751,206 @@ class ConceptMapping:
             values = _apply(binding, context, shares, rates)
             out[binding.concept_entity][binding.engine_input] = values
         return EncodedInputs(
+            tables=MappingProxyType(out),
+            deferred=tuple(deferred),
+        )
+
+    def encode_groups(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+        memberships: Mapping[str, GroupMembership],
+        *,
+        modules: Iterable[str] | None = None,
+        knobs: GroupKnobs | None = None,
+        state_bindings: Iterable[StateBinding] = (),
+        shares: Mapping[str, float] | None = None,
+        take_up_rates: Mapping[str, float] | None = None,
+    ) -> EncodedGroupInputs:
+        """Compute the engine group inputs a concept frame and its units supply.
+
+        Every group binding whose engine entity has a membership, whose
+        module passes the filter and whose concepts are all present in
+        ``tables`` is executed by its :class:`GroupRule`:
+
+        - ``sum_over_members``: the members' values summed;
+        - ``any_member``: true when any member's value is;
+        - ``reference_member``: the unit head's value (a
+          :class:`UnitComposition` is the unit's own);
+        - ``household_value``: the household's value on each of its units;
+        - ``allocate_to_reference_unit``: the household amount on the unit
+          that contains the household's reference person and zero on its
+          other units, or shared per adult when ``knobs`` says so; either
+          way each household's units sum back to its amount.
+
+        ``person_role`` bindings, and bindings on an engine entity with no
+        membership, are returned as deferred. Each state binding is executed
+        the same way from its model-state columns. ``knobs`` then zero or
+        scale named inputs.
+
+        Args:
+            tables: The concept frame's ``person`` and ``household`` tables,
+                carrying any model-state columns the state bindings read.
+            memberships: Engine group entity (``Family``) -> its units.
+            modules: The RuleSpec modules to encode for; ``None`` encodes all.
+            knobs: Declared encoding alternatives; ``None`` is the default.
+            state_bindings: Group inputs fed from model state, as any
+                iterable; a one-shot iterator is read once.
+            shares: Share and fraction parameters, as for :meth:`encode`.
+            take_up_rates: Take-up rates, as for :meth:`encode`.
+
+        Raises:
+            ValueError: If a membership does not match the frame (a person
+                outside every unit, a unit without exactly one head, members
+                in two households, an unsigned id above ``2**63 - 1``, which
+                its int64 comparison cannot hold), a state binding feeds an
+                input a concept binding or another state binding also feeds,
+                a knob names an input this call does not produce or cannot
+                change, or a value a transform needs is missing.
+        """
+
+        knobs = knobs or GroupKnobs()
+        selected = None if modules is None else frozenset(modules)
+        # Read twice (to encode, then to find the columns knobs may replace),
+        # so a one-shot iterator is materialized once, here.
+        state_bindings = tuple(state_bindings)
+        shares = dict(shares or {})
+        rates = dict(take_up_rates or {})
+        person = tables["person"]
+        household = tables["household"]
+        context = _Context(person, household)
+        units: dict[str, _Units] = {}
+        for entity, membership in memberships.items():
+            if not isinstance(membership, GroupMembership):
+                raise ValueError(f"The {entity!r} membership is not a GroupMembership.")
+            if any(
+                group.membership.entity == membership.entity for group in units.values()
+            ):
+                raise ValueError(
+                    f"Two engine entities name the frame entity {membership.entity!r}."
+                )
+            units[entity] = _Units(membership, context)
+        out = {
+            group.membership.entity: group.membership.units.loc[
+                :, [group.membership.id_column]
+            ].reset_index(drop=True)
+            for group in units.values()
+        }
+        # One encoded column per (frame entity, name): an input name shared by
+        # several modules is computed once, as _check_shared_names requires.
+        produced: dict[str, set[str]] = defaultdict(set)
+        allocated: set[str] = set()
+        deferred: list[InputBinding] = []
+        concept_names = {
+            (binding.engine_input, binding.engine_entity)
+            for binding in self.bindings
+            if binding.group_rule is not None
+        }
+
+        def keep(module: str | None) -> bool:
+            return selected is None or module in selected
+
+        def write(entity: str, name: str, values: np.ndarray) -> None:
+            frame_entity = units[entity].membership.entity
+            out[frame_entity][name] = values
+            produced[name].add(frame_entity)
+
+        for binding in self.bindings:
+            if binding.group_rule is None or not keep(binding.module):
+                continue
+            group = units.get(binding.engine_entity)
+            if group is None or binding.group_rule is GroupRule.PERSON_ROLE:
+                deferred.append(binding)
+                continue
+            if not all(context.has(concept_id) for concept_id in binding.concepts):
+                continue
+            if (
+                isinstance(binding.transform, TakeUpThreshold)
+                and binding.transform.program in rates
+                and rates[binding.transform.program] is None
+            ):
+                continue
+            if binding.group_rule is GroupRule.ALLOCATE_TO_REFERENCE_UNIT:
+                allocated.add(binding.engine_input)
+            mode = knobs.allocation.get(binding.engine_input, Allocation.REFERENCE_UNIT)
+            write(
+                binding.engine_entity,
+                binding.engine_input,
+                _group_values(binding, context, group, mode, shares, rates),
+            )
+
+        seen_state: dict[tuple[str, str], tuple[InputRef, dict[str, object]]] = {}
+        for state in state_bindings:
+            if not keep(state.module):
+                continue
+            key = (state.engine_input, state.engine_entity)
+            if key in concept_names:
+                raise ValueError(
+                    f"{state.ref.label()} is bound by a concept and by state "
+                    "(one encoded column per input name)."
+                )
+            signature = {
+                name: value
+                for name, value in state.to_dict().items()
+                if name not in ("module", "canonical_input")
+            }
+            if key in seen_state:
+                first, first_signature = seen_state[key]
+                if first == state.ref:
+                    raise ValueError(f"{state.ref.label()} is bound twice by state.")
+                if first_signature != signature:
+                    raise ValueError(
+                        f"{state.engine_input!r} on {state.engine_entity!r} is "
+                        f"computed differently in {first.module} and {state.module}."
+                    )
+                continue
+            seen_state[key] = (state.ref, signature)
+            group = units.get(state.engine_entity)
+            if group is None:
+                raise ValueError(
+                    f"State binding {state.engine_input!r} needs a "
+                    f"{state.engine_entity!r} membership."
+                )
+            write(
+                state.engine_entity,
+                state.engine_input,
+                _state_values(state, context, group, knobs.state_columns),
+            )
+
+        unknown = sorted(knobs.targets() - set(produced))
+        if unknown:
+            raise ValueError(
+                f"Knobs name inputs this encoding did not produce: {unknown}."
+            )
+        ambiguous = sorted(name for name in knobs.targets() if len(produced[name]) > 1)
+        if ambiguous:
+            raise ValueError(
+                f"Knob targets {ambiguous} live on several group entities."
+            )
+        not_allocated = sorted(set(knobs.allocation) - allocated)
+        if not_allocated:
+            raise ValueError(
+                f"{not_allocated} are not allocated; no allocation knob applies to them."
+            )
+        read = {
+            column
+            for state in state_bindings
+            if keep(state.module)
+            for column in state.columns
+        }
+        stray = sorted(set(knobs.state_columns) - read)
+        if stray:
+            raise ValueError(f"Knobs replace state columns no binding reads: {stray}.")
+        for name in sorted(knobs.zeroed | set(knobs.factors)):
+            (frame_entity,) = produced[name]
+            table = out[frame_entity]
+            values = table[name].to_numpy()
+            if values.dtype.kind not in "iuf":
+                raise ValueError(f"Knob target {name!r} is not numeric.")
+            if name in knobs.zeroed:
+                table[name] = np.zeros(len(values), dtype=values.dtype)
+            else:
+                table[name] = values.astype(np.float64) * knobs.factors[name]
+        return EncodedGroupInputs(
             tables=MappingProxyType(out),
             deferred=tuple(deferred),
         )
@@ -1443,6 +2070,20 @@ def _apply(
             ],
             axis=0,
         )
+    if isinstance(transform, ScaledSum):
+        total = np.sum(
+            [
+                context.values(concept_id).to_numpy(dtype=np.float64)
+                for concept_id in concepts
+            ],
+            axis=0,
+        )
+        return total * transform.factor
+    if isinstance(transform, UnitComposition):
+        raise ValueError(
+            f"{binding.engine_input!r} tests unit composition; it needs unit "
+            "membership (encode_groups)."
+        )
     if isinstance(transform, Product):
         first, second = (
             context.values(concept_id).to_numpy(dtype=np.float64)
@@ -1527,6 +2168,280 @@ def _child_counts(context: _Context, max_age: int | None) -> np.ndarray:
         named = parents[counted & (parents >= 0)]
         counts += np.bincount(named, minlength=len(person))
     return counts
+
+
+def _state_column(column: str) -> tuple[str, str]:
+    """``<entity>.<column>`` split, for a person or household column."""
+    entity, _, name = column.partition(".") if isinstance(column, str) else ("", "", "")
+    if entity not in CONCEPT_ENTITIES or not name or "." in name:
+        raise ValueError(
+            f"A state column is 'person.<column>' or 'household.<column>', "
+            f"not {column!r}."
+        )
+    return entity, name
+
+
+#: The largest id a unit table carries: units hold and compare ids as int64.
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+
+def _exceeds_int64(values: pd.Series) -> bool:
+    """Whether an unsigned integer column holds an id int64 cannot hold."""
+
+    if values.dtype.kind != "u":
+        return False
+    present = values.dropna()
+    return len(present) > 0 and int(present.max()) > _INT64_MAX
+
+
+class _Units:
+    """A membership checked against a concept frame, as row positions."""
+
+    def __init__(self, membership: GroupMembership, context: _Context) -> None:
+        self.membership = membership
+        units = membership.units
+        columns = (
+            membership.id_column,
+            membership.household_column,
+            membership.head_column,
+        )
+        missing = [name for name in columns if name not in units.columns]
+        if missing:
+            raise ValueError(f"A {membership.entity} unit table lacks {missing}.")
+        person = context.person
+        for series in (membership.person_unit, membership.person_role):
+            if not isinstance(series, pd.Series) or not series.index.equals(
+                person.index
+            ):
+                raise ValueError(
+                    f"{membership.entity} membership must align to the person "
+                    "table's index."
+                )
+        if membership.person_unit.isna().any():
+            raise ValueError(f"Every person needs a {membership.entity}.")
+        for name, values in (
+            ("person unit ids", membership.person_unit),
+            *((column, units[column]) for column in columns),
+        ):
+            if values.dtype.kind not in "iu" and not pd.api.types.is_integer_dtype(
+                values.dtype
+            ):
+                raise ValueError(
+                    f"{membership.entity} {name} must be integers, not {values.dtype}."
+                )
+        # The ids are compared as int64 below. An unsigned id int64 cannot
+        # hold would wrap onto another id (2**64 - 1 onto -1), so a
+        # membership naming no unit could pass; it is refused instead.
+        wide = [
+            name
+            for name, values in (
+                ("person unit ids", membership.person_unit),
+                *((column, units[column]) for column in columns),
+                (f"person.{_PERSON_ID}", person[_PERSON_ID]),
+                (f"person.{_PERSON_HOUSEHOLD_ID}", person[_PERSON_HOUSEHOLD_ID]),
+                *(
+                    (f"person.{column}", person[column])
+                    for column in ("partner_person_id",)
+                    if column in person.columns
+                ),
+            )
+            if _exceeds_int64(values)
+        ]
+        if wide:
+            raise ValueError(
+                f"{membership.entity} ids are compared as int64, and {wide} hold "
+                f"unsigned ids above {_INT64_MAX}, which int64 cannot represent."
+            )
+        ids = units[membership.id_column].to_numpy(dtype=np.int64)
+        if len(set(ids.tolist())) != len(ids):
+            raise ValueError(f"{membership.entity} ids must be unique.")
+        rows = pd.Index(ids).get_indexer(
+            membership.person_unit.to_numpy(dtype=np.int64)
+        )
+        if (rows < 0).any():
+            raise ValueError(
+                f"{int((rows < 0).sum())} person(s) name an unknown "
+                f"{membership.entity}."
+            )
+        roles = membership.person_role.astype(object).to_numpy()
+        known = {role.value for role in UnitRole}
+        if not all(role in known for role in roles.tolist()):
+            raise ValueError(f"Unit roles come from {sorted(known)}.")
+        n = len(units)
+        if (np.bincount(rows, minlength=n) == 0).any():
+            raise ValueError(f"Every {membership.entity} needs a member.")
+        is_head = roles == UnitRole.HEAD.value
+        if not (np.bincount(rows[is_head], minlength=n) == 1).all():
+            raise ValueError(f"Every {membership.entity} needs exactly one head.")
+        if (np.bincount(rows[roles == UnitRole.PARTNER.value], minlength=n) > 1).any():
+            raise ValueError(f"A {membership.entity} has at most one partner.")
+        head_rows = np.empty(n, dtype=np.int64)
+        head_rows[rows[is_head]] = np.flatnonzero(is_head)
+        person_ids = person[_PERSON_ID].to_numpy(dtype=np.int64)
+        if not np.array_equal(
+            person_ids[head_rows], units[membership.head_column].to_numpy(np.int64)
+        ):
+            raise ValueError(
+                f"Each {membership.entity}'s head column must name its head member."
+            )
+        if "partner_person_id" in person.columns:
+            partner = context.person_rows(person["partner_person_id"])
+            head_of = head_rows[rows]
+            is_partner = roles == UnitRole.PARTNER.value
+            if (partner[is_partner] != head_of[is_partner]).any():
+                raise ValueError(
+                    f"A {membership.entity} partner must be its head's partner."
+                )
+            heads = np.flatnonzero(is_head)
+            mate = partner[heads]
+            together = mate >= 0
+            together[together] = rows[mate[together]] == rows[heads[together]]
+            if (roles[mate[together]] != UnitRole.PARTNER.value).any():
+                raise ValueError(
+                    f"A head's partner in the same {membership.entity} must be "
+                    "its partner."
+                )
+        unit_households = units[membership.household_column].to_numpy(np.int64)
+        person_households = person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
+        if not np.array_equal(person_households, unit_households[rows]):
+            raise ValueError(
+                f"Every {membership.entity} must nest in its declared household."
+            )
+        household_rows = pd.Index(
+            context.household[_HOUSEHOLD_ID].to_numpy()
+        ).get_indexer(unit_households)
+        if (household_rows < 0).any():
+            raise ValueError(f"A {membership.entity} names an unknown household.")
+        self.rows = rows
+        self.roles = roles
+        self.head_rows = head_rows
+        self.household_rows = household_rows
+        self.is_adult = roles != UnitRole.DEPENDENT_CHILD.value
+        self.n = n
+
+    def count(self, role: UnitRole) -> np.ndarray:
+        """How many members of each unit hold ``role``."""
+        return np.bincount(self.rows[self.roles == role.value], minlength=self.n)
+
+    def collapse(self, rule: GroupRule, values: np.ndarray) -> np.ndarray:
+        """Person values collapsed onto units by a person-reading rule."""
+        if rule is GroupRule.REFERENCE_MEMBER:
+            return values[self.head_rows]
+        if rule is GroupRule.ANY_MEMBER:
+            flags = np.zeros(self.n, dtype=bool)
+            np.logical_or.at(flags, self.rows, np.asarray(values, dtype=bool))
+            return flags
+        if rule is GroupRule.SUM_OVER_MEMBERS:
+            values = np.asarray(values)
+            kind = np.int64 if values.dtype.kind in "biu" else np.float64
+            totals = np.zeros(self.n, dtype=kind)
+            np.add.at(totals, self.rows, values.astype(kind))
+            return totals
+        raise TypeError(
+            f"Rule {rule} does not collapse person values."
+        )  # pragma: no cover
+
+    def reference_units(self, context: _Context) -> np.ndarray:
+        """Whether each unit contains its household's reference person."""
+        _require(context, _REFERENCE_PERSON, "Allocating to the reference unit")
+        references = context.person_rows(context.household["reference_person_id"])
+        households = self.household_rows
+        reference = references[households]
+        if (reference < 0).any():
+            raise ValueError("A household with units has no reference person.")
+        own = context.person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
+        declared = context.household[_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
+        if not np.array_equal(own[reference], declared[households]):
+            raise ValueError("A household's reference person must be its member.")
+        return self.rows[reference] == np.arange(self.n)
+
+
+def _group_values(
+    binding: InputBinding,
+    context: _Context,
+    group: _Units,
+    mode: Allocation,
+    shares: Mapping[str, float],
+    rates: Mapping[str, float],
+) -> np.ndarray:
+    rule = binding.group_rule
+    transform = binding.transform
+    if isinstance(transform, UnitComposition):
+        partners = group.count(UnitRole.PARTNER)
+        children = group.count(UnitRole.DEPENDENT_CHILD)
+        feature = transform.feature
+        if feature is UnitFeature.HAS_PARTNER:
+            return partners > 0
+        if feature is UnitFeature.HAS_DEPENDENT_CHILD:
+            return children >= 1
+        if feature is UnitFeature.TWO_OR_MORE_DEPENDENT_CHILDREN:
+            return children >= 2
+        return (partners == 0) & (children >= 1)
+    values = _apply(binding, context, shares, rates)
+    if rule is GroupRule.HOUSEHOLD_VALUE:
+        return np.asarray(values)[group.household_rows]
+    if rule is GroupRule.ALLOCATE_TO_REFERENCE_UNIT:
+        amounts = np.asarray(values, dtype=np.float64)[group.household_rows]
+        if mode is Allocation.REFERENCE_UNIT:
+            return np.where(group.reference_units(context), amounts, 0.0)
+        adults = np.bincount(
+            group.rows, weights=group.is_adult.astype(np.float64), minlength=group.n
+        )
+        per_household = np.bincount(
+            group.household_rows, weights=adults, minlength=len(context.household)
+        )
+        return amounts * adults / per_household[group.household_rows]
+    return group.collapse(rule, np.asarray(values))
+
+
+def _state_values(
+    state: StateBinding,
+    context: _Context,
+    group: _Units,
+    replaced: Mapping[str, str],
+) -> np.ndarray:
+    table = context.table(state.entity)
+    columns = []
+    for declared in state.columns:
+        _, name = _state_column(replaced.get(declared, declared))
+        if name not in table.columns:
+            raise ValueError(
+                f"State binding {state.engine_input!r} needs the {state.entity} "
+                f"column {name!r}."
+            )
+        values = table[name]
+        if values.isna().any():
+            raise ValueError(f"State column {name!r} has missing values.")
+        columns.append(values)
+    if state.test is StateTest.ANY_TRUE:
+        flags = np.zeros(len(table), dtype=bool)
+        for values in columns:
+            if values.dtype.kind != "b":
+                raise ValueError(
+                    f"State column {values.name!r} must be boolean for any_true."
+                )
+            flags |= values.to_numpy(dtype=bool)
+    else:
+        values = columns[0]
+        kind = values.dtype.kind
+        expected = (
+            kind == "b"
+            if isinstance(state.value, bool)
+            else kind in "iu"
+            if isinstance(state.value, int)
+            else kind in "OUT" or isinstance(values.dtype, pd.StringDtype)
+        )
+        if not expected:
+            raise ValueError(
+                f"State column {values.name!r} ({values.dtype}) cannot equal "
+                f"{state.value!r}."
+            )
+        flags = values.astype(object).eq(state.value).to_numpy(dtype=bool)
+    if state.group_rule is GroupRule.HOUSEHOLD_VALUE:
+        result = flags[group.household_rows]
+    else:
+        result = group.collapse(state.group_rule, flags)
+    return ~result if state.negate else result
 
 
 def _invert(
