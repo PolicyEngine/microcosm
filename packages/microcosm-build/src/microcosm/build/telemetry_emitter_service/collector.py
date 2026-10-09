@@ -9,11 +9,12 @@ from http import HTTPStatus
 from typing import Any
 
 from microcosm.build.telemetry_emitter_service.auth import (
+    CollectorCredential,
     CollectorSession,
-    _collector_origin,
     _development_collector_url,
     _http_post,
     _huggingface_token,
+    validated_origin,
 )
 from microcosm.build.telemetry_emitter_service.constants import (
     INITIAL_RETRY_SECONDS,
@@ -48,7 +49,7 @@ class CollectorDelivery:
         self.collector_url = (
             _development_collector_url(development_collector_url)
             if development_collector_url is not None
-            else _collector_origin(PRODUCTION_COLLECTOR_URL)
+            else validated_origin(PRODUCTION_COLLECTOR_URL)
         )
         self.spool = spool
         self.session = session or CollectorSession(
@@ -117,7 +118,7 @@ class CollectorDelivery:
             self._defer_retry()
         return token
 
-    def session_credential(self) -> tuple[str, str | None]:
+    def session_credential(self) -> CollectorCredential:
         """Compatibility accessor; authentication has no telemetry queue policy."""
         return self.session.credential()
 

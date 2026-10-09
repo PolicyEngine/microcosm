@@ -36,9 +36,9 @@ REJECTED_CREDENTIAL_MESSAGE: Final = (
     "credential was not accepted as a PolicyEngine organization member. The "
     "dataset build will continue."
 )
-COLLECTOR_URL_HTTPS_ERROR: Final = "collector URL must be an HTTPS origin"
-COLLECTOR_URL_ORIGIN_ERROR: Final = (
-    "collector URL must be an origin without credentials or path data"
+SERVICE_ORIGIN_HTTPS_ERROR: Final = "service URL must be an HTTPS origin"
+SERVICE_ORIGIN_FORMAT_ERROR: Final = (
+    "service URL must be an origin without credentials or path data"
 )
 DEVELOPMENT_COLLECTOR_LOOPBACK_ERROR: Final = (
     "development collector URL must use a loopback address"

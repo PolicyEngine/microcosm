@@ -16,6 +16,9 @@ type PublicationFileRole = Literal[
 ]
 
 
+type GraphJobStatus = Literal["pending", "published"]
+
+
 class PublicationFile(TypedDict):
     """One public file, identified by its exact bytes and allowed role."""
 

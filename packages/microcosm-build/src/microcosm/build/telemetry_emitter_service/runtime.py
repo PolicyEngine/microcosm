@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sys
 import threading
 import time
 from collections.abc import Mapping
@@ -26,7 +27,7 @@ from microcosm.build.telemetry_emitter_service.constants import (
     WORKER_INTERVAL_SECONDS,
 )
 from microcosm.build.telemetry_emitter_service.graph_publication import (
-    GRAPH_PUBLICATION_ACTION,
+    GRAPH_WORKER_ERROR_MESSAGE,
     GraphPublicationDelivery,
 )
 from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
@@ -121,10 +122,20 @@ class EmitterService:
                 server.settimeout(SOCKET_ACCEPT_TIMEOUT_SECONDS)
                 workers = []
                 if self.registration is not None:
-                    workers.append(threading.Thread(target=self._worker, daemon=True))
+                    workers.append(
+                        threading.Thread(
+                            target=self._worker,
+                            args=(self.registration,),
+                            daemon=True,
+                        )
+                    )
                 if self.graph_delivery is not None:
                     workers.append(
-                        threading.Thread(target=self._graph_worker, daemon=True)
+                        threading.Thread(
+                            target=self._graph_worker,
+                            args=(self.graph_delivery,),
+                            daemon=True,
+                        )
                     )
                 for worker in workers:
                     worker.start()
@@ -189,11 +200,7 @@ class EmitterService:
 
     def _handle(self, message: Mapping[str, Any]) -> None:
         action = message.get("action")
-        if action == GRAPH_PUBLICATION_ACTION and self.graph_delivery is not None:
-            self.graph_delivery.queue.enqueue(
-                Path(message["directory"]), message["inventory"]
-            )
-        elif action == ACTION_EVENT and self.registration is not None:
+        if action == ACTION_EVENT and self.registration is not None:
             event = message.get("event")
             if not isinstance(event, Mapping):
                 raise ValueError(EVENT_OBJECT_ERROR)
@@ -215,7 +222,7 @@ class EmitterService:
         else:
             raise ValueError(UNSUPPORTED_ACTION_ERROR)
 
-    def _worker(self) -> None:
+    def _worker(self, registration: Mapping[str, Any]) -> None:
         next_heartbeat = time.monotonic() + self.heartbeat_seconds
         while not self._stop.wait(WORKER_INTERVAL_SECONDS):
             now = time.monotonic()
@@ -224,7 +231,7 @@ class EmitterService:
             self.sampler.sample()
             if now >= next_heartbeat:
                 self.spool.append(
-                    self.registration,
+                    registration,
                     _heartbeat_event(self._last_stage),
                     resources=self.sampler.sample(),
                 )
@@ -232,11 +239,19 @@ class EmitterService:
             self.delivery.flush_once()
         self._drain()
 
-    def _graph_worker(self) -> None:
+    def _graph_worker(self, delivery: GraphPublicationDelivery) -> None:
         # Uploads may take much longer than a heartbeat. They never run on the
         # telemetry worker or the local socket thread. Pending jobs survive exit.
+        warned = False
         while not self._stop.wait(WORKER_INTERVAL_SECONDS):
-            self.graph_delivery.flush_once()
+            try:
+                delivery.flush_once()
+            except Exception:
+                # A database or filesystem error leaves the job leased for a
+                # later retry; it must not end delivery of every other job.
+                if not warned:
+                    print(GRAPH_WORKER_ERROR_MESSAGE, file=sys.stderr, flush=True)
+                    warned = True
 
     def _drain(self) -> None:
         deadline = time.monotonic() + self.drain_seconds
