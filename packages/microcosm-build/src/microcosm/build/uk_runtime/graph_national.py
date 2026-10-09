@@ -94,6 +94,7 @@ from . import (
 from .battery_bindings import UK_GATE_REGISTRY
 from .calibration_run import (
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
+    uk_local_gate_scope_exclusions,
     uk_scoped_gate_manifest,
 )
 from .cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
@@ -121,7 +122,11 @@ from .national_calibration import (
 )
 from .national_doctrine import UKNationalSolveDoctrine, uk_national_target_loss_weights
 from .national_frame import load_uk_national_frame, uk_release_export_frame
-from .rowwise_posture import UK_ROWWISE_NATIONAL_POSTURE, UKRowwisePosture
+from .rowwise_posture import (
+    UK_ROWWISE_DENSE_POSTURE,
+    UK_ROWWISE_NATIONAL_POSTURE,
+    UKRowwisePosture,
+)
 
 NATIONAL_TARGET_TYPE = ArtifactType("microcosm.uk.national-target-registry", 1)
 NATIONAL_GATE_REPORT_TYPE = ArtifactType("microcosm.uk.national-gate-report", 1)
@@ -1168,6 +1173,106 @@ def replay_uk_national_gate_battery(
         posture=str(report_document["posture"]),
         scope_exclusions=dict(report_document["scope_exclusions"]),
         aggregate_admin_measurement=report_document["aggregate_admin_measurement"],
+    )
+    calibration_run._write_json(report_path, payload)
+    return payload
+
+
+#: The release id of a dense gate report no Logbook attempt bound (a direct
+#: ``execute_full_build`` call). It is never a build id, so the dense
+#: contract's release-id binding cannot accept it, and the report stays
+#: unsigned.
+UK_DENSE_UNBOUND_RELEASE_ID = "unbound-uk-dense-attempt"
+
+
+def replay_uk_dense_gate_battery(
+    gate_document: Mapping[str, Any],
+    *,
+    report_path: Path,
+    release_id: str | None,
+    release_candidate: bool,
+    posture: UKRowwisePosture = UK_ROWWISE_DENSE_POSTURE,
+) -> dict[str, object] | None:
+    """Write the local gate report the dense release contract verifies.
+
+    The graph evaluated every UK gate once (``uk.full.gates.calibrated``);
+    the dense line ships the six-gate local battery, signed and bound to its
+    Logbook attempt. The stored terminal outcomes are projected onto the
+    local scope in the scoped manifest's order — nothing is re-evaluated:
+    both manifests hold the same frozen declarations, and the projection
+    checks it — then replayed through the battery's write boundary under
+    ``MARKS_ARTIFACT`` (the graph's own enforcement decides the build's exit
+    status, so the replay never raises a block), and the scoped-report trio
+    is grafted as the legacy local battery grafted it.
+
+    The report is signed only when an attempt bound the build (``release_id``)
+    and the UK signing key is present; otherwise it is written unsigned, its
+    attestation carrying ``signing_error``, and is never shippable.
+
+    A target filter that selects no local targets drops the local fit claim:
+    the graph excluded the local fit entries, and recording them as
+    ``not_applicable`` would read as shippable, so no report is written and
+    ``None`` is returned.
+    """
+
+    from microcosm.build.gate_battery import (
+        BlockingMode,
+        GateBatteryRun,
+        GatePhaseReport,
+    )
+
+    from .full_gates import uk_full_gate_scope_receipt
+    from .graph_terminal import decode_full_gate_report
+
+    report, _ = decode_full_gate_report(gate_document)
+    if report.phase != "terminal":
+        raise ValueError("The dense gate report replays the terminal phase only.")
+    if bool(gate_document["release_candidate"]) != bool(release_candidate):
+        raise ValueError("The graph evaluated the gates under another release posture.")
+    scope = uk_full_gate_scope_receipt(gate_document["selection_receipt"])
+    if not scope["local_fit_claim"]:
+        return None
+    gates = uk_scoped_gate_manifest(
+        tuple(posture.gate_scope),
+        phases=("terminal",),
+        policy_suffix=posture.gate_policy_suffix,
+    )
+    by_id = {outcome.entry.id: outcome for outcome in report.outcomes}
+    missing = [entry.id for entry in gates.gates if entry.id not in by_id]
+    if missing:
+        raise ValueError(
+            f"The graph's terminal gate report has no outcome for local gate(s) "
+            f"{missing}."
+        )
+    projected = tuple(by_id[entry.id] for entry in gates.gates)
+    if tuple(outcome.entry for outcome in projected) != gates.gates:
+        raise ValueError(
+            "The graph evaluated a local gate under a different declaration."
+        )
+    battery = GateBatteryRun(
+        gates,
+        release_id=release_id or UK_DENSE_UNBOUND_RELEASE_ID,
+        report_path=report_path,
+        release_candidate=release_candidate,
+        registry=UK_GATE_REGISTRY,
+    )
+    battery.record_phase(GatePhaseReport("terminal", projected))
+    battery.enforce("terminal", mode=BlockingMode.MARKS_ARTIFACT)
+    payload = battery.report_payload()
+    attestation = payload["attestation"]
+    if release_id is None and "signing_error" not in attestation:
+        attestation["signature"] = None
+        attestation["signing_key_sha256"] = None
+        attestation["signing_error"] = (
+            "No Logbook attempt bound this build; the report is not signed."
+        )
+        payload["shippable"] = False
+    calibration_run.finalize_uk_scoped_gate_report(
+        payload,
+        posture="local_candidate",
+        scope_exclusions=uk_local_gate_scope_exclusions(),
+        aggregate_admin_measurement=None,
+        resign="signing_error" not in attestation,
     )
     calibration_run._write_json(report_path, payload)
     return payload

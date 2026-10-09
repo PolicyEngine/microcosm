@@ -865,17 +865,6 @@ def test_assembler_refuses_a_national_role_manifest(
         )
 
 
-def _resigned_report(release_id: str) -> dict:
-    report = _signed_report()
-    report["release_id"] = release_id
-    report["attestation"]["release_id"] = release_id
-    report["attestation"]["signature"] = None
-    report["attestation"]["signature"] = hmac.new(
-        KEY_BYTES, _canonical_json_bytes(report), hashlib.sha256
-    ).hexdigest()
-    return report
-
-
 def test_assembler_stages_a_graph_built_dense_candidate(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -883,9 +872,9 @@ def test_assembler_stages_a_graph_built_dense_candidate(
 
     ``main`` runs the synthetic graph with local-only staging, so the manifest
     carries the staging receipt, the staged-dataset sidecars and the Logbook
-    row the assembler hash-joins. The signed local battery report and the
-    incumbent-surface companions are supplied as the certification and
-    scoring steps supply them.
+    row the assembler hash-joins. The build signs its own local battery report,
+    bound to the Logbook attempt; only the incumbent-surface companions are
+    supplied, as the scoring step supplies them.
     """
 
     pytest.importorskip("tables")
@@ -915,10 +904,9 @@ def test_assembler_stages_a_graph_built_dense_candidate(
     assert manifest["staging_delivery"]["mode"] == "local_only"
     assert manifest["staged_dataset"]["status"] == "skipped"
     report_path = candidate / f"{STEM}.local_gates.json"
-    report_path.write_text(json.dumps(_resigned_report(row.build_id)))
-    manifest["outputs"]["local_gate_report"]["sha256"] = _sha(report_path)
-    manifest["outputs"]["local_gate_report"]["bytes"] = report_path.stat().st_size
-    manifest_path.write_text(json.dumps(manifest))
+    report = json.loads(report_path.read_text())
+    assert report["release_id"] == row.build_id and report["shippable"] is True
+    assert manifest["outputs"]["local_gate_report"]["sha256"] == _sha(report_path)
     diagnostics_path = Path(manifest["outputs"]["calibration_diagnostics"]["path"])
     (candidate / "score_vs_incumbent.json").write_text(
         json.dumps(

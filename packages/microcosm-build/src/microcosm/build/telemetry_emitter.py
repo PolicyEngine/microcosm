@@ -44,6 +44,7 @@ from microcosm.build.telemetry_identity import runtime_identity
 from microcosm.build.telemetry_protocol import (
     ACTION_CLOSE,
     ACTION_EVENT,
+    BUILD_BLOCKED_MESSAGE,
     BUILD_COMPLETED_MESSAGE,
     BUILD_STARTED_MESSAGE,
     CALIBRATION_EVENT_KIND,
@@ -57,10 +58,12 @@ from microcosm.build.telemetry_protocol import (
     LOCAL_PING_MESSAGE,
     MAX_TELEMETRY_MESSAGE_CHARS,
     SEQUENTIAL_STATUS_MAP,
+    STAGE_BLOCKED,
     STAGE_CALIBRATING,
     STAGE_COMPLETE,
     STAGE_CREATED,
     STAGE_FAILED,
+    STATUS_BLOCKED,
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_PROGRESS,
@@ -370,6 +373,7 @@ class LocalTelemetryEmitter:
         *,
         failed_during: str | None = None,
         failure_class: str = "build_failure",
+        error_code: str | None = None,
     ) -> None:
         failed_stage = failed_during or self._transition_stage
         message = str(error)[:MAX_TELEMETRY_MESSAGE_CHARS]
@@ -378,12 +382,52 @@ class LocalTelemetryEmitter:
             "failure_class": failure_class,
             "failed_during": failed_stage,
         }
+        if error_code is not None:
+            details["error_code"] = error_code
         self._close_transition_stage(status=STATUS_FAILED, message=message, **details)
         self.emit(
             event_type=EVENT_TYPE_RUN,
             stage_id=STAGE_FAILED,
             status=STATUS_FAILED,
             message=message,
+            details=details,
+        )
+        self.close()
+
+    def block(
+        self,
+        *,
+        phase: str,
+        blocking_gate_ids: list[str] | tuple[str, ...],
+        blocking_failure_count: int | None = None,
+        gate_statuses: Mapping[str, str] | None = None,
+    ) -> None:
+        """End the run as ``blocked``: the gates refused its candidate.
+
+        A dedicated run event rather than a stage transition, whose status map
+        would read an unknown ``blocked`` as progress. The open stage itself
+        finished; it closes as completed."""
+
+        gate_ids = [str(gate_id) for gate_id in blocking_gate_ids]
+        details: dict[str, Any] = {
+            "phase": phase,
+            "blocking_failure_count": (
+                len(gate_ids)
+                if blocking_failure_count is None
+                else blocking_failure_count
+            ),
+            "blocking_gate_ids": gate_ids,
+        }
+        if gate_statuses is not None:
+            details["gate_statuses"] = {
+                str(gate_id): str(status) for gate_id, status in gate_statuses.items()
+            }
+        self._close_transition_stage()
+        self.emit(
+            event_type=EVENT_TYPE_RUN,
+            stage_id=STAGE_BLOCKED,
+            status=STATUS_BLOCKED,
+            message=BUILD_BLOCKED_MESSAGE.format(phase=phase),
             details=details,
         )
         self.close()

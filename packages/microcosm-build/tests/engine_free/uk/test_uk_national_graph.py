@@ -411,6 +411,43 @@ def test_national_solve_is_the_seam_solve(tmp_path, monkeypatch):
     assert calibrated.mass_log[:-1] == frame.mass_log
 
 
+def test_national_orrery_uses_shared_codec_provider(tmp_path, monkeypatch):
+    from microcosm.calibrate.graph_evidence import CALIBRATION_SUMMARY_PROVIDERS
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        record_run_binding,
+    )
+
+    national, manifest, store, frame, registry = _run(
+        tmp_path, monkeypatch, endpoint="uk.full.calibrated"
+    )
+    from dataclasses import replace
+
+    phase_graph = replace(
+        national.graph,
+        nodes=tuple(node for node in national.graph.nodes if node.id in manifest.nodes),
+    )
+    run = record_run_binding(
+        compile_graph(phase_graph), manifest, attempt_id="national", phase="numerical"
+    )
+    evidence = collect_execution_evidence(
+        graph_schema(compile_graph(national.graph)),
+        runs=[run],
+        store=store,
+        artifact_summaries=CALIBRATION_SUMMARY_PROVIDERS,
+    )
+    result = next(
+        summary["data"]
+        for summary in evidence["summaries"]
+        if summary["artifact"] == "result"
+    )
+    assert result["overview"]["target_count"] == len(registry.specs)
+    assert result["overview"]["final_weights"]["total"] == float(
+        manifest.population("uk.full.calibrated").weights_for("household").values.sum()
+    )
+
+
 def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
     tmp_path, monkeypatch
 ):

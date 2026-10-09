@@ -847,10 +847,19 @@ class GateBatteryBlockedError(RuntimeError):
     including the block itself — is on disk.
     """
 
-    def __init__(self, phase: str, failures: Sequence[str], report_path: Path) -> None:
+    def __init__(
+        self,
+        phase: str,
+        failures: Sequence[str],
+        report_path: Path,
+        *,
+        blocking_gate_ids: Sequence[str] = (),
+    ) -> None:
         self.phase = phase
         self.failures = tuple(failures)
         self.report_path = report_path
+        #: The ids of the gates that blocked (empty when the raiser did not say).
+        self.blocking_gate_ids = tuple(blocking_gate_ids)
         lines = "\n".join(f"  - {line}" for line in self.failures)
         super().__init__(
             f"Gate battery blocked at phase {phase!r} (report: {report_path}):\n{lines}"
@@ -1045,7 +1054,12 @@ class GateBatteryRun:
             for outcome in blocking:
                 if outcome.status is GateStatus.EVIDENCE_ABSENT:
                     failures.append(f"[{outcome.entry.id}] {outcome.reason}")
-            raise GateBatteryBlockedError(phase, failures, self._report_path)
+            raise GateBatteryBlockedError(
+                phase,
+                failures,
+                self._report_path,
+                blocking_gate_ids=[outcome.entry.id for outcome in blocking],
+            )
         return True
 
     # -- report assembly ----------------------------------------------------
