@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from hypothesis import example, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
@@ -86,6 +86,7 @@ _EXCHANGE_WARNING = _warning_pattern(TOKEN_EXCHANGE_WARNING)
 # --- The retry delay ---------------------------------------------------------
 
 
+@settings(suppress_health_check=[HealthCheck.too_slow])
 @given(
     gaps=st.lists(
         st.floats(0, 200, allow_nan=False, allow_infinity=False), max_size=20
@@ -630,6 +631,18 @@ def _check_runs_retry_exactly_when_due(trace: _Trace) -> None:
         exchange=("bug", "ok"),
     )
 ).via("the same error type from the exchange, then from a run")
+@example(
+    spec=_ScenarioSpec(
+        ticks=8,
+        runs=(
+            _RunSpec(
+                ("flaky", "p"), script=("503", "ok", "ok", "503"), appends=(0,) * 3
+            ),
+        ),
+        ack_locked=frozenset({1}),
+        batch_size=1,
+    )
+).via("a failure, a batch accepted under contention and removed, then a failure")
 def test_a_failing_run_never_holds_up_another_and_costs_bounded_requests(
     spec,
 ) -> None:
