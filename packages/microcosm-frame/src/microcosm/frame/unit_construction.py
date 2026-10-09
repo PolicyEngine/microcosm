@@ -519,7 +519,13 @@ def benefit_unit_attributes(
 def units_per_household(
     household: pd.DataFrame, family: pd.DataFrame, rule: BenefitUnitRule
 ) -> pd.Series:
-    """How many units each household holds, aligned to ``household``'s rows."""
+    """How many units each household holds, aligned to ``household``'s rows.
+
+    Raises:
+        ValueError: If the household ids or the units' household column hold
+            anything but non-null integer ids, or an unsigned id above
+            ``2**63 - 1``: both are matched as int64.
+    """
 
     # Both sides as int64: reindexing by ids pandas would cast down to a
     # narrower unsigned unit column (household 261 onto 5 for uint8).

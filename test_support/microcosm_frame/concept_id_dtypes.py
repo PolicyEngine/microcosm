@@ -49,7 +49,8 @@ _REQUIRED = {
     ("household", "household_id"),
 }
 
-#: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
+#: The drawn dtypes that hold an id int64 cannot: NumPy's and pandas' nullable
+#: uint64 (Arrow's uint64 is a third, not drawn).
 UNSIGNED_64 = (np.dtype(np.uint64), pd.UInt64Dtype())
 
 #: The NumPy and pandas nullable integer dtypes, which the contract accepts

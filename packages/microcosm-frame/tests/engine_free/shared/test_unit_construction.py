@@ -658,6 +658,21 @@ class TestIdRange:
         counts = units_per_household(household, family, self.RULE)
         assert counts.tolist() == [1, 0]
 
+    def test_unit_households_int64_cannot_hold_are_refused(self) -> None:
+        # Read as int64, household 2**64 - 1 is -1, the unit's household.
+        family = pd.DataFrame(
+            {
+                self.RULE.id_column: np.array([1], dtype=np.int64),
+                self.RULE.household_column: np.array([-1], dtype=np.int64),
+                self.RULE.head_column: np.array([1], dtype=np.int64),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": np.array([2**64 - 1], dtype=np.uint64)}
+        )
+        with pytest.raises(ValueError, match="household_id holds ids above"):
+            units_per_household(household, family, self.RULE)
+
     def test_an_unsigned_pointer_int64_cannot_hold_is_refused(self) -> None:
         # 2**64 - 1 names no person here, but cast to int64 it is -1, who is
         # a person here: the pair would have passed as partners.
