@@ -27,9 +27,10 @@ Each country keeps its own policyengine-core pin (#1086). The extras that
 install policyengine-us pin the core the certified US default was built with,
 and the extras that install policyengine-uk follow policyengine-uk's own core
 floor. So no environment can hold both engines: uv refuses any sync that asks
-for a US extra (`us`, or `microcosm-frame`'s `policyengine`) together with a
-UK extra, such as `uv sync --all-packages --extra us --extra uk` or
-`uv sync --all-packages --all-extras`. To keep both countries set up, point
+for an extra that installs policyengine-us (`microcosm-build[us]`,
+`microcosm-data[us]` or `microcosm-frame[policyengine]`) together with one that
+installs policyengine-uk, such as `uv sync --all-packages --extra us --extra uk`
+or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
