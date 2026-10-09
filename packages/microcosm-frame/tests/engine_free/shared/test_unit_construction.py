@@ -633,14 +633,49 @@ class TestIdRange:
     def test_an_unsigned_household_id_int64_cannot_hold_is_refused(
         self, household_id
     ) -> None:
-        # The concept-frame contract accepts this frame. Cast to int64, 2**63
-        # became household -2**63: the unit nested in no household and its
-        # household counted no unit.
+        # Cast to int64, 2**63 became household -2**63: the unit nested in no
+        # household and its household counted no unit. Validation refuses the
+        # same columns (microcosm#1158).
         person, household = self._one_adult(household_id)
-        assert not validate_concept_tables({"person": person, "household": household})
         columns = "['person.person_household_id', 'household.household_id']"
         with pytest.raises(ValueError, match=re.escape(columns)):
+            validate_concept_tables({"person": person, "household": household})
+        with pytest.raises(ValueError, match=re.escape(columns)):
             build_benefit_units(person, household, self.RULE)
+
+    @pytest.mark.parametrize("dtype", ["uint8", "UInt8", "int64"])
+    def test_a_narrow_unsigned_unit_household_counts_only_its_own(self, dtype) -> None:
+        # pandas reindexed household 261 against a uint8 unit column by
+        # casting it down to 5, so household 261 counted household 5's unit.
+        family = pd.DataFrame(
+            {
+                self.RULE.id_column: np.array([1], dtype=np.int64),
+                self.RULE.household_column: pd.array([5], dtype=dtype),
+                self.RULE.head_column: np.array([1], dtype=np.int64),
+            }
+        )
+        household = pd.DataFrame({"household_id": np.array([5, 261], dtype=np.int64)})
+        counts = units_per_household(household, family, self.RULE)
+        assert counts.tolist() == [1, 0]
+
+    @pytest.mark.parametrize("wide_side", ["household", "unit"])
+    def test_unit_households_int64_cannot_hold_are_refused(self, wide_side) -> None:
+        # Read as int64, household 2**64 - 1 is -1, the household on the other
+        # side, so a bare cast would count the unit there.
+        wide = np.array([2**64 - 1], dtype=np.uint64)
+        minus_one = np.array([-1], dtype=np.int64)
+        family = pd.DataFrame(
+            {
+                self.RULE.id_column: np.array([1], dtype=np.int64),
+                self.RULE.household_column: wide if wide_side == "unit" else minus_one,
+                self.RULE.head_column: np.array([1], dtype=np.int64),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": wide if wide_side == "household" else minus_one}
+        )
+        with pytest.raises(ValueError, match="holds ids above"):
+            units_per_household(household, family, self.RULE)
 
     def test_an_unsigned_pointer_int64_cannot_hold_is_refused(self) -> None:
         # 2**64 - 1 names no person here, but cast to int64 it is -1, who is
