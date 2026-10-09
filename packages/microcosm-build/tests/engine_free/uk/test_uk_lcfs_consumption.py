@@ -784,8 +784,10 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     assert evidence["energy_rake"]["margins_period_value"] == 2024
     assert evidence["energy_rake"]["level"]["gas_kwh"]["factor"] > 0
     assert evidence["energy_rake"]["gas_connection"]["rule"] == "published_meter_share"
-    # The uprating step is dropped in this engine-free run, so no litres audit.
+    # The uprating step is dropped in this engine-free run, so no litres audit
+    # and no division capture (both read the uprating's target year).
     assert "fuel_litres_audit" not in evidence
+    assert "division_capture" not in evidence
     assert "donor_uprating" not in evidence
     # Fuel: no vehicles means no fuel; the fuel-buyer share came from VEH1103.
     no_vehicle = household["num_vehicles"].to_numpy() == 0
@@ -976,6 +978,61 @@ def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> N
         operations = ()
 
     assert fuel_litres_audit(draws, weights=weights, stage=Stage()) is None
+
+
+def test_division_capture_compares_each_division_with_ons() -> None:
+    """Frame divisions against Consumer Trends less what diaries miss (#1113)."""
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        division_capture,
+    )
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    def ons(coicop: str, sheet: str, concept: str = "domestic") -> float:
+        (row,) = vendored_rows(
+            "ons_household_expenditure_facts.json",
+            concept="ons.household_final_consumption_expenditure",
+            period_type="calendar_year",
+            period_value=2024,
+            dimensions={
+                "coicop": coicop,
+                "source_sheet": sheet,
+                "consumption_concept": concept,
+            },
+        )
+        return float(row["value"])
+
+    draws = pd.DataFrame(
+        {column: [1.0e3, 2.0e3] for column in UK_LCFS_COICOP_DIVISION_COLUMNS}
+    )
+    weights = np.array([1.0e7, 5.0e6])
+
+    capture = division_capture(draws, weights=weights, period_value=2024)
+
+    frame = 1.0e3 * 1.0e7 + 2.0e3 * 5.0e6
+    food = capture["divisions"]["food_and_non_alcoholic_beverages_consumption"]
+    assert food["coicop"] == "01" and food["out_of_scope"] == {}
+    assert food["published_domestic"] == ons("01", "0CN")
+    assert food["capture"] == pytest.approx(frame / ons("01", "0CN"))
+    housing = capture["divisions"]["housing_water_and_electricity_consumption"]
+    assert housing["out_of_scope"] == {"04.2": ons("04.2", "04CN")}
+    assert housing["survey_scope"] == pytest.approx(
+        ons("04", "0CN") - ons("04.2", "04CN")
+    )
+    assert set(
+        capture["divisions"]["alcohol_and_tobacco_consumption"]["out_of_scope"]
+    ) == {"02.3"}
+    assert set(capture["divisions"]["miscellaneous_consumption"]["out_of_scope"]) == {
+        "12.6.1"
+    }
+    total = capture["total"]
+    assert total["frame"] == pytest.approx(12 * frame)
+    assert total["published_national"] == ons("NAT0", "0CN", "national")
+    assert total["capture_national"] == pytest.approx(
+        12 * frame / (total["published_national"] - total["out_of_scope"])
+    )
+    assert capture["gated"] is False
 
 
 def test_road_fuel_level_reads_the_vendored_ons_row() -> None:

@@ -376,7 +376,7 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, on the domestic concept (spending on UK territory; PolicyEngine/chronicle#322), for COICOP 04.5 electricity, gas and other fuels and its sub-classes 04.5.1 electricity, 04.5.2 gas, 04.5.3 liquid fuels and 04.5.4 solid fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and planned for the domestic energy and motor-fuel spend diagnostics.",
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual (30 June 2026 release). The seven specific series, 2020 to 2025: COICOP 04.5 and its sub-classes 04.5.1 to 04.5.4, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, all on the domestic concept. For 2023 to 2025: the national (NAT0) and domestic (0) totals and the twelve domestic divisions from the overview sheet, and the three classes a household diary does not record (02.3 narcotics, 04.2 imputed rentals, 12.6.1 FISIM). Consumed by the lcfs_consumption road-fuel level (07.2.2, microcosm#1113) and the division-capture diagnostic.",
       "consumers": [
         "uk_runtime.lcfs_consumption"
       ],
@@ -400,6 +400,65 @@
             "period_type": "calendar_year"
           },
           "expected_row_count": 42
+        },
+        {
+          "label": "ons_consumer_trends_totals_and_divisions",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.household_final_consumption_expenditure",
+            "period_type": "calendar_year",
+            "period_value": [
+              2023,
+              2024,
+              2025
+            ],
+            "dimension_values": {
+              "source_sheet": "0CN",
+              "coicop": [
+                "NAT0",
+                "0",
+                "01",
+                "02",
+                "03",
+                "04",
+                "05",
+                "06",
+                "07",
+                "08",
+                "09",
+                "10",
+                "11",
+                "12"
+              ]
+            }
+          },
+          "expected_row_count": 42
+        },
+        {
+          "label": "ons_consumer_trends_out_of_survey_classes",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.household_final_consumption_expenditure",
+            "period_type": "calendar_year",
+            "period_value": [
+              2023,
+              2024,
+              2025
+            ],
+            "dimension_values": {
+              "source_sheet": [
+                "02CN",
+                "04CN",
+                "12CN"
+              ],
+              "coicop": [
+                "02.3",
+                "04.2",
+                "12.6.1"
+              ]
+            }
+          },
+          "expected_row_count": 9
         }
       ]
     },

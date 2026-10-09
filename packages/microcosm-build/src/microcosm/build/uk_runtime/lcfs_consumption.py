@@ -165,8 +165,10 @@ UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
 # the register names.
 UK_LCFS_DFT_BUS_JOURNEYS_RESOURCE = UK_DFT_BUS_JOURNEYS_RESOURCE
 UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
-#: ONS Consumer Trends household spending, the road-fuel level (COICOP 07.2.2).
-UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = "ons_household_expenditure_facts.json"
+#: ONS Consumer Trends household spending, the road-fuel level (COICOP 07.2.2)
+#: and the division totals the capture diagnostic compares against.
+UK_LCFS_ONS_EXPENDITURE_RESOURCE = "ons_household_expenditure_facts.json"
+UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_LCFS_ONS_EXPENDITURE_RESOURCE
 UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_ROAD_FUEL_RESOURCE,
     UK_LCFS_LICENSED_CARS_RESOURCE,
@@ -319,6 +321,7 @@ class UKLCFSConsumptionResult:
     road_fuel_incidence: Mapping[str, Any] | None = None
     road_fuel_level: Mapping[str, Any] | None = None
     recomposed_totals: Mapping[str, Any] | None = None
+    division_capture: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -345,6 +348,8 @@ class UKLCFSConsumptionResult:
             evidence["road_fuel_level"] = dict(self.road_fuel_level)
         if self.recomposed_totals is not None:
             evidence["recomposed_totals"] = dict(self.recomposed_totals)
+        if self.division_capture is not None:
+            evidence["division_capture"] = dict(self.division_capture)
         return evidence
 
 
@@ -473,6 +478,16 @@ class UKLCFSConsumptionStageTransform:
         household_draws, recomposed_totals_receipt = lcfs_recompose_from_remainder(
             self.stage, household_draws, drawn=drawn_parts, weights=weights
         )
+        uprating = uprating_operation(self.stage)
+        capture = (
+            None
+            if uprating is None
+            else division_capture(
+                household_draws,
+                weights=weights,
+                period_value=int(uprating["to_period"]),
+            )
+        )
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
         )
@@ -514,6 +529,7 @@ class UKLCFSConsumptionStageTransform:
             road_fuel_incidence=incidence.receipt,
             road_fuel_level=road_fuel_level_receipt,
             recomposed_totals=recomposed_totals_receipt,
+            division_capture=capture,
         )
         return result
 
@@ -531,6 +547,121 @@ class UKLCFSConsumptionStageTransform:
 class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
+
+
+#: ONS Consumer Trends' generic concept for the divisions and classes.
+UK_ONS_HFCE_CONCEPT = "ons.household_final_consumption_expenditure"
+#: Each LCFS division column and its COICOP division.
+UK_LCFS_DIVISION_COICOP = {
+    column: f"{division:02d}"
+    for division, column in enumerate(UK_LCFS_COICOP_DIVISION_COLUMNS, start=1)
+}
+#: The classes national accounts count that a household diary does not:
+#: narcotics, owner-occupiers' imputed rent and FISIM, each with its sheet.
+UK_LCFS_SURVEY_OUT_OF_SCOPE_CLASSES = {
+    "02": (("02.3", "02CN"),),
+    "04": (("04.2", "04CN"),),
+    "12": (("12.6.1", "12CN"),),
+}
+
+
+def _ons_annual_value(
+    coicop: str, *, source_sheet: str, consumption_concept: str, period_value: int
+) -> tuple[float, str]:
+    rows = vendored_rows(
+        UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        concept=UK_ONS_HFCE_CONCEPT,
+        period_type="calendar_year",
+        period_value=int(period_value),
+        dimensions={
+            "coicop": coicop,
+            "source_sheet": source_sheet,
+            "consumption_concept": consumption_concept,
+        },
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: expected one {coicop} "
+            f"({source_sheet}, {consumption_concept}) row for {period_value}, "
+            f"found {len(rows)}."
+        )
+    return float(rows[0]["value"]), str(rows[0].get("source_record_id", ""))
+
+
+def division_capture(
+    household_draws: pd.DataFrame, *, weights: Sequence[float], period_value: int
+) -> dict[str, Any]:
+    """How much of ONS household spending each LCFS division captures.
+
+    Diagnostic only (microcosm#1113): each division's prior-weighted frame
+    total against ONS Consumer Trends for the same calendar year, less the
+    classes a household diary does not record (narcotics, imputed rent,
+    FISIM). The divisions are ONS's domestic concept: they include
+    non-residents' spending in the UK and exclude residents' spending abroad,
+    and the tourism adjustment is published for the total only, so only the
+    total is also compared on the national concept. Nothing is gated on it.
+    """
+
+    weight = np.asarray(weights, dtype=float)
+    divisions: dict[str, Any] = {}
+    frame_total = 0.0
+    out_of_scope_total = 0.0
+    for column, coicop in UK_LCFS_DIVISION_COICOP.items():
+        published, record_id = _ons_annual_value(
+            coicop,
+            source_sheet="0CN",
+            consumption_concept="domestic",
+            period_value=period_value,
+        )
+        out_of_scope = {}
+        for code, sheet in UK_LCFS_SURVEY_OUT_OF_SCOPE_CLASSES.get(coicop, ()):
+            out_of_scope[code], _ = _ons_annual_value(
+                code,
+                source_sheet=sheet,
+                consumption_concept="domestic",
+                period_value=period_value,
+            )
+        survey_scope = published - sum(out_of_scope.values())
+        frame = float(np.dot(weight, household_draws[column].to_numpy(dtype=float)))
+        frame_total += frame
+        out_of_scope_total += sum(out_of_scope.values())
+        divisions[column] = {
+            "coicop": coicop,
+            "published_domestic": published,
+            "source_record_id": record_id,
+            "out_of_scope": out_of_scope,
+            "survey_scope": survey_scope,
+            "frame": frame,
+            "capture": frame / survey_scope if survey_scope > 0 else None,
+        }
+    domestic, _ = _ons_annual_value(
+        "0",
+        source_sheet="0CN",
+        consumption_concept="domestic",
+        period_value=period_value,
+    )
+    national, _ = _ons_annual_value(
+        "NAT0",
+        source_sheet="0CN",
+        consumption_concept="national",
+        period_value=period_value,
+    )
+    return {
+        "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        "concept": UK_ONS_HFCE_CONCEPT,
+        "period_type": "calendar_year",
+        "period_value": int(period_value),
+        "divisions": divisions,
+        "total": {
+            "frame": frame_total,
+            "published_domestic": domestic,
+            "published_national": national,
+            "out_of_scope": out_of_scope_total,
+            "capture_domestic": frame_total / (domestic - out_of_scope_total),
+            "capture_national": frame_total / (national - out_of_scope_total),
+        },
+        "gated": False,
+    }
 
 
 def fuel_litres_audit(
