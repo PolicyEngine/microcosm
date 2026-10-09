@@ -213,6 +213,7 @@ def direct_population(
     strata = pd.Series(
         person["person_household_id"].map(pd.Series(donor.support_strata, index=ids)),
         name="stratum",
+        dtype=object,
     )
     return (
         Frame(

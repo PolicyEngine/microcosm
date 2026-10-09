@@ -247,6 +247,9 @@ class TransportCreateKernel(KernelBase):
             .to_numpy(copy=True),
             index=person.index,
             name="stratum",
+            # Object storage, as the donor codec stores strata: an inferred
+            # pandas string dtype would follow whether pyarrow is installed.
+            dtype=object,
         )
         surface = decode_target_surface(surface_bytes)
         # The persons, their households and the rule's benefit units: the
