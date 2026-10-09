@@ -82,6 +82,17 @@ SPI_MINIMUM_RECIPIENT_AGE = 16
 #: ``uc_relationships.frs_uc_claimant_mask``.
 SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
 SPI_DONOR_INCOME_YEAR = 2022
+#: Each SPI component is rebased by the index policyengine-uk's dataset
+#: projection grows its variable with (``policyengine_uk/data/
+#: uprating_indices.yaml``), since the engine runs a loaded dataset on it.
+#: Savings interest is the one component whose ``Variable.uprating`` attribute
+#: names another index: ONS household interest income, x2.27 from 2022 to 2024
+#: against GDP per head's x1.09. The attribute only carries a situation input
+#: forward (uk-data#541; María's ruling of 2026-10-09, microcosm#1095). The
+#: engine lockstep test holds every component to the projection table.
+SPI_INCOME_UPRATING_INDEX_OVERRIDES = {
+    "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+}
 # Use the pinned engine's variable-specific indices. None explicitly retains
 # nominal amounts where no same-scope indexed mapping has been reviewed;
 # broader indexed benefit inputs do not establish a taxable SPI crosswalk.
@@ -1323,7 +1334,9 @@ def _spi_income_uprating_factors(year: int):
                 raise ValueError(
                     f"Missing SPI uprating variable {variable_name!r} for {column}."
                 )
-            path = getattr(variable, "uprating", None)
+            path = SPI_INCOME_UPRATING_INDEX_OVERRIDES.get(
+                variable_name, getattr(variable, "uprating", None)
+            )
             if not isinstance(path, str) or not path:
                 raise ValueError(f"Unsupported SPI uprating index for {column}.")
             before, after = source, target
@@ -1344,6 +1357,8 @@ def _spi_income_uprating_factors(year: int):
             "factor": factor,
             "basis": "model_index" if path else "held_nominal",
         }
+        if variable_name in SPI_INCOME_UPRATING_INDEX_OVERRIDES:
+            columns[column]["index_source"] = "dataset_projection"
     return factors, {
         "from_period": SPI_DONOR_INCOME_YEAR,
         "to_period": year,

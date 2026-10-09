@@ -558,9 +558,11 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
             "obr.per_capita.mixed_income",
             target.obr.per_capita.mixed_income / source.obr.per_capita.mixed_income,
         ),
+        # The engine's dataset projection, not the variable's attribute
+        # (microcosm#1095).
         "savings_interest_income": (
-            "ons.household_interest_income",
-            target.ons.household_interest_income / source.ons.household_interest_income,
+            "obr.per_capita.gdp",
+            target.obr.per_capita.gdp / source.obr.per_capita.gdp,
         ),
         "dividend_income": (
             "obr.per_capita.gdp",
@@ -619,3 +621,40 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
     assert source_receipt["from_period"] == source_receipt["to_period"] == 2022
     with pytest.raises(ValueError, match="before its source year"):
         spi_income._spi_income_uprating_factors.__wrapped__(2021)
+
+
+def _engine_projection_indices() -> dict[str, str]:
+    """Each variable's index in policyengine-uk's dataset projection, as a level."""
+
+    import policyengine_uk
+    import yaml
+
+    table = yaml.safe_load(
+        (
+            Path(policyengine_uk.__file__).parent / "data" / "uprating_indices.yaml"
+        ).read_text()
+    )
+    return {
+        variable: path.replace(".yoy_growth.", ".indices.")
+        for path, variables in table.items()
+        for variable in variables
+    }
+
+
+def test_spi_rebasing_follows_the_engines_dataset_projection() -> None:
+    """Every indexed SPI component is rebased by the index policyengine-uk's
+    dataset projection grows its variable with, so an engine that moves a
+    variable to another index fails here (microcosm#1095, uk-data#541)."""
+
+    projection = _engine_projection_indices()
+    _, receipt = spi_income._spi_income_uprating_factors.__wrapped__(2024)
+
+    indexed = {
+        column: row for column, row in receipt["columns"].items() if row["index"]
+    }
+    assert indexed
+    for column, row in indexed.items():
+        assert row["index"] == projection[row["variable"]], column
+    assert receipt["columns"]["savings_interest_income"]["index_source"] == (
+        "dataset_projection"
+    )

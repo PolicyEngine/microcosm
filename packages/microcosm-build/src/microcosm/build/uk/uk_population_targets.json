@@ -18679,8 +18679,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the index policyengine-uk's dataset projection grows savings_interest_income with (policyengine_uk/data/uprating_indices.yaml); the household-interest index its Variable.uprating attribute names only carries a situation input forward (uk-data#541). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane), with the index moved to the projection's by her ruling of 2026-10-09 (microcosm#1095). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
     },
     {
       "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
