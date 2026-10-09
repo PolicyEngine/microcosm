@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 import uuid
@@ -16,8 +17,10 @@ from microcosm.build.telemetry_emitter_service.constants import (
     BATCH_SIZE,
     DATABASE_TIMEOUT_SECONDS,
     MAX_QUEUED_BYTES,
+    PRUNE_BATCH_PAUSE_SECONDS,
     PRUNE_BATCH_ROWS,
     PRUNE_INTERVAL_SECONDS,
+    PRUNE_STEP_SECONDS,
     RETENTION_DAYS,
     UPLOAD_STATE_LOCAL_ONLY,
     UPLOAD_STATE_PENDING,
@@ -265,10 +268,13 @@ class EventSpool:
             return session.scalar(statement) is not None
 
     def prune_if_due(self) -> None:
-        """Prune unless an attempt began less than ``PRUNE_INTERVAL_SECONDS`` ago.
+        """Prune when due, at most ``PRUNE_STEP_SECONDS`` of work per call.
 
-        The first call always prunes. A failed attempt still counts, so a spool
+        The first call prunes. After a prune finishes, or fails, the next waits
+        ``PRUNE_INTERVAL_SECONDS``: a failed attempt still counts, so a spool
         that another process keeps locked is not rescanned every worker tick.
+        A prune that runs out of its step continues on the next call, so a
+        large backlog drains over several ticks.
         """
 
         now = time.monotonic()
@@ -278,36 +284,64 @@ class EventSpool:
         ):
             return
         self._last_prune_at = now
-        self.prune()
+        if not self.prune(time_budget_seconds=PRUNE_STEP_SECONDS):
+            self._last_prune_at = None
 
-    def prune(self) -> None:
+    def prune(self, *, time_budget_seconds: float = math.inf) -> bool:
         """Enforce the age and total-size retention limits.
 
         Rows go in batches of ``PRUNE_BATCH_ROWS``, each its own short
-        transaction, so a large backlog never holds the spool's write lock, or
-        the lock this process's event path shares, for long.
+        transaction, with a ``PRUNE_BATCH_PAUSE_SECONDS`` pause between batches
+        outside this process's lock, so other processes' writers and this
+        build's events get in while a backlog drains. A spool with nothing to
+        remove is only read. Returns whether the prune finished; it stops
+        between batches once ``time_budget_seconds`` have passed.
         """
 
+        deadline = time.monotonic() + time_budget_seconds
         cutoff = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS)).isoformat()
-        expired = (
-            select(TelemetryEventRecord.event_id)
-            .where(TelemetryEventRecord.created_at < cutoff)
-            .limit(PRUNE_BATCH_ROWS)
-        )
-        while self._delete_events(expired) == PRUNE_BATCH_ROWS:
-            pass
+        is_expired = TelemetryEventRecord.created_at < cutoff
+        if self._any(select(TelemetryEventRecord.event_id).where(is_expired)):
+            expired = (
+                select(TelemetryEventRecord.event_id)
+                .where(is_expired)
+                .limit(PRUNE_BATCH_ROWS)
+            )
+            while self._delete_events(expired) == PRUNE_BATCH_ROWS:
+                if not self._pause_between_batches(deadline):
+                    return False
         oldest_first = self._oldest_events_over_size_limit()
         for start in range(0, len(oldest_first), PRUNE_BATCH_ROWS):
+            if start and not self._pause_between_batches(deadline):
+                return False
             self._delete_events(oldest_first[start : start + PRUNE_BATCH_ROWS])
-        with self._lock, self._session_factory.begin() as session:
-            session.execute(
-                delete(TelemetryRunRecord)
-                .where(
-                    TelemetryRunRecord.updated_at < cutoff,
-                    ~TelemetryRunRecord.events.any(),
+        is_expired_run = (
+            TelemetryRunRecord.updated_at < cutoff,
+            ~TelemetryRunRecord.events.any(),
+        )
+        if self._any(select(TelemetryRunRecord.run_id).where(*is_expired_run)):
+            with self._lock, self._session_factory.begin() as session:
+                session.execute(
+                    delete(TelemetryRunRecord)
+                    .where(*is_expired_run)
+                    .execution_options(synchronize_session=False)
                 )
-                .execution_options(synchronize_session=False)
-            )
+        return True
+
+    def _any(self, statement) -> bool:
+        """Return whether a read-only query matches any row."""
+
+        with self._lock, self._session_factory() as session:
+            return session.scalar(statement.limit(1)) is not None
+
+    @staticmethod
+    def _pause_between_batches(deadline: float) -> bool:
+        """Pause before the next batch, or return False when out of time."""
+
+        if time.monotonic() + PRUNE_BATCH_PAUSE_SECONDS >= deadline:
+            return False
+        time.sleep(PRUNE_BATCH_PAUSE_SECONDS)
+        return True
 
     def _delete_events(self, event_ids) -> int:
         """Delete the selected or listed events in one transaction."""

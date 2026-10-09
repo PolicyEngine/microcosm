@@ -305,7 +305,9 @@ class EmitterService:
                 next_heartbeat = now + self.heartbeat_seconds
             self._attempt(self.spool.prune_if_due)
             self._attempt(self.delivery.flush_once)
-            if not self.sampler.parent_alive():
+            # A build that closed while this tick ran may already have exited
+            # cleanly; only a build that never closed died unexpectedly.
+            if not self._stop.is_set() and not self._parent_alive():
                 self._attempt(self._queue_unexpected_exit)
                 # Closed even when the record could not be queued: nothing
                 # arrives from a dead build.
@@ -313,6 +315,15 @@ class EmitterService:
                 self._stop.set()
                 break
         self._drain()
+
+    def _parent_alive(self) -> bool:
+        # A parent that cannot be checked is treated as gone: the alternative
+        # is a service that may outlive its build.
+        try:
+            return self.sampler.parent_alive()
+        except Exception as error:
+            self._report(error)
+            return False
 
     def _queue_heartbeat(self) -> None:
         self._enqueue(_heartbeat_event(self._last_stage))
