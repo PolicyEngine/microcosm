@@ -1036,6 +1036,62 @@ def test_worker_survives_any_step_failure(
     assert not any("Traceback" in line for line in lines)
 
 
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    script=st.lists(st.sampled_from(["ok", "locked", "runtime", "value"]), max_size=60),
+    deliverable=st.lists(st.booleans(), max_size=60),
+    drain_seconds=st.sampled_from([0.0, 0.4, 2.0, 5.0]),
+)
+def test_drain_survives_any_failure_and_keeps_its_deadline(
+    monkeypatch, script, deliverable, drain_seconds
+) -> None:
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(
+        runtime_module,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock.now,
+            sleep=lambda seconds: setattr(clock, "now", clock.now + seconds),
+        ),
+    )
+    outcomes = _Outcomes(script)
+    answers = iter(deliverable)
+    checks: list[float] = []
+
+    def has_deliverable() -> bool:
+        checks.append(clock.now)
+        outcomes.next()
+        return next(answers, False)
+
+    def flush_once() -> bool:
+        clock.now += 0.01
+        outcomes.next()
+        return False
+
+    service = EmitterService(
+        socket_path=Path("/unused"),
+        registration=_registration(),
+        spool=SimpleNamespace(has_deliverable=has_deliverable),
+        delivery=SimpleNamespace(flush_once=flush_once),
+        sampler=SimpleNamespace(),
+        heartbeat_seconds=60,
+        drain_seconds=drain_seconds,
+    )
+    error_output = io.StringIO()
+
+    with contextlib.redirect_stderr(error_output):
+        service._drain()  # never raises
+
+    # It never runs past its deadline, and checks again after every failure
+    # until nothing is deliverable or the deadline passes.
+    assert clock.now <= drain_seconds + 0.01 + 1e-9
+    assert all(check < drain_seconds for check in checks)
+    reported = {
+        name for name in outcomes.raised if name in {"RuntimeError", "ValueError"}
+    }
+    assert len(error_output.getvalue().splitlines()) == len(reported)
+
+
 def test_unexpected_exit_waits_out_lock_contention(monkeypatch) -> None:
     clock = SimpleNamespace(now=0.0)
     monkeypatch.setattr(
