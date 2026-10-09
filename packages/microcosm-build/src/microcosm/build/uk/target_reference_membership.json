@@ -1,5 +1,5 @@
 {
-  "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
+  "source_fact_feed": "chronicle-uk-1ee7dfe2-consumer-facts",
   "target_period": 2025,
   "candidate_count": 1255,
   "contract_target_count": 342,
@@ -19323,7 +19323,7 @@
           "resolved_period": 2025,
           "resolved_value": 26522000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_69cd660b943ae8f21761f76a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_643fd0413421fbcff9ea2bb5"
         }
       ]
     },
@@ -19338,7 +19338,7 @@
           "resolved_period": 2025,
           "resolved_value": 15339000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b56be49c552300f6c02fc559"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_03c5f13d5fbab023177a1aea"
         }
       ]
     },
@@ -19353,7 +19353,7 @@
           "resolved_period": 2025,
           "resolved_value": 35099000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5f09d8c219289c6331c51da6"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_98696a3d0a85269f7b2445ff"
         }
       ]
     },
