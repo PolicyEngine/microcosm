@@ -1181,12 +1181,12 @@
   {
    "stage": "frs_brma",
    "survey": "Family Resources Survey 2024-25",
-   "source": "Valuation Office Agency LHA list-of-rents count table and policyengine-uk LHA_category predictor.",
+   "source": "Census private-rented households by region, BRMA and bedrooms (ONS and NISRA 2021, NRS 2022) and policyengine-uk LHA_category predictor.",
    "grain": "household",
    "artifacts": [
     {
      "role": "count_resource",
-     "resource": "brma_rent_counts.json",
+     "resource": "brma_private_rented_households.json",
      "kind": "public_aggregated_counts",
      "format": "json"
     }
@@ -1202,7 +1202,7 @@
     {
      "kind": "sample_categorical_from_count_table",
      "output": "brma",
-     "count_resource": "brma_rent_counts.json",
+     "count_resource": "brma_private_rented_households.json",
      "cell_columns": [
       "region",
       "LHA_category"

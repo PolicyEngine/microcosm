@@ -68,7 +68,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "brma_rent_counts.json",
+      "path": "brma_private_rented_households.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
