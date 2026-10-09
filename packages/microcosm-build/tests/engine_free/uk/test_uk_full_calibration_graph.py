@@ -668,3 +668,64 @@ def test_select_warm_starts_the_search_and_refuses_bad_hints(monkeypatch):
         frame, dense, selection=warm, draw=draw, initial_lambda=1e-3, **options
     )
     assert refit.receipt["selection_l0_lambda"] == warm.selection.l0_lambda
+
+
+def test_summary_provider_failure_is_diagnostic_in_capture_and_strict_at_export(
+    tmp_path,
+):
+    from microcosm.calibrate.artifacts import PROBLEM_TYPE
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        load_run_evidence,
+        orrery_document,
+        record_run_binding,
+        save_run_evidence,
+    )
+
+    graph, endpoints = compiled(None)
+    fixture = tmp_path / "fixture"
+    fixture.write_bytes(b"fixture")
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        graph, sources={"fixture": fixture}, store=store, kernels=registry()
+    )
+
+    def failing(context):
+        raise RuntimeError("provider refused the artifact")
+
+    providers = {(PROBLEM_TYPE.name, PROBLEM_TYPE.schema_version): failing}
+    # Capture after a successful solve records the failure and continues.
+    index = save_run_evidence(
+        graph,
+        manifest,
+        store=store,
+        directory=tmp_path / "evidence",
+        attempt_id="fixture",
+        phase="numerical",
+        artifact_summaries=providers,
+    )
+    runs = load_run_evidence(index, store=store)
+    evidence = collect_execution_evidence(graph_schema(graph), runs=runs, store=store)
+    problem = next(
+        item
+        for item in evidence["summaries"]
+        if item["node"] == "pool" and item["artifact"] == "problem"
+    )
+    assert problem["data"] == {}
+    assert problem["error"] == "RuntimeError: provider refused the artifact"
+    status = evidence["phases"][0]["operations"]["pool"]["artifact_summary_status"]
+    assert status["problem"] == "provider_failed"
+    document = orrery_document(graph, execution=evidence)
+    pool = next(
+        node
+        for node in document["nodes"]
+        if json.loads(node["id"]) == ["operation", "pool"]
+    )
+    assert pool["data"]["artifact_summaries"]["problem"]["status"] == "provider_failed"
+    # The explicit export runs providers strictly.
+    run = record_run_binding(graph, manifest, attempt_id="fixture", phase="numerical")
+    with pytest.raises(RuntimeError, match="provider refused"):
+        collect_execution_evidence(
+            graph_schema(graph), runs=[run], store=store, artifact_summaries=providers
+        )

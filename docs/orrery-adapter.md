@@ -186,7 +186,16 @@ lookup occurs in the shared exporter. Native summaries are captured once per
 artifact and reused across later phases.
 
 Providers are trusted projections: they must emit aggregates and omit
-record-level values.
+record-level values. During a build, evidence capture is diagnostic: a provider
+that raises is recorded as `provider_failed` with its error beside the artifact
+binding and the build continues; the explicit export command runs providers
+strictly and refuses on a failure.
+
+An execution export from a licensed run carries the achieved value of every
+target, local-area targets included, and the weight distribution's extremes and
+quantiles. Inside the private build bundle that is fine; before an execution
+snapshot or its HTML is posted anywhere public it needs the same output
+clearance as the calibration diagnostics it summarises.
 
 `save_run_evidence` appends an `execution.evidence.json` index with protocol
 `microcosm.graph.execution-input.v1`, plus exact graph, manifest, binding and
@@ -322,9 +331,9 @@ graph.orrery.html#collapsedIds=["[\"group\",\"enrichment\"]"]
 
 Fields remain searchable and inspectable from the index, and expanding one
 operation shows exactly its versioned fields because fields are contained by
-their provider. Serialized operation contracts can use strings up to 131,072
-characters; the overall document, complexity, node, and edge limits remain
-unchanged. These are declaration and synthetic diagnostic measurements, not a
+their provider. Every serialized string in the compiler schema and the export,
+operation contracts included, may be up to 131,072 characters; the overall
+document, complexity, node, and edge limits remain unchanged. These are declaration and synthetic diagnostic measurements, not a
 licensed population run.
 
 ## Fields and input bindings

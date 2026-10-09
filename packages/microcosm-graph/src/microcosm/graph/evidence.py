@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import stat
 import uuid
@@ -52,6 +53,8 @@ BINDING_PROTOCOL = "microcosm.graph.run-binding.v1"
 EVIDENCE_INPUT_PROTOCOL = "microcosm.graph.execution-input.v1"
 EXECUTION_PROTOCOL = "microcosm.graph.execution-evidence.v1"
 _MAX_BYTES = 32 * 1024 * 1024
+_SUMMARY_FIELDS = frozenset({"node", "artifact", "key", "type", "data"})
+_LOG = logging.getLogger(__name__)
 
 
 def sha256(payload: bytes) -> str:
@@ -312,7 +315,15 @@ def _summaries(
     registry: ArtifactSummaryRegistry,
     *,
     cached: Mapping[str, dict] | None = None,
+    strict: bool = True,
 ) -> tuple[dict, ...]:
+    """Run the registered providers; with ``strict=False`` a failure is recorded.
+
+    Evidence capture inside a build is diagnostic: a provider that raises after
+    a successful solve must not abort the build, so its error is kept beside
+    the artifact binding and the summary status becomes ``provider_failed``.
+    The explicit export command runs providers strictly.
+    """
     summaries = []
     for node_id, receipt in run.manifest.nodes.items():
         for name, descriptor in receipt.typed_artifacts.get("outputs", {}).items():
@@ -325,23 +336,36 @@ def _summaries(
             if cached is not None and key in cached:
                 summaries.append(cached[key])
                 continue
-            data = _plain(
-                provider(
-                    ArtifactSummaryContext(
-                        run, node_id, name, store.load_bytes(key), store
+            record = {
+                "node": node_id,
+                "artifact": name,
+                "key": key,
+                "type": dict(artifact_type),
+            }
+            try:
+                data = _plain(
+                    provider(
+                        ArtifactSummaryContext(
+                            run, node_id, name, store.load_bytes(key), store
+                        )
                     )
                 )
-            )
-            require(type(data) is dict, "artifact summary must be an object")
-            summaries.append(
-                {
-                    "node": node_id,
-                    "artifact": name,
-                    "key": key,
-                    "type": dict(artifact_type),
-                    "data": data,
-                }
-            )
+                require(type(data) is dict, "artifact summary must be an object")
+            except Exception as error:
+                if strict:
+                    raise
+                _LOG.warning(
+                    "Artifact summary for %s.%s failed and was recorded: %s: %s",
+                    node_id,
+                    name,
+                    type(error).__name__,
+                    error,
+                )
+                record["data"] = {}
+                record["error"] = f"{type(error).__name__}: {error}"
+            else:
+                record["data"] = data
+            summaries.append(record)
     return tuple(summaries)
 
 
@@ -398,12 +422,14 @@ def collect_execution_evidence(
         for summary in run.summaries:
             require(
                 type(summary) is dict
-                and set(summary) == {"node", "artifact", "key", "type", "data"},
+                and _SUMMARY_FIELDS <= set(summary) <= _SUMMARY_FIELDS | {"error"},
                 "recorded summary fields",
             )
             text(summary["node"], "summary node")
             text(summary["artifact"], "summary artifact")
             digest(summary["key"])
+            if "error" in summary:
+                text(summary["error"], "summary error")
         supplied = {(item["node"], item["artifact"]): item for item in run.summaries}
         supplied.update({(item["node"], item["artifact"]): item for item in summaries})
         summaries = tuple(supplied.values())
@@ -492,6 +518,8 @@ def collect_execution_evidence(
                 "artifact_summary_status": {
                     name: "unavailable"
                     if name not in receipt.opaque_artifacts
+                    else "provider_failed"
+                    if "error" in supplied.get((node_id, name), {})
                     else "present"
                     if (node_id, name) in supplied
                     else "provider_not_configured"
@@ -529,8 +557,7 @@ def collect_execution_evidence(
     )
 
 
-def _atomic_json(path: Path, value: object) -> None:
-    payload = canonical_json(value)
+def _atomic_bytes(path: Path, payload: bytes) -> None:
     require(len(payload) <= _MAX_BYTES, "native evidence byte limit")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
@@ -539,6 +566,10 @@ def _atomic_json(path: Path, value: object) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _atomic_json(path: Path, value: object) -> None:
+    _atomic_bytes(path, canonical_json(value))
 
 
 def save_run_evidence(
@@ -585,7 +616,9 @@ def save_run_evidence(
         )
         for item in values:
             cached[item["key"]] = item
-    summary_records = _summaries(run, store, artifact_summaries or {}, cached=cached)
+    summary_records = _summaries(
+        run, store, artifact_summaries or {}, cached=cached, strict=False
+    )
     entry = {"attempt_id": attempt_id, "phase": phase}
     for name, value in (
         ("graph", json.loads(graph_to_json(compiled.graph))),
@@ -763,7 +796,7 @@ def save_graph_schema(
                     "checkpoint reference changed during capture",
                 )
                 relative = Path(f"upstream-{ref['sha256']}.json")
-                (directory / relative).write_bytes(payload)
+                _atomic_bytes(directory / relative, payload)
                 ref["url"] = relative.as_posix()
         extensions = {PRESENTATION_EXTENSION: contract}
     compiled = compile_graph(graph) if isinstance(graph, Graph) else graph
@@ -852,7 +885,7 @@ def publish_run_evidence(
                 sha256(payload) == digest(entry[field]["sha256"]),
                 "native phase evidence changed during capture",
             )
-            (out_dir / filename).write_bytes(payload)
+            _atomic_bytes(out_dir / filename, payload)
             published_entry[field] = {
                 "path": filename,
                 "sha256": entry[field]["sha256"],

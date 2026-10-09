@@ -1811,7 +1811,8 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "graph_execution_evidence",
     ):
         reference = sidecar[name]
-        evidence_path = Path(reference["path"])
+        assert not Path(reference["path"]).is_absolute()
+        evidence_path = output.parent / reference["path"]
         assert "graph-evidence" in evidence_path.parts
         assert (
             hashlib.sha256(evidence_path.read_bytes()).hexdigest()
@@ -1819,7 +1820,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         )
     from microcosm.graph import ContentStore, load_run_evidence
 
-    index_path = Path(sidecar["graph_execution_evidence"]["path"])
+    index_path = output.parent / sidecar["graph_execution_evidence"]["path"]
     runs = load_run_evidence(
         index_path,
         store=ContentStore(index_path.parents[2] / "node-graph", create=False),

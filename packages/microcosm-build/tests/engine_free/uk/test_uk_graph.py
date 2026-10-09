@@ -1,7 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
+import hashlib
+
 from microcosm.graph import graph_schema, orrery_document
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_graph import *
 
 
@@ -272,7 +275,14 @@ def test_uk_spine_exports_complete_orrery_document() -> None:
     assert materialized_claims
     assert actual_reads == expected_reads
     assert document["schemaVersion"] == "graph-explorer/v1"
-    assert document["metadata"]["microcosm"] == schema
+    summary = document["metadata"]["microcosm"]
+    assert summary["graph_sha256"] == schema["graph_sha256"]
+    assert (
+        summary["schema_sha256"] == hashlib.sha256(canonical_json(schema)).hexdigest()
+    )
+    assert summary["counts"]["operations"] == len(schema["graph"]["nodes"])
+    assert summary["counts"]["fields"] == len(schema["fields"])
+    assert "graph" not in summary
     assert document["metadata"]["truncated"] is False
 
 

@@ -1,1 +1,1 @@
-Allow the maintained full UK gate contracts to round-trip through compiler schema and Orrery export, while retaining bounded strings and document sizes.
+Raise the bound on every serialized string in compiler schemas and Orrery exports to 131,072 characters so the maintained full UK gate contracts round-trip; the document, complexity, node and edge limits are unchanged.

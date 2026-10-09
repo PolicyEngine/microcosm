@@ -117,6 +117,26 @@ def validate_presentation(schema: dict) -> dict | None:
             for field in ("label", "description"):
                 if field in record:
                     text(record[field], field)
+            if "composite" in record:
+                composite = record["composite"]
+                require(type(composite) is dict, "composite must be an object")
+                unit = composite.get("execution_unit")
+                require(
+                    unit is None or unit in {"single", "composite"},
+                    "composite execution_unit",
+                )
+                members = composite.get("operations", [])
+                require(
+                    type(members) is list
+                    and all(
+                        type(item) is dict and type(item.get("kind")) is str
+                        for item in members
+                    ),
+                    "composite operations",
+                )
+                for field in ("stage", "node", "kernel", "coupling", "randomness"):
+                    if composite.get(field) is not None:
+                        text(composite[field], f"composite {field}")
             refs = record.get("references", [])
             require(type(refs) is list, "references must be an array")
             for ref in refs:

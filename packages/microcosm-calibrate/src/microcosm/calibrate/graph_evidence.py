@@ -104,7 +104,11 @@ def solution_summary(context: ArtifactSummaryContext) -> dict:
 
 
 def result_summary_data(result, ordered) -> dict:
-    """Project recorded diagnostics, never record axes or individual weights."""
+    """Project recorded diagnostics without entity axes or the weight vector.
+
+    The weight summary is distributional: its extremes and quantiles are
+    individual weight values, not record identities.
+    """
     rows = []
     for index, diagnostic in enumerate(result.diagnostics):
         target = ordered.problem.targets[index]

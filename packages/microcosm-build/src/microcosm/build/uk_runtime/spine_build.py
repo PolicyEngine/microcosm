@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 import uuid
@@ -180,7 +181,6 @@ from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import (
     ContentStore,
     compile_graph,
-    graph_to_json,
     run_graph,
     save_run_evidence,
 )
@@ -1908,8 +1908,6 @@ def main(argv: list[str] | None = None) -> int:
             _population_observer_detach=False,
         )
         graph_manifest.save(checkpoint_root / "spine.graph.json")
-        graph_declaration_path = checkpoint_root / "spine.graph-declaration.json"
-        graph_declaration_path.write_text(graph_to_json(graph), encoding="utf-8")
         save_uk_graph_schema(graph, checkpoint_root, scope="raw_spine", spec=spec)
         graph_evidence_path = save_run_evidence(
             compiled_graph,
@@ -2044,21 +2042,29 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
+
+        # Relative to the sidecar, so a checkpoint moved with its evidence
+        # directory keeps resolvable links and records no machine-local paths.
+        def _checkpoint_link(path: Path) -> str:
+            return Path(
+                os.path.relpath(path.resolve(), sidecar_path.parent.resolve())
+            ).as_posix()
+
         sidecar["graph_manifest"] = {
-            "path": str(graph_manifest_path.resolve()),
+            "path": _checkpoint_link(graph_manifest_path),
             "key": graph_manifest.key,
             "sha256": hashlib.sha256(graph_manifest_path.read_bytes()).hexdigest(),
         }
         sidecar["graph_declaration"] = {
-            "path": str(graph_declaration_path.resolve()),
+            "path": _checkpoint_link(graph_declaration_path),
             "sha256": hashlib.sha256(graph_declaration_path.read_bytes()).hexdigest(),
         }
         sidecar["graph_schema"] = {
-            "path": str(graph_schema_path.resolve()),
+            "path": _checkpoint_link(graph_schema_path),
             "sha256": hashlib.sha256(graph_schema_path.read_bytes()).hexdigest(),
         }
         sidecar["graph_execution_evidence"] = {
-            "path": str(graph_evidence_path.resolve()),
+            "path": _checkpoint_link(graph_evidence_path),
             "sha256": hashlib.sha256(graph_evidence_path.read_bytes()).hexdigest(),
         }
         stage_evidence = stored_evidence["stage_evidence"]

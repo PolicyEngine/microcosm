@@ -226,7 +226,15 @@ def apply_execution(document: dict, schema: dict, execution: object) -> None:
                 ]
                 previews = {}
                 for item in summaries[node_id]:
-                    data = summary_catalog[item["key"]]["data"]
+                    entry = summary_catalog[item["key"]]
+                    if "error" in entry:
+                        previews[item["artifact"]] = {
+                            "key": item["key"],
+                            "status": "provider_failed",
+                            "error": text(entry["error"], "summary error"),
+                        }
+                        continue
+                    data = entry["data"]
                     preview = {
                         key: value for key, value in data.items() if key != "tables"
                     }

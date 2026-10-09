@@ -86,12 +86,12 @@ def test_uk_staging_smoke_command_runs_every_spine_stage(tmp_path: Path) -> None
     )
     assert len(sidecar["synthetic_fixture"]["digest"]) == 64
 
-    schema = json.loads(Path(sidecar["graph_schema"]["path"]).read_bytes())
+    schema = json.loads((output.parent / sidecar["graph_schema"]["path"]).read_bytes())
     store = ContentStore(
         tmp_path / ".uk-smoke.checkpoints" / "node-graph", create=False
     )
     runs = load_run_evidence(
-        Path(sidecar["graph_execution_evidence"]["path"]), store=store
+        output.parent / sidecar["graph_execution_evidence"]["path"], store=store
     )
     document = orrery_document_from_schema(
         schema, execution=collect_execution_evidence(schema, runs=runs, store=store)

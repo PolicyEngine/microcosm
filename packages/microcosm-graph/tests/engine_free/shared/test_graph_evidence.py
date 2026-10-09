@@ -620,3 +620,19 @@ def test_save_graph_schema_copies_upstream_bytes_and_relinks(fresh, tmp_path):
     upstream.write_bytes(b'{"spine":false}')
     with pytest.raises(ValueError, match="changed during capture"):
         save_graph_schema(fresh.compiled, tmp_path / "again", presentation=contract)
+
+
+@pytest.mark.parametrize(
+    "composite",
+    [
+        "single",
+        {"execution_unit": "paired"},
+        {"operations": [{"parameters": {}}]},
+        {"coupling": 7},
+    ],
+)
+def test_malformed_composite_metadata_is_refused(fresh, composite):
+    contract = presentation(fresh.compiled)
+    contract["operations"]["survey"]["composite"] = composite
+    with pytest.raises(ValueError, match="composite"):
+        orrery_document(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
