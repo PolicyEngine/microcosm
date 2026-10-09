@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from microcosm.build.target_reference_authoring import (
     author_target_references,
     target_references_resource,
 )
+from microcosm.calibrate import TargetRegistry
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -1117,3 +1119,64 @@ def test_native_groupby_pin_takes_the_lower_edge_of_a_two_edged_band() -> None:
         "hmrc.total_income_band",
         pinned_dimension_names=frozenset({"total_income_lower_bound"}),
     ) == ("total_income_upper_bound", 50_000)
+
+
+def _uprated_age_inputs() -> tuple[dict, list[dict]]:
+    contract = _single_age_contract()
+    contract["targets"][0]["uprating_index"] = "synthetic.growth"
+    facts = [
+        _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-age-0"),
+        _area_fact("ons", "population", 30.0, area_id="A2", fact_key="a2-age-0"),
+    ]
+    for fact in facts:
+        fact["period"]["value"] = 2024
+    return contract, facts
+
+
+def _times_one_point_one(reference, registry: TargetRegistry) -> TargetRegistry:
+    return TargetRegistry(
+        [
+            replace(
+                spec,
+                value=spec.value * 1.1,
+                metadata={**spec.metadata, "uprating_factor": "1.1"},
+            )
+            for spec in registry.specs
+        ],
+        country=registry.country,
+    )
+
+
+def test_an_area_target_declaring_an_index_is_uprated_at_authoring() -> None:
+    contract, facts = _uprated_age_inputs()
+    config = replace(
+        _area_config(areas=("A1", "A2")),
+        uprating_appliers={"synthetic.growth": _times_one_point_one},
+    )
+
+    authored = author_area_target_references(contract, facts, config)
+
+    assert [ref["uprating_index"] for ref in authored.references] == [
+        "synthetic.growth",
+        "synthetic.growth",
+    ]
+    candidate = _candidate(authored.membership_report, "ons.age.0_10", "A1")
+    assert candidate["resolved_value"] == pytest.approx(11.0)
+    assert authored.membership_report["uprating_holds"][0] == {
+        "name": "ons.age.0_10@A1",
+        "target_id": "ons.age.0_10",
+        "geography_level": "constituency",
+        "geography_id": "A1",
+        "from": "2024",
+        "to": "2025",
+        "index": "synthetic.growth",
+        "factor": "1.1",
+        "value_before_uprating": "10.0",
+    }
+
+
+def test_an_area_index_without_an_applier_is_refused() -> None:
+    contract, facts = _uprated_age_inputs()
+
+    with pytest.raises(ValueError, match="supplies no applier"):
+        author_area_target_references(contract, facts, _area_config(areas=("A1", "A2")))

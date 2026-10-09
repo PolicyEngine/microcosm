@@ -15,6 +15,7 @@ from microcosm.build.target_reference_authoring import (
     author_area_target_references,
     target_references_resource,
 )
+from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
 from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_local_area_support_exclusion_register,
 )
@@ -69,6 +70,7 @@ def main() -> None:
             }
         },
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
+        uprating_appliers=UK_UPRATING_APPLIERS,
         # Keep the explicit display-name option and default to an artifact-relative
         # name, never the operator's absolute local path.
         source_fact_feed=args.source_fact_feed

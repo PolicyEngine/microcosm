@@ -35,6 +35,9 @@ from microcosm.build.uk_runtime.measure_simulation import (
 from microcosm.build.uk_runtime.national_reconciliation import (
     reconcile_uk_national_registry,
 )
+from microcosm.build.uk_runtime.uprating_holds import (
+    assert_uk_uprating_holds_declared,
+)
 from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
 from microcosm.calibrate import TargetRegistry
 
@@ -213,6 +216,22 @@ def load_uk_full_target_inputs(
         band_edge_registry=band_edges,
         exclusion_receipt=exclusion_receipt,
     )
+    uprating_holds = {
+        # The full compiled register, not the approved one: a measure
+        # exclusion expires, and its target re-enters already declared.
+        "national": assert_uk_uprating_holds_declared(
+            band_edges,
+            calibration_period=year,
+            evaluated_on=evaluated_on,
+            scope="national",
+        ),
+        "local": assert_uk_uprating_holds_declared(
+            local_registries[year],
+            calibration_period=year,
+            evaluated_on=evaluated_on,
+            scope="local",
+        ),
+    }
     by_name = {spec.name: spec for spec in band_edges.specs}
     reviewed_unbound = {
         str(by_name[name].metadata.get("contract_target_id", name)): record
@@ -224,6 +243,7 @@ def load_uk_full_target_inputs(
         "national_registry": national_registry,
         "band_edge_registry": band_edges,
         "national_reconciliation": national_reconciliation,
+        "uprating_holds": uprating_holds,
         "local_registry": local_registries[year],
         "measure_exclusions": exclusion_receipt,
         "reviewed_unbound_higher_targets": reviewed_unbound,
@@ -316,6 +336,12 @@ def load_uk_national_target_inputs(
         band_edge_registry=reconciled,
         exclusion_receipt=exclusion_receipt,
     )
+    uprating_holds = assert_uk_uprating_holds_declared(
+        reconciled,
+        calibration_period=year,
+        evaluated_on=evaluated_on,
+        scope="national",
+    )
     frozen_version = None
     if register_json is not None:
         try:
@@ -334,6 +360,7 @@ def load_uk_national_target_inputs(
         "national_registry": registry,
         "band_edge_registry": reconciled,
         "national_reconciliation": national_reconciliation,
+        "uprating_holds": uprating_holds,
         "measure_exclusions": exclusion_receipt,
         "chronicle_feed_pin": pin.to_dict(),
         "chronicle_provenance": artifact.provenance(),
