@@ -4,7 +4,8 @@
       "benunit_id": "int64",
       "dependent_children": "int64",
       "frs_benunit_capital": "float64",
-      "is_married": "bool"
+      "is_married": "bool",
+      "liable_for_share_of_household_rent": "bool"
     },
     "household": {
       "accommodation_type": "string",
@@ -58,6 +59,9 @@
       "incapacity_benefit_reported": "float64",
       "income_support_reported": "float64",
       "is_benunit_head": "bool",
+      "is_blind": "bool",
+      "is_claimant_or_partner": "bool",
+      "is_hbai_dependent_child": "bool",
       "is_household_head": "bool",
       "is_parent": "bool",
       "is_uc_claimant": "bool",
@@ -79,6 +83,8 @@
       "private_pension_income": "float64",
       "private_transfer_income": "float64",
       "property_income": "float64",
+      "rent_paid_as_boarder": "float64",
+      "rent_paid_as_lodger": "float64",
       "salary_sacrifice_asked": "float64",
       "salary_sacrifice_reported": "float64",
       "savings_interest_income": "float64",
@@ -91,6 +97,7 @@
       "student_loan_repayments": "float64",
       "student_loans": "float64",
       "tax_free_savings_income": "float64",
+      "uc_is_in_startup_period": "bool",
       "universal_credit_reported": "float64",
       "winter_fuel_allowance_reported": "float64",
       "working_tax_credit_reported": "float64",

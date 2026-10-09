@@ -100,7 +100,7 @@ nz.create (CREATE) ── nz.open (FILTER keep-all: transport, geography, receip
 | `as_rate_bridge.json` | reg 17 base rate and reg 18 cutout composition | `nz.as.bridge.*` | MC11 |
 | `scenarios.json` | S0–S5, V1–V3, knobs, gap conventions (×52) | scenario and variant branches | MC3, MC12 |
 | `holdout_references.json` | AS comparators and the WFF tripwire | gap and validation nodes only | MC2, MC5 |
-| `gates.json` | the gate battery; thresholds await D1 | `nz.gates.calibrated` | MC15 |
+| `gates.json` | the gate battery, evaluated with the shared transport bindings (`transport/gate_bindings.py`); thresholds await D1; support and release-input coverage remain applicable and block builds until their producers and evidence checks exist | `nz.gates.calibrated` | MC15 |
 | `export_contract.json` | the closed export contract | export nodes | — |
 
 The three reference sets are separate files on purpose. Each planned node is

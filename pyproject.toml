@@ -4,6 +4,24 @@ version = "0.0.0"
 description = "Workspace root for the microcosm stack (not a published package)"
 requires-python = ">=3.13"
 
+[tool.uv]
+# microcosm#1086 (option 2, ruled 2026-10-07): each country keeps its own
+# policyengine-core pin. Nothing imports both engines and CI installs one
+# country extra per job, so every extra that installs policyengine-us
+# conflicts with every extra that installs policyengine-uk, and uv locks the
+# two sides in separate forks.
+conflicts = [
+    [{ package = "microcosm-build", extra = "us" }, { package = "microcosm-build", extra = "uk" }],
+    [{ package = "microcosm-build", extra = "us" }, { package = "microcosm-data", extra = "uk" }],
+    [{ package = "microcosm-build", extra = "us" }, { package = "microcosm-frame", extra = "uk" }],
+    [{ package = "microcosm-data", extra = "us" }, { package = "microcosm-build", extra = "uk" }],
+    [{ package = "microcosm-data", extra = "us" }, { package = "microcosm-data", extra = "uk" }],
+    [{ package = "microcosm-data", extra = "us" }, { package = "microcosm-frame", extra = "uk" }],
+    [{ package = "microcosm-frame", extra = "policyengine" }, { package = "microcosm-build", extra = "uk" }],
+    [{ package = "microcosm-frame", extra = "policyengine" }, { package = "microcosm-data", extra = "uk" }],
+    [{ package = "microcosm-frame", extra = "policyengine" }, { package = "microcosm-frame", extra = "uk" }],
+]
+
 [tool.uv.workspace]
 members = ["packages/*"]
 

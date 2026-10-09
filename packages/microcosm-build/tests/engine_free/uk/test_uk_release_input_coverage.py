@@ -135,6 +135,32 @@ class TestFamilyBuildStateFrame:
         assert result.passed, result.failures
         assert result.details["family_build_state_frame"] == "spine"
 
+    def test_binding_refuses_to_judge_the_calibrated_frame_without_build_state(
+        self,
+    ) -> None:
+        """microcosm#1115 review: no spine build state means evidence absent,
+        never a verdict read off the calibrated frame's weights."""
+        from microcosm.build.gate_battery import EvidenceContext
+        from microcosm.build.uk_runtime.battery_bindings import (
+            UK_GATE_REGISTRY,
+            _evaluate_release_input_coverage,
+        )
+
+        _, release = self._frames()
+        artifacts = {
+            "coverage_engine": _StubEngine({"gift_aid": 0.0}),
+            "coverage_manifest": self._contract(),
+        }
+        with pytest.raises(ValueError, match="spine build state"):
+            _evaluate_release_input_coverage(
+                EvidenceContext(frame=release, artifacts=artifacts), {}
+            )
+        binding = UK_GATE_REGISTRY["release_input_coverage"]
+        assert "spine_frame" in binding.required_artifacts({})
+        assert "spine_frame" not in binding.required_artifacts(
+            {"check": "manifest_current"}
+        )
+
 
 class TestFamilyMassSemantics:
     """Every family conserves household mass (microcosm#1063 item 3)."""

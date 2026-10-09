@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import inspect
 import json
 import subprocess
 import sys
@@ -26,7 +27,7 @@ from microcosm.build.staging_v2 import (
     StagingContentError,
     StagingContractError,
     StagingReadBackError,
-    StagingTelemetryV2,
+    StagingRunBundleWriterV2,
     disabled_staging_delivery,
     validate_staging_delivery,
     validate_v2_bundle,
@@ -80,7 +81,7 @@ def _sample() -> dict:
     return {"mode": "full"}
 
 
-def _recorder(tmp_path, **kwargs) -> StagingTelemetryV2:
+def _recorder(tmp_path, **kwargs) -> StagingRunBundleWriterV2:
     defaults = {
         "run_id": "uk-smoke-5-42",
         "country_code": "GB",
@@ -96,7 +97,11 @@ def _recorder(tmp_path, **kwargs) -> StagingTelemetryV2:
         "clock": Clock(),
     }
     defaults.update(kwargs)
-    return StagingTelemetryV2(**defaults)
+    return StagingRunBundleWriterV2(**defaults)
+
+
+def test_staging_run_bundle_writer_has_no_emitter_dependency() -> None:
+    assert "emitter" not in inspect.signature(StagingRunBundleWriterV2).parameters
 
 
 def test_version_2_local_bundle_has_explicit_schemas_and_ordered_events(tmp_path):

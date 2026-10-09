@@ -45,7 +45,7 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SOURCE_CODECS
 
 from . import full_measure, full_problem, ladder_targets, ledger_targets, local_doctrine
-from .full_measure import resolve_uk_full_measures
+from .full_measure import resolve_uk_full_national_problem
 from .full_problem import build_uk_full_local_problem
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
 from .geography_ladder import load_uk_oa_ladder, uk_area_region_codes
@@ -381,33 +381,22 @@ class UKFullMeasureKernel(_TargetKernel):
         with tempfile.TemporaryDirectory(
             prefix="microcosm-uk-full-measures-"
         ) as scratch:
-            prepared, restore, rows, metrics, evidence = resolve_uk_full_measures(
-                frame,
-                national,
-                period=int(full["calibration_year"]),
-                scratch_dir=Path(scratch),
-                band_edge_registry=registry_from_payload(full["band_edge_registry"]),
-                blocks=int(context.params["engine_blocks"]),
-                local_grains=grains,
-            )
-            # Compile national measures while temporary columns exist. The
-            # immutable pool, rather than that evaluation Frame, goes forward.
-            national_problem = (
-                build_constraint_matrix(prepared, rows.targets, "household")
-                if len(rows.targets)
-                else None
-            )
-            if national_problem is not None and national_problem.skipped:
-                failures = "; ".join(
-                    f"{item.target.key}: {item.reason}"
-                    for item in national_problem.skipped
+            # The national problem is compiled per engine block and stitched
+            # in the pool's household order; the whole pool is never
+            # materialized (microcosm#932 follow-up, 2026-10-05).
+            national_problem, rows, metrics, evidence = (
+                resolve_uk_full_national_problem(
+                    frame,
+                    national,
+                    period=int(full["calibration_year"]),
+                    scratch_dir=Path(scratch),
+                    band_edge_registry=registry_from_payload(
+                        full["band_edge_registry"]
+                    ),
+                    blocks=int(context.params["engine_blocks"]),
+                    local_grains=grains,
                 )
-                raise ValueError(
-                    "Selected national constraints failed to compile: " + failures
-                )
-            clean = restore(prepared)
-            for entity in frame.entities:
-                pd.testing.assert_frame_equal(clean.table(entity), frame.table(entity))
+            )
         arrays = {
             f"metrics_{grain}": metrics[grain].to_numpy(dtype=np.float64)
             for grain in grains

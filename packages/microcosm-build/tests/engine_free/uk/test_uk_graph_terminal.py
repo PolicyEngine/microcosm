@@ -58,6 +58,67 @@ def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_pat
     assert "geography_household_key" in stored and "data_zone_code" not in stored
 
 
+def test_export_writes_area_codes_under_consumer_names_and_refuses_ladder_names(
+    tmp_path,
+):
+    """microcosm#1114: the artifact carries ``constituency_code_oa``,
+    ``la_code_oa`` and ``region_code_oa`` and never the ladder names."""
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+        export_area_code_columns,
+    )
+    from microcosm.build.uk_runtime.graph_terminal import _tables
+
+    frame = _frame()
+    ladder = frame.table("household")
+    exported = _tables(frame)["household"]
+    for ladder_name, export_name in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        assert ladder_name not in exported.columns
+        assert exported[export_name].tolist() == ladder[ladder_name].tolist()
+    # The in-memory frame is untouched: gates and diagnostics keep the ladder names.
+    assert "constituency_code" in frame.table("household").columns
+    descriptor = describe_uk_export(frame, bindings={"target_scope": "all"})
+    assert descriptor["area_codes"]["columns"] == dict(UK_EXPORT_AREA_CODE_COLUMNS)
+    frames = descriptor["area_codes"]["frames"]
+    assert set(frames) == set(UK_EXPORT_AREA_CODE_COLUMNS.values())
+    assert frames["constituency_code_oa"]["uk_ew_output_area_2021"] == "2024_pcon"
+    assert frames["la_code_oa"]["uk_ew_output_area_2021"] == "2023_april_lad"
+    assert frames["region_code_oa"]["uk_ew_output_area_2021"] == "2024_rgn"
+    assert "constituency_code_oa" in descriptor["tables"]["household"]["columns"]
+    assert "constituency_code" not in descriptor["tables"]["household"]["columns"]
+    path = tmp_path / "full.h5"
+    materialize_uk_export(frame, descriptor, path)
+    assert validate_uk_export(path, descriptor)["passed"] is True
+    with pd.HDFStore(path) as store:
+        stored = store["household"]
+    assert {"constituency_code_oa", "la_code_oa", "region_code_oa"} <= set(
+        stored.columns
+    )
+    # A stored table that slipped a ladder name or an empty code through is refused.
+    with pd.HDFStore(path) as store:
+        household = store["household"].rename(
+            columns={"constituency_code_oa": "constituency_code"}
+        )
+        household["la_code_oa"] = ["", "E07000008"]
+        store.put("household", household, format="table")
+    report = validate_uk_export(path, descriptor)
+    assert report["passed"] is False
+    assert any("ladder area code 'constituency_code'" in f for f in report["failures"])
+    assert any(
+        "lacks the declared area code 'constituency_code_oa'" in f
+        for f in report["failures"]
+    )
+    assert any("'la_code_oa' is empty on 1 household" in f for f in report["failures"])
+    # A stale consumer column on the frame cannot ride through the boundary.
+    stale = ladder.assign(constituency_code_oa=["stale", "stale"])
+    with pytest.raises(ValueError, match="already carries consumer area-code"):
+        export_area_code_columns(stale)
+    # A table without geography passes unchanged (the national line).
+    plain = pd.DataFrame({"household_id": [1], "region": ["LONDON"]})
+    assert export_area_code_columns(plain) is plain
+
+
 def test_export_roundtrip_preserves_dtype_weights_lineage_period_and_gate(tmp_path):
     pytest.importorskip("tables")
     frame = _frame()
@@ -772,3 +833,41 @@ def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):
     context.artifacts["export_readback"].payload = canonical_json(readback)
     with pytest.raises(ValueError, match="H5 readback failed"):
         UKPackageInventoryKernel().run(context)
+
+
+def test_diagnostics_receive_the_holdout_in_the_schemas_shape():
+    """The holdout artifact carries the kernel's binding and, when skipped, a
+    reason; the diagnostics records forbid undeclared fields and state a skipped
+    holdout as the bare marker. The first K=25 build (2026-10-06) reached its
+    terminal gates after 28 hours and the battery refused the graph's marker."""
+    from pydantic import ValidationError
+
+    from microcosm.build.uk_runtime.graph_terminal import diagnostics_rotated_holdout
+    from microcosm.diagnostics.schema import UKSkippedRotatedHoldout
+
+    skipped = {
+        "report_only": True,
+        "skipped": True,
+        "reason": "Explicit development request; no holdout claim.",
+        "graph_binding": {"original_problem_artifact": "a" * 64, "artifacts": {}},
+    }
+    assert diagnostics_rotated_holdout(skipped) == {"skipped": True}
+    UKSkippedRotatedHoldout.model_validate({"skipped": True})
+    # The schema stays strict: the graph's artifact fields are the converter's
+    # to strip, and an undeclared field is refused.
+    with pytest.raises(ValidationError):
+        UKSkippedRotatedHoldout.model_validate(skipped)
+    with pytest.raises(ValidationError):
+        UKSkippedRotatedHoldout.model_validate({**skipped, "invented": 1})
+
+    measured = {
+        "report_only": True,
+        "method": "rotated_folds",
+        "n_folds": 5,
+        "fold_losses": [0.1, 0.2, 0.3, 0.4, 0.5],
+        "graph_binding": {"original_problem_artifact": "a" * 64, "artifacts": {}},
+    }
+    shaped = diagnostics_rotated_holdout(measured)
+    assert "graph_binding" not in shaped
+    assert shaped == {k: v for k, v in measured.items() if k != "graph_binding"}
+    assert "graph_binding" in measured  # the artifact's report is left intact
