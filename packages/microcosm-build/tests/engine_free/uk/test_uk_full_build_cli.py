@@ -352,6 +352,27 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert expected["readback_passed"] is True
     assert expected["release_authorized"] is False
     assert expected["release_role"] == "dense"
+    from microcosm.graph import (
+        ContentStore,
+        collect_execution_evidence,
+        load_run_evidence,
+    )
+    from microcosm.graph.orrery import orrery_document_from_schema
+
+    schema = json.loads((out / "graph.schema.json").read_bytes())
+    store = ContentStore(out / ".graph-store", create=False)
+    overlay = collect_execution_evidence(
+        schema,
+        runs=load_run_evidence(out / "execution.evidence.json", store=store),
+        store=store,
+    )
+    snapshot = orrery_document_from_schema(schema, execution=overlay)
+    assert any(
+        json.loads(node["id"]) == ["operation", "uk.full.export.readback"]
+        for node in snapshot["nodes"]
+    )
+    assert [phase["phase"] for phase in overlay["phases"]][-2:] == ["export", "final"]
+    assert not list(out.glob("*.orrery.json"))
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
     cold = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
     assert cold["nodes_total"] > 0 and cold["nodes_reused"] == 0

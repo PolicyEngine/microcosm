@@ -162,6 +162,7 @@ from .national_frame import (
     write_uk_national_frame,
 )
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
+from .orrery_contract import persist_uk_run_evidence, save_uk_graph_schema
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -1087,12 +1088,40 @@ def _materialize_evidence(manifest, store, out: Path) -> dict:
     return inventory
 
 
-def _persist_checkpoint(manifest, store, args, phase: str) -> None:
+def _record_capture_cost(
+    out: Path, phase: str, started: float, rss_before: int
+) -> None:
+    """Append the evidence-capture cost of one phase; a measurement, not a gate."""
+    import resource
+
+    record = {
+        "phase": phase,
+        "wall_s": round(time.perf_counter() - started, 3),
+        "maxrss_before_bytes": rss_before,
+        "maxrss_after_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+    }
+    with (out / "evidence-capture-timing.jsonl").open("a", encoding="utf-8") as sink:
+        sink.write(json.dumps(record, sort_keys=True) + "\n")
+    print(
+        f"evidence capture {phase}: {record['wall_s']:.1f}s, "
+        f"peak RSS {record['maxrss_after_bytes'] / 2**30:.2f} GiB",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _persist_checkpoint(manifest, store, args, phase: str, *, graph: Graph) -> None:
     """Keep receipts and small evidence durable if a later kernel refuses."""
+    import resource
+
     payload = manifest.to_json_bytes()
     materialize_bytes(payload, args.out / f"{phase}.graph.json")
     attempt = Path(args.attempt_evidence)
     materialize_bytes(payload, attempt / f"{phase}.graph.json")
+    started = time.perf_counter()
+    rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    persist_uk_run_evidence(graph, manifest, store, args, phase=phase)
+    _record_capture_cost(args.out, phase, started, rss_before)
     evidence = {}
     for node_id, receipt in manifest.nodes.items():
         for name, key in receipt.opaque_artifacts.items():
@@ -1108,6 +1137,17 @@ def _persist_checkpoint(manifest, store, args, phase: str) -> None:
     materialize_bytes(
         canonical_json({"phase": phase, "artifacts": evidence}),
         attempt / "evidence-index.json",
+    )
+
+
+def _save_graph_presentation(graph: Graph, args, *, scope: str) -> None:
+    sidecar = getattr(args, "input_sidecar", None)
+    input_h5 = getattr(args, "input_h5", None)
+    if sidecar is None and input_h5 is not None:
+        sidecar = input_h5.with_suffix(".build.json")
+    save_uk_graph_schema(graph, args.out, scope=scope, sidecar_path=sidecar)
+    save_uk_graph_schema(
+        graph, Path(args.attempt_evidence), scope=scope, sidecar_path=sidecar
     )
 
 
@@ -1518,6 +1558,11 @@ def _execute_full_build(
     args.out.mkdir(parents=True, exist_ok=True)
     store = ContentStore(args.graph_store or args.out / ".graph-store")
     graph = full.graph
+    _save_graph_presentation(
+        graph,
+        args,
+        scope="checkpoint_dense" if args.input_h5 is not None else "full_dense",
+    )
     materialize_bytes(graph_to_json(graph).encode(), args.out / "graph.json")
     materialize_bytes(
         canonical_json(full.operation_inventory()), args.out / "operations.json"
@@ -1545,7 +1590,9 @@ def _execute_full_build(
             resume=resume,
             execution=execution,
         )
-        _persist_checkpoint(checkpoint, store, args, endpoint)
+        _persist_checkpoint(
+            checkpoint, store, args, endpoint, graph=_through(graph, endpoint)
+        )
         resume = "require" if args.resume == "require" else "auto"
     # Persist preflight outcomes before any solver can reject them.
     stage(telemetry, "target_compilation", "started")
@@ -1558,7 +1605,7 @@ def _execute_full_build(
         resume=resume,
         execution=execution,
     )
-    _persist_checkpoint(preflight, store, args, "preflight")
+    _persist_checkpoint(preflight, store, args, "preflight", graph=preflight_graph)
     _materialize_evidence(preflight, store, args.out)
     if "uk.full.target_selection" in preflight.nodes:
         selection = json.loads(
@@ -1618,7 +1665,13 @@ def _execute_full_build(
         resume="require" if args.resume == "require" else "auto",
         execution=execution,
     )
-    _persist_checkpoint(manifest, store, args, "numerical")
+    _persist_checkpoint(
+        manifest,
+        store,
+        args,
+        "numerical",
+        graph=_through(graph, "uk.full.gates.calibrated"),
+    )
     _materialize_evidence(manifest, store, args.out)
     _require_gate_kernel_completed(manifest, "uk.full.gates.calibrated")
     terminal_files = materialize_uk_terminal_artifacts(
@@ -1720,6 +1773,7 @@ def _execute_full_build(
         resume="require" if args.resume == "require" else "auto",
         execution=execution,
     )
+    _persist_checkpoint(manifest, store, args, "export", graph=graph)
     descriptor = json.loads(
         _payload(manifest, store, "uk.full.export.prepare", "export_descriptor")
     )
@@ -1807,6 +1861,16 @@ def _execute_full_build(
         execution=execution,
     )
     final.save(args.out / "build.graph.json")
+    _persist_checkpoint(final, store, args, "final", graph=graph)
+    _save_graph_presentation(
+        graph,
+        args,
+        scope="checkpoint_dense" if args.input_h5 is not None else "full_dense",
+    )
+    materialize_bytes(
+        canonical_json(replace(full, graph=graph).operation_inventory()),
+        args.out / "operations.json",
+    )
     materialize_bytes(graph_to_json(graph).encode(), args.out / "graph.json")
     _materialize_evidence(final, store, args.out)
     package = json.loads(_payload(final, store, "uk.full.package", "package_inventory"))
@@ -2188,6 +2252,7 @@ def _execute_national_build(
     args.out.mkdir(parents=True, exist_ok=True)
     store = ContentStore(args.graph_store or args.out / ".graph-store")
     graph = national.graph
+    _save_graph_presentation(graph, args, scope="national")
     materialize_bytes(graph_to_json(graph).encode(), args.out / "graph.json")
     materialize_bytes(
         canonical_json(national.operation_inventory()), args.out / "operations.json"
@@ -2208,7 +2273,13 @@ def _execute_national_build(
         resume=resume,
         execution=execution,
     )
-    _persist_checkpoint(checkpoint, store, args, "uk.full.spine_checkpoint")
+    _persist_checkpoint(
+        checkpoint,
+        store,
+        args,
+        "uk.full.spine_checkpoint",
+        graph=_through(graph, "uk.full.spine_checkpoint"),
+    )
     resume = "require" if args.resume == "require" else "auto"
     spine_frame = checkpoint.population("uk.full.spine_checkpoint")
     stage(
@@ -2229,6 +2300,9 @@ def _execute_national_build(
         kernels=kernels,
         resume=resume,
         execution=execution,
+    )
+    _persist_checkpoint(
+        targets, store, args, "targets", graph=_through(graph, NATIONAL_TARGETS_NODE)
     )
     registry_document = json.loads(
         graph_payload(targets, store, NATIONAL_TARGETS_NODE, "registry")
@@ -2284,7 +2358,13 @@ def _execute_national_build(
         resume=resume,
         execution=execution,
     )
-    _persist_checkpoint(manifest, store, args, "numerical")
+    _persist_checkpoint(
+        manifest,
+        store,
+        args,
+        "numerical",
+        graph=_through(graph, "uk.full.gates.calibrated"),
+    )
     _materialize_evidence(manifest, store, args.out)
     _require_gate_kernel_completed(manifest, NATIONAL_GATES_NODE)
     if state is not None:
@@ -2451,6 +2531,13 @@ def _execute_national_build(
         kernels=kernels,
         resume="auto",
         execution=execution,
+    )
+    _persist_checkpoint(final, store, args, "final", graph=continued)
+    _save_graph_presentation(continued, args, scope="national")
+    materialize_bytes(graph_to_json(continued).encode(), args.out / "graph.json")
+    materialize_bytes(
+        canonical_json(replace(national, graph=continued).operation_inventory()),
+        args.out / "operations.json",
     )
     _require_gate_kernel_completed(final, NATIONAL_READBACK_NODE)
     readback = json.loads(
