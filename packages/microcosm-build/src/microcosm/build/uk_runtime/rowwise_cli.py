@@ -28,6 +28,7 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.gate_battery import _signing_key
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -566,11 +567,26 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if _geography_assignment(args) == "legacy":
             # The release line is the identity-keyed atomic assignment.
             refused.append("--geography-assignment legacy")
+        target_levels = getattr(args, "target_geographies", None)
+        if target_levels is not None and not set(target_levels) & {
+            "constituency",
+            "la",
+        }:
+            # No local targets, no local fit claim: the signed local gate
+            # report a release candidate ships would have nothing to attest.
+            refused.append("--target-geographies without constituency or la")
         if refused:
             raise ValueError(
                 "--release-candidate refuses non-release settings: "
                 + ", ".join(refused)
             )
+        try:
+            _signing_key("uk")
+        except RuntimeError as error:
+            raise ValueError(
+                "--release-candidate signs its local gate report and needs the "
+                f"UK gate signing key: {error}"
+            ) from error
     if args.n_clones is not None and args.n_clones <= 0:
         raise ValueError("--n-clones must be positive.")
     if args.seed < 0:

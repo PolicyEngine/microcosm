@@ -5,6 +5,7 @@ feed."""
 
 # ruff: noqa: F401
 
+import base64
 import hashlib
 import importlib.util
 import json
@@ -20,11 +21,13 @@ from microcosm.build.gate_battery import (
     GatePhaseReport,
     GateStatus,
     gate_phase_report_payload,
+    gate_signing_key_env,
 )
 from microcosm.build.gates import GateResult
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.logbook_adoption import local_artifact_reference
 from microcosm.build.uk_runtime import full_build_cli as cli
+from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
 from microcosm.build.uk_runtime.full_certification import FULL_CERTIFICATION_TYPE
 from microcosm.build.uk_runtime.full_gates import (
     classify_full_gate_outcomes,
@@ -115,6 +118,11 @@ def patch_support_register(monkeypatch, pins=None) -> None:
 
 
 STEM = "microcosm_uk_2024_25_local"
+#: The UK gate signing key's variable and a synthetic 32-byte key: a
+#: release-candidate request is refused without one, and the dense build signs
+#: its local gate report with it.
+SIGNING_KEY_ENV = gate_signing_key_env("uk")
+TEST_SIGNING_KEY = base64.b64encode(b"\x05" * 32).decode()
 SUPPORT_ARGUMENTS = (
     "--atomic-support-ew",
     "supports/ew.npz",
@@ -272,7 +280,7 @@ def failure_lines(failed) -> dict[str, str]:
     return {str(gate_id): str(line) for gate_id, line in failed}
 
 
-def gate_payload(phase, failed=None):
+def gate_payload(phase, failed=None, release_candidate=False):
     gates = uk_full_gate_manifest(SELECTION)
     lines = failure_lines(failed)
     report = GatePhaseReport(
@@ -298,10 +306,10 @@ def gate_payload(phase, failed=None):
             "kind": "uk_full_gate_report",
             "selection_receipt": SELECTION,
             "sample_fraction": 1.0,
-            "release_candidate": False,
+            "release_candidate": bool(release_candidate),
             "report": gate_phase_report_payload(report, gates=gates),
             "enforcement": classify_full_gate_outcomes(
-                report, sample_fraction=1.0, release_candidate=False
+                report, sample_fraction=1.0, release_candidate=bool(release_candidate)
             ),
         }
     )
@@ -551,7 +559,13 @@ class Evidence(KernelBase):
 
     def run(self, context):
         phase = context.params["phase"]
-        artifacts = {"gate_report": gate_payload(phase, context.params.get("failed"))}
+        artifacts = {
+            "gate_report": gate_payload(
+                phase,
+                context.params.get("failed"),
+                release_candidate=bool(context.params.get("release_candidate")),
+            )
+        }
         if phase == "terminal":
             artifacts.update(
                 calibration_diagnostics=diagnostics_payload(),
@@ -681,7 +695,11 @@ def run_dense_main(
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
     patch_certification(monkeypatch)
     args = arguments(tmp_path, *extra, staging=staging)
-    build = prepared(tmp_path, failed) if build is None else build
+    build = (
+        prepared(tmp_path, failed, release_candidate="--release-candidate" in extra)
+        if build is None
+        else build
+    )
 
     def prepare(args, *, telemetry=None, attempt=None):
         if on_prepare is not None:
@@ -705,7 +723,12 @@ def graph_dense_bundle(tmp_path, monkeypatch, *extra, staging="--no-staging") ->
     return out
 
 
-def prepared(tmp_path, failed=None):
+def prepared(tmp_path, failed=None, *, release_candidate=False):
+    """The synthetic prepared build; its gate nodes evaluate in the request's
+    posture (``release_candidate``), as the real gate nodes do."""
+    # Only a release-candidate request adds the parameter, so every other
+    # synthetic build keeps its node keys.
+    posture = {"release_candidate": True} if release_candidate else {}
     frame = _frame()
     fixture = tmp_path / "fixture.txt"
     fixture.write_text("constant source")
@@ -740,14 +763,14 @@ def prepared(tmp_path, failed=None):
             "uk.full.gates.preflight",
             Evidence.ref,
             population=root.id,
-            params={"phase": "preflight", "failed": failed},
+            params={"phase": "preflight", "failed": failed, **posture},
             artifact_outputs=(ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),),
         ),
         Node(
             "uk.full.gates.calibrated",
             Evidence.ref,
             population=root.id,
-            params={"phase": "terminal", "failed": failed},
+            params={"phase": "terminal", "failed": failed, **posture},
             artifact_outputs=(
                 ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),
                 ArtifactOutput("calibration_diagnostics", FULL_DIAGNOSTICS_TYPE),

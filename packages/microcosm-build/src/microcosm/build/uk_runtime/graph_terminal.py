@@ -1328,13 +1328,14 @@ def rowwise_candidate_manifest_from_graph(
     pins: Mapping[str, Mapping[str, object]],
     terminal_files: Mapping[str, Mapping[str, object]],
     frame: Frame,
-    outputs: Mapping[str, Mapping[str, object]],
+    outputs: Mapping[str, Mapping[str, object] | None],
     source_year: int,
     inputs: Mapping[str, Mapping[str, object]],
     ladder_provenance: Mapping[str, object],
     code: Mapping[str, object],
     runtime: Mapping[str, str],
     created_at: str,
+    local_gate_report_absence: str | None = None,
 ) -> dict:
     """Project the schema-4 rowwise candidate manifest from stored artifacts.
 
@@ -1568,7 +1569,17 @@ def rowwise_candidate_manifest_from_graph(
             "fraction": float(args.sample_fraction),
             "unreachable_check": "completed",
         },
-        "outputs": {key: dict(value) for key, value in outputs.items()},
+        "outputs": {
+            key: None if value is None else dict(value)
+            for key, value in outputs.items()
+        },
+        # A filtered build that drops the local fit claim writes no local
+        # gate report (``outputs.local_gate_report`` is null); this says why.
+        **(
+            {}
+            if local_gate_report_absence is None
+            else {"local_gate_report_absence": local_gate_report_absence}
+        ),
         "geography": {
             "constituencies_assigned": int(
                 support.loc[
