@@ -132,6 +132,14 @@ _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
     "diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's "
     "fitted row is fixture-only on the current surface."
 )
+_OBR_NI_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves "
+    "OBR's total NICs receipts out of the fit: a cash total against the three "
+    "accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 "
+    "and settlements that no household carries. The exact FY2025-26 figure is "
+    "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
+    "fitted row is fixture-only on the current surface."
+)
 _STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
 _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
     "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great "
@@ -625,6 +633,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
         elif name == "obr.state_pension" and row.get("kind") == "fixture_only":
             row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
+        elif name == "obr.ni" and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_NI_DIAGNOSTIC_RATIONALE
         elif (
             name.startswith(_STATE_PENSION_PREFIXES)
             and row.get("kind") == "ledger_only"

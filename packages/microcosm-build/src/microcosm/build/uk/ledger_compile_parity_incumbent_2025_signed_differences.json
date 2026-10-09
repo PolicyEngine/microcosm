@@ -1,8 +1,8 @@
 {
- "compiled_count": 1233,
+ "compiled_count": 1232,
  "counts_by_kind": {
-  "calibration_drift": 553,
-  "fixture_only": 53,
+  "calibration_drift": 552,
+  "fixture_only": 54,
   "ledger_only": 649
  },
  "difference_count": 1255,
@@ -230,6 +230,13 @@
    "name": "obr.fuel_duties",
    "period": 2025,
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 200081395082.7125,
+   "kind": "fixture_only",
+   "name": "obr.ni",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves OBR's total NICs receipts out of the fit: a cash total against the three accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 and settlements that no household carries. The exact FY2025-26 figure is retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 146185954351.57382,
@@ -7886,14 +7893,6 @@
    "kind": "calibration_drift",
    "ledger_value": 288407204.431046,
    "name": "obr.jobseekers_allowance",
-   "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
-  },
-  {
-   "fixture_value": 200081395082.7125,
-   "kind": "calibration_drift",
-   "ledger_value": 193190546312.03436,
-   "name": "obr.ni",
    "period": 2025,
    "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
   },

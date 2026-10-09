@@ -24,8 +24,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 625,
-    "excluded_rows": 27,
+    "mapped_rows": 624,
+    "excluded_rows": 28,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -353,7 +353,6 @@
       "obr/housing_benefit": "obr.housing_benefit",
       "obr/income_tax": "obr.income_tax",
       "obr/jobseekers_allowance": "obr.jobseekers_allowance",
-      "obr/ni": "obr.ni",
       "obr/ni_employee": "obr.ni_employee",
       "obr/ni_employer": "obr.ni_employer",
       "obr/ni_self_employed": "obr.ni_self_employed",
@@ -680,7 +679,8 @@
       "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
       "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
-      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit."
+      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
+      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -866,7 +866,6 @@
     },
     "scope_target_ids": [
       "obr.income_tax",
-      "obr.ni",
       "obr.ni_employee",
       "obr.ni_employer",
       "obr.ni_self_employed",
@@ -1759,41 +1758,6 @@
       },
       "category_id": "obr.efo_receipts",
       "label": "Income tax",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.ni",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "concept": "uk.tax.national_insurance.amount",
-        "map_to": "household"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/ni",
-          "value_variable": "total_national_insurance",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
-        },
-        "axiom": {
-          "metric_name": "obr/ni",
-          "status": "pending",
-          "value_rule": "uk.tax.national_insurance.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.ni_total",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_receipts",
-      "label": "National Insurance contributions",
       "value_operation": "calendar_year_window"
     },
     {
@@ -30060,6 +30024,34 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:31256472aba8a0b143c30697"
       },
       "notes": "DWP Winter Fuel Payment statistics, winter 2025/26 recipients in England and Wales (11.0m), retained as diagnostic provenance beside the bound OBR line (microcosm#1069 c10): DWP counts everyone paid and HMRC recovers the payment above £35,000 later, while the engine withholds the household payment above £35,000 (PolicyEngine/policyengine-uk#1760), so the count measures a different quantity until the engine separates payment from recovery. Never insert it into the fitting registry."
+    },
+    "obr.ni": {
+      "attach_to_target": "obr.ni_employee",
+      "metadata_prefix": "obr_ni_total_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "obr.ni",
+        "ledger_selector": {
+          "source_name": "obr",
+          "source_concept": "obr.ni_total",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "obr/ni",
+        "family": "obr",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "cash_total_beside_accrued_class_rows"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:eccab3ee763d68bb782276a7"
+      },
+      "notes": "March 2026 OBR FY2025-26 total National Insurance contributions forecast (table 3.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 1.8% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries. Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

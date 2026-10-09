@@ -65,7 +65,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1233
+ACTIVE_REFERENCE_COUNT = 1232
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -758,7 +758,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1233,
+        "active": 1232,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 16,
     }
@@ -981,6 +981,9 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
     council_tax = differences["obr.council_tax"]
     assert council_tax["kind"] == "calibration_drift"
     assert "row 15" in council_tax["reason"] and "row 19" in council_tax["reason"]
+    national_insurance = differences["obr.ni"]
+    assert national_insurance["kind"] == "fixture_only"
+    assert "diagnostic provenance on obr.ni_employee" in national_insurance["reason"]
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (

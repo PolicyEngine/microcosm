@@ -1,20 +1,16 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1254,
-  "contract_target_count": 341,
-  "active_reference_count": 1233,
+  "candidate_count": 1253,
+  "contract_target_count": 340,
+  "active_reference_count": 1232,
   "status_counts": {
-    "active": 1233,
+    "active": 1232,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 16
   },
   "geography_pins": {
     "obr.income_tax": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
-    "obr.ni": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -11068,21 +11064,6 @@
           "resolved_value": 325054437305.83215,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d928e7da0fbfe088ca1a30d7"
-        }
-      ]
-    },
-    "obr.ni": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "obr.ni",
-          "status": "active",
-          "matched_fact_count_overall": 7,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 193190546312.03436,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eccab3ee763d68bb782276a7"
         }
       ]
     },

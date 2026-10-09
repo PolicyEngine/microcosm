@@ -444,7 +444,6 @@
       "obr.housing_benefit": "obr.efo_expenditure",
       "obr.income_tax": "obr.efo_receipts",
       "obr.jobseekers_allowance": "obr.efo_expenditure",
-      "obr.ni": "obr.efo_receipts",
       "obr.ni_employee": "obr.efo_receipts",
       "obr.ni_employer": "obr.efo_receipts",
       "obr.ni_self_employed": "obr.efo_receipts",
@@ -774,7 +773,6 @@
       "obr.housing_benefit": "Housing benefit",
       "obr.income_tax": "Income tax",
       "obr.jobseekers_allowance": "Jobseekers allowance",
-      "obr.ni": "National Insurance contributions",
       "obr.ni_employee": "Employee National Insurance contributions",
       "obr.ni_employer": "Employer National Insurance contributions",
       "obr.ni_self_employed": "Self-employed National Insurance contributions",
@@ -926,26 +924,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.income_tax",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "obr.ni",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.ni_total",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "obr/ni",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.ni",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",

@@ -184,7 +184,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_obr_national_insurance",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni, obr.ni_employee, obr.ni_employer, and obr.ni_self_employed.",
+        "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni_employee, obr.ni_employer, and obr.ni_self_employed; OBR's cash total obr.ni is a diagnostic on obr.ni_employee (microcosm#1095).",
     },
     {
         "concern_id": "national_obr_national_insurance_class_3",

@@ -786,6 +786,9 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
         # it above GBP 35,000, where the engine withholds it; the recipient count
         # sits beside the bound OBR line until payment and recovery separate.
         "obr.winter_fuel_allowance": ("dwp.winter_fuel_payment.recipients",),
+        # microcosm#1095 (María, 2026-10-09): OBR's cash NICs total sits beside
+        # the accrued class rows it does not equal; the class rows are bound.
+        "obr.ni_employee": ("obr.ni",),
     }
 )
 _DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))

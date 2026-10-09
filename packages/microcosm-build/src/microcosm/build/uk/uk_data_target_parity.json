@@ -947,7 +947,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni, obr.ni_employee, obr.ni_employer, and obr.ni_self_employed.",
+      "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni_employee, obr.ni_employer, and obr.ni_self_employed; OBR's cash total obr.ni is a diagnostic on obr.ni_employee (microcosm#1095).",
       "status": "ported_national"
     },
     {
