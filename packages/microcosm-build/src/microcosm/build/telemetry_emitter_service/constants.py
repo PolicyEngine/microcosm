@@ -53,6 +53,14 @@ MAX_RETRY_SECONDS: Final = 60.0
 
 DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
+# Every concurrent build on a host shares one spool, so a write can find it
+# locked for longer than SQLite's own busy wait. Startup retries such errors
+# with jittered, doubling waits until shortly before the build stops waiting
+# for readiness; the margin covers binding the socket and the build's ping.
+SPOOL_RETRY_INITIAL_SECONDS: Final = 0.05
+SPOOL_RETRY_MAX_SECONDS: Final = 1.0
+READY_DEADLINE_MARGIN_SECONDS: Final = 1.0
+SPOOL_LOCKED_EXIT_STATUS: Final = 75  # EX_TEMPFAIL from sysexits.h
 
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
 DEFAULT_DRAIN_SECONDS: Final = 15.0
@@ -67,3 +75,18 @@ EVENT_OBJECT_ERROR: Final = "event must be an object"
 UNSUPPORTED_ACTION_ERROR: Final = "unsupported local telemetry action"
 LOCAL_MESSAGE_TOO_LARGE_ERROR: Final = "local telemetry message exceeds 1 MiB"
 FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT: Final = "unexpected_process_exit"
+
+READY_DEADLINE_ERROR: Final = "ready deadline must be a finite number of seconds"
+SPOOL_LOCKED_WARNING: Final = (
+    "warning: the local telemetry emitter service could not register this build "
+    "in its spool {spool}: another process kept the spool locked for "
+    "{waited_seconds:.1f} s ({error})."
+)
+SERVICE_FAILED_WARNING: Final = (
+    "warning: the local telemetry emitter service stopped: {error_type}: {error}"
+)
+WORKER_STEP_WARNING: Final = (
+    "warning: the local telemetry emitter service's delivery worker hit "
+    "{error_type} ({error}) and will keep running."
+)
+MAX_WARNING_ERROR_CHARS: Final = 300

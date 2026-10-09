@@ -48,11 +48,18 @@ class EventSpool:
         except OSError:
             pass
         self._engine = create_spool_engine(self.path)
-        upgrade_spool_database(self._engine)
+        try:
+            upgrade_spool_database(self._engine)
+        except BaseException:
+            self._engine.dispose()
+            raise
         self._session_factory = create_spool_session_factory(self._engine)
         self._lock = threading.RLock()
-        self._last_prune_at = 0.0
-        self.prune()
+        # Retention is enforced by the service's delivery worker through
+        # prune_if_due, not here: pruning needs the write lock whenever a row
+        # has expired, and this constructor runs before the build's readiness
+        # ping is answered.
+        self._last_prune_at: float | None = None
 
     def register(self, registration: Mapping[str, Any]) -> None:
         """Create or refresh a producer registration."""
@@ -124,8 +131,6 @@ class EventSpool:
             )
             run.next_sequence = sequence + 1
             run.updated_at = utc_now()
-        if time.monotonic() - self._last_prune_at >= PRUNE_INTERVAL_SECONDS:
-            self.prune()
         return payload
 
     def pending_runs(self) -> list[dict[str, Any]]:
@@ -210,6 +215,22 @@ class EventSpool:
         with self._lock, self._session_factory() as session:
             return session.scalar(statement) is not None
 
+    def prune_if_due(self) -> None:
+        """Prune unless an attempt began less than ``PRUNE_INTERVAL_SECONDS`` ago.
+
+        The first call always prunes. A failed attempt still counts, so a spool
+        that another process keeps locked is not rescanned every worker tick.
+        """
+
+        now = time.monotonic()
+        if (
+            self._last_prune_at is not None
+            and now - self._last_prune_at < PRUNE_INTERVAL_SECONDS
+        ):
+            return
+        self._last_prune_at = now
+        self.prune()
+
     def prune(self) -> None:
         """Enforce the age and total-size retention limits."""
 
@@ -242,7 +263,6 @@ class EventSpool:
             )
             for run in expired_runs:
                 session.delete(run)
-        self._last_prune_at = time.monotonic()
 
     @staticmethod
     def _remove_oldest_bytes(session: Session, excess: int) -> None:

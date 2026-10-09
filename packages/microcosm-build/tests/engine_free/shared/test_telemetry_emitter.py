@@ -61,8 +61,8 @@ from microcosm.build.telemetry_sanitization import (
 def _recent_timestamp() -> str:
     """A stored-row timestamp inside the spool's retention window.
 
-    The spool prunes rows older than ``RETENTION_DAYS`` when it opens, so a
-    fixed calendar date in a migrated-spool fixture expires a week later.
+    The service's delivery worker prunes rows older than ``RETENTION_DAYS``,
+    so a fixed calendar date in a migrated-spool fixture expires a week later.
     """
 
     return (datetime.now(UTC) - timedelta(minutes=5)).isoformat()

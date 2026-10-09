@@ -35,11 +35,30 @@ def alembic_config(
 
 
 def upgrade_spool_database(engine: Engine) -> None:
-    """Apply every committed spool migration to an engine."""
+    """Bring a spool to the packaged head, one migrating process at a time.
 
-    with engine.begin() as connection:
-        with alembic_config(connection=connection) as config:
-            command.upgrade(config, _MIGRATION_TARGET)
+    A spool already at head is only read, so opening it takes no write lock.
+    Otherwise the whole upgrade, DDL and version stamp, runs in one
+    ``BEGIN IMMEDIATE`` transaction. Without it two services opening a new
+    spool at once interleave their DDL, and one fails with "table already
+    exists". A service that waits for that lock finds the spool at head when
+    it gets it, and Alembic then changes nothing.
+    """
+
+    with engine.connect() as connection:
+        current = MigrationContext.configure(connection).get_current_revision()
+    if current == migration_head_revision():
+        return
+    migration_engine = create_spool_engine(
+        engine.url.database,
+        immediate_transactions=True,
+    )
+    try:
+        with migration_engine.begin() as connection:
+            with alembic_config(connection=connection) as config:
+                command.upgrade(config, _MIGRATION_TARGET)
+    finally:
+        migration_engine.dispose()
 
 
 def current_database_revision(path: Path | str) -> str | None:

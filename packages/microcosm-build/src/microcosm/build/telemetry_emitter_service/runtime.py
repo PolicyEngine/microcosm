@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import socket
+import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,12 @@ from microcosm.build.telemetry_emitter_service.constants import (
     SOCKET_LISTEN_BACKLOG,
     UNSUPPORTED_ACTION_ERROR,
     WORKER_INTERVAL_SECONDS,
+    WORKER_STEP_WARNING,
+)
+from microcosm.build.telemetry_emitter_service.contention import (
+    describe_error,
+    is_transient_spool_error,
+    retry_spool_contention,
 )
 from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
@@ -86,6 +94,7 @@ class EmitterService:
         sampler: ProcessTreeSampler,
         heartbeat_seconds: float,
         drain_seconds: float = DEFAULT_DRAIN_SECONDS,
+        startup_deadline: float = -math.inf,
     ) -> None:
         self.socket_path = socket_path
         self.registration = dict(registration)
@@ -97,13 +106,20 @@ class EmitterService:
             heartbeat_seconds,
         )
         self.drain_seconds = max(0.0, drain_seconds)
+        # A time.monotonic() reading: registration retries spool lock
+        # contention until then. The default allows one attempt.
+        self.startup_deadline = startup_deadline
         self._stop = threading.Event()
         self._last_stage = STAGE_CREATED
+        self._reported_error_types: set[str] = set()
 
     def run(self) -> None:
         """Serve local messages until the client closes or exits."""
 
-        self.spool.register(self.registration)
+        retry_spool_contention(
+            lambda: self.spool.register(self.registration),
+            deadline=self.startup_deadline,
+        )
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.socket_path.unlink(missing_ok=True)
@@ -184,34 +200,87 @@ class EmitterService:
             raise ValueError(UNSUPPORTED_ACTION_ERROR)
 
     def _worker(self) -> None:
+        # A failed step is skipped for this tick only. The parent check below
+        # must keep running: it is the only thing that stops a service whose
+        # build died without closing it.
         next_heartbeat = time.monotonic() + self.heartbeat_seconds
         while not self._stop.wait(WORKER_INTERVAL_SECONDS):
             now = time.monotonic()
             # Sample every worker iteration so short-lived build children are
             # much less likely to disappear between stage and heartbeat events.
-            self.sampler.sample()
-            if now >= next_heartbeat:
-                self.spool.append(
-                    self.registration,
-                    _heartbeat_event(self._last_stage),
-                    resources=self.sampler.sample(),
-                )
+            self._attempt(self.sampler.sample)
+            # A heartbeat that fails stays due, so the next tick retries it.
+            if now >= next_heartbeat and self._attempt(self._append_heartbeat):
                 next_heartbeat = now + self.heartbeat_seconds
-            self.delivery.flush_once()
+            self._attempt(self.spool.prune_if_due)
+            self._attempt(self.delivery.flush_once)
             if not self.sampler.parent_alive():
-                self.spool.append(
-                    self.registration,
-                    _unexpected_exit_event(self._last_stage),
-                    resources=self.sampler.sample(),
-                )
+                self._attempt(self._append_unexpected_exit)
                 self._stop.set()
                 break
         self._drain()
 
+    def _append_heartbeat(self) -> None:
+        self.spool.append(
+            self.registration,
+            _heartbeat_event(self._last_stage),
+            resources=self.sampler.sample(),
+        )
+
+    def _append_unexpected_exit(self) -> None:
+        # This is the only record of a build that was killed, so it waits out
+        # lock contention for as long as the shutdown drain may take.
+        retry_spool_contention(
+            lambda: self.spool.append(
+                self.registration,
+                _unexpected_exit_event(self._last_stage),
+                resources=self.sampler.sample(),
+            ),
+            deadline=time.monotonic() + self.drain_seconds,
+            clock=time.monotonic,
+            sleep=time.sleep,
+        )
+
+    def _attempt(self, step: Callable[[], object]) -> bool:
+        """Run one worker step, reporting rather than raising its failure."""
+
+        try:
+            step()
+        except Exception as error:
+            self._report(error)
+            return False
+        return True
+
+    def _report(self, error: Exception) -> None:
+        # Lock contention clears by itself and the step runs again on a later
+        # tick, so it is not worth a line in the build's log. Anything else is
+        # reported once per error type.
+        if is_transient_spool_error(error):
+            return
+        error_type = type(error).__name__
+        if error_type in self._reported_error_types:
+            return
+        self._reported_error_types.add(error_type)
+        print(
+            WORKER_STEP_WARNING.format(
+                error_type=error_type,
+                error=describe_error(error),
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
     def _drain(self) -> None:
         deadline = time.monotonic() + self.drain_seconds
-        while self.spool.has_deliverable() and time.monotonic() < deadline:
-            if not self.delivery.flush_once():
+        while time.monotonic() < deadline:
+            progressed = False
+            try:
+                if not self.spool.has_deliverable():
+                    return
+                progressed = self.delivery.flush_once()
+            except Exception as error:
+                self._report(error)
+            if not progressed:
                 remaining = deadline - time.monotonic()
                 if remaining > 0:
                     time.sleep(min(DRAIN_RETRY_SECONDS, remaining))
