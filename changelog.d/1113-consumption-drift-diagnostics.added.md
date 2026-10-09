@@ -1,0 +1,1 @@
+UK calibration diagnostics report the stage-levelled consumption totals (electricity, gas, domestic energy, petrol, diesel and total consumption) and shares (gas-connected, fuel-buying, and fuel-car households without fuel) at design and final weights, in a report-only `consumption_drift` block (microcosm#1113).
