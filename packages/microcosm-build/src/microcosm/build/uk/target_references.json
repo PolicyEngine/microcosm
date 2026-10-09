@@ -374,7 +374,6 @@
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
-      "hmrc.salary_sacrifice.it_relief_total": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.nics_relief_employee": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.nics_relief_employer": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.users_above_cap": "hmrc.salary_sacrifice_pension_users",
@@ -703,7 +702,6 @@
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
-      "hmrc.salary_sacrifice.it_relief_total": "Income Tax relief total",
       "hmrc.salary_sacrifice.nics_relief_employee": "National Insurance contributions relief employee",
       "hmrc.salary_sacrifice.nics_relief_employer": "National Insurance contributions relief employer",
       "hmrc.salary_sacrifice.users_above_cap": "Users above cap",
@@ -45145,25 +45143,6 @@
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_total",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_income_tax_relief_total",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "hmrc/salary_sacrifice_it_relief_total",
-      "family": "hmrc_salary_sacrifice",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.salary_sacrifice.it_relief_total",
-        "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
     }
   ]
 }

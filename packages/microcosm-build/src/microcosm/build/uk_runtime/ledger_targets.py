@@ -789,6 +789,11 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
         # microcosm#1095 (María, 2026-10-09): OBR's cash NICs total sits beside
         # the accrued class rows it does not equal; the class rows are bound.
         "obr.ni_employee": ("obr.ni",),
+        # microcosm#1095 (María, 2026-10-09): the three Table 6.1 rate bands
+        # bind, and the Table 6.2 total sits beside the higher-rate band.
+        "hmrc.salary_sacrifice.it_relief_higher_rate": (
+            "hmrc.salary_sacrifice.it_relief_total",
+        ),
     }
 )
 _DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))

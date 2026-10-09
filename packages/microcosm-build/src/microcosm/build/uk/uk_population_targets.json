@@ -830,8 +830,7 @@
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
-      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
-      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
+      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1203,8 +1202,7 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
-      "dwp.hb.amount_pension_age",
-      "hmrc.salary_sacrifice.it_relief_total"
+      "dwp.hb.amount_pension_age"
     ]
   },
   "profile_parity": {
@@ -3081,16 +3079,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[0].threshold",
-            "at_or_below_parameter": "gov.hmrc.income_tax.rates.uk[1].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "basic"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the basic rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_basic_rate",
@@ -3123,16 +3127,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[1].threshold",
-            "at_or_below_parameter": "gov.hmrc.income_tax.rates.uk[2].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "higher"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the higher rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_higher_rate",
@@ -3165,15 +3175,22 @@
           "zeroed_input": "pension_contributions_via_salary_sacrifice",
           "folded_into": "employment_income",
           "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "band": {
-            "variable": "adjusted_net_income",
-            "under": "counterfactual",
-            "above_parameter": "gov.hmrc.income_tax.rates.uk[2].threshold"
+          "output_variable": "earned_taxable_income",
+          "allocation": {
+            "kind": "income_tax_rate_class",
+            "taxable_income": "earned_taxable_income",
+            "schedules": {
+              "rest_of_uk": "gov.hmrc.income_tax.rates.uk",
+              "scotland": "gov.hmrc.income_tax.rates.scotland.rates"
+            },
+            "schedule_flag": "pays_scottish_income_tax",
+            "basic_below_rate": 0.3,
+            "additional": "the schedule's top rate",
+            "rate_class": "additional"
           },
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Income-tax relief attributed to salary sacrifice, banded on counterfactual adjusted net income against the live parameter thresholds (compute/income.py:23-50)."
+          "notes": "HMRC Private pension statistics Table 6.1, 2024-25: income-tax relief on salary-sacrificed pension contributions at the additional rate (microcosm#1095, uk-data#533). One counterfactual simulation from the same frame at the calibration year returns the sacrifice to pay, as uk-data does, and the relief is the rise in tax on earned_taxable_income, bracket by bracket, under each person's rest-of-UK or Scottish schedule (pays_scottish_income_tax), read from the simulation's own fiscal-year parameters. A bracket taxed below 30% is basic, the schedule's top rate additional and the rest higher, so the Scottish advanced rate counts as higher; a contribution that straddles a boundary is relieved at each rate, and the personal allowance taper falls in the brackets the extra pay reaches. policyengine-uk puts the Scottish top-rate threshold at GBP 112,570 rather than the statutory 125,140 (pe-uk#2130), so it files some advanced-rate relief as additional. The three bands sum to the change in tax on earned income; the measure's receipt records the gap to the change in income_tax."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_it_relief_additional_rate",
@@ -26916,42 +26933,6 @@
       "value_operation": "calendar_year_window"
     },
     {
-      "target_id": "hmrc.salary_sacrifice.it_relief_total",
-      "family": "hmrc_salary_sacrifice",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.tax.salary_sacrifice.income_tax_relief"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
-          "kind": "input_substitution_counterfactual",
-          "zeroed_input": "pension_contributions_via_salary_sacrifice",
-          "folded_into": "employment_income",
-          "output_delta": "counterfactual_minus_baseline",
-          "output_variable": "income_tax",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions, all rates, as the rise in income tax when the sacrifice is returned to pay (one counterfactual simulation from the same frame at the calibration year, uk-data's recipe; microcosm#1069 c11, R7). income_tax carries the High Income Child Benefit charge and the annual-allowance charge, so the delta includes their response to the returned pay (measured on the c11 arm). The rate-band rows wait for a band test that reads after-allowance thresholds and the Scottish bands."
-        },
-        "axiom": {
-          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
-          "status": "pending",
-          "value_rule": "uk.tax.salary_sacrifice.income_tax_relief"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_income_tax_relief_total"
-      },
-      "category_id": "hmrc.salary_sacrifice_income_tax_relief",
-      "label": "Income Tax relief total"
-    },
-    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -30052,6 +30033,34 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:eccab3ee763d68bb782276a7"
       },
       "notes": "March 2026 OBR FY2025-26 total National Insurance contributions forecast (table 3.8 row 12), retained as diagnostic provenance beside the bound class rows obr.ni_employee, obr.ni_employer and obr.ni_self_employed (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops it). The engine's total_national_insurance is the sum of its class columns, and at the calendar-2025 window OBR's total sits about 1.8% above the three class rows: it is a cash total against accrued class rows, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries. Never insert it into the fitting registry."
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "attach_to_target": "hmrc.salary_sacrifice.it_relief_higher_rate",
+      "metadata_prefix": "salary_sacrifice_it_relief_total_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "tax_year",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "hmrc.salary_sacrifice.it_relief_total",
+        "ledger_selector": {
+          "source_name": "hmrc",
+          "source_concept": "hmrc.ss_income_tax_relief_total",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "hmrc/salary_sacrifice_it_relief_total",
+        "family": "hmrc_salary_sacrifice",
+        "period": 2024,
+        "metadata": {
+          "diagnostic_role": "all_rates_total_beside_bound_rate_bands"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:ab19a7f36038519a7f359742"
+      },
+      "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions at all rates (GBP 8.8bn), retained as diagnostic provenance beside the three bound rate bands of Table 6.1 (María's ruling of 2026-10-09, microcosm#1095). The bands carry the same relief by rate; binding the total as well would fit it twice. Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

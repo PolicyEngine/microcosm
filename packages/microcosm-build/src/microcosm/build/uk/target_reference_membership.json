@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1253,
-  "contract_target_count": 340,
-  "active_reference_count": 1232,
+  "candidate_count": 1252,
+  "contract_target_count": 339,
+  "active_reference_count": 1231,
   "status_counts": {
-    "active": 1232,
+    "active": 1231,
     "no_fact_at_or_before_period": 5,
     "signed_excluded": 16
   },
@@ -4071,10 +4071,6 @@
     "dwp.hb.amount_pension_age": {
       "geography_level": "country",
       "geography_id": "K03000001"
-    },
-    "hmrc.salary_sacrifice.it_relief_total": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
@@ -11044,11 +11040,6 @@
       "index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
       "factor": "1.21312442637997",
       "value_before_uprating": "522000000.0"
-    },
-    {
-      "name": "hmrc.salary_sacrifice.it_relief_total",
-      "from": "2024",
-      "to": "2025"
     }
   ],
   "targets": {
@@ -29186,21 +29177,6 @@
           "resolved_value": 7048818510.96767,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3631e3adc6a555d6845a1252"
-        }
-      ]
-    },
-    "hmrc.salary_sacrifice.it_relief_total": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "hmrc.salary_sacrifice.it_relief_total",
-          "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 8800000000.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ab19a7f36038519a7f359742"
         }
       ]
     }
