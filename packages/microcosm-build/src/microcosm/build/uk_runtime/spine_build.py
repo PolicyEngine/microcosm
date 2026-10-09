@@ -144,6 +144,7 @@ from microcosm.build.uk_runtime.pension_credit_take_up import (
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
+from microcosm.build.uk_runtime.rowwise_staging import close_run_blocked
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
@@ -928,23 +929,7 @@ def _close_failed_telemetry(
     """
     classified = classify_failure(error)
     if classified.block is not None and not rung_abort:
-        block = classified.block
-        if staging_bundle is not None and staging_bundle.status == "running":
-            try:
-                staging_bundle.block(
-                    phase=block.phase,
-                    blocking_gate_ids=list(block.blocking_gate_ids),
-                    blocking_failure_count=block.blocking_failure_count,
-                )
-                staging_bundle.validate_local_bundle()
-            except Exception:
-                pass
-        if emitter is not None and emitter.available:
-            emitter.block(
-                phase=block.phase,
-                blocking_gate_ids=list(block.blocking_gate_ids),
-                blocking_failure_count=block.blocking_failure_count,
-            )
+        close_run_blocked(staging_bundle, emitter, classified.block)
         return
     error_code, failure_class = (
         ("RUNG_ABORTED", "aborted")

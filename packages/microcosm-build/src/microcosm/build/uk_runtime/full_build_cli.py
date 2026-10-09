@@ -296,39 +296,62 @@ def _execution_counts(execution: Mapping[str, bool]) -> dict[str, int]:
     }
 
 
-def _graph_execution(args: argparse.Namespace, execution: Mapping[str, bool]) -> dict:
+#: How many earlier attempts of the same request the lineage names; the counts
+#: cover every attempt on the store.
+_EARLIER_ATTEMPTS_LIMIT = 20
+
+
+def _graph_execution(
+    args: argparse.Namespace, execution: Mapping[str, bool], *, bindings: Mapping
+) -> dict:
     """How this attempt ran its graph: the store, its counts, the attempts before.
 
     A resumed build reuses the stored results of earlier attempts on the same
     store; recording the store, the attempt directory, how many nodes were
-    reused rather than computed, and the earlier attempt directories (with the
-    Logbook and staging ids their request evidence carries) links the
-    attempt to the work it built on. It sits outside the run parameters, so
-    the candidate identity is unchanged.
+    reused rather than computed, and the earlier attempts that ran the same
+    request (their directories and the Logbook and staging ids their request
+    evidence carries, most recent first, at most ``_EARLIER_ATTEMPTS_LIMIT``)
+    links the attempt to the work it built on. Attempts of other requests on
+    the store are counted, not listed: a long-lived store holds many. The
+    block sits outside the run parameters, so the candidate identity is
+    unchanged.
     """
     attempt = Path(args.attempt_evidence)
-    earlier = []
-    siblings = attempt.parent.iterdir() if attempt.parent.is_dir() else ()
+    request = json.loads(canonical_json(bindings))
+    siblings = (
+        [path for path in attempt.parent.iterdir() if path.is_dir() and path != attempt]
+        if attempt.parent.is_dir()
+        else []
+    )
+    same_request: list[dict[str, object]] = []
     for directory in sorted(
-        (path for path in siblings if path.is_dir() and path != attempt),
+        siblings,
         key=lambda path: (path.stat().st_mtime_ns, path.name),
+        reverse=True,
     ):
-        entry: dict[str, object] = {"directory": str(directory)}
         try:
-            identity = json.loads((directory / "request.json").read_text()).get(
-                "attempt"
-            )
-        except (OSError, ValueError, AttributeError):
-            identity = None
+            recorded = json.loads((directory / "request.json").read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(recorded, Mapping):
+            continue
+        if {key: value for key, value in recorded.items() if key != "attempt"} != (
+            request
+        ):
+            continue
+        entry: dict[str, object] = {"directory": str(directory)}
+        identity = recorded.get("attempt")
         if isinstance(identity, Mapping):
             entry["build_id"] = identity.get("build_id")
             entry["run_id"] = identity.get("run_id")
-        earlier.append(entry)
+        same_request.append(entry)
     return {
         "graph_store": str(attempt.parent.parent),
         "attempt_directory": str(attempt),
         **_execution_counts(execution),
-        "earlier_attempts": earlier,
+        "earlier_attempts_on_store": len(siblings),
+        "earlier_attempts_same_request": len(same_request),
+        "earlier_attempts": same_request[:_EARLIER_ATTEMPTS_LIMIT],
     }
 
 
@@ -1558,7 +1581,7 @@ def _execute_full_build(
         # Refused before solving: a gate block at phase ``preflight``, recorded
         # the way the terminal battery's is, so no record reads it as a pass.
         preflight_rows, preflight_index = _graph_gate_rows(json.loads(preflight_bytes))
-        blocking = list(admission["enforced_blocking"]) or ["unidentified_gate"]
+        blocking = list(admission["enforced_blocking"])
         record["gate_rows"] = preflight_rows
         record["gate_statuses"] = gate_statuses({"gates": preflight_rows})
         record["gate_block"] = GateBlock.of("preflight", blocking)
@@ -1850,7 +1873,9 @@ def _execute_full_build(
         if local_report is not None
         else LOCAL_GATE_REPORT_ABSENCE,
     )
-    rowwise_manifest["execution"] = _graph_execution(args, execution)
+    rowwise_manifest["execution"] = _graph_execution(
+        args, execution, bindings=prepared.bindings
+    )
     materialize_bytes(
         json_text(rowwise_manifest).encode(), args.out / MANIFEST_FILENAME
     )
@@ -2369,8 +2394,7 @@ def _execute_national_build(
                 gate_id
                 for gate_id, row in gate_rows.items()
                 if row.get("status") not in {"passed", "not_applicable"}
-            ]
-            or ["unidentified_gate"],
+            ],
             blocking_failure_count=len(blocked.failures),
         )
         if state is not None:
@@ -2502,7 +2526,9 @@ def _execute_national_build(
         reported_paths=published,
         graph={"artifacts": graph_keys, "readback": readback},
     )
-    manifest_payload["execution"] = _graph_execution(args, execution)
+    manifest_payload["execution"] = _graph_execution(
+        args, execution, bindings=prepared.bindings
+    )
     materialize_bytes(json_text(manifest_payload).encode(), paths["manifest"])
     record["manifest"] = manifest_payload
     record["build_record"] = build_record
@@ -2654,6 +2680,7 @@ def _run_with_telemetry(
                     phase=classified.block.phase,
                     blocking_gate_ids=list(classified.block.blocking_gate_ids),
                     blocking_failure_count=classified.block.blocking_failure_count,
+                    gate_statuses=classified.block.gate_statuses,
                 )
             else:
                 emitter.fail(
@@ -2667,9 +2694,12 @@ def _run_with_telemetry(
             if status == 0:
                 emitter.complete()
             else:
+                # The same vocabulary as the attempt's own close-outs.
+                refused = classify_return(status, None)
                 emitter.fail(
                     RuntimeError(f"UK build returned exit status {status}."),
-                    failure_class="build_failure",
+                    failure_class=refused.failure_class,
+                    error_code=refused.error_code,
                 )
         return status
     finally:

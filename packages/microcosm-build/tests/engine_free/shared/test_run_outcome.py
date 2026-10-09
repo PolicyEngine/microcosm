@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.run_outcome import (
+    UNRECORDED_GATE_BLOCK,
     BuildRefusedError,
     GateBlock,
     RunOutcome,
@@ -21,9 +24,12 @@ from microcosm.graph.errors import NodeRejectedError
 class SpineGateBlockedError(ValueError):
     """A stand-in matched by name, as the country-agnostic classifier does."""
 
-    def __init__(self, phase: str, blocking_gate_ids: tuple[str, ...]) -> None:
+    def __init__(
+        self, phase: str, blocking_gate_ids: tuple[str, ...], report=None
+    ) -> None:
         self.phase = phase
         self.blocking_gate_ids = blocking_gate_ids
+        self.report = report
         super().__init__(f"Stored {phase} spine gates block downstream execution")
 
 
@@ -75,6 +81,13 @@ def test_a_spine_block_wrapped_by_the_graph_executor_is_still_blocked():
     [
         (
             KeyboardInterrupt(),
+            RunOutcome.INTERRUPTED,
+            "INTERRUPTED",
+            "interrupted",
+            "discarded",
+        ),
+        (
+            _wrapped(KeyboardInterrupt(), RuntimeError("cleanup after the interrupt")),
             RunOutcome.INTERRUPTED,
             "INTERRUPTED",
             "interrupted",
@@ -158,3 +171,56 @@ def test_a_gate_block_counts_at_least_one_failure():
         GateBlock.of("terminal", [], blocking_failure_count=0).blocking_failure_count
         == 1
     )
+
+
+def test_a_block_carries_the_gate_statuses_its_report_recorded(tmp_path):
+    """A raised refusal brings every gate's status along when its report can be
+    read: the battery's written report, or a spine refusal's in-memory one."""
+    report = tmp_path / "gates.json"
+    report.write_text(
+        json.dumps(
+            {"gates": {"gate_a": {"status": "failed"}, "gate_b": {"status": "passed"}}}
+        )
+    )
+    error = GateBatteryBlockedError(
+        "terminal", ["[gate_a] missed"], report, blocking_gate_ids=("gate_a",)
+    )
+    block = classify_failure(error).block
+    assert block.blocking_gate_ids == ("gate_a",)
+    assert block.gate_statuses == {"gate_a": "failed", "gate_b": "passed"}
+    outcomes = (
+        SimpleNamespace(
+            entry=SimpleNamespace(id="spine_gate"),
+            status=SimpleNamespace(value="failed"),
+        ),
+        SimpleNamespace(
+            entry=SimpleNamespace(id="other"), status=SimpleNamespace(value="passed")
+        ),
+    )
+    spine = SpineGateBlockedError(
+        "assembled",
+        ("spine_gate",),
+        report=SimpleNamespace(phase="assembled", outcomes=outcomes),
+    )
+    assert classify_failure(spine).block.gate_statuses == {
+        "spine_gate": "failed",
+        "other": "passed",
+    }
+
+
+def test_a_block_that_names_no_gate_keeps_its_count_and_no_placeholder():
+    error = GateBatteryBlockedError(
+        "assembled", ["two failures", "with no gate id"], Path("missing.json")
+    )
+    block = classify_failure(error).block
+    assert block == GateBlock("assembled", (), 2)
+    assert block.gate_statuses is None
+
+
+def test_an_unrecorded_gate_block_is_a_failed_run_with_its_own_class():
+    assert UNRECORDED_GATE_BLOCK.outcome is RunOutcome.FAILED
+    assert (UNRECORDED_GATE_BLOCK.error_code, UNRECORDED_GATE_BLOCK.failure_class) == (
+        "GATE_BLOCK_UNRECORDED",
+        "unrecorded_gate_block",
+    )
+    assert UNRECORDED_GATE_BLOCK.disposition == "failed"

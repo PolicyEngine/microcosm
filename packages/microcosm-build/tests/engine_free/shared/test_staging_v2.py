@@ -691,12 +691,50 @@ def test_blocked_run_closes_with_its_gate_phase(tmp_path):
         {"phase": "terminal", "blocking_gate_ids": [""]},
         {"phase": "../x", "blocking_gate_ids": ["uk_target_fit"]},
         {"phase": "terminal", "blocking_gate_ids": ["a"], "blocking_failure_count": 0},
+        {
+            "phase": "terminal",
+            "blocking_gate_ids": ["token"],
+            "gate_statuses": {"token": "failed"},
+        },
     ],
 )
 def test_block_refuses_an_empty_or_unsafe_block(tmp_path, kwargs):
     telemetry = _recorder(tmp_path)
     with pytest.raises(StagingContractError):
         telemetry.block(**kwargs)
+    # Refused before any state changed: the run is still running and can
+    # still close another way.
+    assert telemetry.status == "running"
+
+
+def test_a_refused_block_leaves_the_run_able_to_close_failed(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.stage("gate_battery", event_status="completed")
+    with pytest.raises(StagingContractError):
+        telemetry.block(
+            phase="terminal",
+            blocking_gate_ids=["token"],
+            gate_statuses={"token": "failed"},
+        )
+    telemetry.fail(
+        RuntimeError("the block could not be recorded"),
+        error_code="GATE_BLOCK_UNRECORDED",
+        failure_class="unrecorded_gate_block",
+    )
+    progress = telemetry.validate_local_bundle()["progress"]
+    assert progress["status"] == "failed" and progress["block"] is None
+    assert progress["failure"]["error_code"] == "GATE_BLOCK_UNRECORDED"
+
+
+def test_a_block_may_name_no_gate_when_it_counts_its_failures(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.block(phase="assembled", blocking_gate_ids=[], blocking_failure_count=3)
+    block = telemetry.validate_local_bundle()["progress"]["block"]
+    assert block == {
+        "phase": "assembled",
+        "blocking_failure_count": 3,
+        "blocking_gate_ids": [],
+    }
 
 
 def test_failure_class_is_recorded_and_checked(tmp_path):

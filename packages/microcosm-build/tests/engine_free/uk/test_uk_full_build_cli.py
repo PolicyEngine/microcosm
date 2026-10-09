@@ -357,6 +357,12 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert cold["nodes_total"] > 0 and cold["nodes_reused"] == 0
     assert cold["nodes_computed"] == cold["nodes_total"]
     assert cold["earlier_attempts"] == []
+    # An attempt of another request on the same store is counted, not listed.
+    attempts = Path(cold["attempt_directory"]).parent
+    (attempts / "unrelated").mkdir()
+    (attempts / "unrelated" / "request.json").write_text(
+        json.dumps({"schema": "other-request", "attempt": {"build_id": "x"}})
+    )
     for path in out.iterdir():
         if path.is_file():
             path.unlink()
@@ -376,9 +382,11 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     replay = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
     assert replay["nodes_reused"] > 0
     assert replay["nodes_total"] == replay["nodes_reused"] + replay["nodes_computed"]
-    assert [Path(item["directory"]).parent for item in replay["earlier_attempts"]] == [
-        Path(replay["attempt_directory"]).parent
+    assert [Path(item["directory"]) for item in replay["earlier_attempts"]] == [
+        Path(cold["attempt_directory"])
     ]
+    assert replay["earlier_attempts_on_store"] == 2
+    assert replay["earlier_attempts_same_request"] == 1
     assert replay["graph_store"] == cold["graph_store"]
     # The output names come from the dense posture and the FRS vintage.
     assert (out / f"{STEM}.h5").is_file()
@@ -1756,6 +1764,10 @@ def test_build_lifecycle_handles_returned_errors_and_exceptions(
     ]
     if outcome == "error":
         assert events[0]["message"] == str(error)
+    if outcome == 7:
+        # A non-zero return with no recorded block: the close-outs' vocabulary.
+        assert events[0]["details"]["error_code"] == "BUILD_REFUSED"
+        assert events[0]["details"]["failure_class"] == "refused"
     assert not emitter.available
 
 
@@ -1828,6 +1840,80 @@ def test_an_attempt_names_itself_and_reports_its_graph_reuse(tmp_path, monkeypat
     assert events[0]["details"] == {
         key: execution[key] for key in ("nodes_total", "nodes_reused", "nodes_computed")
     }
+
+
+def test_a_block_the_staging_contract_refuses_closes_both_destinations_failed(
+    tmp_path,
+):
+    """A gate block whose details the staging content policy rejects (a gate id
+    that reads as a sensitive key) must not leave the run ``running``: the
+    staging run and the hosted emitter both close ``failed`` with the
+    unrecorded-block class, and a recordable block still closes both ``blocked``
+    with the gate statuses."""
+    from microcosm.build.run_outcome import UNRECORDED_GATE_BLOCK, GateBlock
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    def bundle(name):
+        return StagingRunBundleWriterV2(
+            run_id=name,
+            country_code="GB",
+            operation_id="uk_full_build",
+            pipeline_id="uk_local_candidate",
+            pipeline_version="2026.10",
+            candidate_id=name,
+            local_dir=tmp_path / name,
+            release_id=None,
+            run_kind="smoke",
+            delivery_mode="local_only",
+            repo_id=None,
+        )
+
+    def emitter(name):
+        return FakeTelemetryEmitter(
+            TelemetryRun(
+                run_id=name,
+                country_code="GB",
+                pipeline="uk_local_candidate",
+                candidate_id=name,
+                producer_id="producer-a",
+            )
+        )
+
+    def run_events(fake):
+        return [event for event in fake.events if event["event_type"] == "run"]
+
+    refused_bundle, refused_emitter = bundle("refused"), emitter("refused")
+    rowwise_staging.close_run_blocked(
+        refused_bundle,
+        refused_emitter,
+        GateBlock.of("terminal", ["token"], gate_statuses={"token": "failed"}),
+    )
+    failure = refused_bundle.validate_local_bundle()["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        UNRECORDED_GATE_BLOCK.error_code,
+        UNRECORDED_GATE_BLOCK.failure_class,
+    )
+    events = run_events(refused_emitter)
+    assert [event["status"] for event in events] == ["failed"]
+    assert events[0]["details"]["error_code"] == UNRECORDED_GATE_BLOCK.error_code
+
+    blocked_bundle, blocked_emitter = bundle("blocked"), emitter("blocked")
+    rowwise_staging.close_run_blocked(
+        blocked_bundle,
+        blocked_emitter,
+        GateBlock.of(
+            "terminal",
+            ["uk_local_target_fit"],
+            gate_statuses={"uk_local_target_fit": "failed"},
+        ),
+    )
+    assert blocked_bundle.validate_local_bundle()["progress"]["status"] == "blocked"
+    events = run_events(blocked_emitter)
+    assert [event["status"] for event in events] == ["blocked"]
+    assert events[0]["details"]["gate_statuses"] == {"uk_local_target_fit": "failed"}
 
 
 def _only_staging_run(staging_dir: Path):

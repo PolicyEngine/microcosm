@@ -158,13 +158,17 @@ A run ends in one of three terminal statuses:
 
 - `completed`: the build finished and its gates passed;
 - `blocked` (version 3): the build reached a gate decision and the gates refused
-  the candidate. The run carries `block` (`phase`, `blocking_failure_count`,
-  `blocking_gate_ids`) and ends with a `blocked` event that also lists the gate
-  statuses. A dense build refused at the preflight gates is blocked at phase
-  `preflight`;
-- `failed`: the build raised. `failure` carries an `error_code` (`INTERRUPTED`,
-  `TERMINATED`, `OUT_OF_MEMORY`, `GRAPH_NODE_FAILED`, `BUILD_FAILED`, ...) and,
-  in version 3, a `failure_class`.
+  the candidate. The run carries `block` (`phase`; `blocking_failure_count`, at
+  least 1; `blocking_gate_ids`, empty when the refusal named no gate, never a
+  placeholder) and ends with a `blocked` event that also lists the gate statuses
+  when the refusing report could be read. A dense build refused at the preflight
+  gates is blocked at phase `preflight`. A block whose details the staging
+  content policy refuses closes the run `failed` with `GATE_BLOCK_UNRECORDED`
+  instead, so no run is left `running`;
+- `failed`: the build raised, or returned without a recorded block. `failure`
+  carries an `error_code` (`INTERRUPTED`, `TERMINATED`, `OUT_OF_MEMORY`,
+  `GRAPH_NODE_FAILED`, `BUILD_FAILED`, `BUILD_REFUSED`, `RUNG_ABORTED`,
+  `GATE_BLOCK_UNRECORDED`) and, in version 3, a `failure_class`.
 
 A stopped build is a failed run, not a running one. Ctrl-C closes it with
 `INTERRUPTED`; a SIGTERM (a supervisor, a budget stop, `kill`) closes it with

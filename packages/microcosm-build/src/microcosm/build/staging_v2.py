@@ -1112,7 +1112,13 @@ class StagingRunBundleWriterV2:
         gate_statuses: Mapping[str, str] | None = None,
     ) -> None:
         """Close the run as ``blocked``: it reached a gate decision and the gates
-        refused its candidate. Distinct from ``failed``, where the build raised."""
+        refused its candidate. Distinct from ``failed``, where the build raised.
+
+        ``blocking_gate_ids`` may be empty when the refusal named no gate; the
+        caller then gives ``blocking_failure_count``. Every check runs before
+        the run's state changes, so a refused block leaves the run ``running``
+        and the caller can still close it ``failed``.
+        """
 
         self._require_running("record a gate block")
         phase = _safe_identifier(phase, label="block phase")
@@ -1127,24 +1133,26 @@ class StagingRunBundleWriterV2:
             or any(not gate_id for gate_id in gate_ids)
         ):
             raise StagingContractError(
-                "A gate block needs at least one blocking failure and non-empty gate ids."
+                "A gate block needs at least one blocking failure, and every gate "
+                "id it names must be a non-empty string."
             )
-        self.status = "blocked"
-        self.current_stage = "blocked"
-        self.updated_at = self._clock()
-        self.message = f"The gates refused the candidate at {phase}."
-        self.block_details = {
+        block_details = {
             "phase": phase,
             "blocking_failure_count": int(count),
             "blocking_gate_ids": gate_ids,
         }
-        details: dict[str, Any] = dict(self.block_details)
+        details: dict[str, Any] = dict(block_details)
         if gate_statuses is not None:
             details["gate_statuses"] = {
                 str(gate_id): str(status) for gate_id, status in gate_statuses.items()
             }
         details = _jsonable(details)
         self._content_policy.validate_payload(details)
+        self.status = "blocked"
+        self.current_stage = "blocked"
+        self.updated_at = self._clock()
+        self.message = f"The gates refused the candidate at {phase}."
+        self.block_details = block_details
         self.details = details
         self._append_event(
             stage_id="blocked",

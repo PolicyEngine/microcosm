@@ -15,9 +15,11 @@ build's end onto all three, so they cannot disagree:
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+import json
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from microcosm.build.gate_battery import GateBatteryBlockedError
 
@@ -64,8 +66,13 @@ class GateBlock:
     """Which gate phase refused the candidate, and which gates."""
 
     phase: str
+    #: The gates that refused; empty when the raiser named none (the count
+    #: still says how many failures there were). Never a placeholder id.
     blocking_gate_ids: tuple[str, ...]
     blocking_failure_count: int
+    #: Every gate's status in the refusing report, when that report could be
+    #: read; ``None`` otherwise.
+    gate_statuses: Mapping[str, str] | None = None
 
     @classmethod
     def of(
@@ -74,6 +81,7 @@ class GateBlock:
         blocking_gate_ids: Sequence[str],
         *,
         blocking_failure_count: int | None = None,
+        gate_statuses: Mapping[str, str] | None = None,
     ) -> GateBlock:
         ids = tuple(str(gate_id) for gate_id in blocking_gate_ids)
         count = len(ids) if blocking_failure_count is None else blocking_failure_count
@@ -81,6 +89,11 @@ class GateBlock:
             phase=str(phase),
             blocking_gate_ids=ids,
             blocking_failure_count=max(1, int(count)),
+            gate_statuses=None
+            if gate_statuses is None
+            else {
+                str(gate_id): str(status) for gate_id, status in gate_statuses.items()
+            },
         )
 
 
@@ -98,6 +111,14 @@ class Classified:
         return logbook_disposition(self.outcome)
 
 
+#: A run whose gate block could not be recorded (the staging contract refused
+#: the block's details) closes ``failed`` with this code and class instead, so no
+#: path leaves a run ``running``.
+UNRECORDED_GATE_BLOCK = Classified(
+    RunOutcome.FAILED, "GATE_BLOCK_UNRECORDED", "unrecorded_gate_block"
+)
+
+
 def _cause_chain(error: BaseException) -> Iterator[BaseException]:
     seen: set[int] = set()
     current: BaseException | None = error
@@ -105,6 +126,37 @@ def _cause_chain(error: BaseException) -> Iterator[BaseException]:
         seen.add(id(current))
         yield current
         current = current.__cause__ or current.__context__
+
+
+def _written_gate_statuses(report_path: object) -> dict[str, str] | None:
+    """The gate statuses a battery wrote beside its block, if the file reads."""
+
+    try:
+        gates = json.loads(Path(report_path).read_text(encoding="utf-8")).get("gates")
+    except (OSError, TypeError, ValueError, AttributeError):
+        return None
+    if not isinstance(gates, Mapping):
+        return None
+    return {
+        str(gate_id): str(entry.get("status"))
+        for gate_id, entry in gates.items()
+        if isinstance(entry, Mapping)
+    }
+
+
+def _phase_report_gate_statuses(report: object) -> dict[str, str] | None:
+    """The gate statuses of an in-memory phase report (a spine refusal's)."""
+
+    outcomes = getattr(report, "outcomes", None)
+    if outcomes is None:
+        return None
+    try:
+        return {
+            str(outcome.entry.id): str(getattr(outcome.status, "value", outcome.status))
+            for outcome in outcomes
+        }
+    except AttributeError:
+        return None
 
 
 def _gate_block(error: BaseException) -> GateBlock | None:
@@ -119,17 +171,19 @@ def _gate_block(error: BaseException) -> GateBlock | None:
             )
             return GateBlock.of(
                 link.phase,
-                ids or ("unidentified_gate",),
+                ids,
                 blocking_failure_count=max(len(link.failures), len(ids), 1),
+                gate_statuses=_written_gate_statuses(link.report_path),
             )
         # SpineGateBlockedError lives in the UK runtime; match it structurally so
         # this module stays country-agnostic.
         if type(link).__name__ == "SpineGateBlockedError":
             ids = tuple(getattr(link, "blocking_gate_ids", ()) or ())
-            phase = getattr(link, "phase", None) or getattr(
-                getattr(link, "report", None), "phase", "spine"
+            report = getattr(link, "report", None)
+            phase = getattr(link, "phase", None) or getattr(report, "phase", "spine")
+            return GateBlock.of(
+                phase, ids, gate_statuses=_phase_report_gate_statuses(report)
             )
-            return GateBlock.of(phase, ids or ("unidentified_gate",))
     return None
 
 
@@ -142,8 +196,9 @@ def classify_failure(error: BaseException) -> Classified:
     for link in _cause_chain(error):
         if type(link).__name__ == "BuildTerminatedError":
             return Classified(RunOutcome.TERMINATED, "TERMINATED", "terminated")
-    if isinstance(error, KeyboardInterrupt):
-        return Classified(RunOutcome.INTERRUPTED, "INTERRUPTED", "interrupted")
+    for link in _cause_chain(error):
+        if isinstance(link, KeyboardInterrupt):
+            return Classified(RunOutcome.INTERRUPTED, "INTERRUPTED", "interrupted")
     if isinstance(error, BuildRefusedError):
         return Classified(RunOutcome.FAILED, "BUILD_REFUSED", "refused")
     for link in _cause_chain(error):

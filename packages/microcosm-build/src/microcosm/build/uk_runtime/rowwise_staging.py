@@ -22,7 +22,11 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from microcosm.build.run_outcome import GateBlock, classify_failure
+from microcosm.build.run_outcome import (
+    UNRECORDED_GATE_BLOCK,
+    GateBlock,
+    classify_failure,
+)
 from microcosm.build.staging_dataset import (
     StagedDatasetBundle,
     disabled_staged_dataset,
@@ -468,23 +472,48 @@ def block_staging_run_bundle(
     )
 
 
-def _close_blocked(
+def close_run_blocked(
     staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
     block: GateBlock,
     *,
-    gate_statuses: Mapping[str, str] | None,
-    read_back: bool,
+    gate_statuses: Mapping[str, str] | None = None,
+    read_back: bool = False,
 ) -> None:
+    """Close the staging run and the hosted emitter as ``blocked``, the same way.
+
+    The gate statuses come from the caller when it holds the report, else from
+    the block itself (a raised refusal whose report could be read). If the
+    staging contract refuses the block's details, the run must still reach a
+    terminal state: both destinations then close ``failed`` with
+    :data:`~microcosm.build.run_outcome.UNRECORDED_GATE_BLOCK`, so they cannot
+    disagree and no run is left ``running``.
+    """
+
+    statuses = gate_statuses if gate_statuses is not None else block.gate_statuses
+    refusal: StagingContractError | None = None
     if staging_bundle is not None and staging_bundle.status == "running":
         try:
             staging_bundle.block(
                 phase=block.phase,
                 blocking_gate_ids=list(block.blocking_gate_ids),
                 blocking_failure_count=block.blocking_failure_count,
-                gate_statuses=gate_statuses,
+                gate_statuses=statuses,
             )
         except StagingContractError as error:
-            _warn_telemetry("could not close the staging run as blocked", error)
+            refusal = error
+            _warn_telemetry(
+                "could not record the gate block; closing the staging run as failed",
+                error,
+            )
+            try:
+                staging_bundle.fail(
+                    error,
+                    error_code=UNRECORDED_GATE_BLOCK.error_code,
+                    failure_class=UNRECORDED_GATE_BLOCK.failure_class,
+                )
+            except StagingContractError as failure:
+                _warn_telemetry("could not close the staging run", failure)
         else:
             try:
                 if read_back:
@@ -494,13 +523,37 @@ def _close_blocked(
                     staging_bundle.validate_local_bundle()
                 except StagingContractError as error:
                     _warn_telemetry("the local staging bundle does not validate", error)
-    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-        _ACTIVE_EMITTER.block(
+    if emitter is None or not emitter.available:
+        return
+    if refusal is None:
+        emitter.block(
             phase=block.phase,
             blocking_gate_ids=list(block.blocking_gate_ids),
             blocking_failure_count=block.blocking_failure_count,
-            gate_statuses=gate_statuses,
+            gate_statuses=statuses,
         )
+    else:
+        emitter.fail(
+            refusal,
+            failure_class=UNRECORDED_GATE_BLOCK.failure_class,
+            error_code=UNRECORDED_GATE_BLOCK.error_code,
+        )
+
+
+def _close_blocked(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    block: GateBlock,
+    *,
+    gate_statuses: Mapping[str, str] | None,
+    read_back: bool,
+) -> None:
+    close_run_blocked(
+        staging_bundle,
+        _ACTIVE_EMITTER,
+        block,
+        gate_statuses=gate_statuses,
+        read_back=read_back,
+    )
 
 
 _fail_staging_run_bundle = fail_staging_run_bundle
