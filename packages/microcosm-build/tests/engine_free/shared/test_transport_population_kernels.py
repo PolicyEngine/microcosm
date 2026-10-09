@@ -214,7 +214,11 @@ def test_a1_a2_d2_create_contracts_on_a_synthetic_graph(tmp_path, mass):
 
 @PROPERTY
 @example(prose="Edited prose and citations.")
-@given(prose=st.text(alphabet="abcdefghijklmnopqrstuvwxyz .", max_size=35))
+# Stripped: a node description must be empty or carry non-whitespace text
+# (graph/decl.py), so a whitespace-only draw such as " " is not valid prose.
+@given(
+    prose=st.text(alphabet="abcdefghijklmnopqrstuvwxyz .", max_size=35).map(str.strip)
+)
 def test_a4_description_and_citation_change_no_key(tmp_path, prose):
     with TemporaryDirectory(dir=tmp_path) as temporary:
         root = Path(temporary)
