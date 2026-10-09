@@ -98,6 +98,18 @@ def _local_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: row["name"])
 
 
+def _national_reconciliation_summary(
+    receipt: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if receipt is None:
+        return None
+    return {
+        "band_bridges": receipt.get("band_bridges"),
+        "rows_moved_by_exact_signature": receipt.get("rows_moved_by_exact_signature"),
+        "cross_grain_groups": _group_summary(receipt.get("cross_grain") or {}),
+    }
+
+
 def _group_summary(cross_geography: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
@@ -146,6 +158,10 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
                 sorted(Counter(r["family"] for r in local).items())
             ),
         },
+        "uprating_holds": inputs.get("uprating_holds"),
+        "national_reconciliation": _national_reconciliation_summary(
+            inputs.get("national_reconciliation")
+        ),
         "uprating_holds_without_index": sorted(
             row["name"]
             for row in national

@@ -85,6 +85,13 @@ def prepared(monkeypatch):
         "reconcile_uk_national_registry",
         lambda registry: (registry, {"rows_moved_by_exact_signature": 0}),
     )
+    # Nor do they carry fact periods: the hold declarations (#1123) are
+    # checked against the real compile in test_uk_uprating_holds.
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
+    )
     monkeypatch.setattr(
         runtime,
         "apply_uk_calibration_measure_exclusions",
@@ -296,6 +303,29 @@ def test_the_bound_and_frozen_registers_are_the_reconciled_ones(
     national.to_json(path)
     with pytest.raises(ValueError, match="full national register differs"):
         _load(register_json=path)
+
+
+def test_holds_are_checked_on_the_full_compiled_and_local_registers(
+    prepared, monkeypatch
+):
+    national, approved, local, artifact, calls = prepared
+    seen = []
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: (
+            seen.append((kwargs["scope"], registry, kwargs["calibration_period"]))
+            or {"scope": kwargs["scope"]}
+        ),
+    )
+    result = _load()
+    # The full compiled register, not the approved one: a measure exclusion
+    # expires, and its target must re-enter already declared.
+    assert seen == [("national", national, 2024), ("local", local, 2024)]
+    assert result["uprating_holds"] == {
+        "national": {"scope": "national"},
+        "local": {"scope": "local"},
+    }
 
 
 def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):

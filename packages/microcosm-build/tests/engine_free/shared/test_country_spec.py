@@ -1002,6 +1002,7 @@ class TestUKCountryPackage:
             "nts_car_availability.json",
             "cross_grain_declarations.json",
             "target_doctrine_exceptions.json",
+            "uprating_holds.json",
         )
 
     def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
@@ -1129,6 +1130,7 @@ class TestExistingPackagesGeneralize:
             "nts_car_availability.json",
             "cross_grain_declarations.json",
             "target_doctrine_exceptions.json",
+            "uprating_holds.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:

@@ -40,6 +40,18 @@ from microcosm.build.cross_grain import (
 
 UK_CROSS_GRAIN_DECLARATIONS_RESOURCE = "cross_grain_declarations.json"
 UK_TARGET_DOCTRINE_EXCEPTIONS_RESOURCE = "target_doctrine_exceptions.json"
+UK_COVERAGE_VIOLATION_KINDS = frozenset(
+    (
+        "unknown_target",
+        "unknown_local_route",
+        "stale_local_route",
+        "local_target_without_control",
+        "stale_signature_incomplete",
+        "undeclared_signature_incomplete",
+        "malformed_relation",
+        "undeclared_overlap",
+    )
+)
 UK_LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
 _RELATION_KINDS = ("subset", "independent")
 _LOCAL_ROUTE_KINDS = ("no_higher_control",)
@@ -351,7 +363,13 @@ def assert_uk_cross_grain_coverage(
     """Refuse an undeclared or stale coverage gap; return the tolerated ones."""
 
     violations = uk_cross_grain_coverage_violations(contract, declarations)
-    tolerated_entries = (exceptions or load_uk_target_doctrine_exceptions())["entries"]
+    # The ledger also tolerates uprating holds (``undeclared_hold``), which
+    # ``uk_runtime.uprating_holds`` checks; coverage reads only its own kinds.
+    tolerated_entries = [
+        entry
+        for entry in (exceptions or load_uk_target_doctrine_exceptions())["entries"]
+        if entry["kind"] in UK_COVERAGE_VIOLATION_KINDS
+    ]
     tolerated = {(entry["kind"], entry["target_id"]) for entry in tolerated_entries}
     found = {(violation["kind"], violation["target_id"]) for violation in violations}
     untolerated = sorted(found - tolerated)

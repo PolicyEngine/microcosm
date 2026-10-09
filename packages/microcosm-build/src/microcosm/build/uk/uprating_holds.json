@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "description": "Declared reasons for UK targets bound at the 2025 calibration period from an older fact without an uprating index (microcosm#1123). Kinds: matched_period, in_year_snapshot, control_rescaled, reviewed_no_index. uk_runtime.uprating_holds refuses an undeclared, expired or stale hold at compile time; holds a later change of #1123 closes sit in target_doctrine_exceptions.json instead. approved_by/approved_on are left null until María signs each entry.",
+  "holds": [
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dfe.funded_childcare.early_learning_2_year_olds",
+        "dfe.funded_childcare.universal_only_children",
+        "dfe.funded_childcare.working_parent_children_2_to_4"
+      ],
+      "reason": "DfE funded early-education take-up counted in the January 2025 census: a count at a date inside the calibration year, not a lagged period.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dwp.benefit_cap.capped_households",
+        "dwp.benefit_cap.capped_households_1000_01_to_1100",
+        "dwp.benefit_cap.capped_households_100_01_to_200",
+        "dwp.benefit_cap.capped_households_1100_01_to_1200",
+        "dwp.benefit_cap.capped_households_1200_01_to_1300",
+        "dwp.benefit_cap.capped_households_1300_01_and_above",
+        "dwp.benefit_cap.capped_households_200_01_to_300",
+        "dwp.benefit_cap.capped_households_300_01_to_400",
+        "dwp.benefit_cap.capped_households_400_01_to_500",
+        "dwp.benefit_cap.capped_households_500_01_to_600",
+        "dwp.benefit_cap.capped_households_600_01_to_700",
+        "dwp.benefit_cap.capped_households_700_01_to_800",
+        "dwp.benefit_cap.capped_households_800_01_to_900",
+        "dwp.benefit_cap.capped_households_900_01_to_1000",
+        "dwp.benefit_cap.capped_households_up_to_100"
+      ],
+      "reason": "Households capped at November 2025 (DWP benefit cap statistics): a point-in-time stock inside the calibration year.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dwp.jsa_claimants"
+      ],
+      "reason": "New Style JSA claimants at August 2025: a point-in-time caseload inside the calibration year.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dwp.uc.payment_distribution_couple_no_children",
+        "dwp.uc.payment_distribution_couple_with_children",
+        "dwp.uc.payment_distribution_lone_parent",
+        "dwp.uc.payment_distribution_single",
+        "dwp.uc.scotland_households_child_under_1"
+      ],
+      "reason": "Universal Credit households by payment band and the Scottish under-one cell at December 2025: point-in-time distributions inside the calibration year (the caseload headline binds the calendar-2025 window).",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "dwp.uc.two_child_limit.children_affected",
+        "dwp.uc.two_child_limit.children_claimant_pip",
+        "dwp.uc.two_child_limit.children_disabled_child_element",
+        "dwp.uc.two_child_limit.children_in_3_children_households",
+        "dwp.uc.two_child_limit.children_in_4_children_households",
+        "dwp.uc.two_child_limit.children_in_5_children_households",
+        "dwp.uc.two_child_limit.children_in_6_plus_children_households",
+        "dwp.uc.two_child_limit.children_in_affected_households",
+        "dwp.uc.two_child_limit.households_3_children",
+        "dwp.uc.two_child_limit.households_4_children",
+        "dwp.uc.two_child_limit.households_5_children",
+        "dwp.uc.two_child_limit.households_6_plus_children",
+        "dwp.uc.two_child_limit.households_affected",
+        "dwp.uc.two_child_limit.households_claimant_pip",
+        "dwp.uc.two_child_limit.households_disabled_child_element"
+      ],
+      "reason": "DWP two-child-limit statistics count open claims in April 2025: a point-in-time population inside the calibration year.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "mhclg.council_tax_stock.band_a",
+        "mhclg.council_tax_stock.band_b",
+        "mhclg.council_tax_stock.band_c",
+        "mhclg.council_tax_stock.band_d",
+        "mhclg.council_tax_stock.band_e",
+        "mhclg.council_tax_stock.band_f",
+        "mhclg.council_tax_stock.band_g",
+        "mhclg.council_tax_stock.band_h",
+        "mhclg.council_tax_stock.total",
+        "scotgov.council_tax_stock.band_a",
+        "scotgov.council_tax_stock.band_b",
+        "scotgov.council_tax_stock.band_c",
+        "scotgov.council_tax_stock.band_d",
+        "scotgov.council_tax_stock.band_e",
+        "scotgov.council_tax_stock.band_f",
+        "scotgov.council_tax_stock.band_g",
+        "scotgov.council_tax_stock.band_h",
+        "scotgov.council_tax_stock.total"
+      ],
+      "reason": "Council-tax dwelling stock at the taxbase dates (England October 2025, Scotland September 2025): stocks counted inside the calibration year.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "hmrc.cgt.gains_by_age_band",
+        "hmrc.cgt.gains_by_gain_band",
+        "hmrc.cgt.gains_by_region",
+        "hmrc.cgt.gains_by_taxable_income_band",
+        "hmrc.cgt.gains_total",
+        "hmrc.cgt.liability_total",
+        "hmrc.cgt.residential_property_gains",
+        "hmrc.cgt.residential_property_taxpayers",
+        "hmrc.cgt.tax_by_age_band",
+        "hmrc.cgt.taxpayers_by_age_band",
+        "hmrc.cgt.taxpayers_by_gain_band",
+        "hmrc.cgt.taxpayers_by_region",
+        "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "hmrc.cgt.taxpayers_total"
+      ],
+      "reason": "The CGT rows are HMRC CGT statistics for tax year 2024-25, the latest outturn (27 August 2026); the binding measures them under the 2024-25 rules (measurement_period 2024, require_matching_fact_period). 2024-25 includes disposals brought forward ahead of the October 2024 rate change, so it is not projected forward; 2025-26 outturn is expected around August 2027.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-08-31"
+    },
+    {
+      "scope": "national",
+      "kind": "reviewed_no_index",
+      "target_ids": [
+        "dft.bus_net_support.england",
+        "dft.bus_net_support.london",
+        "nithc.public_transport_support",
+        "orr.rail_government_support",
+        "scotgov.bus.government_support",
+        "scotgov.bus.passenger_revenue",
+        "welshgov.bus.public_support"
+      ],
+      "reason": "Public transport support and revenue lines for financial year 2024-25, the latest outturn of each publisher (DfT BUS05 and ORR next in November 2026). Spending is set by policy, so no price or volume index carries it forward; held to outturn until the next edition. The England fare-receipts rows are the exception, carried by the BUS0415 fares index.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-01-31"
+    },
+    {
+      "scope": "local",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "mhclg.council_tax_stock.by_area.band_a",
+        "mhclg.council_tax_stock.by_area.band_b",
+        "mhclg.council_tax_stock.by_area.band_c",
+        "mhclg.council_tax_stock.by_area.band_d",
+        "mhclg.council_tax_stock.by_area.band_e",
+        "mhclg.council_tax_stock.by_area.band_f",
+        "mhclg.council_tax_stock.by_area.band_g",
+        "scotgov.council_tax_stock.by_area.band_a",
+        "scotgov.council_tax_stock.by_area.band_b",
+        "scotgov.council_tax_stock.by_area.band_c",
+        "scotgov.council_tax_stock.by_area.band_d",
+        "scotgov.council_tax_stock.by_area.band_e",
+        "scotgov.council_tax_stock.by_area.band_f",
+        "scotgov.council_tax_stock.by_area.band_g",
+        "scotgov.council_tax_stock.by_area.band_h"
+      ],
+      "reason": "Council-tax dwelling stock by authority at the taxbase dates (England October 2025, Scotland September 2025): stocks counted inside the calibration year.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "local",
+      "kind": "control_rescaled",
+      "target_ids": [
+        "ons.census.households",
+        "ons.tenure.owned_mortgage",
+        "ons.tenure.owned_outright",
+        "ons.tenure.private_rent",
+        "ons.tenure.social_rent"
+      ],
+      "reason": "Census 2021 (Scotland 2022) household and tenure cells: their level is set by the 2025 household control (the UK total, microcosm#887 A15/A17, and the nation controls once microcosm#1123 binds them), so only their census shares are held.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    }
+  ]
+}

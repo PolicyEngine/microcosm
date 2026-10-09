@@ -10,6 +10,7 @@ import pytest
 
 from microcosm.build.cross_grain import _measurement_signature
 from microcosm.build.uk_runtime.cross_grain_declarations import (
+    UK_COVERAGE_VIOLATION_KINDS,
     assert_uk_cross_grain_coverage,
     load_uk_cross_grain_declarations,
     load_uk_target_doctrine_exceptions,
@@ -42,8 +43,14 @@ def test_the_committed_contract_passes_the_coverage_check():
     ledger = {
         (entry["kind"], entry["target_id"])
         for entry in load_uk_target_doctrine_exceptions()["entries"]
+        if entry["kind"] in UK_COVERAGE_VIOLATION_KINDS
     }
     assert tolerated == ledger
+
+
+def test_every_ledger_entry_is_a_kind_one_check_reads():
+    kinds = {entry["kind"] for entry in load_uk_target_doctrine_exceptions()["entries"]}
+    assert kinds <= {*UK_COVERAGE_VIOLATION_KINDS, "undeclared_hold"}
 
 
 def test_every_tolerated_gap_names_the_change_that_closes_it():

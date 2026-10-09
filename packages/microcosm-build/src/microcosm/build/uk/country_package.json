@@ -446,6 +446,11 @@
       "path": "target_doctrine_exceptions.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "uprating_holds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

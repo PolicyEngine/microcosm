@@ -1059,12 +1059,20 @@ def compile_uk_local_target_registry(
             restamped,
         )
         _assert_local_fact_vintages(candidate_facts, restamped, rosters)
+        if restamped.uprating_index is not None and (
+            str(restamped.uprating_index) not in UK_UPRATING_APPLIERS
+        ):
+            raise ValueError(
+                f"UK local reference {restamped.name!r} declares uprating_index "
+                f"{restamped.uprating_index!r}, which no UK applier implements."
+            )
         try:
             registry = compile_ledger_target_references(
                 candidate_facts,
                 [restamped],
                 country="uk",
             )
+            registry = apply_declared_uk_uprating(restamped, registry)
         except ValueError as error:
             unsupported.append(
                 {

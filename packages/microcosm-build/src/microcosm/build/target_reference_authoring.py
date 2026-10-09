@@ -189,6 +189,10 @@ class AreaTargetReferenceAuthoringConfig:
     )
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
+    #: ``uprating_index -> applier``: an area target declaring an index is
+    #: uprated at authoring exactly as the runtime compile uprates it, so the
+    #: committed reference and the run manifest carry one value (#1123).
+    uprating_appliers: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
 
     def normalized_areas(self) -> dict[str, tuple[str, ...]]:
         """Return area rosters with duplicate ids removed in declared order."""
@@ -632,6 +636,16 @@ def author_area_target_references(
                     spec = registry.specs[0]
                     resolved_period = str(spec.metadata.get("ledger_fact_period", ""))
                     _apply_uprating_hold(row, resolved_period, config.target_period)
+                    uprating: dict[str, str] = {}
+                    if row.get("uprating_index") is not None:
+                        registry = _apply_declared_uprating(row, registry, config)
+                        applied = registry.specs[0]
+                        uprating = {
+                            "index": str(row["uprating_index"]),
+                            "factor": str(applied.metadata["uprating_factor"]),
+                            "value_before_uprating": str(spec.value),
+                        }
+                        spec = applied
                     if "uprating_from_period" in row:
                         uprating_holds.append(
                             {
@@ -641,6 +655,7 @@ def author_area_target_references(
                                 "geography_id": area_id,
                                 "from": str(row["uprating_from_period"]),
                                 "to": str(row["uprating_to_period"]),
+                                **uprating,
                             }
                         )
                     active_rows.append(row)
@@ -1128,6 +1143,12 @@ def _area_reference_row(
     assertion_policy = target.get("assertion_policy")
     if assertion_policy is not None:
         row["assertion_policy"] = assertion_policy
+    period_match_policy = target.get("period_match_policy")
+    if period_match_policy is not None:
+        row["period_match_policy"] = period_match_policy
+    uprating_index = target.get("uprating_index")
+    if uprating_index is not None:
+        row["uprating_index"] = str(uprating_index)
     value_operation = config.value_operation_by_target_id.get(target_id)
     if value_operation is not None and value_operation != "identity":
         row["value_operation"] = value_operation
@@ -1466,7 +1487,7 @@ def _signed_row_exclusion(
 def _apply_declared_uprating(
     row: Mapping[str, Any],
     registry: TargetRegistry,
-    config: TargetReferenceAuthoringConfig,
+    config: TargetReferenceAuthoringConfig | AreaTargetReferenceAuthoringConfig,
 ) -> TargetRegistry:
     """Apply the country's applier for the reference's declared ``uprating_index``.
 

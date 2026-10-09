@@ -117,6 +117,11 @@ def _patch_target_inputs(monkeypatch, registry):
         full_targets, "reconcile_uk_national_registry", lambda reg: (reg, {})
     )
     monkeypatch.setattr(
+        full_targets,
+        "assert_uk_uprating_holds_declared",
+        lambda reg, **kwargs: {"scope": kwargs["scope"]},
+    )
+    monkeypatch.setattr(
         full_targets, "_ledger_provenance", lambda artifact: {"artifact_id": "fixture"}
     )
     return artifact

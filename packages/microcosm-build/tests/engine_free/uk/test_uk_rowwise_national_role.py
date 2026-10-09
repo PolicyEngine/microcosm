@@ -171,6 +171,11 @@ def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None):
     )
     monkeypatch.setattr(
         full_targets,
+        "assert_uk_uprating_holds_declared",
+        lambda reg, **kwargs: {"scope": kwargs["scope"]},
+    )
+    monkeypatch.setattr(
+        full_targets,
         "_ledger_provenance",
         lambda artifact: {"artifact_id": "synthetic-national-fixture"},
     )
