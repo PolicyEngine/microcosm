@@ -48,6 +48,7 @@ from microcosm.build.telemetry_protocol import (
     LOCAL_MESSAGE_DELIMITER,
     LOCAL_SOCKET_READ_BYTES,
     MAX_LOCAL_MESSAGE_BYTES,
+    STAGE_BLOCKED,
     STAGE_COMPLETE,
     STAGE_CREATED,
     STAGE_FAILED,
@@ -182,6 +183,7 @@ class EmitterService:
                 raise ValueError(EVENT_OBJECT_ERROR)
             stage_id = event.get("stage_id")
             if isinstance(stage_id, str) and stage_id not in {
+                STAGE_BLOCKED,
                 STAGE_COMPLETE,
                 STAGE_FAILED,
             }:
