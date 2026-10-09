@@ -13,7 +13,9 @@ and date outputs. The default output stays as before.
 digest, the RuleSpec commit, the module and whole-root content digests, and the
 adapter configuration, so a RuleSpec edit re-keys every node that names it. It
 also pins the adapter, which then refuses to compile from a root whose bytes
-have moved. A git-checkout root must hold exactly the declared commit.
+have moved. A git checkout root must be clean, at the declared commit,
+contain no submodules, and have no tracked file flagged skip-worktree or
+assume-unchanged.
 `assert_no_relations` refuses relation-bearing modules.
 
 The new `simulate.rules_by_ref@1` kernel (`microcosm.frame.rules_kernels`) runs

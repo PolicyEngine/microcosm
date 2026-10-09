@@ -42,6 +42,7 @@ from microcosm.frame.concept_mapping import (
     RelationshipRole,
     Role,
     Scale,
+    ScaledSum,
     Share,
     Sum,
     TakeUpThreshold,
@@ -1137,7 +1138,7 @@ class TestTransforms:
 
 #: The transforms that do arithmetic on a year's amount, and so read annual
 #: flows only.
-_ARITHMETIC = (Scale, Sum, Share, Fraction)
+_ARITHMETIC = (Scale, Sum, ScaledSum, Share, Fraction)
 _NOT_FLOWS = tuple(
     basis for basis in TemporalBasis if basis is not TemporalBasis.ANNUAL_FLOW
 )
@@ -1153,8 +1154,8 @@ _F6_NOTE = "microcosm#1120 review F6 probe."
 def _passes_type_checks(kind: type, concept_id: str) -> bool:
     """Whether a ``kind`` binding accepts ``concept_id`` on all but its basis.
 
-    A scale needs a float; a sum, share or fraction needs an amount. These
-    are the binding checks that ran before the flow rule existed.
+    A scale needs a float; a sum, scaled sum, share or fraction needs an amount.
+    These are the binding checks that ran before the flow rule existed.
     """
     item = concept(concept_id)
     return item.dtype == "float" if kind is Scale else item.monetary is not None
@@ -1172,6 +1173,7 @@ _REFUSED_READS = tuple(
 _EXAMPLE_TRANSFORMS = {
     Scale: Scale(factor=1 / 52),
     Sum: Sum(),
+    ScaledSum: ScaledSum(factor=1 / 52),
     Share: Share(parameter="p"),
     Fraction: Fraction(parameter="f"),
 }
@@ -1179,9 +1181,9 @@ _EXAMPLE_TRANSFORMS = {
 
 def _arithmetic(kind: type):
     """Instances of the arithmetic transform ``kind``."""
-    if kind is Scale:
+    if kind in (Scale, ScaledSum):
         return st.floats(min_value=1e-3, max_value=1e3).map(
-            lambda factor: Scale(factor=factor)
+            lambda factor: kind(factor=factor)
         )
     if kind is Share:
         return st.builds(Share, parameter=_parameter_names, complement=st.booleans())
@@ -1236,17 +1238,17 @@ def _us_reading_the_stock(*bindings) -> dict:
 
 
 class TestArithmeticReadsAnnualFlows:
-    """A scale, sum, share or fraction reads annual flows only.
+    """A scale, sum, scaled sum, share or fraction reads annual flows only.
 
     microcosm#1120 added the first stock, ``liquid_financial_assets``. Its
     review (finding F6) bound the US donor's ``bank_account_assets`` to it,
     cleared it from ``unmapped``, and found that both ``Scale(1/52)`` and
     ``Sum(interest_income, liquid_financial_assets)`` validated. A stock has
     no weekly value and cannot be added to a year's income, so every scale,
-    sum, share or fraction binding now checks the declared temporal basis of
-    each concept it computes from. The household reference person that a
-    binding allocated to the reference unit also reads, to place its value,
-    is not an operand. Other transforms are outside the rule.
+    sum, scaled sum, share or fraction binding checks the declared temporal
+    basis of each concept it computes from. The household reference person
+    that a binding allocated to the reference unit also reads, to place its
+    value, is not an operand. Other transforms are outside the rule.
     """
 
     @PROPERTY
@@ -1272,7 +1274,7 @@ class TestArithmeticReadsAnnualFlows:
             and item.entity == refused.entity
         ]
         concepts = [refused.id]
-        if kind is Sum:
+        if kind in (Sum, ScaledSum):
             others = data.draw(
                 # Leave one flow out, to stand in for the refused concept below.
                 st.lists(
@@ -1306,9 +1308,9 @@ class TestArithmeticReadsAnnualFlows:
         self, kind, concept_id
     ) -> None:
         # Today: a scale of the stock, usual weekly hours or the take-up seed,
-        # and a sum, share or fraction of the stock.
+        # and a sum, scaled sum, share or fraction of the stock.
         concepts = (concept_id,)
-        if kind is Sum:
+        if kind in (Sum, ScaledSum):
             concepts = ("fact:person.interest_income", concept_id)
         with pytest.raises(ValueError, match=_refusal(kind, concept_id)):
             _binding(concepts=concepts, transform=_EXAMPLE_TRANSFORMS[kind])
@@ -1318,7 +1320,7 @@ class TestArithmeticReadsAnnualFlows:
     def test_redeclaring_any_operand_of_any_committed_arithmetic_binding_refuses_it(
         self,
     ) -> None:
-        # Exhaustive: every committed scale, sum, share and fraction binding,
+        # Exhaustive: every committed scale, sum, scaled sum, share and fraction,
         # every concept it computes from, and every temporal basis that is not
         # an annual flow. Changing only that concept's declared basis refuses
         # the binding, so the rule reads the declaration. Redeclaring a
@@ -1443,6 +1445,13 @@ class TestArithmeticReadsAnnualFlows:
                 )
             ],
             [
+                (
+                    "bank_account_assets",
+                    ("fact:person.interest_income", _LIQUID_ASSETS),
+                    ScaledSum(factor=1 / 52),
+                )
+            ],
+            [
                 ("bank_account_assets", (_LIQUID_ASSETS,), Share(parameter="p")),
                 (
                     "stock_assets",
@@ -1452,14 +1461,14 @@ class TestArithmeticReadsAnnualFlows:
             ],
             [("bank_account_assets", (_LIQUID_ASSETS,), Fraction(parameter="f"))],
         ],
-        ids=["scale", "sum", "share-pair", "fraction"],
+        ids=["scale", "sum", "scaled-sum", "share-pair", "fraction"],
     )
     def test_the_review_counterexamples_and_their_analogues_are_refused(
         self, bindings
     ) -> None:
         # The scale and the sum are F6's own; the share pair and the fraction
         # are the same edit through the other two transforms. Each validates
-        # if the stock is declared an annual flow.
+        # if the stock is declared an annual flow, including a scaled sum.
         engine_input, _, transform = bindings[0]
         refusal = _refusal(type(transform), _LIQUID_ASSETS, engine_input)
         with pytest.raises(ValueError, match=refusal):

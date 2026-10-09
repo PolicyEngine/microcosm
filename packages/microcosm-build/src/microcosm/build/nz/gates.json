@@ -1,7 +1,7 @@
 {
   "version": 2,
   "country": "nz",
-  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. Gates whose thresholds are D1 method-card items (MC15 fit tolerances, effective sample size, weight ratio) stay not_applicable with the reason 'awaiting D1'; macro_realism waits on packaged evidence and reviewed bands. Thresholds are never borrowed from Belgium, the US, the UK or Armenia and never set from a candidate. Active identity, reference, support, weights, nonzero, formula-ownership, and nonnegative gates fail closed.",
+  "policy": "New Zealand is greenfield and has no incumbent population, so parity, export_surface, and target_surface are absent. Public NZ facts and Treasury oracles govern the build. Gates whose thresholds are D1 method-card items (MC15 fit tolerances, effective sample size, weight ratio) stay not_applicable with the reason 'awaiting D1'; macro_realism waits on packaged evidence and reviewed bands. Donor support and release input coverage remain applicable and fail closed while their producers and checks are pending. Thresholds are never borrowed from Belgium, the US, the UK or Armenia and never set from a candidate. Active reference, profile, support, release-input-coverage, weights, nonzero, formula-ownership, and nonnegative gates fail closed.",
   "phases": [
     "terminal"
   ],
@@ -90,7 +90,31 @@
       "gate": "formula_owned_export",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "formula_owned_columns": [
+          "accommodation_supplement_cash_assets_within_limit",
+          "accommodation_supplement_maximum_weekly_rate",
+          "accommodation_supplement_non_beneficiary_income_reduction",
+          "accommodation_supplement_non_rate_entitlement_requirements",
+          "accommodation_supplement_other_funding_exclusion_not_applies",
+          "accommodation_supplement_rounded_weekly_payment",
+          "accommodation_supplement_social_housing_exclusion_not_applies",
+          "accommodation_supplement_weekly_amount_before_rounding",
+          "accommodation_supplement_weekly_qualifying_accommodation_costs",
+          "entitled_to_jobseeker_support",
+          "entitled_to_new_zealand_superannuation",
+          "entitled_to_sole_parent_support",
+          "entitled_to_supported_living_payment_caring",
+          "entitled_to_supported_living_payment_restricted_or_blind",
+          "family_tax_credit_prescribed_amount",
+          "jobseeker_support_gross_weekly_rate",
+          "jobseeker_support_net_weekly_payment",
+          "jobseeker_support_weekly_income_test_reduction",
+          "nz_super_weekly_amount_before_tax",
+          "sole_parent_support_net_weekly_payment",
+          "supported_living_payment_net_weekly_payment"
+        ]
+      },
       "evidence_absent_blocks": true,
       "notes": "No Axiom-derived rule output may persist as an input column and mask a baseline or reform calculation."
     },
@@ -99,7 +123,12 @@
       "gate": "nonnegative_columns",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "columns": [
+          "household_weight",
+          "age"
+        ]
+      },
       "evidence_absent_blocks": true,
       "notes": "The source manifest is authoritative for physically non-negative weights, counts, days, periods, care units, and currency inputs."
     },
@@ -108,7 +137,7 @@
       "gate": "weight_ess",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "not_applicable": "awaiting D1: the ex-ante NZ effective-sample-size floor (method card MC15) is not yet ruled, and no shared country-neutral evaluator binding exists yet.",
+      "not_applicable": "awaiting D1: the ex-ante NZ effective-sample-size floor (method card MC15) is not yet ruled.",
       "notes": "Activate before a candidate release; never set the threshold from the candidate to make it pass."
     },
     {
@@ -116,7 +145,7 @@
       "gate": "weight_ratio",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "not_applicable": "awaiting D1: the ex-ante NZ max-to-median weight-ratio threshold (method card MC15) is not yet ruled, and no shared country-neutral evaluator binding exists yet.",
+      "not_applicable": "awaiting D1: the ex-ante NZ max-to-median weight-ratio threshold (method card MC15) is not yet ruled.",
       "notes": "Activate before a candidate release; do not copy an empirical US, UK, Belgium, or Armenia fence."
     },
     {

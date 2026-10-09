@@ -32,6 +32,7 @@ from microcosm.frame.concept_mapping import (
     Recode,
     RelationshipRole,
     Scale,
+    ScaledSum,
     Share,
     Sum,
     TakeUpThreshold,
@@ -166,7 +167,13 @@ def expected_input_dtypes(binding: InputBinding) -> set[str]:
         return {"int"}
     if isinstance(
         transform,
-        Share | Fraction | Scale | Sum | Product | AllocateToReferencePerson,
+        Share
+        | Fraction
+        | Scale
+        | Sum
+        | ScaledSum
+        | Product
+        | AllocateToReferencePerson,
     ):
         return {"float"}
     if isinstance(transform, Recode):
