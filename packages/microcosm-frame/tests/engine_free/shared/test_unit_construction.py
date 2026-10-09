@@ -643,6 +643,21 @@ class TestIdRange:
         with pytest.raises(ValueError, match=re.escape(columns)):
             build_benefit_units(person, household, self.RULE)
 
+    @pytest.mark.parametrize("dtype", ["uint8", "UInt8", "int64"])
+    def test_a_narrow_unsigned_unit_household_counts_only_its_own(self, dtype) -> None:
+        # pandas reindexed household 261 against a uint8 unit column by
+        # casting it down to 5, so household 261 counted household 5's unit.
+        family = pd.DataFrame(
+            {
+                self.RULE.id_column: np.array([1], dtype=np.int64),
+                self.RULE.household_column: pd.array([5], dtype=dtype),
+                self.RULE.head_column: np.array([1], dtype=np.int64),
+            }
+        )
+        household = pd.DataFrame({"household_id": np.array([5, 261], dtype=np.int64)})
+        counts = units_per_household(household, family, self.RULE)
+        assert counts.tolist() == [1, 0]
+
     def test_an_unsigned_pointer_int64_cannot_hold_is_refused(self) -> None:
         # 2**64 - 1 names no person here, but cast to int64 it is -1, who is
         # a person here: the pair would have passed as partners.

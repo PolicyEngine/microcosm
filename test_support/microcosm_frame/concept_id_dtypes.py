@@ -1,16 +1,17 @@
-"""Concept frames whose id and pointer columns take every accepted integer dtype.
+"""Concept frames whose id and pointer columns take NumPy and nullable int dtypes.
 
 The concept-frame contract accepts ids and pointers of any integer dtype:
-NumPy or pandas nullable, signed or unsigned, any width. Matching ids across
-those dtypes is where values wrap or merge. A bare int64 cast turns
-``2**64 - 1`` into -1; pandas matches against a narrower unsigned index by
-casting the other side down to it (261 onto 5 for uint8); and it compares
-int64 with uint64 through float64, which merges ids above ``2**53``.
+NumPy, pandas nullable or Arrow-backed, signed or unsigned, any width; the
+strategy here draws the NumPy and nullable ones. Matching ids across those
+dtypes is where values wrap or merge. A bare int64 cast turns ``2**64 - 1``
+into -1; pandas matches against a narrower unsigned index by casting the
+other side down to it (261 onto 5 for uint8); and it compares int64 with
+uint64 through float64, which merges ids above ``2**53``.
 :func:`id_typed_frames` relabels a valid frame's ids onto values at those
 edges, may plant pointers on the values a wrap or a float64 rounding would
 collide with, and gives each id column a dtype drawn from those that hold its
-values. A consumer must then either refuse the frame or
-treat it exactly as the same ids typed int64.
+values. A consumer must then either refuse the frame or treat it exactly as
+the same ids typed int64.
 """
 
 # ruff: noqa: F401
@@ -51,7 +52,8 @@ _REQUIRED = {
 #: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
 UNSIGNED_64 = (np.dtype(np.uint64), pd.UInt64Dtype())
 
-#: Every integer dtype the contract accepts for an id, NumPy then nullable.
+#: The NumPy and pandas nullable integer dtypes, which the contract accepts
+#: for an id. Arrow-backed integers are accepted too but are not drawn here.
 ID_DTYPES = (
     *(np.dtype(f"{sign}int{bits}") for sign in ("", "u") for bits in (8, 16, 32, 64)),
     *(

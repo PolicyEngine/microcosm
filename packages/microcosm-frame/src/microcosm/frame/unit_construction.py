@@ -521,11 +521,14 @@ def units_per_household(
 ) -> pd.Series:
     """How many units each household holds, aligned to ``household``'s rows."""
 
-    counts = family[rule.household_column].value_counts()
+    # Both sides as int64: reindexing by ids pandas would cast down to a
+    # narrower unsigned unit column (household 261 onto 5 for uint8).
+    counts = pd.Series(
+        _int64_ids(family[rule.household_column], rule.household_column)
+    ).value_counts()
+    households = _int64_ids(household[_HOUSEHOLD_ID], f"household.{_HOUSEHOLD_ID}")
     return pd.Series(
-        counts.reindex(household[_HOUSEHOLD_ID].to_numpy(), fill_value=0)
-        .to_numpy()
-        .astype(np.int64),
+        counts.reindex(households, fill_value=0).to_numpy().astype(np.int64),
         index=household.index,
         name=f"n_{rule.entity}_units",
     )
