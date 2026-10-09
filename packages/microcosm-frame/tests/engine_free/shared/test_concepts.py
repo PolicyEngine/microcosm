@@ -6,6 +6,7 @@ satisfy, and that the frame validator catches each planted violation.
 """
 
 import json
+import re
 from dataclasses import replace
 
 import numpy as np
@@ -40,6 +41,12 @@ from microcosm.frame.concepts import (
     validate_concept_tables,
 )
 from test_support.microcosm_frame.concept_frames import concept_frames
+from test_support.microcosm_frame.concept_id_dtypes import (
+    WIDE_CASES,
+    id_typed_frames,
+    typed,
+    wide_id_frame,
+)
 from test_support.paths import paths_for
 
 PROPERTY = settings(max_examples=150, deadline=None)
@@ -752,6 +759,117 @@ class TestParentCycles:
             if item.code == "parent_cycle"
         )
         assert rows == _cycle_reference(parents, n)
+
+
+#: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
+UNSIGNED_64 = [np.dtype(np.uint64), pd.UInt64Dtype()]
+
+
+class TestIdDtypes:
+    """Ids and pointers of any accepted integer dtype are matched exactly.
+
+    Pointers are matched as int64. An unsigned id above ``2**63 - 1`` would
+    wrap (``2**64 - 1`` onto -1) and so is refused, by name; every other id
+    must validate exactly as the same values typed int64.
+    """
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    @pytest.mark.parametrize("value", [2**63, 2**64 - 1])
+    @pytest.mark.parametrize("case", sorted(WIDE_CASES))
+    def test_an_id_int64_cannot_hold_is_refused_by_column(
+        self, case, value, dtype
+    ) -> None:
+        tables, wide = wide_id_frame(case, value, dtype)
+        with pytest.raises(
+            ValueError, match=re.escape(f"{wide} hold unsigned ids above {2**63 - 1}")
+        ):
+            validate_concept_tables(tables)
+
+    def test_a_dangling_pointer_cannot_wrap_onto_person_minus_one(self) -> None:
+        # The microcosm#1122 review probe: read as int64, 2**64 - 1 is -1, so
+        # person 11's dangling partner pointer named person -1, who names 11
+        # back, and the frame validated clean.
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([-1, 11, 12, 13], dtype=np.int64),
+                "person_household_id": [1, 1, 1, 1],
+                "partner_person_id": pd.array(
+                    [11, 2**64 - 1, None, None], dtype="UInt64"
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": [1], "reference_person_id": pd.array([-1], dtype="Int64")}
+        )
+        with pytest.raises(ValueError, match=re.escape("['person.partner_person_id']")):
+            validate_concept_tables({"person": person, "household": household})
+
+    @pytest.mark.parametrize(
+        "dtype", ["uint8", "uint16", "uint32", "UInt8", "UInt16", "UInt32"]
+    )
+    def test_a_narrow_unsigned_id_cannot_catch_a_pointer_past_its_range(
+        self, dtype
+    ) -> None:
+        # pandas matched pointers against a narrower unsigned index by casting
+        # them down to it, so 5 + 2**8 named person 5 under uint8; the
+        # nullable dtypes raised a TypeError instead.
+        dtype = pd.api.types.pandas_dtype(dtype)
+        past = 5 + 2 ** (8 * dtype.itemsize)
+        person = pd.DataFrame(
+            {
+                "person_id": typed([5, 6], dtype),
+                "person_household_id": [1, 1],
+                "partner_person_id": pd.array([6, past], dtype="Int64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": [1],
+                "reference_person_id": pd.array([past], dtype="Int64"),
+            }
+        )
+        assert _violations({"person": person, "household": household}) == {
+            ("partner_person_id", "dangling"),
+            ("partner_person_id", "asymmetric"),
+            ("reference_person_id", "not_member"),
+        }
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    def test_ids_up_to_int64_max_are_kept_exactly(self, dtype) -> None:
+        top = 2**63 - 1
+        person = pd.DataFrame(
+            {
+                "person_id": typed([top, top - 1, top - 2], dtype),
+                "person_household_id": typed([top, top, top], dtype),
+                "partner_person_id": pd.array([top - 1, top, None], dtype="UInt64"),
+                "parent_1_person_id": pd.array([None, None, top], dtype="UInt64"),
+                "parent_2_person_id": pd.array([None, None, top - 1], dtype="UInt64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": typed([top], dtype),
+                "reference_person_id": pd.array([top], dtype="UInt64"),
+            }
+        )
+        tables = {"person": person, "household": household}
+        assert validate_concept_tables(tables) == ()
+        # Within float rounding of the others, top - 3 is still nobody.
+        person["partner_person_id"] = pd.array([top - 1, top, top - 3], dtype="UInt64")
+        assert _violations(tables) == {("partner_person_id", "dangling")}
+
+    @settings(max_examples=300, deadline=None)
+    @given(case=id_typed_frames())
+    def test_every_frame_is_refused_or_validates_as_its_int64_twin(self, case) -> None:
+        if case.wide:
+            with pytest.raises(
+                ValueError, match=re.escape(f"{case.wide} hold unsigned ids above")
+            ):
+                validate_concept_tables(case.tables)
+        else:
+            assert validate_concept_tables(case.tables) == validate_concept_tables(
+                case.twin
+            )
 
 
 class TestTransportSplit:

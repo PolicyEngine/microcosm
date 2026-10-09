@@ -1398,7 +1398,8 @@ def validate_concept_tables(
 
     Raises:
         ValueError: If a table or an id column is missing, ids are not unique,
-            or a person points at an unknown household.
+            a person points at an unknown household, or an unsigned id or
+            pointer exceeds ``2**63 - 1``: pointers are matched as int64.
     """
 
     person, household = _require_structure(tables)
@@ -1599,9 +1600,15 @@ def _check_column(item: Concept, values: pd.Series) -> list[ConceptViolation]:
 def _check_pointers(
     person: pd.DataFrame, household: pd.DataFrame
 ) -> list[ConceptViolation]:
+    # Ids and pointers are matched as int64, where an unsigned id above
+    # 2**63 - 1 would wrap (2**64 - 1 onto -1), so such ids are refused
+    # first. Every other id converts exactly. The person ids are widened
+    # too: pandas matches against a narrower unsigned index by casting the
+    # pointers down to it (261 onto 5 for uint8).
+    _require_int64_ids(person, household, "Pointer checks match")
     out: list[ConceptViolation] = []
-    ids = pd.Index(person[_PERSON_ID].to_numpy())
-    own_household = person[_PERSON_HOUSEHOLD_ID].to_numpy()
+    ids = pd.Index(person[_PERSON_ID].to_numpy(dtype=np.int64))
+    own_household = person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
     rows = np.arange(len(person))
 
     def add(
@@ -1711,7 +1718,7 @@ def _check_pointers(
         household["reference_person_id"]
     ):
         found, present = positions(household["reference_person_id"])
-        own = household[_HOUSEHOLD_ID].to_numpy()
+        own = household[_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
         member = (found >= 0) & (own_household[np.maximum(found, 0)] == own)
         add(
             "household",
@@ -1726,6 +1733,53 @@ def _check_pointers(
 def _is_integer_column(values: pd.Series) -> bool:
     # NumPy integer dtypes and pandas' nullable Int64 both report kind "i".
     return values.dtype.kind in "iu"
+
+
+#: The largest id a pointer can be matched by: ids are matched as int64.
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+#: Every column holding a person or household id, as (entity, column).
+_ID_COLUMNS = (
+    ("person", _PERSON_ID),
+    ("person", _PERSON_HOUSEHOLD_ID),
+    ("person", "partner_person_id"),
+    ("person", "parent_1_person_id"),
+    ("person", "parent_2_person_id"),
+    ("household", _HOUSEHOLD_ID),
+    ("household", "reference_person_id"),
+)
+
+
+def _exceeds_int64(values: pd.Series) -> bool:
+    """Whether an unsigned integer column holds an id int64 cannot hold."""
+
+    if values.dtype.kind != "u":
+        return False
+    present = values.dropna()
+    return len(present) > 0 and int(present.max()) > _INT64_MAX
+
+
+def _require_int64_ids(
+    person: pd.DataFrame, household: pd.DataFrame, what: str
+) -> None:
+    """Refuse a frame whose ids int64 cannot hold, naming every such column.
+
+    Only an unsigned id above ``2**63 - 1`` is refused; every other integer
+    id converts to int64 exactly. ``what`` starts the message, as in
+    "Encoding matches".
+    """
+
+    tables = {"person": person, "household": household}
+    wide = [
+        f"{entity}.{column}"
+        for entity, column in _ID_COLUMNS
+        if column in tables[entity].columns and _exceeds_int64(tables[entity][column])
+    ]
+    if wide:
+        raise ValueError(
+            f"{what} ids as int64, and {wide} hold unsigned ids above "
+            f"{_INT64_MAX}, which int64 cannot represent."
+        )
 
 
 def _parent_cycle_members(n_persons: int, parent_rows: list[np.ndarray]) -> int:

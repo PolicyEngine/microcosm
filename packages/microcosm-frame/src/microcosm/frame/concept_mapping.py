@@ -50,6 +50,7 @@ from microcosm.frame.concepts import (
     Unit,
     _parsing,
     _record_fields,
+    _require_int64_ids,
     _text_fields,
     concept,
     concept_schema_sha256,
@@ -1365,16 +1366,19 @@ class _Context:
     """A concept frame, with pointer lookups done by exact integer ids.
 
     Pointers are matched through row positions, never through float
-    arrays, so person ids beyond 2**53 resolve exactly.
+    arrays, so person ids beyond 2**53 resolve exactly. Ids are matched as
+    int64, so an unsigned id above 2**63 - 1, which would wrap (2**64 - 1
+    onto -1), is refused.
     """
 
     def __init__(self, person: pd.DataFrame, household: pd.DataFrame) -> None:
+        _require_int64_ids(person, household, "Encoding matches")
         self.person = person
         self.household = household
-        self._person_ids = pd.Index(person[_PERSON_ID].to_numpy())
+        self._person_ids = pd.Index(_matched_ids(person[_PERSON_ID]))
         self._household_rows = pd.Index(
-            household[_HOUSEHOLD_ID].to_numpy()
-        ).get_indexer(person[_PERSON_HOUSEHOLD_ID].to_numpy())
+            _matched_ids(household[_HOUSEHOLD_ID])
+        ).get_indexer(_matched_ids(person[_PERSON_HOUSEHOLD_ID]))
 
     def has(self, concept_id: str) -> bool:
         item = CONCEPT_BY_ID[concept_id]
@@ -1407,6 +1411,20 @@ class _Context:
         _require(self, _REFERENCE_PERSON, "Placing values on the reference person")
         by_household = self.person_rows(self.household["reference_person_id"])
         return by_household[self._household_rows]
+
+
+def _matched_ids(values: pd.Series) -> np.ndarray:
+    """Ids ready for exact matching: integers as int64, anything else as is.
+
+    pandas matches against a narrower unsigned index by casting the targets
+    down to it (261 onto 5 for uint8), so null-free integer ids are widened
+    first; :func:`_require_int64_ids` has already refused any int64 cannot
+    hold.
+    """
+
+    if values.dtype.kind in "iu" and not values.hasnans:
+        return values.to_numpy(dtype=np.int64)
+    return values.to_numpy()
 
 
 def _apply(

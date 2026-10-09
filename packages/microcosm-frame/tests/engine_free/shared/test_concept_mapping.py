@@ -63,6 +63,12 @@ from test_support.microcosm_frame.concept_frames import (
     concept_frames,
     shares,
 )
+from test_support.microcosm_frame.concept_id_dtypes import (
+    WIDE_CASES,
+    id_typed_frames,
+    typed,
+    wide_id_frame,
+)
 from test_support.microcosm_frame.concept_mappings import (
     COVERAGE_DOCS,
     concept_mappings,
@@ -529,6 +535,189 @@ class TestExecution:
                 for binding in mapping.bindings
                 if binding.group_rule is not None
             }
+
+
+#: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
+UNSIGNED_64 = [np.dtype(np.uint64), pd.UInt64Dtype()]
+
+
+def _pointer_mapping() -> ConceptMapping:
+    """One engine input per transform that resolves a pointer."""
+
+    bindings = [
+        _binding(
+            engine_input=role.value,
+            concepts=RelationshipRole(role=role).concepts,
+            transform=RelationshipRole(role=role),
+        )
+        for role in Role
+    ]
+    bindings.append(
+        _binding(
+            engine_input="children", concepts=_PARENTS, transform=CoresidentChildCount()
+        )
+    )
+    bindings.append(
+        _binding(
+            engine_input="rent_paid",
+            concepts=("fact:household.rent",),
+            transform=AllocateToReferencePerson(),
+        )
+    )
+    return _mapping(bindings)
+
+
+def _assert_same_encoding(actual, expected) -> None:
+    assert actual.keys() == expected.keys()
+    for entity, table in expected.items():
+        pd.testing.assert_frame_equal(actual[entity], table, check_dtype=False)
+
+
+def _as_int64(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """The same frame with every integer id and pointer typed int64."""
+
+    out = {entity: table.copy() for entity, table in tables.items()}
+    for entity, column in (
+        ("person", "person_id"),
+        ("person", "person_household_id"),
+        ("household", "household_id"),
+    ):
+        out[entity][column] = out[entity][column].astype(np.int64)
+    for entity, column in (
+        ("person", "partner_person_id"),
+        ("person", "parent_1_person_id"),
+        ("person", "parent_2_person_id"),
+        ("household", "reference_person_id"),
+    ):
+        if column in out[entity].columns:
+            out[entity][column] = out[entity][column].astype("Int64")
+    return out
+
+
+class TestIdDtypes:
+    """Encoding matches ids of any accepted integer dtype exactly.
+
+    Pointers are matched as int64. An unsigned id above ``2**63 - 1`` would
+    wrap (``2**64 - 1`` onto -1) and so is refused, by name; every other id
+    must encode exactly as the same values typed int64.
+    """
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    @pytest.mark.parametrize("value", [2**63, 2**64 - 1])
+    @pytest.mark.parametrize("case", sorted(WIDE_CASES))
+    def test_an_id_int64_cannot_hold_is_refused_by_column(
+        self, case, value, dtype
+    ) -> None:
+        tables, wide = wide_id_frame(case, value, dtype)
+        with pytest.raises(
+            ValueError, match=re.escape(f"{wide} hold unsigned ids above {2**63 - 1}")
+        ):
+            _pointer_mapping().encode(tables)
+
+    def test_a_dangling_pointer_cannot_wrap_onto_person_minus_one(self) -> None:
+        # Read as int64, 2**64 - 1 is -1: reference person 11's dangling
+        # partner pointer made person -1 the reference person's partner.
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([-1, 11, 12, 13], dtype=np.int64),
+                "person_household_id": [1, 1, 1, 1],
+                "partner_person_id": pd.array(
+                    [None, 2**64 - 1, None, None], dtype="UInt64"
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": [1], "reference_person_id": pd.array([11], dtype="Int64")}
+        )
+        with pytest.raises(ValueError, match=re.escape("['person.partner_person_id']")):
+            _pointer_mapping().encode({"person": person, "household": household})
+
+    @pytest.mark.parametrize(
+        "dtype", ["uint8", "uint16", "uint32", "UInt8", "UInt16", "UInt32"]
+    )
+    def test_a_narrow_unsigned_id_cannot_catch_a_pointer_past_its_range(
+        self, dtype
+    ) -> None:
+        # pandas matched against a narrower unsigned index by casting the
+        # other side down to it, so 5 + 2**8 named person 5 under uint8, and
+        # household 1 + 2**8 was household 1; the nullable dtypes raised a
+        # TypeError instead.
+        dtype = pd.api.types.pandas_dtype(dtype)
+        span = 2 ** (8 * dtype.itemsize)
+        person = pd.DataFrame(
+            {
+                "person_id": typed([5, 6, 7, 8], dtype),
+                "person_household_id": np.array([1, 1, 1, 1 + span], dtype=np.int64),
+                "partner_person_id": pd.array([6, 5, None, 5], dtype="Int64"),
+                "parent_1_person_id": pd.array(
+                    [None, None, 5 + span, None], dtype="Int64"
+                ),
+                "parent_2_person_id": pd.array([None] * 4, dtype="Int64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": typed([1, 2], dtype),
+                "reference_person_id": pd.array([5 + span, 8], dtype="Int64"),
+                "rent": [100.0, 200.0],
+            }
+        )
+        tables = {"person": person, "household": household}
+        mapping = _pointer_mapping()
+        encoded = mapping.encode(tables).tables
+        _assert_same_encoding(encoded, mapping.encode(_as_int64(tables)).tables)
+        # Person 7's parent and the reference person of household 1 are nobody.
+        assert encoded["person"]["children"].tolist() == [0, 0, 0, 0]
+        assert encoded["person"]["reference_person_partner"].tolist() == [False] * 4
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    def test_ids_up_to_int64_max_are_kept_exactly(self, dtype) -> None:
+        top = 2**63 - 1
+        person = pd.DataFrame(
+            {
+                "person_id": typed([top, top - 1, top - 2], dtype),
+                "person_household_id": typed([top, top, top], dtype),
+                "partner_person_id": pd.array([top - 1, top, None], dtype="UInt64"),
+                "parent_1_person_id": pd.array([None, None, top], dtype="UInt64"),
+                "parent_2_person_id": pd.array([None, None, top - 1], dtype="UInt64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": typed([top], dtype),
+                "reference_person_id": pd.array([top], dtype="UInt64"),
+                "rent": [100.0],
+            }
+        )
+        out = _pointer_mapping().encode({"person": person, "household": household})
+        flags = out.tables["person"]
+        assert flags["reference_person"].tolist() == [True, False, False]
+        assert flags["reference_person_partner"].tolist() == [False, True, False]
+        assert flags["children"].tolist() == [1, 1, 0]
+        assert flags["rent_paid"].tolist() == [100.0, 0.0, 0.0]
+        assert out.tables["person"]["person_id"].tolist() == [top, top - 1, top - 2]
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        name=st.sampled_from([*sorted(MAPPINGS), "pointer transforms"]),
+        case=id_typed_frames(dangling_households=True),
+        data=st.data(),
+    )
+    def test_every_frame_is_refused_or_encodes_as_its_int64_twin(
+        self, name, case, data
+    ) -> None:
+        mapping = _pointer_mapping() if name == "pointer transforms" else MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        if case.wide:
+            with pytest.raises(
+                ValueError, match=re.escape(f"{case.wide} hold unsigned ids above")
+            ):
+                mapping.encode(case.tables, **parameters)
+            return
+        _assert_same_encoding(
+            mapping.encode(case.tables, **parameters).tables,
+            mapping.encode(case.twin, **parameters).tables,
+        )
 
 
 class TestDecodeGuards:
