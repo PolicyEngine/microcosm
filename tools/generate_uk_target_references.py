@@ -44,6 +44,7 @@ UK_GEOGRAPHY_IDS = {
 POLICYENGINE_BINDING_KEYS = frozenset(
     {
         "affected_flag_variable",
+        "allocation",
         "band",
         "band_filter_dimension",
         "band_period_factor",
