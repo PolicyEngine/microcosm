@@ -2072,6 +2072,29 @@
         "full_time_education_through_age"
        ]
       },
+      "looked_after_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "foster_child_code": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "foster_parent_code": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "below_age": {
+         "type": "integer",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "foster_child_code",
+        "foster_parent_code",
+        "below_age"
+       ]
+      },
       "one_person_age_split": {
        "type": "integer",
        "minimum": 0
@@ -2145,6 +2168,7 @@
       "head_label",
       "family_link_codes",
       "dependent_child",
+      "looked_after_child",
       "one_person_age_split",
       "family_role_values",
       "household_type_values",
