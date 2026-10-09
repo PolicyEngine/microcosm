@@ -51,9 +51,9 @@ service. It reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. Every build on a host shares one local
 event spool; a service that finds it locked by another process keeps retrying
-for as long as the build waits for it to become ready, and one that still
-cannot register prints a single warning line, without a traceback, before the
-build continues without hosted telemetry. This live event path is independent
+until shortly before the build stops waiting for it, and one that still cannot
+register prints a single warning line, without a traceback, before the build
+continues without hosted telemetry. This live event path is independent
 of the staging run files described below.
 
 US fiscal refresh builds also write pre-release staging run files **by

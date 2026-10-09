@@ -45,16 +45,16 @@ def upgrade_spool_database(
 ) -> None:
     """Bring a spool to the packaged head, one migrating process at a time.
 
-    A spool already at head is only read, so opening it takes no write lock;
-    neither does refusing one stamped with a revision this checkout's history
-    does not contain, such as a later migration from a newer checkout sharing
-    the spool. Otherwise the
-    whole upgrade, DDL and version stamp, runs in one ``BEGIN IMMEDIATE``
-    transaction whose statements each wait at most ``busy_timeout_seconds``
-    for another process's lock. Without that transaction two services opening
-    a new spool at once interleave their DDL, and one fails with "table
-    already exists". A service that waits for the lock finds the spool at head
-    when it gets it, and Alembic then changes nothing.
+    A spool already at head is only read, so opening it takes no write lock.
+    Neither does refusing one stamped with a revision missing from this
+    checkout's history, such as a later migration from a newer checkout that
+    shares the spool. Otherwise the whole upgrade, DDL and version stamp, runs
+    in one ``BEGIN IMMEDIATE`` transaction whose statements each wait at most
+    ``busy_timeout_seconds`` for another process's lock. Without that
+    transaction two services opening a new spool at once interleave their DDL,
+    and one fails with "table already exists". A service that waits for the
+    lock finds the spool at head when it gets it, and Alembic then changes
+    nothing.
     """
 
     with engine.connect() as connection:
