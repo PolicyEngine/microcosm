@@ -7,12 +7,10 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "PolicyEngine" }]
 dependencies = [
-    "alembic>=1.13.3,<2",
     "numpy>=1.26",
     "pandas>=2",
     "scipy>=1.13",
     "huggingface-hub>=0.20",
-    "httpx>=0.27,<1",
     "microcosm-frame>=0.1,<0.2",
     "microcosm-graph>=0.1,<0.2",
     "microcosm-fit>=0.1,<0.2",
@@ -26,7 +24,9 @@ dependencies = [
     "pyyaml>=6",
     "jsonschema>=4.23,<5",
     "referencing>=0.35,<1",
-    "sqlalchemy>=2,<3",
+    "microcosm-provider-client==0.1.0",
+    "microcosm-provider-telemetry==0.1.0",
+    "microcosm-provider-orrery==0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -51,7 +51,6 @@ us = [
 uk = ["policyengine-uk>=2.122.2", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
 
 [project.scripts]
-microcosm-publish-graph = "microcosm.build.graph_publication_cli:main"
 microcosm-build-uk = "microcosm.build.uk_runtime.full_build_cli:main"
 microcosm-export-us-l0-refit-h5 = "microcosm.build.us_runtime.l0_refit_export:main"
 
@@ -84,3 +83,8 @@ microcosm-fit = { workspace = true }
 microcosm-calibrate = { workspace = true }
 microcosm-diagnostics = { workspace = true }
 microcosm-data = { workspace = true }
+# Draft-only source pins. Replace with published 0.1.0 distributions before merge.
+microcosm-provider-client = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "06e47847983ee67ccdb6a596062251322d07f793", subdirectory = "packages/provider-client" }
+microcosm-provider-core = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "06e47847983ee67ccdb6a596062251322d07f793", subdirectory = "packages/provider-core" }
+microcosm-provider-telemetry = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "06e47847983ee67ccdb6a596062251322d07f793", subdirectory = "packages/provider-telemetry" }
+microcosm-provider-orrery = { git = "https://github.com/PolicyEngine/microcosm-emitter", rev = "06e47847983ee67ccdb6a596062251322d07f793", subdirectory = "packages/provider-orrery" }

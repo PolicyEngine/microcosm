@@ -211,6 +211,24 @@ def test_failure_evidence_error_does_not_replace_the_build_error(
     )
 
 
+def test_no_emitter_delegates_publication_without_a_run_id(tmp_path, monkeypatch):
+    args = fixture(tmp_path)
+    args.publish_orrery = True
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
+    calls = []
+
+    def publish(directory, inventory, **options):
+        assert "run_id" not in inventory
+        assert options == {"wait_seconds": 0}
+        calls.append(directory)
+        return {"status": "pending", "error_code": "credential_missing"}
+
+    monkeypatch.setattr(orrery_publication, "publish_graph", publish)
+    receipt = orrery_publication.finalize_graph(args, manifest=None).receipt
+    assert receipt["status"] == "pending"
+    assert calls == [args.attempt_evidence / "orrery-publication"]
+
+
 @pytest.mark.parametrize(
     "explicit,local,disabled,expected",
     [
