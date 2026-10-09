@@ -235,6 +235,12 @@ class CollectorDelivery:
             if claim is None:
                 continue
             with claim:
+                # The list was read before this pass's requests, which can
+                # take seconds. Meanwhile a run's own service may have made it
+                # local-only and exited, freeing its lease. Only now, holding
+                # the run, is its state settled.
+                if not self.spool.run_has_deliverable(*_run(registration)):
+                    continue
                 if self._deliver(registration):
                     made_progress = True
         return made_progress

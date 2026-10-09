@@ -8,7 +8,9 @@ exchange refuses a non-member with 403 and a bad token with 401; the first
 Hugging Face user to register a run owns it and anyone else gets 403; an
 unknown run's events get 404, and a batch the collector cannot accept 422.
 
-Invariants (each checked below, the first three for any interleaving):
+Invariants (each checked below; the first four also after every step of a
+property test that runs services in any order and lets one run while
+another's collector request is in flight):
 
 - No service makes another producer's run local-only because of its own
   credential (missing, refused, or not the run's owner). Another producer's
@@ -18,6 +20,8 @@ Invariants (each checked below, the first three for any interleaving):
 - A run goes local-only only right after a collector answer (or, for a missing
   credential, the absence of one) that justifies it, and a refused credential
   is exchanged once.
+- Local-only is final: no request about a run reaches the collector after it
+  goes local-only, even from a service that listed the run before.
 - Once every service has gone, a run left pending is delivered in full by a
   service whose credential owns it.
 """
@@ -32,6 +36,7 @@ import sys
 import textwrap
 import threading
 import time
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -43,7 +48,7 @@ from unittest import mock
 from urllib.parse import urlsplit
 
 import pytest
-from hypothesis import HealthCheck, event, given, settings
+from hypothesis import HealthCheck, event, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
@@ -106,8 +111,13 @@ class FakeCollector:
         self.requests: list[tuple[Run, str, Run | None, int]] = []
         # (caller's run, Hugging Face token) for every refused exchange
         self.refused: list[tuple[Run, str]] = []
+        # Runs once, while the next request is in flight.
+        self.during_next_request: Callable[[], None] | None = None
 
     def post(self, caller: Run, url: str, payload, token: str) -> tuple[int, dict]:
+        if self.during_next_request is not None:
+            during, self.during_next_request = self.during_next_request, None
+            during()
         path = urlsplit(url).path
         if path == TOKEN_EXCHANGE_PATH:
             if not token.startswith(MEMBER):
@@ -181,8 +191,9 @@ class Host:
         self.spool_path = directory / "events.sqlite3"
         self.collector = collector
         self.producers: list[Producer] = []
-        # (caller's run, run made local-only, reason, caller's login then)
-        self.local_only: list[tuple[Run, Run, str, str | None]] = []
+        # (caller's run, run made local-only, reason, caller's login then,
+        # number of collector requests by then)
+        self.local_only: list[tuple[Run, Run, str, str | None, int]] = []
         # Requests a service sent about another producer's run while it lived.
         self.intrusions: list[tuple[Run, str, Run]] = []
 
@@ -200,7 +211,13 @@ class Host:
 
         def recorded(run_id: str, producer_id: str, reason: str) -> None:
             self.local_only.append(
-                (producer.run, (run_id, producer_id), reason, producer.credential)
+                (
+                    producer.run,
+                    (run_id, producer_id),
+                    reason,
+                    producer.credential,
+                    len(self.collector.requests),
+                )
             )
             make_local_only(run_id, producer_id, reason)
 
@@ -276,7 +293,10 @@ def _assert_own_credential_only(host: Host) -> None:
 
     assert host.intrusions == []
     rejected = host.collector.rejected_run_ids
-    for caller, run, reason, credential in host.local_only:
+    for caller, run, reason, credential, at in host.local_only:
+        # Local-only is final: nothing about the run reaches the collector after.
+        later = host.collector.requests[at:]
+        assert all(about != run for _, _, about, _ in later), (run, later)
         if caller != run:
             # Another producer's run: only the collector's answer about the
             # run's data, never one about this service's credential.
@@ -315,6 +335,29 @@ def test_a_service_without_a_credential_leaves_a_live_build_run_pending(host):
     assert host.states()[build_b.run] == ("local_only", LOCAL_ONLY_MISSING_CREDENTIAL)
     assert host.collector.requests == []
     host.flush(build_a)
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    _assert_own_credential_only(host)
+
+
+def test_a_run_made_local_only_after_it_was_listed_is_not_adopted(host):
+    """A pass lists the pending runs, then waits on the collector. Meanwhile
+    another build's service makes its own run local-only and exits, freeing
+    its lease. Found by the two-service test below."""
+
+    build_a = host.start(MEMBER + "alice")
+    build_b = host.start(None)
+    host.emit(build_a)
+    host.emit(build_b)
+
+    def build_b_finishes() -> None:
+        host.flush(build_b)
+        host.kill(build_b)
+
+    host.collector.during_next_request = build_b_finishes
+    host.flush(build_a)
+
+    assert host.states()[build_b.run] == ("local_only", LOCAL_ONLY_MISSING_CREDENTIAL)
+    assert all(about != build_b.run for _, _, about, _ in host.collector.requests)
     assert host.collector.accepted[build_a.run] == set(build_a.appended)
     _assert_own_credential_only(host)
 
@@ -611,12 +654,20 @@ def test_a_killed_service_releases_its_lease(tmp_path):
         process.stdout.close()
 
 
+def _upload_state(spool_path: Path, run_id: str) -> str | None:
+    with closing(sqlite3.connect(spool_path)) as connection:
+        row = connection.execute(
+            "SELECT upload_state FROM telemetry_runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+    return row[0] if row else None
+
+
 def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
     tmp_path, monkeypatch, real_local_telemetry
 ):
     """Build A has a credential, build B has none, and both services share one
-    spool. A's token exchange is held until B's worker has passed over A's
-    queued events several times; A's run must still arrive in full."""
+    spool. A's token exchange is held until B's worker has made two passes
+    over A's queued run; A's run must still arrive in full."""
 
     release = threading.Event()
     received: dict[str, list[dict[str, Any]]] = {}
@@ -675,7 +726,13 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
         assert build_a.available and build_b.available
         build_a.stage("compile", message="Started.")
         build_b.stage("compile", message="Started.")
-        time.sleep(3.5)  # B's worker passes over A's queued run every second
+        # B's first delivery pass, which meets A's queued run too, makes B's own
+        # run local-only. Let B make another pass, then let A deliver.
+        deadline = time.monotonic() + 60
+        while _upload_state(spool_path, "build-b") != "local_only":
+            assert time.monotonic() < deadline, "build B's worker never ran"
+            time.sleep(0.1)
+        time.sleep(1.5)
         release.set()
         build_a.complete()
         build_b.complete()
@@ -691,10 +748,6 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
         server_thread.join(timeout=5)
         server.server_close()
 
-    events = sorted(received["build-a"], key=lambda event: event["sequence"])
-    assert [e["sequence"] for e in events] == list(range(1, len(events) + 1))
-    assert events[-1]["message"] == BUILD_COMPLETED_MESSAGE
-    assert "build-b" not in received
     with closing(sqlite3.connect(spool_path)) as connection:
         states = dict(
             connection.execute(
@@ -702,10 +755,18 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
                 "FROM telemetry_runs"
             )
         )
+    # Before the fix, B's pass made A's run local-only (the e7 bug), and A,
+    # working from the list it read before, uploaded B's local-only run.
     assert states == {
         "build-a": "pending",
         "build-b": LOCAL_ONLY_MISSING_CREDENTIAL,
     }
+    assert "build-b" not in received, [
+        (e["sequence"], e["message"]) for e in received["build-b"]
+    ]
+    events = sorted(received["build-a"], key=lambda event: event["sequence"])
+    assert [e["sequence"] for e in events] == list(range(1, len(events) + 1))
+    assert events[-1]["message"] == BUILD_COMPLETED_MESSAGE
 
 
 def _label_paths(host: Host) -> None:
@@ -714,7 +775,7 @@ def _label_paths(host: Host) -> None:
     for caller, kind, about, status in host.collector.requests:
         if about is not None and about != caller:
             event(f"adopted orphan: {kind} {status}")
-    for caller, run, reason, _ in host.local_only:
+    for caller, run, reason, *_ in host.local_only:
         event(f"{'own' if caller == run else 'adopted'} run local-only: {reason}")
 
 
@@ -731,6 +792,9 @@ OPERATIONS = st.lists(
         st.tuples(st.just("flush"), PRODUCER),
         st.tuples(st.just("kill"), PRODUCER),
         st.tuples(st.just("login"), PRODUCER, st.sampled_from(CREDENTIALS)),
+        # One service flushes while another's request is in flight, and may
+        # then exit: the first service's list of pending runs goes stale.
+        st.tuples(st.just("interleave"), PRODUCER, PRODUCER, st.booleans()),
     ),
     max_size=30,
 )
@@ -755,6 +819,14 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     builds=st.lists(BUILD, min_size=2, max_size=4),
     operations=OPERATIONS,
     rejected=st.sets(st.integers(0, 7), max_size=2),
+)
+# Shrunk from a 1,500-example run against a delivery that trusted its listed
+# runs: B makes its own run local-only and exits while A's exchange is in
+# flight, and A then uploaded B's run.
+@example(
+    builds=[(MEMBER + "alice", 0), (None, 0)],
+    operations=[("interleave", 0, 1, True)],
+    rejected=set(),
 )
 def test_no_service_decides_another_producers_run_from_its_own_credential(
     tmp_path_factory, builds, operations, rejected
@@ -782,8 +854,21 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
                 host.flush(producer)
             elif kind == "kill":
                 host.kill(producer)
-            else:
+            elif kind == "login":
                 producer.credential = operation[2]
+            else:
+                _, _, other_index, exits = operation
+                other = live[other_index % len(live)]
+                if other is not producer:
+
+                    def other_flushes(other=other, exits=exits) -> None:
+                        host.flush(other)
+                        if exits:
+                            host.kill(other)
+
+                    host.collector.during_next_request = other_flushes
+                host.flush(producer)
+                host.collector.during_next_request = None
             _assert_own_credential_only(host)
         _label_paths(host)
 
