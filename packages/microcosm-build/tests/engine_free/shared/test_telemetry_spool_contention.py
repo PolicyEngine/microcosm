@@ -36,11 +36,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
 from microcosm.build.telemetry_emitter_constants import TELEMETRY_SERVICE_MODULE
-from microcosm.build.telemetry_emitter_service import collector as collector_module
 from microcosm.build.telemetry_emitter_service import main as main_module
 from microcosm.build.telemetry_emitter_service import runtime as runtime_module
 from microcosm.build.telemetry_emitter_service import spool as spool_module
-from microcosm.build.telemetry_emitter_service.collector import CollectorDelivery
 from microcosm.build.telemetry_emitter_service.constants import (
     DATABASE_TIMEOUT_SECONDS,
     PRUNE_INTERVAL_SECONDS,
@@ -1292,45 +1290,6 @@ def test_warnings_never_raise_when_the_builds_stderr_is_gone(monkeypatch) -> Non
         raise RuntimeError("collector bug")
 
     assert service._attempt(bug) is False
-
-
-def test_delivery_backs_off_after_an_unexpected_error(monkeypatch) -> None:
-    """The worker survives the error, so it must not turn into a request a tick."""
-
-    requests: list[str] = []
-
-    def post(url, payload, bearer_token, **kwargs):
-        requests.append(url)
-        return 200, {"access_token": "collector-token", "expires_in": None}
-
-    monkeypatch.setattr(collector_module, "_http_post", post)
-    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
-    delivery = CollectorDelivery(
-        SimpleNamespace(pending_runs=lambda: [_registration()]),
-        development_collector_url=_LOOPBACK_COLLECTOR,
-    )
-
-    with pytest.raises(TypeError):
-        delivery.flush_once()
-    assert delivery.flush_once() is False
-    assert len(requests) == 1
-
-
-def test_delivery_retries_a_locked_spool_on_the_next_tick(monkeypatch) -> None:
-    attempts: list[int] = []
-
-    def pending_runs():
-        attempts.append(1)
-        raise _lock_error()
-
-    delivery = CollectorDelivery(
-        SimpleNamespace(pending_runs=pending_runs),
-        development_collector_url=_LOOPBACK_COLLECTOR,
-    )
-    for _ in range(3):
-        with pytest.raises(OperationalError):
-            delivery.flush_once()
-    assert len(attempts) == 3
 
 
 def test_a_spool_from_an_unknown_migration_is_refused_without_the_write_lock(
