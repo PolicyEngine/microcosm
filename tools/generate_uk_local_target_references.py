@@ -454,7 +454,7 @@ def _area_signed_deferrals(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_scotland_brma_grain",
-        rationale="The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
+        rationale="The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090).",
         area_ids=scottish_local_authorities,
     )
     add(
