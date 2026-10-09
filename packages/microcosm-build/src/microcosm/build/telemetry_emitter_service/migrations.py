@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -41,7 +41,7 @@ def alembic_config(
 def upgrade_spool_database(
     engine: Engine,
     *,
-    busy_timeout_seconds: float = DATABASE_TIMEOUT_SECONDS,
+    busy_timeout_seconds: Callable[[], float] = lambda: DATABASE_TIMEOUT_SECONDS,
 ) -> None:
     """Bring a spool to the packaged head, one migrating process at a time.
 
@@ -49,8 +49,8 @@ def upgrade_spool_database(
     Neither does refusing one stamped with a revision missing from this
     checkout's history, such as a later migration from a newer checkout that
     shares the spool. Otherwise the whole upgrade, DDL and version stamp, runs
-    in one ``BEGIN IMMEDIATE`` transaction whose statements each wait at most
-    ``busy_timeout_seconds`` for another process's lock. Without that
+    in one ``BEGIN IMMEDIATE`` transaction whose statements each wait for
+    another process's lock as long as ``busy_timeout_seconds()`` allows. Without that
     transaction two services opening a new spool at once interleave their DDL,
     and one fails with "table already exists". A service that waits for the
     lock finds the spool at head when it gets it, and Alembic then changes
@@ -69,7 +69,7 @@ def upgrade_spool_database(
     migration_engine = create_spool_engine(
         engine.url.database,
         immediate_transactions=True,
-        busy_timeout_seconds=lambda: busy_timeout_seconds,
+        busy_timeout_seconds=busy_timeout_seconds,
     )
     try:
         with migration_engine.begin() as connection:

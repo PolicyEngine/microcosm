@@ -66,15 +66,13 @@ PRUNE_BATCH_ROWS: Final = 500
 PRUNE_BATCH_PAUSE_SECONDS: Final = 0.025
 PRUNE_STEP_SECONDS: Final = 1.0
 # Every concurrent build on a host shares one spool, so a write can find it
-# locked for longer than SQLite's own busy wait. Startup retries such errors
-# with jittered, doubling waits until shortly before the build stops waiting
-# for readiness. While it does, each SQLite statement waits at most
-# STARTUP_BUSY_TIMEOUT_SECONDS, so an attempt begun before that deadline ends
-# within the margin, which also covers binding the socket and the build's ping.
-STARTUP_BUSY_TIMEOUT_SECONDS: Final = 0.25
+# locked for longer than SQLite's own busy wait. Startup waits for the lock,
+# and retries lock errors with jittered, doubling pauses, until the margin
+# before the build stops waiting for readiness; every SQLite wait in that time
+# also ends by then. The margin covers binding the socket and the build's ping.
 SPOOL_RETRY_INITIAL_SECONDS: Final = 0.05
 SPOOL_RETRY_MAX_SECONDS: Final = 0.25
-READY_DEADLINE_MARGIN_SECONDS: Final = 2.0
+READY_DEADLINE_MARGIN_SECONDS: Final = 0.5
 STARTUP_RETRY_LIMIT_SECONDS: Final = 60.0
 SPOOL_LOCKED_EXIT_STATUS: Final = 75  # EX_TEMPFAIL from sysexits.h
 
