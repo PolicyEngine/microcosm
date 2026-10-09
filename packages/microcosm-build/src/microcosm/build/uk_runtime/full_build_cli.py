@@ -969,13 +969,40 @@ def _materialize_evidence(manifest, store, out: Path) -> dict:
     return inventory
 
 
+def _record_capture_cost(
+    out: Path, phase: str, started: float, rss_before: int
+) -> None:
+    """Append the evidence-capture cost of one phase; a measurement, not a gate."""
+    import resource
+
+    record = {
+        "phase": phase,
+        "wall_s": round(time.perf_counter() - started, 3),
+        "maxrss_before_bytes": rss_before,
+        "maxrss_after_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+    }
+    with (out / "evidence-capture-timing.jsonl").open("a", encoding="utf-8") as sink:
+        sink.write(json.dumps(record, sort_keys=True) + "\n")
+    print(
+        f"evidence capture {phase}: {record['wall_s']:.1f}s, "
+        f"peak RSS {record['maxrss_after_bytes'] / 2**30:.2f} GiB",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _persist_checkpoint(manifest, store, args, phase: str, *, graph: Graph) -> None:
     """Keep receipts and small evidence durable if a later kernel refuses."""
+    import resource
+
     payload = manifest.to_json_bytes()
     materialize_bytes(payload, args.out / f"{phase}.graph.json")
     attempt = Path(args.attempt_evidence)
     materialize_bytes(payload, attempt / f"{phase}.graph.json")
+    started = time.perf_counter()
+    rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     persist_uk_run_evidence(graph, manifest, store, args, phase=phase)
+    _record_capture_cost(args.out, phase, started, rss_before)
     evidence = {}
     for node_id, receipt in manifest.nodes.items():
         for name, key in receipt.opaque_artifacts.items():

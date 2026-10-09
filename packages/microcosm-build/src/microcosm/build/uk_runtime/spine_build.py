@@ -1909,6 +1909,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         graph_manifest.save(checkpoint_root / "spine.graph.json")
         save_uk_graph_schema(graph, checkpoint_root, scope="raw_spine", spec=spec)
+        import resource
+
+        capture_started = time.perf_counter()
+        capture_rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         graph_evidence_path = save_run_evidence(
             compiled_graph,
             graph_manifest,
@@ -1919,6 +1923,22 @@ def main(argv: list[str] | None = None) -> int:
             attempt_id=graph_attempt_id,
             phase="spine",
             artifact_summaries=UK_SUMMARY_PROVIDERS,
+        )
+        capture_record = {
+            "phase": "spine",
+            "wall_s": round(time.perf_counter() - capture_started, 3),
+            "maxrss_before_bytes": capture_rss_before,
+            "maxrss_after_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        }
+        with (checkpoint_root / "evidence-capture-timing.jsonl").open(
+            "a", encoding="utf-8"
+        ) as sink:
+            sink.write(json.dumps(capture_record, sort_keys=True) + "\n")
+        print(
+            f"evidence capture spine: {capture_record['wall_s']:.1f}s, peak RSS "
+            f"{capture_record['maxrss_after_bytes'] / 2**30:.2f} GiB",
+            file=sys.stderr,
+            flush=True,
         )
         graph_run_reference = json.loads(graph_evidence_path.read_text())["runs"][-1]
         graph_declaration_path = (
