@@ -203,3 +203,30 @@ def test_pip_caseload_rows_pin_england_and_wales() -> None:
     targets = _targets()
     for target_id in PIP_CASELOAD_ROWS:
         assert _geography_id_for_target(targets[target_id]) == "K04000001"
+
+
+def test_council_tax_binds_the_great_britain_receipts_row() -> None:
+    """OBR table 4.1 row 15 sums the England, Scotland and Wales council tax
+    receipts; row 19 adds Northern Ireland domestic rates and accruals no
+    household's council tax carries. The row binds Great Britain's households,
+    and its pin is the UK stamp Chronicle gives OBR's table (microcosm#1095)."""
+
+    from tools.generate_uk_target_references import _geography_id_for_target
+
+    targets = _targets()
+    target = targets["obr.council_tax"]
+    assert target["ledger_selector"]["source_concept"] == (
+        "obr.council_tax_receipts_england_scotland_wales"
+    )
+    condition = _condition(target)
+    assert condition["variable"] == "region"
+    assert set(condition["value"]) == GB_REGIONS
+    assert set(_country_filter(target)["value"]) == {"england", "scotland", "wales"}
+    assert _geography_id_for_target(target) == "K02000001"
+    # The exact-id pin leaves the country legs on their own nations.
+    for target_id, code in (
+        ("obr.council_tax_england", "E92000001"),
+        ("obr.council_tax_scotland", "S92000003"),
+        ("obr.council_tax_wales", "W92000004"),
+    ):
+        assert _geography_id_for_target(targets[target_id]) == code
