@@ -48,6 +48,7 @@ POLICYENGINE_BINDING_KEYS = frozenset(
         "band",
         "band_filter_dimension",
         "band_period_factor",
+        "band_semantics",
         "band_upper_bound",
         "band_upper_bound_inclusive",
         "count_of",
@@ -113,6 +114,16 @@ def main() -> None:
         if line.strip()
     ]
     inverse_mapping = _registry_inverse(contract)
+    # The facts each family's fan-out leaves unnamed, counted rather than
+    # declared, so the membership report states what the feed carried.
+    skipped_fanout: Counter[str] = Counter()
+
+    def fanout_name(target: Mapping[str, Any], fact: Mapping[str, Any]) -> str | None:
+        name = _fanout_name(target, fact, inverse_mapping)
+        if not name:
+            skipped_fanout[str(target["family"])] += 1
+        return name
+
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
         geography_pins=_geography_pins(contract),
@@ -120,11 +131,7 @@ def main() -> None:
         geography_fanout_metadata=_geography_fanout_metadata,
         geography_composition_by_target_id=_geography_composition(contract),
         geography_composition_aliases=_geography_composition_aliases(),
-        fanout_name=lambda target, fact: _fanout_name(
-            target,
-            fact,
-            inverse_mapping,
-        ),
+        fanout_name=fanout_name,
         sum_target_ids=_sum_target_ids(contract),
         value_operation_by_target_id=_value_operation_by_target_id(contract),
         selector_pins_by_target_id=_selector_pins(contract),
@@ -136,7 +143,11 @@ def main() -> None:
         uprating_appliers=UK_UPRATING_APPLIERS,
     )
     authored = author_target_references(contract, facts, config)
-    _add_uk_membership_accounting(authored.membership_report, authored.references)
+    _add_uk_membership_accounting(
+        authored.membership_report,
+        authored.references,
+        skipped_fanout=skipped_fanout,
+    )
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -785,6 +796,9 @@ def _int_token(value: int) -> str:
 
 def _annual_uc_award_band_token(value: str) -> str:
     normalized = value.strip().lower()
+    # "No payment" and the top-coded "or over" categories stay unbound: bound
+    # to DWP's counts, the GBP 2,500.01 or over band left OBR's Universal
+    # Credit total short (microcosm#1095 receipts).
     if normalized == "no payment" or "or over" in normalized:
         return ""
     if " to " not in normalized:
@@ -803,6 +817,8 @@ def _annual_uc_award_band_token(value: str) -> str:
 def _add_uk_membership_accounting(
     report: dict[str, Any],
     references: tuple[dict[str, Any], ...],
+    *,
+    skipped_fanout: Mapping[str, int],
 ) -> None:
     fanout_counts = Counter(
         reference["family"]
@@ -874,14 +890,16 @@ def _add_uk_membership_accounting(
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": fanout_counts.get("dwp_universal_credit", 0),
-            "skipped_unmapped_fact_count": 12,
+            "skipped_unmapped_fact_count": int(
+                skipped_fanout.get("dwp_universal_credit", 0)
+            ),
             "signed_rationale": (
                 "UC payment-distribution targets fan out over family_type and "
                 "monthly_award_amount_bands into incumbent-compatible "
-                "annual-payment rows. The four source-only 'No payment' facts "
-                "and eight overlapping source-only 'or over' facts are left "
-                "out; no active reference may use the legacy nan_to_nan band "
-                "name."
+                "annual-payment rows. The source-only 'No payment' and "
+                "top-coded 'or over' facts are left out, and the skipped count "
+                "is the generator's own (microcosm#1095); no active reference "
+                "may use the legacy nan_to_nan band name."
             ),
         },
         {

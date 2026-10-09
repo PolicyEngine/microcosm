@@ -69,6 +69,7 @@ POLICYENGINE_BINDING_KEYS = {
     "band",
     "band_filter_dimension",
     "band_period_factor",
+    "band_semantics",
     "band_upper_bound",
     "band_upper_bound_inclusive",
     "count_of",
@@ -820,7 +821,11 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
             target["bindings"]["policyengine"]["filters"][0]["variable"]
             == "uc_calibration_administrative_family_type"
         )
-        assert target["bindings"]["policyengine"]["band_upper_bound"] == 2500
+        binding = target["bindings"]["policyengine"]
+        # microcosm#1095: whole-pence bands, closed at GBP 2,500.00 a month.
+        assert binding["band_semantics"] == "whole_pence_upper_closed"
+        assert binding["band_upper_bound"] == 2500
+        assert "band_upper_bound_inclusive" not in binding
 
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
@@ -875,8 +880,8 @@ def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
             "from_entity", "household"
         )
         if target_id.startswith("dwp.uc.payment_distribution_"):
+            assert binding["band_semantics"] == "whole_pence_upper_closed"
             assert binding["band_upper_bound"] == 2500
-            assert binding["band_upper_bound_inclusive"] is True
             assert binding["band_period_factor"] == 12
     # The omitted source top-coded row is not introduced or merged into a
     # finite reference by these measurement-only changes.
@@ -1071,3 +1076,35 @@ def test_household_composition_cells_do_not_share_the_household_total_signature(
         assert by_id[target_id]["measurement"]["filters"] == [
             {"concept": "uk.housing.council_tax_band", "operator": "in", "value": bands}
         ], target_id
+
+
+def test_only_the_uc_award_bands_read_whole_pence() -> None:
+    """microcosm#1095: the four UC payment families opt in to whole-pence,
+    upper-closed bands; the other 28 banded bindings keep the half-open
+    reading."""
+
+    banded = {
+        target["target_id"]: target["bindings"]["policyengine"]
+        for target in _load()["targets"]
+        if target["bindings"]["policyengine"].get("groupby_variable")
+    }
+    whole_pence = {
+        target_id
+        for target_id, binding in banded.items()
+        if binding.get("band_semantics") == "whole_pence_upper_closed"
+    }
+    assert len(banded) == 32
+    assert whole_pence == {
+        f"dwp.uc.payment_distribution_{family}"
+        for family in (
+            "single",
+            "lone_parent",
+            "couple_no_children",
+            "couple_with_children",
+        )
+    }
+    assert not [
+        target_id
+        for target_id, binding in banded.items()
+        if target_id not in whole_pence and "band_semantics" in binding
+    ]

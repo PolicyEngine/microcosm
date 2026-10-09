@@ -5807,7 +5807,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5829,9 +5831,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/SINGLE",
@@ -5899,7 +5899,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -5921,9 +5923,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/LONE_PARENT",
@@ -5991,7 +5991,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -6013,9 +6015,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN",
@@ -6083,7 +6083,9 @@
           "from_entity": "benunit",
           "map_to": "household",
           "band_period_factor": 12,
-          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98; half-open [lower, upper)). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The last bound source band ends at £2,500 monthly, inclusive; the separately published £2,500.01 or over category remains unbound. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
+          "band_semantics": "whole_pence_upper_closed",
+          "band_upper_bound": 2500,
+          "notes": "Benunit counts by annual UC award band: publisher bands are monthly award amounts, multiplied by 12 to band annual model UC (compute/benefits.py:84-98). Each band starts a penny above its predecessor's top, so it reads as the upper-closed interval (label lower - GBP 0.01, next label lower - GBP 0.01] x 12, compared in whole pence (band_semantics whole_pence_upper_closed), and an award of a penny a month lands in the bottom band (microcosm#1095). Administrative family classification uses model standard allowance above the model-year maximum single rate for couples, separately from retained claimant roles; zero allowance is UNKNOWN. Child presence retains own-benefit-unit reported-under-20/qualifying-child proxy and does not establish DWP declared-child attachment or ineligible-partner exceptions. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Family%20Type.html The separately published £2,500.01 or over band stays unbound, and band_upper_bound closes the last bound band at £2,500.00 a month, so it never absorbs that category. Bound to DWP's counts, the top band left OBR's Universal Credit total 5.6% short on the measured head (experiments/1095-uk-data-ports-3-receipts.md), so it waits until the awards below it are understood. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/UC_Households/Monthly%20Award%20Amount%20(bands).html Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset",
           "household_conditions": [
             {
               "variable": "region",
@@ -6105,9 +6107,7 @@
               ],
               "map_to": "benunit"
             }
-          ],
-          "band_upper_bound": 2500,
-          "band_upper_bound_inclusive": true
+          ]
         },
         "axiom": {
           "metric_name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN",

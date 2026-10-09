@@ -29204,8 +29204,8 @@
       "family": "dwp_universal_credit",
       "status": "active_with_unmapped_vintage_residue_skipped",
       "active_reference_count": 100,
-      "skipped_unmapped_fact_count": 12,
-      "signed_rationale": "UC payment-distribution targets fan out over family_type and monthly_award_amount_bands into incumbent-compatible annual-payment rows. The four source-only 'No payment' facts and eight overlapping source-only 'or over' facts are left out; no active reference may use the legacy nan_to_nan band name."
+      "skipped_unmapped_fact_count": 8,
+      "signed_rationale": "UC payment-distribution targets fan out over family_type and monthly_award_amount_bands into incumbent-compatible annual-payment rows. The source-only 'No payment' and top-coded 'or over' facts are left out, and the skipped count is the generator's own (microcosm#1095); no active reference may use the legacy nan_to_nan band name."
     },
     {
       "family": "council_tax_stock",
