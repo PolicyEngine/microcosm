@@ -16,7 +16,8 @@ This tool is that yardstick. It has two parts:
 Artifacts differ only at the loading boundary. Both normalized frames pass
 through the same population repair, target materialization, constraint
 matrix, scoring, loss attribution, contract checks, and rendering path.
-Scoring is sequential and refuses a process peak at or above 20 GiB RSS.
+Scoring defaults to sequential execution; optional spawned workers score
+independent slices. Every process refuses a peak at or above 20 GiB RSS.
 
 Memory design, from measurements on the live incumbent (57,240 households,
 166,321 persons): the unbatched full-frame base microsimulation alone peaks
@@ -55,10 +56,13 @@ import gc
 import hashlib
 import json
 import math
+import multiprocessing
 import resource
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections import deque
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -273,6 +277,42 @@ class ScoredChunk:
     compilation: Mapping[str, object]
 
 
+@dataclass(frozen=True)
+class ScoredSlice:
+    """Small, validated slice result; no materialized frame crosses the pool."""
+
+    slice_index: int
+    estimates: np.ndarray
+    targets: np.ndarray
+    scales: np.ndarray
+    diagnostic_names: tuple[str, ...]
+    scored_contract: tuple[tuple[str, str, str], ...]
+    compilation: Mapping[str, object]
+    compilation_digest: str
+    slice_size: int
+
+
+@dataclass(frozen=True)
+class _SliceWorkerState:
+    base_frame: Frame
+    specs: Sequence
+    loss_weights: np.ndarray
+    artifact_name: str
+    chunk_size: int
+    maximum_microsim_batch_size: int | None
+    slice_batches: tuple[np.ndarray, ...]
+
+
+_SLICE_WORKER_STATE: _SliceWorkerState | None = None
+
+
+def _positive_workers(value: str) -> int:
+    workers = int(value)
+    if workers < 1:
+        raise argparse.ArgumentTypeError("--workers must be at least 1.")
+    return workers
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -324,6 +364,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--congressional-district-vintage-crosswalk",
         type=Path,
         default=None,
+    )
+    parser.add_argument(
+        "--workers",
+        type=_positive_workers,
+        default=1,
+        help="Spawn N slice-scoring processes; 1 preserves sequential scoring.",
     )
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -973,6 +1019,306 @@ def _score_chunk_household_sliced(
     )
 
 
+def _initialize_slice_worker(
+    base_frame: Frame,
+    specs: Sequence,
+    loss_weights: np.ndarray,
+    artifact_name: str,
+    chunk_size: int,
+    maximum_microsim_batch_size: int | None,
+) -> None:
+    """Receive the parent's exact repaired frame and compiled specs once.
+
+    Spawn pickles initializer arguments once per process. Passing the already
+    normalized, authenticated, repaired frame avoids reopening the artifact or
+    repeating any loader/repair decisions in a worker. Tasks contain only two
+    indices; neither the full frame nor the registry is sent per slice.
+    """
+
+    global _SLICE_WORKER_STATE
+    slice_batches = tuple(
+        release._household_position_batches(
+            base_frame.n("household"), maximum_microsim_batch_size
+        )
+    )
+    _SLICE_WORKER_STATE = _SliceWorkerState(
+        base_frame=base_frame,
+        specs=specs,
+        loss_weights=loss_weights,
+        artifact_name=artifact_name,
+        chunk_size=chunk_size,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+        slice_batches=slice_batches,
+    )
+    _assert_rss_below_limit(f"after initializing {artifact_name} slice worker")
+
+
+def _score_slice_worker(task: tuple[int, int]) -> ScoredSlice:
+    """Run every sequential per-slice contract in an isolated process."""
+
+    state = _SLICE_WORKER_STATE
+    if state is None:  # pragma: no cover - executor always initializes workers
+        raise RuntimeError("Slice worker was not initialized.")
+    chunk_index, slice_index = task
+    chunk_count = max(1, math.ceil(len(state.specs) / state.chunk_size))
+    slice_label = (
+        f"chunk {chunk_index + 1}/{chunk_count} "
+        f"slice {slice_index + 1}/{len(state.slice_batches)}"
+    )
+    label = f"{state.artifact_name} {slice_label}"
+    try:
+        positions = state.slice_batches[slice_index]
+        start = chunk_index * state.chunk_size
+        chunk_specs = state.specs[start : start + state.chunk_size]
+        slice_frame = (
+            state.base_frame
+            if len(positions) == state.base_frame.n("household")
+            else release._select_households_by_position(state.base_frame, positions)
+        )
+        slice_target_frame, slice_registry, slice_compilation = (
+            release._materialize_target_frame(
+                slice_frame,
+                chunk_specs,
+                maximum_microsim_batch_size=state.maximum_microsim_batch_size,
+                refuse_population_aggregates=(
+                    True if len(state.slice_batches) > 1 else None
+                ),
+                target_materialization_cache_dir=None,
+                target_materialization_cache_context=None,
+            )
+        )
+        _assert_nothing_dropped(artifact_name=label, compilation=slice_compilation)
+        slice_compilation = dict(slice_compilation)
+        slice_compilation.pop("target_materialization_batching", None)
+        if _spec_keys(slice_registry.specs) != _spec_keys(chunk_specs):
+            raise ValueError(
+                f"{label} compiled a different target contract than the chunk."
+            )
+        if slice_target_frame.n("household") != len(positions):
+            raise RuntimeError(
+                f"{label} returned {slice_target_frame.n('household')} "
+                f"households for {len(positions)} positions."
+            )
+        slice_contract = scored_column_contract(
+            slice_target_frame, chunk_specs, artifact_name=label
+        )
+        result = score_targets(
+            slice_target_frame,
+            slice_registry.to_target_set(),
+            target_loss_weights=state.loss_weights[start : start + len(chunk_specs)],
+            target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
+            options={
+                "mass": "existing_weights",
+                "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+                "maximum_microsim_batch_size": state.maximum_microsim_batch_size,
+            },
+        )
+        _assert_full_chunk_surface(
+            artifact_name=state.artifact_name,
+            chunk_label=slice_label,
+            chunk_specs=chunk_specs,
+            materialized_registry=slice_registry,
+            result=result,
+        )
+        if not np.array_equal(
+            np.asarray(slice_frame.weights_for("household").values, dtype=np.float64),
+            np.asarray(result.weights, dtype=np.float64),
+        ):
+            raise RuntimeError(
+                f"{label} scorer changed the shipped household weight vector."
+            )
+        scored_slice = ScoredSlice(
+            slice_index=slice_index,
+            estimates=np.asarray(
+                [row.final_estimate for row in result.diagnostics], dtype=np.float64
+            ),
+            targets=np.asarray(
+                [row.target for row in result.diagnostics], dtype=np.float64
+            ),
+            scales=np.asarray(result.target_loss_scales, dtype=np.float64).copy(),
+            diagnostic_names=tuple(row.name for row in result.diagnostics),
+            scored_contract=slice_contract,
+            compilation=slice_compilation,
+            compilation_digest=_canonical_sha256(slice_compilation),
+            slice_size=len(positions),
+        )
+        del slice_target_frame, slice_registry, result, slice_frame
+        gc.collect()
+        _assert_rss_below_limit(f"after scoring {label}")
+        return scored_slice
+    except Exception as error:
+        raise RuntimeError(f"{label} worker failed: {error}") from error
+
+
+def _reduce_scored_slices(
+    results: Iterable[ScoredSlice],
+    *,
+    slice_count: int,
+    artifact_name: str,
+    chunk_label: str,
+    maximum_microsim_batch_size: int | None,
+) -> ScoredChunk:
+    """Reduce completion results in slice-index order, copying the first array.
+
+    Starting with zero, grouping sums, or adding in completion order can change
+    float64 bits. Use exactly the sequential copy-then-np.add sequence, with
+    the same cross-slice contracts, irrespective of arrival order.
+    """
+
+    pending: dict[int, ScoredSlice] = {}
+    next_index = 0
+    first: ScoredSlice | None = None
+    accumulated: np.ndarray | None = None
+    digests: list[str] = []
+    sizes: list[int] = []
+    for result in results:
+        index = result.slice_index
+        if index < next_index or index >= slice_count or index in pending:
+            raise RuntimeError(
+                f"{artifact_name} {chunk_label} invalid slice index {index}."
+            )
+        pending[index] = result
+        while next_index in pending:
+            current = pending.pop(next_index)
+            label = (
+                f"{artifact_name} {chunk_label} slice {next_index + 1}/{slice_count}"
+            )
+            if first is None:
+                first = current
+                accumulated = current.estimates.copy()
+            else:
+                if not np.array_equal(first.targets, current.targets):
+                    raise RuntimeError(
+                        f"{label} target vector differs from the first household slice."
+                    )
+                if not np.array_equal(first.scales, current.scales):
+                    raise RuntimeError(
+                        f"{label} loss-scale vector differs from the first household slice."
+                    )
+                if first.diagnostic_names != current.diagnostic_names:
+                    raise RuntimeError(
+                        f"{label} diagnostic names differ from the first household slice."
+                    )
+                if first.scored_contract != current.scored_contract:
+                    raise RuntimeError(
+                        f"{label} scored-column contract differs from the first household slice."
+                    )
+                np.add(accumulated, current.estimates, out=accumulated)
+            digests.append(current.compilation_digest)
+            sizes.append(current.slice_size)
+            next_index += 1
+    if first is None or next_index != slice_count:
+        raise RuntimeError(
+            f"{artifact_name} {chunk_label} produced an incomplete slice result."
+        )
+    return ScoredChunk(
+        estimates=accumulated,
+        targets=first.targets.copy(),
+        scales=first.scales.copy(),
+        diagnostic_names=first.diagnostic_names,
+        scored_contract=first.scored_contract,
+        compilation={
+            **first.compilation,
+            "household_slices": slice_count,
+            "household_slice_size": maximum_microsim_batch_size,
+            "household_slice_row_counts": sizes,
+            "slice_compilation_sha256s": digests,
+        },
+    )
+
+
+def _score_chunks_parallel(
+    base_frame: Frame,
+    specs: Sequence,
+    *,
+    loss_weights: np.ndarray,
+    artifact_name: str,
+    maximum_microsim_batch_size: int | None,
+    workers: int,
+) -> Iterator[ScoredChunk]:
+    """Stream bounded (chunk, slice) tasks through one spawn pool per artifact."""
+
+    slice_count = len(
+        tuple(
+            release._household_position_batches(
+                base_frame.n("household"), maximum_microsim_batch_size
+            )
+        )
+    )
+    if not slice_count:
+        raise ValueError(f"{artifact_name} has no households to score.")
+    if slice_count > 1:
+        release._assert_group_entities_nest_in_households(base_frame)
+        release._assert_medicaid_claiming_tax_units_local(base_frame)
+    chunk_size = MATERIALIZE_SCORE_CHUNK_SPECS
+    chunk_count = max(1, math.ceil(len(specs) / chunk_size))
+    tasks = iter(
+        (chunk_index, slice_index)
+        for chunk_index in range(chunk_count)
+        for slice_index in range(slice_count)
+    )
+    _assert_rss_below_limit(f"before starting {artifact_name} slice workers")
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=_initialize_slice_worker,
+        initargs=(
+            base_frame,
+            specs,
+            loss_weights,
+            artifact_name,
+            chunk_size,
+            maximum_microsim_batch_size,
+        ),
+    ) as executor:
+        pending = deque()
+
+        def submit_next() -> None:
+            task = next(tasks, None)
+            if task is not None:
+                try:
+                    future = executor.submit(_score_slice_worker, task)
+                except Exception as error:
+                    chunk_index, slice_index = task
+                    raise RuntimeError(
+                        f"{artifact_name} chunk {chunk_index + 1}/{chunk_count} "
+                        f"slice {slice_index + 1}/{slice_count} worker submission "
+                        f"failed: {error}"
+                    ) from error
+                pending.append((task, future))
+
+        def chunk_results() -> Iterator[ScoredSlice]:
+            for _ in range(slice_count):
+                (chunk_index, slice_index), future = pending.popleft()
+                try:
+                    result = future.result()
+                except Exception as error:
+                    raise RuntimeError(
+                        f"{artifact_name} chunk {chunk_index + 1}/{chunk_count} "
+                        f"slice {slice_index + 1}/{slice_count} worker failed: {error}"
+                    ) from error
+                submit_next()
+                _assert_rss_below_limit(f"after receiving {artifact_name} slice result")
+                yield result
+
+        try:
+            # Bound futures and buffered results even if an early slice stalls.
+            # Tasks span chunk boundaries so short chunks still use the pool.
+            for _ in range(2 * workers):
+                submit_next()
+            for chunk_index in range(chunk_count):
+                yield _reduce_scored_slices(
+                    chunk_results(),
+                    slice_count=slice_count,
+                    artifact_name=artifact_name,
+                    chunk_label=f"chunk {chunk_index + 1}/{chunk_count}",
+                    maximum_microsim_batch_size=maximum_microsim_batch_size,
+                )
+        finally:
+            for _, future in pending:
+                future.cancel()
+
+
 def _spec_keys(specs: Sequence) -> tuple[tuple[str, object], ...]:
     return tuple(spec.key for spec in specs)
 
@@ -1523,9 +1869,12 @@ def score_loaded_artifact(
     artifact_name: str,
     yardstick: FiscalYardstick,
     maximum_microsim_batch_size: int | None,
+    workers: int = 1,
 ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
     """Run the common scoring path for one already-normalized artifact."""
 
+    if workers < 1:
+        raise ValueError("workers must be at least 1.")
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
     terminal_battery = _terminal_battery_payload(artifact)
     base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
@@ -1549,40 +1898,60 @@ def score_loaded_artifact(
     )
     household_count = int(base_weights.shape[0])
     nonzero_count = int(np.count_nonzero(base_weights))
-    for chunk_index in range(chunk_count):
-        start = chunk_index * chunk_size
-        chunk_specs = specs[start : start + chunk_size]
-        chunk_label = f"chunk {chunk_index + 1}/{chunk_count}"
-        scored_chunk = _score_chunk_household_sliced(
+    parallel_chunks = (
+        _score_chunks_parallel(
             base_frame,
-            chunk_specs,
-            chunk_loss_weights=np.asarray(
-                yardstick.loss_weights[start : start + len(chunk_specs)],
-                dtype=np.float64,
-            ),
+            specs,
+            loss_weights=np.asarray(yardstick.loss_weights, dtype=np.float64),
             artifact_name=artifact_name,
-            chunk_label=chunk_label,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            workers=workers,
         )
-        _assert_nothing_dropped(
-            artifact_name=f"{artifact_name} {chunk_label}",
-            compilation=scored_chunk.compilation,
-        )
-        contract_parts.update(scored_chunk.scored_contract)
-        estimate_parts.append(scored_chunk.estimates)
-        target_parts.append(scored_chunk.targets)
-        scale_parts.append(scored_chunk.scales)
-        diagnostic_names.extend(scored_chunk.diagnostic_names)
-        chunk_receipts.append(
-            {
-                "chunk_index": chunk_index,
-                "spec_range": [start, start + len(chunk_specs)],
-                "target_compilation": dict(scored_chunk.compilation),
-            }
-        )
-        del scored_chunk
-        gc.collect()
-        _assert_rss_below_limit(f"after scoring {artifact_name} {chunk_label}")
+        if workers > 1
+        else None
+    )
+    try:
+        for chunk_index in range(chunk_count):
+            start = chunk_index * chunk_size
+            chunk_specs = specs[start : start + chunk_size]
+            chunk_label = f"chunk {chunk_index + 1}/{chunk_count}"
+            scored_chunk = (
+                next(parallel_chunks)
+                if parallel_chunks is not None
+                else _score_chunk_household_sliced(
+                    base_frame,
+                    chunk_specs,
+                    chunk_loss_weights=np.asarray(
+                        yardstick.loss_weights[start : start + len(chunk_specs)],
+                        dtype=np.float64,
+                    ),
+                    artifact_name=artifact_name,
+                    chunk_label=chunk_label,
+                    maximum_microsim_batch_size=maximum_microsim_batch_size,
+                )
+            )
+            _assert_nothing_dropped(
+                artifact_name=f"{artifact_name} {chunk_label}",
+                compilation=scored_chunk.compilation,
+            )
+            contract_parts.update(scored_chunk.scored_contract)
+            estimate_parts.append(scored_chunk.estimates)
+            target_parts.append(scored_chunk.targets)
+            scale_parts.append(scored_chunk.scales)
+            diagnostic_names.extend(scored_chunk.diagnostic_names)
+            chunk_receipts.append(
+                {
+                    "chunk_index": chunk_index,
+                    "spec_range": [start, start + len(chunk_specs)],
+                    "target_compilation": dict(scored_chunk.compilation),
+                }
+            )
+            del scored_chunk
+            gc.collect()
+            _assert_rss_below_limit(f"after scoring {artifact_name} {chunk_label}")
+    finally:
+        if parallel_chunks is not None:
+            parallel_chunks.close()
     expected_names = [spec.to_target().row_name for spec in specs]
     if diagnostic_names != expected_names:
         raise RuntimeError(
@@ -1805,9 +2174,12 @@ def score_head_to_head(
     ),
     candidate_manifest_sha256: str | None = None,
     candidate_worker_identity_attestation: Path | None = None,
+    workers: int = 1,
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
 
+    if workers < 1:
+        raise ValueError("workers must be at least 1.")
     crosswalk = congressional_district_vintage_crosswalk or (
         release.default_congressional_district_vintage_crosswalk_path()
     )
@@ -1849,6 +2221,7 @@ def score_head_to_head(
             artifact_name=name,
             yardstick=yardstick,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            workers=workers,
         )
         artifacts[name] = artifact_payload
         contracts[name] = contract
@@ -1865,6 +2238,7 @@ def score_head_to_head(
     battery_contract = _canonical_battery_contract()
     return {
         "schema_version": SCHEMA_VERSION,
+        "run_metadata": {"workers": workers},
         "yardstick": {
             "fiscal_registry": dict(yardstick.identity),
             "fiscal_aggregate": {
@@ -2325,6 +2699,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         candidate_worker_identity_attestation=(
             args.candidate_worker_identity_attestation
         ),
+        workers=args.workers,
     )
     json_path, markdown_path = write_scorecard(payload, args.out_prefix)
     print(

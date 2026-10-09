@@ -1,6 +1,12 @@
 """Tests split from packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py."""
 
 # ruff: noqa: F403, F405
+import json
+import time
+
+from hypothesis import HealthCheck, example, given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.us_release_head_to_head_scorer import *
 
 
@@ -15,9 +21,302 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "allow_unaged_dollar_targets",
         "congressional_district_vintage_crosswalk",
         "maximum_microsim_batch_size",
+        "workers",
         "candidate_manifest_sha256",
         "candidate_worker_identity_attestation",
     }
+
+
+def _parallel_fixture(module, monkeypatch):
+    # Use the production repair, including its changed household weights and
+    # mass log. Sending the unrepaired artifact frame would fail comparison.
+    mass_repair = module.release._with_base_population_mass_repair
+    _patch_release_seams(module, monkeypatch)
+    monkeypatch.setattr(
+        module.release, "_with_base_population_mass_repair", mass_repair
+    )
+    monkeypatch.setattr(module, "MATERIALIZE_SCORE_CHUNK_SPECS", 1)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_fixture_slice_worker
+    )
+    artifacts = {
+        Path("/fixture/incumbent.h5"): _three_household_fixture_artifact(
+            module, sha256="a" * 64, measure_values=(100.0, 300.0)
+        ),
+        Path("/fixture/candidate.h5"): _three_household_fixture_artifact(
+            module, sha256="b" * 64, measure_values=(200.0, 290.0)
+        ),
+    }
+    monkeypatch.setattr(module, "load_artifact", lambda path, **kwargs: artifacts[path])
+    monkeypatch.setattr(
+        module, "compile_yardstick", lambda **kwargs: _fixture_yardstick(module)
+    )
+    return artifacts
+
+
+def test_spawned_workers_score_identically_to_sequential_cli(
+    monkeypatch, tmp_path
+) -> None:
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    original_aggregate = module._fiscal_rows_and_aggregate
+    estimate_vectors = []
+
+    def capture_estimates(**kwargs):
+        estimate_vectors.append(kwargs["estimates"].copy())
+        return original_aggregate(**kwargs)
+
+    monkeypatch.setattr(module, "_fiscal_rows_and_aggregate", capture_estimates)
+    payloads = []
+    markdown_bytes = []
+    for workers in (1, 3):
+        prefix = tmp_path / f"workers-{workers}"
+        start = time.perf_counter()
+        assert (
+            module.main(
+                [
+                    "--incumbent",
+                    "/fixture/incumbent.h5",
+                    "--candidate",
+                    "/fixture/candidate.h5",
+                    "--ledger-facts",
+                    "/fixture/facts.jsonl",
+                    "--congressional-district-vintage-crosswalk",
+                    "/fixture/crosswalk.parquet",
+                    "--maximum-microsim-batch-size",
+                    "2",
+                    "--workers",
+                    str(workers),
+                    "--out-prefix",
+                    str(prefix),
+                ]
+            )
+            == 0
+        )
+        print(
+            f"h2h fixture timing: workers={workers} "
+            f"elapsed_seconds={time.perf_counter() - start:.6f}"
+        )
+        payload = json.loads(prefix.with_suffix(".json").read_text())
+        assert payload["run_metadata"].pop("workers") == workers
+        payloads.append(payload)
+        markdown_bytes.append(prefix.with_suffix(".md").read_bytes())
+
+    assert payloads[0] == payloads[1]
+    assert markdown_bytes[0] == markdown_bytes[1]
+    assert len(estimate_vectors) == 4
+    for sequential, parallel in zip(
+        estimate_vectors[:2], estimate_vectors[2:], strict=True
+    ):
+        assert np.array_equal(sequential, parallel)
+        assert np.array_equal(sequential.view(np.uint64), parallel.view(np.uint64))
+    for artifact in payloads[0]["artifacts"].values():
+        repair = artifact["normalization_receipts"]["base_population_mass_repair"]
+        assert repair["applied"] is True
+        assert repair["factor"] != 1.0
+        chunks = artifact["normalization_receipts"]["materialize_score_chunking"][
+            "chunks"
+        ]
+        assert [chunk["spec_range"] for chunk in chunks] == [[0, 1], [1, 2]]
+        assert all(
+            chunk["target_compilation"]["household_slice_row_counts"] == [2, 1]
+            for chunk in chunks
+        )
+
+
+def test_spawned_worker_failure_includes_chunk_and_slice_label(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_failing_fixture_slice_worker
+    )
+    with pytest.raises(
+        RuntimeError,
+        match=r"incumbent chunk 1/2 slice 2/2.*fixture materialization failed",
+    ):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=2,
+            workers=3,
+        )
+
+
+@pytest.mark.parametrize("workers", [0, -1])
+def test_workers_must_be_positive(workers) -> None:
+    module = _load_head_to_head_module()
+    with pytest.raises(ValueError, match="workers"):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            workers=workers,
+        )
+
+
+def test_workers_cli_defaults_to_one() -> None:
+    module = _load_head_to_head_module()
+    args = module._parse_args(
+        [
+            "--incumbent",
+            "/fixture/incumbent.h5",
+            "--ledger-facts",
+            "/fixture/facts.jsonl",
+            "--out-prefix",
+            "/fixture/scorecard",
+        ]
+    )
+    assert args.workers == 1
+
+
+def test_worker_full_household_slice_matches_sequential(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    frame = _tiny_frame(measure_values=(100.0, 300.0))
+    yardstick = _fixture_yardstick(module)
+    materialize = module.release._materialize_target_frame
+
+    def assert_full_slice_guard(frame, specs, **kwargs):
+        assert kwargs["refuse_population_aggregates"] is None
+        assert kwargs["target_materialization_cache_dir"] is None
+        assert kwargs["target_materialization_cache_context"] is None
+        return materialize(frame, specs, **kwargs)
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", assert_full_slice_guard
+    )
+    monkeypatch.setattr(module, "_SLICE_WORKER_STATE", None)
+    module._initialize_slice_worker(
+        frame, yardstick.registry.specs, yardstick.loss_weights, "fixture", 2, None
+    )
+    worker_result = module._score_slice_worker((0, 0))
+    parallel = module._reduce_scored_slices(
+        [worker_result],
+        slice_count=1,
+        artifact_name="fixture",
+        chunk_label="chunk 1/1",
+        maximum_microsim_batch_size=None,
+    )
+    sequential = module._score_chunk_household_sliced(
+        frame,
+        yardstick.registry.specs,
+        chunk_loss_weights=yardstick.loss_weights,
+        artifact_name="fixture",
+        chunk_label="chunk 1/1",
+        maximum_microsim_batch_size=None,
+    )
+    for field in ("estimates", "targets", "scales"):
+        assert np.array_equal(
+            getattr(parallel, field).view(np.uint64),
+            getattr(sequential, field).view(np.uint64),
+        )
+    for field in ("diagnostic_names", "scored_contract", "compilation"):
+        assert getattr(parallel, field) == getattr(sequential, field)
+
+
+@st.composite
+def _slice_arrays_and_completion_order(draw):
+    slice_count = draw(st.integers(min_value=1, max_value=8))
+    width = draw(st.integers(min_value=1, max_value=8))
+    rows = draw(
+        st.lists(
+            st.lists(
+                st.floats(
+                    min_value=-1e200,
+                    max_value=1e200,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    width=64,
+                ),
+                min_size=width,
+                max_size=width,
+            ),
+            min_size=slice_count,
+            max_size=slice_count,
+        )
+    )
+    completion_order = draw(st.permutations(tuple(range(slice_count))))
+    return rows, completion_order
+
+
+def _scored_slice(module, row, slice_index):
+    estimates = np.asarray(row, dtype=np.float64)
+    width = len(estimates)
+    compilation = {
+        "declared_targets": width,
+        "compiled_candidate_targets": width,
+        "dropped_target_names": [],
+    }
+    return module.ScoredSlice(
+        slice_index=slice_index,
+        estimates=estimates,
+        targets=np.ones(width),
+        scales=np.ones(width),
+        diagnostic_names=tuple(f"target-{index}" for index in range(width)),
+        scored_contract=(("household", "m_income", "measure"),),
+        compilation=compilation,
+        compilation_digest=module._canonical_sha256(compilation),
+        slice_size=1,
+    )
+
+
+# Shared machines can stall input generation without a slow strategy.
+@settings(
+    max_examples=60,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(case=_slice_arrays_and_completion_order())
+@example(case=([[1e16], [1.0], [-1e16]], (2, 0, 1)))
+@example(case=([[-0.0]], (0,)))
+def test_parallel_reduction_preserves_sequential_float64_bits(case) -> None:
+    module = _load_head_to_head_module()
+    rows, completion_order = case
+    slices = [_scored_slice(module, row, index) for index, row in enumerate(rows)]
+    expected = slices[0].estimates.copy()
+    for result in slices[1:]:
+        np.add(expected, result.estimates, out=expected)
+    for order in (range(len(slices)), completion_order):
+        actual = module._reduce_scored_slices(
+            (slices[index] for index in order),
+            slice_count=len(slices),
+            artifact_name="fixture",
+            chunk_label="chunk 1/1",
+            maximum_microsim_batch_size=1,
+        )
+        assert np.array_equal(actual.estimates, expected)
+        assert np.array_equal(
+            actual.estimates.view(np.uint64), expected.view(np.uint64)
+        )
+        assert actual.compilation["household_slice_row_counts"] == [1] * len(slices)
+        assert actual.compilation["slice_compilation_sha256s"] == [
+            result.compilation_digest for result in slices
+        ]
+
+
+@pytest.mark.parametrize(
+    ("field", "changed", "message"),
+    [
+        ("targets", np.asarray([2.0]), "target vector"),
+        ("scales", np.asarray([2.0]), "loss-scale vector"),
+        ("diagnostic_names", ("changed",), "diagnostic names"),
+        ("scored_contract", (), "scored-column contract"),
+    ],
+)
+def test_parallel_reduction_checks_every_cross_slice_contract(field, changed, message):
+    module = _load_head_to_head_module()
+    first = _scored_slice(module, [1.0], 0)
+    second = replace(_scored_slice(module, [2.0], 1), **{field: changed})
+    with pytest.raises(RuntimeError, match=message):
+        module._reduce_scored_slices(
+            [second, first],
+            slice_count=2,
+            artifact_name="fixture",
+            chunk_label="chunk 1/1",
+            maximum_microsim_batch_size=1,
+        )
 
 
 def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
@@ -543,27 +842,8 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
         module.release, "_materialize_target_frame", _materialize_with_receipt
     )
 
-    artifact = _fixture_artifact(module, sha256="e" * 64, measure_values=(1.0, 2.0))
-    tables = {}
-    for entity in artifact.frame.entities:
-        table = artifact.frame.table(entity)
-        third_row = table.iloc[[-1]].copy()
-        for column in table.columns:
-            if column.endswith("_id"):
-                third_row[column] = 3
-        tables[entity] = pd.concat([table, third_row], ignore_index=True)
-    artifact = replace(
-        artifact,
-        frame=Frame(
-            tables,
-            US_SCHEMA,
-            {
-                "household": Weights(
-                    np.asarray([10.0, 20.0, 30.0]),
-                    WeightKind.CALIBRATED,
-                )
-            },
-        ),
+    artifact = _three_household_fixture_artifact(
+        module, sha256="e" * 64, measure_values=(1.0, 2.0)
     )
     payload, _ = module.score_loaded_artifact(
         artifact=artifact,
