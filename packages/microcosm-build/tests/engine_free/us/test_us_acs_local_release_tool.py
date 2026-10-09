@@ -1207,6 +1207,221 @@ def test_finalize_refuses_artifact_changed_during_hours_validation(
     assert not args.out_summary.exists()
 
 
+# ---------------------------------------------------------------------------
+# District ESS gate: report-only by default, blocking on request
+# ---------------------------------------------------------------------------
+
+#: One district calibrated down to a fifth of its design ESS, one healthy.
+_COLLAPSED_DISTRICT_ESS = (
+    {"0601": 100.0, "0602": 80.0},
+    {"0601": 20.0, "0602": 60.0},
+)
+_HEALTHY_DISTRICT_ESS = (
+    {"0601": 100.0, "0602": 80.0},
+    {"0601": 90.0, "0602": 60.0},
+)
+
+
+def _ess_origin(district_ess) -> dict:
+    """A calibration summary's ``weight_origin`` carrying per-district ESS."""
+
+    design, calibrated = district_ess
+    return {
+        "design": {"effective_sample_size_by_district": design},
+        "calibrated": {"effective_sample_size_by_district": calibrated},
+    }
+
+
+def _with_district_ess(args, district_ess) -> None:
+    """Record per-district ESS in the finalize fixture's calibration summary."""
+
+    path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(path.read_text())
+    summary["weight_origin"] = _ess_origin(district_ess)
+    path.write_text(json.dumps(summary))
+
+
+def _district_ess_limitation(report: dict) -> dict:
+    [entry] = [
+        item
+        for item in report["reviewed_limitations"]
+        if item["id"] == "district_effective_sample_size_gate"
+    ]
+    return entry
+
+
+def test_finalize_records_a_collapsed_district_without_blocking_by_default(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _with_district_ess(args, _COLLAPSED_DISTRICT_ESS)
+    # The fixture has no QA evidence, so finalize stops on consumer_ready
+    # after writing its report.
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE not in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["report_only"], gate["criteria_met"]) == (
+        True,
+        True,
+        False,
+    )
+    assert [row["district"] for row in gate["collapsed"]] == ["0601"]
+    summary = json.loads(args.out_summary.read_text())
+    assert module.DISTRICT_ESS_GATE not in summary["simulation_readiness_blockers"]
+    entry = _district_ess_limitation(report)
+    assert entry["n_collapsed"] == 1
+    assert entry["calibration_blocker"] is False
+    assert "report-only" in entry["reason"]
+    assert summary["reviewed_limitations"] == report["reviewed_limitations"]
+
+
+def test_blocking_finalize_fails_on_a_collapsed_district(tmp_path, monkeypatch) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = True
+    _with_district_ess(args, _COLLAPSED_DISTRICT_ESS)
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["blocking"]) == (False, True)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert module.DISTRICT_ESS_GATE in summary["simulation_readiness_blockers"]
+    assert _district_ess_limitation(report)["calibration_blocker"] is True
+
+
+def test_blocking_finalize_fails_closed_without_district_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    """A summary that records no per-district ESS cannot pass a blocking gate."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = True
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["criteria_met"]) == (False, None)
+
+
+def _blocking_package_args(module, tmp_path: Path, gate: dict | None):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+    args.district_ess_gate_blocking = True
+    gates = {} if gate is None else {module.DISTRICT_ESS_GATE: gate}
+    (args.checkpoint_dir / "gate_summary.json").write_text(json.dumps({"gates": gates}))
+    return args
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    ["absent", "report_only", "blocking_failed", "other_relative", "other_floor"],
+)
+def test_blocking_package_refuses_a_report_finalize_did_not_block_on(
+    tmp_path: Path, recorded: str
+) -> None:
+    module = _load_tool_module()
+    gate = module.district_ess_collapse_gate
+    healthy = _ess_origin(_HEALTHY_DISTRICT_ESS)
+    entry = {
+        "absent": None,
+        # A report-only gate passes whatever it measured.
+        "report_only": gate(_ess_origin(_COLLAPSED_DISTRICT_ESS)),
+        "blocking_failed": gate(_ess_origin(_COLLAPSED_DISTRICT_ESS), blocking=True),
+        "other_relative": gate(healthy, relative_floor=0.1, blocking=True),
+        "other_floor": gate(healthy, absolute_floor=5.0, blocking=True),
+    }[recorded]
+    args = _blocking_package_args(module, tmp_path, entry)
+    with pytest.raises(SystemExit, match="--district-ess-gate-blocking"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a refusal leaves no release"
+
+
+def test_package_accepts_a_passing_blocking_gate_and_ignores_it_otherwise(
+    tmp_path: Path,
+) -> None:
+    """Either way the run reaches the next check (missing QA evidence)."""
+
+    module = _load_tool_module()
+    passing = module.district_ess_collapse_gate(
+        _ess_origin(_HEALTHY_DISTRICT_ESS), blocking=True
+    )
+    args = _blocking_package_args(module, tmp_path / "blocking", passing)
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+    report_only = module.district_ess_collapse_gate(
+        _ess_origin(_COLLAPSED_DISTRICT_ESS)
+    )
+    args = _blocking_package_args(module, tmp_path / "report-only", report_only)
+    args.district_ess_gate_blocking = False
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    ("blocking", "district_ess", "criteria_met"),
+    [
+        (False, _COLLAPSED_DISTRICT_ESS, False),
+        (True, _HEALTHY_DISTRICT_ESS, True),
+    ],
+    ids=["report-only-collapse", "blocking-pass"],
+)
+def test_the_district_ess_gate_ships_in_both_manifests(
+    tmp_path, monkeypatch, blocking, district_ess, criteria_met
+) -> None:
+    """finalize -> package records the gate in gate_summary.json and the build
+    manifest, its result in the release manifest's limitations, and the
+    release contract accepts the gate either way."""
+
+    from microcosm.data import contract
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = blocking
+    _with_district_ess(args, district_ess)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "ladder_sha256": module._sha256(args.ladder),
+            "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+    module.do_finalize(args)
+
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    release_dir = Path(module.do_package(args)["release_dir"])
+    gate_summary = json.loads((release_dir / "gate_summary.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    shipped = gate_summary["gates"][module.DISTRICT_ESS_GATE]
+    assert build_manifest["gates"][module.DISTRICT_ESS_GATE] == shipped
+    assert (shipped["passed"], shipped["blocking"]) == (True, blocking)
+    assert shipped["criteria_met"] is criteria_met
+    entry = _district_ess_limitation(release_manifest)
+    assert entry["criteria_met"] is criteria_met
+    assert entry["calibration_blocker"] is False
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    assert not [f for f in failures if module.DISTRICT_ESS_GATE in f], failures
+
+
 @requires_pytables
 def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None:
     """A finalize-written report must satisfy the package stage's binding."""

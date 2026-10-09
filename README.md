@@ -356,6 +356,21 @@ the calibrated dataset exists. If construction, validation, serialization, or
 writing fails, the release manifest records the failure and publication emits a
 warning without discarding the dataset release.
 
+The ACS local-area chain's finalize stage also records a district ESS gate,
+`district_ess_collapse`. It reads the calibration summary's Kish ESS by
+congressional district at the design and the calibrated weights. It counts the
+districts whose calibrated ESS is below a quarter of their design-weight ESS
+(`--district-ess-relative-floor`, default 0.25) and those below 15
+(`--district-ess-floor`); a floor of 0 turns its check off. At the release's
+ACS share of 0.5, the unpenalized release solve leaves 15-24 districts below a
+quarter across its full-surface and two holdout solves, and every
+chi-square-penalized solve leaves none (microcosm#1078). By default the gate
+is report-only: it passes, and records what it measured in `gate_summary.json`,
+the build manifest's `gates` and the reviewed limitation
+`district_effective_sample_size_gate`. With `--district-ess-gate-blocking`, a
+failing gate stops finalize, and package refuses a gate report that finalize
+did not block on at the same floors.
+
 Current UK national and rowwise builders use that same schema and writer. The
 UK extension is fully typed: weight summaries, zero-weight strata,
 geography-level pass rates, local fit summaries, and rotated holdout evidence
