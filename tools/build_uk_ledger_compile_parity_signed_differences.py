@@ -96,6 +96,17 @@ _OBR_WINDOW_DRIFT_RATIONALE = (
     "alone."
 )
 
+_OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
+    "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours "
+    "binds OBR table 4.1 row 15, the council tax receipts of England, Scotland "
+    "and Wales, over Great Britain's households, at the calendar-2025 window "
+    "(three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule "
+    "of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent "
+    "fixture holds the FY2025-26 value of row 19 alone, which adds Northern "
+    "Ireland domestic rates, the council tax accruals adjustment and the "
+    "high-value council tax surcharge."
+)
+
 _ESA_CUBE_DRIFT_RATIONALE = (
     "Source class (PolicyEngine/chronicle#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
@@ -638,6 +649,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
         elif name.startswith("hmrc.spi_region.") and row.get("kind") == "ledger_only":
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
+        elif name == "obr.council_tax" and row.get("kind") == "calibration_drift":
+            row["reason"] = _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE
         elif (
             name.startswith("obr.")
             and row.get("kind") == "calibration_drift"

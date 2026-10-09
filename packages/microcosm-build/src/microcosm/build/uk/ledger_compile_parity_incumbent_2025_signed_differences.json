@@ -7852,10 +7852,10 @@
   {
    "fixture_value": 50925163826.30539,
    "kind": "calibration_drift",
-   "ledger_value": 50116358662.27284,
+   "ledger_value": 48774253146.51462,
    "name": "obr.council_tax",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours binds OBR table 4.1 row 15, the council tax receipts of England, Scotland and Wales, over Great Britain's households, at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane); the frozen incumbent fixture holds the FY2025-26 value of row 19 alone, which adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge."
   },
   {
    "fixture_value": 7206287181.538654,

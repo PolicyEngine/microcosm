@@ -2196,13 +2196,46 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.tax.council_tax.net_amount"
+        "concept": "uk.tax.council_tax.net_amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "obr/council_tax",
           "value_variable": "council_tax_less_benefit",
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "household"
+            }
+          ],
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). It binds row 15 ('Total council tax receipts'), the sum of the England, Scotland and Wales rows, over Great Britain's households (microcosm#1095). Row 19 ('Total net council tax receipts', obr.council_tax_total, bound before) adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge: GBP 1.34bn, 2.7% of the calendar-2025 window, which no household's council tax carries (domestic rates are obr.domestic_rates, held). Chronicle stamps the row K02000001, as OBR's table is UK-wide, and the selector pins it there. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -2213,7 +2246,7 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_total"
+        "source_concept": "obr.council_tax_receipts_england_scotland_wales"
       },
       "category_id": "obr.efo_expenditure",
       "label": "Council tax",

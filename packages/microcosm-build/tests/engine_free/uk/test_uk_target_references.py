@@ -54,6 +54,7 @@ from tools.build_uk_ledger_compile_parity_signed_differences import (
 from tools.generate_uk_local_target_references import _support_floor_register_scope
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
+    TARGET_ID_GEOGRAPHY_PINS,
     _annual_uc_award_band_token,
     _fanout_name,
     _geography_pins,
@@ -707,12 +708,16 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
             )
         )
 
+    # An exact-id pin overrides the substring rule: OBR's council tax row
+    # sums England, Scotland and Wales and carries Chronicle's UK stamp
+    # (microcosm#1095).
     substring_scotland = {
         str(target["target_id"])
         for target in contract["targets"]
         if "scotland" in haystack(target)
         and "northern" not in haystack(target)
         and "domestic_rates" not in haystack(target)
+        and str(target["target_id"]) not in TARGET_ID_GEOGRAPHY_PINS
     }
     # The by_area council-tax cells carry the same prefix pin, but they sit on
     # the local surface, where the roster (not the pin) fixes the geography.
@@ -973,6 +978,9 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
         "historical forecast/uprated" in differences["hmrc.cgt.gains_total"]["reason"]
     )
     assert differences["obr.capital_gains_tax"]["fixture_value"] == 21_801_546_197.09165
+    council_tax = differences["obr.council_tax"]
+    assert council_tax["kind"] == "calibration_drift"
+    assert "row 15" in council_tax["reason"] and "row 19" in council_tax["reason"]
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (

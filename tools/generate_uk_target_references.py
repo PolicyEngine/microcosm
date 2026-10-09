@@ -462,8 +462,21 @@ DFT_BUS_AREA_GEOGRAPHY_IDS = {
 }
 
 
+#: Target ids pinned one by one, where neither a prefix nor the substring rule
+#: gives the geography the publisher's fact is stamped with.
+TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
+    # OBR table 4.1 row 15 sums the England, Scotland and Wales council tax
+    # rows; Chronicle stamps it K02000001, as the table is UK-wide, while the
+    # substring rule would read "scotland" in its concept (microcosm#1095).
+    # The binding scopes the model column to Great Britain.
+    "obr.council_tax": "uk",
+}
+
+
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    if target_id in TARGET_ID_GEOGRAPHY_PINS:
+        return UK_GEOGRAPHY_IDS[TARGET_ID_GEOGRAPHY_PINS[target_id]]
     if target_id.startswith("dft."):
         area = str(
             (target.get("ledger_selector") or {}).get("layout_groupby_value_id", "")

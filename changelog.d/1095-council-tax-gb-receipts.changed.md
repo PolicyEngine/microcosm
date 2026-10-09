@@ -1,0 +1,3 @@
+`obr.council_tax` now binds OBR table 4.1 row 15, total council tax receipts (the sum of the England, Scotland and Wales rows), over Great Britain's households (microcosm#1095). It previously bound row 19, total net council tax receipts. Row 19 adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge, which no household's council tax carries: £1.34bn, 2.7% of the calendar-2025 window. The target moves from £50.12bn to £48.77bn. `obr.domestic_rates` stays held.
+
+Chronicle stamps the row K02000001, since OBR's table is UK-wide. A new exact-id geography pin keeps it there: the generator's substring rule would otherwise read "scotland" in the concept and pin Scotland. The country legs keep their own nations' pins.

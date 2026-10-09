@@ -938,7 +938,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.obr"
       ],
-      "evidence": "uk-data targets/sources/obr.py:284; Microcosm target ids obr.council_tax and country legs obr.council_tax_{england,scotland,wales}.",
+      "evidence": "uk-data targets/sources/obr.py:284; Microcosm target ids obr.council_tax (OBR table 4.1 row 15, England, Scotland and Wales receipts over Great Britain's households, microcosm#1095) and country legs obr.council_tax_{england,scotland,wales}.",
       "status": "ported_national"
     },
     {

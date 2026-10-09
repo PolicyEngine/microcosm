@@ -11242,9 +11242,9 @@
           "matched_fact_count_overall": 7,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 50116358662.27284,
+          "resolved_value": 48774253146.51462,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_16bcd3e2a16bfa44c0b1ea74"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bd6caaecbca3ab1bebe5d2d8"
         }
       ]
     },

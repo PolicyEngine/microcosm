@@ -1142,7 +1142,7 @@
       "name": "obr.council_tax",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.council_tax_total",
+        "source_concept": "obr.council_tax_receipts_england_scotland_wales",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
