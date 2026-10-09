@@ -1,0 +1,66 @@
+[
+  {
+    "name": "SAN",
+    "mode": "selection",
+    "selection_rule": "nation_grain_family_equal_sqrt_count",
+    "refit_rule": "nation_grain_family_equal_sqrt_count",
+    "initial_lambda": 1.0849097480138725e-06,
+    "notes": "step 2 S-A under the nation-grain rule (María, 2026-10-09): the search under nation_grain_family_equal_sqrt_count, warm-started at S-A's selected penalty x the two rules' loss-ratio quotient; its own refit under the rule at floor 0"
+  },
+  {
+    "name": "SAN_ge_f0",
+    "selection_from": "SAN",
+    "notes": "S0's own refit (grain_equal, floor 0) on this selection"
+  },
+  {
+    "name": "SAN_f0.5",
+    "selection_from": "SAN",
+    "refit_rule": "nation_grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "notes": "the rule at floor 0.5"
+  },
+  {
+    "name": "SAN_f0.5_u0.0065",
+    "selection_from": "SAN",
+    "refit_rule": "nation_grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.006472463183205269,
+      "anchor": "uniform"
+    },
+    "notes": "the rule at floor 0.5, uniform L2 at 3e-3 x the rule's loss ratio"
+  },
+  {
+    "name": "SAN_f0.5_u0.022",
+    "selection_from": "SAN",
+    "refit_rule": "nation_grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.0215748772773509,
+      "anchor": "uniform"
+    },
+    "notes": "the rule at floor 0.5, uniform L2 at 1e-2 x the rule's loss ratio (S-A's best, under this rule)"
+  },
+  {
+    "name": "SAN_ge_f0.5_u1e-2",
+    "selection_from": "SAN",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.01,
+      "anchor": "uniform"
+    },
+    "notes": "grain_equal at floor 0.5, uniform L2 at 1e-2"
+  },
+  {
+    "name": "H_SA_f0.5_u0.021",
+    "mode": "refit_holdout",
+    "selection_from": "SA",
+    "refit_rule": "grain_family_equal_sqrt_count",
+    "baseline_pi_floor": 0.5,
+    "refit_l2": {
+      "lambda": 0.021438607259041457,
+      "anchor": "uniform"
+    },
+    "notes": "the 5-fold holdout of S-A's best configuration (SA_f0.5_u0.021), on S-A's saved selection"
+  }
+]

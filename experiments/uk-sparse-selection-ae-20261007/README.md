@@ -56,6 +56,14 @@ reference is never re-solved, so every delta is the selection's.
    when no S-A configuration passes all six criteria. Prediction (the plan's): S-A
    raises the lone-person share and modestly lowers the collapse count. Holdouts can
    run later on either saved selection without searching again.
+   S-A passed criteria 1–4 but missed 35 national rows by more than 25 %, so on
+   2026-10-09 María added S-A under the nation-grain rule (`step2_san.json`). It runs
+   the same search and five refits under `nation_grain_family_equal_sqrt_count`, which
+   gives national rows half the loss rather than a third, with the L2 λs scaled by
+   that rule's loss ratio (2.1575). It warm-starts at S-A's selected λ times the two
+   rules' loss-ratio quotient (1.0849e-6), because S-A's own scaled start overshot by
+   2.3× and cost two probes. It ends with the holdout of S-A's best configuration,
+   `SA_f0.5_u0.021`.
 6. Report to María. S-E and step 3 (size) run only on her pick.
 
 **Selection rules** (fixed now):
