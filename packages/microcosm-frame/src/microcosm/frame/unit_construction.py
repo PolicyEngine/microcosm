@@ -75,16 +75,13 @@ from enum import StrEnum
 import numpy as np
 import pandas as pd
 
-from microcosm.frame.concept_mapping import (
-    _INT64_MAX,
-    GroupMembership,
-    UnitRole,
-    _exceeds_int64,
-)
+from microcosm.frame.concept_mapping import GroupMembership, UnitRole
 from microcosm.frame.concepts import (
+    _INT64_MAX,
     HOUSEHOLD_ID_COLUMN,
     PERSON_HOUSEHOLD_ID_COLUMN,
     PERSON_ID_COLUMN,
+    _exceeds_int64,
     _parsing,
     _record_fields,
     validate_concept_tables,

@@ -633,12 +633,13 @@ class TestIdRange:
     def test_an_unsigned_household_id_int64_cannot_hold_is_refused(
         self, household_id
     ) -> None:
-        # The concept-frame contract accepts this frame. Cast to int64, 2**63
-        # became household -2**63: the unit nested in no household and its
-        # household counted no unit.
+        # Cast to int64, 2**63 became household -2**63: the unit nested in no
+        # household and its household counted no unit. Validation refuses the
+        # same columns (microcosm#1158).
         person, household = self._one_adult(household_id)
-        assert not validate_concept_tables({"person": person, "household": household})
         columns = "['person.person_household_id', 'household.household_id']"
+        with pytest.raises(ValueError, match=re.escape(columns)):
+            validate_concept_tables({"person": person, "household": household})
         with pytest.raises(ValueError, match=re.escape(columns)):
             build_benefit_units(person, household, self.RULE)
 

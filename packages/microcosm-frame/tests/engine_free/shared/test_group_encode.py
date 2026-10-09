@@ -900,6 +900,29 @@ class TestRefusals:
                 {"Family": membership},
             )
 
+    @pytest.mark.parametrize("dtype", ["uint8", "UInt8", "int64"])
+    def test_a_narrow_unsigned_household_cannot_catch_a_unit_past_its_range(
+        self, dtype
+    ) -> None:
+        # The family nests in household 261, and only household 5 exists.
+        # pandas matched unit households against a narrower unsigned index by
+        # casting them down to it, so under uint8 household 261 was household
+        # 5 (and UInt8 raised a TypeError); as int64 it is unknown.
+        tables, _, family, _, group = _example()
+        person = tables["person"].assign(person_household_id=np.int64(261))
+        household = tables["household"].assign(household_id=pd.array([5], dtype=dtype))
+        membership = GroupMembership(
+            entity="family",
+            units=family.assign(family_household_id=np.int64(261)),
+            person_unit=group.person_unit,
+            person_role=group.person_role,
+        )
+        with pytest.raises(ValueError, match="names an unknown household"):
+            MAPPING.encode_groups(
+                {**tables, "person": person, "household": household},
+                {"Family": membership},
+            )
+
     @PROPERTY
     @given(case=unit_frames(), dtype=st.sampled_from(["uint64", "UInt64", "Int64"]))
     def test_membership_ids_are_read_exactly_or_refused(self, case, dtype) -> None:

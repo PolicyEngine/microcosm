@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.concepts import (
+    _INT64_MAX,
     CONCEPT_BY_ID,
     CONCEPT_ENTITIES,
     CONCEPTS,
@@ -51,6 +52,7 @@ from microcosm.frame.concepts import (
     ConceptAlignment,
     TemporalBasis,
     Unit,
+    _exceeds_int64,
     _parsing,
     _record_fields,
     _require_int64_ids,
@@ -2200,19 +2202,6 @@ def _state_column(column: str) -> tuple[str, str]:
     return entity, name
 
 
-#: The largest id a unit table carries: units hold and compare ids as int64.
-_INT64_MAX = int(np.iinfo(np.int64).max)
-
-
-def _exceeds_int64(values: pd.Series) -> bool:
-    """Whether an unsigned integer column holds an id int64 cannot hold."""
-
-    if values.dtype.kind != "u":
-        return False
-    present = values.dropna()
-    return len(present) > 0 and int(present.max()) > _INT64_MAX
-
-
 class _Units:
     """A membership checked against a concept frame, as row positions."""
 
@@ -2250,19 +2239,13 @@ class _Units:
                 )
         # The ids are compared as int64 below. An unsigned id int64 cannot
         # hold would wrap onto another id (2**64 - 1 onto -1), so a
-        # membership naming no unit could pass; it is refused instead.
+        # membership naming no unit could pass; it is refused instead. The
+        # concept frame's own ids were refused already, by _Context.
         wide = [
             name
             for name, values in (
                 ("person unit ids", membership.person_unit),
                 *((column, units[column]) for column in columns),
-                (f"person.{_PERSON_ID}", person[_PERSON_ID]),
-                (f"person.{_PERSON_HOUSEHOLD_ID}", person[_PERSON_HOUSEHOLD_ID]),
-                *(
-                    (f"person.{column}", person[column])
-                    for column in ("partner_person_id",)
-                    if column in person.columns
-                ),
             )
             if _exceeds_int64(values)
         ]
@@ -2327,7 +2310,7 @@ class _Units:
                 f"Every {membership.entity} must nest in its declared household."
             )
         household_rows = pd.Index(
-            context.household[_HOUSEHOLD_ID].to_numpy()
+            _matched_ids(context.household[_HOUSEHOLD_ID])
         ).get_indexer(unit_households)
         if (household_rows < 0).any():
             raise ValueError(f"A {membership.entity} names an unknown household.")
