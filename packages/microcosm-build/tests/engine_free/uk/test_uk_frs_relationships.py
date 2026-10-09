@@ -46,6 +46,7 @@ def _person(
     hrp: bool = False,
     fte: bool | None = None,
     rel: dict[int, int] | None = None,
+    benunit: int = 1,
 ) -> dict:
     return {
         "number": number,
@@ -54,6 +55,7 @@ def _person(
         "hrp": hrp,
         "fte": fte,
         "rel": dict(rel or {}),
+        "benunit": benunit,
     }
 
 
@@ -92,7 +94,7 @@ def _tables(*households: list[dict]):
             person_rows.append(
                 {
                     "person_id": sernum * 1000 + p["number"],
-                    "person_benunit_id": sernum * 100 + 1,
+                    "person_benunit_id": sernum * 100 + p["benunit"],
                     "person_household_id": sernum,
                     "age": p["age"],
                     "is_household_head": bool(p["hrp"]),
@@ -393,6 +395,53 @@ def test_civil_partners_and_step_children_form_one_family() -> None:
         "CIVIL_PARTNER",
         "STEP_CHILD",
     ]
+
+
+def _looked_after(result) -> list[bool]:
+    return result.person_values["is_looked_after_by_local_authority"].tolist()
+
+
+def test_a_foster_child_under_16_in_the_carers_unit_is_looked_after() -> None:
+    result = _derive(
+        [
+            _person(1, age=45, hrp=True, rel={2: FOSTER_PARENT, 3: PARENT}),
+            _person(2, age=8, table="child", rel={1: FOSTER_CHILD}),
+            _person(3, age=10, table="child", rel={1: CHILD}),
+        ]
+    )
+
+    assert _looked_after(result) == [False, True, False]
+    assert result.evidence["looked_after_children"] == 1
+
+
+def test_either_side_of_the_foster_link_marks_the_child() -> None:
+    # The carer's foster parent code marks the child even where the child's
+    # own grid entry reads non-relative; foster codes never form a family.
+    result = _derive(
+        [
+            _person(1, age=45, hrp=True, rel={2: FOSTER_PARENT}),
+            _person(2, age=8, table="child", rel={1: NON_RELATIVE}),
+        ]
+    )
+
+    assert _looked_after(result) == [False, True]
+    assert _roles(result)[1] == "INDIVIDUAL"
+
+
+def test_older_foster_children_and_other_units_are_not_marked() -> None:
+    result = _derive(
+        [
+            _person(1, age=45, hrp=True, rel={2: FOSTER_PARENT, 3: FOSTER_PARENT}),
+            # Sixteen or over: the FRS gives a foster child with a local
+            # authority allowance their own benefit unit.
+            _person(2, age=16, table="child", rel={1: FOSTER_CHILD}),
+            # A foster link to an adult outside the child's own benefit unit.
+            _person(3, age=8, table="child", rel={1: FOSTER_CHILD}, benunit=2),
+        ]
+    )
+
+    assert _looked_after(result) == [False, False, False]
+    assert result.evidence["looked_after_children"] == 0
 
 
 def test_weighted_cells_and_domains_in_evidence() -> None:

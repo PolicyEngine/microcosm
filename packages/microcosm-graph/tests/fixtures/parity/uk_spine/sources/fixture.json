@@ -1642,7 +1642,7 @@
       "nonnegative_outputs": [
         "ons_family_index"
       ],
-      "notes": "Derives the ONS Families and households Table 7 household type from the FRS household grid (microcosm#791). Every person's relhrp code becomes relationship_to_head (HEAD for the household reference person, whose relhrp is blank and whose hrpid is 1; hrpnum on the househol tab is the independent check). The pairwise R01-R14 matrix builds ONS families: any partner pair (spouse, cohabitee, civil partner) is a couple; a person with no partner and no own child in the household joins a parent's family through a natural/adopted or step child link (natural before step, then the lowest person number, on ties); foster, in-law, grandparent and sibling links never form a family, so foster children and grandchildren without a parent present stay individuals, as ONS treats them. A child is dependent under 16, or 16-18 in full-time education (child-tab members are in full-time non-advanced education by construction; adults use educft, fted on earlier tapes); 19 and over is non-dependent whatever the education status - the FRS child tab runs to 19, ONS stops at 18, so the two definitions are translated here rather than assumed equal. Household type: one person (split at 65), no family present (two or more unrelated adults, which counts related non-family households such as two siblings), exactly one family classified by that family whatever other individuals live there (a couple plus a lodger is a couple household - the class the #757 person-count restrictions could not place), or two or more families. The ten values are the Chronicle ons-families-households-2025 ons.household_type value ids verbatim, so the frame value, this declaration, the contract row and the published fact share one string. The reciprocity tolerance is the 2024-25 tape's three ordered pairs (two households) where a child records a parent link the parent records as non-relative or sibling; either side's declaration establishes the link, and any other count refuses the build for review.",
+      "notes": "Derives the ONS Families and households Table 7 household type from the FRS household grid (microcosm#791). Every person's relhrp code becomes relationship_to_head (HEAD for the household reference person, whose relhrp is blank and whose hrpid is 1; hrpnum on the househol tab is the independent check). The pairwise R01-R14 matrix builds ONS families: any partner pair (spouse, cohabitee, civil partner) is a couple; a person with no partner and no own child in the household joins a parent's family through a natural/adopted or step child link (natural before step, then the lowest person number, on ties); foster, in-law, grandparent and sibling links never form a family, so foster children and grandchildren without a parent present stay individuals, as ONS treats them. A child is dependent under 16, or 16-18 in full-time education (child-tab members are in full-time non-advanced education by construction; adults use educft, fted on earlier tapes); 19 and over is non-dependent whatever the education status - the FRS child tab runs to 19, ONS stops at 18, so the two definitions are translated here rather than assumed equal. Household type: one person (split at 65), no family present (two or more unrelated adults, which counts related non-family households such as two siblings), exactly one family classified by that family whatever other individuals live there (a couple plus a lodger is a couple household - the class the #757 person-count restrictions could not place), or two or more families. The ten values are the Chronicle ons-families-households-2025 ons.household_type value ids verbatim, so the frame value, this declaration, the contract row and the published fact share one string. The reciprocity tolerance is the 2024-25 tape's three ordered pairs (two households) where a child records a parent link the parent records as non-relative or sibling; either side's declaration establishes the link, and any other count refuses the build for review. It also sets is_looked_after_by_local_authority for a child-table member under 16 whose grid code toward an adult in their own benefit unit is foster child (5), or toward whom that adult records foster parent (9). The FRS 2024-25 question instructions (Benefit Unit Allocation) put foster children under 16 in the carer's benefit unit, so without the flag policyengine-uk's child tests (Universal Credit, Child Tax Credit, Pension Credit, Tax-Free Childcare, extended childcare and the legacy benefits) count them as the carer's own children. The flag follows the relationship code alone: few such children are recorded, and the carer's local-authority fostering allowance (ALLOW3) covers fewer still.",
       "operations": [
         {
           "delimiter": "\t",
@@ -1776,6 +1776,11 @@
             "multi_family_households"
           ],
           "kind": "derive_ons_household_composition",
+          "looked_after_child": {
+            "below_age": 16,
+            "foster_child_code": 5,
+            "foster_parent_code": 9
+          },
           "one_person_age_split": 65,
           "reciprocity_mismatch_tolerance": 3,
           "source_columns": {
@@ -1809,6 +1814,7 @@
         "relationship_to_head",
         "ons_family_role",
         "ons_family_index",
+        "is_looked_after_by_local_authority",
         "ons_household_type"
       ],
       "rewrites": [],

@@ -581,6 +581,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "relationship_to_head", "string"),
         _Cell("person", "ons_family_role", "string"),
         _Cell("person", "ons_family_index", "int64"),
+        _Cell("person", "is_looked_after_by_local_authority", "bool"),
         _Cell("household", "ons_household_type", "string"),
     ),
     "frs_employment": (
