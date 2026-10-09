@@ -13,8 +13,6 @@ from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlsplit
 
-from huggingface_hub import get_token
-
 from microcosm.build.telemetry_emitter_service.constants import (
     COLLECTOR_RESPONSE_TOO_LARGE_ERROR,
     COLLECTOR_URL_HTTPS_ERROR,
@@ -116,11 +114,18 @@ def _http_post(
 
 
 def _huggingface_token() -> str | None:
-    return (
+    environment_token = (
         os.environ.get("HF_TOKEN", "").strip()
         or os.environ.get("HUGGINGFACE_TOKEN", "").strip()
-        or get_token()
     )
+    if environment_token:
+        return environment_token
+    # Imported here, not at module level: huggingface_hub brings httpx, yaml
+    # and asyncio, and only the delivery worker needs it, after the service
+    # has answered the build's readiness ping.
+    from huggingface_hub import get_token
+
+    return get_token()
 
 
 def _registration_key(registration: Mapping[str, Any]) -> str:
