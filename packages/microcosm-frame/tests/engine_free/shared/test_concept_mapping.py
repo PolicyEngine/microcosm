@@ -64,6 +64,7 @@ from test_support.microcosm_frame.concept_frames import (
     shares,
 )
 from test_support.microcosm_frame.concept_id_dtypes import (
+    UNSIGNED_64,
     WIDE_CASES,
     id_typed_frames,
     typed,
@@ -537,10 +538,6 @@ class TestExecution:
             }
 
 
-#: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
-UNSIGNED_64 = [np.dtype(np.uint64), pd.UInt64Dtype()]
-
-
 def _pointer_mapping() -> ConceptMapping:
     """One engine input per transform that resolves a pointer."""
 
@@ -571,6 +568,15 @@ def _assert_same_encoding(actual, expected) -> None:
     assert actual.keys() == expected.keys()
     for entity, table in expected.items():
         pd.testing.assert_frame_equal(actual[entity], table, check_dtype=False)
+
+
+def _encoding(mapping: ConceptMapping, tables, parameters) -> object:
+    """The encoded tables, or the ValueError encoding raises, as plain data."""
+
+    try:
+        return mapping.encode(tables, **parameters).tables
+    except ValueError as error:
+        return ("ValueError", str(error))
 
 
 def _as_int64(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
@@ -621,8 +627,8 @@ class TestIdDtypes:
             {
                 "person_id": np.array([-1, 11, 12, 13], dtype=np.int64),
                 "person_household_id": [1, 1, 1, 1],
-                "partner_person_id": pd.array(
-                    [None, 2**64 - 1, None, None], dtype="UInt64"
+                "partner_person_id": typed(
+                    [None, 2**64 - 1, None, None], pd.UInt64Dtype()
                 ),
             }
         )
@@ -673,19 +679,20 @@ class TestIdDtypes:
     @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
     def test_ids_up_to_int64_max_are_kept_exactly(self, dtype) -> None:
         top = 2**63 - 1
+        pointers = pd.UInt64Dtype()
         person = pd.DataFrame(
             {
                 "person_id": typed([top, top - 1, top - 2], dtype),
                 "person_household_id": typed([top, top, top], dtype),
-                "partner_person_id": pd.array([top - 1, top, None], dtype="UInt64"),
-                "parent_1_person_id": pd.array([None, None, top], dtype="UInt64"),
-                "parent_2_person_id": pd.array([None, None, top - 1], dtype="UInt64"),
+                "partner_person_id": typed([top - 1, top, None], pointers),
+                "parent_1_person_id": typed([None, None, top], pointers),
+                "parent_2_person_id": typed([None, None, top - 1], pointers),
             }
         )
         household = pd.DataFrame(
             {
                 "household_id": typed([top], dtype),
-                "reference_person_id": pd.array([top], dtype="UInt64"),
+                "reference_person_id": typed([top], pointers),
                 "rent": [100.0],
             }
         )
@@ -700,7 +707,7 @@ class TestIdDtypes:
     @settings(max_examples=300, deadline=None)
     @given(
         name=st.sampled_from([*sorted(MAPPINGS), "pointer transforms"]),
-        case=id_typed_frames(dangling_households=True),
+        case=id_typed_frames(),
         data=st.data(),
     )
     def test_every_frame_is_refused_or_encodes_as_its_int64_twin(
@@ -714,10 +721,12 @@ class TestIdDtypes:
             ):
                 mapping.encode(case.tables, **parameters)
             return
-        _assert_same_encoding(
-            mapping.encode(case.tables, **parameters).tables,
-            mapping.encode(case.twin, **parameters).tables,
-        )
+        encoded = _encoding(mapping, case.tables, parameters)
+        expected = _encoding(mapping, case.twin, parameters)
+        if isinstance(expected, tuple) or isinstance(encoded, tuple):
+            assert encoded == expected
+        else:
+            _assert_same_encoding(encoded, expected)
 
 
 class TestDecodeGuards:

@@ -1296,8 +1296,9 @@ class ConceptMapping:
 
         Raises:
             ValueError: If a needed share or rate is missing or outside
-                [0, 1], or a relationship role or allocation lacks the
-                pointers it reads.
+                [0, 1], a relationship role or allocation lacks the
+                pointers it reads, or an unsigned id or pointer exceeds
+                ``2**63 - 1`` (ids are matched as int64).
         """
 
         shares = dict(shares or {})
@@ -1414,7 +1415,7 @@ class _Context:
 
 
 def _matched_ids(values: pd.Series) -> np.ndarray:
-    """Ids ready for exact matching: integers as int64, anything else as is.
+    """Ids ready for exact matching: null-free integers as int64, else as is.
 
     pandas matches against a narrower unsigned index by casting the targets
     down to it (261 onto 5 for uint8), so null-free integer ids are widened

@@ -1397,9 +1397,10 @@ def validate_concept_tables(
         Every violation found, empty for a valid frame.
 
     Raises:
-        ValueError: If a table or an id column is missing, ids are not unique,
-            a person points at an unknown household, or an unsigned id or
-            pointer exceeds ``2**63 - 1``: pointers are matched as int64.
+        ValueError: If a table or an id column is missing, an id column
+            holds anything but non-null integers, an unsigned id or pointer
+            exceeds ``2**63 - 1`` (ids are matched as int64), ids are not
+            unique, or a person points at an unknown household.
     """
 
     person, household = _require_structure(tables)
@@ -1523,9 +1524,20 @@ def _require_structure(
                     f"Concept frame id column {column!r} must hold non-null "
                     f"integers, found dtype {ids.dtype}."
                 )
-    if not person[_PERSON_ID].is_unique or not household[_HOUSEHOLD_ID].is_unique:
+    # Ids are matched as int64 from here on, here and in _check_pointers. An
+    # unsigned id above 2**63 - 1 would wrap (2**64 - 1 onto -1), so it is
+    # refused before anything converts; every other id converts exactly.
+    # Matching the native dtypes is not exact either: pandas compares int64
+    # with uint64 through float64, which merges ids above 2**53.
+    _require_int64_ids(person, household, "Validation matches")
+    person_ids = pd.Index(person[_PERSON_ID].to_numpy(dtype=np.int64))
+    household_ids = pd.Index(household[_HOUSEHOLD_ID].to_numpy(dtype=np.int64))
+    if not person_ids.is_unique or not household_ids.is_unique:
         raise ValueError("Concept frame ids must be unique.")
-    unknown = ~person[_PERSON_HOUSEHOLD_ID].isin(household[_HOUSEHOLD_ID])
+    unknown = (
+        household_ids.get_indexer(person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64))
+        < 0
+    )
     if unknown.any():
         raise ValueError(f"{int(unknown.sum())} person(s) name an unknown household.")
     return person, household
@@ -1600,12 +1612,10 @@ def _check_column(item: Concept, values: pd.Series) -> list[ConceptViolation]:
 def _check_pointers(
     person: pd.DataFrame, household: pd.DataFrame
 ) -> list[ConceptViolation]:
-    # Ids and pointers are matched as int64, where an unsigned id above
-    # 2**63 - 1 would wrap (2**64 - 1 onto -1), so such ids are refused
-    # first. Every other id converts exactly. The person ids are widened
-    # too: pandas matches against a narrower unsigned index by casting the
-    # pointers down to it (261 onto 5 for uint8).
-    _require_int64_ids(person, household, "Pointer checks match")
+    # Ids and pointers are matched as int64; _require_structure has refused
+    # any id int64 cannot hold, so every conversion here is exact. The
+    # person ids are widened too: pandas matches against a narrower unsigned
+    # index by casting the pointers down to it (261 onto 5 for uint8).
     out: list[ConceptViolation] = []
     ids = pd.Index(person[_PERSON_ID].to_numpy(dtype=np.int64))
     own_household = person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
@@ -1766,7 +1776,7 @@ def _require_int64_ids(
 
     Only an unsigned id above ``2**63 - 1`` is refused; every other integer
     id converts to int64 exactly. ``what`` starts the message, as in
-    "Encoding matches".
+    "Encoding matches". Columns of other dtypes are not inspected.
     """
 
     tables = {"person": person, "household": household}

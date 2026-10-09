@@ -42,6 +42,7 @@ from microcosm.frame.concepts import (
 )
 from test_support.microcosm_frame.concept_frames import concept_frames
 from test_support.microcosm_frame.concept_id_dtypes import (
+    UNSIGNED_64,
     WIDE_CASES,
     id_typed_frames,
     typed,
@@ -761,16 +762,22 @@ class TestParentCycles:
         assert rows == _cycle_reference(parents, n)
 
 
-#: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
-UNSIGNED_64 = [np.dtype(np.uint64), pd.UInt64Dtype()]
+def _validation(tables) -> object:
+    """What validation returns, or the ValueError it raises, as plain data."""
+
+    try:
+        return validate_concept_tables(tables)
+    except ValueError as error:
+        return ("ValueError", str(error))
 
 
 class TestIdDtypes:
     """Ids and pointers of any accepted integer dtype are matched exactly.
 
-    Pointers are matched as int64. An unsigned id above ``2**63 - 1`` would
-    wrap (``2**64 - 1`` onto -1) and so is refused, by name; every other id
-    must validate exactly as the same values typed int64.
+    Ids are matched as int64. An unsigned id above ``2**63 - 1`` would wrap
+    (``2**64 - 1`` onto -1) and so is refused, by name, before anything
+    converts; every other id must validate exactly as the same values typed
+    int64.
     """
 
     @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
@@ -785,6 +792,16 @@ class TestIdDtypes:
         ):
             validate_concept_tables(tables)
 
+    def test_a_wide_id_is_refused_by_name_before_the_structure_checks(self) -> None:
+        # Uniqueness and household membership compare ids too, so the
+        # refusal comes first: here two persons share the id 2**63 and one
+        # names no household, and the refusal still names the column.
+        tables, wide = wide_id_frame("person_id", 2**63, pd.UInt64Dtype())
+        tables["person"]["person_id"] = typed([10, 2**63, 2**63], pd.UInt64Dtype())
+        tables["person"]["person_household_id"] = np.array([1, 1, 2], dtype=np.int64)
+        with pytest.raises(ValueError, match=re.escape(f"{wide} hold unsigned ids")):
+            validate_concept_tables(tables)
+
     def test_a_dangling_pointer_cannot_wrap_onto_person_minus_one(self) -> None:
         # The microcosm#1122 review probe: read as int64, 2**64 - 1 is -1, so
         # person 11's dangling partner pointer named person -1, who names 11
@@ -793,8 +810,8 @@ class TestIdDtypes:
             {
                 "person_id": np.array([-1, 11, 12, 13], dtype=np.int64),
                 "person_household_id": [1, 1, 1, 1],
-                "partner_person_id": pd.array(
-                    [11, 2**64 - 1, None, None], dtype="UInt64"
+                "partner_person_id": typed(
+                    [11, 2**64 - 1, None, None], pd.UInt64Dtype()
                 ),
             }
         )
@@ -834,28 +851,59 @@ class TestIdDtypes:
             ("reference_person_id", "not_member"),
         }
 
+    @pytest.mark.parametrize(
+        ("persons", "households"),
+        [
+            ("int64", "uint64"),
+            ("uint64", "int64"),
+            ("Int64", "UInt64"),
+            ("UInt64", "Int64"),
+        ],
+    )
+    def test_a_household_float64_would_merge_with_another_is_still_unknown(
+        self, persons, households
+    ) -> None:
+        # pandas compared int64 with uint64 household ids through float64,
+        # where 2**62 + 256 rounds to 2**62, so a person naming no household
+        # passed as a member of household 2**62.
+        base = 2**62
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([10, 20], dtype=np.int64),
+                "person_household_id": typed(
+                    [base, base + 256], pd.api.types.pandas_dtype(persons)
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": typed([base], pd.api.types.pandas_dtype(households))}
+        )
+        with pytest.raises(ValueError, match=re.escape("1 person(s) name an unknown")):
+            validate_concept_tables({"person": person, "household": household})
+
     @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
     def test_ids_up_to_int64_max_are_kept_exactly(self, dtype) -> None:
         top = 2**63 - 1
+        pointers = pd.UInt64Dtype()
         person = pd.DataFrame(
             {
                 "person_id": typed([top, top - 1, top - 2], dtype),
                 "person_household_id": typed([top, top, top], dtype),
-                "partner_person_id": pd.array([top - 1, top, None], dtype="UInt64"),
-                "parent_1_person_id": pd.array([None, None, top], dtype="UInt64"),
-                "parent_2_person_id": pd.array([None, None, top - 1], dtype="UInt64"),
+                "partner_person_id": typed([top - 1, top, None], pointers),
+                "parent_1_person_id": typed([None, None, top], pointers),
+                "parent_2_person_id": typed([None, None, top - 1], pointers),
             }
         )
         household = pd.DataFrame(
             {
                 "household_id": typed([top], dtype),
-                "reference_person_id": pd.array([top], dtype="UInt64"),
+                "reference_person_id": typed([top], pointers),
             }
         )
         tables = {"person": person, "household": household}
         assert validate_concept_tables(tables) == ()
         # Within float rounding of the others, top - 3 is still nobody.
-        person["partner_person_id"] = pd.array([top - 1, top, top - 3], dtype="UInt64")
+        person["partner_person_id"] = typed([top - 1, top, top - 3], pointers)
         assert _violations(tables) == {("partner_person_id", "dangling")}
 
     @settings(max_examples=300, deadline=None)
@@ -867,9 +915,7 @@ class TestIdDtypes:
             ):
                 validate_concept_tables(case.tables)
         else:
-            assert validate_concept_tables(case.tables) == validate_concept_tables(
-                case.twin
-            )
+            assert _validation(case.tables) == _validation(case.twin)
 
 
 class TestTransportSplit:

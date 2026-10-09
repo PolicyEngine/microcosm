@@ -2,12 +2,14 @@
 
 The concept-frame contract accepts ids and pointers of any integer dtype:
 NumPy or pandas nullable, signed or unsigned, any width. Matching ids across
-those dtypes is where values wrap. A bare int64 cast turns ``2**64 - 1`` into
--1, and pandas matches against a narrower unsigned index by casting the other
-side down to it (261 onto 5 for uint8). :func:`id_typed_frames` relabels a
-valid frame's ids onto values at those edges, may plant pointers on the
-values a wrap would collide with, and gives each id column a dtype drawn from
-those that hold its values. A consumer must then either refuse the frame or
+those dtypes is where values wrap or merge. A bare int64 cast turns
+``2**64 - 1`` into -1; pandas matches against a narrower unsigned index by
+casting the other side down to it (261 onto 5 for uint8); and it compares
+int64 with uint64 through float64, which merges ids above ``2**53``.
+:func:`id_typed_frames` relabels a valid frame's ids onto values at those
+edges, may plant pointers on the values a wrap or a float64 rounding would
+collide with, and gives each id column a dtype drawn from those that hold its
+values. A consumer must then either refuse the frame or
 treat it exactly as the same ids typed int64.
 """
 
@@ -46,6 +48,9 @@ _REQUIRED = {
     ("household", "household_id"),
 }
 
+#: The two dtypes that hold an id int64 cannot: NumPy's and pandas' nullable.
+UNSIGNED_64 = (np.dtype(np.uint64), pd.UInt64Dtype())
+
 #: Every integer dtype the contract accepts for an id, NumPy then nullable.
 ID_DTYPES = (
     *(np.dtype(f"{sign}int{bits}") for sign in ("", "u") for bits in (8, 16, 32, 64)),
@@ -67,17 +72,27 @@ _EDGES = sorted(
     }
 )
 
-#: The shifts a wrap applies to a value: a multiple of a dtype's span.
-_WRAPS = tuple(sign * 2**power for power in (8, 16, 32, 64) for sign in (1, -1))
+#: Shifts that make a different id collide with an existing one: a dtype's
+#: span (a wrap), or one (float64 merges neighbours above 2**53).
+_SHIFTS = tuple(sign * 2**power for power in (0, 8, 16, 32, 64) for sign in (1, -1))
 
 
 def _ids(unsigned: bool) -> st.SearchStrategy[int]:
-    """Ids near zero, at the dtype edges, or anywhere int64 or uint64 holds."""
+    """Ids near zero, at the dtype edges, past 2**53, or anywhere in range.
+
+    Hypothesis draws small integers far more often than large ones, so ids
+    beyond 2**53, where float64 no longer tells neighbours apart, get their
+    own branch.
+    """
 
     low, high = (0, UINT64_MAX) if unsigned else (INT64_MIN, INT64_MAX)
+    beyond = st.integers(2**53, high)
+    if not unsigned:
+        beyond |= st.integers(low, -(2**53))
     return st.one_of(
         st.integers(max(low, -300), 300),
         st.sampled_from([value for value in _EDGES if low <= value <= high]),
+        beyond,
         st.integers(low, high),
     )
 
@@ -100,8 +115,21 @@ def typed(
     """``values`` as a column of ``dtype``."""
 
     if isinstance(dtype, np.dtype):
-        return np.array(values, dtype=dtype)
-    return pd.array(values, dtype=dtype)
+        column = np.array(values, dtype=dtype)
+    else:
+        # pd.array(values, dtype="UInt64") routes some lists of ints above
+        # 2**63 through float64 (pandas 3.0.3 turns [10, 2**63, 2**63 + 1]
+        # into [10, 2**63, 2**63]), so the column is built from exact NumPy
+        # values and a mask instead.
+        missing = np.array([value is None for value in values], dtype=bool)
+        filled = [0 if value is None else value for value in values]
+        column = pd.arrays.IntegerArray(
+            np.array(filled, dtype=dtype.numpy_dtype), missing
+        )
+    held = [None if pd.isna(value) else int(value) for value in column]
+    if held != values:
+        raise AssertionError(f"{dtype} did not hold {values} exactly: {held}.")
+    return column
 
 
 class IdTypedFrame(NamedTuple):
@@ -129,17 +157,16 @@ def _frame(
 
 
 @st.composite
-def id_typed_frames(draw, *, dangling_households: bool = False) -> IdTypedFrame:
+def id_typed_frames(draw) -> IdTypedFrame:
     """A concept frame whose ids sit at the dtype edges, in any accepted dtype.
 
     Starting from a valid frame, person and household ids are relabelled
     (each set drawn wholly from the int64 range or wholly from the uint64
     range, so some dtype holds them). Each pointer column may then gain one
-    planted value: an id shifted by a dtype's span, the value a wrap would
-    land on an existing id, or any id. With ``dangling_households`` the
-    household pointer may be planted too, which leaves a person naming no
-    household. Each id column then takes a dtype drawn from the accepted ones
-    that hold its values.
+    planted value: an existing id shifted by one of :data:`_SHIFTS`, or any
+    id. The pointers planted include each person's household, which can leave
+    a person naming no household. Each id column then takes a dtype drawn
+    from the accepted ones that hold its values.
     """
 
     base = draw(concept_frames(max_households=3, max_members=4))
@@ -186,17 +213,16 @@ def id_typed_frames(draw, *, dangling_households: bool = False) -> IdTypedFrame:
     }
 
     planted = [("person", column) for column in _PERSON_POINTERS]
-    planted.append(("household", "reference_person_id"))
-    if dangling_households:
-        planted.append(("person", "person_household_id"))
+    planted += [("household", "reference_person_id")]
+    planted += [("person", "person_household_id")]
     for key in planted:
         if not draw(st.booleans(), label=f"plant {key[1]}"):
             continue
         column = values[key]
         targets = new_households if key[1] == "person_household_id" else new_persons
         row = draw(st.integers(0, len(column) - 1), label="row")
-        if draw(st.booleans(), label="plant a wrap image"):
-            value = draw(st.sampled_from(targets)) + draw(st.sampled_from(_WRAPS))
+        if draw(st.booleans(), label="plant a shifted id"):
+            value = draw(st.sampled_from(targets)) + draw(st.sampled_from(_SHIFTS))
         else:
             value = draw(_ids(draw(st.booleans())))
         if not INT64_MIN <= value <= UINT64_MAX:
