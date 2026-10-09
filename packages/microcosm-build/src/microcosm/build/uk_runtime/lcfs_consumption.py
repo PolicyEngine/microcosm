@@ -169,6 +169,9 @@ UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
 #: and the division totals the capture diagnostic compares against.
 UK_LCFS_ONS_EXPENDITURE_RESOURCE = "ons_household_expenditure_facts.json"
 UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_LCFS_ONS_EXPENDITURE_RESOURCE
+#: DESNZ sub-national road transport fuel consumption by vehicle and fuel (ktoe),
+#: the litres audit's per-fuel cars share.
+UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE = "desnz_road_fuel_by_vehicle.json"
 UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_ROAD_FUEL_RESOURCE,
     UK_LCFS_LICENSED_CARS_RESOURCE,
@@ -179,6 +182,7 @@ UK_LCFS_VENDORED_RESOURCES = (
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     UK_QEP_ENERGY_PRICES_RESOURCE,
     UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE,
+    UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
 )
 #: The household road-fuel columns the ``level_road_fuel`` step scales.
 UK_LCFS_ROAD_FUEL_COLUMNS = ("petrol_spending", "diesel_spending")
@@ -208,9 +212,11 @@ UK_LCFS_ROAD_FUEL_REDRAW_RULE = "positive_total_then_petrol_share"
 UK_LCFS_ROAD_FUEL_TOTAL = "road_fuel_total"
 UK_LCFS_PETROL_SHARE = "petrol_share_of_road_fuel"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
-#: How the litres audit reads its per-fuel ratios until a per-fuel cars benchmark
-#: exists: only the all-fuel total compares like with like.
-UK_LITRES_AUDIT_PER_FUEL_BASIS = "uniform cars share, not a per-fuel benchmark"
+#: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
+#: the cars share of that fuel's road use (PolicyEngine/chronicle#322).
+UK_LITRES_AUDIT_PER_FUEL_BASIS = "desnz cars share of each fuel's road use"
+UK_DESNZ_ROAD_FUEL_CONCEPT = "desnz.road_transport.fuel_consumption"
+UK_LITRES_AUDIT_FUELS = {"petrol_spending": "petrol", "diesel_spending": "diesel"}
 #: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
 #: declared litre-proxy price concepts: HMRC clearances are all road users, the
 #: OBR receipts split names the cars share of them.
@@ -664,20 +670,68 @@ def division_capture(
     }
 
 
+def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
+    """The cars share of each fuel's UK road use, from DESNZ's vehicle/fuel ktoe.
+
+    Within one fuel the units cancel, so no ktoe-to-litres factor is needed:
+    cars over every vehicle type burning that fuel (petrol: cars, motorcycles
+    and LGVs; diesel: cars, buses and coaches, LGVs and HGVs).
+    """
+
+    rows = vendored_rows(
+        UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
+        concept=UK_DESNZ_ROAD_FUEL_CONCEPT,
+        period_type="calendar_year",
+        period_value=int(period_value),
+        geography_id="K02000001",
+    )
+    shares: dict[str, dict[str, Any]] = {}
+    for fuel in UK_LITRES_AUDIT_FUELS.values():
+        by_vehicle: dict[str, float] = {}
+        record_ids: list[str] = []
+        for row in rows:
+            dims = row.get("dimensions") or {}
+            if dims.get("fuel") != fuel:
+                continue
+            vehicle = str(dims.get("vehicle_type"))
+            if vehicle in by_vehicle:
+                raise ValueError(
+                    f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: duplicate {vehicle} {fuel} "
+                    f"row for {period_value}."
+                )
+            by_vehicle[vehicle] = float(row["value"])
+            record_ids.append(str(row.get("source_record_id", "")))
+        total = sum(by_vehicle.values())
+        if "cars" not in by_vehicle or total <= 0:
+            raise ValueError(
+                f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: no {fuel} cars row for "
+                f"{period_value}."
+            )
+        shares[fuel] = {
+            "ktoe_by_vehicle": dict(sorted(by_vehicle.items())),
+            "cars_share": by_vehicle["cars"] / total,
+            "source_record_ids": record_ids,
+        }
+    return shares
+
+
 def fuel_litres_audit(
     household_draws: pd.DataFrame,
     *,
     weights: Sequence[float],
     stage: SourceStageSpec,
 ) -> dict[str, Any] | None:
-    """Frame road-fuel litres against HMRC clearances times the OBR cars share.
+    """Frame road-fuel litres against the cars' share of HMRC clearances.
 
-    Diagnostic only (microcosm#890 C7): for each fuel column the declared
-    uprating moves by the vendored litre proxy, the frame's prior-weighted
-    spend is divided by the DESNZ pump price of the uprating's target year and
-    compared with the HMRC fiscal-year litres scaled by the OBR cars share of
-    fuel duty receipts (the household frame carries cars, not lorries or
-    vans). Recorded in the stage evidence; nothing is gated on it.
+    Diagnostic only (microcosm#890 C7, #1113): for each fuel column the
+    declared uprating moves by the vendored litre proxy, the frame's
+    prior-weighted spend is divided by the DESNZ pump price of the uprating's
+    target year and compared with the HMRC fiscal-year litres of that fuel
+    scaled by the cars share of its road use (DESNZ sub-national road fuel by
+    vehicle, the uprating's target year; the household frame carries cars, not
+    lorries or vans). The OBR cars share of fuel duty receipts, uniform across
+    fuels, stays on the receipt beside the total. Recorded in the stage
+    evidence; nothing is gated on it.
     """
 
     parameters = uprating_operation(stage)
@@ -738,9 +792,13 @@ def fuel_litres_audit(
 
     cars, total = receipts(UK_OBR_CARS_CATEGORY), receipts(UK_OBR_TOTAL_CATEGORY)
     cars_share = cars / total
-    for entry in fuels.values():
+    desnz = desnz_cars_share_by_fuel(to_period)
+    for column, entry in fuels.items():
+        fuel = UK_LITRES_AUDIT_FUELS[column]
+        entry["desnz_cars_share"] = desnz[fuel]["cars_share"]
+        entry["desnz_ktoe_by_vehicle"] = desnz[fuel]["ktoe_by_vehicle"]
         entry["cars_litres_benchmark"] = (
-            entry["hmrc_litres_all_road_users"] * cars_share
+            entry["hmrc_litres_all_road_users"] * desnz[fuel]["cars_share"]
         )
         entry["frame_over_cars_benchmark"] = (
             entry["frame_litres"] / entry["cars_litres_benchmark"]
@@ -749,10 +807,14 @@ def fuel_litres_audit(
         )
     frame_total = sum(entry["frame_litres"] for entry in fuels.values())
     benchmark_total = sum(entry["cars_litres_benchmark"] for entry in fuels.values())
+    obr_benchmark_total = cars_share * sum(
+        entry["hmrc_litres_all_road_users"] for entry in fuels.values()
+    )
     return {
         "resource": resource,
         "period_value": to_period,
         "fiscal_start": f"{to_period}-04-01",
+        "cars_share_resource": UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
         "obr_fuel_duty_receipts": {
             "cars_gbp": cars,
             "total_gbp": total,
@@ -764,10 +826,9 @@ def fuel_litres_audit(
         "frame_over_cars_benchmark": (
             frame_total / benchmark_total if benchmark_total > 0 else None
         ),
-        # The per-fuel ratios apply the all-fuel cars share to each fuel's
-        # all-road-user litres, but diesel is mostly vans and lorries, so
-        # only the total is a benchmark (microcosm#1113; a per-fuel cars
-        # split waits on PolicyEngine/chronicle#322).
+        "frame_over_obr_uniform_cars_benchmark": (
+            frame_total / obr_benchmark_total if obr_benchmark_total > 0 else None
+        ),
         "per_fuel_ratio_basis": UK_LITRES_AUDIT_PER_FUEL_BASIS,
         "gated": False,
     }

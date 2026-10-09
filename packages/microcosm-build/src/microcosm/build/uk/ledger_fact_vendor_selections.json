@@ -463,6 +463,31 @@
       ]
     },
     {
+      "resource": "desnz_road_fuel_by_vehicle.json",
+      "purpose": "DESNZ sub-national road transport fuel consumption (25 June 2026 workbook), UK totals by vehicle type and fuel in ktoe, calendar years 2022 to 2024: the cars share of each fuel's road use for the LCFS litres audit's per-fuel benchmark (microcosm#1113, PolicyEngine/chronicle#322).",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "desnz_road_fuel_uk_by_vehicle_and_fuel",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": "desnz.road_transport.fuel_consumption",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              2022,
+              2023,
+              2024
+            ]
+          },
+          "expected_row_count": 30
+        }
+      ]
+    },
+    {
       "resource": "desnz_domestic_energy_facts.json",
       "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to over FY2024-25), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters).",
       "consumers": [

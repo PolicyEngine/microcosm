@@ -961,17 +961,38 @@ def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> N
     assert audit["obr_fuel_duty_receipts"]["cars_share"] == pytest.approx(
         14.4 / 24.7, abs=1e-3
     )
-    assert petrol["cars_litres_benchmark"] == pytest.approx(
-        hmrc * audit["obr_fuel_duty_receipts"]["cars_share"]
+    # Each fuel's benchmark is its HMRC litres times the cars share of that
+    # fuel's road use (DESNZ, by vehicle and fuel; PolicyEngine/chronicle#322).
+    desnz = vendored_rows(
+        "desnz_road_fuel_by_vehicle.json",
+        concept="desnz.road_transport.fuel_consumption",
+        period_type="calendar_year",
+        period_value=2024,
+        geography_id="K02000001",
     )
+    petrol_rows = {
+        r["dimensions"]["vehicle_type"]: float(r["value"])
+        for r in desnz
+        if r["dimensions"]["fuel"] == "petrol"
+    }
+    share = petrol_rows["cars"] / sum(petrol_rows.values())
+    assert petrol["desnz_cars_share"] == pytest.approx(share)
+    assert petrol["cars_litres_benchmark"] == pytest.approx(hmrc * share)
     assert petrol["frame_over_cars_benchmark"] == pytest.approx(
         petrol["frame_litres"] / petrol["cars_litres_benchmark"]
     )
+    diesel = audit["fuels"]["diesel_spending"]
+    # Diesel is mostly vans and lorries, so its cars share is far below petrol's.
+    assert diesel["desnz_cars_share"] < petrol["desnz_cars_share"]
     assert set(audit["fuels"]) == {"petrol_spending", "diesel_spending"}
     assert audit["gated"] is False
-    # Only the total compares like with like (#1113).
-    assert audit["per_fuel_ratio_basis"] == (
-        "uniform cars share, not a per-fuel benchmark"
+    assert audit["per_fuel_ratio_basis"] == "desnz cars share of each fuel's road use"
+    assert audit["frame_over_obr_uniform_cars_benchmark"] == pytest.approx(
+        audit["frame_litres_total"]
+        / (
+            audit["obr_fuel_duty_receipts"]["cars_share"]
+            * (hmrc + diesel["hmrc_litres_all_road_users"])
+        )
     )
 
     class Stage:
