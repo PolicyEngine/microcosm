@@ -4339,6 +4339,14 @@
           {
             "concept": "uk.benefits.pip.daily_living_category",
             "equals": "standard"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "wales"
+            ]
           }
         ]
       },
@@ -4354,7 +4362,20 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables."
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "ENGLAND",
+                "WALES"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables. Scoped to England and Wales as obr.pip is (microcosm#1095, uk-data#490): DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, and Scotland's Adult Disability Payment is Scottish Government spending, so the model column counts English and Welsh households only and the selector pins K04000001."
         },
         "axiom": {
           "metric_name": "dwp/pip_dl_standard_claimants",
@@ -4386,6 +4407,14 @@
           {
             "concept": "uk.benefits.pip.daily_living_category",
             "equals": "enhanced"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "wales"
+            ]
           }
         ]
       },
@@ -4401,7 +4430,20 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables."
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "ENGLAND",
+                "WALES"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables. Scoped to England and Wales as obr.pip is (microcosm#1095, uk-data#490): DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, and Scotland's Adult Disability Payment is Scottish Government spending, so the model column counts English and Welsh households only and the selector pins K04000001."
         },
         "axiom": {
           "metric_name": "dwp/pip_dl_enhanced_claimants",

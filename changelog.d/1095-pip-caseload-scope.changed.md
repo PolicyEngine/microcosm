@@ -1,0 +1,3 @@
+The two PIP daily-living caseload rows, `dwp.pip.daily_living_standard_claimants` and `dwp.pip.daily_living_enhanced_claimants`, are now scoped to England and Wales, as `obr.pip` is (uk-data#490, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so the rows count English and Welsh households only. Their selector now pins K04000001, the geography Chronicle stamps DWP's January 2025 caseload with.
+
+Under the Great Britain default pin the rows matched no fact. They now resolve to 1.283m standard-rate and 1.608m enhanced-rate claimants, which adds two calibration targets: 1,233 active references against 1,231.
