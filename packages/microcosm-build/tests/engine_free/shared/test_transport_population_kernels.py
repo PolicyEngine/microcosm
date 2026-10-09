@@ -45,6 +45,7 @@ from microcosm.graph import (
     Slice,
     compile_graph,
 )
+from microcosm.graph.population import dtype_for_token
 from test_support.microcosm_build.transport_graph import (
     canonical_text,
     descendants,
@@ -54,12 +55,14 @@ from test_support.microcosm_build.transport_graph import (
     write_facts,
 )
 from test_support.microcosm_build.transport_population import (
+    BAND_FACTS,
     ENTITIES,
-    SYNTHETIC_DONOR,
     PopulationSources,
+    band_document,
     create_node,
     digest,
     direct_population,
+    expected_bands,
     population_graph,
     population_registry,
     run_population,
@@ -253,8 +256,10 @@ def test_a6_source_paths_are_inert_and_bytes_rekey_exact_consumers(
         assert all(receipt.hit for receipt in renamed.manifest.nodes.values())
         changed_path = moved.mapping()[source]
         changed_path.write_bytes(changed_path.read_bytes() + whitespace)
-        # The donor's declared authentication pin moves with its source bytes.
-        # The HDF decoder and facts decoder accept trailing whitespace.
+        # The HDF decoder and facts decoder accept trailing whitespace. For
+        # the donor, run_population re-pins CREATE (population_graph reads
+        # the new size and SHA-256), so CREATE's key moves through its params
+        # as well as its source content; stale pins are refused below.
         changed = run_population(root / "run", moved, store=first.store)
         consumer = "nz.bands" if source == "band_facts" else "nz.create"
         expected = descendants(changed.graph, {consumer})
@@ -265,6 +270,25 @@ def test_a6_source_paths_are_inert_and_bytes_rekey_exact_consumers(
         assert {
             node for node, receipt in changed.manifest.nodes.items() if not receipt.hit
         } == expected
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [("append", "Donor size mismatch"), ("same_size", "Donor SHA-256 mismatch")],
+)
+def test_a6_donor_byte_change_with_stale_pins_is_refused(tmp_path, edit, message):
+    sources = write_population_sources(tmp_path / "sources")
+    stale = population_graph(sources)
+    first = run_population(tmp_path / "run", sources, graph=stale)
+    payload = sources.donor.read_bytes()
+    if edit == "append":
+        changed = payload + b" "
+    else:
+        changed = payload[:-1] + bytes([payload[-1] ^ 1])
+    assert changed != payload
+    sources.donor.write_bytes(changed)
+    with pytest.raises(NodeRejectedError, match=message):
+        run_population(tmp_path / "run", sources, graph=stale, store=first.store)
 
 
 @PROPERTY
@@ -308,15 +332,41 @@ def test_seeds_and_rewrites_preserve_identity_with_wrapped_function_differential
             np.testing.assert_array_equal(
                 rewritten.table(entity)[column], bridged[entity][column]
             )
+        bands = expected_bands(sources)
         expected = quantile_map(
             direct.table("person")["employment_income"],
             direct.resolve_weights("person").values,
-            json.loads(SYNTHETIC_DONOR.read_text())["target_bands"],
+            bands,
             interpolation="uniform",
         )
         np.testing.assert_array_equal(
             rewritten.table("person")["employment_income"], expected
         )
+        # The unequal facts must matter: equal or reversed shares map
+        # differently, so the differential checks the facts' shares.
+        for shares in (
+            [1 / len(bands)] * len(bands),
+            [band["share"] for band in reversed(bands)],
+        ):
+            assert not np.array_equal(
+                expected,
+                quantile_map(
+                    direct.table("person")["employment_income"],
+                    direct.resolve_weights("person").values,
+                    [
+                        {**band, "share": share}
+                        for band, share in zip(bands, shares, strict=True)
+                    ],
+                    interpolation="uniform",
+                ),
+            )
+
+
+def _two_holders_in_one_household(tables):
+    """Give the first household's second member assets beside its head's."""
+    person = tables["person"]
+    second = person.index[person["person_household_id"] == 101][1]
+    person.loc[second, "bank_account_assets"] = 40
 
 
 @PROPERTY
@@ -325,19 +375,35 @@ def test_seeds_and_rewrites_preserve_identity_with_wrapped_function_differential
 def test_household_aggregate_quantile_map_equals_direct_function(tmp_path, mass):
     with TemporaryDirectory(dir=tmp_path) as temporary:
         root = Path(temporary)
-        sources = write_population_sources(root / "sources", mass=float(mass))
+        sources = write_population_sources(
+            root / "sources",
+            mass=float(mass),
+            band_entity="household",
+            edit_tables=_two_holders_in_one_household,
+        )
         graph = population_graph(
             sources, qmap_column="liquid_financial_assets", aggregate_entity="household"
         )
         run = run_population(root / "run", sources, graph=graph)
         direct, _ = direct_population(sources)
         person = direct.table("person")
+        values = person["liquid_financial_assets"]
+        weights = direct.resolve_weights("person").values
+        holders = (values != 0).groupby(person["person_household_id"]).sum()
+        assert (holders >= 2).any(), "A household needs two nonzero members."
         expected = quantile_map(
-            person["liquid_financial_assets"],
-            direct.resolve_weights("person").values,
-            json.loads(SYNTHETIC_DONOR.read_text())["target_bands"],
+            values,
+            weights,
+            expected_bands(sources),
             interpolation="uniform",
             group={"entity_ids": person["person_household_id"]},
+        )
+        # Aggregation must matter: mapping persons one by one differs.
+        assert not np.array_equal(
+            expected,
+            quantile_map(
+                values, weights, expected_bands(sources), interpolation="uniform"
+            ),
         )
         rewritten = run.manifest.population("nz.open").table("person")
         np.testing.assert_array_equal(rewritten["liquid_financial_assets"], expected)
@@ -355,7 +421,7 @@ def test_component_specific_bands_equal_separate_direct_maps(tmp_path, multiplie
         person = direct.table("person")
         components = sorted(person["sex"].unique().tolist())
         assert len(components) == len(multipliers)
-        fixture_bands = json.loads(SYNTHETIC_DONOR.read_text())["target_bands"]
+        fixture_bands = expected_bands(sources)
         document = {
             "components": [
                 {
@@ -366,10 +432,8 @@ def test_component_specific_bands_equal_separate_direct_maps(tmp_path, multiplie
                             "upper": band["upper"] * multiplier,
                             "reference": reference,
                         }
-                        for band, reference in zip(
-                            fixture_bands,
-                            ("toy_lower_band", "toy_upper_band"),
-                            strict=True,
+                        for band, (reference, _) in zip(
+                            fixture_bands, BAND_FACTS, strict=True
                         )
                     ],
                 }
@@ -431,6 +495,7 @@ def test_component_specific_bands_equal_separate_direct_maps(tmp_path, multiplie
 def test_resource_identity_rekeys_only_its_node_and_consumers(
     tmp_path, resource, digit
 ):
+    """These digests are format-checked only: any hex moves keys, not bytes."""
     with TemporaryDirectory(dir=tmp_path) as temporary:
         root = Path(temporary)
         sources = write_population_sources(root / "sources")
@@ -622,3 +687,88 @@ def test_create_accepts_a_person_count_fact_with_a_country_prepared_measure_name
     result = TRANSPORT_CREATE.run(context)
     assert result.frame.resolve_weights("person").values.sum() == pytest.approx(120.0)
     assert result.receipt["mass_reference"] == "toy_population"
+
+
+def _with_band_references(graph, references):
+    bands = graph.node("nz.bands")
+    bands = replace(
+        bands,
+        params={
+            **bands.params,
+            "references": canonical_text(references),
+            "references_sha256": digest(references),
+        },
+    )
+    return replace(
+        graph,
+        nodes=tuple(bands if node.id == bands.id else node for node in graph.nodes),
+    )
+
+
+@pytest.mark.parametrize(
+    ("aggregate_entity", "fact_entity", "filter_", "unit"),
+    [
+        (None, "household", None, "count"),
+        ("household", "person", None, "count"),
+        (None, "person", "is_female", "count"),
+        (None, "person", None, "currency"),
+    ],
+)
+def test_quantile_bands_refuse_facts_that_do_not_count_the_ranked_unit(
+    tmp_path, aggregate_entity, fact_entity, filter_, unit
+):
+    sources = write_population_sources(tmp_path / "sources", band_entity=fact_entity)
+    facts = [toy_fact(name, value, entity=fact_entity) for name, value in BAND_FACTS]
+    for fact in facts:
+        fact["observed_measure"]["unit"] = unit
+    write_facts(sources.band_facts, facts)
+    graph = population_graph(
+        sources,
+        qmap_column="employment_income"
+        if aggregate_entity is None
+        else "liquid_financial_assets",
+        aggregate_entity=aggregate_entity,
+    )
+    references = band_document(fact_entity)
+    if filter_ is not None:
+        for row in references["target_references"]:
+            row["filter"] = filter_
+    graph = _with_band_references(graph, references)
+    ranked = "person" if aggregate_entity is None else aggregate_entity
+    with pytest.raises(NodeRejectedError, match=f"unfiltered {ranked} count facts"):
+        run_population(tmp_path / "run", sources, graph=graph)
+
+
+@pytest.mark.parametrize("problem", ["household_slice", "free_mass"])
+def test_boundary_refuses_without_a_person_slice_or_conserved_mass(tmp_path, problem):
+    sources = write_population_sources(tmp_path / "sources")
+    graph = population_graph(sources, through="boundary")
+    boundary = graph.node("nz.open")
+    if problem == "household_slice":
+        boundary = replace(boundary, inputs=(Slice("household", ("rent",)),))
+        message = "person data-column slice"
+    else:
+        boundary = replace(boundary, mass="free")
+        message = "mass='conserve'"
+    graph = replace(graph, nodes=(graph.node("nz.create"), boundary))
+    with pytest.raises(NodeRejectedError, match=message):
+        run_population(tmp_path / "run", sources, graph=graph)
+
+
+def test_create_artifacts_pin_python_string_storage_with_pyarrow_installed(tmp_path):
+    pinned = dtype_for_token("string")
+    # microcosm-build depends on pyarrow; with it installed, a bare "string"
+    # dtype stores pyarrow strings, which the graph's token does not.
+    assert pd.Series(["x"]).astype("string").dtype != pinned
+    sources = write_population_sources(tmp_path / "sources")
+    run = run_population(tmp_path / "run", sources)
+    text = [
+        (item.entity, item.column)
+        for item in run.graph.node("nz.create").outputs
+        if item.dtype == "string"
+    ]
+    assert ("household", "donor_support_stratum") in text
+    for node in ("nz.create", "nz.open"):
+        frame = run.manifest.population(node)
+        for entity, column in text:
+            assert frame.table(entity)[column].dtype == pinned, (node, column)

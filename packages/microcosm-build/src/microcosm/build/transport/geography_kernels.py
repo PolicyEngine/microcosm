@@ -256,12 +256,21 @@ def support_from_surface(
 
 
 class GeographySupportFromFactsKernel(KernelBase):
-    """``geography.support_from_facts@1`` over a declared target surface."""
+    """``geography.support_from_facts@1`` over a declared target surface.
+
+    The support payload is a deflated NPZ archive. CPython's zip writer
+    records the creating platform in each entry (``ZipInfo.create_system``
+    is 0 on Windows and 3 elsewhere), so the bytes can differ between
+    platforms and the kernel declares the atomic geography kernels'
+    ``platform_bitwise`` numeric class. ``definition_sha256`` is
+    format-checked and recorded: it moves the node key and authenticates
+    nothing.
+    """
 
     ref = "geography.support_from_facts@1"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
-        numeric=Numeric.BITWISE,
+        numeric=Numeric.PLATFORM_BITWISE,
         seed_source=SeedSource.NONE,
         dependencies=("numpy",),
         consumes_se=False,

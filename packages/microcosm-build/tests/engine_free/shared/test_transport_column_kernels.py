@@ -9,6 +9,7 @@ every receipt, rule, rate and target here is a toy modelling choice.
 from __future__ import annotations
 
 from dataclasses import replace
+from unittest import mock
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ from microcosm.build.transport.column_kernels import (
 )
 from microcosm.build.transport.target_kernels import compile_target_surface
 from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import concept_mapping as mapping_module
 from microcosm.frame.adapters.axiom import NZ_SCHEMA
 from microcosm.frame.concept_mapping import (
     ConceptMapping,
@@ -36,6 +38,7 @@ from microcosm.frame.concept_mapping import (
     InputBinding,
     InputDeclaration,
     StateBinding,
+    TakeUpThreshold,
 )
 from microcosm.frame.concepts import (
     CONCEPTS,
@@ -67,6 +70,7 @@ from microcosm.graph import (
     Slice,
     StructuralDelta,
 )
+from microcosm.graph.population import dtype_for_token
 from test_support.microcosm_build.transport_graph import (
     canonical_text,
     reference_document,
@@ -96,23 +100,42 @@ GRAPH_PROPERTY = settings(
 )
 PERSON_PATH = "xx/person.yaml"
 GROUP_PATH = "xx/group.yaml"
+OTHER_PATH = "xx/other.yaml"
 RESOURCE_SHA = "b" * 64
 # Generated frames include unrelated co-resident parents. The toy rule makes
 # their child's placement explicit instead of refusing those valid frames.
 UNIT_RULE = replace(DONOR_UNIT_RULE, split_parents="first_parent_unit")
 
 
-def _binding(name, entity, concept, *, group_rule=None):
+def _binding(name, entity, concept, *, group_rule=None, module=None, transform=None):
     return InputBinding(
         engine_input=name,
         engine_entity=entity,
         concepts=(concept,),
-        transform=Identity(),
+        transform=Identity() if transform is None else transform,
         relation="exact",
         note="Synthetic exact input, not a statutory definition.",
         group_rule=group_rule,
-        module=PERSON_PATH if entity == "Person" else GROUP_PATH,
+        module=(PERSON_PATH if entity == "Person" else GROUP_PATH)
+        if module is None
+        else module,
         canonical_input=f"xx:{entity}#input.{name}",
+    )
+
+
+def _mapping_with(bindings):
+    return ConceptMapping(
+        engine="axiom:xx",
+        engine_version="synthetic",
+        entity_correspondence={"person": "Person", "household": "Household"},
+        input_declaration=InputDeclaration.USAGE_INFERRED,
+        bindings=tuple(bindings),
+        unmapped={
+            item.id: "Outside this synthetic mapping."
+            for item in CONCEPTS
+            if item.id
+            not in {concept for binding in bindings for concept in binding.reads}
+        },
     )
 
 
@@ -132,18 +155,7 @@ BINDINGS = (
         group_rule="allocate_to_reference_unit",
     ),
 )
-MAPPING = ConceptMapping(
-    engine="axiom:xx",
-    engine_version="synthetic",
-    entity_correspondence={"person": "Person", "household": "Household"},
-    input_declaration=InputDeclaration.USAGE_INFERRED,
-    bindings=BINDINGS,
-    unmapped={
-        item.id: "Outside this synthetic mapping."
-        for item in CONCEPTS
-        if item.id not in {concept for binding in BINDINGS for concept in binding.reads}
-    },
-)
+MAPPING = _mapping_with(BINDINGS)
 STATES = (
     StateBinding(
         engine_input="input_non_beneficiary",
@@ -278,10 +290,10 @@ def _rule_params(rule=UNIT_RULE):
     }
 
 
-def _encode_params(*, groups=False, knobs=None):
+def _encode_params(*, groups=False, knobs=None, mapping=MAPPING):
     params = {
-        "mapping": canonical_text(MAPPING.to_dict()),
-        "mapping_sha256": digest(MAPPING.to_dict()),
+        "mapping": canonical_text(mapping.to_dict()),
+        "mapping_sha256": digest(mapping.to_dict()),
         "closure": canonical_text(CLOSURE.to_dict()),
         "closure_sha256": digest(CLOSURE.to_dict()),
         "rulespec_paths": (GROUP_PATH if groups else PERSON_PATH,),
@@ -376,6 +388,9 @@ def test_unit_attributes_equal_g4_and_keep_ids_and_order(tables):
     expected = benefit_unit_attributes(
         person, family, person[UNIT_RULE.membership_column], UNIT_RULE
     )
+    # The input-bridge aliases share the wrapped function's adult composition.
+    expected["is_partnered"] = expected["is_couple"]
+    expected["is_single"] = ~expected["is_couple"]
     outputs = tuple(
         Owned(
             "family",
@@ -390,6 +405,8 @@ def test_unit_attributes_equal_g4_and_keep_ids_and_order(tables):
     )
     for output in outputs[:-1]:
         _assert_column(result, frame, "family", output.column, expected[output.column])
+    # Text takes the graph's pinned Python string storage, not pyarrow's.
+    assert result.columns["family", "family_type"].dtype == dtype_for_token("string")
     _assert_column(
         result,
         frame,
@@ -954,4 +971,221 @@ def test_capabilities_are_deterministic_country_neutral_and_hash_code_only():
         assert kernel.implementation_hash() == kernel.implementation_hash()
         assert kernel.capabilities.seed_source is (
             SeedSource.KEYED if kernel is TAKEUP_ASSIGN else SeedSource.NONE
+        )
+
+
+def _donor_frame(sources, **person_columns):
+    frame, _ = direct_population(sources)
+    person = frame.person.copy()
+    for name, value in person_columns.items():
+        person[name] = value
+    return Frame(
+        {
+            "person": person,
+            "household": frame.table("household"),
+            "family": frame.table("family"),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+TAKE_UP_RATES = {"xx.claim": 1}
+
+
+def _with_take_up_rates(params):
+    return {
+        **params,
+        "take_up_rates": canonical_text(TAKE_UP_RATES),
+        "take_up_rates_sha256": digest(TAKE_UP_RATES),
+    }
+
+
+@pytest.mark.parametrize(
+    "kernel", [CONCEPTS_ENCODE, CONCEPTS_ENCODE_GROUPS, TRANSPORT_SCENARIO_OVERRIDE]
+)
+def test_encode_kernels_refuse_take_up_rates_so_they_derive_no_draws(tmp_path, kernel):
+    """SeedSource.NONE holds: takeup.assign@1 owns the keyed take-up draws."""
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+    if kernel is CONCEPTS_ENCODE:
+        params = _encode_params()
+        outputs = (Owned("person", "input_age", "int64"),)
+    else:
+        params = _encode_params(groups=True, knobs={"asset_test": False})
+        outputs = (Owned("family", "input_assets", "float64", rewrite=True),)
+    assert kernel.capabilities.seed_source is SeedSource.NONE
+    with pytest.raises(ValueError, match="derives no take-up draws"):
+        kernel.run(_context(kernel, frame, _with_take_up_rates(params), outputs))
+
+
+def test_selected_take_up_threshold_binding_is_refused_without_a_draw(tmp_path):
+    mapping = _mapping_with(
+        (
+            *BINDINGS,
+            _binding(
+                "input_claims",
+                "Person",
+                "fact:person.take_up_seed",
+                transform=TakeUpThreshold(program="xx.claim"),
+            ),
+        )
+    )
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+    params = _encode_params(mapping=mapping)
+    outputs = (Owned("person", "input_claims", "bool"),)
+    with mock.patch.object(
+        mapping_module,
+        "derive_take_up_draws",
+        side_effect=AssertionError("An encode kernel derived a take-up draw."),
+    ):
+        with pytest.raises(ValueError, match="derives no take-up draws"):
+            CONCEPTS_ENCODE.run(
+                _context(CONCEPTS_ENCODE, frame, _with_take_up_rates(params), outputs)
+            )
+        with pytest.raises(ValueError, match="take-up rate 'xx.claim'"):
+            CONCEPTS_ENCODE.run(_context(CONCEPTS_ENCODE, frame, params, outputs))
+
+
+def test_person_encoding_encodes_only_the_selected_paths(tmp_path):
+    mapping = _mapping_with(
+        (
+            *BINDINGS,
+            _binding("input_other", "Person", "fact:person.age", module=OTHER_PATH),
+        )
+    )
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+    params = _encode_params(mapping=mapping)
+    result = CONCEPTS_ENCODE.run(
+        _context(
+            CONCEPTS_ENCODE, frame, params, (Owned("person", "input_age", "int64"),)
+        )
+    )
+    # The group path's two bindings are outside the selection, so none defer.
+    assert result.receipt["n_deferred"] == 0
+    with pytest.raises(ValueError, match="did not encode declared column"):
+        CONCEPTS_ENCODE.run(
+            _context(
+                CONCEPTS_ENCODE,
+                frame,
+                params,
+                (Owned("person", "input_other", "int64"),),
+            )
+        )
+    selected = {
+        key: value
+        for key, value in params.items()
+        if key not in {"closure", "closure_sha256"}
+    }
+    selected["rulespec_paths"] = (OTHER_PATH,)
+    other = CONCEPTS_ENCODE.run(
+        _context(
+            CONCEPTS_ENCODE, frame, selected, (Owned("person", "input_other", "int64"),)
+        )
+    )
+    _assert_column(other, frame, "person", "input_other", frame.person["age"])
+
+
+def test_group_encoding_keeps_the_state_collision_guard_outside_selected_paths(
+    tmp_path,
+):
+    """encode_groups checks state bindings against every concept binding."""
+    mapping = _mapping_with(
+        (
+            *BINDINGS,
+            _binding(
+                "input_non_beneficiary",
+                "Family",
+                "fact:person.age",
+                group_rule="sum_over_members",
+                module=OTHER_PATH,
+            ),
+        )
+    )
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(
+        sources, receives_alpha=False, receives_beta=False, receives_super=False
+    )
+    membership = benefit_unit_membership(
+        frame.person,
+        frame.table("family"),
+        frame.person[UNIT_RULE.membership_column],
+        UNIT_RULE,
+    )
+    with pytest.raises(ValueError, match="bound by a concept and by state"):
+        mapping.encode_groups(
+            {entity: frame.table(entity) for entity in ("person", "household")},
+            {"Family": membership},
+            modules=(GROUP_PATH,),
+            state_bindings=CLOSURE.state_bindings(),
+        )
+    outputs = (Owned("family", "input_non_beneficiary", "bool"),)
+    with pytest.raises(ValueError, match="bound by a concept and by state"):
+        CONCEPTS_ENCODE_GROUPS.run(
+            _context(
+                CONCEPTS_ENCODE_GROUPS,
+                frame,
+                _encode_params(groups=True, mapping=mapping),
+                outputs,
+            )
+        )
+
+
+@pytest.mark.parametrize("defect", ["filter", "entity"])
+def test_target_receipts_refuse_a_filtered_or_non_person_count_target(tmp_path, defect):
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources, eligibility_code=1)
+    entity = "household" if defect == "entity" else "person"
+    document = reference_document(
+        [
+            reference_row(
+                "toy_receipts",
+                entity=entity,
+                measure="receives_alpha",
+                filter_="is_female" if defect == "filter" else None,
+            )
+        ]
+    )
+    facts = write_facts(
+        tmp_path / "receipt-facts.jsonl",
+        [toy_fact("toy_receipts", 60, entity=entity)],
+    )
+    surface, _ = compile_target_surface(
+        facts, document, country="xx", references_sha256=digest(document)
+    )
+    contract = {
+        "seed_column": "take_up_seed",
+        "programs": [
+            {
+                "program": "xx.alpha",
+                "output": "receives_alpha",
+                "judgment_column": "eligibility_code",
+                "target": "toy_receipts",
+            }
+        ],
+        "exclusion_groups": [],
+    }
+    params = {
+        "receipt_contract": canonical_text(contract),
+        "receipt_contract_sha256": digest(contract),
+    }
+    artifact = ArtifactValue(
+        payload=surface,
+        type=TARGET_SURFACE_TYPE,
+        key=RESOURCE_SHA,
+        producer_key=RESOURCE_SHA,
+        numerics=NumericScope(),
+    )
+    with pytest.raises(ValueError, match="unfiltered person count"):
+        TAKEUP_ASSIGN.run(
+            _context(
+                TAKEUP_ASSIGN,
+                frame,
+                params,
+                (Owned("person", "receives_alpha", "bool"),),
+                artifacts={"surface": artifact},
+            )
         )

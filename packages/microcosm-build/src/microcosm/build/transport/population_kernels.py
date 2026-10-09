@@ -3,6 +3,15 @@
 Country data enters only through node parameters and declared facts. The
 CREATE installs destination-scale design weights before the graph captures
 its design anchor; the records retain their donor support provenance.
+
+Four CREATE parameters are checked against content: the donor reader
+refuses a file whose byte size or SHA-256 differs from ``donor_size`` and
+``donor_sha256``, the Chronicle loader refuses facts whose digest differs from
+an optional ``facts_sha256``, and ``concept_schema_sha256`` must equal the
+reader's concept schema. Every other ``*_sha256`` parameter here
+(``donor_pin_sha256``, ``unit_rule_sha256``, ``mass_reference_sha256``,
+``currency_sha256`` and ``bands_sha256``) is checked for format only: it
+moves the node key and authenticates nothing.
 """
 
 from __future__ import annotations
@@ -13,7 +22,6 @@ from math import fsum
 import numpy as np
 import pandas as pd
 
-import microcosm.frame.adapters.axiom as axiom_module
 import microcosm.frame.adapters.policyengine_us_concepts as donor_mapping_module
 import microcosm.frame.bundle as bundle_module
 import microcosm.frame.concept_mapping as mapping_module
@@ -24,8 +32,7 @@ import microcosm.frame.schema as schema_module
 import microcosm.frame.transport as transport_module
 import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as weights_module
-from microcosm.frame import Frame, WeightKind, Weights
-from microcosm.frame.adapters.axiom import NZ_SCHEMA
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.concepts import (
     concept_for_column,
     concept_schema_sha256,
@@ -51,6 +58,7 @@ from microcosm.graph import (
     StructuralDelta,
     source_hash,
 )
+from microcosm.graph.population import dtype_for_token
 
 from . import graph_inputs, target_kernels
 from .artifact_types import TARGET_SURFACE_TYPE
@@ -139,7 +147,6 @@ class TransportCreateKernel(KernelBase):
             donor_mapping_module,
             materialize_module,
             scaling_module,
-            axiom_module,
             bundle_module,
             schema_module,
             weights_module,
@@ -202,12 +209,15 @@ class TransportCreateKernel(KernelBase):
         tables, dropped = split_for_transport(donor.tables)
         # pandas 3's inferred text dtype spells itself "str"; graph columns
         # have an explicit "string" token. Keep the concept values intact
-        # while fixing the portable dtype at this boundary.
+        # while fixing the portable dtype at this boundary, with the graph's
+        # pinned Python storage: a bare "string" stores pyarrow strings
+        # whenever pyarrow is installed.
+        text = dtype_for_token("string")
         for entity, table in tables.items():
             for column in table:
                 item = concept_for_column(entity, column)
                 if item is not None and item.dtype == "str":
-                    table[column] = table[column].astype("string")
+                    table[column] = table[column].astype(text)
         rule = BenefitUnitRule.from_dict(
             canonical_document_param(context, self.ref, "unit_rule")
         )
@@ -222,9 +232,7 @@ class TransportCreateKernel(KernelBase):
         person["take_up_seed"] = derive_transport_seed(
             donor.source_person_ids, string_param(context, self.ref, "seed_stream")
         )
-        household["donor_support_stratum"] = pd.array(
-            donor.support_strata, dtype="string"
-        )
+        household["donor_support_stratum"] = pd.array(donor.support_strata, dtype=text)
         household_ids = household["household_id"]
         donor_weights = pd.Series(donor.weights, index=household_ids)
         person_weights = person["person_household_id"].map(donor_weights)
@@ -241,9 +249,11 @@ class TransportCreateKernel(KernelBase):
             name="stratum",
         )
         surface = decode_target_surface(surface_bytes)
+        # The persons, their households and the rule's benefit units: the
+        # entity check above makes this the destination's declared schema.
         frame = Frame(
             tables,
-            NZ_SCHEMA,
+            EntitySchema(group_entities=("household", rule.entity)),
             {"household": weights},
             strata,
             metadata={
@@ -360,9 +370,14 @@ class TransportCurrencyKernel(KernelBase):
         )
 
 
-def _surface_bands(document: Mapping[str, object], surface) -> object:
-    """Resolve band shares from the exact declared population facts."""
-    values = {spec.name: float(spec.value) for spec in surface.registry.specs}
+def _surface_bands(document: Mapping[str, object], surface, *, unit: str) -> object:
+    """Resolve band shares from the exact declared population facts.
+
+    ``unit`` is the entity whose values are ranked. Each band reference must
+    be an unfiltered count fact on that entity, so the shares divide the
+    same population the ranks do.
+    """
+    specs = {spec.name: spec for spec in surface.registry.specs}
 
     def rows(raw):
         if not isinstance(raw, list) or not raw:
@@ -373,11 +388,20 @@ def _surface_bands(document: Mapping[str, object], surface) -> object:
         ):
             raise ValueError("Each quantile band declares lower, upper and reference.")
         names = [row["reference"] for row in raw]
-        if any(not isinstance(name, str) or name not in values for name in names):
+        if any(not isinstance(name, str) or name not in specs for name in names):
             raise ValueError("A quantile band's reference is absent from its surface.")
         if len(set(names)) != len(names):
             raise ValueError("Quantile band references must be distinct.")
-        counts = [values[name] for name in names]
+        if any(
+            specs[name].entity != unit
+            or specs[name].filter
+            or specs[name].metadata.get("ledger_measure_unit") != "count"
+            for name in names
+        ):
+            raise ValueError(
+                f"Quantile band references must be unfiltered {unit} count facts."
+            )
+        counts = [float(specs[name].value) for name in names]
         if any(not np.isfinite(value) or value < 0 for value in counts):
             raise ValueError(
                 "Quantile band population counts must be finite and nonnegative."
@@ -461,15 +485,22 @@ class TransportQuantileMapKernel(KernelBase):
             raise ValueError(
                 "Quantile map requires a target surface under alias 'surface'."
             )
+        entity = string_param(context, self.ref, "entity")
+        column = string_param(context, self.ref, "column")
+        aggregate = (
+            string_param(context, self.ref, "aggregate_entity")
+            if "aggregate_entity" in context.params
+            else None
+        )
+        # Aggregate maps rank each aggregate entity once at its own weight.
         bands = _surface_bands(
             canonical_document_param(context, self.ref, "bands"),
             decode_target_surface(artifact.payload),
+            unit=entity if aggregate is None else aggregate,
         )
         interpolation = canonical_document_param(context, self.ref, "interpolation")
         if interpolation == {"method": "uniform"}:
             interpolation = "uniform"
-        entity = string_param(context, self.ref, "entity")
-        column = string_param(context, self.ref, "column")
         table = context.tables[entity]
         component = (
             table[string_param(context, self.ref, "component_column")].to_numpy()
@@ -477,8 +508,7 @@ class TransportQuantileMapKernel(KernelBase):
             else None
         )
         group = component
-        if "aggregate_entity" in context.params:
-            aggregate = string_param(context, self.ref, "aggregate_entity")
+        if aggregate is not None:
             if entity != "person":
                 raise ValueError(
                     "Aggregate quantile maps require person membership rows."
