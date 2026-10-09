@@ -102,6 +102,12 @@ _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
+def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
+    """The process-local emitter of the current UK build attempt, if started."""
+
+    return _ACTIVE_EMITTER
+
+
 def _hub_api() -> Any:
     """The Hub client used for the run bundle and staged dataset (test seam)."""
 

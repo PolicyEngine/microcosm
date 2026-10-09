@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib.resources import as_file, files
@@ -37,9 +38,13 @@ def alembic_config(
 def upgrade_spool_database(engine: Engine) -> None:
     """Apply every committed spool migration to an engine."""
 
-    with engine.begin() as connection:
-        with alembic_config(connection=connection) as config:
-            command.upgrade(config, _MIGRATION_TARGET)
+    # Concurrent build processes share this spool and must serialize upgrades.
+    path = Path(engine.url.database)
+    with path.with_suffix(".migration.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with engine.begin() as connection:
+            with alembic_config(connection=connection) as config:
+                command.upgrade(config, _MIGRATION_TARGET)
 
 
 def current_database_revision(path: Path | str) -> str | None:

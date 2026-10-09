@@ -21,6 +21,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.graph_publication_types import (
+    PublicationInventory,
+    PublicationReceipt,
+)
 from microcosm.build.telemetry_emitter_constants import (
     DEFAULT_HEARTBEAT_SECONDS,
     DEFAULT_SEND_TIMEOUT_SECONDS,
@@ -84,6 +88,11 @@ def _cache_dir() -> Path:
     return root.joinpath(*TELEMETRY_CACHE_PARTS)
 
 
+def default_spool_path() -> Path:
+    """The local SQLite queue shared by telemetry events and graph publication."""
+    return _cache_dir() / TELEMETRY_SPOOL_FILENAME
+
+
 @dataclass(frozen=True)
 class TelemetryRun:
     """Identity registered with the hosted collector for one build."""
@@ -119,12 +128,14 @@ class LocalTelemetryEmitter:
         socket_path: Path | None,
         runtime_dir: Path | None,
         send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
+        spool_path: Path | None = None,
     ) -> None:
         self.run = run
         self._process = process
         self._socket_path = socket_path
         self._runtime_dir = runtime_dir
         self._send_timeout_seconds = send_timeout_seconds
+        self._spool_path = spool_path
         self._closed = False
         self._warned = False
         self._transition_stage: str | None = None
@@ -174,11 +185,7 @@ class LocalTelemetryEmitter:
             )
             runtime_dir.chmod(0o700)
             socket_path = runtime_dir / SOCKET_FILENAME
-            queue_path = (
-                Path(spool_path)
-                if spool_path
-                else _cache_dir() / TELEMETRY_SPOOL_FILENAME
-            )
+            queue_path = Path(spool_path) if spool_path else default_spool_path()
             command = [
                 sys.executable,
                 "-m",
@@ -212,6 +219,7 @@ class LocalTelemetryEmitter:
                         process=process,
                         socket_path=socket_path,
                         runtime_dir=runtime_dir,
+                        spool_path=queue_path,
                     )
                     emitter.emit(
                         event_type=EVENT_TYPE_RUN,
@@ -243,7 +251,13 @@ class LocalTelemetryEmitter:
                 runtime_dir.rmdir()
         except OSError:
             pass
-        return cls(run=run, process=None, socket_path=None, runtime_dir=runtime_dir)
+        return cls(
+            run=run,
+            process=None,
+            socket_path=None,
+            runtime_dir=runtime_dir,
+            spool_path=Path(spool_path) if spool_path else None,
+        )
 
     @property
     def available(self) -> bool:
@@ -405,6 +419,38 @@ class LocalTelemetryEmitter:
             return
         self._send({"action": ACTION_CLOSE})
         self._closed = True
+
+    def publish_graph(
+        self,
+        directory: Path,
+        inventory: PublicationInventory,
+        *,
+        wait_seconds: float = 30.0,
+    ) -> PublicationReceipt:
+        """Preserve a job first, then wait a bounded time for its first result.
+
+        Unlike telemetry, missing credentials never discard this job. Enqueue
+        directly into the service's shared SQLite database so a socket timeout
+        or unavailable service cannot lose the publication request.
+        """
+        from microcosm.build.telemetry_emitter_service.graph_publication import (
+            GraphPublicationQueue,
+        )
+
+        queue = GraphPublicationQueue(self._spool_path or default_spool_path())
+        queue.enqueue(directory, inventory)
+        deadline = time.monotonic() + max(0, wait_seconds)
+        while self.available and time.monotonic() < deadline:
+            receipt = queue.receipt(inventory["publication_id"])
+            assert receipt is not None, (
+                "A queued graph publication must have a receipt."
+            )
+            if receipt.get("attempts", 0) or receipt["status"] == "published":
+                return receipt
+            time.sleep(0.1)
+        receipt = queue.receipt(inventory["publication_id"])
+        assert receipt is not None, "A queued graph publication must have a receipt."
+        return receipt
 
     def _close_transition_stage(
         self,

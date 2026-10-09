@@ -368,7 +368,7 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
         for node in snapshot["nodes"]
     )
     assert [phase["phase"] for phase in overlay["phases"]][-2:] == ["export", "final"]
-    assert not list(out.glob("*.orrery.json"))
+    assert json.loads((out / "graph.orrery.json").read_bytes()) == snapshot
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
     for path in out.iterdir():
         if path.is_file():
