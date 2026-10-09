@@ -41,15 +41,17 @@ condition; a child filing a new application also cannot be doing substantial
 gainful activity:
 https://www.ecfr.gov/current/title-20/chapter-III/part-416/subpart-I/section-416.906.
 The stage therefore never copies ``RDIS_ALT`` into
-``meets_ssi_disability_criteria``.  It models the marked-and-severe, pre-SGA
-criteria layer using the eight effective child battery items as predictors in
-a weighted 100-tree receipt classifier.  For each
-general-disabled receiver it hot-decks one exact-age/sex positive battery
-profile (age 0 uses age 1), converts that profile to a receipt-probability
-severity score, logit-calibrates scores to the weighted *reported* monthly
-``RSSI_MNYN`` receipt share within ``RDIS_ALT``-positive children, and makes
-one seeded source-person draw.  This produces a proper severe subset while
-retaining the RDIS_ALT-faithful general signal.
+``meets_ssi_disability_criteria``.  The medical estimand is medically
+qualifying severity per 20 CFR 416.906, approximated by battery-ordered
+functional severity and calibrated through the SSA under-18 caseload identity.
+For each general-disabled receiver it hot-decks one exact-age/sex positive
+battery profile (age 0 uses age 1) and scores only the eight effective child
+battery items.  After the financial inputs exist, a builder-owned engine probe
+identifies simulated financial eligibility and a stable score threshold is
+solved so qualification times that eligibility times the already authenticated
+under-18 take-up prior reproduces the SSA caseload target.  Receipt is used only
+as the direct ASEC reporter anchor and the aggregate SSA calibration total,
+never as an individual severity label or score predictor.
 
 Draws are keyed by stable person source identity, so support clones and row
 reordering do not change assignment.  Existing child ``True`` values are never
@@ -70,17 +72,20 @@ rather than silent.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
-from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
+from populace.build.us_runtime.full_sipp_donor import (
+    full_sipp_sha256,
+    open_verified_full_sipp,
+)
 from populace.build.us_runtime.sipp_financial_assets import (
     fetch_sipp_2023_financial_asset_donor,
 )
@@ -124,13 +129,15 @@ __all__ = [
     "US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE",
     "US_CHILD_DISABILITY_OUTPUT_COLUMNS",
     "US_CHILD_DISABILITY_STAGE_NAME",
-    "US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR",
-    "US_CHILD_SSI_SEVERITY_SHARE_BAND",
+    "US_CHILD_SSI_MEDICAL_CALIBRATION_METADATA_KEY",
+    "child_ssi_medical_severity_scores",
     "load_sipp_2023_child_disability_donor",
     "resolve_sipp_2023_child_disability_donor",
     "us_child_disability_signal_gate",
     "us_child_disability_stage_spec",
     "us_child_disability_summary",
+    "with_us_child_ssi_financial_probe_criteria",
+    "with_us_child_ssi_medical_qualification",
     "with_us_child_disability_inputs",
 ]
 
@@ -223,8 +230,9 @@ _MAX_EARLY_CHILD_AGE = 4
 _PERSON_SOURCE_ID_COLUMN = "person_source_id"
 _ASEC_SUPPORT_CHANNEL = BASE_ASEC_SUPPORT_CHANNEL
 _PUF_SUPPORT_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
-_SEVERITY_N_ESTIMATORS = 100
-_SEVERITY_MODEL_SEED = 42
+US_CHILD_SSI_MEDICAL_CALIBRATION_METADATA_KEY = (
+    "us_child_ssi_medical_qualification"
+)
 
 # Immutable-source audit.  The exact reproducible filters are:
 #
@@ -334,16 +342,6 @@ US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND = (
     US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE - _FINITE_DRAW_ABSOLUTE_TOLERANCE,
     US_CHILD_DISABILITY_AGE_5_14_TARGET_RATE + _FINITE_DRAW_ABSOLUTE_TOLERANCE,
 )
-US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR = round(
-    _PINNED_REPORTED_RDIS_POSITIVE_RECEIPT_RATE,
-    12,
-)
-_SEVERITY_FINITE_DRAW_ABSOLUTE_TOLERANCE = 0.03
-US_CHILD_SSI_SEVERITY_SHARE_BAND = (
-    US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR - _SEVERITY_FINITE_DRAW_ABSOLUTE_TOLERANCE,
-    US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR + _SEVERITY_FINITE_DRAW_ABSOLUTE_TOLERANCE,
-)
-
 SIPP_CHILD_DISABILITY_READ_PARAMETERS: dict[str, object] = {
     "table": "sipp_person",
     "delimiter": "|",
@@ -411,26 +409,34 @@ SIPP_CHILD_DISABILITY_AGE_0_PARAMETERS: dict[str, object] = {
 SIPP_CHILD_SSI_SEVERITY_PARAMETERS: dict[str, object] = {
     "predictors": list(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS),
     "target": _CRITERIA_OUTPUT,
-    "target_proxy": "RSSI_MNYN == 1",
-    "observed_label_rule": "ASSI_MNYN == 1 and RSSI_MNYN in [1, 2]",
-    "training_universe": (
-        "MONTHCODE == 12 and 1 <= TAGE <= 14 and RDIS_ALT == 1 "
-        "and WPFINWGT > 0 and observed_label_rule"
+    "estimand": (
+        "medically-qualifying severity per 20 CFR 416.906, approximated by "
+        "battery-ordered severity calibrated through the SSA under-18 "
+        "caseload identity"
     ),
-    "weight": _DONOR_WEIGHT_COLUMN,
-    "classifier": "weighted_random_forest_classifier",
-    "n_estimators": _SEVERITY_N_ESTIMATORS,
-    "model_seed": _SEVERITY_MODEL_SEED,
+    "score": "unweighted sum of the eight boolean battery items",
+    "score_excludes": [
+        "SSI receipt",
+        "income",
+        "assets",
+        "financial eligibility",
+        "claiming behavior",
+    ],
     "receiver_item_profile": (
         "stable WPFINWGT hot deck from exact-age and sex RDIS_ALT-positive "
         "donors; receiver age 0 maps to donor age 1"
     ),
-    "probability_calibration": (
-        "logit shift over general-disabled receiver children to the weighted "
-        "reported monthly-SSI share within RDIS_ALT-positive donor children"
+    "threshold_calibration": (
+        "stable descending battery-score boundary over financially eligible "
+        "under-15 nonreporters; reporters are pinned true; qualification "
+        "times simulated financial eligibility times the fixed authenticated "
+        "under-18 take-up prior reproduces the ledger-fed SSA caseload target"
     ),
-    "pinned_conditional_receipt_rate": US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR,
-    "assignment": "seeded_bernoulli_by_person_source_id",
+    "receipt_role": (
+        "direct ASEC SSI_VAL reporter anchor and aggregate SSA calibration "
+        "total only; never an individual severity label"
+    ),
+    "assignment": "stable_score_threshold_by_person_source_id",
     "seed_from_build_config": True,
     "legal_standard": "20 CFR 416.906 marked and severe functional limitations",
     "legal_source": SSI_CHILD_DISABILITY_STANDARD_URL,
@@ -461,7 +467,7 @@ def us_child_disability_stage_spec() -> SourceStageSpec:
         ("read_table", SIPP_CHILD_DISABILITY_READ_PARAMETERS),
         ("fit_weighted_logistic", SIPP_CHILD_DISABILITY_FIT_PARAMETERS),
         ("assign_binary_from_rate", SIPP_CHILD_DISABILITY_AGE_0_PARAMETERS),
-        ("fit_weighted_imputer", SIPP_CHILD_SSI_SEVERITY_PARAMETERS),
+        ("calibrate_binary_assignment", SIPP_CHILD_SSI_SEVERITY_PARAMETERS),
     ]
     if [operation.kind for operation in spec.operations] != [
         kind for kind, _ in expected_operations
@@ -469,7 +475,7 @@ def us_child_disability_stage_spec() -> SourceStageSpec:
         raise ValueError(
             "US child-disability stage must contain read_table, "
             "fit_weighted_logistic, assign_binary_from_rate, then the "
-            "receipt-anchored fit_weighted_imputer."
+            "pipeline-calibrated medical assignment."
         )
     for operation, (kind, parameters) in zip(
         spec.operations, expected_operations, strict=True
@@ -648,39 +654,41 @@ def load_sipp_2023_child_disability_donor(
     source_path = Path(path)
     if chunksize < 1:
         raise ValueError("chunksize must be a positive integer")
-    actual_size = source_path.stat().st_size
-    if expected_size_bytes is not None and actual_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 child-disability donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {actual_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(source_path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 child-disability donor failed SHA-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-
-    header = pd.read_csv(source_path, sep="|", nrows=0)
-    missing = sorted(set(SIPP_CHILD_DISABILITY_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP child-disability donor missing column(s): {missing}.")
-
     raw_rows = 0
     december_parts: list[pd.DataFrame] = []
-    for chunk in pd.read_csv(
-        source_path,
-        sep="|",
-        usecols=list(SIPP_CHILD_DISABILITY_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=False,
-    ):
-        raw_rows += len(chunk)
-        month = _numeric(chunk, "MONTHCODE")
-        december = chunk.loc[month.eq(12.0)].copy()
-        if not december.empty:
-            december_parts.append(december)
+    with open_verified_full_sipp(source_path) as verified:
+        actual_size = verified.fingerprint.size_bytes
+        if expected_size_bytes is not None and actual_size != expected_size_bytes:
+            raise ValueError(
+                "SIPP 2023 child-disability donor failed byte-length verification: "
+                f"expected {expected_size_bytes}, got {actual_size}."
+            )
+        if expected_sha256 is not None and verified.sha256 != expected_sha256:
+            raise ValueError(
+                "SIPP 2023 child-disability donor failed SHA-256 verification: "
+                f"expected {expected_sha256}, got {verified.sha256}."
+            )
+        header = pd.read_csv(verified.stream, sep="|", nrows=0)
+        missing = sorted(
+            set(SIPP_CHILD_DISABILITY_SOURCE_COLUMNS) - set(header.columns)
+        )
+        if missing:
+            raise ValueError(
+                f"SIPP child-disability donor missing column(s): {missing}."
+            )
+        verified.stream.seek(0)
+        for chunk in pd.read_csv(
+            verified.stream,
+            sep="|",
+            usecols=list(SIPP_CHILD_DISABILITY_SOURCE_COLUMNS),
+            chunksize=int(chunksize),
+            low_memory=False,
+        ):
+            raw_rows += len(chunk)
+            month = _numeric(chunk, "MONTHCODE")
+            december = chunk.loc[month.eq(12.0)].copy()
+            if not december.empty:
+                december_parts.append(december)
     if not december_parts:
         raise ValueError("SIPP child-disability donor contains no December rows.")
     december = pd.concat(december_parts, ignore_index=True)
@@ -1195,25 +1203,6 @@ def _calibrate_probabilities(
     return np.where(current_true, 1.0, shifted)
 
 
-@dataclass(frozen=True)
-class _ChildSSISeverityModel:
-    classifier: RandomForestClassifier
-    receipt_anchor: float
-
-    def predict_score(self, profiles: pd.DataFrame) -> np.ndarray:
-        values = _severity_predictor_array(profiles)
-        probabilities = self.classifier.predict_proba(values)
-        positive = np.flatnonzero(self.classifier.classes_ == 1)
-        if positive.size != 1:
-            raise ValueError(
-                "Child SSI severity classifier has no unique receipt-positive class."
-            )
-        result = probabilities[:, int(positive[0])]
-        if not np.isfinite(result).all():
-            raise ValueError("Child SSI severity classifier produced nonfinite scores.")
-        return result
-
-
 def _severity_predictor_array(features: pd.DataFrame) -> np.ndarray:
     missing = sorted(set(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS) - set(features))
     if missing:
@@ -1228,78 +1217,6 @@ def _severity_predictor_array(features: pd.DataFrame) -> np.ndarray:
     if not (np.isfinite(values) & np.isin(values, [0.0, 1.0])).all():
         raise ValueError("Child SSI severity battery predictors must be boolean.")
     return values
-
-
-def _fit_child_ssi_severity_model(donor: pd.DataFrame) -> _ChildSSISeverityModel:
-    required = {
-        *SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS,
-        _GENERAL_OUTPUT,
-        _MONTHLY_SSI_RECEIVED_COLUMN,
-        _MONTHLY_SSI_REPORTED_COLUMN,
-        _DONOR_WEIGHT_COLUMN,
-    }
-    missing = sorted(required - set(donor))
-    if missing:
-        raise ValueError(f"SIPP child SSI severity donor missing column(s): {missing}.")
-    general = pd.to_numeric(donor[_GENERAL_OUTPUT], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
-    received = pd.to_numeric(
-        donor[_MONTHLY_SSI_RECEIVED_COLUMN], errors="coerce"
-    ).to_numpy(dtype=np.float64)
-    reported = pd.to_numeric(
-        donor[_MONTHLY_SSI_REPORTED_COLUMN], errors="coerce"
-    ).to_numpy(dtype=np.float64)
-    weights = pd.to_numeric(donor[_DONOR_WEIGHT_COLUMN], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
-    for name, values in (
-        (_GENERAL_OUTPUT, general),
-        (_MONTHLY_SSI_RECEIVED_COLUMN, received),
-        (_MONTHLY_SSI_REPORTED_COLUMN, reported),
-    ):
-        if not (np.isfinite(values) & np.isin(values, [0.0, 1.0])).all():
-            raise ValueError(f"SIPP child SSI severity {name} must be boolean.")
-    if not (np.isfinite(weights) & (weights > 0.0)).all():
-        raise ValueError("SIPP child SSI severity weights must be finite and positive.")
-
-    training = general.astype(bool) & reported.astype(bool)
-    labels = received[training].astype(np.int8)
-    if labels.size == 0 or np.unique(labels).size != 2:
-        raise ValueError(
-            "SIPP child SSI severity training data must contain reported "
-            "receipt and nonreceipt among RDIS_ALT-positive children."
-        )
-    training_weights = weights[training]
-    receipt_anchor = float(np.average(labels, weights=training_weights))
-    if not 0.0 < receipt_anchor < 1.0:
-        raise ValueError(
-            "SIPP child SSI receipt anchor must be strictly between 0 and 1."
-        )
-    audit = donor.attrs.get("source_audit", {})
-    if bool(audit.get("pinned_transform")) and not np.isclose(
-        receipt_anchor,
-        US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR,
-        rtol=_PINNED_FLOAT_RTOL,
-        atol=1e-12,
-    ):
-        raise ValueError(
-            "Pinned SIPP child SSI receipt anchor drifted: "
-            f"expected {US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR}, "
-            f"got {receipt_anchor}."
-        )
-
-    classifier = RandomForestClassifier(
-        n_estimators=_SEVERITY_N_ESTIMATORS,
-        random_state=_SEVERITY_MODEL_SEED,
-        n_jobs=1,
-    )
-    classifier.fit(
-        _severity_predictor_array(donor.loc[training]),
-        labels,
-        sample_weight=training_weights,
-    )
-    return _ChildSSISeverityModel(classifier, receipt_anchor)
 
 
 def _hot_deck_child_battery_profiles(
@@ -1419,53 +1336,473 @@ def _hot_deck_child_battery_profiles(
     )
 
 
-def _child_ssi_criteria_assignment(
-    donor: pd.DataFrame,
+def _medical_score_receiver(
+    frame: Frame,
+) -> tuple[pd.DataFrame, pd.Series, pd.Index]:
+    """Return age/sex-only receivers and one canonical row per source person."""
+
+    person = frame.table("person")
+    required = {"age", "is_female", _GENERAL_OUTPUT}
+    missing = sorted(required - set(person))
+    if missing:
+        raise ValueError(
+            f"US child SSI medical score missing person column(s): {missing}."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    female = pd.to_numeric(person["is_female"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid = (
+        np.isfinite(age)
+        & (age >= 0.0)
+        & (age <= 120.0)
+        & np.isfinite(female)
+        & np.isin(female, [0.0, 1.0])
+    )
+    if not valid.all():
+        rows = np.flatnonzero(~valid)[:5].tolist()
+        raise ValueError(
+            "US child SSI medical score requires finite ages and boolean sex; "
+            f"invalid row(s): {rows}."
+        )
+    keys = _stable_person_keys(person)
+    consistency = (
+        pd.DataFrame({"key": keys, "age": age, "is_female": female})
+        .groupby("key", sort=False)[["age", "is_female"]]
+        .nunique()
+    )
+    inconsistent = consistency.index[(consistency > 1).any(axis=1)].tolist()
+    if inconsistent:
+        raise ValueError(
+            "US child SSI medical-score clones disagree on age or sex for "
+            f"source id(s): {inconsistent[:5]}."
+        )
+    if has_support_role_metadata(person, entity="person"):
+        roles = support_role_series(person, entity="person")
+    else:
+        roles = pd.Series(_ASEC_SUPPORT_CHANNEL, index=person.index)
+    role_priority = roles.map(
+        {_ASEC_SUPPORT_CHANNEL: 0, _PUF_SUPPORT_CHANNEL: 1}
+    )
+    if role_priority.isna().any():
+        unexpected = sorted(set(roles[role_priority.isna()].astype(str)))
+        raise ValueError(
+            f"US child SSI medical score has unsupported support role(s): "
+            f"{unexpected}."
+        )
+    order = pd.DataFrame(
+        {
+            "key": keys,
+            "role_priority": role_priority,
+            "row_key": np.arange(len(person), dtype=np.int64),
+        },
+        index=person.index,
+    )
+    canonical_index = (
+        order.sort_values(
+            ["key", "role_priority", "row_key"],
+            kind="mergesort",
+        )
+        .drop_duplicates("key", keep="first")
+        .index
+    )
+    return (
+        pd.DataFrame(
+            {"age": age, "is_female": female},
+            index=person.index,
+        ),
+        keys,
+        canonical_index,
+    )
+
+
+def child_ssi_medical_severity_scores(
+    frame: Frame,
     *,
-    canonical_features: pd.DataFrame,
-    canonical_keys: pd.Series,
-    canonical_general: np.ndarray,
-    all_keys: pd.Series,
-    all_general: np.ndarray,
-    all_weights: np.ndarray,
-    under_15: np.ndarray,
+    sipp_donor: pd.DataFrame,
     seed: int,
 ) -> np.ndarray:
-    """Return the seeded receipt-anchored severe subset of general disability."""
+    """Score medical severity from the eight child battery items only.
 
-    model = _fit_child_ssi_severity_model(donor)
+    The score is the integer sum of a stable exact-age/sex hot-decked battery
+    profile.  No receipt, income, asset, eligibility, or claiming field enters
+    this function.  Scores are fanned by ``person_source_id`` so support clones
+    receive exactly the same medical ordering.
+    """
+
+    features, keys, canonical_index = _medical_score_receiver(frame)
+    person = frame.table("person")
+    age = features["age"].to_numpy(dtype=np.float64)
+    general_numeric = pd.to_numeric(
+        person[_GENERAL_OUTPUT], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    under_15 = (age >= 0.0) & (age < 15.0)
+    if not (
+        np.isfinite(general_numeric[under_15])
+        & np.isin(general_numeric[under_15], [0.0, 1.0])
+    ).all():
+        raise ValueError(
+            "US child SSI medical score requires boolean child is_disabled."
+        )
+    canonical_general = (
+        under_15[canonical_index]
+        & general_numeric[canonical_index].astype(bool)
+    )
     profiles = _hot_deck_child_battery_profiles(
-        donor,
-        receiver_features=canonical_features,
-        receiver_keys=canonical_keys,
+        sipp_donor,
+        receiver_features=features.loc[canonical_index],
+        receiver_keys=keys.loc[canonical_index],
         receiver_general=canonical_general,
-        seed=seed,
+        seed=int(seed),
     )
-    scores = np.zeros(len(canonical_features), dtype=np.float64)
-    if canonical_general.any():
-        scores[canonical_general] = model.predict_score(profiles.loc[canonical_general])
-    score_by_key = pd.Series(scores, index=canonical_keys.to_numpy())
-    all_scores = all_keys.map(score_by_key).to_numpy(dtype=np.float64)
-    eligible = under_15 & np.asarray(all_general, dtype=bool)
-    if not eligible.any():
-        # A sliced or very small receiver can legitimately contain no general
-        # disability. The severe subset is then empty by construction; release
-        # frames still have to pass the separate nonconstant/share gate.
-        return np.zeros(len(all_keys), dtype=bool)
-    probability = _calibrate_probabilities(
-        all_scores[eligible],
-        current_true=np.zeros(int(eligible.sum()), dtype=bool),
-        weights=np.asarray(all_weights, dtype=np.float64)[eligible],
-        target_share=model.receipt_anchor,
+    canonical_scores = _severity_predictor_array(profiles).sum(axis=1)
+    canonical_scores[~canonical_general] = 0.0
+    score_by_key = pd.Series(
+        canonical_scores,
+        index=keys.loc[canonical_index].to_numpy(),
     )
-    draws = _stable_uniform_draws(
-        all_keys.loc[eligible],
-        seed=seed,
-        stream="ssi_severity",
+    scores = keys.map(score_by_key).to_numpy(dtype=np.float64)
+    if not (np.isfinite(scores) & np.equal(scores, np.floor(scores))).all():
+        raise AssertionError("US child SSI medical scores must be finite integers.")
+    return scores
+
+
+def _child_reporter_mask(
+    person: pd.DataFrame,
+    *,
+    reporter_source_ids: set[str] | frozenset[str] | None = None,
+) -> np.ndarray:
+    """Return under-15 reporter lineage fanned to every support clone."""
+
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    child = np.isfinite(age) & (age >= 0.0) & (age < 15.0)
+    keys = _stable_person_keys(person)
+    if reporter_source_ids is None:
+        if "SSI_VAL" not in person:
+            return np.zeros(len(person), dtype=bool)
+        reported = pd.to_numeric(person["SSI_VAL"], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        if not np.isfinite(reported).all():
+            raise ValueError("US child SSI reporter SSI_VAL must be finite.")
+        if has_support_role_metadata(person, entity="person"):
+            roles = support_role_series(person, entity="person")
+            direct = child & roles.eq(_ASEC_SUPPORT_CHANNEL).to_numpy() & (reported > 0)
+        else:
+            direct = child & (reported > 0)
+        resolved_ids = frozenset(keys[direct])
+    else:
+        resolved_ids = frozenset(str(value) for value in reporter_source_ids)
+    return child & keys.isin(resolved_ids).to_numpy()
+
+
+def _replace_child_criteria(
+    frame: Frame,
+    criteria: np.ndarray,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> Frame:
+    person = frame.table("person")
+    values = np.asarray(criteria, dtype=bool)
+    if values.shape != (len(person),):
+        raise ValueError("US child SSI criteria must align with person rows.")
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    if _CRITERIA_OUTPUT not in tables["person"]:
+        tables["person"][_CRITERIA_OUTPUT] = False
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    child = np.isfinite(age) & (age >= 0.0) & (age < 15.0)
+    tables["person"].loc[child, _CRITERIA_OUTPUT] = values[child]
+    frame_metadata = dict(frame.metadata)
+    if metadata is not None:
+        frame_metadata[US_CHILD_SSI_MEDICAL_CALIBRATION_METADATA_KEY] = metadata
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame_metadata,
     )
-    result = np.zeros(len(all_keys), dtype=bool)
-    result[eligible] = draws < probability
-    return result
+
+
+def with_us_child_ssi_financial_probe_criteria(
+    frame: Frame,
+    *,
+    reporter_source_ids: set[str] | frozenset[str],
+) -> Frame:
+    """Temporarily qualify all general-disabled children for an engine probe."""
+
+    person = frame.table("person")
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    child = np.isfinite(age) & (age >= 0.0) & (age < 15.0)
+    general = pd.to_numeric(person[_GENERAL_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    if not (
+        np.isfinite(general[child]) & np.isin(general[child], [0.0, 1.0])
+    ).all():
+        raise ValueError(
+            "US child SSI financial probe requires boolean child is_disabled."
+        )
+    reporter = _child_reporter_mask(
+        person,
+        reporter_source_ids=reporter_source_ids,
+    )
+    probe = np.zeros(len(person), dtype=bool)
+    if _CRITERIA_OUTPUT in person:
+        existing = pd.to_numeric(
+            person[_CRITERIA_OUTPUT], errors="coerce"
+        ).to_numpy(dtype=np.float64)
+        if not (
+            np.isfinite(existing) & np.isin(existing, [0.0, 1.0])
+        ).all():
+            raise ValueError("US child SSI financial probe criteria must be boolean.")
+        probe = existing.astype(bool)
+    probe[child] = general[child].astype(bool) | reporter[child]
+    return _replace_child_criteria(frame, probe)
+
+
+def with_us_child_ssi_medical_qualification(
+    frame: Frame,
+    *,
+    severity_scores: np.ndarray,
+    financially_eligible: np.ndarray,
+    reporter_source_ids: set[str] | frozenset[str],
+    under_18_target: float,
+    under_18_nonreporter_take_up_prior: float,
+    take_up_prior_provenance: dict[str, object],
+    seed: int,
+) -> tuple[Frame, dict[str, object]]:
+    """Solve and assign the battery-ordered child medical threshold.
+
+    ``financially_eligible`` must come from the production uncapped-SSI engine
+    probe with every general-disabled under-15 child (plus reporters) temporarily
+    criteria-true.  The take-up prior is resolved once from the same authenticated
+    prior-basis artifact later consumed by the SSI take-up stage; this solver
+    never recomputes it while searching the medical threshold.
+    """
+
+    person = frame.table("person")
+    scores = np.asarray(severity_scores, dtype=np.float64)
+    eligible = np.asarray(financially_eligible, dtype=bool)
+    if scores.shape != (len(person),) or eligible.shape != (len(person),):
+        raise ValueError(
+            "US child SSI score and financial-eligibility vectors must align "
+            "with person rows."
+        )
+    target = float(under_18_target)
+    prior = float(under_18_nonreporter_take_up_prior)
+    if not np.isfinite(target) or target <= 0.0:
+        raise ValueError("US child SSI caseload target must be finite and positive.")
+    if not np.isfinite(prior) or not 0.0 < prior <= 1.0:
+        raise ValueError(
+            "US child SSI nonreporter take-up prior must lie in (0, 1]."
+        )
+    if not isinstance(take_up_prior_provenance, dict) or not take_up_prior_provenance:
+        raise ValueError(
+            "US child SSI threshold requires authenticated take-up-prior provenance."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    general = pd.to_numeric(person[_GENERAL_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    if not np.isfinite(age).all() or (age < 0.0).any():
+        raise ValueError("US child SSI threshold requires valid person ages.")
+    if not (np.isfinite(weights) & (weights >= 0.0)).all() or weights.sum() <= 0.0:
+        raise ValueError("US child SSI threshold requires valid person weights.")
+    child = age < 15.0
+    if not (
+        np.isfinite(general[child]) & np.isin(general[child], [0.0, 1.0])
+    ).all():
+        raise ValueError("US child SSI threshold requires boolean child disability.")
+    keys = _stable_person_keys(person)
+    reporter = _child_reporter_mask(
+        person,
+        reporter_source_ids=reporter_source_ids,
+    )
+    rows = pd.DataFrame(
+        {
+            "source_id": keys.to_numpy(),
+            "age": age,
+            "score": scores,
+            "general": general.astype(bool),
+            "reporter": reporter,
+            "candidate_weight": np.where(eligible, weights, 0.0),
+            "person_weight": weights,
+        }
+    )
+    consistency = rows.groupby("source_id", sort=True).agg(
+        age_count=("age", "nunique"),
+        score_count=("score", "nunique"),
+        general_count=("general", "nunique"),
+        reporter_count=("reporter", "nunique"),
+    )
+    inconsistent = consistency.index[(consistency != 1).any(axis=1)].tolist()
+    if inconsistent:
+        raise ValueError(
+            "US child SSI threshold inputs diverge across support clones for "
+            f"source id(s): {inconsistent[:5]}."
+        )
+    source = rows.groupby("source_id", sort=True).agg(
+        age=("age", "first"),
+        score=("score", "first"),
+        general=("general", "first"),
+        reporter=("reporter", "first"),
+        candidate_weight=("candidate_weight", "sum"),
+        person_weight=("person_weight", "sum"),
+    )
+    under_18 = source["age"].lt(18.0)
+    under_15 = source["age"].lt(15.0)
+    reporter_candidate = under_18 & source["reporter"].astype(bool)
+    reporter_floor = float(
+        source.loc[reporter_candidate, "candidate_weight"].sum()
+    )
+    fixed_15_17 = (
+        source["age"].between(15.0, 17.0)
+        & ~source["reporter"].astype(bool)
+    )
+    fixed_nonreporter_mass = float(
+        source.loc[fixed_15_17, "candidate_weight"].sum()
+    )
+    required_child_candidate_mass = (
+        (target - reporter_floor) / prior - fixed_nonreporter_mass
+    )
+    rankable = (
+        under_15
+        & ~source["reporter"].astype(bool)
+        & source["general"].astype(bool)
+    )
+    available_candidate_mass = float(
+        source.loc[rankable, "candidate_weight"].sum()
+    )
+    feasibility_tolerance = max(
+        1e-6,
+        float(source.loc[rankable, "candidate_weight"].max())
+        if rankable.any()
+        else 0.0,
+    )
+    if required_child_candidate_mass < -feasibility_tolerance:
+        raise ValueError(
+            "US child SSI threshold is infeasible: reporter and age-15--17 "
+            "expected mass already exceeds the under-18 caseload target."
+        )
+    if required_child_candidate_mass > available_candidate_mass + feasibility_tolerance:
+        raise ValueError(
+            "US child SSI threshold is infeasible: required financially eligible "
+            f"under-15 nonreporter mass {required_child_candidate_mass:.6f} "
+            f"exceeds available support {available_candidate_mass:.6f}."
+        )
+    required_child_candidate_mass = float(
+        np.clip(required_child_candidate_mass, 0.0, available_candidate_mass)
+    )
+
+    ranked = source.loc[rankable].copy()
+    ranked["tie_draw"] = _stable_uniform_draws(
+        pd.Series(ranked.index, index=ranked.index),
+        seed=int(seed),
+        stream="ssi_medical_threshold_boundary",
+    )
+    ranked["source_key"] = ranked.index.astype(str)
+    ranked = ranked.sort_values(
+        ["score", "tie_draw", "source_key"],
+        ascending=[False, True, True],
+        kind="mergesort",
+    )
+    cumulative = ranked["candidate_weight"].cumsum().to_numpy(dtype=np.float64)
+    candidates = np.concatenate([[0.0], cumulative])
+    prefix_count = int(
+        np.argmin(np.abs(candidates - required_child_candidate_mass))
+    )
+    selected_ids = frozenset(ranked.index[:prefix_count].astype(str))
+    selected_candidate_mass = float(candidates[prefix_count])
+    selected = source.index.astype(str).isin(selected_ids)
+    source_criteria = source["reporter"].to_numpy(dtype=bool) | (
+        rankable.to_numpy(dtype=bool) & selected
+    )
+    threshold = (
+        float(ranked.iloc[prefix_count - 1]["score"])
+        if prefix_count > 0
+        else (
+            float(ranked["score"].max() + 1.0) if not ranked.empty else 9.0
+        )
+    )
+    boundary = ranked["score"].eq(threshold) if not ranked.empty else pd.Series()
+    boundary_weight = float(ranked.loc[boundary, "candidate_weight"].sum())
+    selected_boundary_weight = float(
+        ranked.iloc[:prefix_count].loc[lambda value: value["score"].eq(threshold), "candidate_weight"].sum()
+    )
+    boundary_fraction = (
+        selected_boundary_weight / boundary_weight if boundary_weight > 0.0 else 0.0
+    )
+    expected_mass = reporter_floor + prior * (
+        fixed_nonreporter_mass + selected_candidate_mass
+    )
+    absolute_error = expected_mass - target
+    max_source_candidate_weight = (
+        float(ranked["candidate_weight"].max()) if not ranked.empty else 0.0
+    )
+    identity_tolerance = prior * max_source_candidate_weight + 1e-6
+    if abs(absolute_error) > identity_tolerance:
+        raise AssertionError(
+            "US child SSI threshold prefix missed the caseload identity beyond "
+            "one source-person candidate weight."
+        )
+    criteria_by_key = pd.Series(source_criteria, index=source.index.astype(str))
+    criteria = keys.map(criteria_by_key).to_numpy(dtype=bool)
+    under_15_total_weight = float(source.loc[under_15, "person_weight"].sum())
+    child_criteria_weight = float(
+        source.loc[under_15 & source_criteria, "person_weight"].sum()
+    )
+    rankable_person_weight = float(source.loc[rankable, "person_weight"].sum())
+    selected_person_weight = float(
+        source.loc[rankable & source_criteria, "person_weight"].sum()
+    )
+    diagnostics: dict[str, object] = {
+        "schema_version": 1,
+        "estimand": (
+            "medically-qualifying severity per 20 CFR 416.906, approximated "
+            "by battery-ordered severity calibrated through the SSA under-18 "
+            "caseload identity"
+        ),
+        "score_predictors": list(SIPP_CHILD_SSI_SEVERITY_MODEL_PREDICTORS),
+        "score_excludes_receipt_and_financial_variables": True,
+        "under_18_target": target,
+        "under_18_nonreporter_take_up_prior": prior,
+        "take_up_prior_provenance": dict(take_up_prior_provenance),
+        "reporter_candidate_floor": reporter_floor,
+        "age_15_17_nonreporter_candidate_mass": fixed_nonreporter_mass,
+        "required_under_15_nonreporter_candidate_mass": (
+            required_child_candidate_mass
+        ),
+        "available_under_15_nonreporter_candidate_mass": (
+            available_candidate_mass
+        ),
+        "selected_under_15_nonreporter_candidate_mass": selected_candidate_mass,
+        "qualifying_threshold": threshold,
+        "boundary_fraction": boundary_fraction,
+        "selected_source_identity_count": int(prefix_count),
+        "rankable_source_identity_count": int(len(ranked)),
+        "expected_delivered_mass": expected_mass,
+        "signed_target_error": absolute_error,
+        "relative_target_error": absolute_error / target,
+        "identity_absolute_tolerance": identity_tolerance,
+        "max_source_candidate_weight": max_source_candidate_weight,
+        "child_medical_qualification_prevalence": (
+            child_criteria_weight / under_15_total_weight
+            if under_15_total_weight > 0.0
+            else 0.0
+        ),
+        "selected_nonreporter_qualification_prevalence": (
+            selected_person_weight / rankable_person_weight
+            if rankable_person_weight > 0.0
+            else 0.0
+        ),
+        "reporter_source_identity_count": int(
+            (under_15 & source["reporter"].astype(bool)).sum()
+        ),
+    }
+    return _replace_child_criteria(frame, criteria, metadata=diagnostics), diagnostics
 
 
 def with_us_child_disability_inputs(
@@ -1475,7 +1812,12 @@ def with_us_child_disability_inputs(
     time_period: int,
     sipp_donor: pd.DataFrame,
 ) -> Frame:
-    """Assign under-15 general disability and its receipt-anchored SSI subset."""
+    """Assign under-15 general disability and preserve reporter anchors.
+
+    The medically qualifying nonreporter subset is calibrated later, after the
+    builder has materialized all financial inputs and can run the uncapped-SSI
+    engine probe.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US child-disability inputs require the US schema.")
@@ -1600,21 +1942,10 @@ def with_us_child_disability_inputs(
     # The operation is additive: no pre-existing True is ever cleared.
     if np.any(current[under_15] & ~result[under_15]):
         raise AssertionError("Child-disability stage cleared an existing True value.")
-    criteria_result = _child_ssi_criteria_assignment(
-        sipp_donor,
-        canonical_features=features.loc[canonical_index],
-        canonical_keys=keys.loc[canonical_index],
-        canonical_general=result[canonical_index],
-        all_keys=keys,
-        all_general=result,
-        all_weights=weights,
-        under_15=under_15,
-        seed=int(seed),
-    )
-    if np.any(criteria_result[under_15] & ~result[under_15]):
-        raise AssertionError(
-            "Child SSI disability criteria escaped the general-disability subset."
-        )
+    # Medical severity is calibrated only after the financial inputs exist.
+    # At this early stage, preserve only measured reporter ground truth; the
+    # later threshold solver assigns every nonreporter qualification.
+    criteria_result = _child_reporter_mask(person)
     clone_assignments = pd.DataFrame(
         {
             "source_id": keys,
@@ -1666,7 +1997,7 @@ def with_us_child_disability_inputs(
 
 
 def us_child_disability_summary(frame: Frame) -> dict[str, object]:
-    """Return general and receipt-anchored child-disability diagnostics."""
+    """Return general and medical child-disability diagnostics."""
 
     person = frame.table("person")
     age = pd.to_numeric(person["age"], errors="coerce").to_numpy(np.float64)
@@ -1689,6 +2020,7 @@ def us_child_disability_summary(frame: Frame) -> dict[str, object]:
         [0.0, 1.0],
     )
     severe = criteria_finite_boolean & (criteria_values == 1.0)
+    reporter = _child_reporter_mask(person)
 
     def band_summary(mask: np.ndarray) -> tuple[float, float, int]:
         band_weight = float(weights[mask].sum())
@@ -1705,11 +2037,26 @@ def us_child_disability_summary(frame: Frame) -> dict[str, object]:
     share_5_14, weight_5_14, unique_5_14 = band_summary(age_5_14)
     general_disabled_weight = float(weights[owned & disabled].sum())
     severe_weight = float(weights[owned & severe].sum())
-    criteria_within_general_share = (
-        severe_weight / general_disabled_weight
-        if general_disabled_weight > 0.0
-        else 0.0
+    calibration_raw = frame.metadata.get(
+        US_CHILD_SSI_MEDICAL_CALIBRATION_METADATA_KEY
     )
+    calibration = dict(calibration_raw) if isinstance(calibration_raw, Mapping) else {}
+    clone_divergence = 0
+    if _PERSON_SOURCE_ID_COLUMN in person:
+        clone_values = pd.DataFrame(
+            {
+                "source_id": _stable_person_keys(person)[owned].to_numpy(),
+                "criteria": criteria_values[owned],
+            }
+        )
+        clone_divergence = int(
+            (
+                clone_values.groupby("source_id", sort=False)["criteria"].nunique(
+                    dropna=False
+                )
+                > 1
+            ).sum()
+        )
     return {
         "age_0_disabled_share": share_0,
         "age_0_weight": weight_0,
@@ -1728,15 +2075,21 @@ def us_child_disability_summary(frame: Frame) -> dict[str, object]:
         "age_5_14_share_band": list(US_CHILD_DISABILITY_AGE_5_14_SHARE_BAND),
         "child_general_disabled_weight": general_disabled_weight,
         "child_ssi_criteria_weight": severe_weight,
-        "child_ssi_criteria_within_general_share": criteria_within_general_share,
-        "child_ssi_criteria_receipt_anchor": US_CHILD_SSI_SEVERITY_RECEIPT_ANCHOR,
-        "child_ssi_criteria_share_band": list(US_CHILD_SSI_SEVERITY_SHARE_BAND),
         "child_ssi_criteria_unique_count": int(
             pd.Series(criteria_values[owned & np.isfinite(criteria_values)]).nunique()
         ),
-        "criteria_outside_general_count": int(
-            np.count_nonzero(owned & severe & ~disabled)
+        "nonreporter_criteria_outside_general_count": int(
+            np.count_nonzero(owned & severe & ~disabled & ~reporter)
         ),
+        "child_reporter_anchor_lost_count": int(
+            np.count_nonzero(owned & reporter & ~severe)
+        ),
+        "child_reporter_source_identity_count": int(
+            pd.Series(_stable_person_keys(person)[owned & reporter]).nunique()
+        ),
+        "child_criteria_clone_divergence_source_count": clone_divergence,
+        "medical_calibration_present": bool(calibration),
+        "medical_calibration": calibration,
         "missing_or_nonfinite_count": int(
             np.count_nonzero(owned & ~np.isfinite(values))
         ),

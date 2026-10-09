@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 from pathlib import Path
 
@@ -175,6 +176,16 @@ def _run(frame: Frame, donor: pd.DataFrame, *, seed: int = 453) -> Frame:
         seed=seed,
         time_period=TIME_PERIOD,
         sipp_donor=_severity_ready_donor(donor),
+    )
+
+
+def _assert_is_disabled_export_bridge(frame: Frame, dataset) -> None:
+    expected = frame.table("person")["is_disabled"].to_numpy(dtype=bool)
+    actual = dataset.person["is_disabled"].to_numpy(dtype=bool)
+    np.testing.assert_array_equal(
+        actual,
+        expected,
+        err_msg="Frame -> Dataset bridge changed person.is_disabled",
     )
 
 
@@ -435,6 +446,56 @@ def test_full_sipp_sha256_is_shared_across_all_stage_loaders_and_rechecks_mutati
     path.write_bytes(b"evil")
     assert wrappers[0](path) != digests[0]
     assert scans == [b"good", b"evil"]
+
+
+def test_full_sipp_sha256_rechecks_identity_before_cached_return(
+    tmp_path, monkeypatch
+) -> None:
+    path = tmp_path / "pu2023.csv"
+    path.write_bytes(b"good")
+    good_digest = hashlib.sha256(b"good").hexdigest()
+    evil_digest = hashlib.sha256(b"evil").hexdigest()
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
+    assert full_sipp_donor_module.full_sipp_sha256(path) == good_digest
+
+    real_fingerprint = full_sipp_donor_module._fingerprint
+    real_hash = full_sipp_donor_module._hash_file_contents
+    scans: list[bytes] = []
+    mutate = True
+
+    def stale_fingerprint_then_mutate(source_path):
+        nonlocal mutate
+        fingerprint = real_fingerprint(source_path)
+        if mutate:
+            source_path.write_bytes(b"evil")
+            mutate = False
+        return fingerprint
+
+    def counting_hash(source_path, *, chunk_size):
+        scans.append(source_path.read_bytes())
+        return real_hash(source_path, chunk_size=chunk_size)
+
+    monkeypatch.setattr(
+        full_sipp_donor_module,
+        "_fingerprint",
+        stale_fingerprint_then_mutate,
+    )
+    monkeypatch.setattr(
+        full_sipp_donor_module,
+        "_hash_file_contents",
+        counting_hash,
+    )
+
+    with pytest.raises(
+        full_sipp_donor_module.FullSIPPDonorMutationError,
+        match="changed during SHA-256 verification",
+    ):
+        full_sipp_donor_module.full_sipp_sha256(path)
+
+    monkeypatch.setattr(full_sipp_donor_module, "_fingerprint", real_fingerprint)
+    assert full_sipp_donor_module.full_sipp_sha256(path) == evil_digest
+    assert scans == [b"evil"]
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
 
 
 def test_small_sipp_file_builds_household_income_proxy(tmp_path) -> None:
@@ -923,6 +984,29 @@ def test_signal_gate_fails_when_an_adult_row_changes(
 
 
 @pytest.mark.engine
+def test_is_disabled_export_bridge_rejects_all_false_mutation() -> None:
+    """Authenticate the export guard against a broken is_disabled bridge."""
+
+    builder = _load_builder_module()
+    frame = _frame(n_age_0_4=1, n_age_5_14=1)
+    dataset = builder._dataset_from_frame(
+        frame,
+        assert_no_formula_owned_columns=False,
+    )
+    _assert_is_disabled_export_bridge(frame, dataset)
+    assert frame.table("person")["is_disabled"].any()
+
+    dataset.person.loc[:, "is_disabled"] = False
+
+    with pytest.raises(
+        AssertionError,
+        match=r"Frame -> Dataset bridge changed person\.is_disabled",
+    ) as exc_info:
+        _assert_is_disabled_export_bridge(frame, dataset)
+    assert "Mismatched elements" in str(exc_info.value)
+
+
+@pytest.mark.engine
 def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
     sipp_child_disability_donor: pd.DataFrame,
 ) -> None:
@@ -1124,21 +1208,22 @@ def test_actual_child_disability_criteria_and_take_up_pipeline_controls_ssi(
 
     final_person = final_frame.table("person")
     child = final_person["age"].lt(15).to_numpy()
-    general = final_person["is_disabled"].to_numpy(dtype=bool)
     criteria = final_person["meets_ssi_disability_criteria"].to_numpy(dtype=bool)
     take_up = final_person["takes_up_ssi_if_eligible"].to_numpy(dtype=bool)
     np.testing.assert_array_equal(
         criteria[child],
         child_criteria_assignment[child_at_disability_stage],
     )
+
+    exported_dataset = builder._dataset_from_frame(
+        final_frame,
+        assert_no_formula_owned_columns=False,
+    )
+    _assert_is_disabled_export_bridge(final_frame, exported_dataset)
+    general = exported_dataset.person["is_disabled"].to_numpy(dtype=bool)
     assert not np.any(child & criteria & ~general)
 
-    final_simulation = Microsimulation(
-        dataset=builder._dataset_from_frame(
-            final_frame,
-            assert_no_formula_owned_columns=False,
-        )
-    )
+    final_simulation = Microsimulation(dataset=exported_dataset)
     ssi = np.asarray(
         final_simulation.calculate("ssi", period="2024-12", map_to="person"),
         dtype=np.float64,

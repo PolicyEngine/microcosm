@@ -110,6 +110,7 @@ __all__ = [
     "US_SSI_TAKE_UP_TARGET_TABLE_NAME",
     "ssi_take_up_prior_basis_from_artifact",
     "ssi_take_up_prior_basis_from_diagnostics",
+    "ssi_take_up_assignment_priors_from_basis",
     "us_ssi_take_up_delivery_gate",
     "us_ssi_take_up_diagnostics",
     "us_ssi_take_up_gate",
@@ -738,6 +739,30 @@ def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
     return (target - reporter_floor) / (capacity - reporter_floor)
 
 
+def ssi_take_up_assignment_priors_from_basis(
+    prior_basis: SSITakeUpPriorBasis,
+    *,
+    targets: Mapping[str, float],
+) -> dict[str, float]:
+    """Resolve the one-shot band priors from an authenticated weight basis.
+
+    The child medical-threshold solve consumes this same resolved under-18
+    prior before :func:`with_us_ssi_take_up` makes its one-shot assignment.
+    Keeping the arithmetic here prevents the two pipeline stages from silently
+    calibrating against different participation rates.
+    """
+
+    normalized_targets = _normalize_targets(targets)
+    return {
+        key: _band_prior(
+            normalized_targets[key],
+            prior_basis.band(key).candidate_capacity,
+            prior_basis.band(key).reporter_candidate_floor,
+        )
+        for key in _BAND_KEY_ORDER
+    }
+
+
 def _current_frame_prior_basis(source: pd.DataFrame) -> SSITakeUpPriorBasis:
     """The default basis: capacity/floor measured on this frame's weights."""
 
@@ -1109,19 +1134,15 @@ def _assign_sources(
     """Assign one flag per source identity; return diagnostics and priors."""
 
     selected = pd.Series(False, index=source.index, dtype=bool)
-    priors: dict[str, float] = {}
+    priors = ssi_take_up_assignment_priors_from_basis(
+        prior_basis,
+        targets=targets,
+    )
     for target_definition in US_SSI_TAKE_UP_AGE_TARGETS:
         key = target_definition.key
-        target = float(targets[key])
         in_band = source["age_band"].eq(key)
         anchored = in_band & source["anchor"].astype(bool)
-        basis_band = prior_basis.band(key)
-        prior = _band_prior(
-            target,
-            basis_band.candidate_capacity,
-            basis_band.reporter_candidate_floor,
-        )
-        priors[key] = prior
+        prior = priors[key]
 
         # Seeded Bernoulli at the documented band prior for everyone in the
         # band — candidates and reform-created eligibles alike — with survey

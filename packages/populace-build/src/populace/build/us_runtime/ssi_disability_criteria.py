@@ -48,7 +48,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
-from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
+from populace.build.us_runtime.full_sipp_donor import (
+    full_sipp_sha256,
+    open_verified_full_sipp,
+)
 from populace.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
@@ -529,39 +532,42 @@ def load_sipp_2023_ssi_disability_donor(
     """Build the exact observed/candidate SIPP SSI disability training frame."""
 
     source_path = Path(path)
-    actual_size = source_path.stat().st_size
-    if expected_size_bytes is not None and actual_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 SSI disability donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {actual_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(source_path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 SSI disability donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
     if chunksize < 1:
         raise ValueError("chunksize must be a positive integer")
 
-    header = pd.read_csv(source_path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_SSI_DISABILITY_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP SSI disability donor missing column(s): {missing}.")
-
     parts: list[pd.DataFrame] = []
-    for chunk in pd.read_csv(
-        source_path,
-        delimiter="|",
-        usecols=list(SIPP_SSI_DISABILITY_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=False,
-    ):
-        month = _numeric(chunk["MONTHCODE"])
-        december = chunk.loc[month.eq(12.0)].copy()
-        if not december.empty:
-            parts.append(december)
+    with open_verified_full_sipp(source_path) as verified:
+        actual_size = verified.fingerprint.size_bytes
+        if expected_size_bytes is not None and actual_size != expected_size_bytes:
+            raise ValueError(
+                "SIPP 2023 SSI disability donor failed byte-length verification: "
+                f"expected {expected_size_bytes}, got {actual_size}."
+            )
+        if expected_sha256 is not None and verified.sha256 != expected_sha256:
+            raise ValueError(
+                "SIPP 2023 SSI disability donor failed sha-256 verification: "
+                f"expected {expected_sha256}, got {verified.sha256}."
+            )
+        header = pd.read_csv(verified.stream, delimiter="|", nrows=0)
+        missing = sorted(
+            set(SIPP_SSI_DISABILITY_SOURCE_COLUMNS) - set(header.columns)
+        )
+        if missing:
+            raise ValueError(
+                f"SIPP SSI disability donor missing column(s): {missing}."
+            )
+        verified.stream.seek(0)
+        for chunk in pd.read_csv(
+            verified.stream,
+            delimiter="|",
+            usecols=list(SIPP_SSI_DISABILITY_SOURCE_COLUMNS),
+            chunksize=int(chunksize),
+            low_memory=False,
+        ):
+            month = _numeric(chunk["MONTHCODE"])
+            december = chunk.loc[month.eq(12.0)].copy()
+            if not december.empty:
+                parts.append(december)
     if not parts:
         raise ValueError("SIPP SSI disability donor has no December rows.")
     frame = pd.concat(parts, ignore_index=True)
@@ -1093,12 +1099,45 @@ def with_us_ssi_disability_criteria(
             "US SSI disability criteria require boolean child is_disabled and "
             "meets_ssi_disability_criteria assignments."
         )
-    if np.any(child & child_criteria.astype(bool) & ~child_general.astype(bool)):
-        raise ValueError("US SSI child criteria must be a subset of child is_disabled.")
-    # The child stage owns this exact stable seeded severe assignment.
-    # Preserve it rather than re-drawing or copying general disability.
+    reported_ssi = (
+        _strict_person_numeric(
+            person,
+            ("SSI_VAL",),
+            label="reported SSI",
+        )
+        > 0.0
+    )
+    if has_support_role_metadata(person, entity="person"):
+        channels = support_role_series(person, entity="person")
+        source_ids = _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN])
+        direct_child_reporter_ids = frozenset(
+            source_ids[
+                child
+                & channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+                & reported_ssi
+            ]
+        )
+        child_reporter = child & source_ids.isin(direct_child_reporter_ids).to_numpy()
+    else:
+        child_reporter = child & reported_ssi
+    nonreporter_escape = (
+        child
+        & ~child_reporter
+        & child_criteria.astype(bool)
+        & ~child_general.astype(bool)
+    )
+    if np.any(nonreporter_escape):
+        raise ValueError(
+            "US SSI nonreporter child criteria must be a subset of child "
+            "is_disabled."
+        )
+    # The child stage owns the nonreporter medical-severity assignment. Direct
+    # under-15 ASEC SSI reporters are measured ground truth, however, and the
+    # archived adult imputer has already promoted them. Fan that reporter
+    # lineage to every support clone and never let the child overwrite erase
+    # it (populace#509 round-5 finding 2).
     predicted = predicted.copy()
-    predicted.loc[child] = child_criteria[child].astype(bool)
+    predicted.loc[child] = child_criteria[child].astype(bool) | child_reporter[child]
     if _OUTPUT in person:
         current = pd.to_numeric(person[_OUTPUT], errors="coerce").to_numpy(
             dtype=np.float64

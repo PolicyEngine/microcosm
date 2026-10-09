@@ -34,7 +34,10 @@ import pandas as pd
 
 from populace.build.gates import GateResult
 from populace.build.source_manifest import SourceStageSpec, load_source_manifest
-from populace.build.us_runtime.full_sipp_donor import full_sipp_sha256
+from populace.build.us_runtime.full_sipp_donor import (
+    full_sipp_sha256,
+    open_verified_full_sipp,
+)
 from populace.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
@@ -322,37 +325,37 @@ def load_sipp_2023_head_start_donor(
         raise FileNotFoundError(source_path)
     if chunksize < 1:
         raise ValueError("chunksize must be positive")
-    if (
-        expected_size_bytes is not None
-        and source_path.stat().st_size != expected_size_bytes
-    ):
-        raise ValueError(
-            "SIPP Head Start donor byte length does not match the pinned artifact."
-        )
-    if expected_sha256 is not None:
-        digest = _sha256_file(source_path)
-        if digest != expected_sha256:
+    december_parts: list[pd.DataFrame] = []
+    raw_rows = 0
+    with open_verified_full_sipp(source_path) as verified:
+        if (
+            expected_size_bytes is not None
+            and verified.fingerprint.size_bytes != expected_size_bytes
+        ):
+            raise ValueError(
+                "SIPP Head Start donor byte length does not match the pinned artifact."
+            )
+        if expected_sha256 is not None and verified.sha256 != expected_sha256:
             raise ValueError(
                 "SIPP Head Start donor SHA-256 does not match the pinned artifact."
             )
-
-    header = pd.read_csv(source_path, sep="|", nrows=0)
-    missing = sorted(set(SIPP_HEAD_START_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP Head Start donor missing source column(s): {missing}.")
-
-    december_parts: list[pd.DataFrame] = []
-    raw_rows = 0
-    for chunk in pd.read_csv(
-        source_path,
-        sep="|",
-        usecols=list(SIPP_HEAD_START_SOURCE_COLUMNS),
-        chunksize=chunksize,
-        low_memory=False,
-    ):
-        raw_rows += len(chunk)
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december_parts.append(chunk.loc[month.eq(12)].copy())
+        header = pd.read_csv(verified.stream, sep="|", nrows=0)
+        missing = sorted(set(SIPP_HEAD_START_SOURCE_COLUMNS) - set(header.columns))
+        if missing:
+            raise ValueError(
+                f"SIPP Head Start donor missing source column(s): {missing}."
+            )
+        verified.stream.seek(0)
+        for chunk in pd.read_csv(
+            verified.stream,
+            sep="|",
+            usecols=list(SIPP_HEAD_START_SOURCE_COLUMNS),
+            chunksize=chunksize,
+            low_memory=False,
+        ):
+            raw_rows += len(chunk)
+            month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
+            december_parts.append(chunk.loc[month.eq(12)].copy())
     december = pd.concat(december_parts, ignore_index=True)
     if december.empty:
         raise ValueError("SIPP Head Start donor contains no December rows.")

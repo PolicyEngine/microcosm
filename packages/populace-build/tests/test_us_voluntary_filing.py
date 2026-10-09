@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import populace.build.us_runtime.full_sipp_donor as full_sipp_donor_module
 import populace.build.us_runtime.voluntary_filing as module
 from populace.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from populace.build.us_runtime.release_input_coverage import (
@@ -525,6 +526,56 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
         )
         == path
     )
+
+
+def test_download_cache_seed_rejects_replacement_after_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"verified-full-sipp-bytes"
+    replacement = b"replaced-full-sipp-bytes"
+    assert len(replacement) == len(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    replacement_digest = hashlib.sha256(replacement).hexdigest()
+    response = _ChunkedResponse(payload)
+    real_cache = module.cache_verified_full_sipp_sha256
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args: response)
+
+    def replace_before_cache_seed(
+        path,
+        sha256,
+        *,
+        verified_fingerprint,
+    ):
+        Path(path).write_bytes(replacement)
+        return real_cache(
+            path,
+            sha256,
+            verified_fingerprint=verified_fingerprint,
+        )
+
+    monkeypatch.setattr(
+        module,
+        "cache_verified_full_sipp_sha256",
+        replace_before_cache_seed,
+    )
+
+    with pytest.raises(
+        full_sipp_donor_module.FullSIPPDonorMutationError,
+        match="changed during SHA-256 verification",
+    ):
+        fetch_sipp_2023_voluntary_filing_donor(
+            tmp_path,
+            expected_sha256=digest,
+            expected_size_bytes=len(payload),
+            chunk_size=4,
+        )
+
+    target = tmp_path / "pu2023.csv"
+    assert target.read_bytes() == replacement
+    assert full_sipp_donor_module.full_sipp_sha256(target) == replacement_digest
+    assert replacement_digest != digest
+    full_sipp_donor_module.clear_full_sipp_sha256_cache()
 
 
 def test_receiver_uses_unit_wages_head_spouse_and_full_household_children() -> None:

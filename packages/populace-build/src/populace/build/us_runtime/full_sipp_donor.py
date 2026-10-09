@@ -13,15 +13,24 @@ during hashing is rejected rather than cached.
 from __future__ import annotations
 
 import hashlib
+import os
+import stat as stat_module
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Lock
+from threading import RLock
+from typing import BinaryIO
 
 __all__ = [
     "FullSIPPDonorMutationError",
+    "FullSIPPVerifiedFile",
+    "FullSIPPVerifiedFingerprint",
     "cache_verified_full_sipp_sha256",
     "clear_full_sipp_sha256_cache",
+    "full_sipp_stream_fingerprint",
     "full_sipp_sha256",
+    "open_verified_full_sipp",
 ]
 
 _DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024
@@ -36,8 +45,27 @@ class _FileFingerprint:
     changed_ns: int
 
 
+@dataclass(frozen=True)
+class FullSIPPVerifiedFingerprint:
+    """Content identity captured while verified download bytes remain open."""
+
+    device: int
+    inode: int
+    size_bytes: int
+    modified_ns: int
+
+
+@dataclass(frozen=True)
+class FullSIPPVerifiedFile:
+    """An open full-SIPP stream whose current identity owns ``sha256``."""
+
+    stream: BinaryIO
+    sha256: str
+    fingerprint: _FileFingerprint
+
+
 _SHA256_BY_FINGERPRINT: dict[_FileFingerprint, str] = {}
-_CACHE_LOCK = Lock()
+_CACHE_LOCK = RLock()
 
 
 class FullSIPPDonorMutationError(RuntimeError):
@@ -45,16 +73,41 @@ class FullSIPPDonorMutationError(RuntimeError):
 
 
 def _fingerprint(path: Path) -> _FileFingerprint:
-    stat = path.stat()
-    if not path.is_file():
+    stat_result = path.stat()
+    if not stat_module.S_ISREG(stat_result.st_mode):
         raise FileNotFoundError(path)
+    return _fingerprint_from_stat(stat_result)
+
+
+def _fingerprint_from_stat(stat_result: os.stat_result) -> _FileFingerprint:
     return _FileFingerprint(
-        device=stat.st_dev,
-        inode=stat.st_ino,
-        size_bytes=stat.st_size,
-        modified_ns=stat.st_mtime_ns,
-        changed_ns=stat.st_ctime_ns,
+        device=stat_result.st_dev,
+        inode=stat_result.st_ino,
+        size_bytes=stat_result.st_size,
+        modified_ns=stat_result.st_mtime_ns,
+        changed_ns=stat_result.st_ctime_ns,
     )
+
+
+def _stream_fingerprint(stream: BinaryIO) -> _FileFingerprint:
+    return _fingerprint_from_stat(os.fstat(stream.fileno()))
+
+
+def _verified_fingerprint(
+    fingerprint: _FileFingerprint,
+) -> FullSIPPVerifiedFingerprint:
+    return FullSIPPVerifiedFingerprint(
+        device=fingerprint.device,
+        inode=fingerprint.inode,
+        size_bytes=fingerprint.size_bytes,
+        modified_ns=fingerprint.modified_ns,
+    )
+
+
+def full_sipp_stream_fingerprint(stream: BinaryIO) -> FullSIPPVerifiedFingerprint:
+    """Capture the content identity of an open, flushed download stream."""
+
+    return _verified_fingerprint(_stream_fingerprint(stream))
 
 
 def _hash_file_contents(path: Path, *, chunk_size: int) -> str:
@@ -63,6 +116,46 @@ def _hash_file_contents(path: Path, *, chunk_size: int) -> str:
         for chunk in iter(lambda: stream.read(chunk_size), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _hash_stream_contents(stream: BinaryIO, *, chunk_size: int) -> str:
+    digest = hashlib.sha256()
+    stream.seek(0)
+    for chunk in iter(lambda: stream.read(chunk_size), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _mutation_error() -> FullSIPPDonorMutationError:
+    return FullSIPPDonorMutationError(
+        "Full SIPP donor changed during SHA-256 verification; refusing "
+        "to cache a digest not bound to stable bytes."
+    )
+
+
+def _initial_open_fingerprint(path: Path, stream: BinaryIO) -> _FileFingerprint:
+    descriptor = _stream_fingerprint(stream)
+    try:
+        current_path = _fingerprint(path)
+    except OSError as exc:
+        raise _mutation_error() from exc
+    if current_path != descriptor:
+        raise _mutation_error()
+    return descriptor
+
+
+def _assert_open_identity(
+    path: Path,
+    stream: BinaryIO,
+    expected: _FileFingerprint,
+) -> None:
+    try:
+        descriptor = _stream_fingerprint(stream)
+        current_path = _fingerprint(path)
+    except OSError as exc:
+        raise _mutation_error() from exc
+    if descriptor != expected or current_path != expected:
+        raise _mutation_error()
 
 
 def full_sipp_sha256(
@@ -75,27 +168,83 @@ def full_sipp_sha256(
     if chunk_size < 1:
         raise ValueError("chunk_size must be a positive integer")
     source_path = Path(path).expanduser()
-    initial = _fingerprint(source_path)
-    with _CACHE_LOCK:
+    with source_path.open("rb") as verified_stream, _CACHE_LOCK:
+        initial = _initial_open_fingerprint(source_path, verified_stream)
         cached = _SHA256_BY_FINGERPRINT.get(initial)
         if cached is not None:
+            try:
+                _assert_open_identity(source_path, verified_stream, initial)
+            except FullSIPPDonorMutationError:
+                _SHA256_BY_FINGERPRINT.pop(initial, None)
+                raise
             return cached
         digest = _hash_file_contents(source_path, chunk_size=chunk_size)
-        final = _fingerprint(source_path)
-        if final != initial:
-            raise FullSIPPDonorMutationError(
-                "Full SIPP donor changed during SHA-256 verification; refusing "
-                "to cache a digest not bound to stable bytes."
-            )
+        try:
+            _assert_open_identity(source_path, verified_stream, initial)
+        except FullSIPPDonorMutationError:
+            _SHA256_BY_FINGERPRINT.pop(initial, None)
+            raise
         _SHA256_BY_FINGERPRINT[initial] = digest
         return digest
+
+
+@contextmanager
+def open_verified_full_sipp(
+    path: str | Path,
+    *,
+    chunk_size: int = _DEFAULT_CHUNK_SIZE,
+) -> Iterator[FullSIPPVerifiedFile]:
+    """Yield the exact open bytes hashed for a full-SIPP parser.
+
+    The descriptor remains open from fingerprinting through parsing. Both its
+    identity and the path identity are checked before and after the caller
+    consumes it, so replacement or in-place mutation cannot silently separate
+    the cached digest from the bytes passed to pandas.
+    """
+
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be a positive integer")
+    source_path = Path(path).expanduser()
+    with source_path.open("rb") as stream:
+        initial = _initial_open_fingerprint(source_path, stream)
+        with _CACHE_LOCK:
+            digest = _SHA256_BY_FINGERPRINT.get(initial)
+            if digest is None:
+                digest = _hash_stream_contents(stream, chunk_size=chunk_size)
+            try:
+                _assert_open_identity(source_path, stream, initial)
+            except FullSIPPDonorMutationError:
+                _SHA256_BY_FINGERPRINT.pop(initial, None)
+                raise
+            _SHA256_BY_FINGERPRINT[initial] = digest
+        stream.seek(0)
+        try:
+            yield FullSIPPVerifiedFile(
+                stream=stream,
+                sha256=digest,
+                fingerprint=initial,
+            )
+        finally:
+            try:
+                _assert_open_identity(source_path, stream, initial)
+            except FullSIPPDonorMutationError:
+                with _CACHE_LOCK:
+                    _SHA256_BY_FINGERPRINT.pop(initial, None)
+                raise
 
 
 def cache_verified_full_sipp_sha256(
     path: str | Path,
     sha256: str,
+    *,
+    verified_fingerprint: FullSIPPVerifiedFingerprint | None = None,
 ) -> None:
-    """Seed the cache after a streaming download verified these exact bytes."""
+    """Seed the cache after a streaming download verified these exact bytes.
+
+    Downloaders pass a fingerprint captured from their still-open output
+    descriptor before the atomic rename. Calls without that proof rehash the
+    target instead of binding a caller-supplied digest to unverified bytes.
+    """
 
     normalized = str(sha256).lower()
     if len(normalized) != 64:
@@ -105,9 +254,24 @@ def cache_verified_full_sipp_sha256(
     except ValueError as exc:
         raise ValueError("sha256 must contain only hexadecimal characters") from exc
     source_path = Path(path).expanduser()
-    fingerprint = _fingerprint(source_path)
+    if verified_fingerprint is None:
+        actual = full_sipp_sha256(source_path)
+        if actual != normalized:
+            raise _mutation_error()
+        return
+
+    first = _fingerprint(source_path)
+    if _verified_fingerprint(first) != verified_fingerprint:
+        raise _mutation_error()
     with _CACHE_LOCK:
-        _SHA256_BY_FINGERPRINT[fingerprint] = normalized
+        final = _fingerprint(source_path)
+        if (
+            final != first
+            or _verified_fingerprint(final) != verified_fingerprint
+        ):
+            _SHA256_BY_FINGERPRINT.pop(first, None)
+            raise _mutation_error()
+        _SHA256_BY_FINGERPRINT[final] = normalized
 
 
 def clear_full_sipp_sha256_cache() -> None:
