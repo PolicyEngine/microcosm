@@ -45,6 +45,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
@@ -197,6 +198,9 @@ from .rowwise_staging import (
 )
 from .size_checkpoint import uk_size_checkpoint_identity
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
+
+if TYPE_CHECKING:
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
 
 # The names the rowwise tool's tests call on either driver.
 _validate_cli_args = validate_cli_args
@@ -1105,67 +1109,127 @@ def _release_stem(posture) -> tuple[str, str]:
     )
 
 
-def _run_with_graph_publication(execute, prepared, args, *, telemetry, attempt, record):
+class _BuildKernel[Prepared](Protocol):
+    """A UK build body run inside its temporary output directory."""
+
+    def __call__(
+        self,
+        prepared: Prepared,
+        args: argparse.Namespace,
+        *,
+        telemetry: StagingRunBundleWriterV2 | None = None,
+        attempt: dict | None = None,
+        record: dict | None = None,
+    ) -> int: ...
+
+
+def _run_with_graph_publication[Prepared](
+    execute: _BuildKernel[Prepared],
+    prepared: Prepared,
+    args: argparse.Namespace,
+    *,
+    telemetry: StagingRunBundleWriterV2 | None,
+    attempt: dict | None,
+    record: dict,
+) -> int:
     """Export before temporary files disappear, even if a kernel raises."""
-    from .orrery_publication import (
-        EVIDENCE_MANIFEST_NAME,
-        finalize_graph,
-        stage_graph_evidence,
-    )
+    from .orrery_publication import finalize_graph
 
     try:
         status = execute(
             prepared, args, telemetry=telemetry, attempt=attempt, record=record
         )
-    except BaseException:
-        finalize_graph(args, record)
-        # A failed build may have no dataset. Preserve only its explicit graph
-        # inventory, not incomplete H5 files or arbitrary temporary JSON.
-        from microcosm.build.artifact_files import publish_staged_bundle
-
-        output = Path(args.published_out)
-        names = [*record.get("orrery_files", []), EVIDENCE_MANIFEST_NAME]
-        staged = {
-            name: args.out / name for name in names if (args.out / name).is_file()
-        }
-        marker = args.out / "orrery.failure.json"
-        materialize_bytes(
-            canonical_json(
-                {
-                    "schema_version": 1,
-                    "kind": "uk_build_failed",
-                    "releasable": False,
-                    "outputs": {
-                        name: file_artifact(path) for name, path in staged.items()
-                    },
-                }
-            ),
-            marker,
-        )
-        staged["manifest"] = marker
-        publish_staged_bundle(
-            staged,
-            {role: output / path.name for role, path in staged.items()},
-            completion_role="manifest",
-        )
+    except BaseException as failure:
+        # An interrupt still preserves local evidence and its durable queue
+        # entry, but does not wait for an upload or start Hugging Face staging.
+        interrupted = not isinstance(failure, Exception)
         try:
-            stage_graph_evidence(
-                args,
-                output,
-                run_id=(
-                    telemetry.run_id
-                    if telemetry is not None
-                    else Path(args.attempt_evidence).name
-                ),
+            _publish_failure_evidence(
+                args, record, telemetry=telemetry, interrupted=interrupted
             )
         except Exception as error:
             print(
-                f"Graph evidence staging failed ({type(error).__name__}); files remain local.",
+                f"Graph failure evidence was not preserved ({type(error).__name__}); "
+                "the build's own error follows.",
                 file=sys.stderr,
             )
         raise
-    finalize_graph(args, record)
+    finalize_graph(args, manifest=record.get("manifest"))
     return status
+
+
+def _publish_failure_evidence(
+    args: argparse.Namespace,
+    record: dict,
+    *,
+    telemetry: StagingRunBundleWriterV2 | None,
+    interrupted: bool,
+) -> None:
+    """Publish a failed build's graph evidence beside its attempt evidence.
+
+    A failed build leaves the output directory, including any earlier
+    successful bundle and its completion marker, unchanged. The graph files go
+    to a new directory under this attempt's durable evidence, which
+    ``failure.json`` already names. Incomplete H5 files and arbitrary
+    temporary JSON are never published.
+    """
+    from microcosm.build.artifact_files import publish_staged_bundle
+    from microcosm.build.telemetry_emitter_service.graph_publication import (
+        GRAPH_PUBLICATION_WAIT_SECONDS,
+    )
+
+    from .orrery_publication import (
+        EVIDENCE_MANIFEST_NAME,
+        FAILURE_BUNDLE_DIRECTORY,
+        FAILURE_MARKER_NAME,
+        finalize_graph,
+        stage_graph_evidence,
+    )
+
+    output = Path(args.attempt_evidence) / FAILURE_BUNDLE_DIRECTORY
+    graph = finalize_graph(
+        args,
+        manifest=record.get("manifest"),
+        published_root=output,
+        wait_seconds=0 if interrupted else GRAPH_PUBLICATION_WAIT_SECONDS,
+    )
+    names = [*graph.files, EVIDENCE_MANIFEST_NAME]
+    staged = {name: args.out / name for name in names if (args.out / name).is_file()}
+    marker = args.out / FAILURE_MARKER_NAME
+    materialize_bytes(
+        canonical_json(
+            {
+                "schema_version": 1,
+                "kind": "uk_build_failed",
+                "releasable": False,
+                "outputs": {name: file_artifact(path) for name, path in staged.items()},
+            }
+        ),
+        marker,
+    )
+    staged["manifest"] = marker
+    publish_staged_bundle(
+        staged,
+        {role: output / path.name for role, path in staged.items()},
+        completion_role="manifest",
+    )
+    if interrupted:
+        return
+    try:
+        stage_graph_evidence(
+            args,
+            output,
+            run_id=(
+                telemetry.run_id
+                if telemetry is not None
+                else Path(args.attempt_evidence).name
+            ),
+        )
+    except Exception as error:
+        print(
+            f"Graph evidence staging failed ({type(error).__name__}); files remain local.",
+            file=sys.stderr,
+        )
 
 
 def execute_full_build(

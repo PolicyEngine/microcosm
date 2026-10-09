@@ -16,6 +16,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
+from microcosm.build.graph_publication_types import (
+    GraphJobStatus,
+    PublicationInventory,
+    PublicationReceipt,
+)
 from microcosm.build.telemetry_emitter_service.constants import (
     UPLOAD_STATE_PENDING,
 )
@@ -136,10 +141,12 @@ class GraphPublicationJob(SpoolModel):
 
     __tablename__ = "graph_publication_jobs"
     publication_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    inventory: Mapped[dict[str, Any]] = mapped_column(JsonObjectText, nullable=False)
+    inventory: Mapped[PublicationInventory] = mapped_column(
+        JsonObjectText, nullable=False
+    )
     directory: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[GraphJobStatus] = mapped_column(Text, nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False)
     next_attempt_at: Mapped[float] = mapped_column(Float, nullable=False)
     lease_until: Mapped[float] = mapped_column(Float, nullable=False)
-    receipt: Mapped[dict[str, Any]] = mapped_column(JsonObjectText, nullable=False)
+    receipt: Mapped[PublicationReceipt] = mapped_column(JsonObjectText, nullable=False)

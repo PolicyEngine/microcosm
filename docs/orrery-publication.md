@@ -45,7 +45,13 @@ credentials and caches and use fake HTTP or explicit loopback services.
 without remote submission. `--publish-orrery` explicitly enables submission;
 `--no-publish-orrery` disables it independently. A publication failure does not
 replace the dataset's validation result or prevent HF artifact staging.
+
 Failed builds preserve recorded graph evidence before temporary-file cleanup.
+They publish it, with an `orrery.failure.json` marker, to `orrery-failure/` in
+the attempt evidence directory named by `failure.json`, and leave the output
+directory, including an earlier successful bundle, unchanged. An interrupted
+build preserves the same local evidence and queue entry but does not wait for
+an upload or stage to Hugging Face.
 
 ## Retry
 
@@ -57,5 +63,8 @@ microcosm-publish-graph --publication-id PUBLICATION_ID \
 The preserved directory contains `orrery.upload.json` and the exact files.
 Retries update a separate `publication.status.json`, never the original
 HF receipt snapshot. Pending jobs also resume when a subsequent local service
-starts. Package extraction into `microcosm-local-provider` is a separate,
-deferred consumer change; this implementation does not require those packages.
+starts. A job whose preserved directory has been removed stays pending with
+error code `preserved_files_missing` until its files are restored to the same
+directory; it does not stop delivery of other jobs. Moving this
+service into the `microcosm-emitter` package is a separate, deferred consumer
+change; this implementation does not require that package.

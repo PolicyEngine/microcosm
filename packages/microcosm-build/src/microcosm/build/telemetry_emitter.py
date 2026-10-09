@@ -88,6 +88,11 @@ def _cache_dir() -> Path:
     return root.joinpath(*TELEMETRY_CACHE_PARTS)
 
 
+def default_spool_path() -> Path:
+    """The local SQLite queue shared by telemetry events and graph publication."""
+    return _cache_dir() / TELEMETRY_SPOOL_FILENAME
+
+
 @dataclass(frozen=True)
 class TelemetryRun:
     """Identity registered with the hosted collector for one build."""
@@ -180,11 +185,7 @@ class LocalTelemetryEmitter:
             )
             runtime_dir.chmod(0o700)
             socket_path = runtime_dir / SOCKET_FILENAME
-            queue_path = (
-                Path(spool_path)
-                if spool_path
-                else _cache_dir() / TELEMETRY_SPOOL_FILENAME
-            )
+            queue_path = Path(spool_path) if spool_path else default_spool_path()
             command = [
                 sys.executable,
                 "-m",
@@ -436,9 +437,7 @@ class LocalTelemetryEmitter:
             GraphPublicationQueue,
         )
 
-        queue = GraphPublicationQueue(
-            self._spool_path or _cache_dir() / TELEMETRY_SPOOL_FILENAME
-        )
+        queue = GraphPublicationQueue(self._spool_path or default_spool_path())
         queue.enqueue(directory, inventory)
         deadline = time.monotonic() + max(0, wait_seconds)
         while self.available and time.monotonic() < deadline:
