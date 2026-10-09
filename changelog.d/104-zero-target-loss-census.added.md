@@ -1,0 +1,1 @@
+Calibration options now census the zero-valued targets under target_loss_scales.zero_targets (count, scale range, loss-weight range, zero-weighted rows): a zero target keeps the default scale max(abs(target), 1) and a positive loss weight, and a weighting scheme that drops one is visible in the diagnostics (microcosm#104).
