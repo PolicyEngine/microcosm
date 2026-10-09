@@ -472,36 +472,6 @@
     },
     {
       "kind": "undeclared_hold",
-      "scope": "national",
-      "target_id": "hmrc.salary_sacrifice.it_relief_additional_rate",
-      "closed_by": "C6b: the income-tax and employee-NIC reliefs are uprated with OBR average earnings growth (the growth of the sacrificed pay); the rates they are computed at are unchanged from 2024-25 to 2025-26"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "national",
-      "target_id": "hmrc.salary_sacrifice.it_relief_basic_rate",
-      "closed_by": "C6b: the income-tax and employee-NIC reliefs are uprated with OBR average earnings growth (the growth of the sacrificed pay); the rates they are computed at are unchanged from 2024-25 to 2025-26"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "national",
-      "target_id": "hmrc.salary_sacrifice.it_relief_higher_rate",
-      "closed_by": "C6b: the income-tax and employee-NIC reliefs are uprated with OBR average earnings growth (the growth of the sacrificed pay); the rates they are computed at are unchanged from 2024-25 to 2025-26"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "national",
-      "target_id": "hmrc.salary_sacrifice.it_relief_total",
-      "closed_by": "C6b: the income-tax and employee-NIC reliefs are uprated with OBR average earnings growth (the growth of the sacrificed pay); the rates they are computed at are unchanged from 2024-25 to 2025-26"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "national",
-      "target_id": "hmrc.salary_sacrifice.nics_relief_employee",
-      "closed_by": "C6b: the income-tax and employee-NIC reliefs are uprated with OBR average earnings growth (the growth of the sacrificed pay); the rates they are computed at are unchanged from 2024-25 to 2025-26"
-    },
-    {
-      "kind": "undeclared_hold",
       "scope": "local",
       "target_id": "ons.age.0_10",
       "closed_by": "C3: the re-pin brings mid-2025 local-authority ages; England and Wales constituency cells then sit under the mid-2025 region controls"

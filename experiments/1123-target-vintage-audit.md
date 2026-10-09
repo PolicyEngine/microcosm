@@ -81,8 +81,10 @@ Each of these takes a declared index or a reviewed hold:
   brought forward ahead of the October 2024 rate change, so it is not
   projected. The 2025-26 outturn is due around August 2027.
 - **Salary-sacrifice reliefs 2024-25:** the employer NICs relief is restated
-  to the 2025 employer rate (#1069 c11). The income-tax and employee-NIC
-  reliefs take OBR average-earnings growth (C6b).
+  to the 2025 employer rate with the sacrificed amount anchored at 2024-25
+  (#1069 c11). The income-tax and employee-NIC reliefs follow it as a
+  `reviewed_no_index` hold (C6b): their rates do not change between 2024-25
+  and 2025-26. Growing all the reliefs with earnings is an open ruling.
 - **Public transport support and revenue for 2024-25:** DfT BUS05 and ORR
   (next editions November 2026), Scottish and Welsh bus statistics, and
   NITHC 2024/25. These are `reviewed_no_index` holds, except the England fare
