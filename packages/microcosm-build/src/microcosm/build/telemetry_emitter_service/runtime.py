@@ -105,17 +105,20 @@ class EmitterService:
     The reply is the acknowledgement contract with the build:
 
     - ``ok`` to an event means the event was valid and is queued in memory
-      behind every event acknowledged before it. The writer appends queued
-      events to the spool in that order, and the spool assigns their producer
-      sequences as it does, so sequence order is acknowledgement order.
+      behind every event queued before it, this service's heartbeats
+      included. The writer appends queued events to the spool in that order,
+      and the spool assigns their producer sequences as it does, so the
+      sequence order of stored events is acknowledgement order.
     - ``ok`` does not mean the event is on disk, and the reply never waits for
       the spool. When the spool is free the event is written moments later.
       While another process holds the spool's lock the event waits in the
       queue, and the writer retries for as long as the contention lasts.
     - An acknowledged event is lost only if this process is killed before
-      writing it, if the spool refuses it for a reason other than lock
-      contention (reported as one warning line), or if the spool stays locked
-      through the whole shutdown drain (reported with a count).
+      writing it; if the spool refuses it for a reason other than lock
+      contention (one warning line per error type); if the writer thread
+      fails (one line, and the service stops serving); or if the shutdown
+      drain ends before the writer reaches it, as when the spool stays locked
+      throughout the drain (one line with the count).
     - ``error`` means the message was malformed, or the queue was full or
       closed. The event was not queued.
     """
