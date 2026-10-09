@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -317,6 +318,36 @@ def _destination(out: Path, filename: str) -> Path:
     return path
 
 
+def _contained_store_root(out: Path) -> Path:
+    """The graph store under ``out``; refuse a store tree a link could redirect.
+
+    ``ContentStore`` writes only under ``objects/<shard>/<key>`` and ``tmp/``
+    and creates those directories with ``mkdir(exist_ok=True)``, which follows
+    an existing symbolic link. A link planted at ``objects``, ``tmp`` or any
+    shard would therefore send writes outside ``--out``. So the store root
+    must be a plain name under ``out`` (``_destination``), and no entry in an
+    existing store tree may be a link: the walk does not follow links.
+    """
+
+    root = _destination(out, _STORE)
+    if not root.exists():
+        return root
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.is_symlink():
+                    relative = Path(entry.path).relative_to(out)
+                    raise ValueError(
+                        f"Graph store entry {str(relative)!r} is a link, which "
+                        "could send store writes outside --out."
+                    )
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(Path(entry.path))
+    return root
+
+
 def _check_disjoint(
     out: Path, sources: Mapping[str, Path], *, spec_dir: Path | None = None
 ) -> None:
@@ -472,7 +503,7 @@ def execute_transport_graph(
         raise StoreMissError("--resume require refuses a cold transport graph store.")
 
     output.mkdir(parents=True, exist_ok=True)
-    store_root = _destination(output, _STORE)
+    store_root = _contained_store_root(output)
     exported = _destination(output, EXPORT_FILENAME)
     supplied[export_source] = exported
     store = ContentStore(store_root, codecs=registry.codecs)
@@ -615,7 +646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output = args.out.resolve()
         sources = {name: path.resolve() for name, path in args.source}
         _check_disjoint(output, sources, spec_dir=args.spec_dir)
-        store_root = _destination(output, _STORE)
+        store_root = _contained_store_root(output)
         if args.resume == "require" and _store_is_cold(store_root):
             raise StoreMissError(
                 "--resume require refuses a cold transport graph store."

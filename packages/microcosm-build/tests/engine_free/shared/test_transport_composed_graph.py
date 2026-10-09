@@ -1244,6 +1244,77 @@ def test_cli_main_refuses_store_symlink_before_loading_spec(
     assert (target / "preserved").read_bytes() == b"preserved"
 
 
+def _plant_store_link(out, link, target):
+    """Make ``<out>/.graph-store/<link>`` a link to ``target``."""
+
+    path = out / ".graph-store" / link
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.symlink_to(target, target_is_directory=True)
+
+
+@pytest.mark.parametrize("link", ["objects", "tmp", "objects/aa"])
+def test_cli_store_root_refuses_links_inside_the_store_tree(tmp_path, link):
+    out = tmp_path / "out"
+    out.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _plant_store_link(out, link, outside)
+    with pytest.raises(ValueError, match="is a link"):
+        cli_module._contained_store_root(out)
+    assert list(outside.iterdir()) == []
+
+
+def test_cli_store_root_accepts_a_plain_store_tree(tmp_path):
+    out = tmp_path / "out"
+    (out / ".graph-store" / "objects" / "aa").mkdir(parents=True)
+    (out / ".graph-store" / "tmp").mkdir()
+    assert cli_module._contained_store_root(out) == out / ".graph-store"
+    assert cli_module._contained_store_root(tmp_path / "fresh") == (
+        tmp_path / "fresh" / ".graph-store"
+    )
+
+
+@pytest.mark.parametrize("link", ["objects", "tmp", "objects/aa"])
+def test_cli_execution_refuses_a_redirected_store_and_writes_nothing_outside(
+    composed, tmp_path, link
+):
+    out = tmp_path / "out"
+    out.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _plant_store_link(out, link, outside)
+    with pytest.raises(ValueError, match="is a link"):
+        execute_transport_graph(
+            composed.graph(extended=True),
+            composed.registry,
+            composed.sources,
+            out=out,
+            endpoints=composed.endpoints,
+        )
+    assert list(outside.iterdir()) == []
+
+
+def test_cli_main_refuses_a_nested_store_link_before_loading_spec(
+    tmp_path, monkeypatch, capsys
+):
+    out = tmp_path / "out"
+    out.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _plant_store_link(out, "objects", outside)
+    calls = []
+
+    def load(source):
+        calls.append(source)
+        raise ValueError("spec was read")
+
+    monkeypatch.setattr(cli_module, "load_transport_spec", load)
+    assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
+    assert "is a link" in capsys.readouterr().err
+    assert calls == []
+    assert list(outside.iterdir()) == []
+
+
 def test_create_inventory_cache_reuses_warm_without_running_create(
     composed, tmp_path, monkeypatch
 ):

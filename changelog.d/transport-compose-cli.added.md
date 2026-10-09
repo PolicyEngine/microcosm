@@ -4,7 +4,9 @@ declares the skeleton graph; each node binds only the spec resources it
 selects, every rules node runs through the one `simulate.rules_by_ref@1`
 router, and later packages append branches through a typed extension point
 that cannot re-key the skeleton. The driver runs ancestor-closed checkpoints
-on `<out>/.graph-store` and writes every output under `--out`. Activation checks every selected resource and reference set and every null
+on `<out>/.graph-store` and writes every output under `--out`; it refuses an
+existing store tree that contains a link, which could redirect store writes.
+Activation checks every selected resource and reference set and every null
 scenario knob before donor preparation. Calibration ancestry refuses hold-out
 selections and sources, benefit-unit engine references, and graph digests.
 Selected resource lists remain literal data. The driver writes deterministic

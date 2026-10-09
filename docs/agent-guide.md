@@ -343,7 +343,10 @@ The transport build driver (`tools/build_transport.py`, a shim over
 `microcosm.build.transport.cli`) composes a country's graph from its
 `transport_graph.json` spec resource and runs it locally: every file it
 writes, including its `.graph-store`, lies under `--out`, and it has no
-upload or staging path. It refuses before reading any graph source while the
+upload or staging path. Before it opens the store it refuses any link in an
+existing store tree (the root, `objects`, `tmp` or a shard), because the
+store creates those directories by following links; it does not guard
+against links planted while a build is running. It refuses before reading any graph source while the
 country spec still has unresolved evidence: every selected resource/reference
 set and every null scenario knob is checked before donor preparation.
 Tests for it run on the engine-free toy package in
