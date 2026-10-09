@@ -38,16 +38,23 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     registration = json.loads(args.registration_json)
     spool = EventSpool(args.spool)
+    # The delivery takes this producer's lease, which must happen before the
+    # service is ready: from then on the run can have events.
+    delivery = CollectorDelivery(
+        spool,
+        registration,
+        development_collector_url=args.development_collector_url,
+    )
     service = EmitterService(
         socket_path=args.socket,
         registration=registration,
         spool=spool,
-        delivery=CollectorDelivery(
-            spool,
-            development_collector_url=args.development_collector_url,
-        ),
+        delivery=delivery,
         sampler=ProcessTreeSampler(args.parent_pid),
         heartbeat_seconds=args.heartbeat_seconds,
     )
-    service.run()
+    try:
+        service.run()
+    finally:
+        delivery.close()
     return 0
