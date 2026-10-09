@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.frs_spine import uc_gainful_self_employment
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
@@ -984,6 +985,7 @@ def impute_uk_spi_income_support(
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
+    person = _refresh_uc_gainful_self_employment(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -2044,6 +2046,36 @@ def _refresh_uc_start_up_period(
         spi_people,
         "uc_is_in_startup_period",
         rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
+        default=False,
+    )
+    return person
+
+
+def _refresh_uc_gainful_self_employment(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Derive a redrawn row's UC gainful self-employment from its drawn incomes.
+
+    A redrawn row keeps the donor's employment status but takes new imputed
+    pay and profit, and the draw does not read the status (uk-data#529,
+    microcosm#840): on such a row the status says nothing about the drawn
+    trade. So the row takes the earnings route of the root's rule alone, a
+    profit above zero and above its pay (uk-data#525, ADM H4034). The main-job
+    route returns when the SPI draw follows employment status.
+    """
+
+    if "uc_is_in_gainful_self_employment" not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    _assign_spi_values(
+        person,
+        spi_people,
+        "uc_is_in_gainful_self_employment",
+        uc_gainful_self_employment(
+            np.zeros(len(rows), dtype=bool),
+            pd.to_numeric(rows["self_employment_income"], errors="coerce").fillna(0.0),
+            pd.to_numeric(rows["employment_income"], errors="coerce").fillna(0.0),
+        ),
         default=False,
     )
     return person

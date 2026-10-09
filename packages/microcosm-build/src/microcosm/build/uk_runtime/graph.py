@@ -494,6 +494,7 @@ _ROOT_PERSON_BOOL = {
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    "uc_is_in_gainful_self_employment",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
@@ -1004,6 +1005,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     # uk-data#527: the UC start-up period holds on a redrawn row only while it
     # stays self-employed.
     "uc_is_in_startup_period",
+    # uk-data#525: a redrawn row's gainful self-employment follows its own
+    # status and drawn incomes.
+    "uc_is_in_gainful_self_employment",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

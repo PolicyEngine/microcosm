@@ -199,6 +199,7 @@ OUTPUT_COLUMNS = (
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
     "employment_income",
@@ -562,6 +563,11 @@ def _assemble_frame(
         household,
         job=frs["job"],
         benefits=frs["benefits"],
+    )
+    pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
+        _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
+        pe_person["self_employment_income"],
+        pe_person["employment_income"],
     )
 
     _add_household_columns(pe_household, household, frs)
@@ -1378,6 +1384,29 @@ def frs_uc_start_up_period(
         unlinked & (draws < linked_share)
     )
     return self_employed & (claim_in_window[person_benunit] | (trade_years < 1))
+
+
+def uc_gainful_self_employment(
+    self_employed_main_job: Any, self_employment_income: Any, employment_income: Any
+) -> np.ndarray:
+    """Whether each person is in gainful self-employment for Universal Credit.
+
+    UC Regs 2013 reg 64(a) asks whether the person carries on a trade as their
+    main employment. DWP's Advice for Decision Making starts from hours (H4031)
+    but lets earnings outweigh them (H4034). So the flag holds for a
+    self-employed main job (FRS EMPSTATI 3 or 4) whatever its profit, since a
+    trade at a loss or breaking even is still carried on (H4013, H4054,
+    H4503), and for a side trade whose profit is above the person's employment
+    income (uk-data#525). It overrides the engine's default, which reads any
+    nonzero self-employment income as gainful. The flag is fixed at the
+    survey-year (or SPI-drawn) incomes: uprating reprices the two incomes by
+    different indices, and the flag does not follow.
+    """
+
+    profit = np.asarray(self_employment_income, dtype=float)
+    pay = np.asarray(employment_income, dtype=float)
+    main_job = np.asarray(self_employed_main_job, dtype=bool)
+    return main_job | ((profit > 0) & (profit > pay))
 
 
 #: FRS yes code for the local-authority registration questions (SPCREG1-3).
