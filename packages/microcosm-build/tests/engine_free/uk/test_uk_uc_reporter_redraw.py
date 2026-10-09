@@ -65,6 +65,34 @@ def test_stub_engine_fast_lane_reads_frs_capital_once_and_consumes_outputs() -> 
     assert "uc_reported_capital" not in result.frame.table("benunit")
 
 
+def test_screen_capital_adds_the_units_uc_property_share() -> None:
+    # The screen reads the recorded capital uc_capital_coherence writes: the
+    # carrier plus the household's other residential and non-residential
+    # property shared by claimants and partners. Land is Pension Credit
+    # capital only (microcosm#1095).
+    frame = _frame()
+    household = frame.table("household")
+    rows = household["household_id"].eq(7)
+    household.loc[rows, "other_residential_property_value"] = 50_000.0
+    household.loc[rows, "non_residential_property_value"] = 10_000.0
+    household.loc[rows, "owned_land"] = 99_999.0
+    engine = _StubEngine()
+
+    redraw_spi_reported_uc(frame, engine=engine, qrf_factory=_StubQRFFactory())
+
+    screened = (
+        engine.calls[0][0]
+        .table("benunit")
+        .set_index("benunit_id")["uc_reported_capital"]
+    )
+    carrier = _frame().table("benunit").set_index("benunit_id")["frs_benunit_capital"]
+    # Benefit unit 201 is household 7's only unit; its child is no owner.
+    assert screened.loc[201] == carrier.loc[201] + 60_000.0
+    pd.testing.assert_series_equal(
+        screened.drop(201), carrier.drop(201), check_names=False
+    )
+
+
 def test_training_mask_channel_containment_screen_and_landing_rule() -> None:
     before = _frame()
     result, _, record = _stub_run()
@@ -134,7 +162,7 @@ def test_seeded_regime_gated_qrf_twin_calls_are_byte_identical() -> None:
 
 def test_downstream_capital_coherence_picks_up_redrawn_anchor() -> None:
     redrawn, _, _ = _stub_run()
-    coherent = cohere_uc_capital(redrawn.frame)
+    coherent = cohere_uc_capital(redrawn.frame, population_policy=POLICY)
     person = coherent.frame.table("person")
     benunit = coherent.frame.table("benunit").set_index("benunit_id")
 
@@ -150,7 +178,9 @@ def test_downstream_capital_coherence_picks_up_redrawn_anchor() -> None:
         if gate.id == "uk_uc_capital_coherence"
     )
     verdict = UK_GATE_REGISTRY["column_implication"].evaluate(
-        EvidenceContext(frame=coherent.frame),
+        EvidenceContext(
+            frame=coherent.frame, artifacts={"take_up_population_policy": POLICY}
+        ),
         gate.parameters,
     )
     assert verdict.passed, verdict.failures
