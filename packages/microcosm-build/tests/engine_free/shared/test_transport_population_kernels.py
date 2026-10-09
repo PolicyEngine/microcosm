@@ -208,6 +208,8 @@ def test_a1_a2_d2_create_contracts_on_a_synthetic_graph(tmp_path, mass):
         )
         pd.testing.assert_series_equal(create.strata, expected.strata)
         assert create.strata.tolist() == ["us:asec"] * 3 + ["us:puf_tax_detail"] * 3
+        # Strata keep object storage whether or not pyarrow is installed.
+        assert create.strata.dtype == object
 
 
 @PROPERTY
