@@ -53,8 +53,16 @@ locally and the build continues. Every build on a host shares one local
 event spool; a service that finds it locked by another process keeps retrying
 until shortly before the build stops waiting for it, and one that still cannot
 register prints a single warning line, without a traceback, before the build
-continues without hosted telemetry. This live event path is independent
-of the staging run files described below.
+continues without hosted telemetry. Once it is running, the service replies to
+each event as soon as the event is queued in its memory, and a separate writer
+thread appends queued events to the spool in the order they arrived, retrying
+for as long as another process holds the spool's lock, so a busy spool never
+delays the build. The queue holds at most 10,000 events or 16 MiB, keeping
+room for the run's started, completed and failed events; when it is full the
+service refuses further updates and prints one warning line. When the build
+closes or dies, the service spends up to 15 s writing what is still queued and
+reports in one line anything it could not write. This live event path is
+independent of the staging run files described below.
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. Progress JSON is uploaded to `policyengine/populace-us-staging`

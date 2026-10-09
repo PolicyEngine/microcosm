@@ -937,7 +937,7 @@ def test_worker_survives_any_step_failure(
         ),
     )
     outcomes = _Outcomes(script)
-    appended: list[tuple[int, str]] = []
+    appended: list[str] = []
     parent_checks: list[int] = []
 
     class Stop:
@@ -955,9 +955,11 @@ def test_worker_survives_any_step_failure(
         def is_set(self):
             return self.flag
 
-    def append(registration, event, *, resources=None):
-        outcomes.next()
-        appended.append((clock.tick, event["event_type"] + ":" + event["status"]))
+    def append_many(registration, pairs, *, busy_timeout_seconds=None):
+        # The worker only queues events; the drain's writer stores them.
+        appended.extend(
+            event["event_type"] + ":" + event["status"] for event, _ in pairs
+        )
 
     def parent_alive():
         parent_checks.append(clock.tick)
@@ -967,7 +969,7 @@ def test_worker_survives_any_step_failure(
         socket_path=Path("/unused"),
         registration=_registration(),
         spool=SimpleNamespace(
-            append=append,
+            append_many=append_many,
             prune_if_due=outcomes.next,
             has_deliverable=lambda: outcomes.next(False),
         ),
@@ -980,25 +982,29 @@ def test_worker_survives_any_step_failure(
     )
     service._stop = Stop()
     heartbeat_attempts: list[tuple[int, float, bool]] = []
-    append_heartbeat = service._append_heartbeat
+    queue_heartbeat = service._queue_heartbeat
 
     def recorded_heartbeat() -> None:
         try:
-            append_heartbeat()
+            queue_heartbeat()
         except Exception:
             heartbeat_attempts.append((clock.tick, clock.now, False))
             raise
         heartbeat_attempts.append((clock.tick, clock.now, True))
 
-    service._append_heartbeat = recorded_heartbeat
-    exit_records: list[int] = []
-    append_unexpected_exit = service._append_unexpected_exit
+    service._queue_heartbeat = recorded_heartbeat
+    exit_records: list[tuple[int, bool]] = []
+    queue_unexpected_exit = service._queue_unexpected_exit
 
     def recorded_unexpected_exit() -> None:
-        exit_records.append(clock.tick)
-        append_unexpected_exit()
+        try:
+            queue_unexpected_exit()
+        except Exception:
+            exit_records.append((clock.tick, False))
+            raise
+        exit_records.append((clock.tick, True))
 
-    service._append_unexpected_exit = recorded_unexpected_exit
+    service._queue_unexpected_exit = recorded_unexpected_exit
     error_output = io.StringIO()
 
     with contextlib.redirect_stderr(error_output):
@@ -1010,7 +1016,9 @@ def test_worker_survives_any_step_failure(
     # A dead parent is recorded once, on the tick it is found, and stops the
     # loop.
     parent_died = parent_dies_at is not None and parent_dies_at <= ticks
-    assert exit_records == ([parent_dies_at] if parent_died else [])
+    assert [tick for tick, _ in exit_records] == (
+        [parent_dies_at] if parent_died else []
+    )
     assert service._stop.is_set() is parent_died
     # Reference heartbeat schedule: due one interval after the start or the
     # last success; a failed heartbeat stays due and is retried next tick.
@@ -1026,6 +1034,13 @@ def test_worker_survives_any_step_failure(
             if succeeded:
                 due = now + heartbeat_seconds
     assert [tick for tick, _, _ in heartbeat_attempts] == expected_ticks
+    # The drain stores what the worker queued, in order: every heartbeat that
+    # was queued, then the record of a dead build.
+    queued_heartbeats = sum(succeeded for _, _, succeeded in heartbeat_attempts)
+    recorded_exit = any(succeeded for _, succeeded in exit_records)
+    assert appended == ["heartbeat:progress"] * queued_heartbeats + (
+        ["run:failed"] if recorded_exit else []
+    )
     # One line per error type other than lock contention, which is silent.
     reported = {
         name for name in outcomes.raised if name in {"RuntimeError", "ValueError"}
@@ -1037,6 +1052,8 @@ def test_worker_survives_any_step_failure(
 
 
 def test_unexpected_exit_waits_out_lock_contention(monkeypatch) -> None:
+    """The drain's writer stores a killed build's record once the lock clears."""
+
     clock = SimpleNamespace(now=0.0)
     monkeypatch.setattr(
         runtime_module,
@@ -1047,26 +1064,34 @@ def test_unexpected_exit_waits_out_lock_contention(monkeypatch) -> None:
         ),
     )
     attempts: list[float] = []
+    stored: list[str] = []
 
-    def append(registration, event, *, resources=None):
+    def append_many(registration, pairs, *, busy_timeout_seconds=None):
         attempts.append(clock.now)
         clock.now += 0.2
         if len(attempts) < 4:
             raise _lock_error()
+        stored.extend(event["stage_id"] for event, _ in pairs)
 
     service = EmitterService(
         socket_path=Path("/unused"),
         registration=_registration(),
-        spool=SimpleNamespace(append=append),
+        spool=SimpleNamespace(append_many=append_many, has_deliverable=lambda: False),
         delivery=SimpleNamespace(),
         sampler=SimpleNamespace(sample=dict),
         heartbeat_seconds=60,
         drain_seconds=15,
     )
+    service._handle({"action": "event", "event": _event("compile")})
 
-    assert service._attempt(service._append_unexpected_exit)
+    assert service._attempt(service._queue_unexpected_exit)
+    service._drain()
+
     assert len(attempts) == 4
     assert attempts[-1] < 15
+    # Behind every event the build sent, and last.
+    assert stored == ["compile", "failed"]
+    assert service.event_queue.closed
 
 
 def test_service_stops_serving_when_its_worker_dies(tmp_path) -> None:
@@ -1091,6 +1116,8 @@ def test_service_stops_serving_when_its_worker_dies(tmp_path) -> None:
         serving.join(timeout=10)
         assert not serving.is_alive()
         assert not socket_path.exists()
+        # The service drained in the worker's place and stopped its writer.
+        assert not service.writer.is_alive()
     finally:
         # A failing run must not leave a server thread behind.
         service._stop.set()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -56,9 +56,12 @@ class EventSpool:
         # lowers it so its own retry loop decides when to give up; it applies
         # from each connection's next checkout.
         self.busy_timeout_seconds = busy_timeout_seconds
+        # One call's own wait, set by append_many while it holds _lock, which
+        # every connection checkout here happens under.
+        self._busy_timeout_override: float | None = None
         self._engine = create_spool_engine(
             self.path,
-            busy_timeout_seconds=lambda: self.busy_timeout_seconds,
+            busy_timeout_seconds=self._statement_busy_timeout,
         )
         try:
             upgrade_spool_database(
@@ -112,41 +115,72 @@ class EventSpool:
     ) -> dict[str, Any]:
         """Append an event and assign its stable producer sequence."""
 
+        return self.append_many(registration, [(event, resources)])[0]
+
+    def append_many(
+        self,
+        registration: Mapping[str, Any],
+        events: Sequence[tuple[Mapping[str, Any], Mapping[str, Any] | None]],
+        *,
+        busy_timeout_seconds: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Append ``(event, resources)`` pairs in one transaction, in order.
+
+        The events take consecutive producer sequences in the order given, or,
+        when the transaction fails, none of them is stored and the producer's
+        next sequence is unchanged, so a failed call can simply be repeated.
+        ``busy_timeout_seconds``, when given, caps how long this call's
+        statements wait for another process's lock instead of
+        ``busy_timeout_seconds`` on the spool.
+        """
+
         run_id = str(registration["run_id"])
         producer_id = str(registration["producer_id"])
-        with self._lock, self._session_factory.begin() as session:
-            run = session.get(TelemetryRunRecord, (run_id, producer_id))
-            if run is None:
-                raise KeyError(run_id)
-            sequence = run.next_sequence
-            event_id = uuid.uuid4().hex
-            payload = {
-                "schema_version": TELEMETRY_SCHEMA_VERSION,
-                "event_id": event_id,
-                "run_id": run_id,
-                "producer_id": producer_id,
-                "sequence": sequence,
-                "timestamp": event.get("timestamp") or utc_now(),
-                "event_type": event["event_type"],
-                "stage_id": event.get("stage_id"),
-                "status": event["status"],
-                "message": event.get("message"),
-                "details": event.get("details") or {},
-                "resources": resources,
-            }
-            session.add(
-                TelemetryEventRecord(
-                    event_id=event_id,
-                    run_id=run_id,
-                    producer_id=producer_id,
-                    sequence=sequence,
-                    payload=payload,
-                    created_at=utc_now(),
-                )
-            )
-            run.next_sequence = sequence + 1
-            run.updated_at = utc_now()
-        return payload
+        payloads: list[dict[str, Any]] = []
+        with self._lock:
+            self._busy_timeout_override = busy_timeout_seconds
+            try:
+                with self._session_factory.begin() as session:
+                    run = session.get(TelemetryRunRecord, (run_id, producer_id))
+                    if run is None:
+                        raise KeyError(run_id)
+                    for event, resources in events:
+                        sequence = run.next_sequence
+                        event_id = uuid.uuid4().hex
+                        payload = {
+                            "schema_version": TELEMETRY_SCHEMA_VERSION,
+                            "event_id": event_id,
+                            "run_id": run_id,
+                            "producer_id": producer_id,
+                            "sequence": sequence,
+                            "timestamp": event.get("timestamp") or utc_now(),
+                            "event_type": event["event_type"],
+                            "stage_id": event.get("stage_id"),
+                            "status": event["status"],
+                            "message": event.get("message"),
+                            "details": event.get("details") or {},
+                            "resources": resources,
+                        }
+                        session.add(
+                            TelemetryEventRecord(
+                                event_id=event_id,
+                                run_id=run_id,
+                                producer_id=producer_id,
+                                sequence=sequence,
+                                payload=payload,
+                                created_at=utc_now(),
+                            )
+                        )
+                        run.next_sequence = sequence + 1
+                        payloads.append(payload)
+                    run.updated_at = utc_now()
+            finally:
+                self._busy_timeout_override = None
+        return payloads
+
+    def _statement_busy_timeout(self) -> float:
+        override = self._busy_timeout_override
+        return self.busy_timeout_seconds if override is None else override
 
     def pending_runs(self) -> list[dict[str, Any]]:
         """Return registrations that have events eligible for delivery."""

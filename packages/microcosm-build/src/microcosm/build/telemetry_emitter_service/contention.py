@@ -41,22 +41,25 @@ def is_transient_spool_error(error: BaseException) -> bool:
 def retry_spool_contention[T](
     operation: Callable[[], T],
     *,
-    deadline: float,
+    deadline: float | Callable[[], float],
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[float, float], float] = random.uniform,
 ) -> T:
     """Run ``operation``, retrying spool lock contention until ``deadline``.
 
-    ``deadline`` is a ``clock`` reading. The first attempt always runs. After a
-    transient lock error the next attempt waits a jittered backoff that starts
-    at ``SPOOL_RETRY_INITIAL_SECONDS`` and doubles up to
-    ``SPOOL_RETRY_MAX_SECONDS``. When that attempt would not start before
-    ``deadline``, the last lock error is raised instead. Any other error is
+    ``deadline`` is a ``clock`` reading, or a function returning one. A
+    function is read again after every lock error, so its caller can bring the
+    deadline forward, from infinity say, while this waits. The first attempt
+    always runs. After a transient lock error the next attempt waits a
+    jittered backoff that starts at ``SPOOL_RETRY_INITIAL_SECONDS`` and doubles
+    up to ``SPOOL_RETRY_MAX_SECONDS``. When that attempt would not start before
+    the deadline, the last lock error is raised instead. Any other error is
     raised at once. Each attempt may itself wait in SQLite's busy handler, so
     this bounds when attempts start, not when the last one ends.
     """
 
+    current_deadline = deadline if callable(deadline) else lambda: deadline
     delay = SPOOL_RETRY_INITIAL_SECONDS
     while True:
         try:
@@ -65,7 +68,7 @@ def retry_spool_contention[T](
             if not is_transient_spool_error(error):
                 raise
             wait = jitter(delay / 2, delay)
-            if clock() + wait >= deadline:
+            if clock() + wait >= current_deadline():
                 raise
         sleep(wait)
         delay = min(SPOOL_RETRY_MAX_SECONDS, delay * 2)

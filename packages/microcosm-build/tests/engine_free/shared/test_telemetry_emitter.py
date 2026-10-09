@@ -587,7 +587,7 @@ class _FakeDelivery:
         return False
 
 
-def test_local_socket_acknowledges_after_durable_queue(
+def test_local_socket_acknowledges_a_queued_event_that_then_reaches_the_spool(
     tmp_path, real_local_telemetry
 ) -> None:
     socket_path = (
@@ -618,7 +618,12 @@ def test_local_socket_acknowledges_after_durable_queue(
         )
         assert client.recv(16) == b"ok\n"
 
-    assert spool.batch("run-a", "producer-a")[0]["resources"]["rss_bytes"] == 100
+    # "ok" means queued in memory; the writer thread stores it moments later.
+    deadline = time.monotonic() + 5
+    while not (stored := spool.batch("run-a", "producer-a")):
+        assert time.monotonic() < deadline, "the acknowledged event was not stored"
+        time.sleep(0.01)
+    assert stored[0]["resources"]["rss_bytes"] == 100
 
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.connect(str(socket_path))

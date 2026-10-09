@@ -67,6 +67,24 @@ READY_DEADLINE_MARGIN_SECONDS: Final = 2.0
 STARTUP_RETRY_LIMIT_SECONDS: Final = 60.0
 SPOOL_LOCKED_EXIT_STATUS: Final = 75  # EX_TEMPFAIL from sysexits.h
 
+# The socket hands each accepted event to a writer thread through an ordered
+# in-memory queue, so a spool that another process keeps locked never delays
+# the build's sends. The queue holds at most QUEUE_MAX_EVENTS events and
+# QUEUE_MAX_BYTES of their encoded JSON. The last QUEUE_RESERVED_EVENTS and
+# QUEUE_RESERVED_BYTES of that room take only run events (started, completed,
+# failed), so a queue that progress updates have filled still records how the
+# build ended.
+QUEUE_MAX_EVENTS: Final = 10_000
+QUEUE_MAX_BYTES: Final = 16 * 1024 * 1024
+QUEUE_RESERVED_EVENTS: Final = 16
+QUEUE_RESERVED_BYTES: Final = 256 * 1024
+# The writer appends up to WRITER_BATCH_EVENTS queued events per transaction.
+# Each of its statements waits at most WRITER_BUSY_TIMEOUT_SECONDS for another
+# process's lock, so its retry loop decides how long to keep trying and it
+# holds the spool's in-process lock only briefly.
+WRITER_BATCH_EVENTS: Final = 100
+WRITER_BUSY_TIMEOUT_SECONDS: Final = 0.25
+
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
 DEFAULT_DRAIN_SECONDS: Final = 15.0
 MINIMUM_HEARTBEAT_SECONDS: Final = 1.0
@@ -77,6 +95,9 @@ WORKER_INTERVAL_SECONDS: Final = 1.0
 DRAIN_RETRY_SECONDS: Final = 0.5
 
 EVENT_OBJECT_ERROR: Final = "event must be an object"
+EVENT_FIELDS_ERROR: Final = "event must have an event_type and a status"
+QUEUE_FULL_ERROR: Final = "local telemetry queue is full"
+QUEUE_CLOSED_ERROR: Final = "local telemetry queue is closed"
 UNSUPPORTED_ACTION_ERROR: Final = "unsupported local telemetry action"
 LOCAL_MESSAGE_TOO_LARGE_ERROR: Final = "local telemetry message exceeds 1 MiB"
 FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT: Final = "unexpected_process_exit"
@@ -97,5 +118,24 @@ SERVICE_FAILED_WARNING: Final = (
 WORKER_STEP_WARNING: Final = (
     "warning: the local telemetry emitter service's delivery worker hit "
     "{error_type} ({error}) and will keep running."
+)
+QUEUE_FULL_WARNING: Final = (
+    "warning: the local telemetry emitter service's queue is full ({events} "
+    "updates, {megabytes:.1f} MiB, waiting for its spool); it will refuse "
+    "updates until the spool takes them."
+)
+UNWRITTEN_EVENTS_WARNING: Final = (
+    "warning: the local telemetry emitter service could not write {count} "
+    "queued update(s) to its spool before its {seconds:g} s shutdown drain "
+    "ended ({reason})."
+)
+DRAIN_TIME_REASON: Final = "the drain ran out of time"
+EVENT_DROPPED_WARNING: Final = (
+    "warning: the local telemetry emitter service's spool refused an update, "
+    "which was dropped: {error_type} ({error})."
+)
+WRITER_STOPPED_WARNING: Final = (
+    "warning: the local telemetry emitter service's spool writer stopped: "
+    "{error_type}: {error}"
 )
 MAX_WARNING_ERROR_CHARS: Final = 300

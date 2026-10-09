@@ -262,7 +262,12 @@ class LocalTelemetryEmitter:
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
     ) -> None:
-        """Queue one event locally, never raising into the build."""
+        """Queue one event with the local service, never raising into the build.
+
+        The service acknowledges the event once it is queued in the service's
+        memory, behind every event acknowledged before it, without waiting for
+        the shared spool; see ``_send``.
+        """
 
         if not self.available:
             return
@@ -424,6 +429,17 @@ class LocalTelemetryEmitter:
         self.stage(stage_id, status=status, message=message, **details)
 
     def _send(self, payload: Mapping[str, Any]) -> None:
+        """Send one message and wait at most the send timeout for its reply.
+
+        ``ok`` to an event means the service has queued it in memory behind
+        the events acknowledged before it; a writer thread then appends it to
+        the spool in that order, retrying while another build holds the
+        spool's lock. The reply never waits for the spool, so a locked spool
+        does not delay the build. ``error``, or no reply within the timeout,
+        means the event may not be queued: the first such failure prints one
+        warning, and the build continues either way.
+        """
+
         if self._socket_path is None:
             return
         try:
