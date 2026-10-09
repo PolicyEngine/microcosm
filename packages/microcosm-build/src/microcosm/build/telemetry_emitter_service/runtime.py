@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import socket
-import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -29,9 +27,12 @@ from microcosm.build.telemetry_emitter_service.constants import (
     WORKER_STEP_WARNING,
 )
 from microcosm.build.telemetry_emitter_service.contention import (
-    describe_error,
     is_transient_spool_error,
     retry_spool_contention,
+)
+from microcosm.build.telemetry_emitter_service.diagnostics import (
+    describe_error,
+    write_warning,
 )
 from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
@@ -94,7 +95,6 @@ class EmitterService:
         sampler: ProcessTreeSampler,
         heartbeat_seconds: float,
         drain_seconds: float = DEFAULT_DRAIN_SECONDS,
-        startup_deadline: float = -math.inf,
     ) -> None:
         self.socket_path = socket_path
         self.registration = dict(registration)
@@ -106,20 +106,16 @@ class EmitterService:
             heartbeat_seconds,
         )
         self.drain_seconds = max(0.0, drain_seconds)
-        # A time.monotonic() reading: registration retries spool lock
-        # contention until then. The default allows one attempt.
-        self.startup_deadline = startup_deadline
         self._stop = threading.Event()
         self._last_stage = STAGE_CREATED
         self._reported_error_types: set[str] = set()
 
     def run(self) -> None:
-        """Serve local messages until the client closes or exits."""
+        """Serve local messages until the client closes or exits.
 
-        retry_spool_contention(
-            lambda: self.spool.register(self.registration),
-            deadline=self.startup_deadline,
-        )
+        The spool must already hold this producer's registration.
+        """
+
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.socket_path.unlink(missing_ok=True)
@@ -130,7 +126,7 @@ class EmitterService:
                 server.settimeout(SOCKET_ACCEPT_TIMEOUT_SECONDS)
                 worker = threading.Thread(target=self._worker, daemon=True)
                 worker.start()
-                self._serve(server)
+                self._serve(server, worker)
                 worker.join(timeout=self.drain_seconds + WORKER_INTERVAL_SECONDS)
         finally:
             self.socket_path.unlink(missing_ok=True)
@@ -139,8 +135,11 @@ class EmitterService:
             except OSError:
                 pass
 
-    def _serve(self, server: socket.socket) -> None:
-        while not self._stop.is_set():
+    def _serve(self, server: socket.socket, worker: threading.Thread) -> None:
+        # Only the worker notices that the build died without closing, so a
+        # service whose worker has stopped must stop too, or it would serve a
+        # dead build forever.
+        while not self._stop.is_set() and worker.is_alive():
             try:
                 connection, _ = server.accept()
             except TimeoutError:
@@ -261,13 +260,11 @@ class EmitterService:
         if error_type in self._reported_error_types:
             return
         self._reported_error_types.add(error_type)
-        print(
+        write_warning(
             WORKER_STEP_WARNING.format(
                 error_type=error_type,
                 error=describe_error(error),
-            ),
-            file=sys.stderr,
-            flush=True,
+            )
         )
 
     def _drain(self) -> None:

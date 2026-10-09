@@ -5,32 +5,37 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import sys
 import time
 from pathlib import Path
 
 from microcosm.build.telemetry_emitter_service.collector import CollectorDelivery
 from microcosm.build.telemetry_emitter_service.constants import (
+    DATABASE_TIMEOUT_SECONDS,
     DEFAULT_HEARTBEAT_SECONDS,
     READY_DEADLINE_ERROR,
     READY_DEADLINE_MARGIN_SECONDS,
     SERVICE_FAILED_WARNING,
     SPOOL_LOCKED_EXIT_STATUS,
     SPOOL_LOCKED_WARNING,
+    STARTUP_BUSY_TIMEOUT_SECONDS,
+    STARTUP_RETRY_LIMIT_SECONDS,
 )
 from microcosm.build.telemetry_emitter_service.contention import (
-    describe_error,
     is_transient_spool_error,
     retry_spool_contention,
+)
+from microcosm.build.telemetry_emitter_service.diagnostics import (
+    describe_error,
+    write_warning,
 )
 from microcosm.build.telemetry_emitter_service.resources import ProcessTreeSampler
 from microcosm.build.telemetry_emitter_service.runtime import EmitterService
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
 
 
-def _finite_seconds(value: str) -> float:
+def _seconds(value: str) -> float:
     seconds = float(value)
-    if not math.isfinite(seconds):
+    if math.isnan(seconds):
         raise argparse.ArgumentTypeError(READY_DEADLINE_ERROR)
     return seconds
 
@@ -51,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ready-deadline",
-        type=_finite_seconds,
+        type=_seconds,
         help=(
             "Unix time at which the build stops waiting for readiness. Until "
             "shortly before then, startup retries spool lock contention; "
@@ -71,20 +76,48 @@ def startup_deadline(
 
     The build passes its own give-up time as Unix time, the clock both
     processes share. The margin leaves time to bind the socket and answer the
-    build's ping before the build gives up.
+    build's ping before the build gives up. The limit bounds the wait however
+    far the deadline or the wall clock moves, so a service whose build has died
+    still gives up.
     """
 
     if ready_deadline is None:
         return -math.inf
-    return now_monotonic + (ready_deadline - now_unix) - READY_DEADLINE_MARGIN_SECONDS
+    remaining = min(ready_deadline - now_unix, STARTUP_RETRY_LIMIT_SECONDS)
+    return now_monotonic + remaining - READY_DEADLINE_MARGIN_SECONDS
+
+
+def open_registered_spool(
+    path: Path,
+    registration: dict[str, object],
+    *,
+    deadline: float,
+) -> EventSpool:
+    """Open the spool and register this producer, waiting out lock contention.
+
+    Each SQLite statement waits at most ``STARTUP_BUSY_TIMEOUT_SECONDS`` for
+    another process's lock, so this retry loop, bounded by ``deadline``, decides
+    when to give up. The spool it returns waits the normal
+    ``DATABASE_TIMEOUT_SECONDS``.
+    """
+
+    spool = retry_spool_contention(
+        lambda: EventSpool(path, busy_timeout_seconds=STARTUP_BUSY_TIMEOUT_SECONDS),
+        deadline=deadline,
+    )
+    retry_spool_contention(lambda: spool.register(registration), deadline=deadline)
+    spool.busy_timeout_seconds = DATABASE_TIMEOUT_SECONDS
+    return spool
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the telemetry emitter service until the build disconnects.
 
-    Its stderr is the build's, so a failure is one line, never a traceback.
-    Exit status 75 means another process kept the spool locked past the
-    startup deadline; 1 means any other failure.
+    The socket is bound only once this build is registered, so a build that
+    finds the service ready can queue events. The service's stderr is the
+    build's, so a failure is one line, never a traceback. Exit status 75 means
+    another process kept the spool locked past the startup deadline; 1 means
+    any other failure.
     """
 
     args = build_parser().parse_args(argv)
@@ -96,10 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         registration = json.loads(args.registration_json)
-        spool = retry_spool_contention(
-            lambda: EventSpool(args.spool),
-            deadline=deadline,
-        )
+        spool = open_registered_spool(args.spool, registration, deadline=deadline)
         service = EmitterService(
             socket_path=args.socket,
             registration=registration,
@@ -110,28 +140,23 @@ def main(argv: list[str] | None = None) -> int:
             ),
             sampler=ProcessTreeSampler(args.parent_pid),
             heartbeat_seconds=args.heartbeat_seconds,
-            startup_deadline=deadline,
         )
         service.run()
     except Exception as error:
         if is_transient_spool_error(error):
-            print(
+            write_warning(
                 SPOOL_LOCKED_WARNING.format(
                     spool=args.spool,
                     waited_seconds=time.monotonic() - started_at,
                     error=describe_error(error),
-                ),
-                file=sys.stderr,
-                flush=True,
+                )
             )
             return SPOOL_LOCKED_EXIT_STATUS
-        print(
+        write_warning(
             SERVICE_FAILED_WARNING.format(
                 error_type=type(error).__name__,
                 error=describe_error(error),
-            ),
-            file=sys.stderr,
-            flush=True,
+            )
         )
         return 1
     return 0

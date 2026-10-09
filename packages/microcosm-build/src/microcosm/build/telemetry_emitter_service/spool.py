@@ -10,12 +10,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Integer, delete, func, select
 
 from microcosm.build.telemetry_emitter_service.constants import (
     BATCH_SIZE,
+    DATABASE_TIMEOUT_SECONDS,
     MAX_QUEUED_BYTES,
+    PRUNE_BATCH_ROWS,
     PRUNE_INTERVAL_SECONDS,
     RETENTION_DAYS,
     UPLOAD_STATE_LOCAL_ONLY,
@@ -31,7 +32,6 @@ from microcosm.build.telemetry_emitter_service.migrations import (
 from microcosm.build.telemetry_emitter_service.models import (
     TelemetryEventRecord,
     TelemetryRunRecord,
-    serialized_json_length,
 )
 from microcosm.build.telemetry_emitter_service.timestamps import utc_now
 from microcosm.build.telemetry_protocol import TELEMETRY_SCHEMA_VERSION
@@ -40,16 +40,31 @@ from microcosm.build.telemetry_protocol import TELEMETRY_SCHEMA_VERSION
 class EventSpool:
     """Small SQLite queue shared by successive emitter service processes."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(
+        self,
+        path: Path | str,
+        *,
+        busy_timeout_seconds: float = DATABASE_TIMEOUT_SECONDS,
+    ) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.path.parent.chmod(0o700)
         except OSError:
             pass
-        self._engine = create_spool_engine(self.path)
+        # How long one statement waits for another process's lock. Startup
+        # lowers it so its own retry loop decides when to give up; it applies
+        # from each connection's next checkout.
+        self.busy_timeout_seconds = busy_timeout_seconds
+        self._engine = create_spool_engine(
+            self.path,
+            busy_timeout_seconds=lambda: self.busy_timeout_seconds,
+        )
         try:
-            upgrade_spool_database(self._engine)
+            upgrade_spool_database(
+                self._engine,
+                busy_timeout_seconds=busy_timeout_seconds,
+            )
         except BaseException:
             self._engine.dispose()
             raise
@@ -232,47 +247,64 @@ class EventSpool:
         self.prune()
 
     def prune(self) -> None:
-        """Enforce the age and total-size retention limits."""
+        """Enforce the age and total-size retention limits.
+
+        Rows go in batches of ``PRUNE_BATCH_ROWS``, each its own short
+        transaction, so a large backlog never holds the spool's write lock, or
+        the lock this process's event path shares, for long.
+        """
 
         cutoff = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS)).isoformat()
+        expired = (
+            select(TelemetryEventRecord.event_id)
+            .where(TelemetryEventRecord.created_at < cutoff)
+            .limit(PRUNE_BATCH_ROWS)
+        )
+        while self._delete_events(expired) == PRUNE_BATCH_ROWS:
+            pass
+        oldest_first = self._oldest_events_over_size_limit()
+        for start in range(0, len(oldest_first), PRUNE_BATCH_ROWS):
+            self._delete_events(oldest_first[start : start + PRUNE_BATCH_ROWS])
         with self._lock, self._session_factory.begin() as session:
-            expired_events = session.scalars(
-                select(TelemetryEventRecord).where(
-                    TelemetryEventRecord.created_at < cutoff
-                )
-            )
-            for event in expired_events:
-                session.delete(event)
-            session.flush()
-            stored_characters = session.scalar(
-                select(
-                    func.coalesce(
-                        func.sum(func.length(TelemetryEventRecord.payload)),
-                        0,
-                    )
-                )
-            )
-            excess = int(stored_characters or 0) - MAX_QUEUED_BYTES
-            if excess > 0:
-                self._remove_oldest_bytes(session, excess)
-            expired_runs = session.scalars(
-                select(TelemetryRunRecord).where(
+            session.execute(
+                delete(TelemetryRunRecord)
+                .where(
                     TelemetryRunRecord.updated_at < cutoff,
                     ~TelemetryRunRecord.events.any(),
                 )
+                .execution_options(synchronize_session=False)
             )
-            for run in expired_runs:
-                session.delete(run)
 
-    @staticmethod
-    def _remove_oldest_bytes(session: Session, excess: int) -> None:
-        statement = select(TelemetryEventRecord).order_by(
-            TelemetryEventRecord.created_at,
-            TelemetryEventRecord.sequence,
-        )
-        removed = 0
-        for event in session.scalars(statement):
-            session.delete(event)
-            removed += serialized_json_length(event.payload)
-            if removed >= excess:
-                break
+    def _delete_events(self, event_ids) -> int:
+        """Delete the selected or listed events in one transaction."""
+
+        with self._lock, self._session_factory.begin() as session:
+            return session.execute(
+                delete(TelemetryEventRecord)
+                .where(TelemetryEventRecord.event_id.in_(event_ids))
+                .execution_options(synchronize_session=False)
+            ).rowcount
+
+    def _oldest_events_over_size_limit(self) -> list[str]:
+        """Return the oldest events whose removal brings storage under the cap."""
+
+        stored = func.length(TelemetryEventRecord.payload, type_=Integer)
+        with self._lock, self._session_factory() as session:
+            excess = (
+                session.scalar(select(func.coalesce(func.sum(stored), 0)))
+                - MAX_QUEUED_BYTES
+            )
+            doomed: list[str] = []
+            if excess <= 0:
+                return doomed
+            oldest = select(TelemetryEventRecord.event_id, stored).order_by(
+                TelemetryEventRecord.created_at,
+                TelemetryEventRecord.sequence,
+                TelemetryEventRecord.event_id,
+            )
+            for event_id, length in session.execute(oldest):
+                doomed.append(event_id)
+                excess -= length
+                if excess <= 0:
+                    break
+            return doomed

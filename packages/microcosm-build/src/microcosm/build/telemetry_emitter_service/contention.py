@@ -10,7 +10,6 @@ from collections.abc import Callable
 from sqlalchemy.exc import DBAPIError
 
 from microcosm.build.telemetry_emitter_service.constants import (
-    MAX_WARNING_ERROR_CHARS,
     SPOOL_RETRY_INITIAL_SECONDS,
     SPOOL_RETRY_MAX_SECONDS,
 )
@@ -70,17 +69,3 @@ def retry_spool_contention[T](
                 raise
         sleep(wait)
         delay = min(SPOOL_RETRY_MAX_SECONDS, delay * 2)
-
-
-def describe_error(error: BaseException) -> str:
-    """Return one short line describing an error, for a warning on stderr.
-
-    SQLAlchemy's message repeats the SQL statement and a documentation link on
-    later lines, so a wrapped driver error is described by the driver's own
-    message.
-    """
-
-    if isinstance(error, DBAPIError) and error.orig is not None:
-        error = error.orig
-    lines = str(error).strip().splitlines()
-    return (lines[0] if lines else type(error).__name__)[:MAX_WARNING_ERROR_CHARS]

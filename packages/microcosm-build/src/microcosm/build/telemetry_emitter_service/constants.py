@@ -53,13 +53,18 @@ MAX_RETRY_SECONDS: Final = 60.0
 
 DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
+PRUNE_BATCH_ROWS: Final = 500
 # Every concurrent build on a host shares one spool, so a write can find it
 # locked for longer than SQLite's own busy wait. Startup retries such errors
 # with jittered, doubling waits until shortly before the build stops waiting
-# for readiness; the margin covers binding the socket and the build's ping.
+# for readiness. While it does, each SQLite statement waits at most
+# STARTUP_BUSY_TIMEOUT_SECONDS, so an attempt begun before that deadline ends
+# within the margin, which also covers binding the socket and the build's ping.
+STARTUP_BUSY_TIMEOUT_SECONDS: Final = 0.25
 SPOOL_RETRY_INITIAL_SECONDS: Final = 0.05
-SPOOL_RETRY_MAX_SECONDS: Final = 1.0
-READY_DEADLINE_MARGIN_SECONDS: Final = 1.0
+SPOOL_RETRY_MAX_SECONDS: Final = 0.25
+READY_DEADLINE_MARGIN_SECONDS: Final = 2.0
+STARTUP_RETRY_LIMIT_SECONDS: Final = 60.0
 SPOOL_LOCKED_EXIT_STATUS: Final = 75  # EX_TEMPFAIL from sysexits.h
 
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
@@ -76,7 +81,11 @@ UNSUPPORTED_ACTION_ERROR: Final = "unsupported local telemetry action"
 LOCAL_MESSAGE_TOO_LARGE_ERROR: Final = "local telemetry message exceeds 1 MiB"
 FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT: Final = "unexpected_process_exit"
 
-READY_DEADLINE_ERROR: Final = "ready deadline must be a finite number of seconds"
+READY_DEADLINE_ERROR: Final = "ready deadline must be a number of seconds"
+UNKNOWN_SPOOL_REVISION_ERROR: Final = (
+    "telemetry spool schema revision {revision!r} is not in this microcosm's "
+    "migration history, whose head is {head!r}"
+)
 SPOOL_LOCKED_WARNING: Final = (
     "warning: the local telemetry emitter service could not register this build "
     "in its spool {spool}: another process kept the spool locked for "

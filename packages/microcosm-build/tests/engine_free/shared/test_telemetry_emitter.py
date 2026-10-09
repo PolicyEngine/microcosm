@@ -595,6 +595,7 @@ def test_local_socket_acknowledges_after_durable_queue(
     )
     spool = EventSpool(tmp_path / "events.sqlite3")
     registration = _registration()
+    spool.register(registration)
     emitter = EmitterService(
         socket_path=socket_path,
         registration=registration,

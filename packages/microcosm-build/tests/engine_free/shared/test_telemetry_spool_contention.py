@@ -30,15 +30,16 @@ import pytest
 from alembic import command
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
 from microcosm.build.telemetry_emitter_constants import TELEMETRY_SERVICE_MODULE
-from microcosm.build.telemetry_emitter_service import database as database_module
+from microcosm.build.telemetry_emitter_service import collector as collector_module
 from microcosm.build.telemetry_emitter_service import main as main_module
 from microcosm.build.telemetry_emitter_service import runtime as runtime_module
 from microcosm.build.telemetry_emitter_service import spool as spool_module
+from microcosm.build.telemetry_emitter_service.collector import CollectorDelivery
 from microcosm.build.telemetry_emitter_service.constants import (
     DATABASE_TIMEOUT_SECONDS,
     PRUNE_INTERVAL_SECONDS,
@@ -47,13 +48,18 @@ from microcosm.build.telemetry_emitter_service.constants import (
     SPOOL_LOCKED_EXIT_STATUS,
     SPOOL_RETRY_INITIAL_SECONDS,
     SPOOL_RETRY_MAX_SECONDS,
+    STARTUP_BUSY_TIMEOUT_SECONDS,
+    STARTUP_RETRY_LIMIT_SECONDS,
 )
 from microcosm.build.telemetry_emitter_service.contention import (
-    describe_error,
     is_transient_spool_error,
     retry_spool_contention,
 )
 from microcosm.build.telemetry_emitter_service.database import create_spool_engine
+from microcosm.build.telemetry_emitter_service.diagnostics import (
+    describe_error,
+    write_warning,
+)
 from microcosm.build.telemetry_emitter_service.migrations import (
     alembic_config,
     current_database_revision,
@@ -62,6 +68,7 @@ from microcosm.build.telemetry_emitter_service.migrations import (
 from microcosm.build.telemetry_emitter_service.models import (
     SpoolModel,
     TelemetryEventRecord,
+    TelemetryRunRecord,
 )
 from microcosm.build.telemetry_emitter_service.runtime import EmitterService
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
@@ -183,9 +190,8 @@ def _lock_error(code: int = sqlite3.SQLITE_BUSY) -> OperationalError:
 def test_service_registers_once_a_held_spool_lock_is_released(
     tmp_path, monkeypatch, capsys, state
 ) -> None:
-    """In process, with a short busy timeout so the lock outlasts many waits."""
+    """In process: the lock outlasts many of startup's short SQLite waits."""
 
-    monkeypatch.setattr(database_module, "DATABASE_TIMEOUT_SECONDS", 0.1)
     spool_path = tmp_path / "events.sqlite3"
     _prepare_spool(spool_path, state)
     socket_path = _short_socket_path()
@@ -217,7 +223,7 @@ def test_service_registers_once_a_held_spool_lock_is_released(
 
     with _write_lock(spool_path):
         service.start()
-        time.sleep(1.0)
+        time.sleep(1.5)
         assert not socket_path.exists()
         assert service.is_alive()
         released_at = time.monotonic()
@@ -232,8 +238,8 @@ def test_service_registers_once_a_held_spool_lock_is_released(
 
     assert status == [0]
     failures = [error for _, _, error in outcomes if error is not None]
-    # Ten busy timeouts fit in the hold, so a single SQLite wait cannot
-    # explain the success: startup retried.
+    # Six startup waits fit in the hold, so a single SQLite wait cannot explain
+    # the success: startup retried.
     assert len(failures) >= 2
     assert all(is_transient_spool_error(error) for error in failures)
     name, finished_at, error = outcomes[-1]
@@ -243,10 +249,9 @@ def test_service_registers_once_a_held_spool_lock_is_released(
     assert "Traceback" not in capsys.readouterr().err
 
 
-def test_service_exits_75_with_one_line_while_the_spool_stays_locked(
-    tmp_path, monkeypatch, capsys
+def test_service_exits_75_with_one_line_before_the_build_stops_waiting(
+    tmp_path, capsys
 ) -> None:
-    monkeypatch.setattr(database_module, "DATABASE_TIMEOUT_SECONDS", 0.1)
     spool_path = tmp_path / "events.sqlite3"
     _prepare_spool(spool_path, "at_head")
     socket_path = _short_socket_path()
@@ -262,7 +267,9 @@ def test_service_exits_75_with_one_line_while_the_spool_stays_locked(
         waited = time.monotonic() - started
 
     assert status == SPOOL_LOCKED_EXIT_STATUS
-    assert waited < 0.5 + 2 * DATABASE_TIMEOUT_SECONDS
+    # The build would give up at margin + 0.5 s; the service has already
+    # said why and exited.
+    assert waited < READY_DEADLINE_MARGIN_SECONDS + 0.5
     assert not socket_path.exists()
     error_output = capsys.readouterr().err
     assert error_output.count("\n") == 1
@@ -293,24 +300,63 @@ def test_unexpected_service_failure_is_one_line_with_status_1(tmp_path, capsys) 
     assert "Traceback" not in error_output
 
 
-@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
-def test_ready_deadline_must_be_finite(value) -> None:
+def _parse_ready_deadline(value: str):
+    return main_module.build_parser().parse_args(
+        [
+            "--socket",
+            "s",
+            "--spool",
+            "q",
+            "--registration-json",
+            "{}",
+            "--parent-pid",
+            "1",
+            "--ready-deadline",
+            value,
+        ]
+    )
+
+
+def test_ready_deadline_rejects_nan_and_caps_infinity() -> None:
     with pytest.raises(SystemExit) as raised:
-        main_module.build_parser().parse_args(
-            [
-                "--socket",
-                "s",
-                "--spool",
-                "q",
-                "--registration-json",
-                "{}",
-                "--parent-pid",
-                "1",
-                "--ready-deadline",
-                value,
-            ]
-        )
+        _parse_ready_deadline("nan")
     assert raised.value.code == 2
+
+    arguments = _parse_ready_deadline("inf")
+    deadline = main_module.startup_deadline(
+        arguments.ready_deadline, now_unix=time.time(), now_monotonic=100.0
+    )
+    assert deadline == (
+        100.0 + STARTUP_RETRY_LIMIT_SECONDS - READY_DEADLINE_MARGIN_SECONDS
+    )
+
+
+def test_startup_statements_wait_briefly_and_the_spool_then_waits_normally(
+    tmp_path,
+) -> None:
+    spool_path = tmp_path / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head")
+    spool = EventSpool(spool_path, busy_timeout_seconds=STARTUP_BUSY_TIMEOUT_SECONDS)
+    try:
+        with _write_lock(spool_path):
+            started = time.monotonic()
+            with pytest.raises(OperationalError):
+                spool.register(_registration())
+            waited = time.monotonic() - started
+        assert waited < 4 * STARTUP_BUSY_TIMEOUT_SECONDS
+    finally:
+        _close(spool)
+
+    registered = main_module.open_registered_spool(
+        spool_path, _registration(), deadline=time.monotonic() + 10
+    )
+    try:
+        assert registered.busy_timeout_seconds == DATABASE_TIMEOUT_SECONDS
+        with registered._engine.connect() as connection:
+            milliseconds = connection.exec_driver_sql("PRAGMA busy_timeout").scalar()
+        assert milliseconds == DATABASE_TIMEOUT_SECONDS * 1000
+    finally:
+        _close(registered)
 
 
 def test_build_keeps_telemetry_when_the_spool_is_locked_past_a_busy_wait(
@@ -448,8 +494,12 @@ def test_startup_deadline_is_the_ready_deadline_less_the_margin_on_this_clock(
     deadline = main_module.startup_deadline(
         ready_deadline, now_unix=now_unix, now_monotonic=now_monotonic
     )
-    remaining = ready_deadline - now_unix - READY_DEADLINE_MARGIN_SECONDS
-    assert deadline - now_monotonic == pytest.approx(remaining, abs=1e-6)
+    remaining = min(ready_deadline - now_unix, STARTUP_RETRY_LIMIT_SECONDS)
+    assert deadline - now_monotonic == pytest.approx(
+        remaining - READY_DEADLINE_MARGIN_SECONDS, abs=1e-6
+    )
+    # However far away the build's deadline is, startup stops within the limit.
+    assert deadline - now_monotonic <= STARTUP_RETRY_LIMIT_SECONDS
     assert (
         main_module.startup_deadline(
             None, now_unix=now_unix, now_monotonic=now_monotonic
@@ -988,3 +1038,252 @@ def test_unexpected_exit_waits_out_lock_contention(monkeypatch) -> None:
     assert service._attempt(service._append_unexpected_exit)
     assert len(attempts) == 4
     assert attempts[-1] < 15
+
+
+def test_service_stops_serving_when_its_worker_dies(tmp_path) -> None:
+    """Only the worker notices a dead build, so serving must not outlive it."""
+
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    spool.register(_registration())
+    socket_path = _short_socket_path()
+    service = EmitterService(
+        socket_path=socket_path,
+        registration=_registration(),
+        spool=spool,
+        delivery=SimpleNamespace(flush_once=lambda: False),
+        sampler=SimpleNamespace(sample=dict, parent_alive=lambda: True),
+        heartbeat_seconds=60,
+        drain_seconds=0,
+    )
+    service._worker = lambda: None  # returns at once without stopping the service
+    serving = threading.Thread(target=service.run)
+    try:
+        serving.start()
+        serving.join(timeout=10)
+        assert not serving.is_alive()
+        assert not socket_path.exists()
+    finally:
+        _close(spool)
+
+
+class _GoneStream:
+    """A stderr whose reader has exited, like a build piped through ``tee``."""
+
+    def write(self, text):
+        raise BrokenPipeError(32, "Broken pipe")
+
+    def flush(self):
+        raise BrokenPipeError(32, "Broken pipe")
+
+
+def test_warnings_never_raise_when_the_builds_stderr_is_gone(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "stderr", _GoneStream())
+    write_warning("the service keeps running")
+    closed = io.StringIO()
+    closed.close()
+    monkeypatch.setattr(sys, "stderr", closed)
+    write_warning("the service keeps running")
+
+    monkeypatch.setattr(sys, "stderr", _GoneStream())
+    service = EmitterService(
+        socket_path=Path("/unused"),
+        registration=_registration(),
+        spool=SimpleNamespace(),
+        delivery=SimpleNamespace(),
+        sampler=SimpleNamespace(),
+        heartbeat_seconds=60,
+    )
+
+    def bug() -> None:
+        raise RuntimeError("collector bug")
+
+    assert service._attempt(bug) is False
+
+
+def test_delivery_backs_off_after_an_unexpected_error(monkeypatch) -> None:
+    """The worker survives the error, so it must not turn into a request a tick."""
+
+    requests: list[str] = []
+
+    def post(url, payload, bearer_token, **kwargs):
+        requests.append(url)
+        return 200, {"access_token": "collector-token", "expires_in": None}
+
+    monkeypatch.setattr(collector_module, "_http_post", post)
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+    delivery = CollectorDelivery(
+        SimpleNamespace(pending_runs=lambda: [_registration()]),
+        development_collector_url=_LOOPBACK_COLLECTOR,
+    )
+
+    with pytest.raises(TypeError):
+        delivery.flush_once()
+    assert delivery.flush_once() is False
+    assert len(requests) == 1
+
+
+def test_delivery_retries_a_locked_spool_on_the_next_tick(monkeypatch) -> None:
+    attempts: list[int] = []
+
+    def pending_runs():
+        attempts.append(1)
+        raise _lock_error()
+
+    delivery = CollectorDelivery(
+        SimpleNamespace(pending_runs=pending_runs),
+        development_collector_url=_LOOPBACK_COLLECTOR,
+    )
+    for _ in range(3):
+        with pytest.raises(OperationalError):
+            delivery.flush_once()
+    assert len(attempts) == 3
+
+
+def test_a_spool_from_an_unknown_migration_is_refused_without_the_write_lock(
+    tmp_path,
+) -> None:
+    spool_path = tmp_path / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head")
+    connection = sqlite3.connect(spool_path)
+    connection.execute("UPDATE alembic_version SET version_num = 'from_elsewhere'")
+    connection.commit()
+    connection.close()
+
+    with _write_lock(spool_path):
+        started = time.monotonic()
+        with pytest.raises(RuntimeError, match="'from_elsewhere' is not in"):
+            EventSpool(spool_path)
+        assert time.monotonic() - started < DATABASE_TIMEOUT_SECONDS
+
+
+# --- Retention in short batches, matching the single-pass rule ----------------
+
+_STAMP_ORIGIN = datetime(2026, 10, 9, 12, tzinfo=UTC)
+
+
+def _stamp(age_days: float, index: int) -> str:
+    # The index keeps stamps distinct, so the oldest-first order is unambiguous.
+    return (
+        _STAMP_ORIGIN - timedelta(days=age_days) + timedelta(microseconds=index)
+    ).isoformat()
+
+
+@settings(max_examples=40, deadline=None)
+@given(
+    events=st.lists(
+        st.tuples(
+            st.integers(0, 2),  # run
+            st.floats(0, 2 * RETENTION_DAYS),  # age in days
+            st.integers(0, 60),  # padding characters
+        ),
+        max_size=18,
+    ),
+    run_ages=st.lists(st.floats(0, 2 * RETENTION_DAYS), min_size=3, max_size=3),
+    cap_fraction=st.floats(0, 1.2),
+    batch_rows=st.integers(1, 4),
+)
+def test_batched_prune_matches_the_single_pass_retention_rule(
+    tmp_path_factory, events, run_ages, cap_fraction, batch_rows
+) -> None:
+    """Differential: the batched prune keeps exactly what one pass would.
+
+    The reference is the retention rule the single-transaction prune applied:
+    drop events past ``RETENTION_DAYS``; then, oldest first, drop events until
+    the stored payloads fit ``MAX_QUEUED_BYTES``; then drop expired runs that
+    have no events left.
+    """
+
+    from unittest import mock
+
+    spool = EventSpool(tmp_path_factory.mktemp("prune") / "events.sqlite3")
+    keys = [(f"run-{index}", f"producer-{index}") for index in range(3)]
+    rows: list[dict[str, object]] = []
+    try:
+        with spool._session_factory.begin() as session:
+            for index, (run_id, producer_id) in enumerate(keys):
+                session.add(
+                    TelemetryRunRecord(
+                        run_id=run_id,
+                        producer_id=producer_id,
+                        registration={"run_id": run_id, "producer_id": producer_id},
+                        next_sequence=1,
+                        upload_state="pending",
+                        local_only_reason=None,
+                        updated_at=_stamp(run_ages[index], index),
+                    )
+                )
+            for index, (run, age, padding) in enumerate(events):
+                run_id, producer_id = keys[run]
+                payload = {"pad": "x" * padding}
+                row = {
+                    "event_id": f"event-{index:02d}",
+                    "run": keys[run],
+                    "created_at": _stamp(age, index),
+                    "sequence": index,
+                    "length": len(
+                        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+                    ),
+                }
+                rows.append(row)
+                session.add(
+                    TelemetryEventRecord(
+                        event_id=row["event_id"],
+                        run_id=run_id,
+                        producer_id=producer_id,
+                        sequence=index,
+                        payload=payload,
+                        created_at=row["created_at"],
+                    )
+                )
+        cutoff = (_STAMP_ORIGIN - timedelta(days=RETENTION_DAYS)).isoformat()
+        live = [row for row in rows if row["created_at"] >= cutoff]
+        cap = int(cap_fraction * sum(row["length"] for row in live))
+        batches: list[int] = []
+        delete_events = spool._delete_events
+
+        def recording_delete(event_ids) -> int:
+            deleted = delete_events(event_ids)
+            batches.append(deleted)
+            return deleted
+
+        spool._delete_events = recording_delete
+        frozen_now = mock.Mock(wraps=datetime)
+        frozen_now.now.return_value = _STAMP_ORIGIN
+        with (
+            mock.patch.object(spool_module, "MAX_QUEUED_BYTES", cap),
+            mock.patch.object(spool_module, "PRUNE_BATCH_ROWS", batch_rows),
+            mock.patch.object(spool_module, "datetime", frozen_now),
+        ):
+            spool.prune()
+        with spool._session_factory() as session:
+            kept_events = set(
+                session.scalars(select(TelemetryEventRecord.event_id)).all()
+            )
+            kept_runs = set(
+                session.execute(
+                    select(
+                        TelemetryRunRecord.run_id,
+                        TelemetryRunRecord.producer_id,
+                    )
+                ).all()
+            )
+    finally:
+        _close(spool)
+
+    expected_events = {row["event_id"] for row in live}
+    excess = sum(row["length"] for row in live) - cap
+    for row in sorted(live, key=lambda row: (row["created_at"], row["sequence"])):
+        if excess <= 0:
+            break
+        expected_events.discard(row["event_id"])
+        excess -= row["length"]
+    expected_runs = {
+        key
+        for index, key in enumerate(keys)
+        if _stamp(run_ages[index], index) >= cutoff
+        or any(row["run"] == key and row["event_id"] in expected_events for row in rows)
+    }
+    assert kept_events == expected_events
+    assert kept_runs == expected_runs
+    # Each transaction deleted at most one batch.
+    assert all(deleted <= batch_rows for deleted in batches)

@@ -196,7 +196,7 @@ class LocalTelemetryEmitter:
                 # The service retries spool lock contention until just before
                 # this wall-clock time, when the wait below gives up.
                 "--ready-deadline",
-                repr(time.time() + startup_timeout_seconds),
+                repr(datetime.now(UTC).timestamp() + startup_timeout_seconds),
             ]
             if development_collector_url is not None:
                 command.extend(
