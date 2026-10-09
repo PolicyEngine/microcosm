@@ -2,68 +2,68 @@
   "resource": "synthetic-cgt-asset-type.json",
   "resource_sha256": "synthetic",
   "source_commit": "synthetic",
-  "table4_all_gains": 6983113.129676064,
+  "table4_all_gains": 6921131.298780855,
   "table4_all_tax": 0.0,
   "table4_all_taxpayers": 16.094983343942488,
   "table4_bands": [
     {
-      "gains": 8222.831155197551,
+      "gains": 8083.379226389363,
       "lower_bound": 0,
       "tax": null,
-      "taxpayers": 1.9510482248880026,
+      "taxpayers": 1.9344915687991842,
       "upper_bound": 10000
     },
     {
-      "gains": 21895.611760407053,
+      "gains": 22124.392741964126,
       "lower_bound": 10000,
       "tax": null,
-      "taxpayers": 1.418470453276858,
+      "taxpayers": 1.4382614454161353,
       "upper_bound": 25000
     },
     {
-      "gains": 34067.93073230906,
+      "gains": 37810.315981860746,
       "lower_bound": 25000,
       "tax": null,
-      "taxpayers": 0.9749275341889313,
+      "taxpayers": 1.0841749476196987,
       "upper_bound": 50000
     },
     {
-      "gains": 101619.46463824037,
+      "gains": 102908.07600717274,
       "lower_bound": 50000,
       "tax": null,
-      "taxpayers": 1.3667147296498983,
+      "taxpayers": 1.3915705235072733,
       "upper_bound": 100000
     },
     {
-      "gains": 375781.63324098045,
+      "gains": 362391.8816114918,
       "lower_bound": 100000,
       "tax": null,
-      "taxpayers": 2.4059169352144028,
+      "taxpayers": 2.3107678498866244,
       "upper_bound": 250000
     },
     {
-      "gains": 719863.4499270874,
+      "gains": 697858.1078350034,
       "lower_bound": 250000,
       "tax": null,
-      "taxpayers": 1.8848977837476633,
+      "taxpayers": 1.8525195904128833,
       "upper_bound": 500000
     },
     {
-      "gains": 1133982.6950390092,
+      "gains": 1119685.09192146,
       "lower_bound": 500000,
       "tax": null,
-      "taxpayers": 1.5053281697938976,
+      "taxpayers": 1.5129273648451749,
       "upper_bound": 1000000
     },
     {
-      "gains": 4587679.513182833,
+      "gains": 4570270.053455513,
       "lower_bound": 1000000,
       "tax": null,
-      "taxpayers": 4.587679513182833,
+      "taxpayers": 4.570270053455513,
       "upper_bound": null
     }
   ],
-  "table4_individuals_gains": 6983113.129676064,
+  "table4_individuals_gains": 6921131.298780855,
   "table4_individuals_tax": 0.0,
   "table4_individuals_taxpayers": 16.094983343942488,
   "table4_trusts_gains": 0.0,

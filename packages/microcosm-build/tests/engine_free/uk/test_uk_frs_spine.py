@@ -1215,6 +1215,16 @@ def test_property_income_matches_a_merge_of_the_raw_tabs(
     built = person.set_index("person_id")["property_income"]
     np.testing.assert_allclose(built.reindex(expected.index), expected)
     assert (built.drop(expected.index) == 0).all()
+    # The landlord carrier holds wherever ROYYR1 is positive, a loss included,
+    # though property_income counts that loss as zero.
+    landlord = pd.Series(
+        (raw.ROYYR1 > 0).to_numpy(),
+        index=(raw.SERNUM * 1000 + raw.PERSON).astype(int),
+    )
+    carrier = person.set_index("person_id")["reports_rent_from_other_property"]
+    assert carrier.dtype == bool
+    assert carrier.reindex(landlord.index).tolist() == landlord.tolist()
+    assert not carrier.drop(landlord.index).any()
 
 
 @pytest.mark.parametrize("code", [-1.0, -9.0])

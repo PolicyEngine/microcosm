@@ -422,6 +422,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 for column in (
                     "capital_gains",
                     "property_income",
+                    "reports_rent_from_other_property",
                     "self_employment_income",
                     "dividend_income",
                 )
@@ -514,6 +515,7 @@ _ROOT_PERSON_BOOL = {
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
     "uc_is_in_gainful_self_employment",
+    "reports_rent_from_other_property",
     "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}

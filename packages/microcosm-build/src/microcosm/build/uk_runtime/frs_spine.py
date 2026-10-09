@@ -209,6 +209,7 @@ OUTPUT_COLUMNS = (
     "savings_interest_income",
     "dividend_income",
     "property_income",
+    "reports_rent_from_other_property",
     "maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
@@ -657,6 +658,9 @@ def _add_person_income(
     evidence: dict[str, object] | None = None,
 ) -> None:
     pe_person["property_income"] = frs_property_income(person, household)
+    pe_person[FRS_LANDLORD_CARRIER_COLUMN] = frs_reports_rent_from_other_property(
+        person
+    )
     maintenance_to_self = np.maximum(
         np.where(
             _number(person, "mntus1") == 2,
@@ -700,6 +704,24 @@ def _add_person_income(
     pe_person["free_school_breakfasts"] = _positive(person, "fsbval") * WEEKS_IN_YEAR
     pe_person["free_school_fruit_veg"] = _positive(person, "fsfvval") * WEEKS_IN_YEAR
     pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
+
+
+#: The internal landlord carrier ``frs_reports_rent_from_other_property`` writes.
+FRS_LANDLORD_CARRIER_COLUMN = "reports_rent_from_other_property"
+
+
+def frs_reports_rent_from_other_property(person: pd.DataFrame) -> np.ndarray:
+    """Whether the person reports rent from other property, at a profit or a loss.
+
+    ROYYR1 is entered as a positive amount whether the letting made a profit or
+    a loss (RENTPROF 2 marks the loss), so a positive ROYYR1 marks a landlord
+    either way. ``property_income`` counts a loss as zero
+    (``frs_property_income``), so this internal carrier keeps the landlord
+    signal the CGT stages read for loss-making landlords too. It is not an
+    engine input and does not leave the release.
+    """
+
+    return (_positive(person, "royyr1") > 0).to_numpy(dtype=bool)
 
 
 def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
