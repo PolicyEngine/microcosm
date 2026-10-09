@@ -68,9 +68,11 @@ unmapped label fails instead of falling back to a calendar year.
 
 Graph output types
 ------------------
-By default :meth:`AxiomEngine.materialize` returns the arrays the dense
-surface returns: judgments as int8 codes, text and dates as Python string
-lists. A graph node may own only a closed set of dtypes, so
+By default :meth:`AxiomEngine.materialize` returns each dense output as a
+numpy array (``np.asarray`` of what the surface returns), with no cast:
+judgments as int8 codes, and text and dates (which the surface returns as
+Python string lists) as numpy string arrays. A graph node may own only a
+closed set of dtypes, so
 ``output_dtypes="graph"`` casts each output to one of them without loss —
 judgments to int64 codes, integers to int64, decimals to float64, booleans
 to bool — and refuses text and date outputs before the engine runs.
@@ -86,15 +88,18 @@ content digest of the whole RuleSpec root, and the adapter's configuration.
 Any edit to a RuleSpec byte therefore moves the reference, and with it every
 node key that names it. The reference also pins the adapter: from then on it
 compiles only from a root whose digest still matches and that holds no
-symbolic link, so a node keyed by the reference is never computed from other
-bytes.
+symbolic link, and only when its module path still resolves to the file the
+reference named, so a node keyed by the reference is never computed from
+other bytes.
 """
 
 import hashlib
 import json
+import os
 import re
 import subprocess
-from collections.abc import Mapping, Sequence
+import unicodedata
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from functools import cache
@@ -370,8 +375,10 @@ class AxiomEngine:
         self._programs: dict[str, Any] = {}
         self._metadata: dict[str, Any] | None = None
         # Set by axiom_engine_ref: the RuleSpec tree digest this adapter's
-        # reference names. Every later compile re-hashes the root against it.
+        # reference names, and the file its module path resolved to. Every
+        # later compile re-checks both.
         self._pinned_tree_sha256: str | None = None
+        self._pinned_module: Path | None = None
 
     # ------------------------------------------------------------------
     # Variable metadata
@@ -812,15 +819,26 @@ class AxiomEngine:
         """Refuse to compile when the root no longer holds the referenced bytes.
 
         Once :func:`axiom_engine_ref` has named this adapter's RuleSpec tree,
-        every compile refuses a symbolic link under the root (the digest does
-        not descend into a linked directory, so a directory or dangling link
-        added after the reference would not move it) and re-hashes the root,
-        so a node keyed by that reference is never computed from other bytes.
+        every compile requires the module path to resolve to the file the
+        reference named (a module given through a link outside the root could
+        be repointed at another file under it without moving the digest),
+        refuses a symbolic link under the root (the digest does not descend
+        into a linked directory, so a directory or dangling link added after
+        the reference would not move it) and re-hashes the root, so a node
+        keyed by that reference is never computed from other bytes.
 
         Raises:
-            ValueError: If the root holds a symbolic link, or its digest moved
-                since the reference.
+            ValueError: If the module path resolves to another file, the root
+                holds a symbolic link, or its digest moved since the
+                reference.
         """
+        module = self._module.resolve()
+        if module != self._pinned_module:
+            raise ValueError(
+                f"Module {self._module} resolves to {module}, not the file "
+                f"{self._pinned_module} this adapter's engine_ref named; "
+                "construct a new adapter and reference."
+            )
         _refuse_symlinks(self._rulespec_roots[0].resolve())
         current, _ = rulespec_tree_digest(self._rulespec_roots[0].resolve())
         if current != self._pinned_tree_sha256:
@@ -1163,21 +1181,38 @@ def axiom_engine_ref(
     declaration, checked only for a git checkout root (below). The directory
     digest is the authority.
 
-    A git checkout root is accepted only when clean, with no untracked or
-    ignored files and no tracked file flagged skip-worktree or
-    assume-unchanged (``git status`` does not report edits to those), and at
-    ``rulespec_commit``. Its ``.git`` is then hashed
+    A git checkout root is accepted only when it is the top level of its own
+    repository, clean, at ``rulespec_commit``, contains no submodules, has no
+    tracked file flagged skip-worktree or assume-unchanged (``git status``
+    does not report edits to those), and holds outside ``.git`` exactly the
+    commit's files, each byte for byte the blob the commit records and with
+    its executable bit. A recorded name matches a file whose name is the
+    same or, when that one file opens under both, canonically equivalent
+    (git on macOS with ``core.precomposeunicode=true`` records precomposed
+    names, usually NFC, that the file system may list in NFD); one directory
+    entry never answers for two recorded names. Git runs
+    without the caller's repository-selecting variables (``GIT_DIR``,
+    ``GIT_WORK_TREE`` and the rest of ``git rev-parse --local-env-vars``) and
+    without replace refs, so neither can point the check at other objects.
+    The commit's file list and blob names are read through git from the
+    repository's object database, whose commit and tree objects are not
+    rehashed, so the check assumes that database is intact: it does not
+    detect an object rewritten under another object's name (a substituted
+    nested tree, say), though the directory digest still pins the bytes
+    present.
+    Its ``.git`` is then hashed
     like any other file, as the graph's source key hashes it. That makes the
     reference specific to one clone: two clones or worktrees of one commit
     (a worktree's ``.git`` file names an absolute path) and an export of that
     commit all give different references, and any later git operation in the
     checkout moves it. Prefer the export.
 
-    The first call pins the adapter to the tree digest it names: it refuses
-    an adapter that has already compiled (those programs were read from bytes
-    no reference names), and from then on every compile, and every later
-    reference to the same adapter, refuses a root whose digest has moved or
-    that holds a symbolic link.
+    The first call pins the adapter to the tree digest it names and to the
+    file its module path resolves to: it refuses an adapter that has already
+    compiled (those programs were read from bytes no reference names), and
+    from then on every compile, and every later reference to the same
+    adapter, refuses a root whose digest has moved or that holds a symbolic
+    link, and a module path that now resolves to another file.
 
     Args:
         engine: The adapter the reference names.
@@ -1198,10 +1233,11 @@ def axiom_engine_ref(
         ValueError: If a pin is malformed; ``rulespec_root`` is not the
             adapter's only root; the module is not a file under it; the root
             contains a symbolic link (the digest would not cover what it
-            points at); a git checkout root is dirty, has a file flagged
-            skip-worktree or assume-unchanged, or is at another commit; or
-            the adapter compiled before its first reference, or its root moved
-            after it.
+            points at); a git checkout root is not its repository's top
+            level, is dirty, contains a submodule, has a file flagged
+            skip-worktree or assume-unchanged, holds bytes its commit does
+            not, or is at another commit; or the adapter compiled before its
+            first reference, or its root or module moved after it.
     """
     if not isinstance(engine, AxiomEngine):
         raise TypeError(f"{engine!r} is not an AxiomEngine.")
@@ -1247,10 +1283,17 @@ def axiom_engine_ref(
                 "adapter."
             )
         engine._pinned_tree_sha256 = tree_sha256
+        engine._pinned_module = module
     elif engine._pinned_tree_sha256 != tree_sha256:
         raise ValueError(
             f"RuleSpec root {root} changed after this adapter's engine_ref named "
             f"it (tree digest {engine._pinned_tree_sha256} -> {tree_sha256}); "
+            "construct a new adapter and reference."
+        )
+    elif engine._pinned_module != module:
+        raise ValueError(
+            f"Module {engine._module} resolves to {module}, not the file "
+            f"{engine._pinned_module} this adapter's engine_ref named; "
             "construct a new adapter and reference."
         )
     schema = engine._schema
@@ -1512,27 +1555,61 @@ def _refuse_symlinks(root: Path) -> None:
 def _require_clean_checkout(root: Path, commit: str) -> None:
     """Require a git-checkout RuleSpec root to hold exactly ``commit``.
 
-    Ignored files count as changes: the digest hashes them, but the commit
-    does not hold them. A tracked file flagged skip-worktree or
-    assume-unchanged is refused even when unedited, because ``git status``
-    does not report edits to it. ``--no-optional-locks`` stops ``git status``
-    refreshing the index, which would otherwise rewrite ``.git/index`` and
-    move the digest taken next.
+    Git examines the root's own repository: it runs without the caller's
+    repository-selecting variables (:func:`_git_environment`) and without
+    replace refs (a ``refs/replace`` entry makes one commit read as another),
+    and the root must be the repository's top level (``core.worktree`` can
+    point a repository at another directory). ``--no-optional-locks`` stops
+    ``git status`` refreshing the index, which would otherwise rewrite
+    ``.git/index`` and move the digest taken next.
+
+    The index may hold no submodule: the commit records a submodule's
+    commit, not its files, and ``git status`` does not report every change
+    inside one. No tracked file may be flagged skip-worktree or
+    assume-unchanged, even unedited, because ``git status`` does not report
+    edits to it. Ignored files count as changes: the digest hashes them, but
+    the commit does not hold them. Last, the files outside the top-level
+    ``.git`` must be exactly the commit's, each byte for byte the regular-file
+    blob the commit records at its path, with its recorded executable bit.
+    That refuses a change ``git status``
+    does not report: an edit hidden from a stat cache trusted under
+    ``core.trustctime=false``, by a clean filter, or by a file system monitor;
+    a nested ``.git`` entry, which git's untracked scan skips; or a committed
+    symbolic link held as a plain file under ``core.symlinks=false``; or an
+    executable-bit change hidden by ``core.filemode=false``. Recorded paths
+    pair with files one to one as :func:`_match_checkout_paths` describes,
+    so an NFC name git records matches the one file the file system lists
+    under an equivalent NFD name. The paths and blob names come from
+    ``git ls-tree``, which reads the object database; the commit and tree
+    objects are not rehashed, so an intact object database is assumed.
 
     Raises:
-        ValueError: If git fails or times out, the checkout has modified,
-            untracked, or ignored files or a file flagged skip-worktree or
-            assume-unchanged, or ``HEAD`` is not ``commit``.
+        ValueError: If git fails or times out; the root is not its
+            repository's top level; the index holds a submodule or a file
+            flagged skip-worktree or assume-unchanged; the checkout has
+            modified, untracked, or ignored files; ``HEAD`` is not
+            ``commit``; or the files outside ``.git`` are not the commit's.
     """
+
+    environment = _git_environment()
 
     def git(*args: str) -> str:
         try:
             completed = subprocess.run(
-                ["git", "--no-optional-locks", "-C", str(root), *args],
+                [
+                    "git",
+                    "--no-optional-locks",
+                    "--no-replace-objects",
+                    "-C",
+                    str(root),
+                    *args,
+                ],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="surrogateescape",
                 check=False,
                 timeout=120,
+                env=environment,
             )
         except FileNotFoundError as exc:
             raise ValueError(
@@ -1549,19 +1626,38 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
             )
         return completed.stdout
 
-    if git("status", "--porcelain=v1", "--untracked-files=all", "--ignored").strip():
+    toplevel = Path(git("rev-parse", "--show-toplevel").removesuffix("\n"))
+    try:
+        same = toplevel.samefile(root)
+    except OSError:
+        same = False
+    if not same:
         raise ValueError(
-            f"RuleSpec checkout {root} has modified, untracked, or ignored "
-            f"files that commit {commit} does not hold; reference a git "
-            "archive export instead."
+            f"RuleSpec checkout {root} is not the top level of its git "
+            f"repository, whose work tree is {toplevel}; reference a git archive "
+            "export instead."
         )
-    # ``ls-files -v`` tags a skip-worktree file ``S`` and an assume-unchanged
-    # file in lower case; ``git status`` reports no edit to either.
-    flagged = [
-        entry[2:]
-        for entry in git("ls-files", "-v", "-z").split("\0")
-        if entry and (entry[0] == "S" or entry[0].islower())
-    ]
+    submodules: list[str] = []
+    flagged: list[str] = []
+    for entry in git("ls-files", "--stage", "-v", "-z").split("\0"):
+        if not entry:
+            continue
+        # "<tag> <mode> <object> <stage>\t<path>". A submodule has mode
+        # 160000; -v tags a skip-worktree file "S" and an assume-unchanged
+        # file in lower case.
+        fields, path = entry.split("\t", 1)
+        tag, mode = fields.split(" ")[:2]
+        if mode == "160000":
+            submodules.append(path)
+        if tag == "S" or tag.islower():
+            flagged.append(path)
+    if submodules:
+        raise ValueError(
+            f"RuleSpec checkout {root} contains the submodule {submodules[0]} "
+            f"({len(submodules)} submodule(s)); commit {commit} records a "
+            "submodule's commit, not its files, and git status does not report "
+            "every change inside one. Reference a git archive export instead."
+        )
     if flagged:
         raise ValueError(
             f"RuleSpec checkout {root}: {flagged[0]} is flagged skip-worktree "
@@ -1569,9 +1665,185 @@ def _require_clean_checkout(root: Path, commit: str) -> None:
             "status does not report edits to it; clear the flags or reference "
             "a git archive export instead."
         )
+    if git("status", "--porcelain=v1", "--untracked-files=all", "--ignored").strip():
+        raise ValueError(
+            f"RuleSpec checkout {root} has modified, untracked, or ignored "
+            f"files that commit {commit} does not hold; reference a git "
+            "archive export instead."
+        )
     head = git("rev-parse", "--verify", "HEAD^{commit}").strip()
     if head != commit:
         raise ValueError(
             f"RuleSpec checkout {root} is at {head}, not the declared "
             f"rulespec_commit {commit}."
         )
+    algorithm = git("rev-parse", "--show-object-format").strip()
+    if algorithm not in ("sha1", "sha256"):
+        raise ValueError(
+            f"RuleSpec checkout {root} uses the git object format {algorithm!r}, "
+            "which this check cannot hash."
+        )
+    recorded: dict[str, tuple[str, str]] = {}
+    for entry in git("ls-tree", "-r", "-z", "--full-tree", commit).split("\0"):
+        if not entry:
+            continue
+        # "<mode> <type> <object>\t<path>"
+        fields, path = entry.split("\t", 1)
+        mode, _, name = fields.split(" ")
+        recorded[path] = (mode, name)
+    files, lacking, extra = _match_checkout_paths(root, recorded, _checkout_files(root))
+    unexpected = sorted((*lacking, *extra))
+    if unexpected:
+        first = unexpected[0]
+        state = "lacks" if first in lacking else "holds"
+        raise ValueError(
+            f"RuleSpec checkout {root} {state} {first}, unlike commit {commit} "
+            f"({len(unexpected)} path(s) differ), though git status reports no "
+            "change; reference a git archive export instead."
+        )
+    for path, (mode, name) in sorted(recorded.items()):
+        # A symbolic link checked out under core.symlinks=false is a plain
+        # file holding the link's blob, and git status reports no change.
+        if mode not in ("100644", "100755"):
+            raise ValueError(
+                f"RuleSpec checkout {root}: commit {commit} records {path} with "
+                f"mode {mode}, not as a regular file, though the checkout holds "
+                "a plain file there; reference a git archive export instead."
+            )
+        file = files[path]
+        if not file.is_file() or _git_blob_id(file.read_bytes(), algorithm) != name:
+            raise ValueError(
+                f"RuleSpec checkout {root}: {path} is not the blob {name} commit "
+                f"{commit} records for it, though git status reports no change; "
+                "reference a git archive export instead."
+            )
+        # Git records the owner's executable bit; core.filemode=false can
+        # hide a change to it from git status.
+        actual_mode = "100755" if file.stat().st_mode & 0o100 else "100644"
+        if actual_mode != mode:
+            raise ValueError(
+                f"RuleSpec checkout {root}: {path} has mode {actual_mode}, not "
+                f"the mode {mode} commit {commit} records for it, though git "
+                "status reports no change; reference a git archive export "
+                "instead."
+            )
+
+
+def _git_environment() -> dict[str, str]:
+    """This process's environment without the variables that choose git's repository.
+
+    The names removed are the installed git's own list of variables local to
+    one repository (``git rev-parse --local-env-vars``): ``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``, ``GIT_OBJECT_DIRECTORY``,
+    ``GIT_COMMON_DIR``, the ``git -c`` carriers ``GIT_CONFIG_PARAMETERS`` and
+    ``GIT_CONFIG_COUNT``, and the rest. Each names the repository, index,
+    object store, or work tree git reads, or carries configuration into it.
+
+    Raises:
+        ValueError: If git is missing, fails, or times out.
+    """
+
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("git is required to verify a RuleSpec checkout.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("git rev-parse --local-env-vars timed out.") from exc
+    if completed.returncode != 0:
+        raise ValueError(
+            f"git rev-parse --local-env-vars failed: {completed.stderr.strip()}"
+        )
+    local = frozenset(completed.stdout.split())
+    return {name: value for name, value in os.environ.items() if name not in local}
+
+
+def _checkout_files(root: Path) -> dict[str, Path]:
+    """Every non-directory entry under ``root`` except the top-level ``.git``.
+
+    Keyed by POSIX path relative to ``root``, the form ``git ls-tree`` prints.
+    """
+
+    present: dict[str, Path] = {}
+    for directory, directories, files in root.walk():
+        if directory == root:
+            directories[:] = [name for name in directories if name != ".git"]
+            files = [name for name in files if name != ".git"]
+        for name in files:
+            path = directory / name
+            present[path.relative_to(root).as_posix()] = path
+    return present
+
+
+def _match_checkout_paths(
+    root: Path, recorded: Collection[str], present: Mapping[str, Path]
+) -> tuple[dict[str, Path], list[str], list[str]]:
+    """Pair each path a commit records with the checkout entry holding it, one to one.
+
+    Git and the file system can spell one file's name differently: on macOS
+    with ``core.precomposeunicode=true``, git records a name in Unicode NFC
+    while the file system lists it as it was created, for instance in NFD,
+    and both spellings open the same file. A recorded path pairs with the
+    entry of the identical name when there is one. Otherwise it pairs with
+    the one remaining entry whose name is canonically equivalent (the same
+    NFD form), and only when ``root / path`` opens that entry's file
+    (:meth:`Path.samefile`). Each entry pairs at most once; when a form has
+    more than one unpaired path or entry, none of them pairs. Nothing is
+    normalized wholesale: where the file system keeps an NFC and an NFD name
+    apart they are two entries, neither standing in for the other, and one
+    file cannot stand in for two recorded spellings. Names that differ in
+    case are not equivalent.
+
+    Args:
+        root: The checkout's top level.
+        recorded: Paths the commit records, POSIX and relative to ``root``.
+        present: :func:`_checkout_files` of ``root``.
+
+    Returns:
+        The entry each paired recorded path names, the recorded paths left
+        unpaired, and the entries left unpaired (as the file system spells
+        them); both lists sorted.
+    """
+
+    paired = {path: present[path] for path in recorded if path in present}
+    lacking: dict[str, list[str]] = {}
+    for path in recorded:
+        if path not in paired:
+            lacking.setdefault(unicodedata.normalize("NFD", path), []).append(path)
+    extra: dict[str, list[str]] = {}
+    for path in present:
+        if path not in paired:
+            extra.setdefault(unicodedata.normalize("NFD", path), []).append(path)
+    unpaired: list[str] = []
+    for form, paths in lacking.items():
+        entries = extra.get(form, [])
+        if len(paths) == 1 and len(entries) == 1:
+            try:
+                same = (root / paths[0]).samefile(present[entries[0]])
+            except OSError:
+                same = False
+            if same:
+                paired[paths[0]] = present[entries.pop()]
+                continue
+        unpaired.extend(paths)
+    leftover = sorted(path for entries in extra.values() for path in entries)
+    return paired, sorted(unpaired), leftover
+
+
+def _git_blob_id(content: bytes, algorithm: str) -> str:
+    """The object name git gives ``content`` as a blob (no filters applied).
+
+    Args:
+        content: The blob's bytes.
+        algorithm: The repository's object format, ``"sha1"`` or ``"sha256"``.
+    """
+
+    digest = hashlib.new(algorithm)
+    digest.update(b"blob %d\0" % len(content))
+    digest.update(content)
+    return digest.hexdigest()
