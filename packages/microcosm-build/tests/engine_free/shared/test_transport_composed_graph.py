@@ -252,7 +252,9 @@ def cold(composed, tmp_path_factory):
 
 
 @PROPERTY
-@given(prose=st.text(alphabet="abc XYZ.", max_size=24))
+# Stripped: graph/decl.py accepts an empty description or text with a
+# non-whitespace character, so a whitespace-only draw such as " " is invalid.
+@given(prose=st.text(alphabet="abc XYZ.", max_size=24).map(str.strip))
 def test_composition_is_pure_and_prose_moves_no_key(composed, prose):
     graph = composed.graph(extended=True)
     again = compose_transport_graph(
