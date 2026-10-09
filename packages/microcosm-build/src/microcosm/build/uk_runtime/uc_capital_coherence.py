@@ -23,6 +23,10 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import UC_CAPITAL_UNAVAILABLE
+from microcosm.build.uk_runtime.frs_take_up import (
+    UKTakeUpPopulationPolicy,
+    uk_take_up_population_policy,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -74,6 +78,78 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
+#: policyengine-uk 2.122.2 counts these household property values as Universal
+#: Credit and Pension Credit capital (the ``sources`` lists under
+#: ``gov.dwp.universal_credit.means_test.capital`` and
+#: ``gov.dwp.pension_credit.income.capital``, beside ``savings`` and
+#: ``corporate_wealth``). A recorded figure of 0 or more replaces every source,
+#: and the engine takes it as already countable, but TOTCAPB4 counts accounts
+#: and assets and no property. So the recorded figures add the unit's share of
+#: its household's property (uk-data#495, microcosm#1095).
+UC_PROPERTY_CAPITAL_SOURCES = (
+    "other_residential_property_value",
+    "non_residential_property_value",
+)
+PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES = ("owned_land", *UC_PROPERTY_CAPITAL_SOURCES)
+#: Whom each engine proxy shares household capital over. The UC proxy shares
+#: by the unit's claimants and partners (``is_uc_claimant``) and the Pension
+#: Credit proxy by its members at or over Pension Credit qualifying age, so a
+#: household's units add up to its property, less the Universal Credit share
+#: a reporting unit does not record (``UC_PROPERTY_CAPITAL_REPORTER_RULE``).
+UC_PROPERTY_CAPITAL_OWNERS = "is_uc_claimant"
+PENSION_CREDIT_PROPERTY_CAPITAL_OWNERS = "at_or_over_pension_credit_qualifying_age"
+UC_PROPERTY_CAPITAL_SHARE = "uc_property_capital_share"
+PENSION_CREDIT_PROPERTY_CAPITAL_SHARE = "pension_credit_property_capital_share"
+
+
+def _property_share_definition(sources: tuple[str, ...], owners: str) -> str:
+    return (
+        f"({' + '.join(sources)}) of the household x the unit's {owners} "
+        f"members / the household's {owners} members"
+    )
+
+
+def _recorded_capital_definition(share: str) -> str:
+    return (
+        f"{UC_CAPITAL_REDRAW_OUTPUT} + {share} where {UC_CAPITAL_REDRAW_OUTPUT} "
+        f">= 0, else {UC_CAPITAL_REDRAW_OUTPUT}"
+    )
+
+
+UC_PROPERTY_CAPITAL_SHARE_DEFINITION = _property_share_definition(
+    UC_PROPERTY_CAPITAL_SOURCES, UC_PROPERTY_CAPITAL_OWNERS
+)
+#: The carrier plus the unit's property share: what a unit records when it
+#: reports no Universal Credit, and what the reporter redraw screens on.
+UC_CAPITAL_WITH_PROPERTY_DEFINITION = _recorded_capital_definition(
+    UC_PROPERTY_CAPITAL_SHARE
+)
+#: A unit that reports Universal Credit keeps its receipt: DWP assessed its
+#: capital to pay it, and the property share is imputed without that receipt
+#: (the WAS file has no Universal Credit column) and shared over every
+#: claimant or partner in the household. So such a unit records the carrier
+#: alone, the take-up stages' rule that a reported receipt is a fact
+#: (microcosm#1095).
+UC_PROPERTY_CAPITAL_REPORTER_RULE = "no_share"
+UC_REPORTED_CAPITAL_DEFINITION = (
+    f"{UC_CAPITAL_REDRAW_OUTPUT} + {UC_PROPERTY_CAPITAL_SHARE} where "
+    f"{UC_CAPITAL_REDRAW_OUTPUT} >= 0 and NOT {UC_CAPITAL_REPORTER_STATUS}, "
+    f"else {UC_CAPITAL_REDRAW_OUTPUT}"
+)
+#: The stage's declared derivations; ``_assert_stage_parameters`` refuses a
+#: manifest that says otherwise.
+UC_CAPITAL_COHERENCE_DERIVED = {
+    UC_PROPERTY_CAPITAL_SHARE: UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    PENSION_CREDIT_PROPERTY_CAPITAL_SHARE: _property_share_definition(
+        PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        PENSION_CREDIT_PROPERTY_CAPITAL_OWNERS,
+    ),
+    "uc_reported_capital": UC_REPORTED_CAPITAL_DEFINITION,
+    "pension_credit_reported_capital": _recorded_capital_definition(
+        PENSION_CREDIT_PROPERTY_CAPITAL_SHARE
+    ),
+    "would_claim_uc": "would_claim_uc OR universal_credit_reported_anchor",
+}
 
 
 @dataclass(frozen=True)
@@ -89,6 +165,7 @@ class UKUCCapitalCoherenceResult:
     capital_against_investment_income: Mapping[str, object] = field(
         default_factory=dict
     )
+    property_shares: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         """Return JSON-safe stage evidence."""
@@ -106,6 +183,7 @@ class UKUCCapitalCoherenceResult:
             "capital_against_investment_income": dict(
                 self.capital_against_investment_income
             ),
+            "property_shares": dict(self.property_shares),
         }
 
 
@@ -117,11 +195,18 @@ class UKUCCapitalCoherenceStageTransform:
     #: Synthetic fixtures too small for the declared donor floor pass a lower
     #: one; every build runs the declared ``UC_CAPITAL_MINIMUM_CELL_DONORS``.
     minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS
+    #: The engine's ages at the build instant; read from policyengine-uk when
+    #: not given, as the take-up stages do.
+    population_policy: UKTakeUpPopulationPolicy | None = None
     last_result: UKUCCapitalCoherenceResult | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         _assert_stage_parameters(self.stage)
-        result = cohere_uc_capital(frame, minimum_cell_donors=self.minimum_cell_donors)
+        result = cohere_uc_capital(
+            frame,
+            minimum_cell_donors=self.minimum_cell_donors,
+            population_policy=self.population_policy,
+        )
         object.__setattr__(self, "last_result", result)
         return result.frame
 
@@ -138,7 +223,10 @@ class UKUCCapitalCoherenceStageTransform:
 
 
 def cohere_uc_capital(
-    frame: Frame, *, minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS
+    frame: Frame,
+    *,
+    minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS,
+    population_policy: UKTakeUpPopulationPolicy | None = None,
 ) -> UKUCCapitalCoherenceResult:
     """Make late SPI UC receipt, FRS capital, and take-up flags coherent."""
 
@@ -152,6 +240,8 @@ def cohere_uc_capital(
             "person_benunit_id",
             "person_household_id",
             "universal_credit_reported",
+            "age",
+            UC_PROPERTY_CAPITAL_OWNERS,
             *UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS,
         ),
         label="person",
@@ -167,7 +257,12 @@ def cohere_uc_capital(
         ),
         label="benunit",
     )
-    _require_columns(household, ("household_id",), label="household")
+    _require_columns(
+        household,
+        ("household_id", *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
+        label="household",
+    )
+    policy = population_policy or uk_take_up_population_policy(uk_time_period(frame))
 
     reporter = _post_fill_reporter_anchor(person, benunit)
     capital = pd.to_numeric(
@@ -222,13 +317,41 @@ def cohere_uc_capital(
     previous_would_claim = _boolean_values(benunit["would_claim_uc"])
     refreshed_would_claim = previous_would_claim | reporter
     benunit[UC_CAPITAL_REDRAW_OUTPUT] = capital
-    benunit["uc_reported_capital"] = capital.copy()
-    # Pension Credit reads the same recorded capital (pe-uk#2018 and #2070,
-    # uk-data#513): 0 or more replaces every capital source in its assessable
-    # capital, and the unavailable sentinel -1 is the engine's own default, so
-    # the household proxy applies there.
-    benunit["pension_credit_reported_capital"] = capital.copy()
+    # Both programmes read a recorded capital (pe-uk#2018 and #2070,
+    # uk-data#513): 0 or more replaces every capital source in the assessable
+    # capital, so each adds the unit's share of the household's property to
+    # the financial carrier. The unavailable sentinel -1 is the engine's own
+    # default, so the household proxy applies there and the sentinel passes
+    # through unchanged. A unit that reports Universal Credit keeps its
+    # receipt and records no UC share.
+    uc_proxy_share = uc_property_capital_share(person, benunit, household)
+    uc_share = uc_recorded_property_share(person, benunit, household)
+    pension_credit_share = pension_credit_property_capital_share(
+        person,
+        benunit,
+        household,
+        qualifying_age=policy.state_pension_age,
+    )
+    uc_capital = recorded_capital_with_property(capital, uc_share)
+    pension_credit_capital = recorded_capital_with_property(
+        capital, pension_credit_share
+    )
+    benunit["uc_reported_capital"] = uc_capital
+    benunit["pension_credit_reported_capital"] = pension_credit_capital
     benunit["would_claim_uc"] = refreshed_would_claim
+    property_receipt = _property_share_receipt(
+        weights=weights,
+        base=base,
+        spi=spi,
+        reporter=reporter,
+        carrier=capital,
+        shares={
+            "universal_credit": (uc_share, uc_capital),
+            "pension_credit": (pension_credit_share, pension_credit_capital),
+        },
+        qualifying_age=policy.state_pension_age,
+        uc_proxy_share=uc_proxy_share,
+    )
 
     result_frame = uk_national_frame(
         person=person,
@@ -251,7 +374,187 @@ def cohere_uc_capital(
             "before": receipt_before,
             "after": receipt_after,
         },
+        property_shares=property_receipt,
     )
+
+
+def uc_property_capital_share(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    """Each unit's share of its household's countable property for UC.
+
+    The household's ``UC_PROPERTY_CAPITAL_SOURCES`` times the unit's claimants
+    and partners (``is_uc_claimant``) over the household's, as
+    ``uc_assessable_capital`` shares residual household capital. In
+    benefit-unit row order.
+    """
+
+    role = person[UC_PROPERTY_CAPITAL_OWNERS]
+    if not pd.api.types.is_bool_dtype(role.dtype):
+        raise ValueError(f"{UC_PROPERTY_CAPITAL_OWNERS} must be a boolean column.")
+    return _household_property_share(
+        person,
+        benunit,
+        household,
+        sources=UC_PROPERTY_CAPITAL_SOURCES,
+        owner=role.to_numpy(dtype=bool),
+    )
+
+
+def uc_recorded_property_share(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    """The UC property share a unit's recorded capital carries.
+
+    :func:`uc_property_capital_share`, and none for a unit that reports
+    Universal Credit (``UC_PROPERTY_CAPITAL_REPORTER_RULE``): its receipt is a
+    fact, and the imputed property would end it. The other units of its
+    household keep their own shares. In benefit-unit row order.
+    """
+
+    share = uc_property_capital_share(person, benunit, household)
+    return np.where(_post_fill_reporter_anchor(person, benunit), 0.0, share)
+
+
+def pension_credit_property_capital_share(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    qualifying_age: int,
+) -> np.ndarray:
+    """Each unit's share of its household's countable property for Pension Credit.
+
+    The household's ``PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES`` times the
+    unit's members at or over ``qualifying_age`` over the household's, as
+    ``pension_credit_assessable_capital`` shares household capital. A unit with
+    no such member gets 0, as the engine assesses it no Pension Credit
+    capital. In benefit-unit row order.
+    """
+
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(
+        dtype=float, na_value=np.nan
+    )
+    if not np.isfinite(age).all():
+        raise ValueError("person.age must be finite to share Pension Credit capital.")
+    return _household_property_share(
+        person,
+        benunit,
+        household,
+        sources=PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        owner=age >= qualifying_age,
+    )
+
+
+def recorded_capital_with_property(
+    carrier: np.ndarray, share: np.ndarray
+) -> np.ndarray:
+    """The carrier plus the property share; the -1 sentinel passes through."""
+
+    carrier = np.asarray(carrier, dtype=float)
+    return np.where(carrier >= 0.0, carrier + np.asarray(share, dtype=float), carrier)
+
+
+def _household_property_share(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    sources: tuple[str, ...],
+    owner: np.ndarray,
+) -> np.ndarray:
+    values = household[list(sources)].apply(pd.to_numeric, errors="coerce")
+    property_value = values.sum(axis=1, min_count=len(sources)).to_numpy(
+        dtype=float, na_value=np.nan
+    )
+    if not np.isfinite(property_value).all() or (property_value < 0.0).any():
+        raise ValueError(f"household {list(sources)} must be finite and nonnegative.")
+    benunit_household = _benunit_households(benunit, person=person)
+    owners = pd.Series(np.asarray(owner, dtype=float))
+    unit_owners = (
+        owners.groupby(person["person_benunit_id"].to_numpy(), sort=False)
+        .sum()
+        .reindex(benunit["benunit_id"].to_numpy(), fill_value=0.0)
+        .to_numpy(dtype=float)
+    )
+    household_owners = (
+        owners.groupby(person["person_household_id"].to_numpy(), sort=False)
+        .sum()
+        .reindex(benunit_household, fill_value=0.0)
+        .to_numpy(dtype=float)
+    )
+    household_value = (
+        pd.Series(property_value, index=household["household_id"].to_numpy())
+        .reindex(benunit_household)
+        .to_numpy(dtype=float)
+    )
+    if np.isnan(household_value).any():
+        raise ValueError("Household property does not cover every benefit unit.")
+    share = np.zeros(len(benunit), dtype=float)
+    owned = household_owners > 0.0
+    # A ratio of 1 leaves a one-unit household's property exact.
+    share[owned] = household_value[owned] * (
+        unit_owners[owned] / household_owners[owned]
+    )
+    return share
+
+
+def _property_share_receipt(
+    *,
+    weights: np.ndarray,
+    base: np.ndarray,
+    spi: np.ndarray,
+    reporter: np.ndarray,
+    carrier: np.ndarray,
+    shares: Mapping[str, tuple[np.ndarray, np.ndarray]],
+    qualifying_age: int,
+    uc_proxy_share: np.ndarray,
+) -> dict[str, object]:
+    """Aggregate receipt of the property the recorded capitals now carry."""
+
+    available = carrier >= 0.0
+    limit = _UC_CAPITAL_RECEIPT_LIMITS[-1]
+    receipt: dict[str, object] = {"pension_credit_qualifying_age": qualifying_age}
+    for programme, (share, recorded) in shares.items():
+        with_share = available & (share > 0.0)
+        receipt[programme] = {
+            name: {
+                "benefit_units_with_share": int((rows & with_share).sum()),
+                "weighted_share_total": float(
+                    (weights * share)[rows & available].sum()
+                ),
+                "units_moved_above_16000": int(
+                    (rows & available & (carrier <= limit) & (recorded > limit)).sum()
+                ),
+            }
+            for name, rows in (("frs", base), ("spi", spi))
+        }
+    uc_recorded = shares["universal_credit"][1]
+    receipt["uc_reporters_recorded_capital_above_16000"] = {
+        name: int((rows & reporter & (uc_recorded > limit)).sum())
+        for name, rows in (("frs", base), ("spi", spi))
+    }
+    # The units the reporter rule leaves without the share the proxy gives
+    # them, and that share.
+    withheld = available & reporter & (uc_proxy_share > 0.0)
+    receipt["uc_reporters_keeping_receipt"] = {
+        name: {
+            "benefit_units": int((rows & withheld).sum()),
+            "weighted_share_withheld": float(
+                (weights * uc_proxy_share)[rows & withheld].sum()
+            ),
+            "units_kept_at_or_below_16000": int(
+                (
+                    rows
+                    & withheld
+                    & (carrier <= limit)
+                    & (carrier + uc_proxy_share > limit)
+                ).sum()
+            ),
+        }
+        for name, rows in (("frs", base), ("spi", spi))
+    }
+    return receipt
 
 
 def _post_fill_reporter_anchor(
@@ -419,27 +722,32 @@ def _household_to_benunit_weights(
     household: pd.DataFrame,
     household_weights: np.ndarray,
 ) -> np.ndarray:
-    placements = person[["person_benunit_id", "person_household_id"]].drop_duplicates()
-    counts = placements.groupby("person_benunit_id", sort=False)[
-        "person_household_id"
-    ].nunique()
-    if (counts != 1).any():
-        raise ValueError("Every benefit unit must map to exactly one household.")
-    household_by_benunit = placements.set_index("person_benunit_id")[
-        "person_household_id"
-    ]
     weight_by_household = pd.Series(
         np.asarray(household_weights, dtype=float),
         index=household["household_id"],
     )
-    mapped_households = benunit["benunit_id"].map(household_by_benunit)
-    weights = mapped_households.map(weight_by_household)
+    weights = pd.Series(_benunit_households(benunit, person=person)).map(
+        weight_by_household
+    )
     if weights.isna().any():
         raise ValueError("Household weights do not cover every benefit unit.")
     values = weights.to_numpy(dtype=float)
     if not np.isfinite(values).all() or (values < 0.0).any():
         raise ValueError("Mapped benefit-unit weights must be finite and nonnegative.")
     return values
+
+
+def _benunit_households(benunit: pd.DataFrame, *, person: pd.DataFrame) -> np.ndarray:
+    """Each benefit unit's household id, in benefit-unit row order."""
+
+    placements = person[["person_benunit_id", "person_household_id"]].drop_duplicates()
+    if placements["person_benunit_id"].duplicated().any():
+        raise ValueError("Every benefit unit must map to exactly one household.")
+    return (
+        benunit["benunit_id"]
+        .map(placements.set_index("person_benunit_id")["person_household_id"])
+        .to_numpy()
+    )
 
 
 def _dependent_children_band(values: pd.Series) -> np.ndarray:
@@ -465,6 +773,16 @@ def _boolean_values(values: pd.Series) -> np.ndarray:
 
 
 def _assert_stage_parameters(stage: SourceStageSpec) -> None:
+    derived = [
+        operation.parameters.get("derived")
+        for operation in stage.operations
+        if operation.kind == "derive"
+    ]
+    if derived != [UC_CAPITAL_COHERENCE_DERIVED]:
+        raise ValueError(
+            "uc_capital_coherence must declare one derive operation with the "
+            f"code's derivations {UC_CAPITAL_COHERENCE_DERIVED}, got {derived}."
+        )
     redraw = [
         operation
         for operation in stage.operations

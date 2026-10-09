@@ -345,6 +345,14 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "savings_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
+            # The recorded capitals' property shares: UC by claimants and
+            # partners, Pension Credit by members at or over its qualifying
+            # age (microcosm#1095).
+            ("person", "age"),
+            ("person", "is_uc_claimant"),
+            ("household", "owned_land"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "dependent_children"),
             ("benunit", "frs_benunit_capital"),
