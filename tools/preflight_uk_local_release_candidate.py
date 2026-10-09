@@ -62,9 +62,10 @@ def check_env(
     else:
         try:
             raw = base64.b64decode(key.strip(), validate=True)
-            if len(raw) < 32:
+            if len(raw) != 32:
                 failures.append(
-                    f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; need ≥ 32."
+                    f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
+                    "battery signs only with exactly 32."
                 )
         except Exception:
             failures.append(f"{SIGNING_KEY_ENV} is not valid base64.")

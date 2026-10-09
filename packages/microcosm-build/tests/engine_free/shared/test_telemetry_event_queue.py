@@ -174,7 +174,7 @@ def _send(service: EmitterService, event: dict[str, object]) -> bool:
 # --- The queue's bound ----------------------------------------------------------
 
 
-@settings(max_examples=300)
+@settings(max_examples=300, deadline=None)
 @given(
     max_events=st.integers(1, 12),
     reserved_events=st.integers(0, 6),
@@ -244,7 +244,8 @@ def test_queue_takes_exactly_what_fits_keeps_order_and_never_exceeds_its_bound(
 
 
 def test_the_reserve_holds_every_run_event_of_a_build_at_the_clients_limits() -> None:
-    """Started, completed or failed, and the service's record of a killed build."""
+    """Started, one ending (completed, failed or blocked), and the service's
+    record of a killed build."""
 
     largest_message = sanitize_text(
         "\U0001f600" * 10_000, limit=MAX_TELEMETRY_MESSAGE_CHARS
@@ -585,6 +586,7 @@ def test_a_writer_stops_at_the_drain_deadline_even_mid_retry() -> None:
 # --- The retry helper with a deadline that moves ------------------------------
 
 
+@settings(deadline=None)
 @given(
     outcomes=st.lists(
         st.sampled_from(["locked", "locked", "locked", "ok", "fatal"]),

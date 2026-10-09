@@ -25,6 +25,7 @@ LOCAL_ONLY_MISSING_CREDENTIAL: Final = "missing_huggingface_credential"
 LOCAL_ONLY_REJECTED_CREDENTIAL: Final = "huggingface_credential_rejected"
 LOCAL_ONLY_REJECTED_REGISTRATION: Final = "run_registration_rejected"
 LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION: Final = "collector_authorization_rejected"
+LOCAL_ONLY_REJECTED_EVENTS: Final = "collector_rejected_events"
 LOCAL_ONLY_PRE_ELIGIBILITY: Final = "created_before_upload_eligibility"
 
 NO_CREDENTIAL_MESSAGE: Final = (
@@ -35,6 +36,11 @@ REJECTED_CREDENTIAL_MESSAGE: Final = (
     "Microcosm telemetry is local-only for this run: the ambient Hugging Face "
     "credential was not accepted as a PolicyEngine organization member. The "
     "dataset build will continue."
+)
+REJECTED_EVENTS_MESSAGE: Final = (
+    "Microcosm telemetry is local-only for this run: the collector rejected its "
+    "events (HTTP {status}), so they will not be retried. The dataset build will "
+    "continue."
 )
 COLLECTOR_URL_HTTPS_ERROR: Final = "collector URL must be an HTTPS origin"
 COLLECTOR_URL_ORIGIN_ERROR: Final = (
@@ -77,8 +83,8 @@ SPOOL_LOCKED_EXIT_STATUS: Final = 75  # EX_TEMPFAIL from sysexits.h
 # the build's sends. The queue holds at most QUEUE_MAX_EVENTS events and
 # QUEUE_MAX_BYTES of their encoded JSON. The last QUEUE_RESERVED_EVENTS and
 # QUEUE_RESERVED_BYTES of that room take only run events (started, completed,
-# failed), so a queue that progress updates have filled still records how the
-# build ended.
+# failed, blocked), so a queue that progress updates have filled still records
+# how the build ended.
 QUEUE_MAX_EVENTS: Final = 10_000
 QUEUE_MAX_BYTES: Final = 16 * 1024 * 1024
 QUEUE_RESERVED_EVENTS: Final = 16

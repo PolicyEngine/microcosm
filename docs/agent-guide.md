@@ -23,6 +23,16 @@ uv run pytest <path>     # focused test while developing
 uv run ruff check .      # lint
 ```
 
+Each country keeps its own policyengine-core pin (#1086). The extras that
+install policyengine-us pin the core the certified US default was built with,
+and the extras that install policyengine-uk follow policyengine-uk's own core
+floor. So no environment can hold both engines: uv refuses any sync that asks
+for an extra that installs policyengine-us (`microcosm-build[us]`,
+`microcosm-data[us]` or `microcosm-frame[policyengine]`) together with one that
+installs policyengine-uk, such as `uv sync --all-packages --extra us --extra uk`
+or `uv sync --all-packages --all-extras`. To keep both countries set up, point
+`UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
+
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, and `wheels` jobs, plus the
 `select-countries` orchestration job.
@@ -76,7 +86,9 @@ The Orrery parser compatibility assertion lives in
 engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
-parser to accept it. It performs no browser rendering.
+parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
+uses the same pinned parser for groups, statuses, activities and artifacts.
+These CI tests perform no browser rendering.
 
 Workspace tests use an in-memory telemetry emitter by default. The shared
 fixture isolates Hugging Face credentials and cache paths and blocks collector
@@ -338,6 +350,35 @@ module instead of copying it or reconstructing alternate views in consumers.
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+The transport build driver (`tools/build_transport.py`, a shim over
+`microcosm.build.transport.cli`) composes a country's graph from its
+`transport_graph.json` spec resource and runs it locally: every file it
+writes, including its `.graph-store`, lies under `--out`, and it has no
+upload or staging path. Before it opens the store it refuses any link in an
+existing store tree (the root, `objects`, `tmp` or a shard), because the
+store creates those directories by following links; it does not guard
+against links planted while a build is running. It refuses before reading any graph source while the
+country spec still has unresolved evidence: every selected resource/reference
+set and every null scenario knob is checked before donor preparation.
+Tests for it run on the engine-free toy package in
+`test_support/microcosm_build/transport_composed.py`. The rules registry checks
+module hashes and binds the RuleSpec tree digest. Engine commit and wheel
+SHA-256 pins, and the RuleSpec commit for exported trees, are format-checked
+caller declarations; installed engine provenance is not checked.
+Fresh driver runs write identical HDF5 bytes with object timestamps disabled;
+readback keys continue to include the complete container bytes. CREATE's column
+inventory is cached by implementation, parameters and source bytes. A cold
+build runs CREATE twice (inventory probe and graph execution); warm inventory
+lookups hash the inputs without running the probe. Cold `--resume require`
+refuses before preparation. Output directories must also be disjoint from a
+local `--spec-dir`.
+G7 extensions can wrap a factory in `TransportExtension` to declare additional
+sources and ordered checkpoints. Source names must be new; skeleton predecessor
+sets must stay identical. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. `transport_rules_node` supplies
+the prepared engine reference and period from the binding, so extensions do
+not repeat period values.
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)

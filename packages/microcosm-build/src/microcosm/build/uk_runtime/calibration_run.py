@@ -317,8 +317,15 @@ def load_bound_spine_checkpoint(
     frame: Frame,
     *,
     gate_report_path: Path | None = None,
+    input_sha256: str | None = None,
 ) -> dict[str, object]:
-    """Authenticate a canonical graph checkpoint, without historical bypasses."""
+    """Authenticate a canonical graph checkpoint, without historical bypasses.
+
+    ``input_sha256`` is the measured digest of the H5 being bound. A sidecar
+    that records its spine's file digest (``output.sha256``) must name that
+    same file; older sidecars carry no such key and are bound by content
+    identity alone.
+    """
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 
     path = Path(path)
@@ -331,6 +338,17 @@ def load_bound_spine_checkpoint(
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    recorded = sidecar.get("output")
+    if (
+        input_sha256 is not None
+        and isinstance(recorded, Mapping)
+        and recorded.get("sha256")
+        and recorded["sha256"] != input_sha256
+    ):
+        raise ValueError(
+            "Spine checkpoint sidecar records another H5 file: its output.sha256 "
+            f"{recorded['sha256']} is not the input's {input_sha256}."
+        )
     identity = sidecar.get("uk_frame_content_identity")
     if not isinstance(identity, str) or not identity:
         raise ValueError("Unbound spine checkpoint: no uk_frame_content_identity.")
@@ -884,20 +902,24 @@ def finalize_uk_scoped_gate_report(
     posture: str,
     scope_exclusions: Mapping[str, str],
     aggregate_admin_measurement: object,
+    resign: bool = True,
 ) -> None:
     """Graft the scoped-report trio onto a battery payload and re-sign it.
 
     Every scoped UK producer (the calibration seam, the release-cut
-    certification) declares its posture, the rationale for each gate it
-    does not run, and its admin-anchor measurement receipt, then signs the
-    augmented bytes. One implementation, shared, so the parts the
-    certification composes over cannot drift apart in shape.
+    certification, the dense line's local battery) declares its posture,
+    the rationale for each gate it does not run, and its admin-anchor
+    measurement receipt, then signs the augmented bytes. One
+    implementation, shared, so the parts the certification composes over
+    cannot drift apart in shape. ``resign=False`` grafts the trio onto a
+    report that stays unsigned (its attestation keeps ``signing_error``).
     """
 
     payload["posture"] = posture
     payload["scope_exclusions"] = dict(scope_exclusions)
     payload["aggregate_admin_measurement"] = aggregate_admin_measurement
-    resign_uk_gate_report(payload)
+    if resign:
+        resign_uk_gate_report(payload)
 
 
 def resign_uk_gate_report(payload: dict[str, object]) -> None:

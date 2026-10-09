@@ -263,6 +263,118 @@ def binding_solver():
     return value
 
 
+@pytest.mark.parametrize("k", [None, 2, 3])
+def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
+    k, tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime.orrery_contract import UK_SUMMARY_PROVIDERS
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        orrery_document,
+        record_run_binding,
+    )
+
+    graph, endpoints = compiled(k)
+    fixture = tmp_path / "fixture"
+    fixture.write_bytes(b"fixture")
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        graph, sources={"fixture": fixture}, store=store, kernels=registry()
+    )
+    expected = restore_uk_graph_result(
+        source_frame(),
+        problem_payload=store.load_bytes(
+            manifest.nodes[endpoints.problem_producer].opaque_artifacts["problem"]
+        ),
+        result_payload=store.load_bytes(
+            manifest.nodes[endpoints.result_producer].opaque_artifacts["result"]
+        ),
+        solution_payload=store.load_bytes(
+            manifest.nodes[endpoints.solution_producer].opaque_artifacts["solution"]
+        ),
+        original_problem_payload=problem_payload(),
+    )
+    import microcosm.calibrate.solve as solver
+
+    monkeypatch.setattr(
+        solver, "calibrate", lambda *a, **kw: pytest.fail("export reran solver")
+    )
+    run = record_run_binding(graph, manifest, attempt_id="fixture", phase="numerical")
+    evidence = collect_execution_evidence(
+        graph_schema(graph),
+        runs=[run],
+        store=store,
+        artifact_summaries=UK_SUMMARY_PROVIDERS,
+    )
+    summary = next(
+        item["data"]
+        for item in evidence["summaries"]
+        if item["node"] == endpoints.result_producer and item["artifact"] == "result"
+    )
+    rows = summary["tables"]["targets"]
+    assert rows[0]["target"] == expected.diagnostics[0].target
+    assert rows[0]["achieved"] == expected.diagnostics[0].final_estimate
+    assert (
+        rows[0]["residual"]
+        == expected.diagnostics[0].final_estimate - expected.diagnostics[0].target
+    )
+    assert rows[0]["uncertainty"]["status"] == "not_recorded"
+    assert summary["overview"]["final_weights"]["total"] == float(
+        expected.weights.sum()
+    )
+    assert summary["overview"]["final_weights"]["records"] == (3 if k is None else k)
+    if k is not None:
+        size = next(
+            item["data"]["overview"]
+            for item in evidence["summaries"]
+            if item["artifact"] == "size"
+        )
+        assert size["method"] == (
+            "full_pool" if k == 3 else "contribution_informed_l0_exact_count_refit"
+        )
+    preflight = next(
+        item["data"]
+        for item in evidence["summaries"]
+        if item["node"] == "pool" and item["artifact"] == "preflight"
+    )
+    assert preflight["overview"]["kind"] == "uk_full_gate_report"
+    assert preflight["overview"]["phase"] == "preflight"
+    assert preflight["overview"]["enforcement"]["artifact_permitted"] is True
+    assert preflight["overview"]["status_counts"]["passed"] == len(
+        preflight["tables"]["gates"]
+    )
+    assert {row["status"] for row in preflight["tables"]["gates"]} == {"passed"}
+    assert "details" not in preflight["tables"]["gates"][0]
+    serialized = json.dumps(evidence)
+    assert '"household_ids":' not in serialized
+    assert '"pool_row_indices":' not in serialized
+    assert '"inclusion_probabilities":' not in serialized
+    document = orrery_document(graph, execution=evidence)
+    result_node = next(
+        node
+        for node in document["nodes"]
+        if json.loads(node["id"]) == ["operation", endpoints.result_producer]
+    )
+    assert result_node["data"]["artifact_summaries"]
+    pool = next(
+        node
+        for node in document["nodes"]
+        if json.loads(node["id"]) == ["operation", "pool"]
+    )
+    assert pool["data"]["artifact_summaries"]["preflight"]["tables"]["gates"]["rows"]
+    assert [badge["label"] for badge in pool["statuses"]] == [
+        "Execution: completed",
+        "Computed: numerical",
+    ]
+    single_file = [
+        artifact
+        for artifact in document["artifacts"]
+        if artifact["label"].endswith("(bytes, 1 file)")
+    ]
+    assert single_file and all(len(a["sha256"]) == 64 for a in single_file)
+
+
 def test_reused_draw_skips_rng_and_rejects_changed_binding(monkeypatch):
     frame = source_frame()
     dense = calibrate(frame, targets(), epochs=2)
@@ -556,3 +668,64 @@ def test_select_warm_starts_the_search_and_refuses_bad_hints(monkeypatch):
         frame, dense, selection=warm, draw=draw, initial_lambda=1e-3, **options
     )
     assert refit.receipt["selection_l0_lambda"] == warm.selection.l0_lambda
+
+
+def test_summary_provider_failure_is_diagnostic_in_capture_and_strict_at_export(
+    tmp_path,
+):
+    from microcosm.calibrate.artifacts import PROBLEM_TYPE
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        load_run_evidence,
+        orrery_document,
+        record_run_binding,
+        save_run_evidence,
+    )
+
+    graph, endpoints = compiled(None)
+    fixture = tmp_path / "fixture"
+    fixture.write_bytes(b"fixture")
+    store = ContentStore(tmp_path / "store")
+    manifest = run_graph(
+        graph, sources={"fixture": fixture}, store=store, kernels=registry()
+    )
+
+    def failing(context):
+        raise RuntimeError("provider refused the artifact")
+
+    providers = {(PROBLEM_TYPE.name, PROBLEM_TYPE.schema_version): failing}
+    # Capture after a successful solve records the failure and continues.
+    index = save_run_evidence(
+        graph,
+        manifest,
+        store=store,
+        directory=tmp_path / "evidence",
+        attempt_id="fixture",
+        phase="numerical",
+        artifact_summaries=providers,
+    )
+    runs = load_run_evidence(index, store=store)
+    evidence = collect_execution_evidence(graph_schema(graph), runs=runs, store=store)
+    problem = next(
+        item
+        for item in evidence["summaries"]
+        if item["node"] == "pool" and item["artifact"] == "problem"
+    )
+    assert problem["data"] == {}
+    assert problem["error"] == "RuntimeError: provider refused the artifact"
+    status = evidence["phases"][0]["operations"]["pool"]["artifact_summary_status"]
+    assert status["problem"] == "provider_failed"
+    document = orrery_document(graph, execution=evidence)
+    pool = next(
+        node
+        for node in document["nodes"]
+        if json.loads(node["id"]) == ["operation", "pool"]
+    )
+    assert pool["data"]["artifact_summaries"]["problem"]["status"] == "provider_failed"
+    # The explicit export runs providers strictly.
+    run = record_run_binding(graph, manifest, attempt_id="fixture", phase="numerical")
+    with pytest.raises(RuntimeError, match="provider refused"):
+        collect_execution_evidence(
+            graph_schema(graph), runs=[run], store=store, artifact_summaries=providers
+        )

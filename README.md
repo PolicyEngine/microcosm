@@ -58,7 +58,7 @@ each event as soon as the event is queued in its memory, and a separate writer
 thread appends queued events to the spool in the order they arrived, retrying
 for as long as another process holds the spool's lock, so a busy spool never
 delays the build. The queue holds at most 10,000 events or 16 MiB, keeping
-room for the run's started, completed and failed events; when it is full the
+room for the run's started, completed, failed and blocked events; when it is full the
 service refuses further updates and prints one warning line. When the build
 closes or dies, the service spends up to 15 s writing what is still queued and
 reports in one line anything it could not write. This live event path is
