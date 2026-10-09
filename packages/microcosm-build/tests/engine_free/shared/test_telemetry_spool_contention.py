@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import alembic.op
 import pytest
 from alembic import command
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -218,23 +218,27 @@ def test_service_registers_once_a_held_spool_lock_is_released(
         socket_path, spool_path, ready_deadline=time.time() + 60
     )
     service = threading.Thread(
-        target=lambda: status.append(main_module.main(arguments))
+        target=lambda: status.append(main_module.main(arguments)), daemon=True
     )
 
-    with _write_lock(spool_path):
-        service.start()
-        time.sleep(1.5)
-        assert not socket_path.exists()
-        assert service.is_alive()
-        released_at = time.monotonic()
-    deadline = time.monotonic() + 20
-    while not _ping(socket_path):
-        assert time.monotonic() < deadline, "service never became ready"
-        assert service.is_alive(), f"service exited with {status}"
-        time.sleep(0.02)
-    ready_at = time.monotonic()
-    _close_service(socket_path)
-    service.join(timeout=10)
+    try:
+        with _write_lock(spool_path):
+            service.start()
+            time.sleep(1.5)
+            assert not socket_path.exists()
+            assert service.is_alive()
+            released_at = time.monotonic()
+        deadline = time.monotonic() + 20
+        while not _ping(socket_path):
+            assert time.monotonic() < deadline, "service never became ready"
+            assert service.is_alive(), f"service exited with {status}"
+            time.sleep(0.02)
+        ready_at = time.monotonic()
+    finally:
+        # Stop the service even when an assertion above failed.
+        if socket_path.exists():
+            _close_service(socket_path)
+        service.join(timeout=10)
 
     assert status == [0]
     failures = [error for _, _, error in outcomes if error is not None]
@@ -384,7 +388,7 @@ def test_build_keeps_telemetry_when_the_spool_is_locked_past_a_busy_wait(
         )
         started["returned_at"] = time.monotonic()
 
-    client = threading.Thread(target=start)
+    client = threading.Thread(target=start, daemon=True)
     with _write_lock(spool_path):
         client.start()
         deadline = time.monotonic() + 60
@@ -567,7 +571,7 @@ def test_an_opener_waits_for_a_migration_in_progress(tmp_path) -> None:
         except BaseException as error:
             failures.append(error)
 
-    second = threading.Thread(target=open_spool)
+    second = threading.Thread(target=open_spool, daemon=True)
     try:
         with migrator.begin() as connection:
             second.start()
@@ -725,7 +729,24 @@ def test_prune_runs_at_most_once_per_interval_counting_failures(
 # --- Lock-error classification ------------------------------------------------
 
 
-@given(code=st.integers(0, 2**16))
+# Extended result codes keep the primary code in the low byte, so draw busy and
+# locked primaries with every extension as well as arbitrary codes.
+_RESULT_CODES = st.one_of(
+    st.integers(0, 2**16),
+    st.builds(
+        lambda primary, extension: primary | extension << 8,
+        st.sampled_from([sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED]),
+        st.integers(0, 255),
+    ),
+)
+
+
+@given(code=_RESULT_CODES)
+@example(code=261)  # SQLITE_BUSY_RECOVERY
+@example(code=262)  # SQLITE_LOCKED_SHAREDCACHE
+@example(code=517)  # SQLITE_BUSY_SNAPSHOT
+@example(code=773)  # SQLITE_BUSY_TIMEOUT
+@example(code=1555)  # SQLITE_CONSTRAINT_PRIMARYKEY
 def test_only_busy_and_locked_result_codes_are_transient(code) -> None:
     error = sqlite3.OperationalError("message")
     error.sqlite_errorcode = code
@@ -766,18 +787,26 @@ def test_real_sqlite_errors_are_classified_by_what_retrying_can_fix(tmp_path) ->
 
 # --- The retry helper ---------------------------------------------------------
 
-_OUTCOME = st.sampled_from(["ok", "locked", "fatal"])
+# Lock errors are weighted up and attempts are often short, so most examples
+# retry several times and many give up within one wait of the deadline.
+_OUTCOME = st.sampled_from(["locked", "locked", "locked", "ok", "fatal"])
+_ATTEMPT_SECONDS = st.one_of(st.just(0.0), st.floats(0, 0.3), st.floats(0, 6))
+_LOCKED_THEN_OK = [("locked", 0.0)] * 6 + [("ok", 0.0)]
 
 
 @given(
     outcomes=st.lists(
-        st.tuples(_OUTCOME, st.floats(0, 6)),
+        st.tuples(_OUTCOME, _ATTEMPT_SECONDS),
         min_size=1,
         max_size=40,
     ),
-    window=st.one_of(st.just(-math.inf), st.floats(-5, 60)),
+    window=st.one_of(st.just(-math.inf), st.floats(-1, 3), st.floats(-5, 60)),
     jitter_fraction=st.floats(0, 1),
 )
+# The first retry's full wait (0.05 s) would cross a deadline 0.04 s away.
+@example(outcomes=_LOCKED_THEN_OK, window=0.04, jitter_fraction=1.0)
+# Six retries fit, so the delays must double up to the cap.
+@example(outcomes=_LOCKED_THEN_OK, window=10.0, jitter_fraction=0.5)
 def test_retry_respects_its_deadline_and_backoff(outcomes, window, jitter_fraction):
     clock = SimpleNamespace(now=100.0)
     deadline = clock.now + window
@@ -1056,13 +1085,16 @@ def test_service_stops_serving_when_its_worker_dies(tmp_path) -> None:
         drain_seconds=0,
     )
     service._worker = lambda: None  # returns at once without stopping the service
-    serving = threading.Thread(target=service.run)
+    serving = threading.Thread(target=service.run, daemon=True)
     try:
         serving.start()
         serving.join(timeout=10)
         assert not serving.is_alive()
         assert not socket_path.exists()
     finally:
+        # A failing run must not leave a server thread behind.
+        service._stop.set()
+        serving.join(timeout=5)
         _close(spool)
 
 
