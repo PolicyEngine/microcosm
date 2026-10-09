@@ -3,35 +3,49 @@
 Plan: `repos/microcosm-vat-fuel-energy-implementation-plan.md` (María's rulings of 2026-10-08: D1
 DESNZ volume at QEP prices stays the energy level, D2 the stage sets the road-fuel level and
 incidence, D3 VAT is held out until the engine factor is split). Covers microcosm#1113 and
-microcosm#1123 item 3. Branch `uk-consumption-tax-levels`, off main `75167a688` (#1121 merged),
-which locks policyengine-uk 2.122.2 on policyengine-core 3.32.19.
+microcosm#1123 item 3. Branch `uk-consumption-tax-levels`, written on main `75167a688` (#1121
+merged) and rebased on main `7f235941c` on 2026-10-09; both lock policyengine-uk 2.122.2 on
+policyengine-core 3.32.19. The measurements below ran before the rebase.
 
-Group A needs nothing from PolicyEngine/chronicle#322 and is complete. Group B (Consumer Trends for
-every division and the per-fuel cars benchmark) follows once #322 lands.
+Group A needs nothing from PolicyEngine/chronicle#322. Group B re-pins the feed to the Chronicle
+commit that carries #322's facts (merged as #323), then adds the division capture and the per-fuel
+cars benchmark.
 
 ## Commits
 
-- A1 `cf2f7f2a4`: `obr.vat`, `ons.household_electricity_expenditure` and
+- A1 `26e8e3bb7`: `obr.vat`, `ons.household_electricity_expenditure` and
   `ons.household_gas_expenditure` move to the measure-exclusion register, measured on every
   evaluation with `tools/diagnose_uk_consumption_taxes.py`.
-- A2 `754e64414`: the `level_road_fuel` step sets petrol plus diesel to ONS Consumer Trends 07.2.2
+- A2 `f7a02a321`: the `level_road_fuel` step sets petrol plus diesel to ONS Consumer Trends 07.2.2
   for calendar 2024, less the donor's own other-fuels share (gate `road_fuel_level`).
-- A3 `519aef6e2`: the `redraw_zero_road_fuel` step gives every flagged fuel-car household a
+- A3 `b609d0767`: the `redraw_zero_road_fuel` step gives every flagged fuel-car household a
   positive spend (gate `road_fuel_incidence`).
-- A4 `c252a1c46`: the contract binds `ons.household_road_fuel_expenditure` (07.2.2, calendar 2025,
+- A4 `149fb61b5`: the contract binds `ons.household_road_fuel_expenditure` (07.2.2, calendar 2025,
   GBP 35.099bn), and `obr.fuel_duties_cars` moves to the register. María confirmed this binding on
   2026-10-09.
-- A5 `146b8418e`: the `recompose_from_remainder` step writes housing and transport around their
+- A5 `8db8d6868`: the `recompose_from_remainder` step writes housing and transport around their
   levelled parts (gate `recomposed_totals`).
-- A8 `d04a72896`: the litres audit labels its per-fuel ratios as a uniform cars share. The plan's
-  quarterly 04.5.x and 07.2.2 vendoring is dropped, because no code would read it.
-- A7 `a7a73638e`: `uk_diagnostics.consumption_drift` reports the stage-levelled totals and shares
+- A8 `e3f2a3a58`: the litres audit labels its per-fuel ratios as a uniform cars share. The plan's
+  quarterly 04.5.x and 07.2.2 vendoring is dropped, because no code would read it. B3 replaces the
+  label.
+- A7 `21a4d3a77`: `uk_diagnostics.consumption_drift` reports the stage-levelled totals and shares
   at design and final weights.
-- A6 `357adc2bf`: every LCFS spend column is at calendar-2024 prices, the H5's year. Energy is
+- A6 `ea433d1c5`: every LCFS spend column is at calendar-2024 prices, the H5's year. Energy is
   priced and levelled for calendar 2024, and bus yields are re-priced to 2024 by fares index. The
   gate `consumption_basis` holds every level-setting step to that year, so policyengine-uk can
   project each column from the H5's year with no basis of its own. This replaces the plan's
   per-column declaration (María's ruling of 2026-10-09).
+- B1 `2232d9117`: the feed re-pins to Chronicle `1ee7dfe` (#323, 352,549 rows). No compiled target
+  value moves on either surface, and the three compile-parity receipts are unchanged. The seven
+  Consumer Trends series already in the feed come back on ONS's domestic concept under new keys
+  with the same values.
+- B2 `543533a5d`: the stage receipt reports each division's capture of ONS household spending
+  (`division_capture`, report-only).
+- B3 `59339e4ab`: the litres audit benchmarks each fuel against HMRC clearances times DESNZ's cars
+  share of that fuel's road use.
+- `3ed090d03`: the charter-H2 spine fixture, regenerated once at the head. In the graph only the
+  stage contract hashes move, for `lcfs_consumption` and the ten stages that declare a re-vendored
+  resource.
 
 ## microcosm#1121's head calibration
 
@@ -142,10 +156,43 @@ vehicle-purchase tail, which dominates the remainder once fuel is gone, and the 
 households amplify it. The step therefore keeps each total's own draw and subtracts the chain's
 draws of its parts, which the chain draws after, and conditional on, the total.
 
+## Group B development run
+
+The same stage-only run at B3 (`stage_dev_run.group-b.json`, 66 seconds): all seven gates pass, and
+every Group A figure above is unchanged apart from the litres audit's total, which B3 re-bases.
+
+### Division capture (B2)
+
+Each division's prior-weighted frame total for calendar 2024, against ONS Consumer Trends for 2024
+less the classes a household diary does not record: 02.3 narcotics, 04.2 owner-occupiers' imputed
+rent and 12.6.1 FISIM (GBP 350.6bn together).
+
+- The twelve divisions total GBP 971.4bn against GBP 1,334.6bn in survey scope: 72.8% of ONS's
+  domestic concept and 72.0% of the national one. The donor's own diary totals GBP 780.7bn at
+  2023-24 prices, 58.5% of the same scope. Both sides hold about the same households (29.0m and
+  28.5m of weight), so the gap is in the draws per household, which condition on the frame's own
+  incomes.
+- Housing reads 1.059. Of its GBP 9.7bn excess, GBP 8.0bn is D1's energy level: DESNZ volume at
+  QEP prices (GBP 48.8bn) against ONS 04.5.1 plus 04.5.2 for 2024 (GBP 40.7bn).
+- Furnishings (05) read 1.251: the frame draws GBP 95.1bn against ONS's GBP 76.0bn and the
+  donor's GBP 57.5bn, 66% more per household than the donor. Health (06) is 73% above the donor,
+  though still 0.586 of ONS. The top 1% of households carry 15% of the frame's furnishings and 18%
+  of its health spend. That is the shape of the tail over-draw that ruled out drawing the transport
+  remainder as a chain target, but this run does not test it.
+- Education reads 0.085, half the donor's own 0.177: ONS 10 includes tuition financed by student
+  loans and international students' fees.
+- Alcohol and tobacco (0.469), clothing (0.409) and restaurants and hotels (0.457) are the other
+  low readings. The last also carries non-residents' spending on the domestic concept.
+
+### Litres audit (B3)
+
+For 2024 cars burn 97.8% of road petrol and 39.2% of road diesel (DESNZ ktoe). Against HMRC's
+fiscal 2024-25 clearances times those shares, the frame's petrol litres read 1.011 and its diesel
+litres 0.709. The total reads 0.894, against 0.951 on the OBR cars share of duty receipts (58.3%,
+uniform across fuels). The level step keeps the donor's mix (petrol 68.4% of spend), so the diesel
+shortfall is the diary's petrol-diesel split against DESNZ's cars.
+
 ## Not run
 
-- The national remeasure (R1) runs once Group B lands, on whatever policyengine-uk Microcosm locks
-  then. If the VAT, fuel-duty and energy engine fixes are released by then, the lock moves first in
-  its own PR.
-- The charter-H2 graph parity fixture is regenerated at the final head, after Group B's feed
-  re-pin, which moves it again.
+- The national remeasure (R1) runs on whatever policyengine-uk Microcosm locks then. If the VAT,
+  fuel-duty and energy engine fixes are released by then, the lock moves first in its own PR.
