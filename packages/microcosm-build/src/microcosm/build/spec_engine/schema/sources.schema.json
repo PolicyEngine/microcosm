@@ -9597,7 +9597,8 @@
       "margins_resource",
       "margins_period_value",
       "level_resource",
-      "level_fiscal_start",
+      "level_period_type",
+      "level_period_value",
       "level_temperature_adjustment"
      ],
      "properties": {
@@ -9694,8 +9695,14 @@
       "level_resource": {
        "type": "string"
       },
-      "level_fiscal_start": {
-       "type": "string"
+      "level_period_type": {
+       "enum": [
+        "calendar_year",
+        "fiscal_year"
+       ]
+      },
+      "level_period_value": {
+       "type": "integer"
       },
       "level_temperature_adjustment": {
        "enum": [
@@ -10526,6 +10533,9 @@
       "fiscal_start": {
        "type": "string"
       },
+      "price_year": {
+       "type": "integer"
+      },
       "trip_rates_resource": {
        "type": "string"
       },
@@ -10683,6 +10693,35 @@
          },
          "trips_concept": {
           "type": "string"
+         },
+         "price_index": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept",
+           "frequency"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "frequency": {
+            "enum": [
+             "quarterly",
+             "annual"
+            ]
+           },
+           "basis": {
+            "type": "string"
+           }
+          }
          },
          "trips_basis": {
           "enum": [

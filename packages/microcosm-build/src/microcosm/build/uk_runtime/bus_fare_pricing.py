@@ -23,6 +23,12 @@ price; ``other_local_bus`` trips take the price of the person's residence area.
 Regions with no published receipts (Wales) are left unpriced and keep the
 chain's raw draw, clipped to donor support (María's ruling, 2026-09-17).
 
+The receipts and journeys are fiscal-year figures. When the declaration names a
+``price_year``, each area's yield is re-priced to that calendar year with a
+published fares index (the DfT local bus fares index by quarter, Scotland's
+calendar-year index), so bus fares sit on calendar 2024 with every other LCFS
+spend column (microcosm#1113).
+
 Every input is a vendored Chronicle row; the receipt records every factor, the
 frame-implied boardings beside the published ones, and the frame's eligible
 trip share beside the publisher's concessionary boarding share, so the
@@ -40,6 +46,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.energy_pricing import period_quarters
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
 PRICE_BUS_JOURNEYS_KIND = "price_bus_journeys"
@@ -155,6 +162,7 @@ class AreaPrice:
     yield_per_fare_paying_boarding: float
     fare_per_trip: float
     concessionary_boarding_share: float
+    calendar_price_factor: float
     trips_basis: str
     receipt: dict[str, Any]
 
@@ -170,6 +178,90 @@ class BusFarePrices:
         return self.other_by_region.get(str(region))
 
 
+def calendar_price_factor(
+    spec: Mapping[str, Any],
+    *,
+    price_year: int,
+    fiscal_start: str,
+    allowed_resources: Sequence[str],
+) -> tuple[float, dict[str, Any]]:
+    """The factor that re-prices a fiscal-year yield to a calendar year.
+
+    ``quarterly``: the fares index's mean over the calendar year's four
+    quarters over its mean over the fiscal year's (rows keyed by quarter
+    coverage). ``annual``: a calendar-year index, the fiscal year starting in
+    April of Y being three quarters of Y and one of Y + 1.
+    """
+
+    resource = str(spec.get("resource") or "")
+    if resource not in allowed_resources:
+        raise BusFarePricingError(f"price index resource {resource!r} is not declared.")
+    concept = str(spec.get("concept") or "")
+    criteria: dict[str, Any] = {"concept": concept}
+    if spec.get("geography_id") is not None:
+        criteria["geography_id"] = str(spec["geography_id"])
+    if not fiscal_start.endswith("-04-01"):
+        raise BusFarePricingError("fiscal_start must be an April 1st.")
+    fiscal_year = int(fiscal_start[:4])
+    frequency = str(spec.get("frequency") or "")
+    receipt: dict[str, Any] = {
+        "resource": resource,
+        "concept": concept,
+        "geography_id": criteria.get("geography_id"),
+        "frequency": frequency,
+        "basis": str(spec.get("basis", "own_index")),
+        "price_year": int(price_year),
+        "fiscal_start": fiscal_start,
+    }
+    if frequency == "quarterly":
+        by_start: dict[str, float] = {}
+        for row in vendored_rows(resource, **criteria):
+            start = str((row.get("period_coverage") or {}).get("start_date"))
+            if start in by_start:
+                raise BusFarePricingError(
+                    f"{resource}: duplicate {concept} quarter {start}."
+                )
+            by_start[start] = float(row["value"])
+        calendar = period_quarters("calendar_year", price_year)
+        fiscal = period_quarters("fiscal_year", fiscal_year)
+        missing = [q for q in (*calendar, *fiscal) if q not in by_start]
+        if missing:
+            raise BusFarePricingError(
+                f"{resource}: {concept} lacks quarters {missing}."
+            )
+        calendar_value = sum(by_start[q] for q in calendar) / 4.0
+        fiscal_value = sum(by_start[q] for q in fiscal) / 4.0
+        receipt["calendar_quarters"] = {q: by_start[q] for q in calendar}
+        receipt["fiscal_quarters"] = {q: by_start[q] for q in fiscal}
+    elif frequency == "annual":
+        values = {}
+        for year in sorted({int(price_year), fiscal_year, fiscal_year + 1}):
+            rows = vendored_rows(
+                resource, period_type="calendar_year", period_value=year, **criteria
+            )
+            if len(rows) != 1:
+                raise BusFarePricingError(
+                    f"{resource}: expected one {concept} row for {year}, found {len(rows)}."
+                )
+            values[year] = float(rows[0]["value"])
+        calendar_value = values[int(price_year)]
+        fiscal_value = 0.75 * values[fiscal_year] + 0.25 * values[fiscal_year + 1]
+        receipt["calendar_years"] = {str(year): value for year, value in values.items()}
+    else:
+        raise BusFarePricingError(f"unsupported price index frequency {frequency!r}.")
+    if calendar_value <= 0 or fiscal_value <= 0:
+        raise BusFarePricingError(f"{resource}: {concept} must be positive.")
+    factor = calendar_value / fiscal_value
+    receipt.update(
+        {
+            "calendar_value": calendar_value,
+            "fiscal_value": fiscal_value,
+            "factor": factor,
+        }
+    )
+    return factor, receipt
+
+
 def bus_fare_prices(
     parameters: Mapping[str, Any], *, allowed_resources: Sequence[str]
 ) -> BusFarePrices:
@@ -182,6 +274,7 @@ def bus_fare_prices(
     trip_rates_period = int(parameters["trip_rates_period_value"])
     population_resource = str(parameters["population_resource"])
     population_period = int(parameters["population_period_value"])
+    price_year = parameters.get("price_year")
     areas = parameters.get("areas")
     if not isinstance(areas, list) or not areas:
         raise BusFarePricingError("price_bus_journeys declares no areas.")
@@ -253,6 +346,18 @@ def bus_fare_prices(
         resident_trips = trips_per_person * population
         k = boardings / resident_trips
         y = receipts / (boardings - concessionary)
+        factor, index_receipt = 1.0, None
+        if price_year is not None:
+            if not isinstance(area.get("price_index"), Mapping):
+                raise BusFarePricingError(
+                    f"area {label!r} declares no price_index for price_year {price_year}."
+                )
+            factor, index_receipt = calendar_price_factor(
+                area["price_index"],
+                price_year=int(price_year),
+                fiscal_start=fiscal_start,
+                allowed_resources=allowed_resources,
+            )
         price = AreaPrice(
             label=label,
             series=series,
@@ -264,8 +369,9 @@ def bus_fare_prices(
             population=population,
             boardings_per_trip=k,
             yield_per_fare_paying_boarding=y,
-            fare_per_trip=k * y,
+            fare_per_trip=k * y * factor,
             concessionary_boarding_share=concessionary / boardings,
+            calendar_price_factor=factor,
             trips_basis=str(area.get("trips_basis", "published_series_rate")),
             receipt={
                 "label": label,
@@ -284,7 +390,9 @@ def bus_fare_prices(
                 "published_resident_trips": resident_trips,
                 "boardings_per_trip": k,
                 "yield_per_fare_paying_boarding": y,
-                "fare_per_trip": k * y,
+                "calendar_price_factor": factor,
+                "price_index": index_receipt,
+                "fare_per_trip": k * y * factor,
                 "concessionary_boarding_share": concessionary / boardings,
                 "trips_basis": str(area.get("trips_basis", "published_series_rate")),
             },
@@ -308,14 +416,16 @@ def bus_fare_prices(
         raise BusFarePricingError("no area prices the bus_in_london series.")
     receipt = {
         "fiscal_start": fiscal_start,
+        "price_year": None if price_year is None else int(price_year),
         "trip_rates_period_value": trip_rates_period,
         "population_period_value": population_period,
         "areas": area_receipts,
         "unpriced_regions": sorted(unpriced),
         "scope_translation": str(parameters.get("scope_translation", "")),
         "algebra": (
-            "fare = sum over series of trips x k x y with k = B / (T x P) and "
-            "y = R / (B - C); frame / R = [frame trips / (T x P)] x "
+            "fare = sum over series of trips x k x y x f with k = B / (T x P), "
+            "y = R / (B - C) and f the fares index's calendar over fiscal-year "
+            "level; frame / R = f x [frame trips / (T x P)] x "
             "[frame fare-paying trip share / (1 - C / B)]: a survey-versus-survey "
             "composition check times a survey-versus-admin concession check, "
             "never a level the stage set."

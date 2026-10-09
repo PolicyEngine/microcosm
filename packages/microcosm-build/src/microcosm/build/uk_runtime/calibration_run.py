@@ -100,6 +100,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_lcfs_consumption_road_fuel_incidence",
     "uk_stage_lcfs_consumption_road_fuel_level",
     "uk_stage_lcfs_consumption_recomposed_totals",
+    "uk_stage_lcfs_consumption_basis",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_etb_services_support_pricing",

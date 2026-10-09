@@ -77,6 +77,8 @@ def uk_stage_health_gate(
         return _bus_travel_facts_gate(stage, evidence, parameters)
     if check == "bus_pricing":
         return _bus_pricing_gate(stage, evidence, parameters)
+    if check == "consumption_basis":
+        return _consumption_basis_gate(stage, evidence, parameters)
     if check == "recomposed_totals":
         return _recomposed_totals_gate(stage, evidence, parameters)
     if check == "road_fuel_incidence":
@@ -2536,9 +2538,10 @@ def _bus_pricing_gate(
     from the receipt): for every declared area the receipts, boardings,
     concessionary journeys, trips per person and population, and the
     boardings-per-trip and yield factors derived from them, must equal the
-    receipt's to ``maximum_relative_deviation``; the unpriced regions must be
-    the declared ones; and the receipt must state that the chain conditioned
-    on the raw draw. The frame-implied boardings against the published ones
+    receipt's to ``maximum_relative_deviation``, as must the fares-index factor
+    that re-prices each fiscal-year yield to the declared calendar year
+    (microcosm#1113); the unpriced regions must be the declared ones; and the
+    receipt must state that the chain conditioned on the raw draw. The frame-implied boardings against the published ones
     are reported, not fenced: that ratio is the survey-versus-admin reading
     the calibration targets then act on (microcosm#930).
     """
@@ -2594,6 +2597,7 @@ def _bus_pricing_gate(
         for key, value in (
             ("boardings_per_trip", area.boardings_per_trip),
             ("yield_per_fare_paying_boarding", area.yield_per_fare_paying_boarding),
+            ("calendar_price_factor", area.calendar_price_factor),
             ("fare_per_trip", area.fare_per_trip),
             ("concessionary_boarding_share", area.concessionary_boarding_share),
         ):
@@ -2629,6 +2633,87 @@ def _bus_pricing_gate(
                 details["frame_implied_over_published_boardings"][str(label)] = (
                     entry.get("frame_implied_over_published_boardings")
                 )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _consumption_basis_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every LCFS spend column is on the declared base year's prices.
+
+    Checks on the receipts of the steps that set the spend levels
+    (microcosm#1113): the donor uprating's target year, the energy prices'
+    and the DESNZ level's periods, the bus prices' re-pricing year and the
+    road-fuel level's period must all be the declared calendar year, so
+    policyengine-uk can project every column from the H5's year with no
+    per-column bases. A step whose receipt is absent fails the check.
+    """
+
+    check = "consumption_basis"
+    period_type = str(parameters.get("period_type") or "")
+    if period_type != "calendar_year":
+        raise ValueError(f"{stage}: the spend basis must be a calendar year.")
+    period_value = parameters.get("period_value")
+    if isinstance(period_value, bool) or not isinstance(period_value, int):
+        raise ValueError(f"{stage}: period_value must be an integer year.")
+    expected = (period_type, period_value)
+    failures: list[str] = []
+    found: dict[str, object] = {}
+
+    def receipt(key: str) -> Mapping[str, object] | None:
+        value = evidence.get(key)
+        if not isinstance(value, Mapping):
+            failures.append(f"{stage}: the stage recorded no {key} receipt.")
+            return None
+        return value
+
+    def period_of(block: Mapping[str, object]) -> tuple[object, object]:
+        return (block.get("period_type"), block.get("period_value"))
+
+    uprating = receipt("donor_uprating")
+    if uprating is not None:
+        found["donor_uprating"] = ("calendar_year", uprating.get("to_period"))
+        if uprating.get("to_period") != period_value:
+            failures.append(
+                f"{stage}: the donor uprating moves the diary to "
+                f"{uprating.get('to_period')!r}, not {period_value}."
+            )
+    energy = receipt("energy_pricing")
+    if energy is not None:
+        level = energy.get("level")
+        level = level if isinstance(level, Mapping) else {}
+        found["energy_prices"] = period_of(energy)
+        found["energy_level"] = period_of(level)
+        for label, observed in (
+            ("energy prices", found["energy_prices"]),
+            ("DESNZ energy level", found["energy_level"]),
+        ):
+            if observed != expected:
+                failures.append(
+                    f"{stage}: the {label} are for {observed}, not {expected}."
+                )
+    bus = receipt("bus_pricing")
+    if bus is not None:
+        found["bus_prices"] = bus.get("price_year")
+        if bus.get("price_year") != period_value:
+            failures.append(
+                f"{stage}: bus fares are priced for {bus.get('price_year')!r}, not "
+                f"{period_value}."
+            )
+    fuel = receipt("road_fuel_level")
+    if fuel is not None:
+        found["road_fuel_level"] = period_of(fuel)
+        if period_of(fuel) != expected:
+            failures.append(
+                f"{stage}: the road-fuel level is for {period_of(fuel)}, not {expected}."
+            )
+    details = {"period": list(expected), "steps": found}
     return (
         _fail(stage, check, failures, details)
         if failures

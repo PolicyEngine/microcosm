@@ -1539,6 +1539,12 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
         "boardings" in f and "not the vendored" in f for f in result.failures
     ), result.failures
     tampered = copy.deepcopy(receipt)
+    tampered["prices"]["england_outside_london"]["calendar_price_factor"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any(
+        "calendar_price_factor" in f for f in result.failures
+    ), result.failures
+    tampered = copy.deepcopy(receipt)
     tampered["chain_conditioned_on"] = "priced"
     result = run(tampered)
     assert not result.passed and any("raw draw" in f for f in result.failures)
@@ -1607,6 +1613,74 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     failing({**receipt, "other_fuels_share": 0.2}, "other-fuels share")
     with pytest.raises(ValueError, match="road_fuel_level must be an object"):
         run(None)
+
+
+def test_consumption_basis_gate_holds_every_spend_level_to_calendar_2024() -> None:
+    """Every LCFS spend column is on the H5's year, calendar 2024 (#1113)."""
+
+    import copy
+
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+
+    gate_id = "uk_stage_lcfs_consumption_basis"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters == {
+        "stage": "lcfs_consumption",
+        "check": "consumption_basis",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+    }
+    evidence = {
+        "stage": "lcfs_consumption",
+        "donor_uprating": {"from_period": 2023, "to_period": 2024},
+        "energy_pricing": {
+            "period_type": "calendar_year",
+            "period_value": 2024,
+            "level": {"period_type": "calendar_year", "period_value": 2024},
+        },
+        "bus_pricing": {"price_year": 2024},
+        "road_fuel_level": {"period_type": "calendar_year", "period_value": 2024},
+    }
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence=ev,
+            stage="lcfs_consumption",
+            check="consumption_basis",
+            parameters=parameters,
+        )
+
+    def failing(mutate, fragment: str) -> None:
+        tampered = copy.deepcopy(evidence)
+        mutate(tampered)
+        result = run(tampered)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(evidence)
+    assert passed.passed, passed.failures
+    assert passed.details["steps"]["energy_level"] == ("calendar_year", 2024)
+    failing(lambda e: e["donor_uprating"].update(to_period=2025), "donor uprating")
+    failing(
+        lambda e: e["energy_pricing"].update(period_type="fiscal_year"), "energy prices"
+    )
+    failing(
+        lambda e: e["energy_pricing"]["level"].update(period_type="fiscal_year"),
+        "DESNZ energy level",
+    )
+    failing(lambda e: e["bus_pricing"].update(price_year=None), "bus fares")
+    failing(lambda e: e["road_fuel_level"].update(period_value=2025), "road-fuel level")
+    failing(lambda e: e.pop("bus_pricing"), "no bus_pricing receipt")
+    with pytest.raises(ValueError, match="calendar year"):
+        uk_stage_health_gate(
+            evidence=evidence,
+            stage="lcfs_consumption",
+            check="consumption_basis",
+            parameters={**parameters, "period_type": "fiscal_year"},
+        )
 
 
 def test_road_fuel_incidence_gate_holds_every_flagged_household_positive() -> None:

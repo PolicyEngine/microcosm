@@ -1793,6 +1793,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
+                # #1113 consumption_basis check: the one base year of every
+                # LCFS spend column.
+                "period_type",
+                "period_value",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

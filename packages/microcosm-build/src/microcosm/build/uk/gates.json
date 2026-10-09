@@ -387,7 +387,22 @@
         "check": "recomposed_totals",
         "maximum_relative_deviation": 1e-09
       },
-      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the diary energy, petrol and diesel; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas or its petrol and diesel and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend, which leaves the housing total because no frame column carries it, is recomputed from the vendored rows and must equal the receipt's. The two totals carry no committed support bound; this check holds them instead. A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the drawn electricity and gas, or petrol and diesel; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas or its petrol and diesel and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend, which stays inside the housing remainder because no frame column carries it, is recomputed from the vendored rows and must equal the receipt's. The two totals carry no committed support bound; this check holds them instead. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_basis",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "consumption_basis",
+        "period_type": "calendar_year",
+        "period_value": 2024
+      },
+      "notes": "Stage-time check that every household spend column lcfs_consumption emits is at calendar-2024 prices as households paid them (microcosm#1113): the H5's year, which policyengine-uk projects every column from with calendar-year growth and the calibration uprates to the calendar-2025 window, so no column needs a basis of its own. The donor uprating must move the diary to 2024, the QEP energy prices and the DESNZ volume level must be for calendar 2024, bus fares must be re-priced to 2024 by the fares indices, and the road-fuel level must be ONS 07.2.2 for calendar 2024; a step whose receipt is absent fails. A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_etb_vat_support",

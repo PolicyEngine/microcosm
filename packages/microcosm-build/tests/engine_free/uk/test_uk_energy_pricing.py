@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.energy_pricing import (
     kwh_to_spend,
     need_geography,
     need_margins_from_facts,
+    period_quarters,
     pricing_operation,
     published_energy_level,
     published_gas_connected_shares,
@@ -62,7 +63,7 @@ def _qep_value(concept: str, region: str, component: str, fuel: str) -> float:
     rows = vendored_rows(
         "qep_energy_prices.json",
         concept=concept,
-        period_type="fiscal_year",
+        period_type="calendar_year",
         period_value=2024,
         groupby_value_id=region,
         dimensions=dims,
@@ -82,14 +83,27 @@ def test_fiscal_year_quarters() -> None:
         fiscal_year_quarters("2024-01-01")
 
 
+def test_period_quarters_cover_a_calendar_or_fiscal_year() -> None:
+    assert period_quarters("calendar_year", 2024) == (
+        "2024-01-01",
+        "2024-04-01",
+        "2024-07-01",
+        "2024-10-01",
+    )
+    assert period_quarters("fiscal_year", 2024) == fiscal_year_quarters("2024-04-01")
+    with pytest.raises(ValueError, match="calendar_year or fiscal_year"):
+        period_quarters("quarter", 2024)
+
+
 def test_prices_are_the_published_qep_averages_paid() -> None:
     prices, receipt = qep_prices(_declared())
-    # FY2024-25, all payment methods, including VAT: UK electricity 24.81 p/kWh
-    # + GBP 209.39 a year, gas 6.23 p/kWh + GBP 113.13.
-    assert prices.unit_rate[(UK, "electricity")] == pytest.approx(0.2481, abs=5e-4)
-    assert prices.fixed_cost[(UK, "electricity")] == pytest.approx(209.39, abs=0.01)
-    assert prices.unit_rate[(UK, "gas")] == pytest.approx(0.0623, abs=5e-4)
-    assert prices.fixed_cost[(UK, "gas")] == pytest.approx(113.13, abs=0.01)
+    # Calendar 2024, the base year of every LCFS spend column (microcosm#1113),
+    # all payment methods, including VAT: UK electricity 25.83 p/kWh + GBP
+    # 205.11 a year, gas 6.54 p/kWh + GBP 112.95.
+    assert prices.unit_rate[(UK, "electricity")] == pytest.approx(0.2583, abs=5e-4)
+    assert prices.fixed_cost[(UK, "electricity")] == pytest.approx(205.11, abs=0.01)
+    assert prices.unit_rate[(UK, "gas")] == pytest.approx(0.0654, abs=5e-4)
+    assert prices.fixed_cost[(UK, "gas")] == pytest.approx(112.95, abs=0.01)
     for region in sorted(set(prices.region_of_frs_region.values()) | {UK}):
         for fuel in ("electricity", "gas"):
             if (region, fuel) not in prices.unit_rate:
@@ -134,7 +148,7 @@ def test_prices_are_the_published_qep_averages_paid() -> None:
     assert receipt["gas_priced_at_uk_average"] == ["NORTHERN_IRELAND"]
     assert receipt["payment_method"] == "all"
     assert receipt["vat_treatment"] == "including_vat"
-    assert receipt["period_type"] == "fiscal_year" and receipt["period_value"] == 2024
+    assert receipt["period_type"] == "calendar_year" and receipt["period_value"] == 2024
     # Regional spread is material in the fixed cost.
     assert prices.fixed_cost[("north_east", "electricity")] > (
         prices.fixed_cost[("london", "electricity")] + 80
@@ -194,6 +208,8 @@ def test_qep_averages_paid_sit_near_the_cap_levels() -> None:
     """The cap matrix stays vendored as the regional maximum; QEP is what was paid."""
 
     prices, _ = qep_prices(_declared())
+    # The cap matrix is vendored for FY2024-25 only; the calendar-2024 averages
+    # paid sit within the same 10% of it.
     quarters = fiscal_year_quarters("2024-04-01")
 
     def cap(fuel: str, level: str, quarter: str) -> float:
@@ -447,9 +463,11 @@ def test_identity_uniform_order_is_keyed_by_identity_not_row_order() -> None:
         impose_gas_connection(gas, frs_region=region, weights=weights, **kwargs)
 
 
-def test_published_level_is_the_fiscal_year_sum_of_energy_trends_quarters() -> None:
+def test_published_level_is_the_calendar_year_sum_of_energy_trends_quarters() -> None:
     level, receipt = published_energy_level(_declared())
-    quarters = fiscal_year_quarters("2024-04-01")
+    quarters = period_quarters("calendar_year", 2024)
+    assert receipt["quarters"] == list(quarters)
+    assert (receipt["period_type"], receipt["period_value"]) == ("calendar_year", 2024)
     for column, concept in (
         (ELECTRICITY_KWH, "desnz.energy_trends.domestic_electricity_consumption"),
         (GAS_KWH, "desnz.energy_trends.domestic_gas_consumption"),
@@ -467,13 +485,17 @@ def test_published_level_is_the_fiscal_year_sum_of_energy_trends_quarters() -> N
         )
         assert level[column] == pytest.approx(expected)
         assert receipt["by_fuel"][column]["total_kwh"] == pytest.approx(expected)
-    # FY2024-25: about 93 TWh of electricity and 260 TWh of gas.
-    assert level[ELECTRICITY_KWH] == pytest.approx(93.03e9, rel=1e-3)
-    assert level[GAS_KWH] == pytest.approx(260.07e9, rel=1e-3)
+    # Calendar 2024: about 91.7 TWh of electricity and 252.3 TWh of gas.
+    assert level[ELECTRICITY_KWH] == pytest.approx(91.74e9, rel=1e-3)
+    assert level[GAS_KWH] == pytest.approx(252.34e9, rel=1e-3)
     assert receipt["geography_ids"] == ["K02000001"]
     for mutation, match in (
         (lambda p: p.update(level_resource="need_energy_facts.json"), "level_resource"),
-        (lambda p: p.update(level_fiscal_start="2020-04-01"), "lacks quarters"),
+        (lambda p: p.update(level_period_value=2019), "lacks quarters"),
+        (
+            lambda p: p.update(level_period_type="quarter"),
+            "calendar_year or fiscal_year",
+        ),
         (
             lambda p: p.update(level_temperature_adjustment="weather_corrected"),
             "actual_temperature",

@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "27099cbe14d1a39cef77357594e914bc68b595032c18109f4232218b483813e4"
+    "9c08a68f9d63fff9f54dd21abb0a212723ff2074f0381cd7b69165e97c4c5ef6"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "3a37d35989ffedae5c8a62c47d3660799a9b88fbea1cd569aca09e85dbe9863c"
+    "f4eb5559cede924ae28b888f49e46a73133b43ea0468e01ddf2fae8be975e42b"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "635efdbe3b38d6d6b3472fc59794952d54b1622b932355ef6c7d46047c3383f3"
+    "4ebc627b0ba172b0f0b06810f8053811f9b628058b87e0d281a93166b39f70c4"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -478,6 +478,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_lcfs_consumption_road_fuel_incidence": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_road_fuel_level": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_recomposed_totals": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support_pricing": ("stage_health", "transferred"),
@@ -586,6 +587,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_lcfs_consumption_road_fuel_incidence",
         "uk_stage_lcfs_consumption_road_fuel_level",
         "uk_stage_lcfs_consumption_recomposed_totals",
+        "uk_stage_lcfs_consumption_basis",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
@@ -802,6 +804,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_recomposed_totals",
@@ -860,10 +863,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "0d12d3668a660be83f170307e43c1a89a00c397a6580870710f9b271025c7928"
+            "e6c5bc251657d6d73abacf5f62139458b29d515352f6bbd532d5e6da26bb24d3"
         ),
         "policy_sha256": (
-            "71ec27bb988fd358ad075439a854ec6410ef6f9df004c2790eab49ab85f5de37"
+            "984cc9abf94cc119fca8b3c5ca1a36633cdfdf17caf060e4d17a493151e50e18"
         ),
     },
     "calibration_seam": {

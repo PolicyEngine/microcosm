@@ -845,6 +845,25 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         }
     ]
     assert len(gates) == 3
+    # Every spend level is on calendar 2024; this run drops the uprating step,
+    # so the basis gate fails on exactly that receipt.
+    basis = uk_stage_health_gate(
+        evidence=evidence,
+        stage="lcfs_consumption",
+        check="consumption_basis",
+        parameters={
+            "stage": "lcfs_consumption",
+            "check": "consumption_basis",
+            "period_type": "calendar_year",
+            "period_value": 2024,
+        },
+    )
+    assert not basis.passed
+    assert list(basis.failures) == [
+        "lcfs_consumption: the stage recorded no donor_uprating receipt."
+    ], basis.failures
+    assert evidence["energy_pricing"]["level"]["period_type"] == "calendar_year"
+    assert evidence["bus_pricing"]["price_year"] == 2024
     for gate in gates:
         checked = uk_stage_health_gate(
             evidence=evidence,
