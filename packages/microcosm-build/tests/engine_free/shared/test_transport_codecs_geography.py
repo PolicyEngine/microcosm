@@ -16,14 +16,20 @@ from copy import deepcopy
 from dataclasses import replace
 from fractions import Fraction
 from hashlib import sha256
+from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.atomic_geography import decode_atomic_support
+from microcosm.build.graph_atomic_geography import (
+    AtomicAssignKernel,
+    AtomicSupportImportKernel,
+)
 from microcosm.build.ledger_artifact import (
     CONSUMER_ARTIFACT_SCHEMA_VERSION,
     load_ledger_consumer_artifact,
@@ -70,6 +76,7 @@ from microcosm.graph import (
     KernelContext,
     KernelResult,
     Node,
+    Numeric,
     NumericScope,
     SourceRef,
     compile_graph,
@@ -330,6 +337,41 @@ def test_rulespec_codec_is_root_path_and_creation_order_inert_and_byte_sensitive
     )
 
 
+@FILE_PROPERTY
+@example(order=(3, 2, 1, 0))
+@given(
+    order=st.permutations(tuple(range(4))).filter(lambda order: order != (0, 1, 2, 3))
+)
+def test_rulespec_codec_sorts_whatever_order_the_directory_lists(
+    tmp_path, order
+) -> None:
+    """The envelope sorts entries itself; listing order never reaches it."""
+
+    tree = tmp_path / "tree"
+    names = ("a.yaml", "b/c.yaml", "b/d.yaml", "e.yaml")
+    for name in names:
+        (tree / name).parent.mkdir(parents=True, exist_ok=True)
+        (tree / name).write_bytes(name.encode())
+    payload = load_rulespec_tree_bytes(tree)
+    listing = Path.rglob
+
+    def reordered(self, pattern, *args, **kwargs):
+        entries = sorted(listing(self, pattern, *args, **kwargs))
+        files = [entry for entry in entries if entry.is_file()]
+        # Directories first, then the files in a non-sorted order.
+        return iter(
+            [
+                *(entry for entry in entries if not entry.is_file()),
+                *(files[index] for index in order),
+            ]
+        )
+
+    with mock.patch.object(Path, "rglob", reordered):
+        assert load_rulespec_tree_bytes(tree) == payload
+    document = json.loads(payload)
+    assert [file["path"] for file in document["files"]] == sorted(names)
+
+
 def test_rulespec_codec_refuses_empty_tree_file_and_symlink(tmp_path) -> None:
     with pytest.raises(ValueError, match="at least one"):
         load_rulespec_tree_bytes(tmp_path)
@@ -374,6 +416,15 @@ def test_support_conserves_facts_apportions_within_one_and_ignores_row_order(
     assert support_from_surface(surface, permuted, system="toy-atomic") == payload
     for array in support.arrays.values():
         assert not array.flags.writeable
+
+
+def test_geography_kernel_declares_its_siblings_platform_bitwise_numerics() -> None:
+    """Its deflated NPZ payload records the creating platform (zip header)."""
+
+    numeric = GEOGRAPHY_SUPPORT_FROM_FACTS.capabilities.numeric
+    assert numeric is Numeric.PLATFORM_BITWISE
+    assert numeric is AtomicSupportImportKernel.capabilities.numeric
+    assert numeric is AtomicAssignKernel.capabilities.numeric
 
 
 def test_geography_kernel_is_differential_to_shared_support_builder() -> None:

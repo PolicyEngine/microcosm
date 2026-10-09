@@ -1,10 +1,17 @@
 """Column kernels for transported concepts, units, receipts and scenarios.
 
-Structured parameters are canonical JSON and carry the SHA-256 of their
-resource. The kernels never load a country package. ``unit_rule`` is the
-resolved :class:`BenefitUnitRule` representation, rather than an unresolved
-country proposal. ``mapping`` is a :class:`ConceptMapping` representation;
-``rulespec_paths`` selects its bindings and the closure's defaults.
+Structured parameters are canonical JSON, each beside a ``*_sha256`` naming
+the resource it came from. The kernels check only that digest's format, so
+it moves the node key and authenticates nothing. The kernels never load a
+country package. ``unit_rule`` is the resolved :class:`BenefitUnitRule`
+representation, rather than an unresolved country proposal. ``mapping`` is a
+:class:`ConceptMapping` representation; ``rulespec_paths`` selects its
+bindings and the closure's defaults.
+
+The encode and scenario kernels derive no take-up draws: they refuse
+``take_up_rates``, so the encoder refuses any selected take-up-threshold
+binding it would execute, for want of a rate. ``takeup.assign@1`` owns the
+keyed draws.
 
 Scenario overrides re-run the same group encoder with the closure's knobs.
 This preserves the encoder's allocation and state-column semantics, including
@@ -63,6 +70,7 @@ from microcosm.graph import (
     SeedSource,
     source_hash,
 )
+from microcosm.graph.population import dtype_for_token
 
 from . import graph_inputs
 from .artifact_types import TARGET_SURFACE_TYPE
@@ -139,14 +147,23 @@ def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:
     return value
 
 
-def _mapping(context: KernelContext, ref: str) -> ConceptMapping:
+def _full_mapping(context: KernelContext, ref: str) -> ConceptMapping:
+    """The whole declared mapping, after checking its selected paths exist."""
     mapping = ConceptMapping.from_dict(_document(context, ref, "mapping"))
+    paths = _paths(context, ref)
+    if paths is not None:
+        unknown = set(paths) - {binding.module for binding in mapping.bindings}
+        if unknown:
+            raise ValueError(f"{ref} has unknown mapping paths {sorted(unknown)}.")
+    return mapping
+
+
+def _mapping(context: KernelContext, ref: str) -> ConceptMapping:
+    """The mapping restricted to the selected paths, for person encoding."""
+    mapping = _full_mapping(context, ref)
     paths = _paths(context, ref)
     if paths is None:
         return mapping
-    unknown = set(paths) - {binding.module for binding in mapping.bindings}
-    if unknown:
-        raise ValueError(f"{ref} has unknown mapping paths {sorted(unknown)}.")
     bindings = tuple(binding for binding in mapping.bindings if binding.module in paths)
     bound = {concept for binding in bindings for concept in binding.reads}
     unmapped = {
@@ -233,7 +250,10 @@ def _columns(context: KernelContext, ref: str, tables: Mapping[str, pd.DataFrame
         ):
             raise ValueError(f"{ref} cannot return structural columns.")
         values = table[owned.column].copy(deep=True)
-        if owned.dtype is not None and str(values.dtype) != owned.dtype:
+        # The graph's dtype for the token; its "string" pins Python storage,
+        # where a bare "string" would store pyarrow strings when installed.
+        dtype = None if owned.dtype is None else dtype_for_token(owned.dtype)
+        if dtype is not None and values.dtype != dtype:
             # The group encoder uses numpy object for labels; the graph has
             # an explicit string dtype. Integer casts must never truncate.
             if (
@@ -248,7 +268,7 @@ def _columns(context: KernelContext, ref: str, tables: Mapping[str, pd.DataFrame
                 .all()
             ):
                 raise ValueError(f"{ref} refuses non-boolean values in {owned.column}.")
-            cast = values.astype(owned.dtype)
+            cast = values.astype(dtype)
             if owned.dtype != "string" and not _equal_scalars(values, cast):
                 raise ValueError(f"{ref} would lose values casting {owned.column}.")
             values = cast
@@ -319,12 +339,20 @@ _ENCODE_OPTIONAL = frozenset(
         "rulespec_paths",
         "shares",
         "shares_sha256",
-        "take_up_rates",
-        "take_up_rates_sha256",
         "closure",
         "closure_sha256",
     }
 )
+_TAKE_UP_PARAMS = frozenset({"take_up_rates", "take_up_rates_sha256"})
+
+
+def _refuse_take_up(context: KernelContext, ref: str) -> None:
+    """Keep keyed take-up draws in the receipt layer (``SeedSource.NONE``)."""
+    if _TAKE_UP_PARAMS & set(context.params):
+        raise ValueError(
+            f"{ref} derives no take-up draws; takeup.assign@1 owns them, so "
+            "take_up_rates are refused."
+        )
 
 
 def _optional_document(context: KernelContext, ref: str, name: str):
@@ -348,6 +376,7 @@ class ConceptsEncodeKernel(_ColumnKernel):
     _modules = (mapping_module, concepts_module, closure_module)
 
     def run(self, context: KernelContext) -> KernelResult:
+        _refuse_take_up(context, self.ref)
         require_params(
             context, self.ref, required=_ENCODE_REQUIRED, optional=_ENCODE_OPTIONAL
         )
@@ -356,9 +385,6 @@ class ConceptsEncodeKernel(_ColumnKernel):
         encoded = mapping.encode(
             tables,
             shares=_optional_resource_document(context, self.ref, "shares"),
-            take_up_rates=_optional_resource_document(
-                context, self.ref, "take_up_rates"
-            ),
         )
         outputs = _defaults(
             context,
@@ -382,7 +408,9 @@ _GROUP_OPTIONAL = _ENCODE_OPTIONAL | frozenset({"knobs", "scenario_sha256"})
 def _group_inputs(context: KernelContext, ref: str):
     rule = _rule(context, ref)
     tables = _whole_tables(context, ref, ("person", "household", rule.entity))
-    mapping = _mapping(context, ref)
+    # The whole mapping: encode_groups selects modules itself and checks
+    # state bindings against every concept binding's input name.
+    mapping = _full_mapping(context, ref)
     closure = _closure(context, ref)
     knobs = _optional_document(context, ref, "knobs")
     if knobs and closure is None:
@@ -405,7 +433,6 @@ def _group_inputs(context: KernelContext, ref: str):
         knobs=None if closure is None else closure.group_knobs(knobs),
         state_bindings=() if closure is None else closure.state_bindings(),
         shares=_optional_resource_document(context, ref, "shares"),
-        take_up_rates=_optional_resource_document(context, ref, "take_up_rates"),
     )
     outputs = _defaults(context, ref, encoded.tables, closure, {rule.entity: entity})
     return mapping, encoded, outputs
@@ -418,6 +445,7 @@ class ConceptsEncodeGroupsKernel(_ColumnKernel):
     _modules = (mapping_module, units_module, concepts_module, closure_module)
 
     def run(self, context: KernelContext) -> KernelResult:
+        _refuse_take_up(context, self.ref)
         require_params(
             context, self.ref, required=_GROUP_REQUIRED, optional=_GROUP_OPTIONAL
         )
@@ -434,6 +462,7 @@ class ScenarioOverrideKernel(ConceptsEncodeGroupsKernel):
     ref = "transport.scenario_override@1"
 
     def run(self, context: KernelContext) -> KernelResult:
+        _refuse_take_up(context, self.ref)
         require_params(
             context,
             self.ref,
@@ -575,7 +604,8 @@ def assign_receipts(
                 raise ValueError(
                     f"Receipt target {name!r} exceeds eligible weighted mass."
                 )
-            rate = 0.0 if mass == 0 else target / mass
+            # target <= mass, so a zero eligible mass has a zero target.
+            rate = target / mass if mass else target
         else:
             rate = _finite_nonnegative(row["rate"], "rate")
             if rate > 1:

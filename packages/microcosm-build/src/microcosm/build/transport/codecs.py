@@ -39,13 +39,13 @@ RULESPEC_SOURCE_CODEC = "rulespec-tree-v1"
 
 
 def load_populace_us_h5(path: Path, *, store: ContentStore | None = None) -> Frame:
-    """Read an authenticated donor at its original scale and currency.
+    """Read a donor at its original scale and currency.
 
-    SourceRef identity checks belong to the executor. This loader authenticates
-    the same local file for the wrapped reader, whose mandatory size/hash pins
-    are computed here; a CREATE kernel can instead supply reviewed pins to the
-    reader directly. Source lineage stays donor provenance, never destination
-    observations.
+    SourceRef identity checks belong to the executor. This loader computes the
+    wrapped reader's mandatory size/hash pins from the file itself, so it
+    authenticates nothing; the CREATE kernel passes its declared pins to the
+    reader directly, and the reader refuses a file that differs from them.
+    Source lineage stays donor provenance, never destination observations.
     """
 
     path = Path(path)

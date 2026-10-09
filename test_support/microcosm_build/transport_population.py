@@ -47,6 +47,7 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.population import dtype_for_token
 from test_support.microcosm_build.transport_graph import (
     COUNTRY,
     canonical_text,
@@ -72,12 +73,19 @@ UNIT_RULE = BenefitUnitRule(
 MASS_DOCUMENT = reference_document(
     [reference_row("toy_population", entity="person", measure="person_count")]
 )
-BAND_DOCUMENT = reference_document(
-    [
-        reference_row(name, entity="person", measure="person_count")
-        for name in ("toy_lower_band", "toy_upper_band")
-    ]
-)
+#: Unequal toy band counts, so a share that ignores or reorders the facts
+#: differs from the facts' own shares. Both are exact binary fractions.
+BAND_FACTS = (("toy_lower_band", 1.0), ("toy_upper_band", 3.0))
+
+
+def band_document(entity: str = "person") -> dict:
+    """References to the band count facts on the ranked ``entity``."""
+    return reference_document(
+        [
+            reference_row(name, entity=entity, measure=f"{entity}_count")
+            for name, _ in BAND_FACTS
+        ]
+    )
 
 
 def digest(document) -> str:
@@ -102,11 +110,23 @@ class PopulationSources:
 
 
 def write_population_sources(
-    root: Path, *, mass: float = 120.0, permutation=None
+    root: Path,
+    *,
+    mass: float = 120.0,
+    permutation=None,
+    band_entity: str = "person",
+    edit_tables=None,
 ) -> PopulationSources:
+    """Write the synthetic donor H5 and toy facts.
+
+    ``edit_tables`` may change the raw donor tables (a dict of DataFrames) in
+    place before they are written, for a test-local donor.
+    """
     root.mkdir(parents=True, exist_ok=True)
     document = json.loads(SYNTHETIC_DONOR.read_text())
     tables = {entity: pd.DataFrame(rows) for entity, rows in document["tables"].items()}
+    if edit_tables is not None:
+        edit_tables(tables)
     if permutation is not None:
         tables["person"] = (
             tables["person"].iloc[list(permutation)].reset_index(drop=True)
@@ -123,12 +143,29 @@ def write_population_sources(
         ),
         band_facts=write_facts(
             root / "band-facts.jsonl",
-            [
-                toy_fact("toy_lower_band", 1.0, entity="person"),
-                toy_fact("toy_upper_band", 1.0, entity="person"),
-            ],
+            [toy_fact(name, value, entity=band_entity) for name, value in BAND_FACTS],
         ),
     )
+
+
+def expected_bands(sources: PopulationSources, bands=None) -> list[dict]:
+    """The fixture's band bounds with shares derived from the written facts.
+
+    This reads the facts file directly, independently of the kernels' target
+    surface: each share is its band's count over the bands' total count.
+    """
+    counts = {
+        row["semantic_fact_key"].rsplit(":", 1)[-1]: row["value"]
+        for row in map(json.loads, sources.band_facts.read_text().splitlines())
+    }
+    values = [counts[name] for name, _ in BAND_FACTS]
+    total = fsum(values)
+    if bands is None:
+        bands = json.loads(SYNTHETIC_DONOR.read_text())["target_bands"]
+    return [
+        {"lower": band["lower"], "upper": band["upper"], "share": value / total}
+        for band, value in zip(bands, values, strict=True)
+    ]
 
 
 def create_params(sources: PopulationSources, *, seed_stream=SEED_STREAM) -> dict:
@@ -155,16 +192,17 @@ def direct_population(
     """Independent composition of the functions the CREATE wrapper calls."""
     donor = read_populace_us_donor(sources.donor, **donor_pin(sources.donor))
     tables, dropped = split_for_transport(donor.tables)
+    text = dtype_for_token("string")
     for entity, table in tables.items():
         for column in table:
             concept = concept_for_column(entity, column)
             if concept is not None and concept.dtype == "str":
-                table[column] = pd.array(table[column], dtype="string")
+                table[column] = pd.array(table[column], dtype=text)
     person, household = tables["person"], tables["household"]
     family, membership = build_benefit_units(person, household, UNIT_RULE)
     person[UNIT_RULE.membership_column] = membership
     person["take_up_seed"] = derive_transport_seed(donor.source_person_ids, seed_stream)
-    household["donor_support_stratum"] = pd.array(donor.support_strata, dtype="string")
+    household["donor_support_stratum"] = pd.array(donor.support_strata, dtype=text)
     tables["family"] = family
     ids = household["household_id"]
     mass = json.loads(sources.facts.read_text().splitlines()[0])["value"]
@@ -231,6 +269,10 @@ def population_graph(
     )
     nodes = [create, boundary]
     if through != "boundary":
+        # Aggregate maps rank aggregate entities: their band facts count them.
+        references = band_document(
+            "person" if aggregate_entity is None else aggregate_entity
+        )
         bands = Node(
             "nz.bands",
             "targets.compile@1",
@@ -238,8 +280,8 @@ def population_graph(
             sources=("band_facts",),
             params={
                 "country": COUNTRY,
-                "references": canonical_text(BAND_DOCUMENT),
-                "references_sha256": digest(BAND_DOCUMENT),
+                "references": canonical_text(references),
+                "references_sha256": digest(references),
             },
             artifact_outputs=(ArtifactOutput("surface", TARGET_SURFACE_TYPE),),
             citation=description,
@@ -265,9 +307,9 @@ def population_graph(
         )
         band_rows = [
             {"lower": row["lower"], "upper": row["upper"], "reference": name}
-            for row, name in zip(
+            for row, (name, _) in zip(
                 json.loads(SYNTHETIC_DONOR.read_text())["target_bands"],
-                ("toy_lower_band", "toy_upper_band"),
+                BAND_FACTS,
                 strict=True,
             )
         ]
