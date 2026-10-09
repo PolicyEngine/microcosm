@@ -11,7 +11,14 @@ from microcosm.build.uk_runtime.graph_calibration import (
 )
 
 _COLUMNS = {("household", "marker"): "int64"}
-_BASE_PARAMS = {"epochs", "learning_rate", "seed", "households", "pi_hi"}
+_BASE_PARAMS = {
+    "epochs",
+    "learning_rate",
+    "seed",
+    "households",
+    "pi_hi",
+    "initial_lambda",
+}
 
 
 def _params(config):
