@@ -244,6 +244,12 @@ def test_event_spool_keeps_repeated_run_producers_separate(tmp_path) -> None:
     assert len(spool.pending_runs()) == 2
 
 
+def _recent_timestamp() -> str:
+    """A stored-row timestamp inside the spool's retention window on any date."""
+
+    return (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+
+
 def test_pre_eligibility_spool_is_not_uploaded_after_upgrade(tmp_path) -> None:
     path = tmp_path / "events.sqlite3"
     registration = _registration()

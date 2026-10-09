@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import { parseGraphDocument } from '@axiom-foundation/orrery';
+
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const document = parseGraphDocument(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+const labels = node => (node.statuses ?? []).map(status => status.label);
+const operations = document.nodes.filter(node => node.kind === 'operation');
+assert.ok(document.nodes.some(node => node.kind === 'group'));
+assert.ok(operations.every(node => node.parentId));
+assert.ok(document.nodes.filter(node => node.kind === 'field').every(node => node.parentId?.startsWith('["operation"')));
+assert.ok(document.nodes.some(node => node.sources?.length));
+assert.ok(operations.every(node => labels(node).some(label => label.startsWith('Execution: '))));
+assert.ok(operations.every(node => labels(node).some(label => /^(Computed|Reused|Cache): /.test(label))));
+assert.ok(operations.some(node => labels(node)[0].startsWith('Gate: ')));
+assert.ok(!operations.some(node => labels(node).includes('Gate: not_applicable')));
+assert.ok(document.activities.length);
+assert.ok(document.activities.every(activity => activity.agent?.name));
+assert.ok(document.artifacts.length);
+assert.ok(document.artifacts.every(artifact => /\(\w+, \d+ files?\)$/.test(artifact.label)));
+assert.ok(!document.receipts?.length);
+assert.equal(typeof document.metadata.microcosm.schema_sha256, 'string');
+assert.ok(!('graph' in document.metadata.microcosm));
+process.stdout.write('Orrery accepted grouping and recorded execution.\n');

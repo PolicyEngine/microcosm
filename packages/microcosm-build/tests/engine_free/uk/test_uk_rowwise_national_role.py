@@ -275,6 +275,28 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     ):
         assert path.is_file(), path.name
     assert not (out / "failure.json").exists()
+    from microcosm.graph import (
+        ContentStore,
+        collect_execution_evidence,
+        load_run_evidence,
+    )
+    from microcosm.graph.orrery import orrery_document_from_schema
+
+    schema = json.loads((out / "graph.schema.json").read_bytes())
+    inventory = json.loads((out / "operations.json").read_bytes())
+    assert "uk.full.national.readback" in {node["id"] for node in inventory["nodes"]}
+    assert {node["id"] for node in schema["graph"]["nodes"]} == {
+        node["id"] for node in inventory["nodes"]
+    }
+    store = ContentStore(out / ".graph-store", create=False)
+    runs = load_run_evidence(out / "execution.evidence.json", store=store)
+    evidence = collect_execution_evidence(schema, runs=runs, store=store)
+    document = orrery_document_from_schema(schema, execution=evidence)
+    assert any(
+        json.loads(node["id"]) == ["operation", "uk.full.national.readback"]
+        for node in document["nodes"]
+    )
+    assert not list(out.glob("*.orrery.json"))
 
     # The build record the release-cut certifier reads: the seam's schema.
     record = json.loads((out / "build_record.json").read_text())
