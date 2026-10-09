@@ -54,6 +54,7 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.codecs import load_raw_bytes
+from test_support.microcosm_build.transport_population import UNIT_RULE
 
 
 class _ToyEngine:
@@ -156,7 +157,9 @@ def _fixture(tmp_path: Path):
 
 def test_registers_available_kernels_and_codecs(tmp_path):
     root, document, engines = _fixture(tmp_path)
-    result = build_transport_registry(document, root, engines_by_binding=engines)
+    result = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     assert isinstance(
         result.kernels.get("simulate.rules_by_ref@1"), SimulateRulesByRefKernel
     )
@@ -215,6 +218,7 @@ def test_added_binding_and_prose_leave_existing_refs_and_hashes_unchanged(
     first = build_transport_registry(
         first_document,
         root,
+        unit_rule=UNIT_RULE,
         engines_by_binding={
             name: engines[name] for name in ("main_benefit", "pension")
         },
@@ -226,7 +230,9 @@ def test_added_binding_and_prose_leave_existing_refs_and_hashes_unchanged(
         "start": "2028-01-01",
         "end": "2028-12-31",
     }
-    second = build_transport_registry(document, root, engines_by_binding=engines)
+    second = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     assert all(
         second.engine_refs[name] == ref for name, ref in first.engine_refs.items()
     )
@@ -243,9 +249,13 @@ def test_added_binding_and_prose_leave_existing_refs_and_hashes_unchanged(
 @given(st.integers(min_value=1, max_value=30))
 def test_adapter_configuration_changes_only_its_reference(tmp_path, offset):
     root, document, engines = _fixture(tmp_path)
-    first = build_transport_registry(document, root, engines_by_binding=engines)
+    first = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     engines["housing"].offset = float(offset)
-    second = build_transport_registry(document, root, engines_by_binding=engines)
+    second = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     assert first.engine_refs["housing"] != second.engine_refs["housing"]
     assert first.engine_refs["main_benefit"] == second.engine_refs["main_benefit"]
     assert first.engine_refs["pension"] == second.engine_refs["pension"]
@@ -264,9 +274,13 @@ def test_rulespec_tree_bytes_change_refs_without_changing_kernel_hash(tmp_path, 
     root, document, engines = _fixture(tmp_path)
     shared = root / "shared-resource.txt"
     shared.write_bytes(b"before")
-    first = build_transport_registry(document, root, engines_by_binding=engines)
+    first = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     shared.write_bytes(b"after" + edit)
-    second = build_transport_registry(document, root, engines_by_binding=engines)
+    second = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     assert all(first.engine_refs[name] != second.engine_refs[name] for name in engines)
     assert first.kernels.implementation_hash(
         "simulate.rules_by_ref@1"
@@ -287,6 +301,7 @@ def test_native_engines_use_pinned_refs_before_relation_compilation(
     def check(engine, entity):
         assert engine._pinned_tree_sha256 is not None
         assert engine._schema == NZ_SCHEMA
+        assert engine._nesting == {"family": "household"}
         assert engine._rulespec_roots == (root.resolve(),)
         assert engine._output_dtypes == "graph"
         assert engine._periods == {
@@ -301,7 +316,7 @@ def test_native_engines_use_pinned_refs_before_relation_compilation(
     monkeypatch.setattr(registry_module, "assert_no_relations", check)
     monkeypatch.setattr(AxiomEngine, "variable_metadata", metadata)
     monkeypatch.setattr(AxiomEngine, "graph_dtype", lambda engine, name: "float64")
-    result = build_transport_registry(document, root)
+    result = build_transport_registry(document, root, unit_rule=UNIT_RULE)
     assert len(checks) == 3
     assert all(isinstance(engine, AxiomEngine) for engine in result.engines.values())
     for row in document["bindings"]:
@@ -313,7 +328,7 @@ def test_native_engines_use_pinned_refs_before_relation_compilation(
 
 
 @pytest.mark.parametrize(
-    "problem", ["root", "module", "schema", "periods", "names", "dtypes"]
+    "problem", ["root", "module", "schema", "periods", "names", "nesting", "dtypes"]
 )
 def test_injected_axiom_configuration_must_match_the_binding(tmp_path, problem):
     root, document, _ = _fixture(tmp_path)
@@ -325,6 +340,7 @@ def test_injected_axiom_configuration_must_match_the_binding(tmp_path, problem):
             rulespec_roots=(root,),
             periods=periods,
             entity_names=document["entity_names"],
+            nesting={"family": "household"},
             output_dtypes="graph",
         )
         for row in document["bindings"]
@@ -340,10 +356,14 @@ def test_injected_axiom_configuration_must_match_the_binding(tmp_path, problem):
         engine._periods = None
     elif problem == "names":
         engine._entity_names = {"person": "DifferentPerson"}
+    elif problem == "nesting":
+        engine._nesting = {}
     else:
         engine._output_dtypes = "native"
     with pytest.raises(ValueError, match="rules binding 'main_benefit'"):
-        build_transport_registry(document, root, engines_by_binding=engines)
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
 
 
 @pytest.mark.parametrize(
@@ -354,7 +374,9 @@ def test_missing_pin_names_the_activation_gap(tmp_path, section, field):
     root, document, engines = _fixture(tmp_path)
     document[section][field] = None
     with pytest.raises(ValueError, match=rf"axiom_rules_bindings\.{section}\.{field}"):
-        build_transport_registry(document, root, engines_by_binding=engines)
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
 
 
 @pytest.mark.parametrize("problem", ["hash", "path", "period", "duplicate", "entity"])
@@ -372,7 +394,9 @@ def test_malformed_binding_is_refused(tmp_path, problem):
     else:
         first["engine_entity"] = "Family"
     with pytest.raises(ValueError):
-        build_transport_registry(document, root, engines_by_binding=engines)
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
 
 
 @pytest.mark.parametrize("problem", ["root", "schema", "relations", "identity", "keys"])
@@ -392,7 +416,9 @@ def test_injected_adapter_contract_is_checked(tmp_path, problem):
     else:
         engines.pop("housing")
     with pytest.raises((TypeError, ValueError, NotImplementedError)):
-        build_transport_registry(document, root, engines_by_binding=engines)
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
 
 
 @pytest.mark.parametrize("value", [float("nan"), {1: "key"}, lambda: None])
@@ -400,7 +426,9 @@ def test_adapter_identity_uses_closed_canonical_data(tmp_path, value):
     root, document, engines = _fixture(tmp_path)
     engines["housing"].cache_identity = lambda: {"configuration": value}
     with pytest.raises((TypeError, ValueError)):
-        build_transport_registry(document, root, engines_by_binding=engines)
+        build_transport_registry(
+            document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+        )
 
 
 def _frame(document: Mapping) -> Frame:
@@ -460,7 +488,9 @@ def _node(
 
 def test_three_engines_run_together_and_equal_single_engine_dispatch(tmp_path):
     root, document, engines = _fixture(tmp_path)
-    result = build_transport_registry(document, root, engines_by_binding=engines)
+    result = build_transport_registry(
+        document, root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
     result.codecs.register_bytes("raw-bytes-v1", load_raw_bytes)
     result.kernels.register(_Population())
     population_path = tmp_path / "population.json"

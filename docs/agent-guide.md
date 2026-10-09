@@ -339,6 +339,15 @@ Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
 
+The transport build driver (`tools/build_transport.py`, a shim over
+`microcosm.build.transport.cli`) composes a country's graph from its
+`transport_graph.json` spec resource and runs it locally: every file it
+writes, including its `.graph-store`, lies under `--out`, and it has no
+upload or staging path. It refuses before reading any graph source while the
+country spec still has unresolved evidence, and names each missing item.
+Tests for it run on the engine-free toy package in
+`test_support/microcosm_build/transport_composed.py`.
+
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)
 with the same pool inputs as the dense candidate. The flag changes exported

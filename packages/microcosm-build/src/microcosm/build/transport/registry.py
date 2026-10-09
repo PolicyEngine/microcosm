@@ -20,8 +20,8 @@ from types import MappingProxyType
 
 from microcosm.build.graph_atomic_geography import register_atomic_geography_kernels
 from microcosm.calibrate.ordered_kernels import CALIBRATE_ORDERED_ADAM
+from microcosm.frame import EntitySchema
 from microcosm.frame.adapters.axiom import (
-    NZ_SCHEMA,
     AxiomEngine,
     AxiomPeriod,
     assert_no_relations,
@@ -30,6 +30,7 @@ from microcosm.frame.adapters.axiom import (
 )
 from microcosm.frame.rules import RulesEngine
 from microcosm.frame.rules_kernels import SimulateRulesByRefKernel
+from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import KernelRegistry
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SourceCodecRegistry
@@ -47,6 +48,7 @@ __all__ = [
     "TransportRegistry",
     "build_transport_registry",
     "register_transport_population_kernels",
+    "transport_entity_schema",
 ]
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -66,6 +68,23 @@ class TransportRegistry:
     codecs: SourceCodecRegistry
     engines: Mapping[str, RulesEngine]
     engine_refs: Mapping[str, str]
+    schema: EntitySchema
+    nesting: Mapping[str, str]
+
+
+def transport_entity_schema(
+    rule: BenefitUnitRule,
+) -> tuple[EntitySchema, Mapping[str, str]]:
+    """The persons, their households and the rule's benefit units.
+
+    This is the schema ``transport.create@1`` gives its frame. Each unit is
+    built inside one household (``build_benefit_units`` returns
+    ``<unit>_household_id``), so the unit nests in the household.
+    """
+    if not isinstance(rule, BenefitUnitRule):
+        raise TypeError("transport_entity_schema requires a BenefitUnitRule.")
+    schema = EntitySchema(group_entities=("household", rule.entity))
+    return schema, MappingProxyType({rule.entity: "household"})
 
 
 def _mapping(value: object, label: str) -> Mapping:
@@ -98,7 +117,11 @@ def _binding_rows(document: Mapping) -> tuple[Mapping, ...]:
 
 
 def _binding_semantics(
-    row: Mapping, root: Path, periods: Mapping, entity_names: Mapping
+    row: Mapping,
+    root: Path,
+    periods: Mapping,
+    entity_names: Mapping,
+    schema: EntitySchema,
 ) -> dict:
     label = f"rules binding {row['id']!r}"
     relative = _text(row.get("rulespec_path"), f"{label}.rulespec_path")
@@ -107,12 +130,14 @@ def _binding_semantics(
         raise ValueError(f"{label}.rulespec_path must be a canonical relative path.")
     module = (root / relative).resolve()
     if not module.is_file() or not module.is_relative_to(root):
-        raise ValueError(f"{label}.rulespec_path is not a file under rulespec_nz.")
+        raise ValueError(
+            f"{label}.rulespec_path is not a file under the RuleSpec tree."
+        )
     digest = _pin(row.get("sha256"), f"{label}.sha256", _SHA256)
     if hashlib.sha256(module.read_bytes()).hexdigest() != digest:
         raise ValueError(f"{label}.sha256 does not match rulespec_path {relative!r}.")
     entity = _text(row.get("entity"), f"{label}.entity")
-    if entity not in NZ_SCHEMA.entities:
+    if entity not in schema.entities:
         raise ValueError(f"{label}.entity {entity!r} is absent from the schema.")
     engine_entity = _text(row.get("engine_entity"), f"{label}.engine_entity")
     if engine_entity != entity_names[entity]:
@@ -144,25 +169,30 @@ def _check_engine(
     root: Path,
     periods: Mapping[str, AxiomPeriod],
     entity_names: Mapping[str, str],
+    schema: EntitySchema,
+    nesting: Mapping[str, str],
 ) -> None:
     label = f"rules binding {semantics['id']!r}"
     if not isinstance(engine, RulesEngine):
         raise TypeError(f"{label} does not bind a RulesEngine.")
-    if engine.entity_schema() != NZ_SCHEMA:
+    if engine.entity_schema() != schema:
         raise ValueError(f"{label} engine schema does not match the transport schema.")
     if isinstance(engine, AxiomEngine):
         roots = tuple(path.resolve() for path in engine._rulespec_roots)
         if roots != (root,):
-            raise ValueError(f"{label} engine root must equal resolved rulespec_nz.")
+            raise ValueError(
+                f"{label} engine root must equal the resolved RuleSpec tree."
+            )
         if engine._module.resolve() != (root / semantics["rulespec_path"]).resolve():
             raise ValueError(f"{label} engine module does not match rulespec_path.")
         if (
             engine._periods != periods
             or engine._entity_names != entity_names
+            or engine._nesting != dict(nesting)
             or engine._output_dtypes != "graph"
         ):
             raise ValueError(
-                f"{label} engine must use declared periods and graph dtypes."
+                f"{label} engine must use declared periods, unit nesting and graph dtypes."
             )
     else:
         declared_root = getattr(engine, "rulespec_root", None)
@@ -170,7 +200,9 @@ def _check_engine(
             not isinstance(declared_root, str | Path)
             or Path(declared_root).resolve() != root
         ):
-            raise ValueError(f"{label} engine root must equal resolved rulespec_nz.")
+            raise ValueError(
+                f"{label} engine root must equal the resolved RuleSpec tree."
+            )
         if not callable(getattr(engine, "assert_no_relations", None)):
             raise TypeError(
                 f"{label} injected engine must expose assert_no_relations(entity)."
@@ -183,14 +215,18 @@ def build_transport_registry(
     rules_bindings: Mapping,
     rulespec_root: str | Path,
     *,
+    unit_rule: BenefitUnitRule,
     engines_by_binding: Mapping[str, RulesEngine] | None = None,
     dependencies: tuple[str, ...] = (),
 ) -> TransportRegistry:
     """Build a run registry with one rules router and the available kernels.
 
-    Real adapters use ``NZ_SCHEMA``, explicit periods, graph output dtypes,
-    authenticated module bytes and :func:`axiom_engine_ref`. References are
-    pinned before any relation check compiles a program.
+    Real adapters use the schema and unit nesting of
+    :func:`transport_entity_schema` for ``unit_rule`` (the frame CREATE
+    builds), explicit periods, graph output dtypes, authenticated module
+    bytes and :func:`axiom_engine_ref`. References are pinned before any
+    relation check compiles a program. An injected adapter must report the
+    same schema.
 
     Engine-free fixtures may inject pure-Python adapters by binding id. Each
     must implement ``RulesEngine``, declare ``rulespec_root`` and expose an
@@ -206,12 +242,13 @@ def build_transport_registry(
     readiness of a graph that also needs AS bridge or gap kernels.
     """
     document = _mapping(rules_bindings, "axiom_rules_bindings")
+    schema, nesting = transport_entity_schema(unit_rule)
     root = Path(rulespec_root).resolve()
     if not root.is_dir():
-        raise ValueError("rulespec_nz must resolve to a directory.")
+        raise ValueError("The RuleSpec tree source must resolve to a directory.")
     # A symlink can point at bytes outside the tree the source claims to name.
     if any(path.is_symlink() for path in root.rglob("*")):
-        raise ValueError("rulespec_nz must not contain symbolic links.")
+        raise ValueError("The RuleSpec tree source must not contain symbolic links.")
     engine_pins = _mapping(document.get("engine"), "axiom_rules_bindings.engine")
     rulespec_pins = _mapping(document.get("rulespec"), "axiom_rules_bindings.rulespec")
     pins = {
@@ -242,7 +279,7 @@ def build_transport_registry(
     entity_names = dict(
         _mapping(document.get("entity_names"), "axiom_rules_bindings.entity_names")
     )
-    if set(entity_names) != set(NZ_SCHEMA.entities):
+    if set(entity_names) != set(schema.entities):
         raise ValueError(
             "axiom_rules_bindings.entity_names must cover the transport schema."
         )
@@ -261,21 +298,24 @@ def build_transport_registry(
     refs = {}
     tree_sha256, tree_bytes = rulespec_tree_digest(root)
     for row in rows:
-        semantics = _binding_semantics(row, root, periods, entity_names)
+        semantics = _binding_semantics(row, root, periods, entity_names, schema)
         binding_periods = {semantics["period"]: periods[semantics["period"]]}
         engine = (
             AxiomEngine(
                 root / semantics["rulespec_path"],
-                schema=NZ_SCHEMA,
+                schema=schema,
                 rulespec_roots=(root,),
                 periods=binding_periods,
                 entity_names=entity_names,
+                nesting=nesting,
                 output_dtypes="graph",
             )
             if engines_by_binding is None
             else engines_by_binding[row["id"]]
         )
-        _check_engine(engine, semantics, root, binding_periods, entity_names)
+        _check_engine(
+            engine, semantics, root, binding_periods, entity_names, schema, nesting
+        )
         if isinstance(engine, AxiomEngine):
             reference = axiom_engine_ref(engine, rulespec_root=root, **pins)
             assert_no_relations(engine, semantics["entity"])
@@ -323,7 +363,9 @@ def build_transport_registry(
     register_gate_kernel(kernels, TRANSPORT_GATE_REGISTRY)
     register_terminal_kernels(kernels, codecs=codecs)
     kernels.register(SimulateRulesByRefKernel(engine_mapping, dependencies))
-    return TransportRegistry(kernels, codecs, engine_mapping, MappingProxyType(refs))
+    return TransportRegistry(
+        kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
+    )
 
 
 def register_transport_population_kernels(registry: KernelRegistry) -> KernelRegistry:
