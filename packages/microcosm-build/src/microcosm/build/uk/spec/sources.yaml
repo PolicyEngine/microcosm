@@ -907,10 +907,11 @@ stages:
       pension_credit_reported_anchor: pension_credit_reported
       universal_credit_reported_anchor: universal_credit_reported
   - kind: aggregate_person_to_benunit
-    method: any_adult_under_state_pension_age
+    method: any_uc_claimant_aged_18_under_pension_credit_age
     consumed_only: true
     aggregates:
       uc_age_eligible: age
+    role_column: is_uc_claimant
   - kind: assign_binary_with_anchored_residual
     output: would_claim_child_benefit
     draw: would_claim_child_benefit
@@ -982,7 +983,7 @@ stages:
   - maximum_extended_childcare_hours_usage
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867).
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.122.2's is_uc_eligible; the engine lockstep test pins it and names the two engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095).
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
@@ -3685,10 +3686,11 @@ stages:
     aggregates:
       universal_credit_reported_anchor: universal_credit_reported
   - kind: aggregate_person_to_benunit
-    method: any_adult_under_state_pension_age
+    method: any_uc_claimant_aged_18_under_pension_credit_age
     consumed_only: true
     aggregates:
       uc_age_eligible: age
+    role_column: is_uc_claimant
   - kind: assign_binary_with_anchored_residual
     output: would_claim_uc
     draw: would_claim_uc
@@ -3715,7 +3717,7 @@ stages:
   - is_severely_disabled_for_benefits
   - receives_benefits_in_own_right
   - would_claim_uc
-  notes: 'Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult''s benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit''s entitlement or claim history. This stage zeroes the SPI rows'' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household''s new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in the Universal Credit age population claim as the residual of the contract''s universal_credit rate on draws keyed on the SPI unit''s own identity. Contributory ESA, PIP, DLA, AA, Carer''s Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps.'
+  notes: 'Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult''s benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit''s entitlement or claim history. This stage zeroes the SPI rows'' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household''s new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in frs_take_up''s Universal Credit population (a UC claimant or partner aged 18 to under Pension Credit qualifying age) claim as the residual of the contract''s universal_credit rate on draws keyed on the SPI unit''s own identity. Contributory ESA, PIP, DLA, AA, Carer''s Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps.'
 - stage: uc_capital_coherence
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 benefit-unit TOTCAPB4 observations carried through the SPI support channel.

@@ -726,9 +726,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {"kind": "aggregate_person_to_benunit"},
                         {
                             "kind": "aggregate_person_to_benunit",
-                            "method": "any_adult_under_state_pension_age",
+                            "method": (
+                                "any_uc_claimant_aged_18_under_pension_credit_age"
+                            ),
                             "consumed_only": True,
                             "aggregates": {"uc_age_eligible": "age"},
+                            "role_column": "is_uc_claimant",
                         },
                         {
                             "kind": "assign_binary_with_anchored_residual",

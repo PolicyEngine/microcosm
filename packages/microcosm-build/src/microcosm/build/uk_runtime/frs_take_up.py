@@ -48,21 +48,28 @@ UK_TAKE_UP_ANCHOR_AGGREGATES = {
     "universal_credit_reported_anchor": "universal_credit_reported",
 }
 UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
-# Universal Credit is claimable only by a benefit unit with a working-age
-# adult (policyengine-uk ``is_uc_eligible`` requires ``is_WA_adult``, which is
-# ``is_adult & ~is_SP_age``). The draw's population is therefore those units;
-# a unit with every adult at or over State Pension age is never drawn (#882,
-# microcosm#867). The bounds come from the engine at the build instant through
-# ``uk_take_up_population_policy``: State Pension age from the
-# ``gov.dwp.state_pension.age`` timetable and the adult threshold from the
-# engine's ``is_adult`` formula (a constant there, pinned by the lockstep test).
-# The stage manifest declares the same population on the ``would_claim_uc``
-# operation; ``assert_take_up_stage_population_declaration`` refuses a manifest
-# that stops saying so, so the declaration and the code cannot drift apart.
+# Universal Credit is claimable only by a benefit unit whose claimant or
+# partner meets its age conditions: policyengine-uk 2.122.2's ``is_uc_eligible``
+# (capital aside) needs a member with ``is_uc_claimant`` who meets UC's minimum
+# age and has not reached Pension Credit qualifying age. The draw's population
+# is therefore the units with a UC claimant or partner aged 18 or over and
+# under that age; any other unit is never drawn (#882, microcosm#867,
+# microcosm#1095). The bounds come from the engine at the build instant through
+# ``uk_take_up_population_policy``: the qualifying age is the State Pension age
+# the ``gov.dwp.state_pension.age`` timetable sets for the cohort reaching it
+# in the build year, which equals the engine's Pension Credit qualifying age at
+# 2024 and 2025, and the minimum age is UC's 18. Two engine cases are not
+# mirrored, and the lockstep test names them: 16- and 17-year-old claimants
+# under the UC Regs 2013 reg 8 exceptions, whom the engine includes, and
+# mixed-age couples on the Pension Credit route, whom it excludes. The stage
+# manifest declares the same population on the ``would_claim_uc`` operation;
+# ``assert_take_up_stage_population_declaration`` refuses a manifest that stops
+# saying so, so the declaration and the code cannot drift apart.
 UK_ENGINE_ADULT_AGE = 18
 UK_UC_AGE_ELIGIBLE_AGGREGATE = "uc_age_eligible"
-UK_UC_AGE_ELIGIBLE_METHOD = "any_adult_under_state_pension_age"
+UK_UC_AGE_ELIGIBLE_METHOD = "any_uc_claimant_aged_18_under_pension_credit_age"
 UK_UC_AGE_ELIGIBLE_SOURCE = "age"
+UK_UC_AGE_ELIGIBLE_ROLE = "is_uc_claimant"
 UK_UC_TAKE_UP_OUTPUT = "would_claim_uc"
 # The Universal Credit childcare element is claimed at one rate per family
 # type (DWP publishes the single / couple split of the households receiving
@@ -102,11 +109,11 @@ UK_TAKE_UP_SIGNAL_OUTPUTS = (
 class UKTakeUpPopulationPolicy:
     """Engine bounds of the Universal Credit take-up population at one instant.
 
-    ``adult_age`` is the engine's ``is_adult`` threshold and
-    ``state_pension_age`` the age its ``gov.dwp.state_pension.age`` timetable
-    sets for the cohort attaining it in the build year, so a unit is in the
-    population exactly when the engine's ``is_WA_adult`` is true for one of its
-    members (the lockstep test checks every age).
+    ``adult_age`` is UC's minimum age and ``state_pension_age`` the age the
+    engine's ``gov.dwp.state_pension.age`` timetable sets for the cohort
+    attaining it in the build year, which equals its Pension Credit qualifying
+    age at 2024 and 2025. ``working_age`` is the age half of the population;
+    ``uc_age_eligible_benunits`` adds the claimant role.
     """
 
     adult_age: int
@@ -175,6 +182,7 @@ def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:
         and op.parameters.get("method") == UK_UC_AGE_ELIGIBLE_METHOD
         and dict(op.parameters.get("aggregates") or {})
         == {UK_UC_AGE_ELIGIBLE_AGGREGATE: UK_UC_AGE_ELIGIBLE_SOURCE}
+        and op.parameters.get("role_column") == UK_UC_AGE_ELIGIBLE_ROLE
         for op in stage.operations
     )
     declared_population = any(
@@ -193,7 +201,8 @@ def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:
         raise ValueError(
             f"stage {stage.stage!r} must declare the {UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
             f"aggregate ({UK_UC_AGE_ELIGIBLE_METHOD} over "
-            f"{UK_UC_AGE_ELIGIBLE_SOURCE}) and population={UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
+            f"{UK_UC_AGE_ELIGIBLE_SOURCE}, role {UK_UC_AGE_ELIGIBLE_ROLE}) and "
+            f"population={UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
             f"on the {UK_UC_TAKE_UP_OUTPUT!r} operation; the code draws Universal "
             "Credit take-up over that population and refuses a manifest that says "
             f"otherwise (declared: {seen!r})"
@@ -273,15 +282,21 @@ def uc_age_eligible_benunits(
     benunit: pd.DataFrame,
     policy: UKTakeUpPopulationPolicy,
 ) -> np.ndarray:
-    """True where the benefit unit has a working-age adult under ``policy``."""
+    """True where a UC claimant or partner of the unit is within ``policy``'s ages."""
 
-    if "age" not in person.columns:
+    missing = [
+        column
+        for column in (UK_UC_AGE_ELIGIBLE_SOURCE, UK_UC_AGE_ELIGIBLE_ROLE)
+        if column not in person.columns
+    ]
+    if missing:
         raise KeyError(
-            "person.age is missing; the Universal Credit take-up population "
-            "cannot be formed without it"
+            f"person columns {missing} are missing; the Universal Credit take-up "
+            "population cannot be formed without them"
         )
-    age = pd.to_numeric(person["age"], errors="coerce").fillna(0)
-    eligible_adult = policy.working_age(age)
+    age = pd.to_numeric(person[UK_UC_AGE_ELIGIBLE_SOURCE], errors="coerce").fillna(0)
+    claimant = person[UK_UC_AGE_ELIGIBLE_ROLE].to_numpy(dtype=bool)
+    eligible_adult = policy.working_age(age) & claimant
     eligible_ids = set(person.loc[eligible_adult, "person_benunit_id"])
     return benunit["benunit_id"].isin(eligible_ids).to_numpy(dtype=bool)
 
@@ -387,9 +402,9 @@ def uk_take_up_signal_gate(
         population = np.ones(values.shape, dtype=bool)
         if key == "universal_credit":
             # The contract rate is a share of the units that can claim: those
-            # with a working-age adult under the engine's bounds at the build
-            # instant. The gate measures the realized share on the same
-            # population.
+            # with a UC claimant or partner within the engine's age bounds at
+            # the build instant. The gate measures the realized share on the
+            # same population.
             if policy is None:
                 policy = uk_take_up_population_policy(uk_time_period(frame))
             population = uc_age_eligible_benunits(frame.table("person"), table, policy)

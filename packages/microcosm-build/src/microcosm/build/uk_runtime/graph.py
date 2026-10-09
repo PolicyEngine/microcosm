@@ -223,9 +223,11 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
-            # The Universal Credit draw's population: units with an adult
-            # under State Pension age (#882).
+            # The Universal Credit draw's population: units with a UC
+            # claimant or partner aged 18 to under Pension Credit qualifying
+            # age (#882, microcosm#1095).
             "age",
+            "is_uc_claimant",
         )
     )
     | frozenset({("benunit", "is_married")}),
@@ -325,6 +327,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "is_enhanced_disabled_for_benefits",
                     "is_severely_disabled_for_benefits",
                     "receives_benefits_in_own_right",
+                    # The UC draw's population (frs_take_up's rule).
+                    "is_uc_claimant",
                 )
             ),
             ("benunit", "benunit_support_channel"),
