@@ -29,6 +29,7 @@ from microcosm.build.telemetry_emitter_constants import (
     NO_LOCAL_SOCKET_WARNING,
     QUEUE_WARNING,
     RUNTIME_DIRECTORY_PREFIX,
+    SERVICE_EXITED_WARNING,
     SERVICE_NOT_READY_WARNING,
     SERVICE_PROCESS_EXIT_TIMEOUT_SECONDS,
     SERVICE_READY_TIMEOUT_SECONDS,
@@ -233,7 +234,15 @@ class LocalTelemetryEmitter:
                 file=sys.stderr,
             )
         else:
-            print(SERVICE_NOT_READY_WARNING, file=sys.stderr)
+            returncode = process.poll()
+            print(
+                SERVICE_NOT_READY_WARNING.format(
+                    timeout_seconds=startup_timeout_seconds
+                )
+                if returncode is None
+                else SERVICE_EXITED_WARNING.format(returncode=returncode),
+                file=sys.stderr,
+            )
         if process is not None:
             _terminate_process(process)
         try:
