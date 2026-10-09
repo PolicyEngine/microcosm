@@ -36,6 +36,26 @@ from microcosm.build.telemetry_emitter_service.models import (
 from microcosm.build.telemetry_emitter_service.timestamps import utc_now
 from microcosm.build.telemetry_protocol import TELEMETRY_SCHEMA_VERSION
 
+type RunKey = tuple[str, str]
+"""A spool run's primary key: its ``(run_id, producer_id)``."""
+
+
+def _pending_runs_query(*columns):
+    """Select runs with events eligible for delivery, least recently updated first."""
+
+    return (
+        select(*columns)
+        .where(
+            TelemetryRunRecord.upload_state == UPLOAD_STATE_PENDING,
+            TelemetryRunRecord.events.any(),
+        )
+        .order_by(
+            TelemetryRunRecord.updated_at,
+            TelemetryRunRecord.run_id,
+            TelemetryRunRecord.producer_id,
+        )
+    )
+
 
 class EventSpool:
     """Small SQLite queue shared by successive emitter service processes."""
@@ -151,16 +171,40 @@ class EventSpool:
     def pending_runs(self) -> list[dict[str, Any]]:
         """Return registrations that have events eligible for delivery."""
 
-        statement = (
-            select(TelemetryRunRecord)
-            .join(TelemetryRunRecord.events)
-            .where(TelemetryRunRecord.upload_state == UPLOAD_STATE_PENDING)
-            .order_by(TelemetryRunRecord.updated_at)
-            .distinct()
+        with self._lock, self._session_factory() as session:
+            runs = session.scalars(_pending_runs_query(TelemetryRunRecord)).all()
+            return [dict(run.registration) for run in runs]
+
+    def pending_run_keys(self) -> list[RunKey]:
+        """Return the key of each run that ``pending_runs`` returns, in order.
+
+        Only the key columns are read, so a run whose stored registration
+        cannot be decoded is still listed; ``registration`` then fails for that
+        run alone.
+        """
+
+        statement = _pending_runs_query(
+            TelemetryRunRecord.run_id,
+            TelemetryRunRecord.producer_id,
         )
         with self._lock, self._session_factory() as session:
-            runs = session.scalars(statement).all()
-            return [dict(run.registration) for run in runs]
+            return [
+                (run_id, producer_id)
+                for run_id, producer_id in session.execute(statement)
+            ]
+
+    def registration(self, run_id: str, producer_id: str) -> dict[str, Any]:
+        """Return one run's stored registration.
+
+        Raises ``KeyError`` for an unknown run and ``ValueError`` for a stored
+        registration that is not a JSON object.
+        """
+
+        with self._lock, self._session_factory() as session:
+            run = session.get(TelemetryRunRecord, (run_id, producer_id))
+            if run is None:
+                raise KeyError(run_id)
+            return dict(run.registration)
 
     def make_local_only(
         self,

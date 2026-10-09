@@ -98,4 +98,14 @@ WORKER_STEP_WARNING: Final = (
     "warning: the local telemetry emitter service's delivery worker hit "
     "{error_type} ({error}) and will keep running."
 )
+DELIVERY_RUN_WARNING: Final = (
+    "warning: the local telemetry emitter service hit {error_type} ({error}) "
+    "delivering one queued run; it will retry that run later and keep "
+    "delivering the others."
+)
+TOKEN_EXCHANGE_WARNING: Final = (
+    "warning: the local telemetry emitter service hit {error_type} ({error}) "
+    "exchanging the Hugging Face credential for a collector token; it will "
+    "retry later."
+)
 MAX_WARNING_ERROR_CHARS: Final = 300
