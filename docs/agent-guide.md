@@ -351,6 +351,35 @@ Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
 
+The transport build driver (`tools/build_transport.py`, a shim over
+`microcosm.build.transport.cli`) composes a country's graph from its
+`transport_graph.json` spec resource and runs it locally: every file it
+writes, including its `.graph-store`, lies under `--out`, and it has no
+upload or staging path. Before it opens the store it refuses any link in an
+existing store tree (the root, `objects`, `tmp` or a shard), because the
+store creates those directories by following links; it does not guard
+against links planted while a build is running. It refuses before reading any graph source while the
+country spec still has unresolved evidence: every selected resource/reference
+set and every null scenario knob is checked before donor preparation.
+Tests for it run on the engine-free toy package in
+`test_support/microcosm_build/transport_composed.py`. The rules registry checks
+module hashes and binds the RuleSpec tree digest. Engine commit and wheel
+SHA-256 pins, and the RuleSpec commit for exported trees, are format-checked
+caller declarations; installed engine provenance is not checked.
+Fresh driver runs write identical HDF5 bytes with object timestamps disabled;
+readback keys continue to include the complete container bytes. CREATE's column
+inventory is cached by implementation, parameters and source bytes. A cold
+build runs CREATE twice (inventory probe and graph execution); warm inventory
+lookups hash the inputs without running the probe. Cold `--resume require`
+refuses before preparation. Output directories must also be disjoint from a
+local `--spec-dir`.
+G7 extensions can wrap a factory in `TransportExtension` to declare additional
+sources and ordered checkpoints. Source names must be new; skeleton predecessor
+sets must stay identical. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. `transport_rules_node` supplies
+the prepared engine reference and period from the binding, so extensions do
+not repeat period values.
+
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)
 with the same pool inputs as the dense candidate. The flag changes exported
