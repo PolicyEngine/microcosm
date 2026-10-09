@@ -6834,6 +6834,9 @@
        "additionalProperties": {
         "type": "string"
        }
+      },
+      "role_column": {
+       "type": "string"
       }
      }
     },

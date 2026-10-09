@@ -77,6 +77,8 @@ def _person(
         "person_benunit_id": benunit_id,
         "person_household_id": household_id,
         "age": age,
+        # The fixtures' adults are their units' UC claimants or partners.
+        "is_uc_claimant": age >= 18,
         support_channel_column("person"): channel,
         support_source_id_column("person"): source_id,
     }
