@@ -1,26 +1,12 @@
 {
- "compiled_count": 1231,
+ "compiled_count": 1233,
  "counts_by_kind": {
   "calibration_drift": 553,
-  "fixture_only": 55,
+  "fixture_only": 53,
   "ledger_only": 649
  },
- "difference_count": 1257,
+ "difference_count": 1255,
  "differences": [
-  {
-   "fixture_value": 1608000.0,
-   "kind": "fixture_only",
-   "name": "dwp.pip.daily_living_enhanced_claimants",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 1283000.0,
-   "kind": "fixture_only",
-   "name": "dwp.pip.daily_living_standard_claimants",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
   {
    "fixture_value": 320866000.0,
    "kind": "fixture_only",

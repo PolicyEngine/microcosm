@@ -3,10 +3,10 @@
   "target_period": 2025,
   "candidate_count": 1254,
   "contract_target_count": 341,
-  "active_reference_count": 1231,
+  "active_reference_count": 1233,
   "status_counts": {
-    "active": 1231,
-    "no_fact_at_or_before_period": 7,
+    "active": 1233,
+    "no_fact_at_or_before_period": 5,
     "signed_excluded": 16
   },
   "geography_pins": {
@@ -212,11 +212,11 @@
     },
     "dwp.pip.daily_living_standard_claimants": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "K04000001"
     },
     "dwp.pip.daily_living_enhanced_claimants": {
       "geography_level": "country",
-      "geography_id": "K03000001"
+      "geography_id": "K04000001"
     },
     "dwp.esa_claimants": {
       "geography_level": "country",
@@ -5438,6 +5438,16 @@
     {
       "name": "dwp.benefit_cap.capped_households",
       "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.pip.daily_living_standard_claimants",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.pip.daily_living_enhanced_claimants",
+      "from": "2025-01",
       "to": "2025"
     },
     {
@@ -13819,26 +13829,32 @@
       ]
     },
     "dwp.pip.daily_living_standard_claimants": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "dwp.pip.daily_living_standard_claimants",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1283000.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7e25a3faa6fdceb4f5ee5868"
         }
       ]
     },
     "dwp.pip.daily_living_enhanced_claimants": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "dwp.pip.daily_living_enhanced_claimants",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1608000.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8d850c8ffb6eae8f4c71e611"
         }
       ]
     },

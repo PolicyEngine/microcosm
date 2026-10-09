@@ -444,6 +444,12 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # Heating Payment from winter 2024-25, so DWP publishes the 2024-25 and
     # 2025-26 statistics for England and Wales (K04000001) only (microcosm#1069).
     ("dwp.winter_fuel_payment.", "england_and_wales"),
+    # DWP has published PIP for England and Wales only since executive
+    # competence moved to the Scottish Government (1 April 2020), as obr.pip's
+    # binding records, and Chronicle stamps the daily-living caseload
+    # K04000001; under the Great Britain default the rows matched no fact
+    # (microcosm#1095).
+    ("dwp.pip.", "england_and_wales"),
 )
 # DfT BUS05i rows name their area in the selector; the geography follows the
 # declared area, never a prefix, so a London or UK row can never be stamped

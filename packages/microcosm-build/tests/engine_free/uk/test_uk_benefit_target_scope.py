@@ -49,7 +49,12 @@ ENGLAND_AND_WALES_ROWS = (
     "obr.carers_allowance",
     "obr.pip",
     "obr.winter_fuel_allowance",
+    # DWP's PIP daily-living caseload (FOI2025/24990), which Chronicle stamps
+    # K04000001 (microcosm#1095).
+    "dwp.pip.daily_living_standard_claimants",
+    "dwp.pip.daily_living_enhanced_claimants",
 )
+PIP_CASELOAD_ROWS = ENGLAND_AND_WALES_ROWS[-2:]
 # OBR table 4.9 concepts reported inside "DWP social security".
 DWP_SOCIAL_SECURITY_CONCEPTS = {
     "obr.attendance_allowance",
@@ -186,3 +191,15 @@ def test_obr_pip_binds_dla_and_pip_together() -> None:
     binding = _targets()["obr.pip"]["bindings"]["policyengine"]
     assert binding["value_expression"] == "pip + dla"
     assert "value_variable" not in binding
+
+
+def test_pip_caseload_rows_pin_england_and_wales() -> None:
+    """The selector pins K04000001, the geography Chronicle stamps DWP's
+    caseload with; under the Great Britain default the rows matched no fact
+    (microcosm#1095)."""
+
+    from tools.generate_uk_target_references import _geography_id_for_target
+
+    targets = _targets()
+    for target_id in PIP_CASELOAD_ROWS:
+        assert _geography_id_for_target(targets[target_id]) == "K04000001"

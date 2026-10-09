@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1231
+ACTIVE_REFERENCE_COUNT = 1233
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -648,9 +648,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     England-scoped too — the borrower bindings filter country == ENGLAND
     explicitly and the support model variables are England-gated by
     construction — while the GB default pin could never match.
-    slc.repayments.devolved_total and the dwp.pip claimant counts keep the GB
-    pin and stay held: activating them needs contract redesign (per-nation
-    repayment rows; an England-and-Wales PIP binding), not a pin change.
+    slc.repayments.devolved_total keeps the GB pin and stays held: activating
+    it needs per-nation repayment rows, not a pin change. The dwp.pip
+    claimant counts took that redesign (microcosm#1095): an England-and-Wales
+    binding, and the K04000001 pin Chronicle stamps DWP's caseload with.
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -690,10 +691,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     }
     assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
     assert (
-        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K03000001"
+        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K04000001"
     )
     assert (
-        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K03000001"
+        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K04000001"
     )
 
     def haystack(target: dict) -> str:
@@ -734,14 +735,16 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(england_slc_ids):
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
+    assert (
+        membership["targets"]["slc.repayments.devolved_total"]["status"]
+        == "no_fact_at_or_before_period"
+    )
     for target_id in (
-        "slc.repayments.devolved_total",
         "dwp.pip.daily_living_standard_claimants",
         "dwp.pip.daily_living_enhanced_claimants",
     ):
-        assert (
-            membership["targets"][target_id]["status"] == "no_fact_at_or_before_period"
-        )
+        assert membership["geography_pins"][target_id]["geography_id"] == "K04000001"
+        assert membership["targets"][target_id]["status"] == "active"
 
 
 def test_uk_target_reference_membership_report_is_packaged() -> None:
@@ -750,8 +753,8 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1231,
-        "no_fact_at_or_before_period": 7,
+        "active": 1233,
+        "no_fact_at_or_before_period": 5,
         "signed_excluded": 16,
     }
     assert membership["genuine_sum_residue"]
