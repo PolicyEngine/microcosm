@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
+import signal
 import sys
 from datetime import UTC, datetime
 from importlib import metadata
@@ -1987,8 +1989,8 @@ def test_driver_reports_validation_failure_through_early_emitter(
         def close(self) -> None:
             events.append(("close",))
 
-        def fail(self, error: BaseException) -> None:
-            events.append(("failed", str(error)))
+        def fail(self, error: BaseException, **classification) -> None:
+            events.append(("failed", str(error), classification))
 
     def start_emitter(**run):
         events.append(("started", run["run_id"]))
@@ -2016,6 +2018,7 @@ def test_driver_reports_validation_failure_through_early_emitter(
     assert events[0][0] == "started"
     assert events[1][0] == "failed"
     assert "--spi-tab must be an existing file" in events[1][1]
+    assert events[1][2] == {"failure_class": "error", "error_code": "BUILD_FAILED"}
 
 
 def test_driver_refuses_misnamed_spi_tab(tmp_path: Path) -> None:
@@ -2387,6 +2390,22 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
         assert file.attrs["populace_smoke_build_id"].startswith("uk-frs-spine-")
     rows = load_spool_rows(tmp_path / "logbook-spool")
     assert rows[0].rung == "f100"
+    # The written file's digest (after smoke marking) is recorded everywhere
+    # a downstream build or an operator would look for it.
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert sidecar["output"] == {
+        "filename": output.name,
+        "sha256": digest,
+        "size_bytes": output.stat().st_size,
+    }
+    assert (tmp_path / "smoke.h5.sha256").read_text() == f"{digest}  smoke.h5\n"
+    created = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"]) == ("spine_h5_creation", "completed")
+    ]
+    assert created[0]["details"]["sha256"] == digest
+    assert rows[0].gate_verdicts["pipeline"]["artifact_sha256"] == digest
 
 
 def test_driver_records_sanitized_failed_staging_lifecycle(
@@ -2438,6 +2457,75 @@ def test_driver_records_sanitized_failed_staging_lifecycle(
     assert manifest["failure"]["error_code"] == "BUILD_FAILED"
     assert secret not in serialized
     assert str(tmp_path) not in serialized
+
+
+@pytest.mark.parametrize(
+    ("stop", "exit_type", "error_code", "failure_class"),
+    [
+        ("sigint", KeyboardInterrupt, "INTERRUPTED", "interrupted"),
+        ("sigterm", SystemExit, "TERMINATED", "terminated"),
+    ],
+)
+def test_driver_records_an_operator_stop_as_a_discarded_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stop: str,
+    exit_type: type[BaseException],
+    error_code: str,
+    failure_class: str,
+) -> None:
+    """Ctrl-C and SIGTERM close the staging run failed with their own class,
+    record a discarded row, and leave the process with the matching exit."""
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "stopped.h5"
+    staging_dir = tmp_path / "staging"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+
+    def _stop_graph(*args, **kwargs):
+        if stop == "sigterm":
+            os.kill(os.getpid(), signal.SIGTERM)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(tool, "run_graph", _stop_graph)
+    previous_handler = signal.getsignal(signal.SIGTERM)
+
+    with pytest.raises(exit_type) as raised:
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--staging-local-only",
+                "--staging-dir",
+                str(staging_dir),
+                "--staging-run-id",
+                "stopped-staging-test",
+            ]
+        )
+
+    if exit_type is SystemExit:
+        assert raised.value.code == 143
+    assert signal.getsignal(signal.SIGTERM) == previous_handler
+    manifest = validate_v2_bundle(staging_dir, "stopped-staging-test")["run_manifest"]
+    assert manifest["status"] == "failed"
+    assert (
+        manifest["failure"]["error_code"],
+        manifest["failure"]["failure_class"],
+    ) == (error_code, failure_class)
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]
 
 
 def test_driver_materializes_a_blocked_assembled_gate_report_before_failing(

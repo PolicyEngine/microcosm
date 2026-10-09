@@ -71,6 +71,8 @@ class SpineGateBlockedError(ValueError):
         blocking: Sequence[gate_battery.GateOutcome],
     ) -> None:
         self.report = report
+        self.phase = report.phase
+        self.blocking_gate_ids = tuple(outcome.entry.id for outcome in blocking)
         super().__init__(
             f"Stored {report.phase} spine gates block downstream execution: "
             + ", ".join(outcome.entry.id for outcome in blocking)

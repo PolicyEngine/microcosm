@@ -256,6 +256,15 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     assert json.loads(capsys.readouterr().out) == manifest
     run_id = manifest["build_id"]
     assert run_id.startswith("uk-frs-calibration-attempt-")
+    # The attempt records how it ran its graph and names itself in its request
+    # evidence, so a later attempt on the same store can link back to it.
+    execution = manifest["execution"]
+    assert execution["nodes_total"] > 0 and execution["nodes_reused"] == 0
+    assert execution["earlier_attempts"] == []
+    request = json.loads(
+        (Path(execution["attempt_directory"]) / "request.json").read_text()
+    )
+    assert request["attempt"]["build_id"] == run_id
     # The seam's output names, from the posture.
     dataset = out / "microcosm_uk_2024_25.h5"
     gates = out / "microcosm_uk_2024_25.terminal_gates.json"
@@ -769,6 +778,38 @@ def test_uk_national_role_blocks_on_a_failed_seam_gate(monkeypatch, tmp_path):
     assert rows[0].disposition == "failed"
     assert "candidate_blocked" in rows[0].phases_reached
     assert rows[0].gate_verdicts["uk_aggregate_admin"]["verdict"] == "failed"
+
+
+def test_uk_national_role_closes_a_seam_block_as_a_blocked_run(monkeypatch, tmp_path):
+    """The seam battery's refusal closes the staging run ``blocked`` at the
+    terminal phase, naming the refusing gate, while the row stays ``failed``."""
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_aggregate_admin_totals",
+        lambda frame, manifest: (
+            {name: value * 5.0 for name, value in seam._admin_anchor_values().items()},
+            [],
+        ),
+    )
+    out = tmp_path / "blocked"
+
+    assert (
+        builder.main(_argv(input_h5, out, "--staging-local-only", "--epochs", "5")) == 1
+    )
+
+    runs = sorted(path.name for path in (out / "staging" / "runs").iterdir())
+    bundle = validate_v2_bundle(out / "staging", runs[0])
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["block"]["phase"] == "terminal"
+    assert "uk_aggregate_admin" in bundle["progress"]["block"]["blocking_gate_ids"]
+    checks = [
+        e for e in bundle["events"] if e["stage_id"] == "release_check_evaluation"
+    ]
+    assert checks[-1]["details"]["gate_statuses"]["uk_aggregate_admin"] == "failed"
+    assert load_spool_rows(out / "logbook-spool")[0].disposition == "failed"
 
 
 # --- Behaviours re-anchored from the retired seam command's tests (B3) ---

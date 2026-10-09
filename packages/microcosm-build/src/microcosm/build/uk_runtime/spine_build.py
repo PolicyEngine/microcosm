@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
+from microcosm.build.artifact_files import file_artifact
 from microcosm.build.country_spec import (
     GatesManifest,
     load_country_spec,
@@ -51,6 +52,7 @@ from microcosm.build.observation import (
     StageObserver,
 )
 from microcosm.build.plan import StageRecord
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
@@ -63,6 +65,7 @@ from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
 )
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
@@ -147,6 +150,7 @@ from microcosm.build.uk_runtime.pension_credit_take_up import (
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
+from microcosm.build.uk_runtime.rowwise_staging import close_run_blocked
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
@@ -909,8 +913,53 @@ def _structural_columns(frame) -> frozenset[str]:
     return frozenset(columns)
 
 
+def _write_sha256_file(path: Path, sha256: str) -> Path:
+    """Write ``<path>.sha256`` in the ``sha256sum`` format, atomically."""
+    target = path.with_name(path.name + ".sha256")
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(f"{sha256}  {path.name}\n", encoding="utf-8")
+    temporary.replace(target)
+    return target
+
+
 def _new_build_id(timestamp: datetime) -> str:
     return f"uk-frs-spine-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
+
+
+def _close_failed_telemetry(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    error: BaseException,
+    *,
+    rung_abort: bool = False,
+) -> None:
+    """Close both telemetry destinations for a spine build that raised.
+
+    A spine gate refusal closes the run as ``blocked`` at its gate phase; a rung
+    abort and every other error close it ``failed`` with a classified code.
+    """
+    classified = classify_failure(error)
+    if classified.block is not None and not rung_abort:
+        close_run_blocked(staging_bundle, emitter, classified.block)
+        return
+    error_code, failure_class = (
+        ("RUNG_ABORTED", "aborted")
+        if rung_abort
+        else (
+            classified.error_code or "BUILD_FAILED",
+            classified.failure_class or "error",
+        )
+    )
+    if staging_bundle is not None and staging_bundle.status == "running":
+        try:
+            staging_bundle.fail(
+                error, error_code=error_code, failure_class=failure_class
+            )
+            staging_bundle.validate_local_bundle()
+        except Exception:
+            pass
+    if emitter is not None and emitter.available:
+        emitter.fail(error, failure_class=failure_class, error_code=error_code)
 
 
 def _record_attempt(
@@ -1773,6 +1822,15 @@ def prepare_uk_spine_execution(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Build the spine; a SIGTERM is recorded like Ctrl-C, then exits 143."""
+    with raise_on_sigterm():
+        try:
+            return _main(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     started_at = time.perf_counter()
@@ -2002,12 +2060,19 @@ def main(argv: list[str] | None = None) -> int:
         output = write_uk_national_frame(frame, args.spine_h5)
         if args.smoke:
             _mark_non_release_h5(output, build_id=state.build_id)
+        # The output's file digest, measured once its last byte is written
+        # (smoke marking included). The sidecar, the stage event, a
+        # ``<h5>.sha256`` file and the Logbook pipeline verdict carry it, so a
+        # downstream build pins exactly this file.
+        output_file = file_artifact(output)
+        _write_sha256_file(output, str(output_file["sha256"]))
         _record_stage(
             staging_bundle,
             emitter,
             "spine_h5_creation",
             "completed",
-            size_bytes=output.stat().st_size,
+            size_bytes=int(output_file["size_bytes"]),
+            sha256=output_file["sha256"],
         )
         append_phase(state, "spine_written")
         if args.checkpoint_dir is not None:
@@ -2087,6 +2152,7 @@ def main(argv: list[str] | None = None) -> int:
             "path": _checkpoint_link(graph_evidence_path),
             "sha256": hashlib.sha256(graph_evidence_path.read_bytes()).hexdigest(),
         }
+        sidecar["output"] = dict(output_file)
         stage_evidence = stored_evidence["stage_evidence"]
         if stage_evidence:
             sidecar["stage_evidence"] = stage_evidence
@@ -2142,6 +2208,7 @@ def main(argv: list[str] | None = None) -> int:
                 "receipt": local_artifact_reference(
                     sidecar_path, repository_hint=_REPOSITORY
                 ),
+                "artifact_sha256": output_file["sha256"],
             }
         }
         if spine_gate_path.is_file():
@@ -2166,6 +2233,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
+    except KeyboardInterrupt as interrupt:
+        # An operator's Ctrl-C or a SIGTERM (BuildTerminatedError) discards the
+        # attempt: the telemetry closes failed (INTERRUPTED or TERMINATED), the
+        # row is recorded, and the interrupt propagates.
+        _close_failed_telemetry(staging_bundle, emitter, interrupt)
+        try:
+            receipt_path = write_error_receipt(
+                error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
+                state=state,
+                pipeline=_PIPELINE,
+                error=interrupt,
+            )
+            apply_error_verdict(
+                state,
+                local_artifact_reference(receipt_path, repository_hint=_REPOSITORY),
+            )
+            _record_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                disposition=classify_failure(interrupt).disposition,
+                predecessor=predecessor,
+                rung=rung,
+                spool_dir=spool_dir,
+            )
+        except Exception:
+            pass
+        raise
     except Exception as error:
         if spine_battery is not None:
             # A run the assembled gate blocked never returned a manifest for
@@ -2177,17 +2273,11 @@ def main(argv: list[str] | None = None) -> int:
                 materialize_blocked_spine_gate_report(error, battery=spine_battery)
             except GateBatteryBlockedError as blocked:
                 error = blocked
-        if staging_bundle is not None and staging_bundle.status == "running":
-            try:
-                staging_bundle.fail(error)
-                staging_bundle.validate_local_bundle()
-            except Exception:
-                pass
-        if emitter.available:
-            emitter.fail(error)
-        if _is_sampled(args) and _exception_chain_contains(
+        rung_abort = _is_sampled(args) and _exception_chain_contains(
             error, _RUNG_NAMED_EDGE_SIGNATURE
-        ):
+        )
+        _close_failed_telemetry(staging_bundle, emitter, error, rung_abort=rung_abort)
+        if rung_abort:
             rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
             receipt = _rung_abort_receipt(args, error=error)
             atomic_write_json(rung_abort_path, receipt)
