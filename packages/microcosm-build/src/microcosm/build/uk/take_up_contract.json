@@ -520,19 +520,19 @@
       "output": "maximum_extended_childcare_hours_usage",
       "entity": "benunit",
       "distribution": "normal",
-      "mean": 15.019,
+      "mean": 31.141,
       "sd": 4.972,
       "lower": 0,
       "upper": 30,
       "source": {
-        "source": "FRS empirical fit, frozen by microcosm#834 adjudication",
-        "agency": "PolicyEngine",
-        "citation": "Incumbent offline childcare usage fit, clipped to [0, 30] hours. Frozen because it is underidentified without an independent extended-spending observation; replacing it needs evidence on hours actually used.",
-        "status": "frozen_by_adjudication",
-        "freeze": {
-          "decision": "Hold 15.019 / 4.972 / 0 / 30 fixed while fitting only four take-up rates",
-          "followup": "microcosm#834"
-        }
+        "source": "DfE 2026 to 2027 early years national funding formulae technical note (3- and 4-year-old additional-hours PTEs, January 2025 censuses) and DfE Education provision: children under 5 years of age, January 2025 (3- and 4-year-olds registered for the working parent entitlement)",
+        "agency": "DfE",
+        "status": "sourced_administrative_derived",
+        "url": "https://www.gov.uk/government/publications/early-years-funding-2026-to-2027/2026-to-2027-early-years-national-funding-formulae-technical-note",
+        "registrations_url": "https://explore-education-statistics.service.gov.uk/find-statistics/education-provision-children-under-5/2025",
+        "derivation": "15 + 15 * 341,988.09 additional-hours PTEs / 379,000 registered 3-4-year-olds = 28.535 mean weekly funded hours for a working-parent 3- or 4-year-old (one PTE is 15 hours a week for 38 weeks); mean solves E[clip(N(mean, 4.972), 0, 30)] = 28.535 with the sd and bounds held",
+        "citation": "Replaces the frozen 15.019 / 4.972 incumbent fit (microcosm#834), which #834 held pending evidence on hours actually used. The DfE additional-hours PTEs are that evidence: observed January 2025 census volumes, not a forecast. The variable caps a family's total weekly extended hours, so its mean is the total (universal plus additional) for a 3- or 4-year-old. Only the 3-4 cohort anchors the mean; DfE's under-2 and 2-year-old PTEs are partly forecast. The sd is not identified by any source and keeps the incumbent value. Re-mapping the 2024-25 national release's own draws through this distribution gives 2026-27 free-entitlement spending of 9.30bn against DfE's illustrative 9.9bn (5.81bn before); see microcosm#1126.",
+        "followup": "microcosm#1126"
       }
     }
   ]
