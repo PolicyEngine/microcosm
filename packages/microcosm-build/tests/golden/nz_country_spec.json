@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "df8850d5893e9311882573ff6b4baa41c9dda41f6838d9a140199ddf0cc7fd48",
+  "fingerprint": "850a024dadd7b80f03625965ab71f0980860feea307225c3149445335016c559",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_region_admin_aggregates",
@@ -41,7 +41,7 @@
     "country_package.json": "b83de9e12238b41481810ddb7fbdbaaa71d457cbfa9da83f3f53cbf479cee43b",
     "currency_bridge.json": "aa6a4b286a6a1a015088f32ac013148553422c3d45eeef7d7a15af08388857ca",
     "export_contract.json": "f0629a3990a47f3f94114c4d7b6680636ef7b1bd34bb8e950976d3065f029fda",
-    "gates.json": "3d709d88bd40198b61b9a1745b6f4481625145aa13a7414d700726c50159a0ae",
+    "gates.json": "c56f55deb8c1bdf0755a6223e871653e66a350a7ac78803f85bed5b47be88791",
     "geography_spine.json": "353821844d85d2622c328b4986dd9e3a8075c13498b9f56d349c4578edf7495a",
     "holdout_references.json": "52b5a2360502156da1392a68350e4e7f61b5fd420fa74428819b65886a9f8655",
     "precal_references.json": "43b13849e3d74ebca7d7a9d46817463e3ad1333c3aedd7a3eac39e870510fba0",
