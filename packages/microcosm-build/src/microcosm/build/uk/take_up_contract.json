@@ -90,6 +90,21 @@
       }
     },
     {
+      "key": "pension_credit_newly_entitled",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.37
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Savings Credit only: 37% in FYE 2024, the component with the smallest awards. Applied by pension_credit_take_up to a benefit unit with no Pension Credit entitlement at the calibration year that does not report it: the rate at which such a unit claims once a reform or a later year entitles it, as uk-data#510 sets it (microcosm#1095).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
+        "status": "sourced_administrative"
+      }
+    },
+    {
       "key": "universal_credit",
       "output": "would_claim_uc",
       "entity": "benunit",

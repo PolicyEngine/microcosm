@@ -1866,13 +1866,14 @@ def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:
 
 
 def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
-    def band(name, rate, realized, *, exceed=False, units=10):
+    def band(name, rate, realized, *, exceed=False, units=10, scope="great_britain"):
         return {
             "band": name,
             "rate": rate,
             "realized_take_up": realized,
             "reporters_exceed_rate": exceed,
             "entitled_units": units,
+            "scope": scope,
         }
 
     parameters = {
@@ -1901,6 +1902,9 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     assert not gate(band("guarantee_credit", 0.69, 0.50, exceed=True)).passed
     assert not gate(band("guarantee_credit", 0.69, None, units=0)).passed
     assert not gate().passed
+    # DWP's rates cover Great Britain: a band measured UK-wide fails even at
+    # its rate (uk-data#510).
+    assert not gate(band("guarantee_credit", 0.69, 0.69, scope="united_kingdom")).passed
     # The realised rates are population facts: a synthetic smoke fixture records
     # the failure without blocking, every other posture blocks on it.
     committed = _gate_parameters("uk_stage_pension_credit_take_up")

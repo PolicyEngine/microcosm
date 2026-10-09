@@ -969,7 +969,9 @@ def _pension_credit_take_up_gate(
 
     A band whose reporters alone exceed the rate realizes their share instead;
     the receipt flags it and the gate requires the realized share to be at
-    least the rate there.
+    least the rate there. DWP's rates cover Great Britain, so each band is
+    measured there, and a receipt measured over any other scope fails
+    (uk-data#510).
     """
 
     check = "pension_credit_take_up"
@@ -990,7 +992,18 @@ def _pension_credit_take_up_gate(
         rate = _finite_number(band.get("rate"), label=f"{stage}.{name}.rate")
         units = int(band.get("entitled_units", 0))
         realized = band.get("realized_take_up")
-        details[name] = {"rate": rate, "realized_take_up": realized, "units": units}
+        scope = band.get("scope")
+        details[name] = {
+            "rate": rate,
+            "realized_take_up": realized,
+            "units": units,
+            "scope": scope,
+        }
+        if scope != "great_britain":
+            failures.append(
+                f"{stage}: band {name} is measured over {scope!r}, not Great Britain."
+            )
+            continue
         if units < minimum_units or realized is None:
             failures.append(f"{stage}: band {name} has {units} entitled units.")
             continue

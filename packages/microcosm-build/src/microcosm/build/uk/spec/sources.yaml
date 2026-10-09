@@ -3782,12 +3782,16 @@ stages:
   - kind: materialize_rules_engine_predictors
     predictors:
     - has_mixed_age_couple_pension_credit_saving
+    year_rule: survey_year
   - kind: materialize_rules_engine_predictors
     predictors:
     - guarantee_credit
     - savings_credit
     - is_pension_credit_eligible
+    - pension_credit_assessable_capital
+    - pension_credit_deemed_income
     consumed_only: true
+    year_rule: calibration_year
   - kind: aggregate_person_to_benunit
     method: any_positive
     consumed_only: true
@@ -3806,12 +3810,14 @@ stages:
       rule: is_pension_credit_eligible AND guarantee_credit <= 0 AND savings_credit > 0
       rate_key: pension_credit_savings_credit_only
     weight_mapping: household_to_benunit
-    residual_rate: (rate * entitled - reporters) / (entitled - reporters), weighted, clipped to [0, 1]
+    residual_rate: (rate * entitled - reporters) / (entitled - reporters), weighted, over Great Britain, clipped to [0, 1]; drawn for every entitled non-reporter
+    solve_scope: great_britain
+    newly_entitled_rate_key: pension_credit_newly_entitled
   outputs:
   - has_mixed_age_couple_pension_credit_saving
   rewrites:
   - would_claim_pc
-  notes: Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). It first stores the engine's own default for the SI 2019/37 mixed-age couple saving (has_mixed_age_couple_pension_credit_saving, pe-uk#1940), evaluated once at the survey-year period on the post-SPI receipts, so later model years do not re-derive it from a birth year that moves with the model year (uk-data#519). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible.
+  notes: Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). It first stores the engine's own default for the SI 2019/37 mixed-age couple saving (has_mixed_age_couple_pension_credit_saving, pe-uk#1940), evaluated once at the survey-year period on the post-SPI receipts, so later model years do not re-derive it from a birth year that moves with the model year (uk-data#519). A second temporary engine materialization, at the release's calibration year as uk-data reads it (uk-data#510), gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible) and, for the receipt only, its assessable capital and deemed income (microcosm#1095); all are consumed only. Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. DWP's rates cover Great Britain, so E and R are Great Britain's and Northern Ireland's entitled units claim at the same r (uk-data#510). A unit with no entitlement claims if it reports, and otherwise at DWP's Savings Credit-only caseload take-up (37%, pension_credit_newly_entitled), the rate at which a unit claims once a reform or a later year entitles it (uk-data#510). The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces.
 - stage: child_benefit_take_up
   survey: Family Resources Survey 2024-25
   source: HMRC Child Benefit statistics, annual release at August 2025 (percentage of eligible children for whom Child Benefit is claimed by single year of age; families registered and families opted out of payment), applied to PolicyEngine-UK Child Benefit eligibility and adjusted net income after the SPI income chain.

@@ -3,20 +3,23 @@
 ``frs_take_up`` draws ``would_claim_pc`` early, on FRS incomes, so the engine
 simulations of the intermediate stages see a value. This stage redraws it once
 the SPI income chain has set the incomes the engine assesses. One temporary
-engine materialization gives each benefit unit's pre-take-up Pension Credit
-entitlement; the entitled units fall into two component bands, as DWP reports
-take-up: Guarantee Credit (with or without Savings Credit) and Savings Credit
-only. Within a band a reporter always claims and the other entitled units claim
-at the residual rate
+engine materialization, at the release's calibration year as uk-data reads it,
+gives each benefit unit's pre-take-up Pension Credit entitlement; the entitled
+units fall into two component bands, as DWP reports take-up: Guarantee Credit
+(with or without Savings Credit) and Savings Credit only. Within a band a
+reporter always claims and the other entitled units claim at the residual rate
 
     r = (t * E - R) / (E - R),
 
 with t the band's DWP caseload take-up rate, E the band's entitled units and R
-the reporters among them, both weighted at the stage's household weights, so
-reporters plus drawn claimants make up t of the band (or more, where reporters
-alone exceed it; the receipt says so). A unit with no entitlement claims only
-if it reports. The uniform draw is the ``would_claim_pc`` identity stream
-``frs_take_up`` uses.
+the reporters among them, both weighted at the stage's household weights and
+both over Great Britain, which DWP's rates cover. Reporters plus drawn claimants
+make up t of the band in Great Britain (or more, where reporters alone exceed
+it; the receipt says so), and Northern Ireland's entitled units claim at the
+same r (uk-data#510). A unit with no entitlement claims if it reports, and
+otherwise at DWP's Savings Credit-only take-up, the rate at which a unit claims
+once a reform or a later year entitles it (uk-data#510). The uniform draw is the
+``would_claim_pc`` identity stream ``frs_take_up`` uses.
 """
 
 from __future__ import annotations
@@ -29,17 +32,20 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.take_up_contract import (
     UKTakeUpContract,
     load_uk_take_up_contract,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    _benunit_households,
     _household_to_benunit_weights,
 )
 from microcosm.frame import Frame
@@ -53,6 +59,23 @@ PENSION_CREDIT_ENTITLEMENT_VARIABLES = (
     "savings_credit",
     "is_pension_credit_eligible",
 )
+#: Read beside the entitlement for the receipt only: the capital the engine
+#: assesses and the income it deems from it (microcosm#1095).
+PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES = (
+    "pension_credit_assessable_capital",
+    "pension_credit_deemed_income",
+)
+#: The saving is stored at the survey year; entitlement is read at the
+#: release's calibration year, as uk-data reads it (uk-data#510).
+PENSION_CREDIT_SAVING_YEAR_RULE = "survey_year"
+PENSION_CREDIT_ENTITLEMENT_YEAR_RULE = "calibration_year"
+#: DWP's take-up rates cover Great Britain, so each band's residual is solved
+#: there and applied to Northern Ireland's entitled units as well.
+PENSION_CREDIT_SOLVE_SCOPE = "great_britain"
+PENSION_CREDIT_OUTSIDE_SOLVE_REGION = "NORTHERN_IRELAND"
+#: The take-up of a unit with no entitlement once a reform or a later year
+#: entitles it (uk-data#510).
+PENSION_CREDIT_NEWLY_ENTITLED_RATE_KEY = "pension_credit_newly_entitled"
 #: The SI 2019/37 saving for a mixed-age couple (pe-uk#1940), stored at the
 #: survey year so later model years do not re-derive it from a birth year
 #: that moves with the model year (uk-data#519).
@@ -76,7 +99,10 @@ PENSION_CREDIT_TAKE_UP_BANDS = (
         "rate_key": "pension_credit_savings_credit_only",
     },
 )
-PENSION_CREDIT_RESIDUAL_RATE = "(rate * entitled - reporters) / (entitled - reporters), weighted, clipped to [0, 1]"
+PENSION_CREDIT_RESIDUAL_RATE = (
+    "(rate * entitled - reporters) / (entitled - reporters), weighted, over "
+    "Great Britain, clipped to [0, 1]; drawn for every entitled non-reporter"
+)
 
 
 @dataclass(frozen=True)
@@ -87,15 +113,22 @@ class UKPensionCreditTakeUpResult:
     bands: tuple[Mapping[str, object], ...]
     reporters_without_entitlement: Mapping[str, float]
     changed_units: int
+    newly_entitled: Mapping[str, object] = field(default_factory=dict)
+    entitlement_year: int | None = None
+    capital: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
             "stage": PENSION_CREDIT_TAKE_UP_STAGE_NAME,
             "seed": PENSION_CREDIT_TAKE_UP_SEED,
             "residual_rate": PENSION_CREDIT_RESIDUAL_RATE,
+            "solve_scope": PENSION_CREDIT_SOLVE_SCOPE,
+            "entitlement_year": self.entitlement_year,
             "bands": [dict(band) for band in self.bands],
+            "newly_entitled": dict(self.newly_entitled),
             "reporters_without_entitlement": dict(self.reporters_without_entitlement),
             "changed_units": self.changed_units,
+            "capital": dict(self.capital),
         }
 
 
@@ -147,7 +180,16 @@ def redraw_pension_credit_take_up(
             ("person_benunit_id", "person_household_id", "pension_credit_reported"),
             "person",
         ),
-        (benunit, ("benunit_id", PENSION_CREDIT_TAKE_UP_OUTPUT), "benunit"),
+        (
+            benunit,
+            (
+                "benunit_id",
+                PENSION_CREDIT_TAKE_UP_OUTPUT,
+                support_channel_column("benunit"),
+            ),
+            "benunit",
+        ),
+        (household, ("household_id", "region"), "household"),
     ):
         missing = sorted(set(columns) - set(table.columns))
         if missing:
@@ -155,23 +197,42 @@ def redraw_pension_credit_take_up(
                 f"Pension Credit take-up {label} columns missing: {missing}."
             )
     period = uk_time_period(frame)
+    entitlement_year = resolve_uk_year_rule(PENSION_CREDIT_ENTITLEMENT_YEAR_RULE)
     # The engine's own default for the mixed-age saving, evaluated once at the
     # frame's survey-year period on the post-SPI receipts and stored, so the
     # entitlement below and every later model year read the same answer: a
     # mixed-age couple whose older member was born by 5 February 1954 and who
     # report Pension Credit, or pension-age Housing Benefit without an
     # income-related legacy benefit, and no Universal Credit (uk-data#519).
-    requested = [PENSION_CREDIT_MIXED_AGE_SAVING, *PENSION_CREDIT_ENTITLEMENT_VARIABLES]
-    materialized = engine.materialize(frame, requested, period)
-    missing = sorted(set(requested) - set(materialized))
-    if missing:
-        raise ValueError(f"Pension Credit take-up engine outputs missing: {missing}.")
     count = len(benunit)
+    saving = engine.materialize(frame, [PENSION_CREDIT_MIXED_AGE_SAVING], period)
+    if PENSION_CREDIT_MIXED_AGE_SAVING not in saving:
+        raise ValueError(
+            "Pension Credit take-up engine outputs missing: "
+            f"{[PENSION_CREDIT_MIXED_AGE_SAVING]}."
+        )
     benunit[PENSION_CREDIT_MIXED_AGE_SAVING] = _aligned(
-        materialized[PENSION_CREDIT_MIXED_AGE_SAVING],
+        saving[PENSION_CREDIT_MIXED_AGE_SAVING],
         count,
         PENSION_CREDIT_MIXED_AGE_SAVING,
     ).astype(bool)
+    with_saving = uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period=period,
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+    requested = [
+        *PENSION_CREDIT_ENTITLEMENT_VARIABLES,
+        *PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES,
+    ]
+    materialized = engine.materialize(with_saving, requested, entitlement_year)
+    missing = sorted(set(requested) - set(materialized))
+    if missing:
+        raise ValueError(f"Pension Credit take-up engine outputs missing: {missing}.")
     guarantee = _aligned(materialized["guarantee_credit"], count, "guarantee_credit")
     savings = _aligned(materialized["savings_credit"], count, "savings_credit")
     eligible = _aligned(
@@ -189,12 +250,15 @@ def redraw_pension_credit_take_up(
         household=household,
         household_weights=frame.weights_for("household").values,
     )
+    great_britain = _benunit_in_great_britain(
+        benunit, person=person, household=household
+    )
     draws = stable_identity_uniforms(
         benunit["benunit_id"].to_numpy(),
         seed=PENSION_CREDIT_TAKE_UP_SEED,
         salt=PENSION_CREDIT_TAKE_UP_OUTPUT,
     )
-    would_claim, bands = assign_component_take_up(
+    would_claim, bands, newly_entitled = assign_component_take_up(
         guarantee=guarantee,
         savings=savings,
         eligible=eligible,
@@ -205,11 +269,31 @@ def redraw_pension_credit_take_up(
             band["rate_key"]: contract.rate(band["rate_key"])
             for band in PENSION_CREDIT_TAKE_UP_BANDS
         },
+        great_britain=great_britain,
+        newly_entitled_rate=contract.rate(PENSION_CREDIT_NEWLY_ENTITLED_RATE_KEY),
     )
     entitled = eligible & ((guarantee > 0.0) | (savings > 0.0))
     outside = reporter & ~entitled
     previous = benunit[PENSION_CREDIT_TAKE_UP_OUTPUT].fillna(False).to_numpy(dtype=bool)
     benunit[PENSION_CREDIT_TAKE_UP_OUTPUT] = would_claim
+    channel = benunit[support_channel_column("benunit")].astype(str).to_numpy()
+    capital_receipt = {
+        name: {
+            str(value): float(np.sum((weights * amounts)[channel == value]))
+            for value in sorted(set(channel))
+        }
+        for name, amounts in (
+            ("guarantee_credit", guarantee),
+            ("savings_credit", savings),
+            *(
+                (
+                    variable,
+                    _aligned(materialized[variable], count, variable).astype(float),
+                )
+                for variable in PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES
+            ),
+        )
+    }
     result = uk_national_frame(
         person=person,
         benunit=benunit,
@@ -228,7 +312,20 @@ def redraw_pension_credit_take_up(
             "weighted_units": float(weights[outside].sum()),
         },
         changed_units=int((previous != would_claim).sum()),
+        newly_entitled=newly_entitled,
+        entitlement_year=entitlement_year,
+        capital=capital_receipt,
     )
+
+
+def _benunit_in_great_britain(
+    benunit: pd.DataFrame, *, person: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    region = household.set_index("household_id")["region"].astype(str)
+    regions = pd.Series(_benunit_households(benunit, person=person)).map(region)
+    if regions.isna().any():
+        raise ValueError("Every benefit unit's household must carry a region.")
+    return regions.ne(PENSION_CREDIT_OUTSIDE_SOLVE_REGION).to_numpy(dtype=bool)
 
 
 def assign_component_take_up(
@@ -240,8 +337,15 @@ def assign_component_take_up(
     weights: np.ndarray,
     draws: np.ndarray,
     rates: Mapping[str, float],
-) -> tuple[np.ndarray, tuple[dict[str, object], ...]]:
-    """Reporters claim; entitled non-reporters claim at their band's residual rate."""
+    great_britain: np.ndarray,
+    newly_entitled_rate: float,
+) -> tuple[np.ndarray, tuple[dict[str, object], ...], dict[str, object]]:
+    """Reporters claim; entitled non-reporters claim at their band's residual rate.
+
+    Each band's residual is solved over its Great Britain units and drawn for
+    every entitled non-reporter, Northern Ireland's included. A non-reporter
+    with no entitlement claims at ``newly_entitled_rate`` on the same draw.
+    """
 
     guarantee = np.asarray(guarantee, dtype=np.float64)
     savings = np.asarray(savings, dtype=np.float64)
@@ -249,6 +353,7 @@ def assign_component_take_up(
     reporter = np.asarray(reporter, dtype=bool)
     weights = np.asarray(weights, dtype=np.float64)
     draws = np.asarray(draws, dtype=np.float64)
+    great_britain = np.asarray(great_britain, dtype=bool)
     masks = {
         "guarantee_credit": eligible & (guarantee > 0.0),
         "savings_credit_only": eligible & (guarantee <= 0.0) & (savings > 0.0),
@@ -257,13 +362,10 @@ def assign_component_take_up(
     receipts = []
     for band in PENSION_CREDIT_TAKE_UP_BANDS:
         mask = masks[band["name"]]
-        rate = float(rates[band["rate_key"]])
-        if not 0.0 <= rate <= 1.0:
-            raise ValueError(
-                f"{band['rate_key']} must be a rate in [0, 1], got {rate}."
-            )
-        entitled = float(weights[mask].sum())
-        reporting = float(weights[mask & reporter].sum())
+        rate = _rate(band["rate_key"], rates[band["rate_key"]])
+        solve = mask & great_britain
+        entitled = float(weights[solve].sum())
+        reporting = float(weights[solve & reporter].sum())
         residual = 0.0
         if entitled > reporting:
             residual = float(
@@ -274,7 +376,7 @@ def assign_component_take_up(
         drawn = mask & ~reporter & (draws < residual)
         would_claim |= drawn
         realized = (
-            float(weights[mask & would_claim].sum()) / entitled
+            float(weights[solve & would_claim].sum()) / entitled
             if entitled > 0.0
             else None
         )
@@ -284,19 +386,46 @@ def assign_component_take_up(
                 "rule": band["rule"],
                 "rate_key": band["rate_key"],
                 "rate": rate,
-                "entitled_units": int(mask.sum()),
+                "scope": PENSION_CREDIT_SOLVE_SCOPE,
+                "entitled_units": int(solve.sum()),
                 "entitled_weighted": entitled,
-                "reporter_units": int((mask & reporter).sum()),
+                "reporter_units": int((solve & reporter).sum()),
                 "reporter_weighted": reporting,
                 "residual_rate": residual,
-                "drawn_units": int(drawn.sum()),
+                "drawn_units": int((drawn & great_britain).sum()),
                 "realized_take_up": realized,
                 "reporters_exceed_rate": bool(
                     entitled > 0.0 and reporting > rate * entitled
                 ),
+                "outside_scope_entitled_units": int((mask & ~great_britain).sum()),
+                "outside_scope_drawn_units": int((drawn & ~great_britain).sum()),
             }
         )
-    return would_claim, tuple(receipts)
+    rate = _rate(PENSION_CREDIT_NEWLY_ENTITLED_RATE_KEY, newly_entitled_rate)
+    not_entitled = ~(masks["guarantee_credit"] | masks["savings_credit_only"])
+    newly = not_entitled & ~reporter & (draws < rate)
+    would_claim |= newly
+    not_entitled_weighted = float(weights[not_entitled].sum())
+    newly_entitled = {
+        "rate_key": PENSION_CREDIT_NEWLY_ENTITLED_RATE_KEY,
+        "rate": rate,
+        "units": int(not_entitled.sum()),
+        "weighted": not_entitled_weighted,
+        "drawn_units": int(newly.sum()),
+        "flagged_share": (
+            float(weights[not_entitled & would_claim].sum()) / not_entitled_weighted
+            if not_entitled_weighted > 0.0
+            else None
+        ),
+    }
+    return would_claim, tuple(receipts), newly_entitled
+
+
+def _rate(key: str, value: float) -> float:
+    rate = float(value)
+    if not 0.0 <= rate <= 1.0:
+        raise ValueError(f"{key} must be a rate in [0, 1], got {rate}.")
+    return rate
 
 
 def _aligned(values: object, expected: int, label: str) -> np.ndarray:
@@ -328,10 +457,17 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
         )
     saving, materialize, aggregate, assign = stage.operations
     expected = {
-        "saving": {"predictors": [PENSION_CREDIT_MIXED_AGE_SAVING]},
+        "saving": {
+            "predictors": [PENSION_CREDIT_MIXED_AGE_SAVING],
+            "year_rule": PENSION_CREDIT_SAVING_YEAR_RULE,
+        },
         "materialize": {
-            "predictors": list(PENSION_CREDIT_ENTITLEMENT_VARIABLES),
+            "predictors": [
+                *PENSION_CREDIT_ENTITLEMENT_VARIABLES,
+                *PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES,
+            ],
             "consumed_only": True,
+            "year_rule": PENSION_CREDIT_ENTITLEMENT_YEAR_RULE,
         },
         "aggregate": {
             "method": "any_positive",
@@ -346,6 +482,8 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             "bands": [dict(band) for band in PENSION_CREDIT_TAKE_UP_BANDS],
             "weight_mapping": "household_to_benunit",
             "residual_rate": PENSION_CREDIT_RESIDUAL_RATE,
+            "solve_scope": PENSION_CREDIT_SOLVE_SCOPE,
+            "newly_entitled_rate_key": PENSION_CREDIT_NEWLY_ENTITLED_RATE_KEY,
         },
     }
     actual = {
@@ -369,7 +507,9 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
 
 
 __all__ = [
+    "PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES",
     "PENSION_CREDIT_ENTITLEMENT_VARIABLES",
+    "PENSION_CREDIT_NEWLY_ENTITLED_RATE_KEY",
     "PENSION_CREDIT_MIXED_AGE_SAVING",
     "PENSION_CREDIT_TAKE_UP_BANDS",
     "PENSION_CREDIT_TAKE_UP_STAGE_NAME",

@@ -6407,7 +6407,9 @@
       "anchor",
       "bands",
       "weight_mapping",
-      "residual_rate"
+      "residual_rate",
+      "solve_scope",
+      "newly_entitled_rate_key"
      ],
      "properties": {
       "kind": {
@@ -6452,6 +6454,15 @@
        "type": "string"
       },
       "residual_rate": {
+       "type": "string"
+      },
+      "solve_scope": {
+       "type": "string",
+       "enum": [
+        "great_britain"
+       ]
+      },
+      "newly_entitled_rate_key": {
        "type": "string"
       }
      }

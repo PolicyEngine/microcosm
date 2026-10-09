@@ -13,6 +13,7 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.pension_credit_take_up import (
+    PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES,
     PENSION_CREDIT_ENTITLEMENT_VARIABLES,
     PENSION_CREDIT_MIXED_AGE_SAVING,
     PENSION_CREDIT_TAKE_UP_STAGE_NAME,
@@ -21,6 +22,7 @@ from microcosm.build.uk_runtime.pension_credit_take_up import (
     assign_component_take_up,
     redraw_pension_credit_take_up,
 )
+from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.frame import WeightKind
 
@@ -54,7 +56,7 @@ def test_each_component_band_claims_at_its_rate_with_reporters_first() -> None:
     guarantee, savings, eligible, reporter, draws, band = _population()
     weights = np.ones(len(band))
 
-    would_claim, receipts = assign_component_take_up(
+    would_claim, receipts, _ = assign_component_take_up(
         guarantee=guarantee,
         savings=savings,
         eligible=eligible,
@@ -62,6 +64,8 @@ def test_each_component_band_claims_at_its_rate_with_reporters_first() -> None:
         weights=weights,
         draws=draws,
         rates=RATES,
+        great_britain=np.ones(len(band), dtype=bool),
+        newly_entitled_rate=0.0,
     )
 
     assert would_claim[reporter].all()
@@ -85,7 +89,7 @@ def test_reporters_above_the_rate_leave_no_residual_draw() -> None:
         gc_reporter_share=0.8
     )
 
-    would_claim, receipts = assign_component_take_up(
+    would_claim, receipts, _ = assign_component_take_up(
         guarantee=guarantee,
         savings=savings,
         eligible=eligible,
@@ -93,6 +97,8 @@ def test_reporters_above_the_rate_leave_no_residual_draw() -> None:
         weights=np.ones(len(band)),
         draws=draws,
         rates=RATES,
+        great_britain=np.ones(len(band), dtype=bool),
+        newly_entitled_rate=0.0,
     )
 
     gc = receipts[0]
@@ -107,7 +113,7 @@ def test_reporters_above_the_rate_leave_no_residual_draw() -> None:
 def test_the_residual_is_weighted() -> None:
     # Two entitled Guarantee Credit units: a reporter of weight 1 and a
     # non-reporter of weight 3, so r = (0.5 * 4 - 1) / (4 - 1) = 1 / 3.
-    _, receipts = assign_component_take_up(
+    _, receipts, _ = assign_component_take_up(
         guarantee=np.asarray([10.0, 10.0]),
         savings=np.zeros(2),
         eligible=np.asarray([True, True]),
@@ -115,6 +121,8 @@ def test_the_residual_is_weighted() -> None:
         weights=np.asarray([1.0, 3.0]),
         draws=np.asarray([0.9, 0.9]),
         rates={**RATES, "pension_credit_guarantee_credit": 0.5},
+        great_britain=np.asarray([True, True]),
+        newly_entitled_rate=0.37,
     )
     assert receipts[0]["residual_rate"] == pytest.approx(1 / 3)
 
@@ -129,14 +137,22 @@ class _StubEngine:
         self.calls.append((tuple(variables), str(period)))
         benunit = frame.table("benunit")
         ids = benunit["benunit_id"].to_numpy()
+        self.saving_seen = (
+            benunit[PENSION_CREDIT_MIXED_AGE_SAVING].tolist()
+            if PENSION_CREDIT_MIXED_AGE_SAVING in benunit
+            else None
+        )
         # 1: Guarantee Credit; 2: Savings Credit only; 3: not entitled.
         # Unit 2 is a mixed-age couple keeping the SI 2019/37 saving.
-        return {
+        values = {
             PENSION_CREDIT_MIXED_AGE_SAVING: ids == 2,
             "guarantee_credit": np.where(ids == 1, 40.0, 0.0),
             "savings_credit": np.where(ids == 2, 15.0, 0.0),
             "is_pension_credit_eligible": ids != 3,
+            "pension_credit_assessable_capital": np.where(ids == 2, 12_000.0, 0.0),
+            "pension_credit_deemed_income": np.where(ids == 2, 208.0, 0.0),
         }
+        return {name: values[name] for name in variables}
 
 
 def _frame():
@@ -150,7 +166,11 @@ def _frame():
         }
     )
     benunit = pd.DataFrame(
-        {"benunit_id": [1, 2, 3], "would_claim_pc": [True, True, False]}
+        {
+            "benunit_id": [1, 2, 3],
+            "would_claim_pc": [True, True, False],
+            support_channel_column("benunit"): ["frs", "frs", "spi"],
+        }
     )
     household = pd.DataFrame({"household_id": [1, 2, 3], "region": ["WALES"] * 3})
     return uk_national_frame(
@@ -173,13 +193,20 @@ def test_redraw_reads_engine_entitlement_once_and_rewrites_only_would_claim_pc()
         frame, engine=engine, contract=load_uk_take_up_contract()
     )
 
-    # One materialization at the frame's survey-year period, the saving first.
+    # The saving at the frame's survey year, then the entitlement and the
+    # capital receipt at the release's calibration year, reading the stored
+    # saving (uk-data#510, uk-data#519).
     assert engine.calls == [
+        ((PENSION_CREDIT_MIXED_AGE_SAVING,), "2024"),
         (
-            (PENSION_CREDIT_MIXED_AGE_SAVING, *PENSION_CREDIT_ENTITLEMENT_VARIABLES),
-            "2024",
-        )
+            (
+                *PENSION_CREDIT_ENTITLEMENT_VARIABLES,
+                *PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES,
+            ),
+            "2025",
+        ),
     ]
+    assert engine.saving_seen == [False, True, False]
     after = result.frame.table("benunit")
     # Unit 3 reports Pension Credit the engine finds it is not entitled to: it
     # keeps claiming, and the receipt counts it.
@@ -208,6 +235,77 @@ def test_redraw_reads_engine_entitlement_once_and_rewrites_only_would_claim_pc()
         "savings_credit_only",
     ]
     assert evidence["bands"][0]["entitled_units"] == 1
+    assert evidence["entitlement_year"] == 2025
+    assert evidence["solve_scope"] == "great_britain"
+    assert evidence["capital"]["pension_credit_assessable_capital"] == {
+        "frs": 120_000.0,
+        "spi": 0.0,
+    }
+    for name in PENSION_CREDIT_CAPITAL_RECEIPT_VARIABLES:
+        assert name not in after
+
+
+def test_bands_are_solved_over_great_britain_and_drawn_in_northern_ireland() -> None:
+    # Four Guarantee Credit units: a reporter and a non-reporter in Great
+    # Britain, and two Northern Ireland non-reporters of large weight. Solved
+    # over Great Britain, r = (0.5 * 2 - 1) / (2 - 1) = 0, and Northern
+    # Ireland draws at that rate too; solved UK-wide it would be 0.33.
+    would_claim, receipts, _ = assign_component_take_up(
+        guarantee=np.full(4, 10.0),
+        savings=np.zeros(4),
+        eligible=np.ones(4, dtype=bool),
+        reporter=np.asarray([True, False, False, False]),
+        weights=np.asarray([1.0, 1.0, 5.0, 5.0]),
+        draws=np.asarray([0.9, 0.1, 0.1, 0.1]),
+        rates={**RATES, "pension_credit_guarantee_credit": 0.5},
+        great_britain=np.asarray([True, True, False, False]),
+        newly_entitled_rate=0.37,
+    )
+    gc = receipts[0]
+    assert gc["scope"] == "great_britain"
+    assert gc["residual_rate"] == 0.0
+    assert gc["entitled_units"] == 2
+    assert gc["outside_scope_entitled_units"] == 2
+    assert gc["realized_take_up"] == pytest.approx(0.5)
+    assert would_claim.tolist() == [True, False, False, False]
+
+    would_claim, receipts, _ = assign_component_take_up(
+        guarantee=np.full(4, 10.0),
+        savings=np.zeros(4),
+        eligible=np.ones(4, dtype=bool),
+        reporter=np.asarray([True, False, False, False]),
+        weights=np.asarray([1.0, 3.0, 5.0, 5.0]),
+        draws=np.asarray([0.9, 0.1, 0.1, 0.9]),
+        rates={**RATES, "pension_credit_guarantee_credit": 0.5},
+        great_britain=np.asarray([True, True, False, False]),
+        newly_entitled_rate=0.37,
+    )
+    # r = (0.5 * 4 - 1) / (4 - 1) = 1/3: Northern Ireland's unit drawing 0.1
+    # claims, the one drawing 0.9 does not.
+    assert receipts[0]["residual_rate"] == pytest.approx(1 / 3)
+    assert receipts[0]["outside_scope_drawn_units"] == 1
+    assert would_claim.tolist() == [True, True, True, False]
+
+
+def test_units_without_entitlement_claim_at_the_newly_entitled_rate() -> None:
+    # Not entitled: a reporter (claims), and non-reporters drawing either side
+    # of 0.37 on the same stream.
+    would_claim, _, newly = assign_component_take_up(
+        guarantee=np.zeros(3),
+        savings=np.zeros(3),
+        eligible=np.zeros(3, dtype=bool),
+        reporter=np.asarray([True, False, False]),
+        weights=np.ones(3),
+        draws=np.asarray([0.99, 0.36, 0.38]),
+        rates=RATES,
+        great_britain=np.ones(3, dtype=bool),
+        newly_entitled_rate=0.37,
+    )
+    assert would_claim.tolist() == [True, True, False]
+    assert newly["rate_key"] == "pension_credit_newly_entitled"
+    assert newly["units"] == 3
+    assert newly["drawn_units"] == 1
+    assert newly["flagged_share"] == pytest.approx(2 / 3)
 
 
 def test_committed_manifest_declares_the_stage_and_its_rewrite() -> None:
@@ -246,6 +344,7 @@ def test_contract_carries_the_fye2024_component_rates() -> None:
 
     assert contract.rate("pension_credit_guarantee_credit") == 0.69
     assert contract.rate("pension_credit_savings_credit_only") == 0.37
+    assert contract.rate("pension_credit_newly_entitled") == 0.37
 
 
 def test_terminal_signal_gate_leaves_would_claim_pc_to_the_stage_gate() -> None:
