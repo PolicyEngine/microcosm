@@ -4,6 +4,8 @@ import socket
 import tempfile
 import threading
 import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -89,6 +91,25 @@ def _event(stage_id: str = "compile_targets") -> dict[str, object]:
     }
 
 
+@contextmanager
+def _serving_thread(
+    target: Callable[[], object], stop: Callable[[], object]
+) -> Iterator[threading.Thread]:
+    """Run a test server on a daemon thread; stop and join it however the block exits.
+
+    Interpreter exit waits for every non-daemon thread, so a server thread left
+    running by a failed assertion hangs pytest after it prints its summary.
+    """
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    try:
+        yield thread
+    finally:
+        stop()
+        thread.join(timeout=30)
+
+
 def test_development_collector_must_be_on_loopback() -> None:
     assert collector_module._development_collector_url("http://127.0.0.1:8080") == (
         "http://127.0.0.1:8080"
@@ -129,19 +150,15 @@ def test_token_bearing_http_post_does_not_follow_redirects() -> None:
         def log_message(self, format, *args):
             return
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    server_thread = threading.Thread(target=server.serve_forever)
-    server_thread.start()
-    try:
+    with (
+        ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server,
+        _serving_thread(server.serve_forever, server.shutdown),
+    ):
         status, _ = collector_module._http_post(
             f"http://127.0.0.1:{server.server_port}/exchange",
             {"run_id": "run-a"},
             "hf-private-token",
         )
-    finally:
-        server.shutdown()
-        server_thread.join(timeout=2)
-        server.server_close()
 
     assert status == 307
     assert paths == ["/exchange"]
@@ -604,27 +621,26 @@ def test_local_socket_acknowledges_after_durable_queue(
         heartbeat_seconds=60,
         drain_seconds=0,
     )
-    thread = threading.Thread(target=emitter.run)
-    thread.start()
-    deadline = time.monotonic() + 2
-    while not socket_path.exists() and time.monotonic() < deadline:
-        time.sleep(0.01)
+    with _serving_thread(emitter.run, emitter._stop.set) as thread:
+        deadline = time.monotonic() + 2
+        while not socket_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
 
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.connect(str(socket_path))
-        client.sendall(
-            json.dumps({"action": "event", "event": _event()}).encode() + b"\n"
-        )
-        assert client.recv(16) == b"ok\n"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(str(socket_path))
+            client.sendall(
+                json.dumps({"action": "event", "event": _event()}).encode() + b"\n"
+            )
+            assert client.recv(16) == b"ok\n"
 
-    assert spool.batch("run-a", "producer-a")[0]["resources"]["rss_bytes"] == 100
+        assert spool.batch("run-a", "producer-a")[0]["resources"]["rss_bytes"] == 100
 
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.connect(str(socket_path))
-        client.sendall(b'{"action":"close"}\n')
-        assert client.recv(16) == b"ok\n"
-    thread.join(timeout=2)
-    assert not thread.is_alive()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(str(socket_path))
+            client.sendall(b'{"action":"close"}\n')
+            assert client.recv(16) == b"ok\n"
+        thread.join(timeout=2)
+        assert not thread.is_alive()
 
 
 def test_subprocess_exchanges_ambient_token_and_delivers_events(
@@ -659,26 +675,31 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
         def log_message(self, format, *args):
             return
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    server_thread = threading.Thread(target=server.serve_forever)
-    server_thread.start()
     monkeypatch.setenv("HF_TOKEN", "hf-ambient-test-token")
-    emitter = LocalTelemetryEmitter.start(
-        run_id="subprocess-run",
-        country_code="US",
-        pipeline="test-pipeline",
-        development_collector_url=f"http://127.0.0.1:{server.server_port}",
-        spool_path=tmp_path / "subprocess.sqlite3",
-        heartbeat_seconds=60,
-    )
-    assert emitter.available
-    emitter.stage("compile", message="Started.")
-    emitter.complete()
-    assert emitter._process is not None
-    emitter._process.wait(timeout=10)
-    server.shutdown()
-    server_thread.join(timeout=2)
-    server.server_close()
+    with (
+        ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server,
+        _serving_thread(server.serve_forever, server.shutdown),
+    ):
+        emitter = LocalTelemetryEmitter.start(
+            run_id="subprocess-run",
+            country_code="US",
+            pipeline="test-pipeline",
+            development_collector_url=f"http://127.0.0.1:{server.server_port}",
+            spool_path=tmp_path / "subprocess.sqlite3",
+            heartbeat_seconds=60,
+        )
+        try:
+            assert emitter.available
+            emitter.stage("compile", message="Started.")
+            emitter.complete()
+            assert emitter._process is not None
+            emitter._process.wait(timeout=10)
+        finally:
+            # A failure above can leave the service running; reap it before
+            # the collector it posts to shuts down.
+            if emitter._process is not None and emitter._process.poll() is None:
+                emitter._process.kill()
+                emitter._process.wait(timeout=10)
 
     assert requests[0][0] == "/v1/auth/huggingface/exchange"
     assert requests[0][1] == "Bearer hf-ambient-test-token"
@@ -700,6 +721,45 @@ def test_subprocess_exchanges_ambient_token_and_delivers_events(
     assert events[0]["message"] == BUILD_STARTED_MESSAGE
     assert events[-1]["message"] == BUILD_COMPLETED_MESSAGE
     assert events[-1]["status"] == "completed"
+
+
+def test_http_serving_thread_stops_when_the_test_body_fails() -> None:
+    """A failed assertion must not leave a server thread that blocks pytest's exit."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        with pytest.raises(AssertionError, match="forced failure"):
+            with _serving_thread(server.serve_forever, server.shutdown) as thread:
+                raise AssertionError("forced failure")
+
+        assert thread.daemon
+        assert not thread.is_alive()
+
+
+def test_emitter_serving_thread_stops_when_the_test_body_fails(tmp_path) -> None:
+    socket_path = (
+        Path(tempfile.mkdtemp(prefix="microcosm-test-", dir="/tmp")) / "e.sock"
+    )
+    emitter = EmitterService(
+        socket_path=socket_path,
+        registration=_registration(),
+        spool=EventSpool(tmp_path / "events.sqlite3"),
+        delivery=_FakeDelivery(),
+        sampler=_FakeSampler(),
+        heartbeat_seconds=60,
+        drain_seconds=0,
+    )
+
+    with pytest.raises(AssertionError, match="forced failure"):
+        with _serving_thread(emitter.run, emitter._stop.set) as thread:
+            raise AssertionError("forced failure")
+
+    assert thread.daemon
+    assert not thread.is_alive()
+    assert not socket_path.exists()
 
 
 def test_failure_marks_active_stage_failed_before_run_failure():
