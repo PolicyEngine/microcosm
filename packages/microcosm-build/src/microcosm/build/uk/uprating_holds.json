@@ -221,6 +221,23 @@
       "approved_on": null,
       "status": "proposed",
       "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "reviewed_no_index",
+      "target_ids": [
+        "hmrc.salary_sacrifice.it_relief_additional_rate",
+        "hmrc.salary_sacrifice.it_relief_basic_rate",
+        "hmrc.salary_sacrifice.it_relief_higher_rate",
+        "hmrc.salary_sacrifice.it_relief_total",
+        "hmrc.salary_sacrifice.nics_relief_employee"
+      ],
+      "reason": "HMRC Table 6.2's 2024-25 salary-sacrifice income-tax and employee NICs reliefs, the latest edition. They follow the employer NICs relief row (microcosm#1069 c11), which anchors the sacrificed amount at its 2024-25 level and restates only the rate it is relieved at; the income tax rates and the employee Class 1 main rate (8%) are unchanged from 2024-25 to 2025-26, so no restatement applies. Growing all the reliefs with earnings instead is an open ruling (microcosm#1123).",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-08-31"
     }
   ]
 }
