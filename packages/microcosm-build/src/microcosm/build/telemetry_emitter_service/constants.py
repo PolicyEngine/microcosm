@@ -52,6 +52,9 @@ INITIAL_RETRY_SECONDS: Final = 1.0
 MAX_RETRY_SECONDS: Final = 60.0
 
 DATABASE_TIMEOUT_SECONDS: Final = 5
+# Kept by the migration runner beside alembic_version: every revision in the
+# history of the checkout that last migrated the spool.
+SPOOL_LINEAGE_TABLE: Final = "spool_lineage"
 PRUNE_INTERVAL_SECONDS: Final = 60.0
 PRUNE_BATCH_ROWS: Final = 500
 # Every concurrent build on a host shares one spool, so a write can find it
@@ -84,7 +87,8 @@ FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT: Final = "unexpected_process_exit"
 READY_DEADLINE_ERROR: Final = "ready deadline must be a number of seconds"
 UNKNOWN_SPOOL_REVISION_ERROR: Final = (
     "telemetry spool schema revision {revision!r} is not in this microcosm's "
-    "migration history, whose head is {head!r}"
+    "migration history, whose head is {head!r}, and the spool does not record "
+    "it as descending from {head!r}"
 )
 SPOOL_LOCKED_WARNING: Final = (
     "warning: the local telemetry emitter service could not register this build "

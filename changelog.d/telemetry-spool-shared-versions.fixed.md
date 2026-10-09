@@ -1,0 +1,5 @@
+Checkouts at different microcosm versions on one host keep sharing the local telemetry spool (`~/.cache/microcosm/telemetry/events.sqlite3`). Before, once a newer checkout applied a spool migration, every older checkout's emitter service refused the spool, and its builds ran without hosted telemetry until the checkout was updated.
+
+Spool migrations must now be additive, and a test checks every packaged revision. Each migration also records the spool's lineage, the migrating checkout's history. An older checkout whose head is in that lineage uses the spool as it is, without migrating it or taking the write lock, and services of every version deliver each other's queued events. A checkout whose history diverges from the spool's, such as a branch with a different migration, is still refused in one line. The revision is now read again once the migration lock is held, so an opener that waited while a newer checkout migrated no longer fails with "Can't locate revision".
+
+Checkouts from before this change still refuse a spool migrated past `20261007_01`, so the next spool migration should land after this change has reached build hosts.

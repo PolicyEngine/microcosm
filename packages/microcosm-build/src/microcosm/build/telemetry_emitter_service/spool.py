@@ -7,6 +7,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,14 @@ class EventSpool:
         path: Path | str,
         *,
         busy_timeout_seconds: float = DATABASE_TIMEOUT_SECONDS,
+        script_location: Traversable | None = None,
     ) -> None:
+        """Open the spool, migrating it to this checkout's schema if behind.
+
+        ``script_location`` replaces the packaged migration history, so tests
+        can open one spool as checkouts at different versions.
+        """
+
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -64,6 +72,7 @@ class EventSpool:
             upgrade_spool_database(
                 self._engine,
                 busy_timeout_seconds=busy_timeout_seconds,
+                script_location=script_location,
             )
         except BaseException:
             self._engine.dispose()
