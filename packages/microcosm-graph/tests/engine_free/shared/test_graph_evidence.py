@@ -7,18 +7,24 @@ import json
 import subprocess
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from microcosm.graph import (
+    checkpoint_references,
     collect_execution_evidence,
     graph_schema,
     load_run_evidence,
     orrery_document,
     orrery_json,
+    publish_run_evidence,
     record_run_binding,
+    save_graph_schema,
     save_run_evidence,
 )
+from microcosm.graph.canonical import canonical_json
+from microcosm.graph.evidence import sha256
 from microcosm.graph.orrery import main
 from microcosm.graph.presentation import PRESENTATION_EXTENSION, PRESENTATION_PROTOCOL
 from microcosm.graph.store import StoreCorrupt, StoreMiss
@@ -96,8 +102,44 @@ def test_fresh_and_cache_phases_keep_same_ids_and_independent_states(fresh, tmp_
     history = operation["data"]["execution_history"]
     assert [record["cache"] for record in history] == ["miss", "hit"]
     assert {record["execution"] for record in history} == {"completed"}
+    assert {record["kernel_role"] for record in history} == {"compute"}
+    assert history[0]["artifacts"]
+    # Cards show two badges: the execution state and an attempt-level cache
+    # summary that names the computing phase before counting replays.
+    assert [badge["label"] for badge in operation["statuses"]] == [
+        "Execution: completed",
+        "Computed: numerical · reused 1×",
+    ]
+    gate = next(node for node in document["nodes"] if node["label"] == "gate_tax")
+    assert [badge["label"] for badge in gate["statuses"]][:2] == [
+        "Gate: pass",
+        "Execution: completed",
+    ]
+    assert not any(
+        badge["label"].startswith("Gate:")
+        for node in document["nodes"]
+        if node["kind"] == "operation" and node["label"] != "gate_tax"
+        for badge in node["statuses"]
+    )
+    for node in document["nodes"]:
+        if node["kind"] == "field":
+            assert json.loads(node["parentId"])[0] == "operation"
+        if node["kind"] == "operation":
+            assert "sources" not in node
     assert len(document["activities"]) == 2 * len(fresh.compiled.order)
+    assert {activity["agent"]["name"] for activity in document["activities"]} == {
+        node.kernel for node in fresh.compiled.graph.nodes
+    }
     assert document["artifacts"]
+    labels = [artifact["label"] for artifact in document["artifacts"]]
+    assert all(label.endswith(("file)", "files)")) for label in labels)
+    assert len(document["artifacts"]) == len(
+        {
+            artifact["key"]
+            for phase in evidence["phases"]
+            for artifact in phase["artifacts"]
+        }
+    )
     assert "receipts" not in document
     assert document == orrery_document(
         fresh.compiled, extensions=schema["extensions"], execution=evidence
@@ -234,10 +276,25 @@ def test_saved_evidence_roundtrip_and_cli(fresh, tmp_path):
     assert not (fresh.store.root / "tmp").exists()
     document = json.loads(output.read_text())
     assert document["activities"]
-    assert all(len(artifact["sha256"]) == 64 for artifact in document["artifacts"])
-    assert next(node for node in document["nodes"] if node["label"] == "survey")[
-        "sources"
-    ]
+    run_files = [artifact for artifact in document["artifacts"] if artifact.get("uri")]
+    assert {artifact["label"] for artifact in run_files} == {
+        f"p: {name}" for name in ("graph", "manifest", "binding", "summaries")
+    }
+    assert all(len(artifact["sha256"]) == 64 for artifact in run_files)
+    assert all(
+        {artifact["id"] for artifact in run_files} <= set(activity["artifactIds"])
+        for activity in document["activities"]
+    )
+    # A multi-file store object has no single byte digest to declare; its
+    # per-file digests stay in metadata.execution.phases[].artifacts.
+    for artifact in document["artifacts"]:
+        if artifact["label"].endswith("files)"):
+            assert "sha256" not in artifact
+    assert all(
+        {payload["sha256"] for payload in artifact["payloads"].values()}
+        for phase in document["metadata"]["execution"]["phases"]
+        for artifact in phase["artifacts"]
+    )
     with pytest.raises(SystemExit):
         main(
             [
@@ -424,3 +481,142 @@ def test_public_orrery_parser_accepts_groups_and_execution(fresh):
         ["node", str(script)], input=payload, text=True, capture_output=True, check=True
     )
     assert "accepted" in result.stdout
+
+
+def test_publish_run_evidence_merges_attempts_and_refuses_corrupt_files(
+    fresh, tmp_path
+):
+    out = tmp_path / "out"
+    first = save_run_evidence(
+        fresh.compiled,
+        fresh.manifest,
+        store=fresh.store,
+        directory=tmp_path / "attempt-1",
+        attempt_id="attempt-1",
+        phase="numerical",
+    )
+    publish_run_evidence(first, out)
+    cached = toy.run_toy(
+        fresh.compiled.graph,
+        tmp_path,
+        sources=fresh.sources,
+        registry=fresh.registry,
+        store=fresh.store,
+    )
+    second = save_run_evidence(
+        cached.compiled,
+        cached.manifest,
+        store=fresh.store,
+        directory=tmp_path / "attempt-2",
+        attempt_id="attempt-2",
+        phase="final",
+    )
+    published = publish_run_evidence(second, out)
+    index = json.loads(published.read_bytes())
+    assert [(run["attempt_id"], run["phase"]) for run in index["runs"]] == [
+        ("attempt-1", "numerical"),
+        ("attempt-2", "final"),
+    ]
+    assert all(
+        Path(run[field]["path"]).parent == Path(".")
+        for run in index["runs"]
+        for field in ("graph", "manifest", "binding", "summaries")
+    )
+    runs = load_run_evidence(published, store=fresh.store)
+    overlay = collect_execution_evidence(
+        graph_schema(fresh.compiled), runs=runs, store=fresh.store
+    )
+    assert [phase["operations"]["survey"]["cache"] for phase in overlay["phases"]] == [
+        "miss",
+        "hit",
+    ]
+    document = orrery_document(fresh.compiled, execution=overlay)
+    survey = next(node for node in document["nodes"] if node["label"] == "survey")
+    assert survey["statuses"][1]["label"] == "Computed: numerical · reused 1×"
+    # Republishing the same attempt replaces its entry instead of duplicating it.
+    publish_run_evidence(second, out)
+    assert len(json.loads(published.read_bytes())["runs"]) == 2
+    damaged = out / index["runs"][0]["graph"]["path"]
+    damaged.write_bytes(damaged.read_bytes() + b" ")
+    with pytest.raises(ValueError, match="no longer matches"):
+        publish_run_evidence(second, out)
+    damaged.unlink()
+    with pytest.raises(ValueError, match="is missing"):
+        publish_run_evidence(second, out)
+
+
+def test_checkpoint_references_link_only_verifiable_bytes(tmp_path):
+    graph = tmp_path / "graph.json"
+    manifest = tmp_path / "manifest.json"
+    evidence = tmp_path / "execution.evidence.json"
+    for path in (graph, manifest, evidence):
+        path.write_bytes(b'{"recorded":true}')
+    record = {
+        "graph_declaration": {
+            "path": "graph.json",
+            "sha256": sha256(graph.read_bytes()),
+        },
+        "graph_manifest": {
+            "path": str(manifest),
+            "sha256": sha256(manifest.read_bytes()),
+        },
+        "graph_execution_evidence": {
+            "path": str(evidence),
+            "sha256": sha256(evidence.read_bytes()),
+        },
+    }
+    refs, missing = checkpoint_references(record, base=tmp_path)
+    assert [ref["label"] for ref in refs] == [
+        "Producing graph declaration",
+        "Producing run manifest",
+        "Producing execution evidence index",
+    ]
+    assert all(Path(ref["url"]).is_absolute() for ref in refs)
+    assert missing is None
+    manifest.unlink()
+    refs, missing = checkpoint_references(record, base=tmp_path)
+    assert [ref["label"] for ref in refs] == [
+        "Producing graph declaration",
+        "Producing execution evidence index",
+    ]
+    assert "Producing run manifest bytes unavailable" in missing
+    assert record["graph_manifest"]["sha256"] in missing
+    refs, missing = checkpoint_references({}, base=tmp_path)
+    assert refs == [] and "Producing graph declaration" in missing
+    graph.write_bytes(b'{"recorded":false}')
+    with pytest.raises(ValueError, match="digest mismatch"):
+        checkpoint_references(record, base=tmp_path)
+
+
+def test_save_graph_schema_copies_upstream_bytes_and_relinks(fresh, tmp_path):
+    from microcosm.graph.presentation import PRESENTATION_EXTENSION
+
+    upstream = tmp_path / "spine.graph.json"
+    upstream.write_bytes(b'{"spine":true}')
+    contract = presentation(fresh.compiled)
+    contract["scope"]["boundaries"] = [
+        {
+            "operation": "survey",
+            "kind": "checkpoint",
+            "upstream": [
+                {
+                    "label": "Producing graph declaration",
+                    "url": str(upstream),
+                    "sha256": sha256(upstream.read_bytes()),
+                },
+                {"label": "Published method", "url": "https://example.org/method"},
+            ],
+        }
+    ]
+    saved = save_graph_schema(fresh.compiled, tmp_path / "out", presentation=contract)
+    schema = json.loads(saved.read_bytes())
+    refs = schema["extensions"][PRESENTATION_EXTENSION]["scope"]["boundaries"][0][
+        "upstream"
+    ]
+    assert refs[0]["url"] == f"upstream-{refs[0]['sha256']}.json"
+    assert (saved.parent / refs[0]["url"]).read_bytes() == upstream.read_bytes()
+    assert refs[1]["url"] == "https://example.org/method"
+    assert canonical_json(schema) == saved.read_bytes()
+    upstream.write_bytes(b'{"spine":false}')
+    with pytest.raises(ValueError, match="changed during capture"):
+        save_graph_schema(fresh.compiled, tmp_path / "again", presentation=contract)

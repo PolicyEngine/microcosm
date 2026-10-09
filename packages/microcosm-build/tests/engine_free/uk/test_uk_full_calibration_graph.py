@@ -333,6 +333,19 @@ def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
         assert size["method"] == (
             "full_pool" if k == 3 else "contribution_informed_l0_exact_count_refit"
         )
+    preflight = next(
+        item["data"]
+        for item in evidence["summaries"]
+        if item["node"] == "pool" and item["artifact"] == "preflight"
+    )
+    assert preflight["overview"]["kind"] == "uk_full_gate_report"
+    assert preflight["overview"]["phase"] == "preflight"
+    assert preflight["overview"]["enforcement"]["artifact_permitted"] is True
+    assert preflight["overview"]["status_counts"]["passed"] == len(
+        preflight["tables"]["gates"]
+    )
+    assert {row["status"] for row in preflight["tables"]["gates"]} == {"passed"}
+    assert "details" not in preflight["tables"]["gates"][0]
     serialized = json.dumps(evidence)
     assert '"household_ids":' not in serialized
     assert '"pool_row_indices":' not in serialized
@@ -344,6 +357,22 @@ def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
         if json.loads(node["id"]) == ["operation", endpoints.result_producer]
     )
     assert result_node["data"]["artifact_summaries"]
+    pool = next(
+        node
+        for node in document["nodes"]
+        if json.loads(node["id"]) == ["operation", "pool"]
+    )
+    assert pool["data"]["artifact_summaries"]["preflight"]["tables"]["gates"]["rows"]
+    assert [badge["label"] for badge in pool["statuses"]] == [
+        "Execution: completed",
+        "Computed: numerical",
+    ]
+    single_file = [
+        artifact
+        for artifact in document["artifacts"]
+        if artifact["label"].endswith("(bytes, 1 file)")
+    ]
+    assert single_file and all(len(a["sha256"]) == 64 for a in single_file)
 
 
 def test_reused_draw_skips_rng_and_rejects_changed_binding(monkeypatch):

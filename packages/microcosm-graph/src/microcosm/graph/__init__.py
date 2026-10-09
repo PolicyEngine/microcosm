@@ -198,9 +198,12 @@ from .codecs import (  # noqa: E402 - check dependency series before runtime imp
 from .evidence import (  # noqa: E402
     ArtifactSummaryContext,
     RecordedRun,
+    checkpoint_references,
     collect_execution_evidence,
     load_run_evidence,
+    publish_run_evidence,
     record_run_binding,
+    save_graph_schema,
     save_run_evidence,
 )
 from .executor import NodeRejected, run_graph  # noqa: E402
@@ -221,8 +224,11 @@ from .view import describe  # noqa: E402
 __all__ += [
     "ArtifactSummaryContext",
     "RecordedRun",
+    "checkpoint_references",
     "collect_execution_evidence",
     "load_run_evidence",
+    "publish_run_evidence",
     "record_run_binding",
+    "save_graph_schema",
     "save_run_evidence",
 ]

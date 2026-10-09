@@ -15,12 +15,14 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .availability import execution_state, unavailable_artifacts
 from .canonical import canonical_json, normative
 from .decl import (
     GATE_OUTCOMES,
     CompiledGraph,
+    Graph,
     GraphError,
     StructuralDelta,
     compile_graph,
@@ -36,8 +38,13 @@ from .keys import (
     weights_key,
 )
 from .manifest import RunManifest
-from .presentation import digest, require, text
-from .schema import _plain_json, _require_compiler_result, validate_graph_schema
+from .presentation import PRESENTATION_EXTENSION, digest, require, text
+from .schema import (
+    _plain_json,
+    _require_compiler_result,
+    graph_schema,
+    validate_graph_schema,
+)
 from .serialize import graph_from_json, graph_to_json
 from .store import ContentStore
 
@@ -438,6 +445,7 @@ def collect_execution_evidence(
             require(gate in GATE_OUTCOMES, "invalid gate outcome")
             operations[node_id] = {
                 "node_key": receipt.key,
+                "kernel_role": receipt.capabilities.role.value,
                 "execution": "unreached"
                 if state == "unreached"
                 else "failed"
@@ -665,3 +673,190 @@ def load_run_evidence(
         )
         runs.append(run)
     return tuple(runs)
+
+
+CHECKPOINT_PROVENANCE_FIELDS = (
+    ("graph_declaration", "Producing graph declaration", True),
+    ("graph_manifest", "Producing run manifest", True),
+    ("graph_schema", "Producing compiler schema", False),
+    ("graph_execution_evidence", "Producing execution evidence index", False),
+)
+
+
+def checkpoint_references(
+    record: object, *, base: Path
+) -> tuple[list[dict], str | None]:
+    """Project a checkpoint's recorded producing-run files into upstream references.
+
+    ``record`` is the producer-written provenance mapping (for example a
+    checkpoint sidecar) whose ``graph_declaration``, ``graph_manifest`` and
+    optional ``graph_schema`` / ``graph_execution_evidence`` entries each carry
+    ``path`` and ``sha256``. Only files whose bytes still match their recorded
+    digest become references with a local URL; absent files are named, with
+    their recorded digest, in the returned missing reason rather than linked.
+    A digest mismatch refuses the projection. Nothing is reconstructed from
+    today's declarations.
+    """
+    require(isinstance(record, Mapping), "checkpoint provenance must be a mapping")
+    refs: list[dict] = []
+    missing: list[str] = []
+    for name, label, required in CHECKPOINT_PROVENANCE_FIELDS:
+        entry = record.get(name)
+        if entry is None and not required:
+            continue
+        if (
+            not isinstance(entry, Mapping)
+            or not entry.get("path")
+            or not entry.get("sha256")
+        ):
+            missing.append(label)
+            continue
+        recorded = digest(entry["sha256"])
+        path = Path(text(entry["path"], f"{name} path"))
+        if not path.is_absolute():
+            path = Path(base) / path
+        if not path.is_file():
+            missing.append(f"{label} bytes unavailable (sha256 {recorded})")
+            continue
+        require(
+            sha256(read_json(path)[1]) == recorded,
+            f"recorded checkpoint {label.lower()} digest mismatch",
+        )
+        refs.append({"label": label, "url": str(path.resolve()), "sha256": recorded})
+    return refs, "; ".join(missing) if missing else None
+
+
+def save_graph_schema(
+    graph: Graph | CompiledGraph,
+    directory: Path,
+    *,
+    presentation: Mapping[str, object] | None = None,
+    filename: str = "graph.schema.json",
+) -> Path:
+    """Write the compiler schema with its presentation contract beside a build.
+
+    Upstream checkpoint references that name local files are copied into the
+    directory as ``upstream-<sha256>.json`` (after re-checking their digest)
+    and relinked relatively, so the schema and any later Orrery export can be
+    published or moved together with the recorded bytes.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    extensions = None
+    if presentation is not None:
+        contract = _plain(dict(presentation))
+        require(type(contract) is dict, "presentation must be an object")
+        scope = contract.get("scope", {})
+        boundaries = scope.get("boundaries", []) if type(scope) is dict else []
+        for boundary in boundaries if type(boundaries) is list else []:
+            upstream = boundary.get("upstream", []) if type(boundary) is dict else []
+            for ref in upstream if type(upstream) is list else []:
+                url = ref.get("url") if type(ref) is dict else None
+                if type(url) is not str or urlsplit(url).scheme:
+                    continue
+                source = Path(url)
+                if not source.is_absolute() or not source.is_file():
+                    continue
+                payload = read_json(source)[1]
+                require(
+                    sha256(payload) == digest(ref.get("sha256")),
+                    "checkpoint reference changed during capture",
+                )
+                relative = Path(f"upstream-{ref['sha256']}.json")
+                (directory / relative).write_bytes(payload)
+                ref["url"] = relative.as_posix()
+        extensions = {PRESENTATION_EXTENSION: contract}
+    compiled = compile_graph(graph) if isinstance(graph, Graph) else graph
+    schema = graph_schema(compiled, extensions=extensions)
+    path = directory / filename
+    _atomic_json(path, schema)
+    return path
+
+
+def publish_run_evidence(
+    index_path: Path, out_dir: Path, *, prefix: str = "evidence"
+) -> Path:
+    """Flatten a durable attempt bundle into one publisher directory.
+
+    The published ``execution.evidence.json`` keeps every previously published
+    attempt whose flat files still verify, so a repeated or resumed build into
+    the same output directory does not erase the record of earlier computation
+    behind a replay of cache hits. Published files that no longer match their
+    recorded digests refuse publication instead of being dropped silently.
+    """
+    index_path = Path(index_path)
+    out_dir = Path(out_dir)
+    text(prefix, "prefix")
+    require("/" not in prefix and ".." not in prefix, "prefix must be a file stem")
+    index, _ = read_json(index_path)
+    require(
+        type(index) is dict
+        and index.get("protocol") == EVIDENCE_INPUT_PROTOCOL
+        and type(index.get("runs")) is list,
+        "evidence index",
+    )
+    attempts = {text(entry["attempt_id"], "attempt id") for entry in index["runs"]}
+    for attempt in attempts:
+        require("/" not in attempt and ".." not in attempt, "attempt id")
+    destination = out_dir / "execution.evidence.json"
+    runs: list[dict] = []
+    if destination.exists():
+        published, _ = read_json(destination)
+        require(
+            type(published) is dict
+            and published.get("protocol") == EVIDENCE_INPUT_PROTOCOL
+            and type(published.get("runs")) is list,
+            "published evidence index",
+        )
+        for entry in published["runs"]:
+            require(
+                type(entry) is dict
+                and set(entry)
+                == {"attempt_id", "phase", "graph", "manifest", "binding", "summaries"},
+                "published evidence run fields",
+            )
+            if entry["attempt_id"] in attempts:
+                continue
+            for field in ("graph", "manifest", "binding", "summaries"):
+                ref = entry[field]
+                relative = Path(text(ref["path"], "published evidence path"))
+                require(
+                    len(relative.parts) == 1 and not relative.is_absolute(),
+                    "published evidence path",
+                )
+                target = out_dir / relative
+                require(
+                    target.is_file(),
+                    f"published evidence file {relative} is missing; "
+                    "restore it or clear the published evidence",
+                )
+                require(
+                    sha256(read_json(target)[1]) == digest(ref["sha256"]),
+                    f"published evidence file {relative} no longer matches its digest",
+                )
+            runs.append(entry)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for entry in index["runs"]:
+        published_entry = {"attempt_id": entry["attempt_id"], "phase": entry["phase"]}
+        for field in ("graph", "manifest", "binding", "summaries"):
+            relative = Path(text(entry[field]["path"], "evidence path"))
+            require(
+                not relative.is_absolute() and ".." not in relative.parts,
+                "evidence path must stay in bundle",
+            )
+            filename = (
+                f"{prefix}-{entry['attempt_id']}-{relative.parent.name}-{field}.json"
+            )
+            payload = read_json(index_path.parent / relative)[1]
+            require(
+                sha256(payload) == digest(entry[field]["sha256"]),
+                "native phase evidence changed during capture",
+            )
+            (out_dir / filename).write_bytes(payload)
+            published_entry[field] = {
+                "path": filename,
+                "sha256": entry[field]["sha256"],
+            }
+        runs.append(published_entry)
+    _atomic_json(destination, {"protocol": EVIDENCE_INPUT_PROTOCOL, "runs": runs})
+    return destination

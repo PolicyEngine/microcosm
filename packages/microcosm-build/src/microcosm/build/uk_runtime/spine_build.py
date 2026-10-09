@@ -136,7 +136,10 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
-from microcosm.build.uk_runtime.orrery_contract import save_uk_graph_schema
+from microcosm.build.uk_runtime.orrery_contract import (
+    UK_SUMMARY_PROVIDERS,
+    save_uk_graph_schema,
+)
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
@@ -1917,6 +1920,7 @@ def main(argv: list[str] | None = None) -> int:
             / (graph_attempt_id := uuid.uuid4().hex),
             attempt_id=graph_attempt_id,
             phase="spine",
+            artifact_summaries=UK_SUMMARY_PROVIDERS,
         )
         graph_run_reference = json.loads(graph_evidence_path.read_text())["runs"][-1]
         graph_declaration_path = (

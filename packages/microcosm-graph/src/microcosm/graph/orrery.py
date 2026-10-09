@@ -175,13 +175,37 @@ def orrery_document_from_schema(
     versions = _object(compiled.get("versions"), "compiled versions")
     predecessors = _object(compiled.get("predecessors"), "compiled predecessors")
     declarations = _owned_declarations(operations)
-    transport_document = _transport_json(document)
+    contract = validate_presentation(document)
+    scope = (contract or {}).get("scope", {})
+    country = _text(document["country"], "country")
+    # Records carry their own declarations; the complete compiler schema is the
+    # separately saved canonical file, bound here by digest rather than embedded.
+    schema_summary = _object(
+        _transport_json(
+            {
+                "protocol": document["protocol"],
+                "country": country,
+                "graph_sha256": document["graph_sha256"],
+                "schema_sha256": hashlib.sha256(canonical_json(document)).hexdigest(),
+                "compiled_order": list(_array(compiled.get("order"), "compiled order")),
+                "counts": {
+                    "operations": len(operations),
+                    "sources": len(sources),
+                    "fields": len(_array(document["fields"], "fields")),
+                    "input_bindings": len(
+                        _array(document["input_bindings"], "input bindings")
+                    ),
+                },
+                "extensions": document["extensions"],
+            }
+        ),
+        "schema summary",
+    )
 
     nodes: dict[str, dict[str, object]] = {}
     edges: dict[str, dict[str, object]] = {}
     used = (
-        len(_bounded_json(transport_document, _MAX_OUTPUT_BYTES).encode("utf-8"))
-        + 65_536
+        len(_bounded_json(schema_summary, _MAX_OUTPUT_BYTES).encode("utf-8")) + 65_536
     )
 
     def presentation_record(record: dict[str, object]) -> dict[str, object]:
@@ -204,6 +228,7 @@ def orrery_document_from_schema(
         kind: str,
         category: str,
         data: dict[str, object] | None = None,
+        label: str | None = None,
     ) -> None:
         facts = {} if data is None else data
         identity = presentation_id(
@@ -212,16 +237,17 @@ def orrery_document_from_schema(
         if identity in edges:
             return
         _require(len(edges) < _MAX_EDGES, "edge limit")
-        edges[identity] = presentation_record(
-            {
-                "id": identity,
-                "source": source,
-                "target": target,
-                "kind": kind,
-                "category": category,
-                "data": facts,
-            }
-        )
+        record = {
+            "id": identity,
+            "source": source,
+            "target": target,
+            "kind": kind,
+            "category": category,
+            "data": facts,
+        }
+        if label is not None:
+            record["label"] = label
+        edges[identity] = presentation_record(record)
 
     for node_id, operation in operations.items():
         node: dict[str, object] = {
@@ -263,18 +289,25 @@ def orrery_document_from_schema(
             )
         if identity not in fields:
             fields[identity] = field
+            provider = _text(field.get("provider"), "field provider")
+            population = _text(field.get("population"), "field population")
+            description = f"Population version {population}; provided by {provider}"
+            if declared_in != provider:
+                description += f"; declared in {declared_in}"
             add_node(
                 {
                     "id": identity,
                     "label": f"{entity}.{column}",
                     "kind": "field",
+                    # Containment under the provider keeps a folded operation's
+                    # versioned fields folded with it; provenance stays an edge.
+                    "parentId": presentation_id("operation", provider),
+                    "description": description,
                     "data": {**field, "visible_in_schema": visible_field},
                 }
             )
             add_edge(
-                presentation_id(
-                    "operation", _text(field.get("provider"), "field provider")
-                ),
+                presentation_id("operation", provider),
                 identity,
                 "provided_field",
                 "provenance",
@@ -313,6 +346,8 @@ def orrery_document_from_schema(
             "declared_read",
             "dependency",
             {"read_kind": binding["kind"], "rows": binding["rows"]},
+            label=f"{_text(binding['kind'], 'binding kind').replace('_', ' ')}"
+            f" · rows {_text(binding['rows'], 'binding rows')}",
         )
 
     for node_id, operation in operations.items():
@@ -364,12 +399,15 @@ def orrery_document_from_schema(
         ),
         "dangling presentation edge",
     )
-    country = _text(document["country"], "country")
+    scope_id = scope.get("id") if type(scope) is dict else None
+    scope_label = scope.get("label") if type(scope) is dict else None
     result: dict[str, object] = {
         "schemaVersion": "graph-explorer/v1",
-        "id": presentation_id("microcosm", country),
+        "id": presentation_id("microcosm", country, *([scope_id] if scope_id else [])),
         "title": _text(title, "title")
         if title is not None
+        else f"{country.upper()} · {scope_label or scope_id}"
+        if scope_id or scope_label
         else f"{country.upper()} graph schema",
         "revision": _revision(document),
         "description": (
@@ -394,7 +432,17 @@ def orrery_document_from_schema(
                 "Declared operation reads and compiler dependencies; not "
                 "individual-output formulas or observed runtime access."
             ),
-            "microcosm": transport_document,
+            "containment_scope": (
+                "Groups contain operations and sources; a field is contained by "
+                "the operation whose artifact provides it. Containment folds the "
+                "canvas and asserts no value dependency."
+            ),
+            "schema_scope": (
+                "Records carry their declarations; the complete compiler schema "
+                "is the separately saved canonical graph.schema.json whose "
+                "bytes have metadata.microcosm.schema_sha256."
+            ),
+            "microcosm": schema_summary,
             "missing_runtime_data": [
                 "entity identifiers and memberships",
                 "field values",

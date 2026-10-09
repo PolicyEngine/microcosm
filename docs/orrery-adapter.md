@@ -128,24 +128,39 @@ schema = graph_schema(
 ```
 
 Group members name real operations or sources. Optional `parent` names another
-group. Groups use Orrery containment and preserve every dependency edge. Field
-nodes inherit their provider's group. The validator rejects unknown members,
-duplicate membership and containment cycles. Operation/source records can
-provide `label`, `description`, `composite` metadata and `references`, each with
-a `label` and optional HTTP(S)/relative `url` and `sha256`.
+group. Groups use Orrery containment and preserve every dependency edge. A field
+node is contained by the operation whose artifact provides it, so folding an
+operation folds its versioned fields and folding a group folds both. The
+validator rejects unknown members, duplicate membership and containment cycles.
+Operation/source records can provide `label`, `description`, `composite`
+metadata and `references`, each with a `label` and optional HTTP(S)/relative
+`url` and `sha256`. When the scope has an `id`, the Orrery document id becomes
+`["microcosm", country, scope id]` and the default title uses the scope label,
+so spine, dense and national snapshots of one country stay distinguishable in a
+host's revision picker and in baseline comparisons.
 
 Scope boundaries name an `operation` and `kind`, with `upstream` references
 requiring both URL and digest, or a `missing` reason. UK inputs identify raw
-spine, full dense, checkpoint dense and national scopes. Composite descriptions
-come from the maintained UK operation inventory; a coupled fit/draw stays one
-operation and one cache boundary.
+spine, full dense, checkpoint dense and national scopes. UK groups are an
+explicit roster (`uk_runtime.orrery_contract.UK_GROUPS`): sources, enrichment
+(spine stages with their ownership helpers), population pool, geography,
+targets, calibration, checks and export. An operation that is not rostered
+lands in an "other" group, and the maintained declarations are tested to have
+none. Composite descriptions come from the maintained UK operation inventory; a
+coupled fit/draw stays one operation and one cache boundary.
 
-The UK spine driver saves its producing declaration, compiler schema, run
-manifest and execution binding. Its checkpoint sidecar records immutable
-per-attempt graph/manifest links and byte digests. Downstream UK schemas copy
-these recorded bytes into `upstream-<sha256>.json` files and use relative links.
-Old checkpoints expose missing provenance explicitly. The exporter never
-reconstructs an earlier spine from current source code or matching field names.
+Checkpoint provenance is a small shared record. A producer writes
+`graph_declaration`, `graph_manifest` and optionally `graph_schema` and
+`graph_execution_evidence` entries, each with `path` and `sha256`, into its
+checkpoint sidecar; `microcosm.graph.checkpoint_references` projects them into
+upstream references. Only files whose bytes still match their digest are
+linked; an absent file is named in the `missing` reason together with its
+recorded digest, never linked by a local path. The UK spine driver writes all
+four entries. `microcosm.graph.save_graph_schema` copies linked local bytes
+into `upstream-<sha256>.json` beside `graph.schema.json` and relinks them
+relatively, so a published build and a later HTML export travel together. The
+exporter never reconstructs an earlier spine from current source code or
+matching field names.
 
 ## Recorded execution
 
@@ -175,7 +190,13 @@ record-level values.
 
 `save_run_evidence` appends an `execution.evidence.json` index with protocol
 `microcosm.graph.execution-input.v1`, plus exact graph, manifest, binding and
-summary files. `microcosm.graph.run-binding.v1` records the graph/manifest byte
+summary files. `publish_run_evidence(index, out_dir)` flattens that durable
+attempt bundle into one publisher directory as `evidence-<attempt>-<phase
+identity>-<file>.json` and merges the index with attempts published there
+earlier, after re-checking every published file's digest. A repeated or resumed
+build into the same output directory therefore keeps the record of the attempt
+that computed a result next to the replay that reused it; a published file
+that no longer verifies refuses publication instead of being dropped. `microcosm.graph.run-binding.v1` records the graph/manifest byte
 digests, manifest key, attempt, phase, platform and identities of used sources.
 These native files support later export; they do not create an Orrery snapshot.
 A serialized historical manifest without this binding cannot supply missing
@@ -212,6 +233,12 @@ npx orrery --input build/graph.orrery.json --output build/graph.orrery.html
 `--evidence` and `--store` must appear together.
 Native evidence links and saved-schema relative references are rebased to the
 command's output directory; keep the referenced files available with the HTML.
+
+Other countries supply the same three inputs: a presentation dictionary (groups,
+scope, optional labels and references), an artifact-summary registry keyed by
+artifact type, and driver wiring that calls `save_graph_schema`,
+`save_run_evidence`/`publish_run_evidence` and writes the checkpoint provenance
+record. No shared module changes are needed.
 UK full/national drivers save
 `graph.schema.json`, `execution.evidence.json` and flat `evidence-*.json` files
 beside `graph.json` and `operations.json`. Durable copies also remain in the
@@ -236,10 +263,29 @@ explicit. Earlier phases not supplied to the exporter remain unknown.
 
 | Surface | Exported evidence |
 | --- | --- |
-| Record | Operation declarations, attempt/phase history, duration, numerical keys, mass and weight transitions, calibration/size aggregates |
-| Sources | Digest-bound native graph/manifest/binding/summary links and recorded checkpoint references |
-| Activity | One record per operation and supplied phase, declared operation/source inputs, artifact references and phase timestamps |
-| Status badges | Independent execution, cache and gate states, including missing/unreached and evidence-absent outcomes |
+| Record | Operation declarations, attempt/phase history with kernel role, duration, numerical keys, mass and weight transitions, artifact keys, calibration/size aggregates and per-gate outcomes |
+| Sources | Presentation references and recorded checkpoint references |
+| Activity | One record per operation and supplied phase; the kernel (`name@version`, implementation hash) as the agent; declared operation/source inputs; artifact references including the digest-bound native graph/manifest/binding/summary files; phase timestamps |
+| Status badges | Gate verdict first on gate kernels only, then execution state, then an attempt-level cache summary |
+
+Orrery cards show the first two badges. A gate kernel therefore leads with
+`Gate: pass`/`fail`/`evidence_absent`/`unreached`; other operations carry no
+gate badge. The cache badge summarises every supplied phase: `Computed:
+numerical · reused 2×` names the phase that computed the result before counting
+replays, `Reused: 3 cache hits; computation not in supplied phases` is explicit
+when no supplied phase computed it, and `Cache: unknown` means no receipt.
+
+Artifact references are one per content-store object (frame, column, weights,
+typed or opaque artifact), labelled by producing operation, output name, kind
+and file count. A single-file object carries its byte digest; the per-file
+payload digests of every object are in `metadata.execution.phases[].artifacts`.
+This keeps a structural operation's activity to tens of references rather than
+one row per column file.
+
+UK gate batteries (spine, full and national gate reports) are summarised per
+gate: identifier, phase, criticality, status, failure lines and reason, with
+enforcement or blocking verdicts in the overview. Gate detail payloads and
+target or area tables stay in the artifact.
 
 Per-target tables contain target, initial and achieved values, residuals,
 relative error, tolerance and recorded uncertainty where available. Full tables
@@ -259,19 +305,27 @@ the artifact labels include their producing operation and output name so they
 remain identifiable. Browsing a synthetic saved national run confirmed groups,
 Record fields, separate status badges, Sources links and phase activities.
 
-Measured with the maintained UK numerical declaration, calibration year 2025 and
-legacy geography assignment, before appending terminal gates: dense export has 5,148 presentation nodes, 18,135
-edges and 18,174,094 JSON bytes; the optional size path has 5,408 nodes, 19,702
-edges and 19,588,363 bytes. A synthetic three-household calibration with 22,053
-targets produced a 5,346,758-byte execution snapshot retaining every target row.
-These are declaration and synthetic diagnostic measurements, not a licensed
-population run.
+## Large snapshots and deep links
 
-Including the maintained spine and full gate batteries, holdout and export
-preparation produces 77 operations, 5,156 presentation nodes, 19,593 edges and
-19,914,678 JSON bytes. The full gate contract contains 65,971 characters.
-Serialized operation contracts can use strings up to 131,072 characters; the
-overall document, complexity, node, and edge limits remain unchanged.
+Field nodes are the bulk of a UK snapshot: the maintained dense declaration has
+76 operations, 15 sources and about 5,300 field nodes with 20,000
+relationships. Orrery lays out every visible node, so the whole-graph view of
+such a snapshot takes a minute to appear and is unreadable until filtered. The
+offline HTML honours Orrery's URL hash, so publish or open it with a location
+that starts from the operations:
+
+```text
+graph.orrery.html#kinds=["operation","source","group"]
+graph.orrery.html#kinds=["operation","source","group"]&focusId=["operation","uk.full.dense"]&depth=1
+graph.orrery.html#collapsedIds=["[\"group\",\"enrichment\"]"]
+```
+
+Fields remain searchable and inspectable from the index, and expanding one
+operation shows exactly its versioned fields because fields are contained by
+their provider. Serialized operation contracts can use strings up to 131,072
+characters; the overall document, complexity, node, and edge limits remain
+unchanged. These are declaration and synthetic diagnostic measurements, not a
+licensed population run.
 
 ## Fields and input bindings
 
@@ -320,8 +374,13 @@ receipts.
 
 The adapter creates operation, source, and versioned-field nodes. Descriptions
 are promoted to Orrery's visible `description` property while the complete
-declaration remains in `data`. The entire compiler schema remains available at
-`metadata.microcosm`.
+declaration remains in `data`. `metadata.microcosm` is a bounded summary of the
+compiler schema (protocol, country, graph and canonical schema digests,
+compiled order, record counts and the producer extensions); the complete schema
+is the separately saved `graph.schema.json` whose bytes have
+`metadata.microcosm.schema_sha256`. Orrery renders snapshot metadata as text,
+so the viewer document does not repeat declarations that its records already
+carry.
 
 | Relationship | Category | Meaning |
 | --- | --- | --- |
