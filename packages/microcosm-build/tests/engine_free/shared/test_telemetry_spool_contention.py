@@ -14,6 +14,7 @@ import io
 import json
 import math
 import os
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -173,7 +174,7 @@ def _service_arguments(
         _LOOPBACK_COLLECTOR,
     ]
     if ready_deadline is not None:
-        arguments += ["--ready-deadline", repr(ready_deadline)]
+        arguments.append(f"--ready-deadline={ready_deadline!r}")
     return arguments
 
 
@@ -321,10 +322,15 @@ def _parse_ready_deadline(value: str):
     )
 
 
-def test_ready_deadline_rejects_nan_and_caps_infinity() -> None:
+def test_ready_deadline_rejects_nan_and_caps_infinity(capsys) -> None:
     with pytest.raises(SystemExit) as raised:
         _parse_ready_deadline("nan")
     assert raised.value.code == 2
+    # Invalid arguments are one line on the build's stderr, not a usage block.
+    assert capsys.readouterr().err == (
+        "warning: the local telemetry emitter service could not start: "
+        "argument --ready-deadline: ready deadline must be a number of seconds\n"
+    )
 
     arguments = _parse_ready_deadline("inf")
     deadline = main_module.startup_deadline(
@@ -434,7 +440,7 @@ def test_service_process_reports_a_locked_spool_in_one_line(tmp_path) -> None:
                 sys.executable,
                 "-m",
                 TELEMETRY_SERVICE_MODULE,
-                # A deadline already past allows one attempt: SQLite's own wait.
+                # A deadline already past allows one attempt.
                 *_service_arguments(
                     socket_path, spool_path, ready_deadline=time.time()
                 ),
@@ -452,6 +458,46 @@ def test_service_process_reports_a_locked_spool_in_one_line(tmp_path) -> None:
         "warning: the local telemetry emitter service could not register"
     )
     assert not socket_path.exists()
+
+
+def test_an_interrupted_service_exits_without_a_traceback(tmp_path) -> None:
+    """SIGINT ends the real process as SIGTERM does, with nothing on stderr."""
+
+    spool_path = tmp_path / "spool" / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head")
+    # Opening the spool sets its directory to 0o700: the service is retrying.
+    spool_path.parent.chmod(0o750)
+    socket_path = _short_socket_path()
+    with _write_lock(spool_path):
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                TELEMETRY_SERVICE_MODULE,
+                *_service_arguments(
+                    socket_path, spool_path, ready_deadline=time.time() + 60
+                ),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            deadline = time.monotonic() + 120
+            while spool_path.parent.stat().st_mode & 0o777 != 0o700:
+                assert time.monotonic() < deadline, "service never opened the spool"
+                assert process.poll() is None, "service exited before opening"
+                time.sleep(0.02)
+            process.send_signal(signal.SIGINT)
+            _, error_output = process.communicate(timeout=30)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+    assert process.returncode == -signal.SIGINT
+    assert error_output == ""
 
 
 def test_client_passes_its_wait_as_a_wall_clock_ready_deadline(
@@ -483,8 +529,19 @@ def test_client_passes_its_wait_as_a_wall_clock_ready_deadline(
     after = time.time()
 
     (command,) = commands
-    ready_deadline = float(command[command.index("--ready-deadline") + 1])
+    (argument,) = [part for part in command if part.startswith("--ready-deadline=")]
+    ready_deadline = float(argument.removeprefix("--ready-deadline="))
     assert before + 42 <= ready_deadline <= after + 42
+    # One token, so the service parses even a deadline that is already past.
+    assert (
+        main_module.build_parser()
+        .parse_args(
+            ["--socket", "s", "--spool", "q", "--registration-json", "{}"]
+            + ["--parent-pid", "1", "--ready-deadline=-inf"]
+        )
+        .ready_deadline
+        == -math.inf
+    )
 
 
 @given(
@@ -922,11 +979,28 @@ class _Outcomes:
     ),
     ticks=st.integers(1, 30),
     parent_dies_at=st.one_of(st.none(), st.integers(1, 30)),
+    parent_check_raises=st.booleans(),
+    closed_at=st.one_of(st.none(), st.integers(1, 30)),
     heartbeat_seconds=st.sampled_from([1.0, 2.0, 3.5]),
 )
 def test_worker_survives_any_step_failure(
-    monkeypatch, script, ticks, parent_dies_at, heartbeat_seconds
+    monkeypatch,
+    script,
+    ticks,
+    parent_dies_at,
+    parent_check_raises,
+    closed_at,
+    heartbeat_seconds,
 ) -> None:
+    """The worker never dies, checks its build every tick, and tells a crash
+    from a clean close.
+
+    ``closed_at`` is the tick on which the build's close arrives while a step
+    runs, as it does when the accept thread handles it mid-tick; the build may
+    then exit before the tick ends. ``parent_check_raises`` makes the check of
+    a dead build raise instead of returning False.
+    """
+
     clock = SimpleNamespace(now=0.0, tick=0)
     monkeypatch.setattr(
         runtime_module,
@@ -961,7 +1035,15 @@ def test_worker_survives_any_step_failure(
 
     def parent_alive():
         parent_checks.append(clock.tick)
-        return parent_dies_at is None or clock.tick < parent_dies_at
+        alive = parent_dies_at is None or clock.tick < parent_dies_at
+        if not alive and parent_check_raises:
+            raise OverflowError("signed integer is greater than maximum")
+        return alive
+
+    def flush_once():
+        if clock.tick == closed_at:
+            service._stop.set()
+        return outcomes.next(False)
 
     service = EmitterService(
         socket_path=Path("/unused"),
@@ -971,7 +1053,7 @@ def test_worker_survives_any_step_failure(
             prune_if_due=outcomes.next,
             has_deliverable=lambda: outcomes.next(False),
         ),
-        delivery=SimpleNamespace(flush_once=lambda: outcomes.next(False)),
+        delivery=SimpleNamespace(flush_once=flush_once),
         sampler=SimpleNamespace(
             sample=lambda: outcomes.next({}), parent_alive=parent_alive
         ),
@@ -1004,14 +1086,24 @@ def test_worker_survives_any_step_failure(
     with contextlib.redirect_stderr(error_output):
         service._worker()  # never raises
 
-    last_tick = ticks if parent_dies_at is None else min(ticks, parent_dies_at)
-    # The parent is checked on every tick until it is found dead.
-    assert parent_checks == list(range(1, last_tick + 1))
-    # A dead parent is recorded once, on the tick it is found, and stops the
-    # loop.
-    parent_died = parent_dies_at is not None and parent_dies_at <= ticks
-    assert exit_records == ([parent_dies_at] if parent_died else [])
-    assert service._stop.is_set() is parent_died
+    closed = closed_at is not None and closed_at <= ticks
+    last_tick = min(
+        tick for tick in (ticks, parent_dies_at, closed_at) if tick is not None
+    )
+    # The parent is checked on every tick until it is found dead, except on the
+    # tick the build closed.
+    assert parent_checks == [
+        tick for tick in range(1, last_tick + 1) if not (closed and tick == closed_at)
+    ]
+    # A build that died without closing is recorded once, on the tick it is
+    # found, which stops the loop; a build that closed first never is.
+    crashed = (
+        parent_dies_at is not None
+        and parent_dies_at <= ticks
+        and (not closed or parent_dies_at < closed_at)
+    )
+    assert exit_records == ([parent_dies_at] if crashed else [])
+    assert service._stop.is_set() is (crashed or closed)
     # Reference heartbeat schedule: due one interval after the start or the
     # last success; a failed heartbeat stays due and is retried next tick.
     due = heartbeat_seconds
@@ -1030,6 +1122,8 @@ def test_worker_survives_any_step_failure(
     reported = {
         name for name in outcomes.raised if name in {"RuntimeError", "ValueError"}
     }
+    if crashed and parent_check_raises:
+        reported.add("OverflowError")
     lines = error_output.getvalue().splitlines()
     assert len(lines) == len(reported)
     assert {line.split(" hit ")[1].split(" ")[0] for line in lines} == reported

@@ -7,6 +7,7 @@ import json
 import math
 import time
 from pathlib import Path
+from typing import NoReturn
 
 from microcosm.build.telemetry_emitter_service.collector import CollectorDelivery
 from microcosm.build.telemetry_emitter_service.constants import (
@@ -14,6 +15,7 @@ from microcosm.build.telemetry_emitter_service.constants import (
     DEFAULT_HEARTBEAT_SECONDS,
     READY_DEADLINE_ERROR,
     READY_DEADLINE_MARGIN_SECONDS,
+    SERVICE_ARGUMENTS_WARNING,
     SERVICE_FAILED_WARNING,
     SPOOL_LOCKED_EXIT_STATUS,
     SPOOL_LOCKED_WARNING,
@@ -40,10 +42,18 @@ def _seconds(value: str) -> float:
     return seconds
 
 
+class _ArgumentParser(argparse.ArgumentParser):
+    """Report invalid arguments in one line, like every other startup failure."""
+
+    def error(self, message: str) -> NoReturn:
+        write_warning(SERVICE_ARGUMENTS_WARNING.format(error=message))
+        raise SystemExit(2)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Create the service command-line parser."""
 
-    parser = argparse.ArgumentParser()
+    parser = _ArgumentParser()
     parser.add_argument("--socket", type=Path, required=True)
     parser.add_argument("--spool", type=Path, required=True)
     parser.add_argument("--development-collector-url")
@@ -116,8 +126,8 @@ def main(argv: list[str] | None = None) -> int:
     The socket is bound only once this build is registered, so a build that
     finds the service ready can queue events. The service's stderr is the
     build's, so a failure is one line, never a traceback. Exit status 75 means
-    another process kept the spool locked past the startup deadline; 1 means
-    any other failure.
+    another process kept the spool locked past the startup deadline, 2 that
+    the arguments were invalid, and 1 any other failure.
     """
 
     args = build_parser().parse_args(argv)

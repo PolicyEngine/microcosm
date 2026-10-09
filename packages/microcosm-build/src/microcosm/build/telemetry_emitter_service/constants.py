@@ -91,6 +91,9 @@ SPOOL_LOCKED_WARNING: Final = (
     "in its spool {spool}: another process kept the spool locked for "
     "{waited_seconds:.1f} s ({error})."
 )
+SERVICE_ARGUMENTS_WARNING: Final = (
+    "warning: the local telemetry emitter service could not start: {error}"
+)
 SERVICE_FAILED_WARNING: Final = (
     "warning: the local telemetry emitter service stopped: {error_type}: {error}"
 )
