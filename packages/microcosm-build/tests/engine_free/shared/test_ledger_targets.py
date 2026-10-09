@@ -5121,3 +5121,26 @@ def test__given_a_year_to_measure_map_outside_a_window__then_reference_refuses()
         _cy_window_reference(
             ledger_selector=_PER_YEAR_MEASURE_SELECTOR, value_operation="identity"
         )
+
+
+@pytest.mark.parametrize(
+    ("value", "normalized"),
+    [
+        ("03_2025", ""),
+        ("2025-12", ""),
+        ("12_2025", ""),
+        ("dec2024", ""),
+        ("table_1_2", "table_1_2"),
+        ("13_2025", "13"),
+        ("london", "london"),
+    ],
+)
+def test__given_a_numeric_month_beside_its_year__then_it_is_a_period(
+    value: str, normalized: str
+) -> None:
+    # ONS's June 2026 public sector employment edition keys its quarter rows
+    # 03_2025, 06_2025, ...: one series, so a monthly window can average them
+    # (microcosm#1123).
+    from microcosm.build.ledger_targets import _normalized_period_bearing_id
+
+    assert _normalized_period_bearing_id(value) == normalized
