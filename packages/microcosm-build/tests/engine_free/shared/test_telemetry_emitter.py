@@ -4,6 +4,7 @@ import socket
 import tempfile
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,6 +56,16 @@ from microcosm.build.telemetry_sanitization import (
     sanitize_json,
     sanitize_text,
 )
+
+
+def _recent_timestamp() -> str:
+    """A stored-row timestamp inside the spool's retention window.
+
+    The spool prunes rows older than ``RETENTION_DAYS`` when it opens, so a
+    fixed calendar date in a migrated-spool fixture expires a week later.
+    """
+
+    return (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
 
 
 def _registration(run_id: str = "run-a") -> dict[str, object]:
@@ -265,7 +276,7 @@ def test_pre_eligibility_spool_is_not_uploaded_after_upgrade(tmp_path) -> None:
                 producer_id="producer-a",
                 registration_json=json.dumps(registration),
                 next_sequence=2,
-                updated_at="2026-10-02T10:00:00+00:00",
+                updated_at=_recent_timestamp(),
             )
         )
         connection.execute(
@@ -275,7 +286,7 @@ def test_pre_eligibility_spool_is_not_uploaded_after_upgrade(tmp_path) -> None:
                 producer_id="producer-a",
                 sequence=1,
                 payload_json=json.dumps({"event_id": "old-event"}),
-                created_at="2026-10-02T10:00:00+00:00",
+                created_at=_recent_timestamp(),
             )
         )
     engine.dispose()
@@ -301,7 +312,7 @@ def test_current_pre_alembic_spool_is_adopted_without_losing_events(tmp_path) ->
                 next_sequence=2,
                 upload_state="pending",
                 local_only_reason=None,
-                updated_at="2026-10-02T10:00:00+00:00",
+                updated_at=_recent_timestamp(),
             )
         )
         session.add(
@@ -311,7 +322,7 @@ def test_current_pre_alembic_spool_is_adopted_without_losing_events(tmp_path) ->
                 producer_id="producer-a",
                 sequence=1,
                 payload={"event_id": "existing-event", "sequence": 1},
-                created_at="2026-10-02T10:00:00+00:00",
+                created_at=_recent_timestamp(),
             )
         )
     engine.dispose()
