@@ -14,6 +14,7 @@ import io
 import json
 import math
 import os
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -41,6 +42,7 @@ from microcosm.build.telemetry_emitter_service import spool as spool_module
 from microcosm.build.telemetry_emitter_service.constants import (
     DATABASE_TIMEOUT_SECONDS,
     PRUNE_INTERVAL_SECONDS,
+    PRUNE_STEP_SECONDS,
     READY_DEADLINE_MARGIN_SECONDS,
     RETENTION_DAYS,
     SPOOL_LOCKED_EXIT_STATUS,
@@ -171,7 +173,7 @@ def _service_arguments(
         _LOOPBACK_COLLECTOR,
     ]
     if ready_deadline is not None:
-        arguments += ["--ready-deadline", repr(ready_deadline)]
+        arguments.append(f"--ready-deadline={ready_deadline!r}")
     return arguments
 
 
@@ -319,10 +321,15 @@ def _parse_ready_deadline(value: str):
     )
 
 
-def test_ready_deadline_rejects_nan_and_caps_infinity() -> None:
+def test_ready_deadline_rejects_nan_and_caps_infinity(capsys) -> None:
     with pytest.raises(SystemExit) as raised:
         _parse_ready_deadline("nan")
     assert raised.value.code == 2
+    # Invalid arguments are one line on the build's stderr, not a usage block.
+    assert capsys.readouterr().err == (
+        "warning: the local telemetry emitter service could not start: "
+        "argument --ready-deadline: ready deadline must be a number of seconds\n"
+    )
 
     arguments = _parse_ready_deadline("inf")
     deadline = main_module.startup_deadline(
@@ -432,7 +439,7 @@ def test_service_process_reports_a_locked_spool_in_one_line(tmp_path) -> None:
                 sys.executable,
                 "-m",
                 TELEMETRY_SERVICE_MODULE,
-                # A deadline already past allows one attempt: SQLite's own wait.
+                # A deadline already past allows one attempt.
                 *_service_arguments(
                     socket_path, spool_path, ready_deadline=time.time()
                 ),
@@ -450,6 +457,46 @@ def test_service_process_reports_a_locked_spool_in_one_line(tmp_path) -> None:
         "warning: the local telemetry emitter service could not register"
     )
     assert not socket_path.exists()
+
+
+def test_an_interrupted_service_exits_without_a_traceback(tmp_path) -> None:
+    """SIGINT ends the real process as SIGTERM does, with nothing on stderr."""
+
+    spool_path = tmp_path / "spool" / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head")
+    # Opening the spool sets its directory to 0o700: the service is retrying.
+    spool_path.parent.chmod(0o750)
+    socket_path = _short_socket_path()
+    with _write_lock(spool_path):
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                TELEMETRY_SERVICE_MODULE,
+                *_service_arguments(
+                    socket_path, spool_path, ready_deadline=time.time() + 60
+                ),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            deadline = time.monotonic() + 120
+            while spool_path.parent.stat().st_mode & 0o777 != 0o700:
+                assert time.monotonic() < deadline, "service never opened the spool"
+                assert process.poll() is None, "service exited before opening"
+                time.sleep(0.02)
+            process.send_signal(signal.SIGINT)
+            _, error_output = process.communicate(timeout=30)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+    assert process.returncode == -signal.SIGINT
+    assert error_output == ""
 
 
 def test_client_passes_its_wait_as_a_wall_clock_ready_deadline(
@@ -481,8 +528,19 @@ def test_client_passes_its_wait_as_a_wall_clock_ready_deadline(
     after = time.time()
 
     (command,) = commands
-    ready_deadline = float(command[command.index("--ready-deadline") + 1])
+    (argument,) = [part for part in command if part.startswith("--ready-deadline=")]
+    ready_deadline = float(argument.removeprefix("--ready-deadline="))
     assert before + 42 <= ready_deadline <= after + 42
+    # One token, so the service parses even a deadline that is already past.
+    assert (
+        main_module.build_parser()
+        .parse_args(
+            ["--socket", "s", "--spool", "q", "--registration-json", "{}"]
+            + ["--parent-pid", "1", "--ready-deadline=-inf"]
+        )
+        .ready_deadline
+        == -math.inf
+    )
 
 
 @given(
@@ -685,23 +743,28 @@ def test_appends_never_prune(tmp_path, monkeypatch) -> None:
 
 @given(
     gaps=st.lists(st.floats(0, 3 * PRUNE_INTERVAL_SECONDS), max_size=30),
-    failures=st.lists(st.booleans(), max_size=30),
+    results=st.lists(
+        st.sampled_from(["finished", "unfinished", "failed"]), max_size=30
+    ),
 )
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
-def test_prune_runs_at_most_once_per_interval_counting_failures(
-    monkeypatch, gaps, failures
+def test_prune_runs_once_per_interval_until_a_backlog_is_drained(
+    monkeypatch, gaps, results
 ) -> None:
     clock = SimpleNamespace(now=1_000.0)
     monkeypatch.setattr(
         spool_module, "time", SimpleNamespace(monotonic=lambda: clock.now)
     )
-    attempts: list[float] = []
-    outcomes = iter(failures)
+    attempts: list[tuple[float, str]] = []
+    outcomes = iter(results)
 
-    def prune() -> None:
-        attempts.append(clock.now)
-        if next(outcomes, False):
+    def prune(*, time_budget_seconds):
+        assert time_budget_seconds == PRUNE_STEP_SECONDS
+        result = next(outcomes, "finished")
+        attempts.append((clock.now, result))
+        if result == "failed":
             raise _lock_error()
+        return result == "finished"
 
     # prune_if_due reads only the schedule and prune, so no database is needed.
     spool = EventSpool.__new__(EventSpool)
@@ -715,13 +778,19 @@ def test_prune_runs_at_most_once_per_interval_counting_failures(
         with contextlib.suppress(OperationalError):
             spool.prune_if_due()
 
-    # Reference schedule: the first call prunes; later calls prune once the
-    # interval has passed since the previous attempt, whether or not it failed.
+    # Reference schedule: the first call prunes. A later call prunes at once
+    # when the previous prune ran out of its step; otherwise once the interval
+    # has passed since the previous attempt, whether it finished or failed.
     expected: list[float] = []
     for now in calls:
-        if not expected or now - expected[-1] >= PRUNE_INTERVAL_SECONDS:
+        previous = attempts[len(expected) - 1] if expected else None
+        if (
+            previous is None
+            or previous[1] == "unfinished"
+            or now - previous[0] >= PRUNE_INTERVAL_SECONDS
+        ):
             expected.append(now)
-    assert attempts == expected
+    assert [at for at, _ in attempts] == expected
 
 
 # --- Lock-error classification ------------------------------------------------
@@ -920,11 +989,28 @@ class _Outcomes:
     ),
     ticks=st.integers(1, 30),
     parent_dies_at=st.one_of(st.none(), st.integers(1, 30)),
+    parent_check_raises=st.booleans(),
+    closed_at=st.one_of(st.none(), st.integers(1, 30)),
     heartbeat_seconds=st.sampled_from([1.0, 2.0, 3.5]),
 )
 def test_worker_survives_any_step_failure(
-    monkeypatch, script, ticks, parent_dies_at, heartbeat_seconds
+    monkeypatch,
+    script,
+    ticks,
+    parent_dies_at,
+    parent_check_raises,
+    closed_at,
+    heartbeat_seconds,
 ) -> None:
+    """The worker never dies, checks its build every tick, and tells a crash
+    from a clean close.
+
+    ``closed_at`` is the tick on which the build's close arrives while a step
+    runs, as it does when the accept thread handles it mid-tick; the build may
+    then exit before the tick ends. ``parent_check_raises`` makes the check of
+    a dead build raise instead of returning False.
+    """
+
     clock = SimpleNamespace(now=0.0, tick=0)
     monkeypatch.setattr(
         runtime_module,
@@ -959,7 +1045,15 @@ def test_worker_survives_any_step_failure(
 
     def parent_alive():
         parent_checks.append(clock.tick)
-        return parent_dies_at is None or clock.tick < parent_dies_at
+        alive = parent_dies_at is None or clock.tick < parent_dies_at
+        if not alive and parent_check_raises:
+            raise OverflowError("signed integer is greater than maximum")
+        return alive
+
+    def flush_once():
+        if clock.tick == closed_at:
+            service._stop.set()
+        return outcomes.next(False)
 
     service = EmitterService(
         socket_path=Path("/unused"),
@@ -969,7 +1063,7 @@ def test_worker_survives_any_step_failure(
             prune_if_due=outcomes.next,
             has_deliverable=lambda: outcomes.next(False),
         ),
-        delivery=SimpleNamespace(flush_once=lambda: outcomes.next(False)),
+        delivery=SimpleNamespace(flush_once=flush_once),
         sampler=SimpleNamespace(
             sample=lambda: outcomes.next({}), parent_alive=parent_alive
         ),
@@ -1002,14 +1096,24 @@ def test_worker_survives_any_step_failure(
     with contextlib.redirect_stderr(error_output):
         service._worker()  # never raises
 
-    last_tick = ticks if parent_dies_at is None else min(ticks, parent_dies_at)
-    # The parent is checked on every tick until it is found dead.
-    assert parent_checks == list(range(1, last_tick + 1))
-    # A dead parent is recorded once, on the tick it is found, and stops the
-    # loop.
-    parent_died = parent_dies_at is not None and parent_dies_at <= ticks
-    assert exit_records == ([parent_dies_at] if parent_died else [])
-    assert service._stop.is_set() is parent_died
+    closed = closed_at is not None and closed_at <= ticks
+    last_tick = min(
+        tick for tick in (ticks, parent_dies_at, closed_at) if tick is not None
+    )
+    # The parent is checked on every tick until it is found dead, except on the
+    # tick the build closed.
+    assert parent_checks == [
+        tick for tick in range(1, last_tick + 1) if not (closed and tick == closed_at)
+    ]
+    # A build that died without closing is recorded once, on the tick it is
+    # found, which stops the loop; a build that closed first never is.
+    crashed = (
+        parent_dies_at is not None
+        and parent_dies_at <= ticks
+        and (not closed or parent_dies_at < closed_at)
+    )
+    assert exit_records == ([parent_dies_at] if crashed else [])
+    assert service._stop.is_set() is (crashed or closed)
     # Reference heartbeat schedule: due one interval after the start or the
     # last success; a failed heartbeat stays due and is retried next tick.
     due = heartbeat_seconds
@@ -1028,10 +1132,68 @@ def test_worker_survives_any_step_failure(
     reported = {
         name for name in outcomes.raised if name in {"RuntimeError", "ValueError"}
     }
+    if crashed and parent_check_raises:
+        reported.add("OverflowError")
     lines = error_output.getvalue().splitlines()
     assert len(lines) == len(reported)
     assert {line.split(" hit ")[1].split(" ")[0] for line in lines} == reported
     assert not any("Traceback" in line for line in lines)
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(
+    script=st.lists(st.sampled_from(["ok", "locked", "runtime", "value"]), max_size=60),
+    deliverable=st.lists(st.booleans(), max_size=60),
+    drain_seconds=st.sampled_from([0.0, 0.4, 2.0, 5.0]),
+)
+def test_drain_survives_any_failure_and_keeps_its_deadline(
+    monkeypatch, script, deliverable, drain_seconds
+) -> None:
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(
+        runtime_module,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock.now,
+            sleep=lambda seconds: setattr(clock, "now", clock.now + seconds),
+        ),
+    )
+    outcomes = _Outcomes(script)
+    answers = iter(deliverable)
+    checks: list[float] = []
+
+    def has_deliverable() -> bool:
+        checks.append(clock.now)
+        outcomes.next()
+        return next(answers, False)
+
+    def flush_once() -> bool:
+        clock.now += 0.01
+        outcomes.next()
+        return False
+
+    service = EmitterService(
+        socket_path=Path("/unused"),
+        registration=_registration(),
+        spool=SimpleNamespace(has_deliverable=has_deliverable),
+        delivery=SimpleNamespace(flush_once=flush_once),
+        sampler=SimpleNamespace(),
+        heartbeat_seconds=60,
+        drain_seconds=drain_seconds,
+    )
+    error_output = io.StringIO()
+
+    with contextlib.redirect_stderr(error_output):
+        service._drain()  # never raises
+
+    # It never runs past its deadline, and checks again after every failure
+    # until nothing is deliverable or the deadline passes.
+    assert clock.now <= drain_seconds + 0.01 + 1e-9
+    assert all(check < drain_seconds for check in checks)
+    reported = {
+        name for name in outcomes.raised if name in {"RuntimeError", "ValueError"}
+    }
+    assert len(error_output.getvalue().splitlines()) == len(reported)
 
 
 def test_unexpected_exit_waits_out_lock_contention(monkeypatch) -> None:
@@ -1172,9 +1334,10 @@ def _stamp(age_days: float, index: int) -> str:
     run_ages=st.lists(st.floats(0, 2 * RETENTION_DAYS), min_size=3, max_size=3),
     cap_fraction=st.floats(0, 1.2),
     batch_rows=st.integers(1, 4),
+    step_budget=st.sampled_from([0.0, math.inf]),
 )
 def test_batched_prune_matches_the_single_pass_retention_rule(
-    tmp_path_factory, events, run_ages, cap_fraction, batch_rows
+    tmp_path_factory, events, run_ages, cap_fraction, batch_rows, step_budget
 ) -> None:
     """Differential: the batched prune keeps exactly what one pass would.
 
@@ -1243,9 +1406,15 @@ def test_batched_prune_matches_the_single_pass_retention_rule(
         with (
             mock.patch.object(spool_module, "MAX_QUEUED_BYTES", cap),
             mock.patch.object(spool_module, "PRUNE_BATCH_ROWS", batch_rows),
+            mock.patch.object(spool_module, "PRUNE_BATCH_PAUSE_SECONDS", 0.0),
             mock.patch.object(spool_module, "datetime", frozen_now),
         ):
-            spool.prune()
+            # A zero budget stops after every batch, so the prune is resumed
+            # call by call until it reports that it finished.
+            calls = 1
+            while not spool.prune(time_budget_seconds=step_budget):
+                calls += 1
+                assert calls <= len(events) + 3
         with spool._session_factory() as session:
             kept_events = set(
                 session.scalars(select(TelemetryEventRecord.event_id)).all()
@@ -1278,3 +1447,81 @@ def test_batched_prune_matches_the_single_pass_retention_rule(
     assert kept_runs == expected_runs
     # Each transaction deleted at most one batch.
     assert all(deleted <= batch_rows for deleted in batches)
+
+
+def test_a_prune_with_nothing_to_remove_only_reads(tmp_path) -> None:
+    """An idle prune runs every minute in every service; it takes no lock."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    try:
+        registration = _registration()
+        spool.register(registration)
+        spool.append(registration, _event())
+        with _write_lock(spool_path):
+            started = time.monotonic()
+            assert spool.prune() is True
+            assert time.monotonic() - started < 1.0
+        assert spool.has_pending()
+    finally:
+        _close(spool)
+
+
+def test_prune_pauses_between_batches_outside_the_process_lock(
+    tmp_path, monkeypatch
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    pauses: list[bool] = []
+    try:
+        registration = _registration()
+        spool.register(registration)
+        for _ in range(5):
+            spool.append(registration, _event())
+        expired = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS + 1)).isoformat()
+        with spool._session_factory.begin() as session:
+            session.query(TelemetryEventRecord).update({"created_at": expired})
+
+        def pause(seconds: float) -> None:
+            # This build's event path takes the same lock, so it must be free.
+            pauses.append(spool._lock._is_owned())
+
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_ROWS", 2)
+        monkeypatch.setattr(
+            spool_module,
+            "time",
+            SimpleNamespace(monotonic=time.monotonic, sleep=pause),
+        )
+        assert spool.prune() is True
+        assert not spool.has_pending()
+    finally:
+        _close(spool)
+
+    # Five rows in batches of two: a pause after each full batch, never while
+    # this process holds its lock.
+    assert pauses == [False, False]
+
+
+def test_a_prune_out_of_time_stops_between_batches_and_resumes(
+    tmp_path, monkeypatch
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    try:
+        registration = _registration()
+        spool.register(registration)
+        for _ in range(5):
+            spool.append(registration, _event())
+        expired = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS + 1)).isoformat()
+        with spool._session_factory.begin() as session:
+            session.query(TelemetryEventRecord).update({"created_at": expired})
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_ROWS", 2)
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_PAUSE_SECONDS", 0.0)
+
+        remaining = []
+        while not spool.prune(time_budget_seconds=0.0):
+            remaining.append(len(spool.batch("run-a", "producer-a", limit=10)))
+        remaining.append(len(spool.batch("run-a", "producer-a", limit=10)))
+    finally:
+        _close(spool)
+
+    # One batch per call: five rows go two, two, then one.
+    assert remaining == [3, 1, 0]

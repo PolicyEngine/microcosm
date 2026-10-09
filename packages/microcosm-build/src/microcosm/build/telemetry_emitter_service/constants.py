@@ -54,6 +54,11 @@ MAX_RETRY_SECONDS: Final = 60.0
 DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
 PRUNE_BATCH_ROWS: Final = 500
+# SQLite's busy handler polls rather than queueing, so another process rarely
+# gets the lock between two back-to-back transactions. Prune pauses between
+# batches and works at most PRUNE_STEP_SECONDS per worker tick.
+PRUNE_BATCH_PAUSE_SECONDS: Final = 0.025
+PRUNE_STEP_SECONDS: Final = 1.0
 # Every concurrent build on a host shares one spool, so a write can find it
 # locked for longer than SQLite's own busy wait. Startup retries such errors
 # with jittered, doubling waits until shortly before the build stops waiting
@@ -90,6 +95,9 @@ SPOOL_LOCKED_WARNING: Final = (
     "warning: the local telemetry emitter service could not register this build "
     "in its spool {spool}: another process kept the spool locked for "
     "{waited_seconds:.1f} s ({error})."
+)
+SERVICE_ARGUMENTS_WARNING: Final = (
+    "warning: the local telemetry emitter service could not start: {error}"
 )
 SERVICE_FAILED_WARNING: Final = (
     "warning: the local telemetry emitter service stopped: {error_type}: {error}"
