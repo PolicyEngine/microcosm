@@ -410,6 +410,45 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
     assert capsys.readouterr().err.count("local-only for this run") == 1
 
 
+@pytest.mark.parametrize(
+    ("status", "retried"), [(422, False), (404, False), (429, True), (408, True)]
+)
+def test_a_settled_collector_rejection_goes_local_only_instead_of_retrying(
+    tmp_path, monkeypatch, capsys, status, retried
+) -> None:
+    """A 4xx the collector will repeat (an event shape it does not accept, say)
+    must not wedge the queue: the run goes local-only with a reason and one
+    warning. A timeout or a rate limit still retries."""
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    registration = _registration()
+    spool.register(registration)
+    spool.append(registration, _event())
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
+
+    def fake_post(url, payload, token, *, timeout=5.0):
+        if url.endswith("/v1/auth/huggingface/exchange"):
+            return 200, {"access_token": "collector-token", "expires_in": 3600}
+        if url.endswith("/v1/runs"):
+            return 201, {"registered": True}
+        return status, {"detail": "rejected"}
+
+    monkeypatch.setattr(collector_module, "_http_post", fake_post)
+    delivery = CollectorDelivery(
+        spool, development_collector_url="http://127.0.0.1:8080"
+    )
+    assert not delivery.flush_once()
+    assert spool.has_pending()
+    if retried:
+        assert spool.pending_runs() == [registration]
+        assert "local-only" not in capsys.readouterr().err
+        return
+    assert spool.pending_runs() == []
+    assert not delivery.flush_once()
+    err = capsys.readouterr().err
+    assert err.count("local-only for this run") == 1
+    assert f"HTTP {status}" in err
+
+
 def test_identity_provider_outage_keeps_events_eligible_for_retry(
     tmp_path, monkeypatch
 ) -> None:
