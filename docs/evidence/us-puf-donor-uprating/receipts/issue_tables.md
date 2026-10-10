@@ -57,7 +57,7 @@
 
 ## The leg the 2024 branch never applied
 
-| Archived series | 2015 to 2021 (carried) | 2021 to 2022 | 2021 to 2023 (not applied) |
+| Archived series | 2015 to 2021, applied | 2021 to 2022 | 2021 to 2023, not applied |
 |---|---:|---:|---:|
 | E00200 (employment_income) | 1.1871 | 1.0760 | 1.1325 |
 | E00300 (taxable_interest_income) | 1.0105 | 1.2863 | 3.0352 |

@@ -263,7 +263,7 @@ def leg_table(donor: dict) -> str:
         "S006 weights (return count)",
     ]
     lines = [
-        "| Archived series | 2015 to 2021 (carried) | 2021 to 2022 | 2021 to 2023 (not applied) |",
+        "| Archived series | 2015 to 2021, applied | 2021 to 2022 | 2021 to 2023, not applied |",
         "|---|---:|---:|---:|",
     ]
     for key in keys:
