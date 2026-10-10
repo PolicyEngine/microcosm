@@ -217,6 +217,13 @@ wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
 publisher's offline `--preflight-only` check and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
+Alongside its out-of-sample reports, it writes
+`us_ssi_social_security_holdout.json`: the household-weighted share of SSI
+recipients also receiving Social Security at ages 18–64 and 65+, compared with
+SSA's SSI Annual Statistical Report 2024, Table 9. This held-out diagnostic
+never feeds calibration or refuses a release; unavailable measurements are
+reported explicitly. The report records the difference between SSA's December
+2024 recipient snapshot and the model's positive annual benefits.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release

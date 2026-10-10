@@ -6231,9 +6231,32 @@ def _run_green_register_release(
 
         def open_consumer(self, name, baseline_plan):
             record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
-            return SimpleNamespace(
-                name=name, simulate=self.dataset_path, record=lambda: record
-            )
+            simulate = self.dataset_path
+            if name == "ssi_social_security_holdout":
+                captured["holdout_scored"] = self.dataset_path
+                record.update(
+                    baseline_passes=1,
+                    reform_passes=0,
+                    reform_systems=0,
+                    n_batches=1,
+                    max_batch_households=2,
+                )
+
+                def calculate(variable, period):
+                    assert period == builder.PERIOD
+                    values = {
+                        "age": [40, 75],
+                        "ssi": [100, 100],
+                        "social_security": [0, 100],
+                    }
+                    return builder._PostExportValues(
+                        np.array(values[variable]), np.array([2.0, 3.0])
+                    )
+
+                def simulate(reform):
+                    return SimpleNamespace(calculate=calculate)
+
+            return SimpleNamespace(name=name, simulate=simulate, record=lambda: record)
 
         def finish_consumer(self, scoring):
             captured.setdefault("finished_consumers", []).append(scoring.name)
@@ -6303,14 +6326,28 @@ def _run_green_register_release(
         captured["written_dataset"],
     )
     if skipped_smoke:
-        # No post-export stage runs, so no scorer opens.
+        # The report-only holdout runs even when the smoke is skipped.
         assert "smoke_scored" not in captured
-        assert "scorer_opened_on" not in captured
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
-        assert captured["scorer_opened_on"] == captured["written_dataset"]
         assert captured["smoke_scored"] == captured["written_dataset"]
-        assert captured["scorer_closed"] is True
+    assert captured["scorer_opened_on"] == captured["written_dataset"]
+    assert captured["holdout_scored"] == captured["written_dataset"]
+    assert captured["scorer_closed"] is True
+    holdout = json.loads(
+        (release_dir / "us_ssi_social_security_holdout.json").read_text()
+    )
+    assert holdout["status"] == "available"
+    assert holdout["release_id"] == release_id
+    assert holdout["enforced"] is False
+    assert holdout["used_for_calibration"] is False
+    assert holdout["benchmark"]["table"] == 9
+    assert holdout["benchmark"]["year"] == 2024
+    working_age, older = holdout["age_bands"]
+    assert working_age["weighted_ssi_recipients"] == 2
+    assert working_age["share"] == 0
+    assert older["weighted_ssi_recipients"] == 3
+    assert older["share"] == 1
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not skipped_smoke:
@@ -6326,16 +6363,17 @@ def _run_green_register_release(
         assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
     # Both manifests carry how the post-export gates were scored (route A
     # remediation PR-3's rule): the scorer's block, taken after every consumer
-    # finished and naming the bytes the manifest pins. With no post-export
-    # stage there is no scorer and no block.
+    # finished and naming the bytes the manifest pins. The observational
+    # holdout is scored independently of whether the smoke was skipped.
     for block in (build_manifest, release_manifest["build"]):
-        if skipped_smoke:
-            assert "post_export_scoring" not in block
-        else:
-            assert block["post_export_scoring"] == {
-                "dataset_sha256": build_manifest["dataset"]["sha256"],
-                "consumers": ["reform_coverage_smoke"],
-            }
+        assert block["post_export_scoring"] == {
+            "dataset_sha256": build_manifest["dataset"]["sha256"],
+            "consumers": (
+                ["ssi_social_security_holdout"]
+                if skipped_smoke
+                else ["reform_coverage_smoke", "ssi_social_security_holdout"]
+            ),
+        }
 
     artifacts = release_manifest["artifacts"]
     bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
@@ -8969,6 +9007,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+        "ssi_social_security_holdout",
     ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
