@@ -2560,7 +2560,9 @@ def _uk_fanout_sum_controls(
             )
         )
         signatures[synthetic] = {
-            "filters": [{"concept": "uk.target_identity", "equals": synthetic}]
+            "measurement": {
+                "filters": [{"concept": "uk.target_identity", "equals": synthetic}]
+            }
         }
         rows.append(
             {

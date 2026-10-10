@@ -103,7 +103,11 @@ def test_a_surface_binding_the_area_cells_adds_one_country_control_row():
     (bridge,) = bridges
     assert bridge.lower_side == "contract:hmrc.employment_income.amount"
     (synthetic,) = bridge.higher_target_ids
-    assert synthetic in signatures
+    # The synthetic control groups only through its bridge, and its signature
+    # has the contract shape the reconciliation canonicalizes.
+    assert _measurement_signature(
+        signatures[synthetic], UK_CROSS_GRAIN_RULE.signature_fields
+    )
     assert control_rows == [
         {
             "grain": "country",
