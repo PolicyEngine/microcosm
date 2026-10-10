@@ -1,0 +1,566 @@
+{
+ "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "columns": {
+  "health_insurance_premiums_without_medicare_part_b": {
+   "entity": "person",
+   "rows_changed": 225373,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 170482120337.16876,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 170482120337.16876,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 56649369.62921281,
+     "weighted_nonzero_release": 56649369.62921281
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 170221262654.0239,
+     "relative_change": 0.08084434607322133,
+     "release_minus_base": 13761426667.022614,
+     "release_value_total": 183982689321.0465,
+     "rows_changed": 203076,
+     "weighted_nonzero_base": 56587665.43019315,
+     "weighted_nonzero_release": 54980169.51513564
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 260857683.1448432,
+     "relative_change": 0.1507757070210263,
+     "release_minus_base": 39331001.60803059,
+     "release_value_total": 300188684.7528738,
+     "rows_changed": 22297,
+     "weighted_nonzero_base": 61704.199019665095,
+     "weighted_nonzero_release": 63192.621347367734
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 157017746676.20624,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 157017746676.20624,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 50164246.48462942,
+     "weighted_nonzero_release": 50164246.48462942
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 200955112760.74762,
+     "relative_change": 0.09974710658499787,
+     "release_minus_base": 20044691051.346558,
+     "release_value_total": 220999803812.09418,
+     "rows_changed": 203076,
+     "weighted_nonzero_base": 64653693.01208844,
+     "weighted_nonzero_release": 61667304.11374946
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 184801365.5433556,
+     "relative_change": 0.163206683230695,
+     "release_minus_base": 30160817.926834315,
+     "release_value_total": 214962183.47018993,
+     "rows_changed": 22297,
+     "weighted_nonzero_base": 44633.319901362374,
+     "weighted_nonzero_release": 45255.21294579973
+    }
+   }
+  },
+  "roth_401k_contributions_desired": {
+   "entity": "person",
+   "rows_changed": 28695,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 29465705733.979897,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 29465705733.979897,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 29084774.53441707,
+     "weighted_nonzero_release": 29084774.53441707
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 23160283443.02305,
+     "relative_change": 0.012247278500629302,
+     "release_minus_base": 283650441.480217,
+     "release_value_total": 23443933884.503265,
+     "rows_changed": 24316,
+     "weighted_nonzero_base": 25235814.410471737,
+     "weighted_nonzero_release": 25151060.73882024
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 72849971.1733531,
+     "relative_change": 0.019087295386758497,
+     "release_minus_base": 1390508.9187026322,
+     "release_value_total": 74240480.09205574,
+     "rows_changed": 4379,
+     "weighted_nonzero_base": 51369.35813897019,
+     "weighted_nonzero_release": 51829.85372529122
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 24672338773.80252,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 24672338773.80252,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 25996423.950204708,
+     "weighted_nonzero_release": 25996423.950204708
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 29766296163.77658,
+     "relative_change": 0.02138642836724932,
+     "release_minus_base": 636594760.6649361,
+     "release_value_total": 30402890924.441517,
+     "rows_changed": 24316,
+     "weighted_nonzero_base": 30456877.013414387,
+     "weighted_nonzero_release": 30499617.064588066
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 51765813.552146345,
+     "relative_change": 0.018594037659411387,
+     "release_minus_base": 962535.4866586775,
+     "release_value_total": 52728349.03880502,
+     "rows_changed": 4379,
+     "weighted_nonzero_base": 36420.7787531224,
+     "weighted_nonzero_release": 36922.05608499026
+    }
+   }
+  },
+  "roth_ira_contributions_desired": {
+   "entity": "person",
+   "rows_changed": 29223,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 13992968420.11855,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 13992968420.11855,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 29503972.90613501,
+     "weighted_nonzero_release": 29503972.90613501
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 9868355362.212652,
+     "relative_change": 0.010100596618727501,
+     "release_minus_base": 99676276.80396652,
+     "release_value_total": 9968031639.016619,
+     "rows_changed": 24727,
+     "weighted_nonzero_base": 25409569.348881606,
+     "weighted_nonzero_release": 25324644.492830887
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 30963486.28159403,
+     "relative_change": 0.016205297077420192,
+     "release_minus_base": 501772.493745856,
+     "release_value_total": 31465258.775339887,
+     "rows_changed": 4496,
+     "weighted_nonzero_base": 51637.178221456605,
+     "weighted_nonzero_release": 52106.98639825692
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 11283261280.96603,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 11283261280.96603,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 26342292.56354109,
+     "weighted_nonzero_release": 26342292.56354109
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 12472722410.628582,
+     "relative_change": 0.01794382253038935,
+     "release_minus_base": 223808317.4071293,
+     "release_value_total": 12696530728.035711,
+     "rows_changed": 24727,
+     "weighted_nonzero_base": 30599844.67105287,
+     "weighted_nonzero_release": 30638227.836595457
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 21979918.845050655,
+     "relative_change": 0.015427578336794517,
+     "release_minus_base": 339096.91981840506,
+     "release_value_total": 22319015.76486906,
+     "rows_changed": 4496,
+     "weighted_nonzero_base": 36629.30089439628,
+     "weighted_nonzero_release": 37137.853489226036
+    }
+   }
+  },
+  "self_employed_pension_contributions_desired": {
+   "entity": "person",
+   "rows_changed": 1219,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 417574801.58868974,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 417574801.58868974,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 1180390.7265591812,
+     "weighted_nonzero_release": 1180390.7265591812
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 322075709.14572024,
+     "relative_change": 0.03496229287693607,
+     "release_minus_base": 11260505.271699548,
+     "release_value_total": 333336214.4174198,
+     "rows_changed": 1002,
+     "weighted_nonzero_base": 1157735.866384437,
+     "weighted_nonzero_release": 1184026.722275674
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 1511922.2015146448,
+     "relative_change": 0.0015951138443284683,
+     "release_minus_base": 2411.688035183586,
+     "release_value_total": 1514333.8895498284,
+     "rows_changed": 217,
+     "weighted_nonzero_base": 3010.7604813227017,
+     "weighted_nonzero_release": 3092.147572715143
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 642390716.1571527,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 642390716.1571527,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 2269395.248737539,
+     "weighted_nonzero_release": 2269395.248737539
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 788075092.4179125,
+     "relative_change": 0.041820634091919114,
+     "release_minus_base": 32957800.076964855,
+     "release_value_total": 821032892.4948773,
+     "rows_changed": 1002,
+     "weighted_nonzero_base": 2909603.846592183,
+     "weighted_nonzero_release": 2967981.8831823985
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 1211017.695971521,
+     "relative_change": -0.0013271678178847796,
+     "release_minus_base": -1607.223712982377,
+     "release_value_total": 1209410.4722585387,
+     "rows_changed": 217,
+     "weighted_nonzero_base": 2450.6157569349775,
+     "weighted_nonzero_release": 2544.7537708819027
+    }
+   }
+  },
+  "spm_unit_energy_subsidy": {
+   "entity": "spm_unit",
+   "rows_changed": 3283,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 1451006663.2611456,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 1451006663.2611456,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 2319040.7069538524,
+     "weighted_nonzero_release": 2319040.7069538524
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 1264994862.485142,
+     "relative_change": 0.0018034881984656335,
+     "release_minus_base": 2281403.3056116104,
+     "release_value_total": 1267276265.7907536,
+     "rows_changed": 3249,
+     "weighted_nonzero_base": 1979176.6288004285,
+     "weighted_nonzero_release": 1896764.6743069245
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 265563.44541436434,
+     "relative_change": -0.13100590808476625,
+     "release_minus_base": -34790.38032062806,
+     "release_value_total": 230773.06509373628,
+     "rows_changed": 34,
+     "weighted_nonzero_base": 354.53845632618186,
+     "weighted_nonzero_release": 328.40759874586723
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 2053182470.582542,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 2053182470.582542,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 3404238.7974251076,
+     "weighted_nonzero_release": 3404238.7974251076
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 1557942202.4667902,
+     "relative_change": 0.08128546936332791,
+     "release_minus_base": 126638063.16844988,
+     "release_value_total": 1684580265.63524,
+     "rows_changed": 3249,
+     "weighted_nonzero_base": 2414813.251421864,
+     "weighted_nonzero_release": 2475742.5561968326
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 287428.3453306672,
+     "relative_change": -0.016997455354223423,
+     "release_minus_base": -4885.550467296329,
+     "release_value_total": 282542.7948633709,
+     "rows_changed": 34,
+     "weighted_nonzero_base": 437.85624412310676,
+     "weighted_nonzero_release": 436.1831635101868
+    }
+   }
+  },
+  "spm_unit_pre_subsidy_childcare_expenses": {
+   "entity": "spm_unit",
+   "rows_changed": 1849,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 34697431432.14461,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 34697431432.14461,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 3633118.968766486,
+     "weighted_nonzero_release": 3633118.968766486
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 26952790956.385857,
+     "relative_change": -0.0067416503407254835,
+     "release_minus_base": -181706292.33462143,
+     "release_value_total": 26771084664.051235,
+     "rows_changed": 1617,
+     "weighted_nonzero_base": 3090192.542310979,
+     "weighted_nonzero_release": 3067017.740755102
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 79785687.88634439,
+     "relative_change": -0.0028037261625097312,
+     "release_minus_base": -223697.2205207795,
+     "release_value_total": 79561990.66582361,
+     "rows_changed": 232,
+     "weighted_nonzero_base": 6767.082733646885,
+     "weighted_nonzero_release": 6643.80072278302
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 28309120559.43553,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 28309120559.43553,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 3454837.8468786385,
+     "weighted_nonzero_release": 3454837.8468786385
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 37394387745.82239,
+     "relative_change": 0.009293380532904212,
+     "release_minus_base": 347520275.1168976,
+     "release_value_total": 37741908020.939285,
+     "rows_changed": 1617,
+     "weighted_nonzero_base": 4035815.4411651683,
+     "weighted_nonzero_release": 4064981.644773271
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 53833251.75496491,
+     "relative_change": -0.015370028989759038,
+     "release_minus_base": -827418.6400868073,
+     "release_value_total": 53005833.1148781,
+     "rows_changed": 232,
+     "weighted_nonzero_base": 4577.3731026704845,
+     "weighted_nonzero_release": 4373.877063135458
+    }
+   }
+  },
+  "traditional_401k_contributions_desired": {
+   "entity": "person",
+   "rows_changed": 30442,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 166972332492.55276,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 166972332492.55276,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 29084774.53441707,
+     "weighted_nonzero_release": 29084774.53441707
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 131331565550.42848,
+     "relative_change": 0.012073532026654227,
+     "release_minus_base": 1585635862.7837372,
+     "release_value_total": 132917201413.21222,
+     "rows_changed": 25736,
+     "weighted_nonzero_base": 25236823.771585032,
+     "weighted_nonzero_release": 25152070.099933535
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 412698917.8777408,
+     "relative_change": 0.018837965011536267,
+     "release_minus_base": 7774407.77527976,
+     "release_value_total": 420473325.65302056,
+     "rows_changed": 4706,
+     "weighted_nonzero_base": 51369.35813897019,
+     "weighted_nonzero_release": 51829.85372529122
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 139809919718.2143,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 139809919718.2143,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 25996423.950204708,
+     "weighted_nonzero_release": 25996423.950204708
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 168801055649.94968,
+     "relative_change": 0.021100665126881878,
+     "release_minus_base": 3561814548.33374,
+     "release_value_total": 172362870198.28342,
+     "rows_changed": 25736,
+     "weighted_nonzero_base": 30456897.714394007,
+     "weighted_nonzero_release": 30499637.76556769
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 293277593.3603945,
+     "relative_change": 0.018726317131943455,
+     "release_minus_base": 5492009.220959902,
+     "release_value_total": 298769602.5813544,
+     "rows_changed": 4706,
+     "weighted_nonzero_base": 36420.7787531224,
+     "weighted_nonzero_release": 36922.05608499026
+    }
+   }
+  },
+  "traditional_ira_contributions_desired": {
+   "entity": "person",
+   "rows_changed": 28913,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 9021782270.865908,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 9021782270.865908,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 29503972.90613501,
+     "weighted_nonzero_release": 29503972.90613501
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 6374661718.749365,
+     "relative_change": 0.01176517857340319,
+     "release_minus_base": 74999033.46612358,
+     "release_value_total": 6449660752.215488,
+     "rows_changed": 24404,
+     "weighted_nonzero_base": 25408617.30024632,
+     "weighted_nonzero_release": 25323660.877346683
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 19967314.52943994,
+     "relative_change": 0.016825844252463234,
+     "release_minus_base": 335966.9244123027,
+     "release_value_total": 20303281.453852244,
+     "rows_changed": 4509,
+     "weighted_nonzero_base": 51637.178221456605,
+     "weighted_nonzero_release": 52106.98639825692
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 7274734246.938625,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 7274734246.938625,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 26342292.56354109,
+     "weighted_nonzero_release": 26342292.56354109
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 8057838514.950199,
+     "relative_change": 0.01871891756215374,
+     "release_minus_base": 150834014.89050007,
+     "release_value_total": 8208672529.840699,
+     "rows_changed": 24404,
+     "weighted_nonzero_base": 30599813.34164446,
+     "weighted_nonzero_release": 30638181.171448905
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 14138415.168874482,
+     "relative_change": 0.01691402071897018,
+     "release_minus_base": 239137.44709974527,
+     "release_value_total": 14377552.615974227,
+     "rows_changed": 4509,
+     "weighted_nonzero_base": 36629.30089439628,
+     "weighted_nonzero_release": 37137.853489226036
+    }
+   }
+  },
+  "weeks_unemployed": {
+   "entity": "person",
+   "rows_changed": 9,
+   "under_base_weights": {
+    "asec/clone0": {
+     "base_value_total": 88465568.33026958,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 88465568.33026958,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 5278702.693198599,
+     "weighted_nonzero_release": 5278702.693198599
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 9034477.998274893,
+     "relative_change": -0.0005534295732827946,
+     "release_minus_base": -4999.94730341807,
+     "release_value_total": 9029478.050971474,
+     "rows_changed": 8,
+     "weighted_nonzero_base": 590573.5476436748,
+     "weighted_nonzero_release": 590573.5476436748
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 4198.391993999129,
+     "relative_change": -7.762502780272204e-05,
+     "release_minus_base": -0.325900295260908,
+     "release_value_total": 4198.066093703868,
+     "rows_changed": 1,
+     "weighted_nonzero_base": 336.41807631055474,
+     "weighted_nonzero_release": 336.41807631055474
+    }
+   },
+   "under_release_weights": {
+    "asec/clone0": {
+     "base_value_total": 127837732.4932631,
+     "relative_change": 0.0,
+     "release_minus_base": 0.0,
+     "release_value_total": 127837732.4932631,
+     "rows_changed": 0,
+     "weighted_nonzero_base": 6874813.788753719,
+     "weighted_nonzero_release": 6874813.788753719
+    },
+    "puf_tax_detail/clone1": {
+     "base_value_total": 13570026.127163216,
+     "relative_change": -0.0022319241688470446,
+     "release_minus_base": -30287.269285101444,
+     "release_value_total": 13539738.857878115,
+     "rows_changed": 8,
+     "weighted_nonzero_base": 907340.8557531106,
+     "weighted_nonzero_release": 907340.8557531106
+    },
+    "puf_tax_detail/clone2": {
+     "base_value_total": 2557.970990751315,
+     "relative_change": -0.00031537562650174177,
+     "release_minus_base": -0.8067217037814771,
+     "release_value_total": 2557.1642690475337,
+     "rows_changed": 1,
+     "weighted_nonzero_base": 219.17982084185007,
+     "weighted_nonzero_release": 219.17982084185007
+    }
+   }
+  }
+ },
+ "release_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
+ "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
+}

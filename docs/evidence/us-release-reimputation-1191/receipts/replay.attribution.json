@@ -1,0 +1,623 @@
+{
+ "base_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/base-out/base_populace_us_2024_puf_support.h5",
+ "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "builder_head": "4b57d15a287c4a1729bad362a2f6d57c4de9059e",
+ "builder_root": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-route-a-4b57d15a287c",
+ "notes": {
+  "completed": true,
+  "load_seconds": 30.0,
+  "mass_only_mass_repair": {
+   "applied": true,
+   "benchmark": 334200000.0,
+   "factor": 1.0253031783870294,
+   "initial_population": 325952369.05999994,
+   "initial_relative_error": -0.02467872812687031,
+   "mass_change": {
+    "declared_factor": 1.0253031783870294,
+    "entity": "household",
+    "new_total": 138098416.6187297,
+    "old_total": 134690323.34024483,
+    "reason": "US fiscal refresh rescaled base household weights to the Census 2024 national person-population benchmark before mass='conserve' calibration."
+   },
+   "method": "rescale_household_weights_to_census_person_population",
+   "reason": "US fiscal refresh rescaled base household weights to the Census 2024 national person-population benchmark before mass='conserve' calibration.",
+   "repaired_population": 334200000.0,
+   "repaired_relative_error": 0.0
+  }
+ },
+ "period": 2024,
+ "platform": {
+  "cpu_count": 18,
+  "gil_enabled": true,
+  "machine": "arm64",
+  "numpy": "2.4.6",
+  "pandas": "3.0.3",
+  "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",
+  "quantile_forest": "1.4.2",
+  "sklearn": "1.8.0",
+  "system": "Darwin",
+  "thread_environment": {
+   "MKL_NUM_THREADS": "16",
+   "OMP_NUM_THREADS": "16",
+   "OPENBLAS_NUM_THREADS": "16",
+   "POPULACE_FIT_N_JOBS": null,
+   "POPULACE_FIT_PREDICT_WORKERS": null,
+   "PYTHONHASHSEED": "0",
+   "VECLIB_MAXIMUM_THREADS": "16"
+  }
+ },
+ "release_diagnostics": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/calibration_diagnostics.json",
+ "release_diagnostics_sha256": "64b55a02aaf573964cffee44d4a86bd63f33dc30c7f5012e4345348eecc06f80",
+ "release_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-4b57d15a287c/release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/artifacts/populace_us_2024.h5",
+ "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+ "results": [
+  {
+   "columns": {
+    "roth_401k_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9277,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 10633,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 2539.2173280113348,
+      "min_abs_difference": 8.881784197001252e-16,
+      "rows_differing": 19910,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 16484,
+       "puf_tax_detail/clone2": 3426
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10123,
+       "nonzero_to_zero": 3964,
+       "up_both_nonzero": 9397,
+       "zero_to_nonzero": 4042
+      },
+      "max_abs_difference": 4872.555,
+      "min_abs_difference": 1.6430122258270785e-06,
+      "rows_differing": 27526,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 23362,
+       "puf_tax_detail/clone2": 4164
+      }
+     }
+    },
+    "roth_ira_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9482,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 10937,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 4244.5696,
+      "min_abs_difference": 5.551115123125783e-17,
+      "rows_differing": 20419,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 16883,
+       "puf_tax_detail/clone2": 3536
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10367,
+       "nonzero_to_zero": 3963,
+       "up_both_nonzero": 9819,
+       "zero_to_nonzero": 4043
+      },
+      "max_abs_difference": 4524.2496,
+      "min_abs_difference": 8.642276227988077e-08,
+      "rows_differing": 28192,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 23922,
+       "puf_tax_detail/clone2": 4270
+      }
+     }
+    },
+    "self_employed_pension_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 282,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 247,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 816.5,
+      "min_abs_difference": 1.4210854715202004e-14,
+      "rows_differing": 529,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 415,
+       "puf_tax_detail/clone2": 114
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 217,
+       "nonzero_to_zero": 391,
+       "up_both_nonzero": 225,
+       "zero_to_nonzero": 273
+      },
+      "max_abs_difference": 1380.0,
+      "min_abs_difference": 4.7894870078835083e-05,
+      "rows_differing": 1106,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 916,
+       "puf_tax_detail/clone2": 190
+      }
+     }
+    },
+    "traditional_401k_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10128,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 11637,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 18523.199999999997,
+      "min_abs_difference": 2.842170943040401e-14,
+      "rows_differing": 21765,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 17994,
+       "puf_tax_detail/clone2": 3771
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 11072,
+       "nonzero_to_zero": 3964,
+       "up_both_nonzero": 10386,
+       "zero_to_nonzero": 4042
+      },
+      "max_abs_difference": 26241.2,
+      "min_abs_difference": 4.547473508864641e-13,
+      "rows_differing": 29464,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 24997,
+       "puf_tax_detail/clone2": 4467
+      }
+     }
+    },
+    "traditional_ira_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9416,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 10665,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 2421.2391274895363,
+      "min_abs_difference": 1.3322676295501878e-15,
+      "rows_differing": 20081,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 16531,
+       "puf_tax_detail/clone2": 3550
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10355,
+       "nonzero_to_zero": 3963,
+       "up_both_nonzero": 9490,
+       "zero_to_nonzero": 4044
+      },
+      "max_abs_difference": 2916.9504,
+      "min_abs_difference": 3.071872809456977e-07,
+      "rows_differing": 27852,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 23564,
+       "puf_tax_detail/clone2": 4288
+      }
+     }
+    }
+   },
+   "seconds": 283.7,
+   "stage": "retirement_contributions",
+   "step": "mass_repair->retirement_contributions",
+   "variant": "mass_only"
+  },
+  {
+   "columns": {
+    "spm_unit_pre_subsidy_childcare_expenses": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 21,
+       "nonzero_to_zero": 946,
+       "up_both_nonzero": 28,
+       "zero_to_nonzero": 854
+      },
+      "max_abs_difference": 50000.0,
+      "min_abs_difference": 1.1368683772161603e-13,
+      "rows_differing": 1849,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 1617,
+       "puf_tax_detail/clone2": 232
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    }
+   },
+   "seconds": 62.9,
+   "stage": "childcare",
+   "step": "recorded_ss_factors->childcare",
+   "variant": "ss_only"
+  },
+  {
+   "columns": {
+    "spm_unit_energy_subsidy": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 391,
+       "nonzero_to_zero": 1261,
+       "up_both_nonzero": 595,
+       "zero_to_nonzero": 1036
+      },
+      "max_abs_difference": 3100.0,
+      "min_abs_difference": 2.2737367544323206e-12,
+      "rows_differing": 3283,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 3249,
+       "puf_tax_detail/clone2": 34
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    }
+   },
+   "seconds": 37.8,
+   "stage": "energy_subsidy",
+   "step": "recorded_ss_factors->energy_subsidy",
+   "variant": "ss_only"
+  },
+  {
+   "columns": {
+    "roth_401k_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9402,
+       "nonzero_to_zero": 4042,
+       "up_both_nonzero": 11287,
+       "zero_to_nonzero": 3964
+      },
+      "max_abs_difference": 4792.093764192386,
+      "min_abs_difference": 3.155802204446445e-06,
+      "rows_differing": 28695,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 24316,
+       "puf_tax_detail/clone2": 4379
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    },
+    "roth_ira_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9794,
+       "nonzero_to_zero": 4043,
+       "up_both_nonzero": 11423,
+       "zero_to_nonzero": 3963
+      },
+      "max_abs_difference": 4524.2496,
+      "min_abs_difference": 5.551115123125783e-17,
+      "rows_differing": 29223,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 24727,
+       "puf_tax_detail/clone2": 4496
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    },
+    "self_employed_pension_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 309,
+       "nonzero_to_zero": 273,
+       "up_both_nonzero": 246,
+       "zero_to_nonzero": 391
+      },
+      "max_abs_difference": 1380.0,
+      "min_abs_difference": 0.00021552691561055326,
+      "rows_differing": 1219,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 1002,
+       "puf_tax_detail/clone2": 217
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    },
+    "traditional_401k_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10249,
+       "nonzero_to_zero": 4042,
+       "up_both_nonzero": 12187,
+       "zero_to_nonzero": 3964
+      },
+      "max_abs_difference": 26241.2,
+      "min_abs_difference": 2.2737367544323206e-13,
+      "rows_differing": 30442,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 25736,
+       "puf_tax_detail/clone2": 4706
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    },
+    "traditional_ira_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9596,
+       "nonzero_to_zero": 4044,
+       "up_both_nonzero": 11310,
+       "zero_to_nonzero": 3963
+      },
+      "max_abs_difference": 2916.9504,
+      "min_abs_difference": 1.3322676295501878e-15,
+      "rows_differing": 28913,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 24404,
+       "puf_tax_detail/clone2": 4509
+      }
+     },
+     "replayed_vs_release": {
+      "rows_differing": 0,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 0,
+       "puf_tax_detail/clone2": 0
+      }
+     }
+    }
+   },
+   "seconds": 79.5,
+   "stage": "retirement_contributions",
+   "step": "recorded_ss_factors->retirement_contributions",
+   "variant": "ss_only"
+  },
+  {
+   "columns": {
+    "roth_401k_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9277,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 10633,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 2539.2173280113348,
+      "min_abs_difference": 8.881784197001252e-16,
+      "rows_differing": 19910,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 16484,
+       "puf_tax_detail/clone2": 3426
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10123,
+       "nonzero_to_zero": 3964,
+       "up_both_nonzero": 9397,
+       "zero_to_nonzero": 4042
+      },
+      "max_abs_difference": 4872.555,
+      "min_abs_difference": 1.6430122258270785e-06,
+      "rows_differing": 27526,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 23362,
+       "puf_tax_detail/clone2": 4164
+      }
+     }
+    },
+    "roth_ira_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9482,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 10937,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 4244.5696,
+      "min_abs_difference": 5.551115123125783e-17,
+      "rows_differing": 20419,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 16883,
+       "puf_tax_detail/clone2": 3536
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10367,
+       "nonzero_to_zero": 3963,
+       "up_both_nonzero": 9819,
+       "zero_to_nonzero": 4043
+      },
+      "max_abs_difference": 4524.2496,
+      "min_abs_difference": 8.642276227988077e-08,
+      "rows_differing": 28192,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 23922,
+       "puf_tax_detail/clone2": 4270
+      }
+     }
+    },
+    "self_employed_pension_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 282,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 247,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 816.5,
+      "min_abs_difference": 1.4210854715202004e-14,
+      "rows_differing": 529,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 415,
+       "puf_tax_detail/clone2": 114
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 217,
+       "nonzero_to_zero": 391,
+       "up_both_nonzero": 225,
+       "zero_to_nonzero": 273
+      },
+      "max_abs_difference": 1380.0,
+      "min_abs_difference": 4.7894870078835083e-05,
+      "rows_differing": 1106,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 916,
+       "puf_tax_detail/clone2": 190
+      }
+     }
+    },
+    "traditional_401k_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10128,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 11637,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 18523.199999999997,
+      "min_abs_difference": 2.842170943040401e-14,
+      "rows_differing": 21765,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 17994,
+       "puf_tax_detail/clone2": 3771
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 11072,
+       "nonzero_to_zero": 3964,
+       "up_both_nonzero": 10386,
+       "zero_to_nonzero": 4042
+      },
+      "max_abs_difference": 26241.2,
+      "min_abs_difference": 4.547473508864641e-13,
+      "rows_differing": 29464,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 24997,
+       "puf_tax_detail/clone2": 4467
+      }
+     }
+    },
+    "traditional_ira_contributions_desired": {
+     "replayed_vs_base": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 9416,
+       "nonzero_to_zero": 0,
+       "up_both_nonzero": 10665,
+       "zero_to_nonzero": 0
+      },
+      "max_abs_difference": 2421.2391274895363,
+      "min_abs_difference": 1.3322676295501878e-15,
+      "rows_differing": 20081,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 16531,
+       "puf_tax_detail/clone2": 3550
+      }
+     },
+     "replayed_vs_release": {
+      "direction_stored_to_replayed": {
+       "down_both_nonzero": 10355,
+       "nonzero_to_zero": 3963,
+       "up_both_nonzero": 9490,
+       "zero_to_nonzero": 4044
+      },
+      "max_abs_difference": 2916.9504,
+      "min_abs_difference": 3.071872809456977e-07,
+      "rows_differing": 27852,
+      "rows_differing_by_channel": {
+       "asec/clone0": 0,
+       "puf_tax_detail/clone1": 23564,
+       "puf_tax_detail/clone2": 4288
+      }
+     }
+    }
+   },
+   "seconds": 33.4,
+   "stage": "retirement_contributions",
+   "step": "base_as_loaded->retirement_contributions[threads=4]",
+   "variant": "isolated_t4"
+  }
+ ],
+ "seed": 0,
+ "variants": [
+  "mass_only",
+  "ss_only",
+  "isolated_t4"
+ ]
+}

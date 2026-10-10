@@ -1,0 +1,1 @@
+Record which release-time re-runs of base stages change stored PUF-half inputs and why (Social Security rescale, build platform), with invariant tests for base-input preservation; the base-preservation test is a strict expected failure pending a ruling. No build behavior changes.
