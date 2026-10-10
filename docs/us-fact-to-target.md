@@ -144,6 +144,17 @@ enforces this). Probe discipline:
   and the correct probe runs at 2026 law with a negative expected sign.
 - State the measured value, the external anchor, and what a structural zero
   would mean in the `reason`.
+- **Declare list edits; never pin a list.** A probe that changes a
+  list-valued parameter (an `adds` source list, a deduction list) puts
+  `"parameter_changes": {}` and
+  `"list_edits": {"<path>": {"period": "2024-01-01.2024-12-31", "remove": ["<item>"]}}`
+  (or `"add"` to reactivate an item). The list resolves against the
+  installed PolicyEngine-US baseline when the reform is built. Resolution
+  fails loudly if a removed item is gone, an added item is already there,
+  or the baseline changes inside the period. The loader refuses a whole list
+  pinned in `parameter_changes`: pinned copies silently revert later engine
+  changes. On 2026-09-28 the pinned SNAP source lists re-added TANF after
+  PolicyEngine-US 2.2.1 moved it to `unearned_spm_unit`.
 
 ## 6. Prove it end to end
 

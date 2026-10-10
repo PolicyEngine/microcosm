@@ -1,7 +1,218 @@
 """Tests split from packages/microcosm-build/tests/test_release_input_coverage.py."""
 
 # ruff: noqa: F403, F405
+import functools
+from collections import Counter
+
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
+
+import microcosm.build.us_runtime.release_input_coverage as coverage_module
+from microcosm.build.us_runtime.release_input_coverage import (
+    US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
+    ListParameterEdit,
+    resolve_probe_parameter_changes,
+)
 from test_support.microcosm_build.release_input_coverage import *
+
+_TAX_YEAR_2024 = "2024-01-01.2024-12-31"
+_TAX_YEAR_2026 = "2026-01-01.2026-12-31"
+_ALD_DEDUCTIONS = "gov.irs.ald.deductions"
+_QBI_INCOME_DEFINITION = "gov.irs.deductions.qbi.income_definition"
+_SNAP_UNEARNED_SOURCES = "gov.usda.snap.income.sources.unearned"
+_SNAP_ALLOWED_DEDUCTIONS = "gov.usda.snap.income.deductions.allowed"
+
+# The shipped probes that change a list-valued parameter. Each declares only
+# the item it removes or adds; the rest of the list is the installed engine's.
+_SHIPPED_LIST_EDIT_PROBE_IDS = frozenset(
+    {
+        "qbi_farm_operations_income_exclusion",
+        "qbi_farm_rent_income_exclusion",
+        "domestic_production_ald_reactivation",
+        "child_support_received_snap_exclusion",
+        "child_support_expense_snap_deduction_abolition",
+        "disability_benefits_snap_exclusion",
+        "workers_compensation_snap_exclusion",
+        "educator_expense_ald_abolition",
+        "alimony_expense_ald_abolition",
+    }
+)
+
+_MUTATED_MANIFEST_NAME = "release_input_coverage_manifest.json"
+
+# Scalar parameter values a probe may pin: never a list or a tuple.
+_SCALARS = st.one_of(
+    st.none(),
+    st.booleans(),
+    st.integers(),
+    st.floats(allow_nan=False),
+    st.text(max_size=8),
+)
+# Dotted paths of at most five segments, so none collides with the list-edit
+# probe's six-segment SNAP path.
+_PATHS = st.from_regex(r"gov(\.[a-z_]{1,10}){1,4}", fullmatch=True)
+_PERIOD_KEYS = st.from_regex(r"20[0-9]{2}-01-01\.20[0-9]{2}-12-31", fullmatch=True)
+
+
+@st.composite
+def _valid_list_edits(draw) -> ListParameterEdit:
+    """Any valid edit: a bounded period and disjoint, unique, non-empty items."""
+    start = draw(st.dates())
+    stop = draw(st.dates(min_value=start))
+    items = draw(st.lists(st.text(min_size=1, max_size=12), min_size=1, unique=True))
+    removed = draw(st.lists(st.booleans(), min_size=len(items), max_size=len(items)))
+    return ListParameterEdit(
+        period=f"{start.isoformat()}.{stop.isoformat()}",
+        remove=tuple(item for item, drop in zip(items, removed, strict=True) if drop),
+        add=tuple(item for item, drop in zip(items, removed, strict=True) if not drop),
+    )
+
+
+def _list_edit_probe(**overrides) -> ReformCoverageProbe:
+    """A SNAP source exclusion declared only as a list edit."""
+    kwargs = {
+        "id": "workers_compensation_snap_exclusion",
+        "name": "Workers' compensation excluded from SNAP unearned income",
+        "parameter_changes": {},
+        "list_edits": {
+            _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("workers_compensation",)
+            )
+        },
+        "budget_measure": "snap",
+        "binding_inputs": ("workers_compensation",),
+        "min_abs_effect": 1_000_000.0,
+        "reason": "The exclusion binds only through workers' compensation.",
+        "issue": "PolicyEngine/microcosm#32",
+        "period": 2024,
+    }
+    kwargs.update(overrides)
+    return ReformCoverageProbe(**kwargs)
+
+
+@functools.cache
+def _shipped_manifest_text() -> str:
+    return (
+        files("microcosm.build.us")
+        .joinpath(US_RELEASE_INPUT_COVERAGE_RESOURCE)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _shipped_payload() -> dict:
+    """A fresh, mutable copy of the committed manifest JSON."""
+    return json.loads(_shipped_manifest_text())
+
+
+def _raw_probe(payload: dict, probe_id: str) -> dict:
+    return next(
+        raw for raw in payload["reform_coverage_probes"] if raw["id"] == probe_id
+    )
+
+
+def _holds_a_list(value: object) -> bool:
+    if isinstance(value, list):
+        return True
+    if isinstance(value, dict):
+        return any(_holds_a_list(item) for item in value.values())
+    return False
+
+
+def _load_mutated_manifest(tmp_path: Path, mutate) -> ReleaseInputCoverageManifest:
+    """Load the committed manifest JSON after ``mutate(payload)`` edits it."""
+    payload = _shipped_payload()
+    mutate(payload)
+    path = tmp_path / _MUTATED_MANIFEST_NAME
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return load_release_input_coverage_manifest(str(path))
+
+
+def _with_list_edits(probe_id: str, list_edits: object):
+    def mutate(payload: dict) -> None:
+        _raw_probe(payload, probe_id)["list_edits"] = list_edits
+
+    return mutate
+
+
+@functools.cache
+def _shipped_manifest() -> ReleaseInputCoverageManifest:
+    return load_release_input_coverage_manifest()
+
+
+@functools.cache
+def _shipped_known_gaps() -> tuple[str, ...]:
+    return tuple(gap.variable for gap in load_ecps_parity_known_gaps())
+
+
+def _shipped_list_edits() -> list[tuple[str, str, ListParameterEdit]]:
+    """``(probe id, path, edit)`` for every list edit the shipped manifest declares."""
+    return [
+        (probe.id, path, edit)
+        for probe in _shipped_manifest().probes
+        for path, edit in probe.list_edits.items()
+    ]
+
+
+def _fitting_baselines() -> dict[str, list[str]]:
+    """Per path, a synthetic baseline every shipped list edit fits.
+
+    It holds each item a shipped edit removes, none that one adds, and one
+    unrelated item, so it copies no engine list.
+    """
+    baselines: dict[str, list[str]] = {}
+    for _, path, edit in _shipped_list_edits():
+        baseline = baselines.setdefault(path, ["unrelated_item"])
+        baseline.extend(item for item in edit.remove if item not in baseline)
+    return baselines
+
+
+def _recording_baseline(baselines: dict[str, list[str]], calls: list):
+    def baseline(path: str, edit: ListParameterEdit) -> list[str]:
+        calls.append((path, edit))
+        return list(baselines[path])
+
+    return baseline
+
+
+def _refusing_baseline(calls: list):
+    def baseline(path: str, edit: ListParameterEdit) -> list[str]:
+        calls.append((path, edit))
+        raise ValueError(f"{path}: this baseline must not be read.")
+
+    return baseline
+
+
+class _GraphEngine:
+    """Only ``variables()`` — the engine-graph surface the manifest check reads."""
+
+    def __init__(self, variables) -> None:
+        self._variables = frozenset(variables)
+
+    def variables(self) -> list[str]:
+        return sorted(self._variables)
+
+
+class _GraphlessEngine:
+    """An adapter whose country package is missing, as in the engine-free job."""
+
+    def variables(self) -> list[str]:
+        raise ImportError("policyengine-us is not installed.")
+
+
+def _shipped_graph_engine(*, drop: str | None = None) -> _GraphEngine:
+    """Every declared column and probe binding input, as live input leaves."""
+    manifest = _shipped_manifest()
+    names = set(manifest.declared_columns)
+    for probe in manifest.probes:
+        names.update(probe.binding_inputs)
+    names.discard(drop)
+    return _GraphEngine(names)
+
+
+def _check_shipped_manifest(**kwargs) -> None:
+    kwargs.setdefault("manifest", _shipped_manifest())
+    kwargs.setdefault("parity_known_gaps", _shipped_known_gaps())
+    assert_release_input_coverage_manifest_current(**kwargs)
 
 
 def test_reform_probe_requires_exactly_one_reform_kind() -> None:
@@ -28,6 +239,135 @@ def test_reform_probe_requires_exactly_one_reform_kind() -> None:
             neutralized_variable="different_input",
             **kwargs,
         )
+
+
+class TestReformProbeListEdits:
+    """A probe declares a list change as an edit and never pins the whole list."""
+
+    def test_list_edits_only_probe_is_valid(self) -> None:
+        probe = _list_edit_probe()
+
+        assert probe.parameter_changes == {}
+        assert probe.neutralized_variable is None
+        assert probe.list_edits == {
+            _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("workers_compensation",)
+            )
+        }
+
+    def test_list_edits_with_neutralized_variable_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="exactly one"):
+            _list_edit_probe(neutralized_variable="workers_compensation")
+
+    @pytest.mark.parametrize(
+        "pinned",
+        [
+            {_TAX_YEAR_2024: ["ssi", "social_security"]},
+            {_TAX_YEAR_2024: ("ssi", "social_security")},
+            {"2023-01-01.2023-12-31": 0, _TAX_YEAR_2024: ["ssi"]},
+            ["ssi", "social_security"],
+            ("ssi", "social_security"),
+            [],
+        ],
+        ids=[
+            "period_list",
+            "period_tuple",
+            "list_beside_a_scalar_period",
+            "shorthand_list",
+            "shorthand_tuple",
+            "empty_shorthand_list",
+        ],
+    )
+    def test_pinned_list_in_parameter_changes_points_to_list_edits(
+        self, pinned
+    ) -> None:
+        with pytest.raises(ValueError, match="pins a whole list") as raised:
+            _list_edit_probe(
+                parameter_changes={_SNAP_UNEARNED_SOURCES: pinned}, list_edits={}
+            )
+
+        assert _SNAP_UNEARNED_SOURCES in str(raised.value)
+        assert "list_edits" in str(raised.value)
+
+    def test_path_in_both_parameter_changes_and_list_edits_is_refused(self) -> None:
+        with pytest.raises(
+            ValueError, match="both parameter_changes and list_edits"
+        ) as raised:
+            _list_edit_probe(
+                parameter_changes={_SNAP_UNEARNED_SOURCES: {_TAX_YEAR_2024: 0}}
+            )
+
+        assert _SNAP_UNEARNED_SOURCES in str(raised.value)
+
+    @pytest.mark.parametrize(
+        "edit",
+        [
+            {"period": _TAX_YEAR_2024, "remove": ["workers_compensation"]},
+            ("workers_compensation",),
+            None,
+        ],
+        ids=["json_shape", "bare_items", "none"],
+    )
+    def test_list_edit_value_must_be_a_list_parameter_edit(self, edit) -> None:
+        with pytest.raises(ValueError, match="must be a ListParameterEdit"):
+            _list_edit_probe(list_edits={_SNAP_UNEARNED_SOURCES: edit})
+
+    def test_scalar_and_list_changes_on_different_paths_are_valid(self) -> None:
+        probe = _list_edit_probe(
+            parameter_changes={"gov.example.switch": {_TAX_YEAR_2024: 0}}
+        )
+
+        assert set(probe.parameter_changes) == {"gov.example.switch"}
+        assert set(probe.list_edits) == {_SNAP_UNEARNED_SOURCES}
+        # Resolution keeps the scalar change as declared and applies the edit
+        # to the injected baseline, without touching the probe's own mapping.
+        resolved = resolve_probe_parameter_changes(
+            probe,
+            lambda path, edit: ["ssi", "workers_compensation", "social_security"],
+        )
+        assert resolved == {
+            "gov.example.switch": {_TAX_YEAR_2024: 0},
+            _SNAP_UNEARNED_SOURCES: {_TAX_YEAR_2024: ["ssi", "social_security"]},
+        }
+        assert probe.parameter_changes == {"gov.example.switch": {_TAX_YEAR_2024: 0}}
+
+    # Invariant: a probe refuses any list or tuple in parameter_changes, as a
+    # scalar shorthand or under any period, and the refusal names the path and
+    # points to list_edits.
+    @settings(max_examples=60, deadline=None)
+    @given(
+        path=_PATHS,
+        items=st.lists(st.text(min_size=1, max_size=10), max_size=4),
+        as_tuple=st.booleans(),
+        shorthand=st.booleans(),
+        other_periods=st.dictionaries(_PERIOD_KEYS, _SCALARS, max_size=3),
+    )
+    def test_any_pinned_list_is_refused(
+        self, path, items, as_tuple, shorthand, other_periods
+    ) -> None:
+        pinned = tuple(items) if as_tuple else list(items)
+        periods = pinned if shorthand else {**other_periods, _TAX_YEAR_2024: pinned}
+
+        with pytest.raises(ValueError, match="pins a whole list") as raised:
+            _list_edit_probe(parameter_changes={path: periods}, list_edits={})
+
+        assert path in str(raised.value)
+        assert "list_edits" in str(raised.value)
+
+    # Invariant: scalar period values (null, booleans, numbers, strings) beside
+    # a list edit on another path are never mistaken for a pinned list.
+    @settings(max_examples=60, deadline=None)
+    @given(
+        path=_PATHS,
+        periods=st.dictionaries(_PERIOD_KEYS, _SCALARS, min_size=1, max_size=4),
+    )
+    def test_scalar_parameter_changes_beside_a_list_edit_are_accepted(
+        self, path, periods
+    ) -> None:
+        probe = _list_edit_probe(parameter_changes={path: periods})
+
+        assert probe.parameter_changes == {path: periods}
+        assert set(probe.list_edits) == {_SNAP_UNEARNED_SOURCES}
 
 
 class TestReformCoverageSmokeGate:
@@ -223,6 +563,119 @@ class TestReformCoverageSmokeGate:
         # A probe-less smoke gate would pass vacuously — refuse it.
         with pytest.raises(ValueError, match="at least one probe"):
             us_reform_coverage_smoke_gate(simulate=lambda reform: _Sim(0.0), probes=[])
+
+    def test_list_edit_probe_records_its_declared_and_resolved_lists(
+        self, monkeypatch
+    ) -> None:
+        # The evidence names exactly the list each edit resolved to on the
+        # installed engine, next to the edit the manifest declares.
+        resolved = ["ssi", "social_security"]
+
+        class _ResolvedReform:
+            resolved_list_edits = {_SNAP_UNEARNED_SOURCES: resolved}
+
+        built: list[ReformCoverageProbe] = []
+
+        def build(probe):
+            built.append(probe)
+            return _ResolvedReform
+
+        monkeypatch.setattr(smoke_module, "_build_reform", build)
+        probe = _list_edit_probe()
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[probe],
+        )
+
+        assert result.passed
+        assert len(built) == 1
+        assert built[0] is probe
+        assert result.details["results"][probe.id]["list_edits"] == {
+            _SNAP_UNEARNED_SOURCES: {
+                "period": _TAX_YEAR_2024,
+                "remove": ["workers_compensation"],
+                "add": [],
+                "resolved": resolved,
+            }
+        }
+
+    def test_list_edit_without_a_resolved_reform_records_none(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda probe: "REFORM")
+        probe = _list_edit_probe()
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[probe],
+        )
+
+        assert result.details["results"][probe.id]["list_edits"] == {
+            _SNAP_UNEARNED_SOURCES: {
+                "period": _TAX_YEAR_2024,
+                "remove": ["workers_compensation"],
+                "add": [],
+                "resolved": None,
+            }
+        }
+
+    def test_each_edited_path_records_its_own_resolution(self, monkeypatch) -> None:
+        # A path the reform did not resolve records None rather than borrowing
+        # another path's list, and an added item is recorded under "add".
+        resolved = ["ssi", "social_security"]
+
+        class _PartlyResolvedReform:
+            resolved_list_edits = {_SNAP_UNEARNED_SOURCES: resolved}
+
+        monkeypatch.setattr(
+            smoke_module, "_build_reform", lambda probe: _PartlyResolvedReform
+        )
+        probe = _list_edit_probe(
+            list_edits={
+                _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+                    _TAX_YEAR_2024, remove=("workers_compensation",)
+                ),
+                _ALD_DEDUCTIONS: ListParameterEdit(
+                    _TAX_YEAR_2024, add=("domestic_production_ald",)
+                ),
+            }
+        )
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[probe],
+        )
+
+        recorded = result.details["results"][probe.id]["list_edits"]
+        assert recorded[_SNAP_UNEARNED_SOURCES]["resolved"] == resolved
+        assert recorded[_ALD_DEDUCTIONS] == {
+            "period": _TAX_YEAR_2024,
+            "remove": [],
+            "add": ["domestic_production_ald"],
+            "resolved": None,
+        }
+
+    def test_probe_without_list_edits_records_no_list_edits(self, monkeypatch) -> None:
+        class _ResolvedReform:
+            resolved_list_edits = {_SNAP_UNEARNED_SOURCES: ["ssi"]}
+
+        monkeypatch.setattr(
+            smoke_module,
+            "_build_reform",
+            lambda probe: _ResolvedReform if probe.list_edits else "REFORM",
+        )
+
+        result = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.5e9 if reform else 10.0e9),
+            probes=[_probe(min_abs_effect=1.0), _list_edit_probe()],
+        )
+
+        results = result.details["results"]
+        assert "list_edits" not in results["ssi_probe"]
+        assert set(results["workers_compensation_snap_exclusion"]["list_edits"]) == {
+            _SNAP_UNEARNED_SOURCES
+        }
 
 
 class TestShippedManifest:
@@ -643,26 +1096,14 @@ class TestShippedManifest:
         assert probe.budget_measure == "income_tax"
         assert probe.binding_inputs == ("alimony_expense",)
         assert probe.min_abs_effect == 1_000_000.0
-        # The ALD list minus alimony_expense_ald, not the divorce-year bracket:
-        # the bracket also gates recipients' taxable_alimony_income.
-        assert probe.parameter_changes == {
-            "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "educator_expense",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                ]
-            }
+        # The edit removes alimony_expense_ald from the ALD list rather than
+        # moving the divorce-year bracket: the bracket also gates recipients'
+        # taxable_alimony_income.
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _ALD_DEDUCTIONS: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("alimony_expense_ald",)
+            )
         }
 
     def test_shipped_misc_itemized_probe_has_2026_period_sign_and_input(self) -> None:
@@ -713,27 +1154,11 @@ class TestShippedManifest:
         assert probe.budget_measure == "snap"
         assert probe.binding_inputs == ("child_support_received",)
         assert probe.min_abs_effect == 1_000_000.0
-        assert probe.parameter_changes == {
-            "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "disability_benefits",
-                    "workers_compensation",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
-            }
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("child_support_received",)
+            )
         }
 
     def test_shipped_child_support_expense_probe_removes_only_snap_deduction(
@@ -750,16 +1175,11 @@ class TestShippedManifest:
         assert probe.budget_measure == "snap"
         assert probe.binding_inputs == ("child_support_expense",)
         assert probe.min_abs_effect == 1_000_000.0
-        assert probe.parameter_changes == {
-            "gov.usda.snap.income.deductions.allowed": {
-                "2024-01-01.2024-12-31": [
-                    "snap_standard_deduction",
-                    "snap_earned_income_deduction",
-                    "snap_dependent_care_deduction",
-                    "snap_excess_medical_expense_deduction",
-                    "snap_excess_shelter_expense_deduction",
-                ]
-            }
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _SNAP_ALLOWED_DEDUCTIONS: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("snap_child_support_deduction",)
+            )
         }
 
     def test_shipped_disability_probe_removes_only_snap_unearned_source(
@@ -776,27 +1196,32 @@ class TestShippedManifest:
         assert probe.budget_measure == "snap"
         assert probe.binding_inputs == ("disability_benefits",)
         assert probe.min_abs_effect == 1_000_000.0
-        assert probe.parameter_changes == {
-            "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "workers_compensation",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "child_support_received",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
-            }
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("disability_benefits",)
+            )
+        }
+
+    def test_shipped_workers_compensation_probe_removes_only_snap_unearned_source(
+        self,
+    ) -> None:
+        probe = next(
+            probe
+            for probe in us_release_reform_coverage_probes()
+            if probe.id == "workers_compensation_snap_exclusion"
+        )
+        assert probe.period == 2024
+        assert probe.expected_sign == "positive"
+        assert probe.effect_direction == "reform_minus_baseline"
+        assert probe.budget_measure == "snap"
+        assert probe.binding_inputs == ("workers_compensation",)
+        assert probe.min_abs_effect == 10_000_000.0
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("workers_compensation",)
+            )
         }
 
     def test_shipped_educator_expense_probe_removes_only_its_ald(self) -> None:
@@ -812,24 +1237,11 @@ class TestShippedManifest:
         assert probe.budget_measure == "income_tax"
         assert probe.binding_inputs == ("educator_expense",)
         assert probe.min_abs_effect == 1_000_000.0
-        assert probe.parameter_changes == {
-            "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "alimony_expense_ald",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                ]
-            }
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _ALD_DEDUCTIONS: ListParameterEdit(
+                _TAX_YEAR_2024, remove=("educator_expense",)
+            )
         }
 
     def test_shipped_qbi_probes_cover_reit_and_wage_property_inputs(self) -> None:
@@ -861,14 +1273,6 @@ class TestShippedManifest:
 
     def test_shipped_farm_probes_each_remove_only_the_bound_qbi_leaf(self) -> None:
         probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
-        current_income_definition = {
-            "self_employment_income",
-            "partnership_s_corp_income",
-            "farm_rent_income",
-            "farm_operations_income",
-            "rental_income",
-            "estate_income",
-        }
         cases = {
             # "either": the leaf is signed and two-channel (measured ASEC FRSE
             # plus donor-pinned PUF Schedule F, microcosm#435) — the aggregate
@@ -888,16 +1292,14 @@ class TestShippedManifest:
             assert probe.budget_measure == "qualified_business_income_deduction"
             assert probe.binding_inputs == (removed_input,)
             assert probe.min_abs_effect == 1_000_000.0
-            assert set(probe.parameter_changes) == {
-                "gov.irs.deductions.qbi.income_definition"
+            # Each probe removes only its own leaf; the rest of the income
+            # definition is whatever the installed engine carries for 2026.
+            assert probe.parameter_changes == {}
+            assert probe.list_edits == {
+                _QBI_INCOME_DEFINITION: ListParameterEdit(
+                    _TAX_YEAR_2026, remove=(removed_input,)
+                )
             }
-            definition = probe.parameter_changes[
-                "gov.irs.deductions.qbi.income_definition"
-            ]
-            assert set(definition) == {"2026-01-01.2026-12-31"}
-            assert set(definition["2026-01-01.2026-12-31"]) == (
-                current_income_definition - {removed_input}
-            )
 
     def test_shipped_domestic_production_probe_reactivates_only_its_ald(self) -> None:
         probe = next(
@@ -911,10 +1313,13 @@ class TestShippedManifest:
         assert probe.budget_measure == "income_tax"
         assert probe.binding_inputs == ("domestic_production_ald",)
         assert probe.min_abs_effect == 1_000_000.0
-        assert set(probe.parameter_changes) == {"gov.irs.ald.deductions"}
-        deductions = probe.parameter_changes["gov.irs.ald.deductions"]
-        assert set(deductions) == {"2024-01-01.2024-12-31"}
-        assert deductions["2024-01-01.2024-12-31"].count("domestic_production_ald") == 1
+        # Reactivation adds only this ALD to the installed engine's 2024 list.
+        assert probe.parameter_changes == {}
+        assert probe.list_edits == {
+            _ALD_DEDUCTIONS: ListParameterEdit(
+                _TAX_YEAR_2024, add=("domestic_production_ald",)
+            )
+        }
 
     def test_shipped_overtime_probe_has_2026_period_sign_and_input(self) -> None:
         overtime = next(
@@ -1007,6 +1412,36 @@ class TestShippedManifest:
             "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption"
         }
 
+    def test_shipped_manifest_is_schema_two_with_exactly_nine_list_edit_probes(
+        self,
+    ) -> None:
+        raw = _shipped_payload()
+        manifest = load_release_input_coverage_manifest()
+
+        assert raw["schema_version"] == US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION == 2
+        assert manifest.schema_version == US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION
+        assert {
+            probe["id"]
+            for probe in raw["reform_coverage_probes"]
+            if "list_edits" in probe
+        } == _SHIPPED_LIST_EDIT_PROBE_IDS
+        list_edit_probes = [probe for probe in manifest.probes if probe.list_edits]
+        assert {probe.id for probe in list_edit_probes} == _SHIPPED_LIST_EDIT_PROBE_IDS
+        for probe in list_edit_probes:
+            # Each probe edits one list by exactly one item, so the reform
+            # changes nothing the probe does not bind through.
+            assert probe.parameter_changes == {}, probe.id
+            assert len(probe.list_edits) == 1, probe.id
+            (edit,) = probe.list_edits.values()
+            assert len(edit.remove) + len(edit.add) == 1, probe.id
+
+    def test_no_shipped_probe_pins_a_list_in_parameter_changes(self) -> None:
+        # The 2026-09-28 failure mode: a pinned list silently reverts any later
+        # engine change to it. Nothing in any probe's parameter_changes, at any
+        # depth, may be a list.
+        for raw_probe in _shipped_payload()["reform_coverage_probes"]:
+            assert not _holds_a_list(raw_probe["parameter_changes"]), raw_probe["id"]
+
     def test_demoting_an_ssi_asset_to_exclusion_is_rejected(self) -> None:
         # The #368 red-gate guarantee cannot be quietly undone: turning an SSI
         # asset into a reviewed exclusion must fail the anti-rot assertion.
@@ -1035,6 +1470,457 @@ class TestShippedManifest:
     def test_duplicate_probe_ids_are_rejected(self) -> None:
         with pytest.raises(ValueError, match="Duplicate reform coverage probe id"):
             _manifest(_CONTRACT.columns, probes=(_probe(), _probe()))
+
+
+class TestManifestLoaderListEdits:
+    """Schema version 2 loads list-valued probe changes as declared edits."""
+
+    _PROBE_ID = "alimony_expense_ald_abolition"
+
+    @pytest.mark.parametrize("version", [1, None], ids=["version_1", "missing"])
+    def test_schema_version_one_is_refused_with_the_regeneration_hint(
+        self, tmp_path, version
+    ) -> None:
+        # A missing schema_version reads as version 1, which pinned lists.
+        def mutate(payload: dict) -> None:
+            if version is None:
+                del payload["schema_version"]
+            else:
+                payload["schema_version"] = version
+
+        with pytest.raises(
+            ValueError, match="schema_version 1 is no longer read"
+        ) as raised:
+            _load_mutated_manifest(tmp_path, mutate)
+
+        assert (
+            "Regenerate the manifest with "
+            "tools/build_us_release_input_coverage_manifest.py"
+        ) in str(raised.value)
+
+    def test_later_schema_version_is_refused_as_unsupported(self, tmp_path) -> None:
+        def mutate(payload: dict) -> None:
+            payload["schema_version"] = 3
+
+        with pytest.raises(ValueError, match="unsupported schema_version 3") as raised:
+            _load_mutated_manifest(tmp_path, mutate)
+
+        assert "no longer read" not in str(raised.value)
+
+    @pytest.mark.parametrize(
+        "version",
+        [True, False, "2", 2.0, None],
+        ids=["true", "false", "string", "float", "null"],
+    )
+    def test_non_integer_schema_version_is_refused(self, tmp_path, version) -> None:
+        # JSON true is Python's 1 and 2.0 equals 2; neither may pass as a version.
+        def mutate(payload: dict) -> None:
+            payload["schema_version"] = version
+
+        with pytest.raises(ValueError, match="'schema_version' must be an integer"):
+            _load_mutated_manifest(tmp_path, mutate)
+
+    # Invariant: the loader reads exactly schema_version 2. Every other integer
+    # is refused, and version 1 always carries the regeneration hint.
+    @settings(
+        max_examples=40,
+        deadline=None,
+        suppress_health_check=[HealthCheck.function_scoped_fixture],
+    )
+    @given(
+        version=st.integers(min_value=-(10**12), max_value=10**12).filter(
+            lambda version: version != US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION
+        )
+    )
+    def test_every_other_integer_schema_version_is_refused(
+        self, tmp_path, version
+    ) -> None:
+        def mutate(payload: dict) -> None:
+            payload["schema_version"] = version
+
+        with pytest.raises(ValueError) as raised:
+            _load_mutated_manifest(tmp_path, mutate)
+
+        if version == 1:
+            assert "tools/build_us_release_input_coverage_manifest.py" in str(
+                raised.value
+            )
+        else:
+            assert f"unsupported schema_version {version};" in str(raised.value)
+
+    def test_list_edits_parse_into_declared_edits_with_tuples(self, tmp_path) -> None:
+        manifest = _load_mutated_manifest(
+            tmp_path,
+            _with_list_edits(
+                self._PROBE_ID,
+                {
+                    _ALD_DEDUCTIONS: {
+                        "period": _TAX_YEAR_2024,
+                        "remove": ["alimony_expense_ald", "educator_expense"],
+                        "add": ["domestic_production_ald"],
+                    }
+                },
+            ),
+        )
+
+        probe = next(probe for probe in manifest.probes if probe.id == self._PROBE_ID)
+        assert probe.parameter_changes == {}
+        edit = probe.list_edits[_ALD_DEDUCTIONS]
+        assert edit == ListParameterEdit(
+            _TAX_YEAR_2024,
+            remove=("alimony_expense_ald", "educator_expense"),
+            add=("domestic_production_ald",),
+        )
+        assert type(edit.remove) is tuple
+        assert type(edit.add) is tuple
+        assert (edit.start, edit.stop) == ("2024-01-01", "2024-12-31")
+
+    @pytest.mark.parametrize(
+        ("raw_edit", "message"),
+        [
+            (
+                {"period": _TAX_YEAR_2024, "removes": ["alimony_expense_ald"]},
+                "has unknown key(s) ['removes']",
+            ),
+            (
+                {"period": _TAX_YEAR_2024, "remove": "alimony_expense_ald"},
+                ".remove must be a JSON array",
+            ),
+            (
+                {"period": _TAX_YEAR_2024, "add": {"domestic_production_ald": True}},
+                ".add must be a JSON array",
+            ),
+            ({"period": "2024", "remove": ["alimony_expense_ald"]}, "bounded"),
+            ({"period": "2024-01-01", "remove": ["alimony_expense_ald"]}, "bounded"),
+            (
+                {"period": "2024-01-01.", "remove": ["alimony_expense_ald"]},
+                "bounded",
+            ),
+            (
+                {"period": "2024-02-30.2024-12-31", "remove": ["alimony_expense_ald"]},
+                "bounded",
+            ),
+            ({"remove": ["alimony_expense_ald"]}, "bounded"),
+            (
+                {"period": "2024-12-31.2024-01-01", "remove": ["alimony_expense_ald"]},
+                "starts after it stops",
+            ),
+            (
+                {
+                    "period": _TAX_YEAR_2024,
+                    "remove": ["alimony_expense_ald", "alimony_expense_ald"],
+                },
+                "repeats ['alimony_expense_ald']",
+            ),
+            ({"period": _TAX_YEAR_2024, "remove": [""]}, "non-empty strings"),
+            ({"period": _TAX_YEAR_2024, "remove": [7]}, "non-empty strings"),
+            ({"period": _TAX_YEAR_2024}, "at least one item"),
+            (
+                {
+                    "period": _TAX_YEAR_2024,
+                    "remove": ["alimony_expense_ald"],
+                    "add": ["alimony_expense_ald"],
+                },
+                "both removes and adds ['alimony_expense_ald']",
+            ),
+            (["alimony_expense_ald"], "must be a JSON object"),
+        ],
+        ids=[
+            "unknown_key",
+            "string_remove",
+            "object_add",
+            "year_period",
+            "instant_period",
+            "open_period",
+            "impossible_date",
+            "missing_period",
+            "reversed_period",
+            "duplicate_item",
+            "empty_item",
+            "non_string_item",
+            "no_items",
+            "remove_and_add_overlap",
+            "array_edit",
+        ],
+    )
+    def test_malformed_list_edit_is_refused_naming_resource_probe_and_path(
+        self, tmp_path, raw_edit, message
+    ) -> None:
+        with pytest.raises(ValueError) as raised:
+            _load_mutated_manifest(
+                tmp_path, _with_list_edits(self._PROBE_ID, {_ALD_DEDUCTIONS: raw_edit})
+            )
+
+        text = str(raised.value)
+        assert message in text
+        assert str(tmp_path / _MUTATED_MANIFEST_NAME) in text
+        assert f"probe {self._PROBE_ID!r}" in text
+        assert f"list_edits[{_ALD_DEDUCTIONS!r}]" in text
+
+    def test_non_object_list_edits_are_refused(self, tmp_path) -> None:
+        with pytest.raises(
+            ValueError, match="list_edits must be a JSON object"
+        ) as raised:
+            _load_mutated_manifest(
+                tmp_path, _with_list_edits(self._PROBE_ID, [_ALD_DEDUCTIONS])
+            )
+
+        assert f"probe {self._PROBE_ID!r}" in str(raised.value)
+
+    def test_schema_two_manifest_that_pins_a_list_is_refused(self, tmp_path) -> None:
+        # Bumping the version by hand without converting a pinned list to an
+        # edit must not load.
+        def mutate(payload: dict) -> None:
+            raw_probe = _raw_probe(payload, self._PROBE_ID)
+            del raw_probe["list_edits"]
+            raw_probe["parameter_changes"] = {
+                _ALD_DEDUCTIONS: {_TAX_YEAR_2024: ["loss_ald", "educator_expense"]}
+            }
+
+        with pytest.raises(ValueError, match="pins a whole list") as raised:
+            _load_mutated_manifest(tmp_path, mutate)
+
+        assert self._PROBE_ID in str(raised.value)
+
+    # Invariant: any valid list edit survives the manifest JSON round trip
+    # unchanged, with remove and add as tuples in declared order, whether an
+    # empty side is written as [] or omitted.
+    @settings(
+        max_examples=50,
+        deadline=None,
+        suppress_health_check=[HealthCheck.function_scoped_fixture],
+    )
+    @given(
+        edit=_valid_list_edits(),
+        path=st.text(min_size=1, max_size=40),
+        omit_empty=st.booleans(),
+    )
+    def test_any_valid_list_edit_round_trips_through_the_manifest(
+        self, tmp_path, edit, path, omit_empty
+    ) -> None:
+        raw_edit: dict[str, object] = {"period": edit.period}
+        for kind in ("remove", "add"):
+            items = list(getattr(edit, kind))
+            if items or not omit_empty:
+                raw_edit[kind] = items
+
+        manifest = _load_mutated_manifest(
+            tmp_path, _with_list_edits(self._PROBE_ID, {path: raw_edit})
+        )
+
+        probe = next(probe for probe in manifest.probes if probe.id == self._PROBE_ID)
+        assert probe.list_edits == {path: edit}
+        loaded = probe.list_edits[path]
+        assert type(loaded.remove) is tuple
+        assert type(loaded.add) is tuple
+
+
+class TestManifestListEditResolution:
+    """The manifest check resolves every list edit before calibration."""
+
+    def test_fitting_baselines_pass_and_resolve_every_list_edit_once(self) -> None:
+        calls: list = []
+
+        _check_shipped_manifest(
+            engine=_shipped_graph_engine(),
+            list_baseline=_recording_baseline(_fitting_baselines(), calls),
+        )
+
+        assert Counter(calls) == Counter(
+            (path, edit) for _, path, edit in _shipped_list_edits()
+        )
+        assert len(calls) == len(_SHIPPED_LIST_EDIT_PROBE_IDS)
+
+    def test_baseline_lacking_a_removed_item_names_the_probe_and_item(self) -> None:
+        baselines = _fitting_baselines()
+        baselines[_SNAP_UNEARNED_SOURCES].remove("workers_compensation")
+
+        with pytest.raises(ValueError, match="has drifted") as raised:
+            _check_shipped_manifest(
+                engine=_shipped_graph_engine(),
+                list_baseline=lambda path, edit: baselines[path],
+            )
+
+        message = str(raised.value)
+        assert "reform-coverage probe 'workers_compensation_snap_exclusion'" in message
+        assert "removes ['workers_compensation'], which the baseline lacks" in message
+        # The other edits to the same list still fit, so no other probe is named.
+        assert message.count("reform-coverage probe") == 1
+
+    def test_baseline_already_holding_an_added_item_names_the_probe_and_item(
+        self,
+    ) -> None:
+        baselines = _fitting_baselines()
+        baselines[_ALD_DEDUCTIONS].append("domestic_production_ald")
+
+        with pytest.raises(ValueError, match="has drifted") as raised:
+            _check_shipped_manifest(
+                engine=_shipped_graph_engine(),
+                list_baseline=lambda path, edit: baselines[path],
+            )
+
+        message = str(raised.value)
+        assert "reform-coverage probe 'domestic_production_ald_reactivation'" in message
+        assert (
+            "adds ['domestic_production_ald'], which the baseline already has"
+        ) in message
+        assert message.count("reform-coverage probe") == 1
+
+    def test_list_edit_findings_join_the_other_graph_findings(self) -> None:
+        # A list edit that no longer fits is one more finding, not a
+        # replacement for the input-leaf findings of the same pass.
+        baselines = _fitting_baselines()
+        baselines[_QBI_INCOME_DEFINITION].remove("farm_rent_income")
+
+        with pytest.raises(ValueError) as raised:
+            _check_shipped_manifest(
+                engine=_shipped_graph_engine(drop="casualty_loss"),
+                list_baseline=lambda path, edit: baselines[path],
+            )
+
+        message = str(raised.value)
+        assert "not PolicyEngine-US input leaves" in message
+        assert "casualty_loss" in message
+        assert "reform-coverage probe 'qbi_farm_rent_income_exclusion'" in message
+
+    def test_injected_engine_without_list_baseline_skips_list_edits(
+        self, monkeypatch
+    ) -> None:
+        # An explicitly injected engine proves nothing about the installed
+        # PolicyEngine-US, so the check never falls back to its baselines.
+        installed_calls: list = []
+        monkeypatch.setattr(
+            coverage_module,
+            "installed_list_parameter_baseline",
+            _refusing_baseline(installed_calls),
+        )
+
+        _check_shipped_manifest(engine=_shipped_graph_engine())
+
+        assert installed_calls == []
+
+    def test_discovered_engine_resolves_against_the_installed_baselines(
+        self, monkeypatch
+    ) -> None:
+        baselines = _fitting_baselines()
+        calls: list = []
+        monkeypatch.setattr(coverage_module, "_coverage_engine", _shipped_graph_engine)
+        monkeypatch.setattr(
+            coverage_module,
+            "installed_list_parameter_baseline",
+            _recording_baseline(baselines, calls),
+        )
+
+        _check_shipped_manifest()
+
+        assert Counter(calls) == Counter(
+            (path, edit) for _, path, edit in _shipped_list_edits()
+        )
+
+        baselines[_SNAP_ALLOWED_DEDUCTIONS].remove("snap_child_support_deduction")
+        with pytest.raises(
+            ValueError,
+            match="reform-coverage probe 'child_support_expense_snap_deduction_abolition'",
+        ):
+            _check_shipped_manifest()
+
+    def test_discovered_engine_prefers_an_injected_list_baseline(
+        self, monkeypatch
+    ) -> None:
+        installed_calls: list = []
+        injected_calls: list = []
+        monkeypatch.setattr(coverage_module, "_coverage_engine", _shipped_graph_engine)
+        monkeypatch.setattr(
+            coverage_module,
+            "installed_list_parameter_baseline",
+            _refusing_baseline(installed_calls),
+        )
+
+        _check_shipped_manifest(
+            list_baseline=_recording_baseline(_fitting_baselines(), injected_calls)
+        )
+
+        assert installed_calls == []
+        assert len(injected_calls) == len(_SHIPPED_LIST_EDIT_PROBE_IDS)
+
+    def test_engine_without_a_graph_skips_list_edits(self) -> None:
+        # The engine-free CI job: the adapter imports, but its country package
+        # does not, so the whole engine-graph half is a no-op.
+        calls: list = []
+
+        _check_shipped_manifest(
+            engine=_GraphlessEngine(), list_baseline=_refusing_baseline(calls)
+        )
+
+        assert calls == []
+
+    def test_no_discoverable_engine_skips_the_installed_baselines(
+        self, monkeypatch
+    ) -> None:
+        installed_calls: list = []
+        monkeypatch.setattr(coverage_module, "_coverage_engine", lambda: None)
+        monkeypatch.setattr(
+            coverage_module,
+            "installed_list_parameter_baseline",
+            _refusing_baseline(installed_calls),
+        )
+
+        _check_shipped_manifest()
+
+        assert installed_calls == []
+
+    # Invariant (differential against an independent statement of fit): for
+    # any baselines, the check fails exactly the probes whose edit removes an
+    # item the baseline lacks or adds one it already has, names each such item
+    # on that probe's own line, and reports nothing else.
+    @settings(max_examples=60, deadline=None)
+    @given(data=st.data())
+    def test_check_fails_exactly_the_list_edits_that_do_not_fit(self, data) -> None:
+        edits = _shipped_list_edits()
+        universe: dict[str, list[str]] = {}
+        for _, path, edit in edits:
+            names = universe.setdefault(path, ["unrelated_item"])
+            names.extend(
+                item for item in (*edit.remove, *edit.add) if item not in names
+            )
+        baselines = {
+            path: data.draw(
+                st.lists(st.sampled_from(names), unique=True),
+                label=path,
+            )
+            for path, names in sorted(universe.items())
+        }
+        expected: dict[str, tuple[list[str], list[str]]] = {}
+        for probe_id, path, edit in edits:
+            missing = [item for item in edit.remove if item not in baselines[path]]
+            present = [item for item in edit.add if item in baselines[path]]
+            if missing or present:
+                expected[probe_id] = (missing, present)
+
+        def check() -> None:
+            _check_shipped_manifest(
+                engine=_shipped_graph_engine(),
+                list_baseline=lambda path, edit: baselines[path],
+            )
+
+        if not expected:
+            check()
+            return
+        with pytest.raises(ValueError) as raised:
+            check()
+        lines = str(raised.value).split("\n  - ")[1:]
+        assert all(line.startswith("reform-coverage probe '") for line in lines)
+        by_probe = {line.split("'")[1]: line for line in lines}
+        assert len(lines) == len(by_probe) == len(expected)
+        assert set(by_probe) == set(expected)
+        for probe_id, (missing, present) in expected.items():
+            line = by_probe[probe_id]
+            assert (f"removes {missing}, which the baseline lacks" in line) == bool(
+                missing
+            )
+            assert (f"adds {present}, which the baseline already has" in line) == bool(
+                present
+            )
 
 
 class TestManifestGeneratorSync:

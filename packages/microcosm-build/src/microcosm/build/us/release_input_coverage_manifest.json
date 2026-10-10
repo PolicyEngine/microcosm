@@ -555,7 +555,7 @@
   "total": 174
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
- "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
+ "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface. Its reform-coverage probes declare list-valued parameter changes as list_edits (items removed or added), resolved against the installed PolicyEngine-US baseline when each reform is built; schema_version 2 refuses a whole list pinned in parameter_changes.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {
   "derived_from": "ecps_parity_reference.json",
@@ -886,19 +886,17 @@
    "expected_sign": "either",
    "id": "qbi_farm_operations_income_exclusion",
    "issue": "PolicyEngine/microcosm#298",
-   "min_abs_effect": 1000000.0,
-   "name": "Exclude farm-operations income from Section 199A QBI",
-   "parameter_changes": {
+   "list_edits": {
     "gov.irs.deductions.qbi.income_definition": {
-     "2026-01-01.2026-12-31": [
-      "self_employment_income",
-      "partnership_s_corp_income",
-      "farm_rent_income",
-      "rental_income",
-      "estate_income"
+     "period": "2026-01-01.2026-12-31",
+     "remove": [
+      "farm_operations_income"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude farm-operations income from Section 199A QBI",
+   "parameter_changes": {},
    "period": 2026,
    "reason": "Removing only farm_operations_income from the 2026 Section 199A income definition isolates the restored Schedule F leaf. The leaf is signed and two-channel: the ASEC channel carries the measured FRSE farm self-employment values (net-positive in the pooled frame) and the PUF channel carries the donor-pinned signed Schedule F values (net-negative, loss-heavy, microcosm#435), so the aggregate QBID effect direction is a property of the frame mix and the solve, not of coverage. The probe therefore requires a binding effect of at least the floor in either direction; a structural zero still fails."
   },
@@ -911,19 +909,17 @@
    "expected_sign": "positive",
    "id": "qbi_farm_rent_income_exclusion",
    "issue": "PolicyEngine/microcosm#298",
-   "min_abs_effect": 1000000.0,
-   "name": "Exclude farm-rent income from Section 199A QBI",
-   "parameter_changes": {
+   "list_edits": {
     "gov.irs.deductions.qbi.income_definition": {
-     "2026-01-01.2026-12-31": [
-      "self_employment_income",
-      "partnership_s_corp_income",
-      "farm_operations_income",
-      "rental_income",
-      "estate_income"
+     "period": "2026-01-01.2026-12-31",
+     "remove": [
+      "farm_rent_income"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude farm-rent income from Section 199A QBI",
+   "parameter_changes": {},
    "period": 2026,
    "reason": "Removing only farm_rent_income from the 2026 Section 199A income definition isolates the restored signed E27200 leaf. The real staged candidate produces +$9.14M baseline-minus-reform QBID. Without farm_rent_income the reform is a structural zero."
   },
@@ -936,31 +932,19 @@
    "expected_sign": "positive",
    "id": "domestic_production_ald_reactivation",
    "issue": "PolicyEngine/microcosm#298",
-   "min_abs_effect": 1000000.0,
-   "name": "Former Section 199 domestic-production deduction reactivation",
-   "parameter_changes": {
+   "list_edits": {
     "gov.irs.ald.deductions": {
-     "2024-01-01.2024-12-31": [
-      "loss_ald",
-      "self_employment_tax_ald",
-      "student_loan_interest_ald",
-      "early_withdrawal_penalty",
-      "alimony_expense_ald",
-      "educator_expense",
-      "health_savings_account_ald",
-      "self_employed_health_insurance_ald",
-      "self_employed_pension_contribution_ald",
-      "traditional_ira_contributions",
-      "qualified_adoption_assistance_expense",
-      "us_bonds_for_higher_ed",
-      "specified_possession_income",
-      "puerto_rico_income",
+     "add": [
       "domestic_production_ald"
-     ]
+     ],
+     "period": "2024-01-01.2024-12-31"
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Former Section 199 domestic-production deduction reactivation",
+   "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe preserves the exact 2024 list and adds only domestic_production_ald, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
+   "reason": "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe adds only domestic_production_ald to the installed engine's 2024 list, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
   },
   {
    "binding_inputs": [
@@ -1035,30 +1019,17 @@
    "expected_sign": "positive",
    "id": "child_support_received_snap_exclusion",
    "issue": "PolicyEngine/microcosm#32",
-   "min_abs_effect": 1000000.0,
-   "name": "Exclude child-support receipts from SNAP unearned income",
-   "parameter_changes": {
+   "list_edits": {
     "gov.usda.snap.income.sources.unearned": {
-     "2024-01-01.2024-12-31": [
-      "ssi",
-      "general_assistance",
-      "pension_income",
-      "veterans_benefits",
-      "unemployment_compensation",
-      "disability_benefits",
-      "workers_compensation",
-      "social_security",
-      "retirement_distributions",
-      "rental_income",
-      "alimony_income",
-      "financial_assistance",
-      "survivor_benefits",
-      "dividend_income",
-      "interest_income",
-      "miscellaneous_income"
+     "period": "2024-01-01.2024-12-31",
+     "remove": [
+      "child_support_received"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude child-support receipts from SNAP unearned income",
+   "parameter_changes": {},
    "period": 2024,
    "reason": "Removing only child_support_received from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. Without the measured/QRF child-support receipt leaf, the source-list reform is a structural zero."
   },
@@ -1071,19 +1042,17 @@
    "expected_sign": "positive",
    "id": "child_support_expense_snap_deduction_abolition",
    "issue": "PolicyEngine/microcosm#32",
-   "min_abs_effect": 1000000.0,
-   "name": "Abolish the SNAP child-support expense deduction",
-   "parameter_changes": {
+   "list_edits": {
     "gov.usda.snap.income.deductions.allowed": {
-     "2024-01-01.2024-12-31": [
-      "snap_standard_deduction",
-      "snap_earned_income_deduction",
-      "snap_dependent_care_deduction",
-      "snap_excess_medical_expense_deduction",
-      "snap_excess_shelter_expense_deduction"
+     "period": "2024-01-01.2024-12-31",
+     "remove": [
+      "snap_child_support_deduction"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Abolish the SNAP child-support expense deduction",
+   "parameter_changes": {},
    "period": 2024,
    "reason": "Removing only snap_child_support_deduction raises countable net income and must reduce SNAP in states that take the expense as a net-income deduction. Without the measured/QRF positive expense leaf, abolition is a structural zero."
   },
@@ -1096,30 +1065,17 @@
    "expected_sign": "positive",
    "id": "disability_benefits_snap_exclusion",
    "issue": "PolicyEngine/microcosm#38",
-   "min_abs_effect": 1000000.0,
-   "name": "Exclude disability benefits from SNAP unearned income",
-   "parameter_changes": {
+   "list_edits": {
     "gov.usda.snap.income.sources.unearned": {
-     "2024-01-01.2024-12-31": [
-      "ssi",
-      "general_assistance",
-      "pension_income",
-      "veterans_benefits",
-      "unemployment_compensation",
-      "workers_compensation",
-      "social_security",
-      "retirement_distributions",
-      "rental_income",
-      "child_support_received",
-      "alimony_income",
-      "financial_assistance",
-      "survivor_benefits",
-      "dividend_income",
-      "interest_income",
-      "miscellaneous_income"
+     "period": "2024-01-01.2024-12-31",
+     "remove": [
+      "disability_benefits"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Exclude disability benefits from SNAP unearned income",
+   "parameter_changes": {},
    "period": 2024,
    "reason": "Removing only disability_benefits from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. Without the measured/QRF non-workers-compensation benefit leaf, the source-list reform is a structural zero."
   },
@@ -1132,32 +1088,19 @@
    "expected_sign": "positive",
    "id": "workers_compensation_snap_exclusion",
    "issue": "PolicyEngine/microcosm#32",
-   "min_abs_effect": 10000000.0,
-   "name": "Exclude workers' compensation from SNAP unearned income",
-   "parameter_changes": {
+   "list_edits": {
     "gov.usda.snap.income.sources.unearned": {
-     "2024-01-01.2024-12-31": [
-      "ssi",
-      "general_assistance",
-      "pension_income",
-      "veterans_benefits",
-      "unemployment_compensation",
-      "disability_benefits",
-      "social_security",
-      "retirement_distributions",
-      "rental_income",
-      "child_support_received",
-      "alimony_income",
-      "financial_assistance",
-      "survivor_benefits",
-      "dividend_income",
-      "interest_income",
-      "miscellaneous_income"
+     "period": "2024-01-01.2024-12-31",
+     "remove": [
+      "workers_compensation"
      ]
     }
    },
+   "min_abs_effect": 10000000.0,
+   "name": "Exclude workers' compensation from SNAP unearned income",
+   "parameter_changes": {},
    "period": 2024,
-   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. On the 2026-09-27 Route A export (PolicyEngine-US 2.2.1) the corrected list scored +$277.9M reform-minus-baseline over all 1,708 households carrying the leaf; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero. The list must equal the engine's person-level unearned sources minus this leaf: TANF is counted once on unearned_spm_unit and must not be re-added here."
+   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. On the 2026-09-27 Route A export (PolicyEngine-US 2.2.1) the corrected list scored +$277.9M reform-minus-baseline over all 1,708 households carrying the leaf; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero. The probe declares only the removal, so it resolves against the installed engine's person-level unearned sources: the whole list it pinned before re-added TANF, which 2.2.1 counts once on unearned_spm_unit."
   },
   {
    "binding_inputs": [
@@ -1184,27 +1127,17 @@
    "expected_sign": "positive",
    "id": "educator_expense_ald_abolition",
    "issue": "PolicyEngine/microcosm#32",
-   "min_abs_effect": 1000000.0,
-   "name": "Abolish the educator-expense above-the-line deduction",
-   "parameter_changes": {
+   "list_edits": {
     "gov.irs.ald.deductions": {
-     "2024-01-01.2024-12-31": [
-      "loss_ald",
-      "self_employment_tax_ald",
-      "student_loan_interest_ald",
-      "early_withdrawal_penalty",
-      "alimony_expense_ald",
-      "health_savings_account_ald",
-      "self_employed_health_insurance_ald",
-      "self_employed_pension_contribution_ald",
-      "traditional_ira_contributions",
-      "qualified_adoption_assistance_expense",
-      "us_bonds_for_higher_ed",
-      "specified_possession_income",
-      "puerto_rico_income"
+     "period": "2024-01-01.2024-12-31",
+     "remove": [
+      "educator_expense"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Abolish the educator-expense above-the-line deduction",
+   "parameter_changes": {},
    "period": 2024,
    "reason": "Removing only educator_expense from the above-the-line deduction source list raises taxable income and must increase income tax for some filers. Without the restored PUF E03220 leaf, abolition is a structural zero."
   },
@@ -1217,27 +1150,17 @@
    "expected_sign": "negative",
    "id": "alimony_expense_ald_abolition",
    "issue": "PolicyEngine/microcosm#38",
-   "min_abs_effect": 1000000.0,
-   "name": "Alimony expense above-the-line deduction abolition",
-   "parameter_changes": {
+   "list_edits": {
     "gov.irs.ald.deductions": {
-     "2024-01-01.2024-12-31": [
-      "loss_ald",
-      "self_employment_tax_ald",
-      "student_loan_interest_ald",
-      "early_withdrawal_penalty",
-      "educator_expense",
-      "health_savings_account_ald",
-      "self_employed_health_insurance_ald",
-      "self_employed_pension_contribution_ald",
-      "traditional_ira_contributions",
-      "qualified_adoption_assistance_expense",
-      "us_bonds_for_higher_ed",
-      "specified_possession_income",
-      "puerto_rico_income"
+     "period": "2024-01-01.2024-12-31",
+     "remove": [
+      "alimony_expense_ald"
      ]
     }
    },
+   "min_abs_effect": 1000000.0,
+   "name": "Alimony expense above-the-line deduction abolition",
+   "parameter_changes": {},
    "period": 2024,
    "reason": "Removing only alimony_expense_ald from the above-the-line deduction list raises payers' taxable income, so baseline-minus-reform income tax must be negative. The divorce_year_threshold bracket is not used: since PolicyEngine-US a8e8a2e2ab it also gates the recipient-side taxable_alimony_income, so flipping it untaxes receipts too; on the 2026-09-27 Route A export that scored +$1.89B, the wrong sign. On the same export the corrected list scored -$2.52B. With alimony_expense absent or degenerate, the abolition scores exactly $0."
   },
@@ -1443,7 +1366,7 @@
    "reason": "PolicyEngine-US multiplies HUD HAP by the restored SPM-unit take-up leaf after eligibility. Microcosm keeps that leaf exactly equal to source-backed housing-assistance receipt, so neutralizing it must remove the assistance paid to measured/imputed recipients. A 6,000-household production-ingredient smoke scored $202.795 million baseline-minus-neutralized; the $100 million floor is below that observed subset effect but far above numerical noise. A default-only or absent carry makes the source reconciliation or this uniquely isolating probe fail."
   }
  ],
- "schema_version": 1,
+ "schema_version": 2,
  "ssi_countable_resource_assets": [
   "bank_account_assets",
   "stock_assets",
