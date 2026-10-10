@@ -19,10 +19,6 @@ Hold kinds:
   and tenure cells under the household controls).
 * ``reviewed_no_index``: a public spending line with no index that would
   carry it forward, held to its latest outturn until the next edition.
-
-``uk/target_doctrine_exceptions.json`` tolerates holds that a later change of
-microcosm#1123 closes (a newer vintage the Chronicle re-pin brings, an
-applier a later commit adds), each naming that change.
 """
 
 from __future__ import annotations
@@ -147,7 +143,6 @@ def assert_uk_uprating_holds_declared(
     evaluated_on: date,
     scope: str,
     holds: Mapping[str, Any] | None = None,
-    exceptions: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Refuse an undeclared or expired hold; return the holds by kind.
 
@@ -156,25 +151,12 @@ def assert_uk_uprating_holds_declared(
     the register cannot outlive the holds it explains.
     """
 
-    from microcosm.build.uk_runtime.cross_grain_declarations import (
-        load_uk_target_doctrine_exceptions,
-    )
-
     declared = _declaration_index((holds or load_uk_uprating_holds())["holds"])
-    tolerated = {
-        entry["target_id"]
-        for entry in (exceptions or load_uk_target_doctrine_exceptions())["entries"]
-        if entry["kind"] == "undeclared_hold" and entry.get("scope") == scope
-    }
     held: dict[str, list[str]] = {}
     for spec in registry.specs:
         if is_uprating_hold(spec, calibration_period):
             held.setdefault(_contract_target_id(spec), []).append(spec.name)
-    undeclared = sorted(
-        target_id
-        for target_id in held
-        if target_id not in declared and target_id not in tolerated
-    )
+    undeclared = sorted(target_id for target_id in held if target_id not in declared)
     expired = sorted(
         target_id
         for target_id in held
@@ -188,22 +170,16 @@ def assert_uk_uprating_holds_declared(
         if entry.get("scope", scope) == scope
     }
     stale = sorted(scoped_declarations - set(held))
-    stale_exceptions = sorted(tolerated - set(held))
-    if undeclared or expired or stale or stale_exceptions:
+    if undeclared or expired or stale:
         raise ValueError(
             f"UK {scope} uprating holds refused: undeclared {undeclared}; expired "
-            f"{expired}; stale declarations {stale}; stale doctrine exceptions "
-            f"{stale_exceptions}. Declare an uprating_index on the contract target "
-            "or a hold in uk/uprating_holds.json (microcosm#1123)."
+            f"{expired}; stale declarations {stale}. Declare an uprating_index on "
+            "the contract target or a hold in uk/uprating_holds.json "
+            "(microcosm#1123)."
         )
     by_kind: dict[str, list[str]] = {}
     for target_id in sorted(held):
-        kind = (
-            str(declared[target_id]["kind"])
-            if target_id in declared
-            else "tolerated_until_closed"
-        )
-        by_kind.setdefault(kind, []).append(target_id)
+        by_kind.setdefault(str(declared[target_id]["kind"]), []).append(target_id)
     return {
         "scope": scope,
         "calibration_period": str(calibration_period),

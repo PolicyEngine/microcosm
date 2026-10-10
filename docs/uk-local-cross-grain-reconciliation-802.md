@@ -137,9 +137,8 @@ the declarations into an enforced rule (microcosm#1123). It refuses:
 
 The surface build runs the check once per process
 (`uk_cross_grain_coverage_receipt`), and its receipt travels with the
-reconciliation receipt. `uk/target_doctrine_exceptions.json` tolerates the
-gaps that still exist, each naming the change that closes it. A tolerated
-entry that no longer matches a gap is refused as stale.
+reconciliation receipt. Every gap is refused: #1123 closed the last one and
+deleted its transitional exceptions ledger.
 
 ## Refusals and receipts
 

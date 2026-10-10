@@ -1,5 +1,0 @@
-{
-  "schema_version": 1,
-  "description": "Transitional ledger of target-doctrine gaps that exist on main and are closed by later commits of microcosm#1123 PR A: cross-grain coverage gaps (checked by uk_runtime.cross_grain_declarations) and undeclared uprating holds (kind undeclared_hold, checked by uk_runtime.uprating_holds per scope). Each check tolerates exactly its own entries; an entry that no longer matches a gap is stale and refused. The file is deleted by the commit that closes the last gap.",
-  "entries": []
-}

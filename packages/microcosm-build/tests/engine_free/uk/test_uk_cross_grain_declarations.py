@@ -10,10 +10,8 @@ import pytest
 
 from microcosm.build.cross_grain import _measurement_signature
 from microcosm.build.uk_runtime.cross_grain_declarations import (
-    UK_COVERAGE_VIOLATION_KINDS,
     assert_uk_cross_grain_coverage,
     load_uk_cross_grain_declarations,
-    load_uk_target_doctrine_exceptions,
     uk_cross_grain_bridges,
     uk_cross_grain_coverage_violations,
     uk_cross_grain_grain,
@@ -36,26 +34,9 @@ def _contract() -> dict[str, dict]:
 
 
 def test_the_committed_contract_passes_the_coverage_check():
+    # microcosm#1123 closed every gap: the check tolerates none.
     receipt = uk_cross_grain_coverage_receipt()
-    tolerated = {
-        (entry["kind"], entry["target_id"]) for entry in receipt["violations_tolerated"]
-    }
-    ledger = {
-        (entry["kind"], entry["target_id"])
-        for entry in load_uk_target_doctrine_exceptions()["entries"]
-        if entry["kind"] in UK_COVERAGE_VIOLATION_KINDS
-    }
-    assert tolerated == ledger
-
-
-def test_every_ledger_entry_is_a_kind_one_check_reads():
-    kinds = {entry["kind"] for entry in load_uk_target_doctrine_exceptions()["entries"]}
-    assert kinds <= {*UK_COVERAGE_VIOLATION_KINDS, "undeclared_hold"}
-
-
-def test_every_tolerated_gap_names_the_change_that_closes_it():
-    for entry in load_uk_target_doctrine_exceptions()["entries"]:
-        assert entry["closed_by"].strip()
+    assert receipt["checked_targets"] == len(_contract())
 
 
 def test_the_runtime_bridges_are_the_declared_bridges():
@@ -92,20 +73,6 @@ def test_an_overlap_across_grains_must_be_declared():
         "target_id": "hmrc.cgt.taxpayers_total,hmrc.cgt.taxpayers_wales",
         "where": "contract",
     } in violations
-
-
-def test_a_stale_doctrine_exception_is_refused():
-    exceptions = copy.deepcopy(dict(load_uk_target_doctrine_exceptions()))
-    exceptions["entries"] = [
-        *exceptions["entries"],
-        {
-            "kind": "local_target_without_control",
-            "target_id": "ons.census.households",
-            "closed_by": "nothing: the census cells are bridged already",
-        },
-    ]
-    with pytest.raises(ValueError, match="stale doctrine exception"):
-        assert_uk_cross_grain_coverage(_contract(), exceptions=exceptions)
 
 
 def test_a_local_route_on_a_covered_target_is_stale():
