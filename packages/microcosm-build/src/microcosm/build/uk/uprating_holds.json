@@ -61,23 +61,6 @@
       "scope": "national",
       "kind": "in_year_snapshot",
       "target_ids": [
-        "dwp.uc.payment_distribution_couple_no_children",
-        "dwp.uc.payment_distribution_couple_with_children",
-        "dwp.uc.payment_distribution_lone_parent",
-        "dwp.uc.payment_distribution_single",
-        "dwp.uc.scotland_households_child_under_1"
-      ],
-      "reason": "Universal Credit households by payment band and the Scottish under-one cell at December 2025: point-in-time distributions inside the calibration year (the caseload headline binds the calendar-2025 window).",
-      "tracking": "microcosm#1123",
-      "approved_by": null,
-      "approved_on": null,
-      "status": "proposed",
-      "expires_on": "2027-04-01"
-    },
-    {
-      "scope": "national",
-      "kind": "in_year_snapshot",
-      "target_ids": [
         "dwp.uc.two_child_limit.children_affected",
         "dwp.uc.two_child_limit.children_claimant_pip",
         "dwp.uc.two_child_limit.children_disabled_child_element",

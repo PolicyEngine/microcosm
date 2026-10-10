@@ -55,6 +55,7 @@ def _hold(target_id: str, kind: str = "in_year_snapshot", **fields) -> dict:
         ("2025-12", {"fact_aggregation": "time_mean"}, False),
         ("2025-11", {"ledger_value_operation": "monthly_window_average"}, False),
         ("2025-12", {"ledger_value_operation": "calendar_year_average"}, False),
+        ("2024", {"ledger_value_operation": "rolled_forward_by_ratio"}, False),
         ("2025-11", {"ledger_value_operation": "latest_plateau"}, True),
         ("2025-03", {"period_match_policy": "source_window"}, False),
     ],
