@@ -10,10 +10,14 @@ Each row binds the model column over the same households the publisher counts.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 import microcosm.build
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
+from test_support.paths import paths_for
 
 GB_REGIONS = {
     "NORTH_EAST",
@@ -49,12 +53,13 @@ ENGLAND_AND_WALES_ROWS = (
     "obr.carers_allowance",
     "obr.pip",
     "obr.winter_fuel_allowance",
-    # DWP's PIP daily-living caseload (FOI2025/24990), which Chronicle stamps
-    # K04000001 (microcosm#1095).
+)
+# DWP's PIP daily-living caseload (FOI2025/24990), which Chronicle stamps
+# K04000001: diagnostics on obr.pip, not targets (microcosm#1095).
+PIP_CASELOAD_ROWS = (
     "dwp.pip.daily_living_standard_claimants",
     "dwp.pip.daily_living_enhanced_claimants",
 )
-PIP_CASELOAD_ROWS = ENGLAND_AND_WALES_ROWS[-2:]
 # OBR table 4.9 concepts reported inside "DWP social security".
 DWP_SOCIAL_SECURITY_CONCEPTS = {
     "obr.attendance_allowance",
@@ -193,40 +198,64 @@ def test_obr_pip_binds_dla_and_pip_together() -> None:
     assert "value_variable" not in binding
 
 
-def test_pip_caseload_rows_pin_england_and_wales() -> None:
-    """The selector pins K04000001, the geography Chronicle stamps DWP's
-    caseload with; under the Great Britain default the rows matched no fact
-    (microcosm#1095)."""
+def test_pip_caseload_rows_are_england_and_wales_diagnostics_on_obr_pip() -> None:
+    """The two rows resolve at K04000001, the geography Chronicle stamps DWP's
+    caseload with, and fit; fitting them breaks the weight-ratio fence, so
+    they sit beside obr.pip as diagnostics (María's ruling of 2026-10-10,
+    microcosm#1095)."""
 
-    from tools.generate_uk_target_references import _geography_id_for_target
-
-    targets = _targets()
-    for target_id in PIP_CASELOAD_ROWS:
-        assert _geography_id_for_target(targets[target_id]) == "K04000001"
-
-
-def test_council_tax_binds_the_great_britain_receipts_row() -> None:
-    """OBR table 4.1 row 15 sums the England, Scotland and Wales council tax
-    receipts; row 19 adds Northern Ireland domestic rates and accruals no
-    household's council tax carries. The row binds Great Britain's households,
-    and its pin is the UK stamp Chronicle gives OBR's table (microcosm#1095)."""
-
-    from tools.generate_uk_target_references import _geography_id_for_target
-
-    targets = _targets()
-    target = targets["obr.council_tax"]
-    assert target["ledger_selector"]["source_concept"] == (
-        "obr.council_tax_receipts_england_scotland_wales"
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_REQUIRED_TARGET_DIAGNOSTICS,
     )
-    condition = _condition(target)
-    assert condition["variable"] == "region"
-    assert set(condition["value"]) == GB_REGIONS
-    assert set(_country_filter(target)["value"]) == {"england", "scotland", "wales"}
-    assert _geography_id_for_target(target) == "K02000001"
-    # The exact-id pin leaves the country legs on their own nations.
-    for target_id, code in (
-        ("obr.council_tax_england", "E92000001"),
-        ("obr.council_tax_scotland", "S92000003"),
-        ("obr.council_tax_wales", "W92000004"),
-    ):
-        assert _geography_id_for_target(targets[target_id]) == code
+
+    contract = load_uk_population_contract()
+    target_ids = {target["target_id"] for target in contract["targets"]}
+    assert not target_ids.intersection(PIP_CASELOAD_ROWS)
+    assert UK_REQUIRED_TARGET_DIAGNOSTICS["obr.pip"] == PIP_CASELOAD_ROWS
+    parity = contract["registry_parity"]
+    for target_id in PIP_CASELOAD_ROWS:
+        assert target_id not in parity["scope_target_ids"]
+        declaration = contract["diagnostic_references"][target_id]
+        assert declaration["attach_to_target"] == "obr.pip"
+        assert declaration["required_period_type"] == "month"
+        assert declaration["required_assertion"] == "observation"
+        reference = declaration["reference"]
+        assert reference["period"] == "2025-01"
+        assert reference["period_match_policy"] == "exact"
+        assert reference["ledger_selector"]["geography_id"] == "K04000001"
+        assert reference["ledger_fact_key"]
+        assert reference["measure"] in parity["excluded"]
+        assert reference["measure"] not in parity["mapped"]
+
+
+def test_pip_caseload_diagnostics_carry_the_january_2025_caseload() -> None:
+    """Feed-gated: each diagnostic resolves its exact January 2025 fact."""
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _attached_diagnostic_metadata,
+    )
+
+    root = paths_for("microcosm-build").repository
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = (
+        Path(configured) if configured else root / ".codex-work/consumer_facts_uk.jsonl"
+    )
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+    with feed.open(encoding="utf-8") as handle:
+        facts = tuple(
+            json.loads(line)
+            for line in handle
+            if '"dwp.pip_daily_living_claimants"' in line
+        )
+
+    metadata = _attached_diagnostic_metadata(facts, "obr.pip")
+
+    for rate, value in (("standard", 1_283_000.0), ("enhanced", 1_608_000.0)):
+        prefix = f"dwp_pip_daily_living_{rate}_diagnostic"
+        assert metadata[f"{prefix}_role"] == "diagnostic_only_not_in_fit"
+        assert metadata[f"{prefix}_status"] == "available"
+        assert float(metadata[f"{prefix}_value_count"]) == value
+        assert metadata[f"{prefix}_period"] == "2025-01"
