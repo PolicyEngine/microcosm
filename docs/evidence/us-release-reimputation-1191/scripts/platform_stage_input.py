@@ -15,11 +15,16 @@ multiplies every person weight (the release's mass repair), ``--threads``
 limits BLAS/OpenMP pools, forest fit jobs and draw workers, and
 ``--compare-outputs`` compares the outputs bit for bit with an earlier run.
 
+``compare`` compares two saved output files (``--outputs``) from different
+platforms, row by row.
+
 Usage:
     python platform_stage_input.py export --builder-root ROOT --base-h5 BASE \
         --release-h5 RELEASE --out INPUT.pkl
     python platform_stage_input.py replay --input INPUT.pkl --out RECEIPT.json \
-        [--outputs OUTPUTS.npz]
+        [--outputs OUTPUTS.npz] [--weight-factor F] [--threads N] \
+        [--compare-outputs EARLIER.npz]
+    python platform_stage_input.py compare A.npz B.npz --out RECEIPT.json
 """
 
 from __future__ import annotations
@@ -238,6 +243,31 @@ def replay(args: argparse.Namespace) -> None:
     )
 
 
+def compare(args: argparse.Namespace) -> None:
+    left, right = np.load(args.left), np.load(args.right)
+    assert np.array_equal(left["person_id"], right["person_id"])
+    receipt: dict[str, object] = {
+        "left": str(args.left),
+        "left_sha256": sha256(args.left),
+        "right": str(args.right),
+        "right_sha256": sha256(args.right),
+        "rows": int(len(left["person_id"])),
+        "columns": {},
+    }
+    for column in OUTPUTS:
+        a, b = left[column], right[column]
+        difference = np.abs(a - b)
+        receipt["columns"][column] = {
+            "rows_differing": int((a != b).sum()),
+            "rows_differing_by_more_than_1e-9": int((difference > 1e-9).sum()),
+            "rows_differing_by_more_than_1_dollar": int((difference > 1.0).sum()),
+            "max_abs_difference": float(difference.max()),
+            "zero_nonzero_flips": int(((a == 0) != (b == 0)).sum()),
+        }
+    Path(args.out).write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n")
+    print(json.dumps(receipt["columns"], indent=1))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -255,8 +285,12 @@ def main() -> None:
     rp.add_argument("--weight-factor", type=float, default=1.0)
     rp.add_argument("--threads", type=int)
     rp.add_argument("--compare-outputs", type=Path)
+    cp = sub.add_parser("compare")
+    cp.add_argument("left", type=Path)
+    cp.add_argument("right", type=Path)
+    cp.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    {"export": export, "replay": replay}[args.command](args)
+    {"export": export, "replay": replay, "compare": compare}[args.command](args)
 
 
 if __name__ == "__main__":

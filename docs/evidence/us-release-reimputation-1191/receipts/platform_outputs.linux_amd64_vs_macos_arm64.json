@@ -1,0 +1,44 @@
+{
+ "columns": {
+  "roth_401k_contributions_desired": {
+   "max_abs_difference": 2539.2173280113348,
+   "rows_differing": 19910,
+   "rows_differing_by_more_than_1_dollar": 19530,
+   "rows_differing_by_more_than_1e-9": 19909,
+   "zero_nonzero_flips": 0
+  },
+  "roth_ira_contributions_desired": {
+   "max_abs_difference": 4244.5696,
+   "rows_differing": 20419,
+   "rows_differing_by_more_than_1_dollar": 19610,
+   "rows_differing_by_more_than_1e-9": 20418,
+   "zero_nonzero_flips": 0
+  },
+  "self_employed_pension_contributions_desired": {
+   "max_abs_difference": 816.5,
+   "rows_differing": 529,
+   "rows_differing_by_more_than_1_dollar": 491,
+   "rows_differing_by_more_than_1e-9": 528,
+   "zero_nonzero_flips": 0
+  },
+  "traditional_401k_contributions_desired": {
+   "max_abs_difference": 18523.199999999997,
+   "rows_differing": 21764,
+   "rows_differing_by_more_than_1_dollar": 21484,
+   "rows_differing_by_more_than_1e-9": 21755,
+   "zero_nonzero_flips": 0
+  },
+  "traditional_ira_contributions_desired": {
+   "max_abs_difference": 2421.2391274895363,
+   "rows_differing": 20080,
+   "rows_differing_by_more_than_1_dollar": 18854,
+   "rows_differing_by_more_than_1e-9": 20078,
+   "zero_nonzero_flips": 0
+  }
+ },
+ "left": "/Users/maxghenis/.cache/microcosm-platform-replay/out/outputs.linux_amd64.npz",
+ "left_sha256": "7e520c289a5257a4f394601c372314297d616af62cccbd9fdb272763d74c031a",
+ "right": "/private/tmp/claude-501/-Users-maxghenis-Library-Application-Support-Claude-scratch-workspaces-c0861266-1b0e-425f-9c14-2cf2a3d1d567-eedf19ad-6956-46cd-ad08-5b640fb3bcb8-scratch-2026-10-09-4e6b44/583fe62e-3bb8-4f7b-8a84-2077721d0c14/scratchpad/platform/outputs.macos_arm64.npz",
+ "right_sha256": "ec2c4533087060dbfafd6cca524ab489a67b07782bc70a574685de8cbfc76f6b",
+ "rows": 907863
+}

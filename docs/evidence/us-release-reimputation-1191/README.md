@@ -67,11 +67,10 @@ commit that built the release, loads the base with the builder's
    leaves, is one of the eight predictors of all three QRFs, and unequal
    factors reorder it.
 3. The population mass repair alone (factor 1.0253 on every household weight)
-   changes nothing: its re-run differs from the base and from the release on
-   the same rows, by the same largest and smallest amounts and in the same
-   directions, as the re-run on the unchanged base. So does limiting
-   BLAS/OpenMP pools and draw workers to four threads. PENDING: bitwise
-   comparison receipts `platform_replay.macos_arm64.{mass_factor,threads4}.json`.
+   changes nothing, and neither does limiting BLAS/OpenMP pools, forest fit
+   jobs and draw workers to four threads: each reproduces the re-run on the
+   unchanged base bit for bit on all five contribution columns
+   (`platform_replay.macos_arm64.{mass_factor,threads4}.json`).
 4. Re-running on the unchanged base on macOS does not reproduce the Modal-built
    base: retirement contributions differ on 21,765 PUF persons for the
    traditional 401(k) leaf (21,484 by more than $1, up to $18,523, no zero or
@@ -82,17 +81,31 @@ commit that built the release, loads the base with the builder's
    before it in the base build; their ULP-level agreement rules out a predictor
    that moved between that stage and the exported H5. The base H5 also
    reproduces the base stage's recorded weighted contribution totals exactly.
-   PENDING: the same stage input replayed on linux/amd64
-   (`platform_replay.linux_amd64.json`).
+5. The platform is the cause (`platform_replay.*.json`). The retirement
+   stage's exact input table, exported from the base, was replayed with the
+   production stage code on two platforms. On linux/amd64 (CPython 3.14.2,
+   the base build's uv.lock wheels, under QEMU) the traditional 401(k) leaf
+   matches the Modal-built base on all but 235 of 907,863 persons, each by at
+   most 6.9e-11; the other four leaves differ on 15, 5, 11 and 1 persons, at
+   most 1.6e-12. On macOS arm64 the same input differs from the base on 21,765
+   persons, and the two platforms' outputs differ from each other on 21,764
+   (21,484 by more than $1;
+   `platform_outputs.linux_amd64_vs_macos_arm64.json`). quantile-forest 1.4.2
+   has no cp314 Linux aarch64 wheel, so architecture and operating system were
+   not separated. Only the retirement stage was replayed on Linux; the
+   weeks-unemployed, childcare and energy-subsidy differences in point 4 were
+   not.
 
 **Why about 6% of PUF rows.** 30,442 of 475,340 PUF persons is 6.4%, but most
 PUF persons draw no deferral in either pass: 77,713 hold a nonzero traditional
-401(k) in the base, and 26,478 of those changed (34%). The stage zeroes 401(k)
-draws for PUF persons without wages and draws the zero-or-positive sign from a
-gate classifier; the Social Security change flips that sign for 8,006 persons
-and the platform for none. The per-row quantile uniforms come from a seeded
-stream whose length depends only on the number of PUF rows, so a row keeps its
-exact value unless its forest leaves or its sign changed.
+401(k) in the base, and 26,478 of those changed (34%); 3,964 more went from
+zero to positive. The stage zeroes 401(k) draws for PUF persons without wages
+and draws the zero-or-positive sign from a gate classifier. Relative to the
+base, the release flips that sign for 8,006 persons; the platform alone flips
+none. Each row's quantile uniforms come from a seeded stream whose consumption
+depends only on the number of PUF rows and each target's sign regime, which
+the training rows fix, so a row keeps its exact value unless its forest leaves,
+its sign or an earlier leaf in the chain changed.
 
 **Direction and size** (`second_pass_effect…json`, PUF half, same rows):
 
@@ -122,7 +135,8 @@ release's platform.
 | `scripts/base_release_column_diff.py` | Every common column of every entity, base against release, by channel and clone, with direction | `receipts/column_diff.base_0fb05b67.release_417d23ae.json` |
 | `scripts/replay_release_reimputation.py`, `scripts/run_replays.sh` | The four stages replayed under the variants above, each output compared with both files | `receipts/replay.{release_order,isolated,attribution}.json` |
 | `scripts/second_pass_effect.py` | Weighted base and release totals on the same rows, by channel and clone | `receipts/second_pass_effect.base_0fb05b67.release_417d23ae.json` |
-| `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed) and replays it on any platform | `receipts/platform_replay.*.json` |
+| `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed) and replays it on any platform, optionally with a weight factor or a thread limit | `receipts/platform_replay.*.json` |
+| `scripts/platform/` | The linux/amd64 harness: a `python:3.14.2-slim-bookworm` image, the stage's third-party imports at the base build's locked versions and hashes (`req.min.txt`, cross-installed on the host with `uv pip install --python-platform x86_64-manylinux_2_36 --target`), and a loader that imports the stage module without the package `__init__` chains | `receipts/platform_replay.linux_amd64.json` |
 
 ## Reproduce
 
