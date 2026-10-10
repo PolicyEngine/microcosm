@@ -48,6 +48,18 @@ MONTHLY_WINDOW_OPERATIONS = frozenset(
 #: It is not one of ``MONTHLY_WINDOW_OPERATIONS``: those average a single
 #: series, and this one pairs two.
 MONTHLY_WINDOW_COUNT_X_MEAN = "monthly_window_count_x_mean"
+#: ``rolled_forward_by_ratio``: an official estimate for an earlier period
+#: (the base: one cell, or the sum of the cells the selector resolves at its
+#: latest period) carried to the target period by the growth of a newer
+#: official series: ``base * numerator / denominator``, where the numerator
+#: is pinned to the target period and the denominator to the base's own
+#: period (Wales's mid-2024 household estimate by its mid-2025/mid-2024
+#: population, microcosm#1123). Unlike ``scaled_by_ratio`` the ratio may
+#: exceed one; it is bounded to ``ROLLED_FORWARD_RATIO_BOUNDS`` so a
+#: mis-pinned operand cannot pass for growth.
+ROLLED_FORWARD_BY_RATIO = "rolled_forward_by_ratio"
+ROLLED_FORWARD_OPERAND_ROLES = ("base", "numerator", "denominator")
+ROLLED_FORWARD_RATIO_BOUNDS = (0.5, 2.0)
 #: Ordered operand roles of ``monthly_window_count_x_mean``.
 COUNT_X_MEAN_OPERAND_ROLES = ("count", "mean")
 ALLOWED_VALUE_OPERATIONS = frozenset(
@@ -61,6 +73,7 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
         "latest_plateau",
         "count_x_mean",
         "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
     )
@@ -75,6 +88,7 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         "latest_plateau",
         "count_x_mean",
         "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
     )
@@ -271,6 +285,8 @@ class LedgerTargetReference:
             _validate_linear_combination_operands(self.name, self.value_operands)
         if self.value_operation == "scaled_by_ratio":
             _validate_scaled_by_ratio_operands(self.name, self.value_operands)
+        if self.value_operation == ROLLED_FORWARD_BY_RATIO:
+            _validate_rolled_forward_operands(self.name, self.value_operands)
         if self.value_operation == "calendar_year_window":
             _validate_calendar_year_window_reference(self)
         elif SOURCE_MEASURE_ID_BY_OPENING_YEAR in self.ledger_selector:
@@ -814,6 +830,10 @@ def target_spec_from_ledger_reference(
         numeric_value, value_metadata = _scaled_by_ratio_value(
             reference, numeric_values
         )
+    elif reference.value_operation == ROLLED_FORWARD_BY_RATIO:
+        numeric_value, value_metadata = _rolled_forward_by_ratio_value(
+            reference, facts, numeric_values
+        )
     elif reference.value_operation == "linear_combination":
         weights = _linear_combination_weights(reference, facts)
         numeric_value = sum(
@@ -844,6 +864,8 @@ def target_spec_from_ledger_reference(
     identity_facts = (
         (representative_fact,)
         if reference.value_operation == "scaled_by_ratio"
+        else facts[:-2]
+        if reference.value_operation == ROLLED_FORWARD_BY_RATIO
         else facts
     )
     publication_metadata = dict(value_metadata)
@@ -955,6 +977,58 @@ def _scaled_by_ratio_value(
     }
 
 
+def _rolled_forward_by_ratio_value(
+    reference: LedgerTargetReference,
+    facts: tuple[object, ...],
+    numeric_values: list[float],
+) -> tuple[float, dict[str, str]]:
+    """Carry the base to the target period by the pinned operands' growth."""
+
+    *base_values, numerator, denominator = numeric_values
+    base = math.fsum(base_values)
+    if not math.isfinite(denominator) or denominator <= 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} denominator {denominator!r} must be a "
+            "finite positive value."
+        )
+    ratio = numerator / denominator
+    low, high = ROLLED_FORWARD_RATIO_BOUNDS
+    if not math.isfinite(ratio) or not low < ratio <= high:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} produced ratio {ratio!r} from numerator "
+            f"{numerator!r} and denominator {denominator!r}, outside "
+            f"({low}, {high}]: a growth factor this large means an operand is "
+            "pinned to the wrong period or series."
+        )
+    value = base * ratio
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} produced invalid value {value!r}."
+        )
+    geography: dict[str, str] = {}
+    if _rolled_forward_base_overlay(reference):
+        # The base sits below the reference's geography; the cell is the
+        # reference's own area, so it keeps the pinned geography.
+        geography = {
+            key: str(reference.ledger_selector[key])
+            for key in ("geography_level", "geography_id")
+            if key in reference.ledger_selector
+        }
+    return value, {
+        **geography,
+        "ledger_value_base": repr(float(base)),
+        "ledger_value_base_cells": str(len(base_values)),
+        "ledger_value_numerator": repr(float(numerator)),
+        "ledger_value_denominator": repr(float(denominator)),
+        "ledger_value_ratio": repr(float(ratio)),
+        "ledger_value_rolled_from_period": str(_comparable_period_value(facts[0])),
+        "ledger_value_rolled_to_period": str(_comparable_period_value(facts[-2])),
+    }
+
+
 def _value_representative_fact(
     facts: tuple[object, ...],
     *,
@@ -962,7 +1036,7 @@ def _value_representative_fact(
 ) -> object:
     if len(facts) == 1 or operation not in MULTI_FACT_VALUE_OPERATIONS:
         return facts[0]
-    if operation == "scaled_by_ratio":
+    if operation in {"scaled_by_ratio", ROLLED_FORWARD_BY_RATIO}:
         return facts[0]
     return max(enumerate(facts), key=lambda item: (_period_key(item[1]), item[0]))[1]
 
@@ -1764,6 +1838,10 @@ def _resolve_reference_fact(
             return _resolve_scaled_by_ratio_reference_facts(
                 reference, eligible_matches, fact_index.facts
             )
+        if reference.value_operation == ROLLED_FORWARD_BY_RATIO:
+            return _resolve_rolled_forward_reference_facts(
+                reference, eligible_matches, fact_index.facts
+            )
         if reference.value_operation == "linear_combination" and eligible_matches:
             return _resolve_linear_combination_reference_facts(
                 reference, eligible_matches
@@ -1946,6 +2024,40 @@ def _validate_scaled_by_ratio_operands(
             raise ValueError(
                 f"LedgerTargetReference {name!r}: scaled_by_ratio operand "
                 f"{operand.get('role')!r} needs at least one selector field."
+            )
+
+
+def _validate_rolled_forward_operands(
+    name: str, operands: tuple[Mapping[str, object], ...]
+) -> None:
+    roles = [
+        str(operand.get("role")) if isinstance(operand, Mapping) else ""
+        for operand in operands
+    ]
+    prefix = f"LedgerTargetReference {name!r}: {ROLLED_FORWARD_BY_RATIO}"
+    if roles != list(ROLLED_FORWARD_OPERAND_ROLES):
+        raise ValueError(
+            f"{prefix} requires exactly ordered "
+            f"{'/'.join(ROLLED_FORWARD_OPERAND_ROLES)} operands, got {roles!r}."
+        )
+    base_overlay = {key for key in operands[0] if key != "role"}
+    if base_overlay - {"geography_level", "geography_id"}:
+        raise ValueError(
+            f"{prefix}: the base operand is the reference's own selector; it may "
+            "only move the base below the reference's geography "
+            f"(geography_level, geography_id), got {sorted(base_overlay)!r}."
+        )
+    for operand in operands[1:]:
+        if "period_type" not in operand or "period_value" not in operand:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} must pin its own "
+                "period_type and period_value; a roll-forward reads each "
+                "operand at a declared period, never at the latest one."
+            )
+        if not {key for key in operand} - {"role", "period_type", "period_value"}:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} needs at least one "
+                "selector field besides its period."
             )
 
 
@@ -2180,6 +2292,108 @@ def _scaled_by_ratio_operand_selectors(
     )
 
 
+def _rolled_forward_operand_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    """The numerator and denominator selectors, each with its own period pin."""
+
+    inherited = {
+        key: reference.ledger_selector[key]
+        for key in ("source_name", "assertion")
+        if key in reference.ledger_selector
+    }
+    return tuple(
+        {
+            **inherited,
+            **{str(key): value for key, value in operand.items() if key != "role"},
+        }
+        for operand in reference.value_operands[1:]
+    )
+
+
+def _rolled_forward_base_overlay(reference: LedgerTargetReference) -> dict[str, object]:
+    return {
+        str(key): value
+        for key, value in reference.value_operands[0].items()
+        if key != "role"
+    }
+
+
+def _rolled_forward_base_selector(
+    reference: LedgerTargetReference,
+) -> Mapping[str, object]:
+    return {
+        **dict(reference.ledger_selector),
+        **_rolled_forward_base_overlay(reference),
+    }
+
+
+def _resolve_rolled_forward_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+    facts: tuple[object, ...],
+) -> tuple[object, ...]:
+    """The base cells at their latest period, then the two pinned operands.
+
+    The base is every eligible cell at the latest period the selector reaches
+    (one cell, or a set the operation sums); a base operand that moves the
+    geography (a nation's estimate built from its districts' census cells)
+    selects below the reference's own geography, which the spec keeps. The
+    numerator must resolve at the target period and the denominator at the
+    base's own period, each exactly once, so the ratio is the growth between
+    the two.
+    """
+
+    if _rolled_forward_base_overlay(reference):
+        base_selector = _rolled_forward_base_selector(reference)
+        eligible_matches = _eligible_selector_matches(
+            reference,
+            [fact for fact in facts if _fact_matches_selector(fact, base_selector)],
+        )
+    if not eligible_matches:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} base matched no eligible fact."
+        )
+    latest = max(_period_key(fact) for fact in eligible_matches)
+    base = [fact for fact in eligible_matches if _period_key(fact) == latest]
+    resolved: list[object] = list(base)
+    for operand, selector in zip(
+        reference.value_operands[1:],
+        _rolled_forward_operand_selectors(reference),
+        strict=True,
+    ):
+        matches = [
+            fact
+            for fact in facts
+            if _fact_matches_selector(fact, selector)
+            and _assertion_allowed(reference, fact)
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{ROLLED_FORWARD_BY_RATIO} operand {operand.get('role')!r} "
+                f"must resolve exactly once, got {len(matches)} matches."
+            )
+        resolved.append(matches[0])
+    numerator, denominator = resolved[-2:]
+    if _period_key(denominator) != latest:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} denominator resolves at "
+            f"{_comparable_period_value(denominator)!r}, not the base's period "
+            f"{_comparable_period_value(base[0])!r}."
+        )
+    if _period_key(numerator) != _period_key_from_value(reference.period):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} numerator resolves at "
+            f"{_comparable_period_value(numerator)!r}, not the target period "
+            f"{reference.period!r}."
+        )
+    return tuple(resolved)
+
+
 def reference_fact_selectors(
     reference: LedgerTargetReference,
 ) -> tuple[Mapping[str, object], ...]:
@@ -2197,6 +2411,10 @@ def reference_fact_selectors(
         selectors.append(dict(reference.ledger_selector))
     if reference.value_operation == "scaled_by_ratio":
         selectors.extend(_scaled_by_ratio_operand_selectors(reference))
+    if reference.value_operation == ROLLED_FORWARD_BY_RATIO:
+        if _rolled_forward_base_overlay(reference):
+            selectors.append(_rolled_forward_base_selector(reference))
+        selectors.extend(_rolled_forward_operand_selectors(reference))
     return tuple(selectors)
 
 
