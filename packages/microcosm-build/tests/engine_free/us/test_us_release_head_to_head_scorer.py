@@ -32,6 +32,55 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("version", "supported"),
+    [
+        ((3, 13, 9), False),
+        ((3, 13, 14), False),
+        ((3, 13, 15), True),
+        ((3, 14, 0), False),
+        ((3, 14, 6), False),
+        ((3, 14, 7), True),
+        ((3, 15, 0), True),
+        ((3, 12, 11), False),
+    ],
+)
+def test_worker_recycling_refuses_interpreters_that_can_deadlock(
+    version: tuple[int, int, int], supported: bool
+) -> None:
+    module = _load_head_to_head_module()
+
+    if supported:
+        module._assert_worker_recycling_supported(version)
+    else:
+        with pytest.raises(RuntimeError, match="--worker-max-slices needs Python"):
+            module._assert_worker_recycling_supported(version)
+
+
+def test_scoring_checks_the_interpreter_only_when_recycling_is_requested(
+    monkeypatch,
+) -> None:
+    module = _load_head_to_head_module()
+    calls: list[str] = []
+
+    def refuse(version_info=None) -> None:
+        calls.append("checked")
+        raise RuntimeError("--worker-max-slices needs Python 3.13.15 or later")
+
+    monkeypatch.setattr(module, "_assert_worker_recycling_supported", refuse)
+
+    with pytest.raises(RuntimeError, match="--worker-max-slices needs Python"):
+        module.score_loaded_artifact(
+            artifact=None,
+            artifact_name="incumbent",
+            yardstick=None,
+            maximum_microsim_batch_size=2,
+            workers=2,
+            worker_max_slices=1,
+        )
+    assert calls == ["checked"]
+
+
 def _parallel_fixture(module, monkeypatch):
     # Use the production repair, including its changed household weights and
     # mass log. Sending the unrepaired artifact frame would fail comparison.

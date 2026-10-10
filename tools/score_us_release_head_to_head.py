@@ -323,6 +323,39 @@ def _positive_worker_max_slices(value: str) -> int:
     return maximum
 
 
+# CPython could deadlock when ProcessPoolExecutor replaced a worker that had
+# reached max_tasks_per_child: the pool was left with no worker and a pending
+# task, so future.result() waited forever. Fixed in 3.13.15 and 3.14.7 (see
+# the max_tasks_per_child notes in the concurrent.futures documentation).
+_WORKER_RECYCLING_FIXED_IN = {(3, 13): (3, 13, 15), (3, 14): (3, 14, 7)}
+
+
+def _assert_worker_recycling_supported(
+    version_info: Sequence[int] | None = None,
+) -> None:
+    """Refuse worker recycling on an interpreter that can deadlock doing it."""
+
+    version = tuple((sys.version_info if version_info is None else version_info)[:3])
+    minor = version[:2]
+    fixed = _WORKER_RECYCLING_FIXED_IN.get(minor)
+    if fixed is None:
+        # Later minors ship the fix; earlier ones are below requires-python
+        # and never received it.
+        if minor > max(_WORKER_RECYCLING_FIXED_IN):
+            return
+        fixed_text = "3.13.15 or 3.14.7"
+    elif version >= fixed:
+        return
+    else:
+        fixed_text = ".".join(str(part) for part in fixed)
+    raise RuntimeError(
+        "--worker-max-slices needs Python "
+        f"{fixed_text} or later: on {'.'.join(str(part) for part in version)} "
+        "replacing a recycled worker can deadlock the pool. Run without "
+        "--worker-max-slices, or use a fixed interpreter."
+    )
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -1829,6 +1862,8 @@ def score_loaded_artifact(
         raise ValueError("workers must be at least 1.")
     if worker_max_slices is not None and worker_max_slices < 1:
         raise ValueError("worker_max_slices must be at least 1.")
+    if worker_max_slices is not None:
+        _assert_worker_recycling_supported()
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
     terminal_battery = _terminal_battery_payload(artifact)
     base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
@@ -2138,6 +2173,8 @@ def score_head_to_head(
         raise ValueError("workers must be at least 1.")
     if worker_max_slices is not None and worker_max_slices < 1:
         raise ValueError("worker_max_slices must be at least 1.")
+    if worker_max_slices is not None:
+        _assert_worker_recycling_supported()
     crosswalk = congressional_district_vintage_crosswalk or (
         release.default_congressional_district_vintage_crosswalk_path()
     )
