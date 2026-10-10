@@ -44,7 +44,14 @@ def test_uk_dense_posture_mirrors_the_ruled_constants() -> None:
     assert posture.learning_rate == 0.15
     assert posture.seed == 42
     assert posture.target_weight_rule == "grain_equal"
-    assert posture.allowed_target_weight_rules == ("grain_equal", "uniform")
+    assert posture.allowed_target_weight_rules == (
+        "grain_equal",
+        "uniform",
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    )
     assert posture.expected_constituency_vintage == "2024_pcon"
     assert posture.gate_scope == tuple(UK_LOCAL_GATE_SCOPE)
     assert (posture.gate_posture, posture.gate_policy_suffix) == (

@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -10,17 +10,23 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
+from microcosm.build.uk_runtime.target_weights import UKStageTargetWeighting
 from microcosm.calibrate import (
     CalibrationResult,
     TargetSet,
     assert_exact_k_support,
     calibrate,
+    chi_square_distance,
     exact_k_design_feasibility,
     refit_l0_selection,
+    relative_error_loss,
     select_exact_k,
 )
 from microcosm.calibrate.initialization import contribution_initialization
-from microcosm.calibrate.solve import BUDGET_BASIS_OPEN_PROBABILITY_MASS
+from microcosm.calibrate.solve import (
+    BUDGET_BASIS_OPEN_PROBABILITY_MASS,
+    L2_BASIS_CHI_SQUARE,
+)
 from microcosm.frame import Frame
 
 
@@ -66,6 +72,34 @@ class UKSizeDraw:
     seed: int
     pi_hi: float
     probabilities_sha256: str
+
+    @classmethod
+    def from_payload(
+        cls, payload: bytes | str | Mapping[str, object], *, problem_sha256: str
+    ) -> "UKSizeDraw | None":
+        """Rebuild a stored draw artifact; ``None`` for a full-pool draw.
+
+        The graph's size-draw node writes this JSON; the refit node and the
+        size-experiment harness read it back through this one parser.
+        """
+
+        draw = dict(payload if isinstance(payload, Mapping) else json.loads(payload))
+        if draw.pop("problem_sha256", None) != problem_sha256:
+            raise ValueError("Exact-count draw belongs to another ordered problem.")
+        method = draw.pop("method", None)
+        if method == "full_pool":
+            return None
+        if method != "exact_count":
+            raise ValueError("Compact refit requires a completed exact-count draw.")
+        return cls(
+            **{
+                **draw,
+                "support": np.asarray(draw["support"]),
+                "inclusion_probabilities": np.asarray(
+                    draw["inclusion_probabilities"], dtype=np.float64
+                ),
+            }
+        )
 
 
 def _probability_digest(probabilities: np.ndarray) -> str:
@@ -204,8 +238,169 @@ def _check_pi_hi(pi_hi: object) -> float:
     return value
 
 
+#: The L2 anchors a UK size stage admits (microcosm#1124). ``initial`` is the
+#: stage's own starting weights: the pool design weights in the search, the
+#: normalized (optionally floored) Horvitz–Thompson baseline in the refit.
+#: ``uniform`` is their mean, a direct Kish-ESS control.
+UK_SIZE_L2_ANCHORS = ("initial", "uniform")
+#: The L2 basis a UK size stage admits. Under the UK's free mass the record
+#: basis has its target-free optimum at every weight zero, so it only shrinks
+#: mass; the chi-square basis is zero at the anchor (penalized GREG).
+UK_SIZE_L2_BASES = (L2_BASIS_CHI_SQUARE,)
+UK_SIZE_L2_STAGES = ("selection", "refit")
+#: The flat keyword names a size stage's L2 travels under (graph node
+#: parameters and the size functions' keywords).
+UK_SIZE_L2_PARAM_KEYS = tuple(
+    f"{stage}_l2_{field}"
+    for stage in UK_SIZE_L2_STAGES
+    for field in ("lambda", "anchor", "basis")
+)
+
+
+@dataclass(frozen=True)
+class UKSizeL2:
+    """One size stage's L2 concentration penalty; an instance means it is on."""
+
+    stage: str
+    l2_lambda: float
+    anchor: str = "initial"
+    basis: str = L2_BASIS_CHI_SQUARE
+
+    def __post_init__(self) -> None:
+        if self.stage not in UK_SIZE_L2_STAGES:
+            raise ValueError(f"L2 stage must be one of {UK_SIZE_L2_STAGES}.")
+        value = self.l2_lambda
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not np.isfinite(value)
+            or value <= 0.0
+        ):
+            raise ValueError(f"{self.stage}_l2_lambda of an L2 penalty must be > 0.")
+        if self.anchor not in UK_SIZE_L2_ANCHORS:
+            raise ValueError(
+                f"{self.stage}_l2_anchor must be one of {UK_SIZE_L2_ANCHORS}, "
+                f"got {self.anchor!r}."
+            )
+        if self.basis not in UK_SIZE_L2_BASES:
+            raise ValueError(
+                f"{self.stage}_l2_basis must be one of {UK_SIZE_L2_BASES}, "
+                f"got {self.basis!r}."
+            )
+        object.__setattr__(self, "l2_lambda", float(value))
+
+    def solver_kwargs(self) -> dict[str, object]:
+        return {
+            "l2_lambda": self.l2_lambda,
+            "l2_anchor": self.anchor,
+            "l2_basis": self.basis,
+        }
+
+    def params(self) -> dict[str, object]:
+        """The flat keywords (node parameters) this penalty travels under."""
+
+        return {
+            f"{self.stage}_l2_lambda": self.l2_lambda,
+            f"{self.stage}_l2_anchor": self.anchor,
+            f"{self.stage}_l2_basis": self.basis,
+        }
+
+    def as_dict(self) -> dict[str, object]:
+        return {"lambda": self.l2_lambda, "anchor": self.anchor, "basis": self.basis}
+
+
+def uk_size_l2(
+    stage: str,
+    *,
+    l2_lambda: object = 0.0,
+    anchor: object = None,
+    basis: object = None,
+) -> UKSizeL2 | None:
+    """Validate one stage's flat L2 settings; ``None`` when the penalty is off.
+
+    ``l2_lambda`` 0 (the default) is off, and then no anchor or basis may be
+    given. The record basis and a ``"design"`` anchor are refused with their
+    reasons: the first only shrinks mass under free mass; the second is, on
+    the exact-count refit, the same vector as ``"initial"`` (the normalized
+    Horvitz–Thompson baseline), and in the search ``"initial"`` already names
+    the pool design weights.
+    """
+
+    if stage not in UK_SIZE_L2_STAGES:
+        raise ValueError(f"L2 stage must be one of {UK_SIZE_L2_STAGES}.")
+    if (
+        isinstance(l2_lambda, bool)
+        or not isinstance(l2_lambda, int | float)
+        or not np.isfinite(l2_lambda)
+        or l2_lambda < 0.0
+    ):
+        raise ValueError(f"{stage}_l2_lambda must be a finite number >= 0.")
+    if float(l2_lambda) == 0.0:
+        if anchor is not None or basis is not None:
+            raise ValueError(
+                f"{stage} L2 anchor or basis given without a positive "
+                f"{stage}_l2_lambda."
+            )
+        return None
+    anchor = "initial" if anchor is None else str(anchor)
+    basis = L2_BASIS_CHI_SQUARE if basis is None else str(basis)
+    if anchor == "design":
+        raise ValueError(
+            f"{stage}_l2_anchor 'design' is not a size-stage anchor: on the "
+            "exact-count refit it is the same vector as 'initial' (the "
+            "normalized Horvitz–Thompson baseline), and in the search 'initial' "
+            "already names the pool design weights."
+        )
+    if basis == "record":
+        raise ValueError(
+            f"{stage}_l2_basis 'record' is refused under the UK's free mass: its "
+            "target-free optimum is every weight at zero, so it only shrinks "
+            "mass. Use 'chi_square'."
+        )
+    return UKSizeL2(stage, float(l2_lambda), anchor, basis)
+
+
+def uk_size_l2_from_options(options: Mapping[str, object]) -> dict[str, object] | None:
+    """The L2 penalty a solved stage recorded in its options (``None`` when off)."""
+
+    value = float(options.get("l2_lambda", 0.0) or 0.0)
+    if value == 0.0:
+        return None
+    return {
+        "lambda": value,
+        "anchor": str(options.get("l2_anchor", "initial")),
+        "basis": str(options.get("l2_basis", "record")),
+    }
+
+
+def _l2_solver_kwargs(l2: UKSizeL2 | None) -> dict[str, object]:
+    # Off means no L2 keyword reaches the solver: its recorded defaults (and
+    # every byte of a default run) stay what they were before #1124.
+    return {} if l2 is None else l2.solver_kwargs()
+
+
+def _stage_loss_weights(
+    dense: CalibrationResult, weighting: object
+) -> np.ndarray | None:
+    """A stage's loss weights from a named rule, or ``None`` (the dense's)."""
+
+    if weighting is None:
+        return None
+    if not isinstance(weighting, UKStageTargetWeighting):
+        raise TypeError(
+            "a size stage's target weighting must be a UKStageTargetWeighting "
+            "(a named rule on the problem's rows), never a raw vector."
+        )
+    return weighting.loss_weights(dense.problem.names)
+
+
 def _solver_common(
-    dense: CalibrationResult, *, epochs: int, learning_rate: float, seed: int
+    dense: CalibrationResult,
+    *,
+    epochs: int,
+    learning_rate: float,
+    seed: int,
+    target_loss_weights: np.ndarray | None = None,
 ) -> dict[str, Any]:
     return dict(
         weight_entity="household",
@@ -214,7 +409,11 @@ def _solver_common(
         mass=dense.options["mass"],
         max_weight_ratio=dense.options["max_weight_ratio"],
         seed=seed,
-        target_loss_weights=dense.target_loss_weights,
+        target_loss_weights=(
+            dense.target_loss_weights
+            if target_loss_weights is None
+            else target_loss_weights
+        ),
         target_loss_scales=dense.target_loss_scales,
         target_loss_cap=dense.target_loss_cap,
     )
@@ -230,6 +429,10 @@ def select_uk_dataset_size(
     seed: int,
     pi_hi: float = 1.0,
     initial_lambda: float | None = None,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    target_weighting: UKStageTargetWeighting | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> UKSizeSelection:
     """Run the informed L0 budget search for an exact-count draw of ``households``.
@@ -247,10 +450,23 @@ def select_uk_dataset_size(
     every probe, so a stale hint costs probes, never feasibility; any penalty
     whose draw lands inside the budget window is a valid stop, so a warm and a
     cold search can settle on different penalties and select different rows.
+
+    ``selection_l2_*`` add a chi-square L2 penalty on the search's pre-gate
+    weights (microcosm#1124; see :func:`uk_size_l2`); off by default, and an
+    off penalty passes no L2 keyword to the solver. ``target_weighting``
+    searches under a named rule other than the dense solve's weights (the
+    size-experiment seam; graph builds never pass it).
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
     initial_lambda = _check_initial_lambda(initial_lambda)
+    selection_l2 = uk_size_l2(
+        "selection",
+        l2_lambda=selection_l2_lambda,
+        anchor=selection_l2_anchor,
+        basis=selection_l2_basis,
+    )
+    search_weights = _stage_loss_weights(dense, target_weighting)
     if households == n:
         raise ValueError("a full-pool size needs no selection.")
     problem = dense.problem
@@ -289,7 +505,14 @@ def select_uk_dataset_size(
         feasible_draw_pi_hi=pi_hi,
         l0_lambda=0.0 if initial_lambda is None else initial_lambda,
         progress_callback=_phased(progress_callback, "size_search"),
-        **_solver_common(dense, epochs=epochs, learning_rate=learning_rate, seed=seed),
+        **_l2_solver_kwargs(selection_l2),
+        **_solver_common(
+            dense,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            seed=seed,
+            target_loss_weights=search_weights,
+        ),
     )
     if selection.gate_open_probabilities is None:
         raise RuntimeError("informed L0 returned no selection probabilities.")
@@ -316,6 +539,14 @@ def refit_uk_dataset_size(
     pi_hi: float = 1.0,
     initial_lambda: float | None = None,
     baseline_pi_floor: float = 0.0,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
+    selection_target_weighting: UKStageTargetWeighting | None = None,
+    refit_target_weighting: UKStageTargetWeighting | None = None,
     selection: UKSizeSelection | None = None,
     draw: UKSizeDraw | None = None,
     progress_callback: ProgressCallback | None = None,
@@ -352,11 +583,43 @@ def refit_uk_dataset_size(
     searched for the same size, epochs, learning rate and seed on this pool.
     ``draw`` additionally reuses an authenticated completed draw without
     consuming its random stream again; the probability binding must match.
+
+    ``selection_l2_*`` are the search's L2 settings (a reused selection must
+    have been searched under the same ones) and ``refit_l2_*`` the refit's
+    own, independent of the search's (microcosm#1124; see :func:`uk_size_l2`).
+    On the exact-count path the refit's ``"initial"`` anchor is the
+    normalized Horvitz–Thompson baseline, floored by ``baseline_pi_floor``.
+    ``selection_target_weighting`` and ``refit_target_weighting`` run a stage
+    under a named rule other than the dense solve's weights (the
+    size-experiment seam; graph builds never pass them). Every new setting is
+    off by default and then leaves the call, its solver options and its
+    receipt exactly as before.
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
     baseline_pi_floor = _check_baseline_pi_floor(baseline_pi_floor)
+    selection_l2 = uk_size_l2(
+        "selection",
+        l2_lambda=selection_l2_lambda,
+        anchor=selection_l2_anchor,
+        basis=selection_l2_basis,
+    )
+    refit_l2 = uk_size_l2(
+        "refit", l2_lambda=refit_l2_lambda, anchor=refit_l2_anchor, basis=refit_l2_basis
+    )
+    search_weights = _stage_loss_weights(dense, selection_target_weighting)
+    refit_weights = _stage_loss_weights(dense, refit_target_weighting)
     if households == n:
+        if (
+            selection_l2 is not None
+            or refit_l2 is not None
+            or search_weights is not None
+            or refit_weights is not None
+        ):
+            raise ValueError(
+                "a full-pool size returns the dense solve unchanged, so it cannot "
+                "honour a size-stage L2 penalty or target weighting."
+            )
         return UKDatasetSize(
             dense,
             np.arange(n),
@@ -379,6 +642,10 @@ def refit_uk_dataset_size(
             seed=seed,
             pi_hi=pi_hi,
             initial_lambda=initial_lambda,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            target_weighting=selection_target_weighting,
             progress_callback=progress_callback,
         )
         reused = False
@@ -404,6 +671,25 @@ def refit_uk_dataset_size(
             or selection.selection.l0_lambda <= 0.0
         ):
             mismatched.append("pool: the selection was not searched on this pool")
+        stored_l2 = uk_size_l2_from_options(selection.selection.options)
+        requested_l2 = None if selection_l2 is None else selection_l2.as_dict()
+        if stored_l2 != requested_l2 or selection.selection.options.get(
+            "l2_anchor_weights_supplied", False
+        ):
+            mismatched.append(
+                f"selection L2: searched under {stored_l2!r}, requested "
+                f"{requested_l2!r}"
+            )
+        expected_search_weights = (
+            dense.target_loss_weights if search_weights is None else search_weights
+        )
+        if not np.array_equal(
+            np.asarray(selection.selection.target_loss_weights, dtype=np.float64),
+            np.asarray(expected_search_weights, dtype=np.float64),
+        ):
+            mismatched.append(
+                "target loss weights: the selection was searched under other weights"
+            )
         if mismatched:
             raise ValueError(
                 "cannot draw from a selection searched for different inputs: "
@@ -412,7 +698,11 @@ def refit_uk_dataset_size(
             )
     init_protected = selection.protected
     common = _solver_common(
-        dense, epochs=epochs, learning_rate=learning_rate, seed=seed
+        dense,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        seed=seed,
+        target_loss_weights=refit_weights,
     )
     probabilities = selection.selection.gate_open_probabilities
     assert probabilities is not None
@@ -460,6 +750,7 @@ def refit_uk_dataset_size(
         support_inclusion_probabilities=baseline_q,
         mass_reason=dense.options["mass_reason"],
         progress_callback=_phased(progress_callback, "size_refit"),
+        **_l2_solver_kwargs(refit_l2),
         **common,
     ).refit
     if (
@@ -477,6 +768,15 @@ def refit_uk_dataset_size(
     certainty_rows = q >= 1.0
     baseline_name = "normalized_horvitz_thompson_w_over_q" + (
         "_floored" if baseline_pi_floor > 0.0 else ""
+    )
+    receipt_extras = _size_stage_receipt(
+        dense=dense,
+        search_result=search_result,
+        refit=refit,
+        refit_l2=refit_l2,
+        baseline_name=baseline_name,
+        selection_weighting=selection_target_weighting,
+        refit_weighting=refit_target_weighting,
     )
     return UKDatasetSize(
         refit,
@@ -525,8 +825,79 @@ def refit_uk_dataset_size(
                 np.max(np.abs(errors_small - errors_dense) / dense.target_loss_scales)
             ),
             "certification": "candidate_only_pending_matched_comparison_and_promotion_scorecard",
+            **receipt_extras,
         },
     )
+
+
+def _size_stage_receipt(
+    *,
+    dense: CalibrationResult,
+    search_result: CalibrationResult,
+    refit: CalibrationResult,
+    refit_l2: UKSizeL2 | None,
+    baseline_name: str,
+    selection_weighting: UKStageTargetWeighting | None,
+    refit_weighting: UKStageTargetWeighting | None,
+) -> dict[str, object]:
+    """The microcosm#1124 receipt fields, present only when a setting is on.
+
+    A default run (no L2, the dense's weights in both stages) adds nothing,
+    so its size receipt is byte-identical to the one before these settings
+    existed.
+    """
+
+    extras: dict[str, object] = {}
+    searched_l2 = uk_size_l2_from_options(search_result.options)
+    if searched_l2 is not None:
+        extras["selection_l2"] = {
+            **searched_l2,
+            "penalty": search_result.options.get("l2_penalty"),
+            "anchor_reference": (
+                "pool_design"
+                if searched_l2["anchor"] == "initial"
+                else "pool_design_mean"
+            ),
+        }
+    if refit_l2 is not None:
+        start = np.asarray(refit.initial_weights, dtype=np.float64)
+        anchor = (
+            start if refit_l2.anchor == "initial" else np.full_like(start, start.mean())
+        )
+        extras["refit_l2"] = {
+            **refit_l2.as_dict(),
+            "penalty": refit.options.get("l2_penalty"),
+            "anchor_reference": (
+                baseline_name
+                if refit_l2.anchor == "initial"
+                else f"{baseline_name}_mean"
+            ),
+            "chi_square_distance_to_anchor": float(
+                chi_square_distance(np.asarray(refit.weights, dtype=np.float64), anchor)
+            ),
+        }
+        extras["refit_iterate_selection"] = refit.options.get("iterate_selection")
+    names = dense.problem.names
+    if selection_weighting is not None:
+        extras["selection_target_weighting"] = selection_weighting.receipt(names)
+    if refit_weighting is not None:
+        extras["refit_target_weighting"] = refit_weighting.receipt(names)
+        # The compact loss under the dense solve's own weights keeps the
+        # dense-versus-compact comparison on one yardstick.
+        estimates = np.asarray(
+            [diagnostic.final_estimate for diagnostic in refit.diagnostics],
+            dtype=np.float64,
+        )
+        extras["compact_loss_under_dense_weights"] = float(
+            relative_error_loss(
+                estimates,
+                np.asarray(refit.problem.target_vector, dtype=np.float64),
+                target_loss_weights=dense.target_loss_weights,
+                target_loss_scales=dense.target_loss_scales,
+                target_loss_cap=dense.target_loss_cap,
+            )
+        )
+    return extras
 
 
 def unsupported_nonzero_targets(problem: Any) -> list[str]:

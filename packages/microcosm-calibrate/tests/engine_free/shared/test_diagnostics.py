@@ -41,6 +41,7 @@ from microcosm.calibrate import (
 from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
 from microcosm.calibrate.geography_constants import (
     UK_GEOGRAPHY_ID_TO_LABEL,
+    UK_WIDE_GEOGRAPHY_IDS,
     US_STATE_FIPS_TO_POSTAL,
     US_STATE_NUMERIC_FIPS_TO_POSTAL,
     US_STATE_POSTAL_TO_NUMERIC_FIPS,
@@ -78,6 +79,8 @@ def test_shared_geography_constant_views_are_consistent() -> None:
         "E12000008": "South East",
         "E12000009": "South West",
     }
+    assert UK_WIDE_GEOGRAPHY_IDS == {"K02000001", "K03000001", "K04000001"}
+    assert UK_WIDE_GEOGRAPHY_IDS <= set(UK_GEOGRAPHY_ID_TO_LABEL)
     assert len(US_STATE_FIPS_TO_POSTAL) == 51
     assert US_STATE_FIPS_TO_POSTAL["01"] == "AL"
     assert US_STATE_FIPS_TO_POSTAL["11"] == "DC"

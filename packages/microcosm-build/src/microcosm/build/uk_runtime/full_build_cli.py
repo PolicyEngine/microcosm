@@ -107,6 +107,7 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
+from .dataset_size import UK_SIZE_L2_ANCHORS, UK_SIZE_L2_BASES
 from .frs_release import load_uk_frs_release
 from .full_certification import (
     append_uk_full_certification_node,
@@ -155,6 +156,7 @@ from .graph_terminal import (
     register_uk_terminal_kernels,
     rowwise_candidate_manifest_from_graph,
 )
+from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
@@ -168,6 +170,7 @@ from .rowwise_cli import (
     REPOSITORY,
     candidate_clone_counts_argument,
     candidate_identity_digest,
+    cli_size_l2,
     git_commit,
     git_dirty,
     json_text,
@@ -529,6 +532,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "0 (default) is the untrimmed baseline. Requires --dataset-households."
         ),
     )
+    for size_stage, weights in (
+        ("selection", "the informed L0 size search's pre-gate weights"),
+        ("refit", "the exact-count refit's weights"),
+    ):
+        parser.add_argument(
+            f"--{size_stage}-l2-lambda",
+            type=float,
+            default=None,
+            help=(
+                f"A chi-square L2 penalty on {weights} toward their anchor "
+                "(microcosm#1124); off by default. Candidate-only; requires "
+                "--dataset-households."
+            ),
+        )
+        parser.add_argument(
+            f"--{size_stage}-l2-anchor",
+            choices=UK_SIZE_L2_ANCHORS,
+            default=None,
+            help=(
+                "'initial' (the stage's starting weights; the refit's is the "
+                "normalized Horvitz-Thompson baseline) or 'uniform' (their mean)."
+            ),
+        )
+        parser.add_argument(
+            f"--{size_stage}-l2-basis", choices=UK_SIZE_L2_BASES, default=None
+        )
     parser.add_argument(
         "--no-size-checkpoint",
         action="store_true",
@@ -546,7 +575,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--target-weight-rule",
-        choices=("uniform", "grain_equal", "family_equal"),
+        choices=(
+            "uniform",
+            "grain_equal",
+            "family_equal",
+            *UK_LOCAL_ROW_METADATA_RULES,
+        ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",
     )
     parser.add_argument("--engine-blocks", type=int, default=1)
@@ -903,6 +937,8 @@ def prepare_full_build(
             selection_initial_lambda=args.selection_initial_lambda,
             baseline_pi_floor=args.baseline_pi_floor,
             target_weight_rule=args.target_weight_rule,
+            selection_l2=cli_size_l2(args, "selection"),
+            refit_l2=cli_size_l2(args, "refit"),
         ),
     )
     args._calibration_year = int(config.calibration_year)
