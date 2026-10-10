@@ -23,6 +23,10 @@ import numpy as np
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
+from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_transfer_target_families,
+    with_acs_local_esi_premium_anchor,
+)
 from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_transfer_target_families,
     complete_acs_local_under15_hours,
@@ -83,6 +87,8 @@ def build_optional_acs_multispine(
     hours_donor_factory: Callable[[Frame], tuple[Frame, Frame, dict[str, object]]]
     | None = None,
     hours_under15_policy: str | None = None,
+    esi_premium_donor_factory: Callable[[Frame], tuple[Frame, dict[str, object]]]
+    | None = None,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -102,6 +108,12 @@ def build_optional_acs_multispine(
     fallback for usual-hours cells unresolved by the native WKHP mapping.
     Alternatively, ``hours_donor_factory`` qualifies that donor lazily: a
     source-complete ACS spine never needs its raw ASEC fields opened.
+
+    ``esi_premium_donor_factory`` qualifies the base as the donor of the
+    employer premium (microcosm#454) and returns its ASEC observation role.
+    The premium then reaches the ACS rows through its own ASEC-only pass, and
+    the pooled frame is held to the donor rows' premium per unit of household
+    mass (:func:`~.acs_local_esi_premiums.with_acs_local_esi_premium_anchor`).
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -177,6 +189,30 @@ def build_optional_acs_multispine(
         hours_imputed_inputs = tuple(hours_transfer.imputed_inputs)
         hours_donor_channel = hours_transfer.resolved_donor_channel
         del hours_transfer
+    esi_fit_records = ()
+    esi_imputed_inputs = ()
+    esi_donor_channel = None
+    esi_source = None
+    if esi_premium_donor_factory is not None:
+        # The premium follows measured wages, so it fits on the ASEC
+        # observation role like usual hours, not on the PUF-detail role the
+        # tax details use: that role's wages are PUF-imputed.
+        esi_donor, esi_source = esi_premium_donor_factory(base)
+        esi_transfer = transfer_acs_inputs(
+            mapped_frame,
+            esi_donor,
+            target_families=acs_local_esi_premium_transfer_target_families(),
+            donor_spine=donor_spine,
+            donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+        )
+        mapped_frame = esi_transfer.frame
+        esi_fit_records = tuple(esi_transfer.fit_records)
+        esi_imputed_inputs = tuple(esi_transfer.imputed_inputs)
+        esi_donor_channel = esi_transfer.resolved_donor_channel
+        del esi_transfer, esi_donor
     transferred = transfer_acs_inputs(
         mapped_frame,
         base,
@@ -189,9 +225,9 @@ def build_optional_acs_multispine(
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
-    fit_records = hours_fit_records + tuple(transferred.fit_records)
+    fit_records = hours_fit_records + esi_fit_records + tuple(transferred.fit_records)
     imputed_provenance = _json_ready_sequence(
-        hours_imputed_inputs + tuple(transferred.imputed_inputs)
+        hours_imputed_inputs + esi_imputed_inputs + tuple(transferred.imputed_inputs)
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
     if puma_ladder is not None:
@@ -219,6 +255,11 @@ def build_optional_acs_multispine(
         )
     pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
+    esi_anchor = None
+    if esi_premium_donor_factory is not None:
+        # Pooling has set each spine's share of household mass; the anchor
+        # reads it from the live frame.
+        pooled, esi_anchor = with_acs_local_esi_premium_anchor(pooled)
 
     provenance = {
         "enabled": True,
@@ -245,6 +286,11 @@ def build_optional_acs_multispine(
         provenance["local_hours_source"] = hours_source
     if modeled_hours is not None:
         provenance["hours_modeled_completion"] = modeled_hours
+    if esi_premium_donor_factory is not None:
+        provenance["fit_configuration"]["esi_premium_donor_channel"] = esi_donor_channel
+        provenance["local_esi_premiums"] = _json_ready_mapping(
+            {"source": esi_source, "anchor": esi_anchor}
+        )
     if puma_ladder is not None:
         geography = us_puma_ladder_assignment_summary(
             pooled.table("household"),
