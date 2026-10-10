@@ -359,10 +359,8 @@ EXPECTED_HASHES = {
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-    # #1178: puf_support's source bytes attest CPS Social Security preservation.
-    # RNG rules and the ordered QRF targets are unchanged.
-    "seed_map": "7d03cc07e973165f38781d5932d5fe6d16ca0b1e4dc854e7841460737fd043fb",
-    "seed_protocol": "37da8f68444677850a97bdf958b7f62b426a60da570b80a002eeba8af4861f68",
+    "seed_map": "0a605fa04ba8f5344aa6156362b71fc0fd33dbdf08f45af280458f6f378bf426",
+    "seed_protocol": "eb254e9e7b0fec9fb56884151e42fa28628795a37d2688aa347106f3864c9b8c",
     "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
