@@ -1373,7 +1373,7 @@
         "contract_target_id": "isc.private_school_students",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2024-01",
+      "uprating_from_period": "2025-01",
       "uprating_to_period": 2025
     },
     {
@@ -9460,7 +9460,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimensions": [],
         "geography_level": "country",
         "geography_id": "K02000001"
@@ -9473,16 +9472,13 @@
         "contract_target_id": "ons.population.uk_total",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9516,16 +9512,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9559,16 +9552,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9602,16 +9592,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9645,16 +9632,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9688,16 +9672,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9731,16 +9712,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9774,16 +9752,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9817,16 +9792,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9860,16 +9832,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9903,16 +9872,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9946,16 +9912,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9989,16 +9952,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10032,16 +9992,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10075,16 +10032,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10118,16 +10072,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10161,16 +10112,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10204,16 +10152,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10247,16 +10192,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10290,16 +10232,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10333,16 +10272,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10376,16 +10312,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10419,16 +10352,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10462,16 +10392,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10505,16 +10432,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10548,16 +10472,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10591,16 +10512,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10634,16 +10552,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10677,16 +10592,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10720,16 +10632,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10763,16 +10672,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10806,16 +10712,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10849,16 +10752,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10892,16 +10792,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10935,16 +10832,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10978,16 +10872,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -11021,16 +10912,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11064,16 +10952,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11107,16 +10992,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11150,16 +11032,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11193,16 +11072,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11236,16 +11112,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11279,16 +11152,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11322,16 +11192,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11365,16 +11232,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11408,16 +11272,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11451,16 +11312,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11494,16 +11352,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11537,16 +11392,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11580,16 +11432,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11623,16 +11472,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11666,16 +11512,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11709,16 +11552,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11752,16 +11592,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11795,16 +11632,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11838,16 +11672,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11881,16 +11712,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11924,16 +11752,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11967,16 +11792,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -12010,16 +11832,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -12053,16 +11872,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12096,16 +11912,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12139,16 +11952,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12182,16 +11992,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12225,16 +12032,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12268,16 +12072,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12311,16 +12112,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12354,16 +12152,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12397,16 +12192,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12440,16 +12232,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12483,16 +12272,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12526,16 +12312,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12569,16 +12352,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12612,16 +12392,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12655,16 +12432,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12698,16 +12472,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12741,16 +12512,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12784,16 +12552,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12827,16 +12592,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12870,16 +12632,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12913,16 +12672,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12956,16 +12712,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12999,16 +12752,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -13042,16 +12792,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -13085,16 +12832,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13128,16 +12872,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13171,16 +12912,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13214,16 +12952,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13257,16 +12992,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13300,16 +13032,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13343,16 +13072,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13386,16 +13112,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13429,16 +13152,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13472,16 +13192,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13515,16 +13232,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13558,16 +13272,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13601,16 +13312,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13644,16 +13352,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13687,16 +13392,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13730,16 +13432,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13773,16 +13472,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13816,16 +13512,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13859,16 +13552,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13902,16 +13592,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13945,16 +13632,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13988,16 +13672,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -14031,16 +13712,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -14074,16 +13752,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -14117,16 +13792,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.female_0_4",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14153,16 +13825,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_10_14",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14189,16 +13858,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_15_19",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14225,16 +13891,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_20_24",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14261,16 +13924,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_25_29",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14297,16 +13957,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_30_34",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14333,16 +13990,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_35_39",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14369,16 +14023,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_40_44",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14405,16 +14056,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_45_49",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14441,16 +14089,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_50_54",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14477,16 +14122,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_55_59",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14513,16 +14155,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_5_9",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14549,16 +14188,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_60_64",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14585,16 +14221,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_65_69",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14621,16 +14254,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_70_74",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14657,16 +14287,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_75_79",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14693,16 +14320,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_80_84",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14729,16 +14353,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_85_89",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14765,16 +14386,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_90_plus",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14797,16 +14415,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 1,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 1
     },
     {
       "name": "ons.population.male_0_4",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14833,16 +14448,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_10_14",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14869,16 +14481,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_15_19",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14905,16 +14514,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_20_24",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14941,16 +14547,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_25_29",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14977,16 +14580,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_30_34",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15013,16 +14613,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_35_39",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15049,16 +14646,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_40_44",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15085,16 +14679,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_45_49",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15121,16 +14712,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_50_54",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15157,16 +14745,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_55_59",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15193,16 +14778,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_5_9",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15229,16 +14811,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_60_64",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15265,16 +14844,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_65_69",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15301,16 +14877,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_70_74",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15337,16 +14910,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_75_79",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15373,16 +14943,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_80_84",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15409,16 +14976,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_85_89",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15445,16 +15009,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_90_plus",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15477,16 +15038,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 1,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 1
     },
     {
       "name": "ons.population.scotland_children_under_16",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -15522,16 +15080,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 16,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 16
     },
     {
       "name": "ons.population.scotland_babies_under_1",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0
@@ -15552,9 +15107,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 1,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 1
     },
     {
       "name": "ons.household_composition.lone_households_under_65",
@@ -23150,6 +22703,13 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_measure_id": "total_public_sector",
+        "period_type": "month",
+        "period_value": [
+          "2025-03",
+          "2025-06",
+          "2025-09",
+          "2025-12"
+        ],
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -23161,8 +22721,8 @@
         "contract_target_id": "ons.public_sector_employment",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2024-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "ons.land.land_value",
@@ -23170,6 +22730,9 @@
         "source_name": "ons",
         "source_concept": "ons.e44r",
         "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -23180,9 +22743,7 @@
       "metadata": {
         "contract_target_id": "ons.land.land_value",
         "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      }
     },
     {
       "name": "ons.land.household_land_value",
@@ -23190,6 +22751,9 @@
         "source_name": "ons",
         "source_concept": "ons.e44n",
         "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -23200,9 +22764,7 @@
       "metadata": {
         "contract_target_id": "ons.land.household_land_value",
         "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      }
     },
     {
       "name": "ons.land.corporate_land_value",
@@ -23210,6 +22772,9 @@
         "source_name": "ons",
         "source_concept": "ons.e43b",
         "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -23220,9 +22785,7 @@
       "metadata": {
         "contract_target_id": "ons.land.corporate_land_value",
         "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      }
     },
     {
       "name": "slc.repayments.england_total_higher_education",
@@ -23244,9 +22807,7 @@
         "contract_target_id": "slc.repayments.england_total_higher_education",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_plan_1",
@@ -23268,9 +22829,7 @@
         "contract_target_id": "slc.repayments.england_plan_1",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_plan_2",
@@ -23293,9 +22852,7 @@
         "contract_target_id": "slc.repayments.england_plan_2",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_postgraduate",
@@ -23318,9 +22875,7 @@
         "contract_target_id": "slc.repayments.england_postgraduate",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_plan_5",
@@ -23343,9 +22898,7 @@
         "contract_target_id": "slc.repayments.england_plan_5",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
@@ -24167,9 +23720,7 @@
         "observation_basis": "fiscal_year_flow"
       },
       "value_operation": "sum",
-      "expected_member_count": 2,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 2
     },
     {
       "name": "nithc.public_transport_support",

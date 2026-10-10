@@ -238,6 +238,70 @@
       "approved_on": null,
       "status": "proposed",
       "expires_on": "2027-08-31"
+    },
+    {
+      "scope": "national",
+      "kind": "in_year_snapshot",
+      "target_ids": [
+        "isc.private_school_students"
+      ],
+      "reason": "ISC census pupil total counted on Census Day, 16 January 2025: a count at a date inside the calibration year, not a lagged period (the January 2026 census falls after it).",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "national",
+      "kind": "reviewed_no_index",
+      "target_ids": [
+        "slc.support.adult_dependants_grant_recipients",
+        "slc.support.adult_dependants_grant_spend",
+        "slc.support.maintenance_loan_recipients",
+        "slc.support.maintenance_loan_spend",
+        "slc.support.parents_learning_allowance_recipients",
+        "slc.support.parents_learning_allowance_spend"
+      ],
+      "reason": "SLC student support for higher education in England, academic year 2024/25, the latest final edition of these products. The provisional 2025/26 early-year tables (in the feed) report support totals by level and domicile, not maintenance loans, Parents' Learning Allowance or Adult Dependants' Grant, so they cannot carry these rows; the final 2025/26 edition is due 26 November 2026.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-01-31"
+    },
+    {
+      "scope": "national",
+      "kind": "reviewed_no_index",
+      "target_ids": [
+        "obr.fuel_duties_cars"
+      ],
+      "reason": "The cars share of fuel duty comes from the OBR's April 2024 note (FY2024-25). HMRC's provisional FY2025-26 fuel duty total is in the feed, but carrying the cars line to calendar 2025 needs a fiscal-to-calendar roll-forward of the total that is not built yet; held to FY2024-25 until it is (a #1123 follow-up).",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "local",
+      "kind": "control_rescaled",
+      "target_ids": [
+        "ons.age.0_10",
+        "ons.age.10_20",
+        "ons.age.20_30",
+        "ons.age.30_40",
+        "ons.age.40_50",
+        "ons.age.50_60",
+        "ons.age.60_70",
+        "ons.age.70_80"
+      ],
+      "reason": "Local authority age cells bind ONS mid-2025; constituency cells stay at mid-2024 (England and Wales, NRS's revised 2022-data-zone edition for Scotland) because no mid-2025 constituency edition is published yet (England and Wales due December 2026 to January 2027). Their level is set by the mid-2025 region-tier age controls through the age bridges, so only their shares within a leg are held.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-03-31"
     }
   ]
 }
