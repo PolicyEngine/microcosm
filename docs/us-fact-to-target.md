@@ -133,33 +133,47 @@ binds them:
   the state's published bands of the same vintage, measure and record set
   over the whole AGI line, negative AGI under $1 included; HT2 publishes
   amounts that add exactly and counts rounded to tens. The control is the
-  state's latest HT2 all-returns total not after the build period
-  (`irs_soi.<ty>.historic_table_2.state_broad.<st>.all.<measure>`), the row
-  that already binds the state's total. Congressional-district `<st>_total`
-  rows never anchor a state.
+  state's HT2 all-returns total
+  (`irs_soi.<ty>.historic_table_2.state_broad.<st>.all.<measure>`) as the
+  registry binds it: the row latest-vintage selection kept and the
+  exclusions let through, read from the compiled registry, not from the
+  facts. A band's share of the total it calibrates beside is therefore the
+  share it records. A state whose total is excluded has no control and binds
+  no bands of that measure; two bound totals for one state and measure
+  raise. Congressional-district `<st>_total` rows never anchor a state.
 - **Periods.** The value lands at the control's period and ages with the
   state total: AGI on the CBO AGI series, counts never. The bands therefore
   stay the same share of the state total they bind beside, at every stage.
   The control may be older than the bands (TY2023 bands on the TY2022 state
   total): the newest published shares scale onto the level the state total
   binds at, rather than binding a second, differently aged level.
-- **One vintage.** Every vintage of a state band reaches the pass; per state
-  and measure the pass binds the newest vintage whose published partition is
-  complete and drops the rest, so the TY2022 package's summed `500k_plus` row
-  never binds beside TY2023's split rows, and a gapped newest vintage falls
-  back to the last complete one. Overlapping bands, or one source record id
-  re-emitted with different values, raise.
+- **One vintage.** State bands are the one family selected by vintage, not
+  per row. Every vintage of a binding band stays a candidate through
+  latest-vintage selection, and `_with_one_state_agi_band_vintage` then keeps,
+  per state and measure, the newest vintage whose published partition is
+  complete. The TY2022 package's summed `500k_plus` row never binds beside
+  TY2023's split rows, and a gapped newest vintage falls back to the last
+  complete one. The choice is made inside selection, so the exclusion vintage
+  guard and the exclusion receipt see only the band ids that can bind.
+- **Malformed partitions.** In a vintage that is examined, overlapping
+  bands, a NaN bound or value, or one source record id with two different
+  rows raise; an identical re-emission of a sub-floor band counts once. A
+  binding band's own fact is a target fact: like every other family, the
+  compile refuses two facts for one source record id, identical or not.
+  Vintages older than the one chosen are not examined.
 - **The floor holds at every period.** A state band below $100k, or for a
   single filing status, is refused even in its own tax year, so a same-year
   vintage can never bind raw sub-floor levels.
 - **Receipts.** Every rebased row carries `state_agi_band_share`,
   `uprating_factor` and the control's record id.
-- **Release gate.** `irs_state_agi_top_tail` and
-  `irs_state_agi_top_tail_returns` in `US_FISCAL_TARGET_COVERAGE_REQUIREMENTS`
-  require a $1M+ AGI row and a $1M+ return-count row for all 51 states, so a
-  feed without the split bands, or a state whose partition or total is
-  missing for either measure, fails the release rather than shipping without
-  the constraint. Together the two rows pin each state's AGI above $1M.
+- **Release gate.** `US_FISCAL_TARGET_COVERAGE_REQUIREMENTS` carries one
+  requirement per state and measure,
+  `irs_state_agi_top_tail_<st>_<measure>` (102 in all), each matching that
+  state's `[$1M, inf)` row by `state_fips` and both AGI bounds. A feed
+  without the split bands, or a state whose partition or bound total is
+  missing for either measure, fails the release and names the state, rather
+  than shipping without the constraint; a second row for another state
+  cannot stand in. Together the two rows pin each state's AGI above $1M.
 - **Period contract.** Without aging, a band rebased onto an older state
   total holds that total's period's dollars; `find_period_contract_violations`
   reads `uprating_to_period` for rebased rows, the same period target aging

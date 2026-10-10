@@ -351,7 +351,6 @@ _SOI_STATE_AGI_BAND_MEASURES = frozenset({"return_count", "adjusted_gross_income
 _SOI_STATE_AGI_BAND_RECORD_SET_PREFIX = "irs_soi.historic_table_2.state_agi."
 _SOI_STATE_AGI_BAND_CONTROL_RECORD_SET_PREFIX = "irs_soi.historic_table_2.state_broad."
 _SOI_STATE_AGI_BAND_REBASE_FLAG = "requires_state_agi_band_rebase"
-_SOI_STATE_AGI_BAND_RECORD_SET_KEY = "state_agi_band_record_set"
 _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
 _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
     {
@@ -2093,21 +2092,31 @@ def _state_agi_band_key(metadata: Mapping[str, str]) -> tuple[str, str]:
 
 
 def _state_agi_band_vintage(metadata: Mapping[str, str]) -> tuple[str, str]:
-    """(source period, period-free record set) of a flagged band."""
+    """(source period, period-free record set) of a compiled band spec."""
     return (
         metadata.get("source_period", ""),
-        metadata.get(_SOI_STATE_AGI_BAND_RECORD_SET_KEY, ""),
+        _normalized_record_set_id(metadata.get("ledger_layout_record_set_id", "")),
+    )
+
+
+def _state_agi_band_vintage_from_fact(fact: object) -> tuple[str, str]:
+    """(source period, period-free record set) of a band fact."""
+    return (
+        str(_period_value(fact)),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
     )
 
 
 def _with_one_state_agi_band_vintage(
     selected: tuple[tuple[str, LedgerTargetReference], ...],
     facts: tuple[object, ...],
+    band_vintages: Mapping[str, tuple[str, str]],
 ) -> tuple[tuple[str, LedgerTargetReference], ...]:
     """Keep each state's AGI bands of one vintage: the newest that tiles (#940).
 
     Binding state bands keep their period in the selection key, so every
-    vintage arrives here. Per (state, measure) the newest vintage whose
+    vintage arrives here; ``band_vintages`` maps each band's source record id
+    to its (period, record set). Per (state, measure) the newest vintage whose
     published partition tiles the AGI line is kept and every other vintage's
     rows are dropped: a collapsed ``500k_plus`` row from one year never binds
     beside another year's split ``500k_to_1m``/``1m_plus`` rows, and a newest
@@ -2116,19 +2125,15 @@ def _with_one_state_agi_band_vintage(
     only the band ids that can bind.
     """
 
-    flagged = [
-        reference
-        for _, reference in selected
-        if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true"
-    ]
-    if not flagged:
+    if not band_vintages:
         return selected
     band_rows = _soi_state_agi_band_rows(facts)
     vintages: dict[tuple[str, str], set[tuple[str, str]]] = {}
-    for reference in flagged:
-        vintages.setdefault(_state_agi_band_key(reference.metadata), set()).add(
-            _state_agi_band_vintage(reference.metadata)
-        )
+    for source_record_id, reference in selected:
+        if source_record_id in band_vintages:
+            vintages.setdefault(_state_agi_band_key(reference.metadata), set()).add(
+                band_vintages[source_record_id]
+            )
     chosen = {
         key: _latest_complete_state_agi_band_vintage(key, kept, band_rows)
         for key, kept in vintages.items()
@@ -2136,9 +2141,9 @@ def _with_one_state_agi_band_vintage(
     return tuple(
         (source_record_id, reference)
         for source_record_id, reference in selected
-        if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) != "true"
+        if source_record_id not in band_vintages
         or chosen[_state_agi_band_key(reference.metadata)]
-        == _state_agi_band_vintage(reference.metadata)
+        == band_vintages[source_record_id]
     )
 
 
@@ -2665,6 +2670,7 @@ def _latest_dynamic_target_references(
     """
 
     facts = tuple(facts)
+    band_vintages: dict[str, tuple[str, str]] = {}
     candidates: list[
         tuple[
             tuple[str, ...],
@@ -2687,6 +2693,9 @@ def _latest_dynamic_target_references(
                 # completeness, which per-band latest selection cannot see
                 # (microcosm#940).
                 key = (*key, str(_period_value(fact)))
+                band_vintages[_source_record_id(fact)] = (
+                    _state_agi_band_vintage_from_fact(fact)
+                )
             candidates.append(
                 (
                     key,
@@ -2729,6 +2738,7 @@ def _latest_dynamic_target_references(
             for _, source_record_id, reference in latest.values()
         ),
         facts,
+        band_vintages,
     )
 
 
@@ -3153,9 +3163,6 @@ def _soi_reference_from_fact(
         metadata["requires_total_soi_uprating"] = "true"
     if requires_state_agi_band_rebase:
         metadata[_SOI_STATE_AGI_BAND_REBASE_FLAG] = "true"
-        metadata[_SOI_STATE_AGI_BAND_RECORD_SET_KEY] = _normalized_record_set_id(
-            _str_at(fact, "layout", "record_set_id")
-        )
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
