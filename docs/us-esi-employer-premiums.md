@@ -290,21 +290,21 @@ and the raw coverage columns the release carries. ACS rows have neither.
 `acs_local_esi_premium_transfer_target_families` is a one-family plan,
 `source_operator_esi_premiums`, that only the lane's staging build uses, as it
 does for usual hours (#765). The declared ACS plan
-(`declared_acs_transfer_target_families`) does not gain the column, because of
-what else reads that plan:
+(`declared_acs_transfer_target_families`) does not gain the column:
 
-- `pool_transfer_target_families` adds a `source_operator_*` family only for
-  outputs the declared plan does not own. Declaring the column would move it,
-  in the stacked pool, out of `source_operator_esi_premiums` and into a legacy
-  family.
-- The frozen v11 authority reconstruction
-  (`stacked_spine._legacy_stacked_authority_receipt`) leaves out post-v11
-  targets by family name. A legacy family existed in v11, so the column would
-  enter the reconstruction, and scoring an attested schema-9 pool refuses an
-  authority that differs from it.
+- The lane's main transfer fits every declared family on the PUF-detail role
+  (`ACS_DONOR_CHANNEL_AUTO`), the wrong donor for this column (next section).
+- Under one of the declared plan's existing families, the column would also
+  leave the stacked pool's `source_operator_esi_premiums` family:
+  `pool_transfer_target_families` adds a `source_operator_*` family only for
+  outputs the declared plan does not own. And it would enter the frozen v11
+  authority reconstruction (`stacked_spine._legacy_stacked_authority_receipt`),
+  which leaves out post-v11 targets by family name; scoring an attested
+  schema-9 pool refuses an authority that differs from that reconstruction.
+  Declaring it under its own `source_operator_esi_premiums` family would avoid
+  both, but not the donor problem.
 - The declared plan is also the default registry of the spine-agreement
-  battery (`spine_agreement`), which would gain the column as a legacy-family
-  metric.
+  battery (`spine_agreement`), which would gain the column as a metric.
 
 Taking the lane's ACS rows from the stacked pool instead would replace the
 lane. Its two tools read the legacy spine tags, the legacy support roles and

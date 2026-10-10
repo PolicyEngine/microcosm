@@ -258,27 +258,49 @@ def _small_donor() -> Frame:
 
 @st.composite
 def _lane_cases(draw) -> dict[str, object]:
-    """A donor at any weight scale, pooled at any share with any ACS draws."""
+    """Any donor weights, any share, and any ACS households and draws.
+
+    The donor's household weights are rescaled one by one, so the donor rows
+    do not share one weight profile; ACS households hold one to several
+    people.
+    """
 
     people = draw(st.integers(min_value=2, max_value=10))
     premiums = np.asarray(draw(st.lists(_amount, min_size=people, max_size=people)))
     wages = np.asarray(draw(st.lists(_amount, min_size=people, max_size=people)))
-    weights = np.asarray(draw(st.lists(_weight, min_size=people, max_size=people)))
+    joins = draw(st.lists(st.booleans(), min_size=people - 1, max_size=people - 1))
+    households = np.concatenate([[0], np.cumsum(~np.asarray(joins, dtype=bool))])
+    count = int(households.max()) + 1
+    weights = np.asarray(draw(st.lists(_weight, min_size=count, max_size=count)))
     assume(((premiums > 0) & (wages > 0)).any())
+    donor = _small_donor()
+    factors = np.asarray(
+        draw(
+            st.lists(
+                st.floats(min_value=0.05, max_value=20.0),
+                min_size=donor.n("household"),
+                max_size=donor.n("household"),
+            )
+        )
+    )
+    scale = draw(st.floats(min_value=0.01, max_value=100.0))
     return {
         "premiums": premiums,
         "wages": wages,
         "weights": weights,
+        "households": households,
         "acs_share": draw(st.floats(min_value=0.05, max_value=0.95)),
-        "donor": reweighted(
-            _small_donor(), draw(st.floats(min_value=0.01, max_value=100.0))
-        ),
+        "donor": reweighted(donor, factors * scale),
     }
 
 
 def _lane_frame(case: dict[str, object], *, first_id: int = 1) -> Frame:
     acs = transferred_acs(
-        case["premiums"], case["wages"], case["weights"], first_id=first_id
+        case["premiums"],
+        case["wages"],
+        case["weights"],
+        households=case["households"],
+        first_id=first_id,
     )
     return pooled(case["donor"], acs, acs_share=case["acs_share"])
 
@@ -471,6 +493,44 @@ def test_a_lane_frame_missing_an_anchor_input_is_refused(column: str) -> None:
     with pytest.raises(SourceRuntimeError, match="the person table lacks") as error:
         with_acs_local_esi_premium_anchor(_replace_person(frame, person))
     assert column in str(error.value)
+
+
+def test_acs_rows_with_no_premium_on_any_worker_are_refused() -> None:
+    # Nothing to scale: the anchor cannot put the ACS half on the donor's
+    # scale, so staging fails rather than shipping half the column.
+    frame = pooled(
+        _small_donor(),
+        transferred_acs(
+            np.asarray([0.0, 7_000.0]), np.asarray([30_000.0, 0.0]), np.ones(2)
+        ),
+    )
+    with pytest.raises(SourceRuntimeError, match="nothing to scale"):
+        with_acs_local_esi_premium_anchor(frame)
+
+
+def test_a_multi_person_household_scales_as_one_unit_of_mass() -> None:
+    # Three ACS people in one household and one alone: the household's mass
+    # counts once, and its non-worker is cleared.
+    donor = _small_donor()
+    acs = transferred_acs(
+        np.asarray([6_000.0, 4_000.0, 5_000.0, 3_000.0]),
+        np.asarray([40_000.0, 25_000.0, 0.0, 30_000.0]),
+        np.asarray([3.0, 1.0]),
+        households=np.asarray([0, 0, 0, 1]),
+    )
+    frame = pooled(donor, acs, acs_share=0.4)
+    rows = donor_rows(frame)
+
+    anchored, receipt = with_acs_local_esi_premium_anchor(frame)
+
+    assert household_mass_share(frame, rows) == pytest.approx(0.6, rel=1e-12)
+    assert receipt["cleared_rows"] == {EMPLOYER: 1}
+    assert employer_total(anchored) == pytest.approx(employer_total(donor), rel=1e-9)
+    premiums = _column(anchored, EMPLOYER)[~rows]
+    assert premiums[2] == 0.0
+    np.testing.assert_allclose(
+        premiums[[0, 1, 3]] / receipt["scale_factor"], [6_000.0, 4_000.0, 3_000.0]
+    )
 
 
 def test_an_untransferred_acs_spine_is_refused_by_the_anchor() -> None:

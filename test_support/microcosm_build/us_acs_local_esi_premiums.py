@@ -188,29 +188,37 @@ def transferred_acs(
     wages: np.ndarray,
     weights: np.ndarray,
     *,
+    households: np.ndarray | None = None,
     first_id: int = 1,
 ) -> Frame:
-    """An ACS frame after the lane's transfers: one person per household.
+    """An ACS frame after the lane's transfers.
 
     ``premiums`` stands for whatever the ESI transfer drew, so a property can
-    range over every draw without fitting a forest.
+    range over every draw without fitting a forest. ``households`` gives each
+    person's household position (nondecreasing, starting at 0; one person per
+    household by default) and ``weights`` one weight per household.
     """
 
     index = np.arange(len(premiums))
+    members = index if households is None else np.asarray(households, dtype=np.int64)
+    count = int(members.max()) + 1
     person = pd.DataFrame(
         {
             "person_id": index + first_id,
-            "person_household_id": index + first_id,
+            "person_household_id": members + first_id,
             "age": 30.0 + index % 40,
             "is_female": index % 2 == 0,
             WAGES: np.asarray(wages, dtype=np.float64),
             EMPLOYER: np.asarray(premiums, dtype=np.float64),
         }
     )
+    household_index = np.arange(count)
     household = pd.DataFrame(
         {
-            "household_id": index + first_id,
-            "state_fips": np.asarray(_STATES, dtype=np.int64)[index % len(_STATES)],
+            "household_id": household_index + first_id,
+            "state_fips": np.asarray(_STATES, dtype=np.int64)[
+                household_index % len(_STATES)
+            ],
         }
     )
     return _one_person_households(
@@ -218,8 +226,11 @@ def transferred_acs(
     )
 
 
-def reweighted(frame: Frame, factor: float) -> Frame:
-    """The frame with every household weight multiplied by ``factor``."""
+def reweighted(frame: Frame, factor: float | np.ndarray) -> Frame:
+    """The frame with its household weights multiplied by ``factor``.
+
+    ``factor`` is one number for every household or one per household.
+    """
 
     weights = frame.weights_for("household")
     return Frame(
