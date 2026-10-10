@@ -14,6 +14,7 @@ import io
 import json
 import math
 import os
+import shutil
 import signal
 import socket
 import sqlite3
@@ -25,18 +26,21 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import alembic.op
 import pytest
 from alembic import command
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
 from microcosm.build.telemetry_emitter_constants import TELEMETRY_SERVICE_MODULE
 from microcosm.build.telemetry_emitter_service import collector as collector_module
+from microcosm.build.telemetry_emitter_service import database as database_module
 from microcosm.build.telemetry_emitter_service import main as main_module
 from microcosm.build.telemetry_emitter_service import runtime as runtime_module
 from microcosm.build.telemetry_emitter_service import spool as spool_module
@@ -50,7 +54,6 @@ from microcosm.build.telemetry_emitter_service.constants import (
     SPOOL_LOCKED_EXIT_STATUS,
     SPOOL_RETRY_INITIAL_SECONDS,
     SPOOL_RETRY_MAX_SECONDS,
-    STARTUP_BUSY_TIMEOUT_SECONDS,
     STARTUP_RETRY_LIMIT_SECONDS,
 )
 from microcosm.build.telemetry_emitter_service.contention import (
@@ -132,9 +135,34 @@ def _write_lock(path: Path):
         connection.close()
 
 
+_SOCKET_DIRECTORIES: list[Path] = []
+
+
 def _short_socket_path() -> Path:
-    # macOS limits AF_UNIX paths to roughly 100 bytes.
-    return Path(tempfile.mkdtemp(prefix="microcosm-test-", dir="/tmp")) / "e.sock"
+    # macOS limits AF_UNIX paths to roughly 100 bytes, too few for tmp_path.
+    directory = Path(tempfile.mkdtemp(prefix="microcosm-test-", dir="/tmp"))
+    _SOCKET_DIRECTORIES.append(directory)
+    return directory / "e.sock"
+
+
+@pytest.fixture(autouse=True)
+def _remove_socket_directories():
+    yield
+    while _SOCKET_DIRECTORIES:
+        shutil.rmtree(_SOCKET_DIRECTORIES.pop(), ignore_errors=True)
+
+
+def _run_main(arguments: list[str], *, timeout: float) -> int:
+    """Run the service's main(), failing rather than hanging if it never returns."""
+
+    status: list[int] = []
+    thread = threading.Thread(
+        target=lambda: status.append(main_module.main(arguments)), daemon=True
+    )
+    thread.start()
+    thread.join(timeout)
+    assert not thread.is_alive(), f"main() still running after {timeout} s"
+    return status[0]
 
 
 def _ping(socket_path: Path) -> bool:
@@ -192,8 +220,13 @@ def _lock_error(code: int = sqlite3.SQLITE_BUSY) -> OperationalError:
 def test_service_registers_once_a_held_spool_lock_is_released(
     tmp_path, monkeypatch, capsys, state
 ) -> None:
-    """In process: the lock outlasts many of startup's short SQLite waits."""
+    """In process: the lock outlasts several SQLite waits, so startup retries.
 
+    Each wait is capped at 0.1 s here, and the lock is held until two attempts
+    have failed on it.
+    """
+
+    monkeypatch.setattr(spool_module, "DATABASE_TIMEOUT_SECONDS", 0.1)
     spool_path = tmp_path / "events.sqlite3"
     _prepare_spool(spool_path, state)
     socket_path = _short_socket_path()
@@ -223,14 +256,22 @@ def test_service_registers_once_a_held_spool_lock_is_released(
         target=lambda: status.append(main_module.main(arguments)), daemon=True
     )
 
+    def failures() -> list[BaseException]:
+        return [error for _, _, error in outcomes if error is not None]
+
     try:
         with _write_lock(spool_path):
             service.start()
-            time.sleep(1.5)
+            # Hold the lock until startup has failed on it twice, however long
+            # the host takes, so one SQLite wait cannot explain the success.
+            deadline = time.monotonic() + 60
+            while len(failures()) < 2:
+                assert time.monotonic() < deadline, "startup never retried"
+                assert service.is_alive(), f"service exited with {status}"
+                time.sleep(0.02)
             assert not socket_path.exists()
-            assert service.is_alive()
             released_at = time.monotonic()
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 60
         while not _ping(socket_path):
             assert time.monotonic() < deadline, "service never became ready"
             assert service.is_alive(), f"service exited with {status}"
@@ -240,14 +281,11 @@ def test_service_registers_once_a_held_spool_lock_is_released(
         # Stop the service even when an assertion above failed.
         if socket_path.exists():
             _close_service(socket_path)
-        service.join(timeout=10)
+        service.join(timeout=60)
 
+    assert not service.is_alive()
     assert status == [0]
-    failures = [error for _, _, error in outcomes if error is not None]
-    # Six startup waits fit in the hold, so a single SQLite wait cannot explain
-    # the success: startup retried.
-    assert len(failures) >= 2
-    assert all(is_transient_spool_error(error) for error in failures)
+    assert all(is_transient_spool_error(error) for error in failures())
     name, finished_at, error = outcomes[-1]
     assert (name, error) == ("register", None)
     assert finished_at >= released_at
@@ -269,7 +307,7 @@ def test_service_exits_75_with_one_line_before_the_build_stops_waiting(
 
     with _write_lock(spool_path):
         started = time.monotonic()
-        status = main_module.main(arguments)
+        status = _run_main(arguments, timeout=30)
         waited = time.monotonic() - started
 
     assert status == SPOOL_LOCKED_EXIT_STATUS
@@ -287,6 +325,40 @@ def test_service_exits_75_with_one_line_before_the_build_stops_waiting(
     assert "Traceback" not in error_output
 
 
+def test_startup_waits_for_the_lock_as_long_as_the_build_waits(tmp_path) -> None:
+    """Never worse than one long SQLite wait.
+
+    With a 3 s build budget, the client's default before #1166, a lock held for
+    1.5 s is waited out, as the old service's single 5 s busy wait did.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head")
+    socket_path = _short_socket_path()
+    arguments = _service_arguments(
+        socket_path, spool_path, ready_deadline=time.time() + 3.0
+    )
+    status: list[int] = []
+    service = threading.Thread(
+        target=lambda: status.append(main_module.main(arguments)), daemon=True
+    )
+    try:
+        with _write_lock(spool_path):
+            service.start()
+            time.sleep(1.5)
+        deadline = time.monotonic() + 10
+        while not _ping(socket_path):
+            assert time.monotonic() < deadline, f"service never ready: {status}"
+            assert service.is_alive(), f"service exited with {status}"
+            time.sleep(0.02)
+    finally:
+        if socket_path.exists():
+            _close_service(socket_path)
+        service.join(timeout=60)
+    assert not service.is_alive()
+    assert status == [0]
+
+
 def test_unexpected_service_failure_is_one_line_with_status_1(tmp_path, capsys) -> None:
     occupied = tmp_path / "not-a-directory"
     occupied.write_text("")
@@ -296,7 +368,7 @@ def test_unexpected_service_failure_is_one_line_with_status_1(tmp_path, capsys) 
         ready_deadline=time.time() + 60,
     )
 
-    assert main_module.main(arguments) == 1
+    assert _run_main(arguments, timeout=30) == 1
 
     error_output = capsys.readouterr().err
     assert error_output.count("\n") == 1
@@ -342,19 +414,25 @@ def test_ready_deadline_rejects_nan_and_caps_infinity(capsys) -> None:
     )
 
 
-def test_startup_statements_wait_briefly_and_the_spool_then_waits_normally(
+def test_startup_waits_end_by_the_deadline_and_the_spool_then_waits_normally(
     tmp_path,
 ) -> None:
     spool_path = tmp_path / "events.sqlite3"
     _prepare_spool(spool_path, "at_head")
-    spool = EventSpool(spool_path, busy_timeout_seconds=STARTUP_BUSY_TIMEOUT_SECONDS)
+    spool = EventSpool(spool_path, busy_deadline=time.monotonic() + 0.3)
     try:
         with _write_lock(spool_path):
             started = time.monotonic()
             with pytest.raises(OperationalError):
                 spool.register(_registration())
             waited = time.monotonic() - started
-        assert waited < 4 * STARTUP_BUSY_TIMEOUT_SECONDS
+        assert waited < 1.0
+        # A far deadline still waits no longer than a normal statement, and a
+        # past one does not wait at all.
+        spool.busy_deadline = time.monotonic() + 100
+        assert spool.busy_timeout_seconds() == DATABASE_TIMEOUT_SECONDS
+        spool.busy_deadline = time.monotonic() - 1
+        assert spool.busy_timeout_seconds() == 0
     finally:
         _close(spool)
 
@@ -362,12 +440,35 @@ def test_startup_statements_wait_briefly_and_the_spool_then_waits_normally(
         spool_path, _registration(), deadline=time.monotonic() + 10
     )
     try:
-        assert registered.busy_timeout_seconds == DATABASE_TIMEOUT_SECONDS
+        assert registered.busy_deadline is None
         with registered._engine.connect() as connection:
             milliseconds = connection.exec_driver_sql("PRAGMA busy_timeout").scalar()
         assert milliseconds == DATABASE_TIMEOUT_SECONDS * 1000
     finally:
         _close(registered)
+
+
+def test_without_a_deadline_startup_makes_one_normal_attempt(tmp_path) -> None:
+    """A build that passes no deadline gets the old behaviour: one 5 s wait."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head")
+    opened: list[EventSpool] = []
+    original_init = EventSpool.__init__
+
+    def recording_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        opened.append(self)
+
+    with mock.patch.object(EventSpool, "__init__", recording_init):
+        spool = main_module.open_registered_spool(
+            spool_path, _registration(), deadline=None
+        )
+    try:
+        assert [item.busy_deadline for item in opened] == [None]
+        assert spool.busy_timeout_seconds() == DATABASE_TIMEOUT_SECONDS
+    finally:
+        _close(spool)
 
 
 def test_build_keeps_telemetry_when_the_spool_is_locked_past_a_busy_wait(
@@ -411,12 +512,18 @@ def test_build_keeps_telemetry_when_the_spool_is_locked_past_a_busy_wait(
 
     emitter = started["emitter"]
     assert isinstance(emitter, LocalTelemetryEmitter)
-    assert emitter.available
-    assert started["returned_at"] > released_at
-    emitter.stage("compile", message="Compiling.")
-    emitter.complete()
-    assert emitter._process is not None
-    assert emitter._process.wait(timeout=30) == 0
+    try:
+        assert emitter.available
+        assert started["returned_at"] > released_at
+        emitter.stage("compile", message="Compiling.")
+        emitter.complete()
+        assert emitter._process is not None
+        assert emitter._process.wait(timeout=30) == 0
+    finally:
+        # A failed assertion must not leave the service running.
+        if emitter._process is not None and emitter._process.poll() is None:
+            emitter._process.terminate()
+            emitter._process.wait(timeout=10)
 
     spool = EventSpool(spool_path)
     try:
@@ -550,23 +657,27 @@ def test_client_passes_its_wait_as_a_wall_clock_ready_deadline(
     now_unix=st.floats(-1e6, 1e6),
     now_monotonic=st.floats(0, 1e6),
 )
-def test_startup_deadline_is_the_ready_deadline_less_the_margin_on_this_clock(
+def test_startup_gives_up_before_the_build_and_within_the_limit(
     ready_deadline, now_unix, now_monotonic
 ) -> None:
     deadline = main_module.startup_deadline(
         ready_deadline, now_unix=now_unix, now_monotonic=now_monotonic
     )
-    remaining = min(ready_deadline - now_unix, STARTUP_RETRY_LIMIT_SECONDS)
-    assert deadline - now_monotonic == pytest.approx(
-        remaining - READY_DEADLINE_MARGIN_SECONDS, abs=1e-6
+    waits = deadline - now_monotonic
+    budget = ready_deadline - now_unix
+    # It stops at least the margin before the build gives up, and within the
+    # limit however far away the build's deadline is.
+    assert waits <= budget - READY_DEADLINE_MARGIN_SECONDS + 1e-6
+    assert waits <= STARTUP_RETRY_LIMIT_SECONDS - READY_DEADLINE_MARGIN_SECONDS + 1e-6
+    # And it uses all of that time: nothing is left on the table.
+    assert waits >= min(budget, STARTUP_RETRY_LIMIT_SECONDS) - (
+        READY_DEADLINE_MARGIN_SECONDS + 1e-6
     )
-    # However far away the build's deadline is, startup stops within the limit.
-    assert deadline - now_monotonic <= STARTUP_RETRY_LIMIT_SECONDS
     assert (
         main_module.startup_deadline(
             None, now_unix=now_unix, now_monotonic=now_monotonic
         )
-        == -math.inf
+        is None
     )
 
 
@@ -610,7 +721,7 @@ def test_a_failed_migration_leaves_no_partial_schema(tmp_path, monkeypatch) -> N
     assert tables == []
 
 
-def test_an_opener_waits_for_a_migration_in_progress(tmp_path) -> None:
+def test_an_opener_waits_for_a_migration_in_progress(tmp_path, monkeypatch) -> None:
     """A second opener waits, then finds the spool at head and changes nothing.
 
     Before migrations took the write lock first, the waiting opener had
@@ -630,10 +741,23 @@ def test_an_opener_waits_for_a_migration_in_progress(tmp_path) -> None:
             failures.append(error)
 
     second = threading.Thread(target=open_spool, daemon=True)
+    waiting = threading.Event()
+    begin_immediate = database_module._begin_immediate
+
+    def signalling_begin_immediate(connection) -> None:
+        waiting.set()
+        begin_immediate(connection)
+
     try:
         with migrator.begin() as connection:
+            # Only the opener's migration engine is created after this point.
+            monkeypatch.setattr(
+                database_module, "_begin_immediate", signalling_begin_immediate
+            )
             second.start()
-            time.sleep(0.5)
+            # The opener has asked for the write lock this migration holds.
+            assert waiting.wait(timeout=30), "the opener never began its migration"
+            time.sleep(0.2)
             assert second.is_alive()
             SpoolModel.metadata.create_all(connection)
             connection.exec_driver_sql(
@@ -749,6 +873,8 @@ def test_appends_never_prune(tmp_path, monkeypatch) -> None:
         st.sampled_from(["finished", "unfinished", "failed"]), max_size=30
     ),
 )
+# A call exactly one interval after a finished prune is due.
+@example(gaps=[PRUNE_INTERVAL_SECONDS], results=["finished", "finished"])
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_prune_runs_once_per_interval_until_a_backlog_is_drained(
     monkeypatch, gaps, results
@@ -798,30 +924,18 @@ def test_prune_runs_once_per_interval_until_a_backlog_is_drained(
 # --- Lock-error classification ------------------------------------------------
 
 
-# Extended result codes keep the primary code in the low byte, so draw busy and
-# locked primaries with every extension as well as arbitrary codes.
-_RESULT_CODES = st.one_of(
-    st.integers(0, 2**16),
-    st.builds(
-        lambda primary, extension: primary | extension << 8,
-        st.sampled_from([sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED]),
-        st.integers(0, 255),
-    ),
-)
+def test_only_busy_and_locked_result_codes_are_transient() -> None:
+    """Every primary code with several extensions, raw and wrapped."""
 
-
-@given(code=_RESULT_CODES)
-@example(code=261)  # SQLITE_BUSY_RECOVERY
-@example(code=262)  # SQLITE_LOCKED_SHAREDCACHE
-@example(code=517)  # SQLITE_BUSY_SNAPSHOT
-@example(code=773)  # SQLITE_BUSY_TIMEOUT
-@example(code=1555)  # SQLITE_CONSTRAINT_PRIMARYKEY
-def test_only_busy_and_locked_result_codes_are_transient(code) -> None:
-    error = sqlite3.OperationalError("message")
-    error.sqlite_errorcode = code
-    transient = code & 0xFF in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
-    assert is_transient_spool_error(error) is transient
-    assert is_transient_spool_error(_lock_error(code)) is transient
+    busy_or_locked = {5, 6}  # SQLITE_BUSY and SQLITE_LOCKED, from the SQLite docs
+    for primary in range(256):
+        for extension in (0, 1, 2, 3, 255):
+            code = primary | extension << 8
+            error = sqlite3.OperationalError("message")
+            error.sqlite_errorcode = code
+            expected = primary in busy_or_locked
+            assert is_transient_spool_error(error) is expected, code
+            assert is_transient_spool_error(_lock_error(code)) is expected, code
 
 
 def test_real_sqlite_errors_are_classified_by_what_retrying_can_fix(tmp_path) -> None:
@@ -871,17 +985,27 @@ _LOCKED_THEN_OK = [("locked", 0.0)] * 6 + [("ok", 0.0)]
     ),
     window=st.one_of(st.just(-math.inf), st.floats(-1, 3), st.floats(-5, 60)),
     jitter_fraction=st.floats(0, 1),
+    # How far each sleep overruns, as sleeps do on a loaded host.
+    oversleeps=st.lists(st.one_of(st.just(0.0), st.floats(0, 3)), max_size=8),
 )
-# The first retry's full wait (0.05 s) would cross a deadline 0.04 s away.
-@example(outcomes=_LOCKED_THEN_OK, window=0.04, jitter_fraction=1.0)
+# The first retry's full wait (0.05 s) would cross a deadline 0.04 s away, or
+# start exactly on one 0.05 s away.
+@example(outcomes=_LOCKED_THEN_OK, window=0.04, jitter_fraction=1.0, oversleeps=[])
+@example(outcomes=_LOCKED_THEN_OK, window=0.05, jitter_fraction=1.0, oversleeps=[])
 # Six retries fit, so the delays must double up to the cap.
-@example(outcomes=_LOCKED_THEN_OK, window=10.0, jitter_fraction=0.5)
-def test_retry_respects_its_deadline_and_backoff(outcomes, window, jitter_fraction):
+@example(outcomes=_LOCKED_THEN_OK, window=10.0, jitter_fraction=0.5, oversleeps=[])
+# The first sleep fits a deadline 1 s away but wakes 3 s late, past it.
+@example(outcomes=_LOCKED_THEN_OK, window=1.0, jitter_fraction=0.5, oversleeps=[3.0])
+def test_retry_respects_its_deadline_and_backoff(
+    outcomes, window, jitter_fraction, oversleeps
+):
     clock = SimpleNamespace(now=100.0)
     deadline = clock.now + window
     attempt_starts: list[float] = []
     jitters: list[tuple[float, float, float, float]] = []  # (at, low, high, wait)
     waits: list[tuple[float, float]] = []  # (started, seconds)
+    wakes: list[float] = []
+    late = iter(oversleeps)
 
     def operation():
         index = len(attempt_starts)
@@ -901,7 +1025,8 @@ def test_retry_respects_its_deadline_and_backoff(outcomes, window, jitter_fracti
 
     def sleep(seconds):
         waits.append((clock.now, seconds))
-        clock.now += seconds
+        clock.now += seconds + next(late, 0.0)
+        wakes.append(clock.now)
 
     try:
         result = retry_spool_contention(
@@ -924,14 +1049,16 @@ def test_retry_respects_its_deadline_and_backoff(outcomes, window, jitter_fracti
     assert kinds[-1] == outcome
     if outcome == "ok":
         assert result == len(attempt_starts) - 1
-    # The first attempt always runs; every later one starts before the deadline
-    # and no wait reaches it.
+    # The first attempt always runs; every later one starts before the deadline,
+    # even after a sleep that overran, and no wait is asked to reach it.
     assert all(start < deadline for start in attempt_starts[1:])
     assert all(started + seconds < deadline for started, seconds in waits)
+    overran = bool(wakes) and wakes[-1] >= deadline
     # Each lock error draws one wait in [delay / 2, delay]; delays double to a
-    # cap; every wait drawn is slept except one that would reach the deadline.
+    # cap; every wait drawn is slept except one that would reach the deadline,
+    # and every sleep is followed by an attempt unless it woke too late.
     assert len(jitters) == kinds.count("locked")
-    assert len(waits) == len(attempt_starts) - 1
+    assert len(waits) == len(attempt_starts) - 1 + overran
     for index, (_, low, high, wait) in enumerate(jitters):
         assert high == min(
             SPOOL_RETRY_MAX_SECONDS, SPOOL_RETRY_INITIAL_SECONDS * 2**index
@@ -942,10 +1069,12 @@ def test_retry_respects_its_deadline_and_backoff(outcomes, window, jitter_fracti
         wait for _, _, _, wait in jitters[: len(waits)]
     ]
     # A lock error escapes only when its retry could not start before the
-    # deadline.
+    # deadline: the wait would reach it, or the sleep woke past it.
     if outcome == "locked":
         at, _, _, wait = jitters[-1]
-        assert at + wait >= deadline
+        assert at + wait >= deadline or overran
+    else:
+        assert not overran
 
 
 def test_retry_with_no_deadline_makes_one_attempt() -> None:
@@ -1400,9 +1529,26 @@ def _stamp(age_days: float, index: int) -> str:
         max_size=18,
     ),
     run_ages=st.lists(st.floats(0, 2 * RETENTION_DAYS), min_size=3, max_size=3),
-    cap_fraction=st.floats(0, 1.2),
+    # None leaves the real 100 MiB cap, so only age removes rows.
+    cap_fraction=st.one_of(st.none(), st.floats(0, 1.2)),
     batch_rows=st.integers(1, 4),
     step_budget=st.sampled_from([0.0, math.inf]),
+)
+# More expired rows than one batch, with no size pressure to hide a leftover.
+@example(
+    events=[(0, 10.0, 5)] * 6,
+    run_ages=[1.0, 1.0, 1.0],
+    cap_fraction=None,
+    batch_rows=2,
+    step_budget=math.inf,
+)
+# Removing the oldest live event (20 characters of 50) fits the cap exactly.
+@example(
+    events=[(0, 1.0, 10), (0, 1.0, 20)],
+    run_ages=[1.0, 1.0, 1.0],
+    cap_fraction=0.6,
+    batch_rows=2,
+    step_budget=math.inf,
 )
 def test_batched_prune_matches_the_single_pass_retention_rule(
     tmp_path_factory, events, run_ages, cap_fraction, batch_rows, step_budget
@@ -1414,8 +1560,6 @@ def test_batched_prune_matches_the_single_pass_retention_rule(
     the stored payloads fit ``MAX_QUEUED_BYTES``; then drop expired runs that
     have no events left.
     """
-
-    from unittest import mock
 
     spool = EventSpool(tmp_path_factory.mktemp("prune") / "events.sqlite3")
     keys = [(f"run-{index}", f"producer-{index}") for index in range(3)]
@@ -1459,16 +1603,20 @@ def test_batched_prune_matches_the_single_pass_retention_rule(
                 )
         cutoff = (_STAMP_ORIGIN - timedelta(days=RETENTION_DAYS)).isoformat()
         live = [row for row in rows if row["created_at"] >= cutoff]
-        cap = int(cap_fraction * sum(row["length"] for row in live))
+        cap = (
+            spool_module.MAX_QUEUED_BYTES
+            if cap_fraction is None
+            else int(cap_fraction * sum(row["length"] for row in live))
+        )
         batches: list[int] = []
-        delete_events = spool._delete_events
+        delete = spool._delete
 
-        def recording_delete(event_ids) -> int:
-            deleted = delete_events(event_ids)
+        def recording_delete(model, criterion) -> int:
+            deleted = delete(model, criterion)
             batches.append(deleted)
             return deleted
 
-        spool._delete_events = recording_delete
+        spool._delete = recording_delete
         frozen_now = mock.Mock(wraps=datetime)
         frozen_now.now.return_value = _STAMP_ORIGIN
         with (
@@ -1593,3 +1741,109 @@ def test_a_prune_out_of_time_stops_between_batches_and_resumes(
 
     # One batch per call: five rows go two, two, then one.
     assert remaining == [3, 1, 0]
+
+
+def test_a_service_that_closes_within_its_first_tick_still_prunes(tmp_path) -> None:
+    """Short builds must not leave retention unenforced on a host forever."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    _prepare_spool(spool_path, "at_head_with_expired_rows")
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    socket_path = _short_socket_path()
+    service = EmitterService(
+        socket_path=socket_path,
+        registration=registration,
+        spool=spool,
+        delivery=SimpleNamespace(flush_once=lambda: False),
+        sampler=SimpleNamespace(sample=dict, parent_alive=lambda: True),
+        heartbeat_seconds=60,
+        drain_seconds=0,
+    )
+    serving = threading.Thread(target=service.run, daemon=True)
+    try:
+        assert spool.has_pending()
+        serving.start()
+        deadline = time.monotonic() + 30
+        while not _ping(socket_path):
+            assert time.monotonic() < deadline, "service never became ready"
+            time.sleep(0.01)
+        # Closed at once, well inside the worker's first one-second tick.
+        _close_service(socket_path)
+        serving.join(timeout=30)
+        assert not serving.is_alive()
+        assert not spool.has_pending()
+    finally:
+        service._stop.set()
+        serving.join(timeout=5)
+        _close(spool)
+
+
+def test_expired_runs_are_deleted_in_batches(tmp_path, monkeypatch) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    deleted: list[tuple[str, int]] = []
+    pauses: list[float] = []
+    try:
+        for index in range(5):
+            spool.register({"run_id": f"run-{index}", "producer_id": "producer-a"})
+        expired = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS + 1)).isoformat()
+        with spool._session_factory.begin() as session:
+            session.query(TelemetryRunRecord).update({"updated_at": expired})
+        delete = spool._delete
+
+        def recording_delete(model, criterion) -> int:
+            count = delete(model, criterion)
+            deleted.append((model.__tablename__, count))
+            return count
+
+        spool._delete = recording_delete
+        monkeypatch.setattr(spool_module, "PRUNE_BATCH_ROWS", 2)
+        monkeypatch.setattr(
+            spool_module,
+            "time",
+            SimpleNamespace(monotonic=time.monotonic, sleep=pauses.append),
+        )
+        assert spool.prune() is True
+        with spool._session_factory() as session:
+            remaining = session.scalars(select(TelemetryRunRecord.run_id)).all()
+    finally:
+        _close(spool)
+
+    # Five runs in batches of two, with a pause after each full batch.
+    assert deleted == [
+        ("telemetry_runs", 2),
+        ("telemetry_runs", 2),
+        ("telemetry_runs", 1),
+    ]
+    assert len(pauses) == 2
+    assert remaining == []
+
+
+def test_a_spool_under_the_size_cap_is_not_scanned(tmp_path, monkeypatch) -> None:
+    """The size check reads the file's page counts, not every payload."""
+
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    statements: list[str] = []
+    try:
+        registration = _registration()
+        spool.register(registration)
+        for _ in range(3):
+            spool.append(registration, _event())
+        sqlalchemy_event.listen(
+            spool._engine,
+            "before_cursor_execute",
+            lambda conn, cursor, statement, *rest: statements.append(statement),
+        )
+        assert spool.prune() is True
+        assert not [text for text in statements if "sum(" in text.lower()]
+        assert len(spool.batch("run-a", "producer-a")) == 3
+
+        # Over the cap, the payloads are summed and the oldest events go.
+        statements.clear()
+        monkeypatch.setattr(spool_module, "MAX_QUEUED_BYTES", 1)
+        assert spool.prune() is True
+        assert [text for text in statements if "sum(" in text.lower()]
+        assert spool.batch("run-a", "producer-a") == []
+    finally:
+        _close(spool)

@@ -340,6 +340,9 @@ class EmitterService:
                 self._begin_shutdown()
                 self._stop.set()
                 break
+        # A build that closes within its first tick never reached the prune
+        # above, and a host of such builds would never enforce retention.
+        self._attempt(self.spool.prune_if_due)
         self._drain()
 
     def _parent_alive(self) -> bool:

@@ -63,14 +63,16 @@ def retry_spool_contention[T](
     """Run ``operation``, retrying spool lock contention until ``deadline``.
 
     ``deadline`` is a ``clock`` reading, or a function returning one. A
-    function is read again after every lock error, so its caller can bring the
-    deadline forward, from infinity say, while this waits. The first attempt
-    always runs. After a transient lock error the next attempt waits a
-    jittered backoff that starts at ``SPOOL_RETRY_INITIAL_SECONDS`` and doubles
-    up to ``SPOOL_RETRY_MAX_SECONDS``. When that attempt would not start before
-    the deadline, the last lock error is raised instead. Any other error is
-    raised at once. Each attempt may itself wait in SQLite's busy handler, so
-    this bounds when attempts start, not when the last one ends.
+    function is read again after every lock error and after every wait, so its
+    caller can bring the deadline forward, from infinity say, while this
+    waits. The first attempt always runs. After a transient lock error the
+    next attempt waits a jittered backoff that starts at
+    ``SPOOL_RETRY_INITIAL_SECONDS`` and doubles up to
+    ``SPOOL_RETRY_MAX_SECONDS``. When that attempt would not start before the
+    deadline, or the wait overran it, the last lock error is raised instead.
+    Any other error is raised at once. Each attempt may itself wait in
+    SQLite's busy handler, so this bounds when attempts start, not when the
+    last one ends.
     """
 
     current_deadline = deadline if callable(deadline) else lambda: deadline
@@ -84,5 +86,10 @@ def retry_spool_contention[T](
             wait = jitter(delay / 2, delay)
             if clock() + wait >= current_deadline():
                 raise
+            contended = error
         sleep(wait)
+        if clock() >= current_deadline():
+            # The sleep overran, as it can on a loaded host, or the deadline
+            # moved forward during it.
+            raise contended
         delay = min(SPOOL_RETRY_MAX_SECONDS, delay * 2)

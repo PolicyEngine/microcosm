@@ -136,6 +136,22 @@ def _stored_events(path: Path, run_id: str, producer_id: str) -> list[dict]:
         spool._engine.dispose()
 
 
+def _service_lines(error_output: str) -> list[str]:
+    """The service's own stderr lines.
+
+    The client prints "could not queue an update" when a reply takes longer
+    than its 0.2 s timeout. On a heavily loaded host that can be scheduling
+    alone, and the service still processes the event. Tests about the drain
+    leave that line to the tests about send latency.
+    """
+
+    return [
+        line
+        for line in error_output.splitlines()
+        if "could not queue an update" not in line
+    ]
+
+
 class _Clock:
     """A fake monotonic clock; sleeping advances it, by ``oversleep`` too long."""
 
@@ -523,16 +539,25 @@ def test_every_acknowledged_event_is_stored_once_in_acknowledgement_order(
 class _LockedUntil:
     """A spool another process keeps locked until ``lock_until`` on a fake clock.
 
-    Like the real spool, an attempt runs ``before_write`` once it holds the
-    spool, then its statements together wait up to ``busy_timeout_seconds``
-    for the lock and succeed as soon as it is released within that. Only
-    attempts that reach the database are recorded.
+    Like the real spool, an attempt first waits for this process's own spool
+    lock, here ``spool_lock_wait`` seconds and never more than its
+    ``lock_timeout_seconds``, then runs ``before_write``. Its statements then
+    together wait up to ``busy_timeout_seconds`` for the other process's lock
+    and succeed as soon as it is released within that. Only attempts that
+    reach the database are recorded.
     """
 
-    def __init__(self, clock: _Clock, lock_until: float, insert_seconds: float):
+    def __init__(
+        self,
+        clock: _Clock,
+        lock_until: float,
+        insert_seconds: float,
+        spool_lock_wait: float = 0.0,
+    ):
         self.clock = clock
         self.lock_until = lock_until
         self.insert_seconds = insert_seconds
+        self.spool_lock_wait = spool_lock_wait
         self.attempt_starts: list[float] = []
         self.attempt_ends: list[float] = []
         self.stored: list[str] = []
@@ -546,6 +571,7 @@ class _LockedUntil:
         lock_timeout_seconds=None,
         before_write=None,
     ):
+        self.clock.now += min(self.spool_lock_wait, lock_timeout_seconds)
         if before_write is not None:
             before_write()
         started = self.clock.now
@@ -573,23 +599,54 @@ class _LockedUntil:
     drain_seconds=st.one_of(st.just(0.0), st.floats(0, 20)),
     insert_seconds=st.floats(0, 0.05),
     oversleep=st.one_of(st.just(0.0), st.floats(0, 1.0)),
+    spool_lock_wait=st.one_of(st.just(0.0), st.floats(0, WRITER_BUSY_TIMEOUT_SECONDS)),
 )
 @example(
-    events=450, locked_for=3.0, drain_seconds=15.0, insert_seconds=0.05, oversleep=0.0
+    events=450,
+    locked_for=3.0,
+    drain_seconds=15.0,
+    insert_seconds=0.05,
+    oversleep=0.0,
+    spool_lock_wait=0.0,
 )
 @example(
-    events=10, locked_for=30.0, drain_seconds=15.0, insert_seconds=0.0, oversleep=0.0
+    events=10,
+    locked_for=30.0,
+    drain_seconds=15.0,
+    insert_seconds=0.0,
+    oversleep=0.0,
+    spool_lock_wait=0.0,
 )
 # A backoff that overruns its plan by more than the margin before the deadline.
 @example(
-    events=10, locked_for=30.0, drain_seconds=1.0, insert_seconds=0.0, oversleep=0.9
+    events=10,
+    locked_for=30.0,
+    drain_seconds=1.0,
+    insert_seconds=0.0,
+    oversleep=0.9,
+    spool_lock_wait=0.0,
+)
+# A wait for this process's own spool lock that straddles the cutoff.
+@example(
+    events=300,
+    locked_for=0.0,
+    drain_seconds=1.0,
+    insert_seconds=0.0,
+    oversleep=0.0,
+    spool_lock_wait=0.2,
 )
 def test_the_drain_writes_in_order_until_its_deadline_and_reports_the_rest(
-    monkeypatch, events, locked_for, drain_seconds, insert_seconds, oversleep
+    monkeypatch,
+    events,
+    locked_for,
+    drain_seconds,
+    insert_seconds,
+    oversleep,
+    spool_lock_wait,
 ) -> None:
     clock = _Clock(oversleep=oversleep)
     monkeypatch.setattr(runtime_module, "time", clock)
-    spool = _LockedUntil(clock, clock.now + locked_for, insert_seconds)
+    spool = _LockedUntil(clock, clock.now + locked_for, insert_seconds, spool_lock_wait)
     service = _service(spool, drain_seconds=drain_seconds)
     sent = [f"event-{index}" for index in range(events)]
     for stage in sent:
@@ -623,7 +680,7 @@ def test_the_drain_writes_in_order_until_its_deadline_and_reports_the_rest(
     batches = math.ceil(events / WRITER_BATCH_EVENTS)
     release = started + locked_for
     wakes_by = release + SPOOL_RETRY_MAX_SECONDS + oversleep
-    if wakes_by + batches * insert_seconds < last_start:
+    if wakes_by + batches * (insert_seconds + spool_lock_wait) < last_start:
         assert unwritten == 0
     # A lock held through the whole drain writes nothing and loses all.
     if release >= deadline:
@@ -686,14 +743,16 @@ def test_a_deadline_that_arrives_mid_retry_stops_every_later_attempt(window) -> 
     finite_from=st.integers(0, 40),
     window=st.floats(-1, 5),
     jitter_fraction=st.floats(0, 1),
+    oversleep=st.one_of(st.just(0.0), st.floats(0, 1.0)),
 )
-def test_retry_reads_a_moving_deadline_after_every_lock_error(
-    outcomes, finite_from, window, jitter_fraction
+def test_retry_reads_a_moving_deadline_around_every_wait(
+    outcomes, finite_from, window, jitter_fraction, oversleep
 ) -> None:
     clock = SimpleNamespace(now=100.0)
     reads: list[float] = []
     decisions: list[tuple[float, float, float]] = []  # (at, wait, deadline read)
     attempts: list[float] = []
+    read_on_waking: list[float] = []  # for every attempt after the first
     brought_forward: list[float] = []
 
     def deadline() -> float:
@@ -708,6 +767,8 @@ def test_retry_reads_a_moving_deadline_after_every_lock_error(
         return value
 
     def operation():
+        if attempts:
+            read_on_waking.append(reads[-1])
         attempts.append(clock.now)
         # Once the deadline is finite, at most window / (shortest wait) more
         # attempts fit: 5 s / 0.025 s. A helper that kept an old reading of
@@ -726,7 +787,8 @@ def test_retry_reads_a_moving_deadline_after_every_lock_error(
 
     def sleep(seconds):
         decisions.append((clock.now, seconds, reads[-1]))
-        clock.now += seconds
+        # A loaded host can sleep longer than asked.
+        clock.now += seconds + oversleep
 
     try:
         retry_spool_contention(
@@ -745,10 +807,16 @@ def test_retry_reads_a_moving_deadline_after_every_lock_error(
 
     kinds = [outcomes[min(i, len(outcomes) - 1)] for i in range(len(attempts))]
     assert kinds[-1] == outcome
-    # The deadline is read once per lock error and never before the first try.
-    assert len(reads) == kinds.count("locked")
-    # No wait reaches the deadline read just before it.
+    # The deadline is read after every lock error and again after every wait,
+    # never before the first try.
+    assert len(reads) == kinds.count("locked") + len(decisions)
+    # No wait is planned to reach the deadline read just before it, and no
+    # attempt starts at or past the deadline read on waking, however long the
+    # wait overran.
     assert all(at + wait < read for at, wait, read in decisions)
+    assert all(
+        start < read for start, read in zip(attempts[1:], read_on_waking, strict=True)
+    )
     # While it reads infinity the helper never gives up on contention.
     if outcome == "locked":
         assert reads[-1] < math.inf
@@ -1146,7 +1214,7 @@ def test_close_drains_events_queued_behind_a_held_lock(tmp_path, capsys) -> None
     assert not serving.is_alive()
     assert stopped_after < 10 + 1
     assert _stored_stages(spool_path) == sent
-    assert capsys.readouterr().err == ""
+    assert _service_lines(capsys.readouterr().err) == []
 
 
 def test_a_lock_held_through_the_drain_loses_only_the_queue_and_says_so(
@@ -1172,7 +1240,7 @@ def test_a_lock_held_through_the_drain_loses_only_the_queue_and_says_so(
     # its own timeout.
     assert stopped_after < drain_seconds + 1.5
     assert _stored_stages(spool_path) == []
-    lines = capsys.readouterr().err.splitlines()
+    lines = _service_lines(capsys.readouterr().err)
     assert len(lines) == 1
     assert "could not write 5 queued update(s)" in lines[0]
     assert "(database is locked)" in lines[0]
@@ -1223,7 +1291,7 @@ def test_run_does_not_return_while_the_writer_may_still_write(
             returned_after = time.monotonic() - closed_at
             # Read at the moment run returned, with the spool still locked.
             writer_alive = service.writer.is_alive()
-            lines = capsys.readouterr().err.splitlines()
+            lines = _service_lines(capsys.readouterr().err)
     finally:
         delivery.release.set()
         _stop(service, serving, client)

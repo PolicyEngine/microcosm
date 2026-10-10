@@ -11,7 +11,6 @@ from typing import NoReturn
 
 from microcosm.build.telemetry_emitter_service.collector import CollectorDelivery
 from microcosm.build.telemetry_emitter_service.constants import (
-    DATABASE_TIMEOUT_SECONDS,
     DEFAULT_HEARTBEAT_SECONDS,
     READY_DEADLINE_ERROR,
     READY_DEADLINE_MARGIN_SECONDS,
@@ -19,7 +18,6 @@ from microcosm.build.telemetry_emitter_service.constants import (
     SERVICE_FAILED_WARNING,
     SPOOL_LOCKED_EXIT_STATUS,
     SPOOL_LOCKED_WARNING,
-    STARTUP_BUSY_TIMEOUT_SECONDS,
     STARTUP_RETRY_LIMIT_SECONDS,
 )
 from microcosm.build.telemetry_emitter_service.contention import (
@@ -81,18 +79,18 @@ def startup_deadline(
     *,
     now_unix: float,
     now_monotonic: float,
-) -> float:
-    """Return the ``time.monotonic()`` reading at which startup stops retrying.
+) -> float | None:
+    """Return the ``time.monotonic()`` reading at which startup gives up.
 
     The build passes its own give-up time as Unix time, the clock both
     processes share. The margin leaves time to bind the socket and answer the
     build's ping before the build gives up. The limit bounds the wait however
     far the deadline or the wall clock moves, so a service whose build has died
-    still gives up.
+    still gives up. Without a deadline from the build, there is none here.
     """
 
     if ready_deadline is None:
-        return -math.inf
+        return None
     remaining = min(ready_deadline - now_unix, STARTUP_RETRY_LIMIT_SECONDS)
     return now_monotonic + remaining - READY_DEADLINE_MARGIN_SECONDS
 
@@ -101,22 +99,30 @@ def open_registered_spool(
     path: Path,
     registration: dict[str, object],
     *,
-    deadline: float,
+    deadline: float | None,
 ) -> EventSpool:
     """Open the spool and register this producer, waiting out lock contention.
 
-    Each SQLite statement waits at most ``STARTUP_BUSY_TIMEOUT_SECONDS`` for
-    another process's lock, so this retry loop, bounded by ``deadline``, decides
-    when to give up. The spool it returns waits the normal
-    ``DATABASE_TIMEOUT_SECONDS``.
+    With a ``deadline``, startup waits for another process's lock until then:
+    each SQLite wait ends by it, and an attempt that fails on the lock is
+    retried while one can still start before it. Without one, a single attempt
+    waits as long as any statement does, ``DATABASE_TIMEOUT_SECONDS``. The spool
+    returned waits normally.
     """
 
+    opened: list[EventSpool] = []
+
+    def attempt() -> EventSpool:
+        if not opened:
+            opened.append(EventSpool(path, busy_deadline=deadline))
+        opened[0].register(registration)
+        return opened[0]
+
     spool = retry_spool_contention(
-        lambda: EventSpool(path, busy_timeout_seconds=STARTUP_BUSY_TIMEOUT_SECONDS),
-        deadline=deadline,
+        attempt,
+        deadline=-math.inf if deadline is None else deadline,
     )
-    retry_spool_contention(lambda: spool.register(registration), deadline=deadline)
-    spool.busy_timeout_seconds = DATABASE_TIMEOUT_SECONDS
+    spool.busy_deadline = None
     return spool
 
 
