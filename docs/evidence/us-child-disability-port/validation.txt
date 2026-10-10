@@ -1,0 +1,56 @@
+Validation status (partial port; 2026-10-09)
+
+Passed:
+  python3 tools/ci_test_plan.py verify
+    test_files=646
+    engine-free-shared=178
+    engine-free-us=160
+    engine-free-uk=188
+    engine-contract-us=33
+    engine-scenario-us=25
+    engine-workflow-us=21
+    engine-uk=40
+    integration-uk=1
+    verification=ok
+
+  Ruff 0.15.16 (the uv.lock version), whole checkout:
+    All checks passed!
+
+  git diff --check: passed.
+
+  Preliminary stdlib import of the actual full_sipp_donor module:
+    baseline: both reproduced SIPP race schedules refused
+    mutation remove identity guards: FAIL (stale cache hit accepted)
+    mutation trust old download digest: FAIL (old downloader digest accepted)
+  These are manual probes, not substitutes for the registered pytest tests.
+
+Blocked/uncompleted at this checkpoint:
+  Required heavy suite cannot start:
+    PermissionError: [Errno 1] Operation not permitted: 'ps'
+  Local commit cannot start:
+    fatal: Unable to create
+    '/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-509/.git/index.lock':
+    Operation not permitted
+  No new commit SHA; starting HEAD remains a224dc110.
+
+  Locked US and engine-free CPython 3.13 installations did not complete.
+  They were cancelled at the sourcing stop, both confirmed exit 130.
+  The initial default interpreter was freethreaded 3.14 and its incomplete
+  sync was cancelled; no lockfile or package metadata was changed.
+  Early focused pytest attempts in incomplete/older environments stopped
+  before behavioral assertions on missing pluggy/jsonschema/sqlalchemy.
+  No passing pytest tail or complete pytest mutation output is claimed here.
+
+  Four wheels built: microcosm-build, calibrate, data, diagnostics. The
+  remaining wheel build was cancelled (confirmed exit 130); the complete
+  archive inspection script did not run. The build wheel's new helper and
+  all five changed donor modules were compared byte-for-byte with current
+  source and all six comparisons returned True.
+  Built wheels live only in /private/tmp/microcosm-509-wheels-20261009.
+
+  All dependency-overlay jobs were cancelled, confirmed exit 130. No
+  installs, test jobs, or wheel builds remain running from this task.
+  Partial ignored validation environments and temporary directories remain.
+
+No release build, published-frame diagnostic, push, or GitHub write ran.
+The sourcing decision remains open; this is not a completed WP2.

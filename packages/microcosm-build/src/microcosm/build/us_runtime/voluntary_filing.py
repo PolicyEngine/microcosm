@@ -30,13 +30,18 @@ arbitrary pre-existing nonconstant column.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.full_sipp_donor import (
+    cache_verified_full_sipp_sha256,
+    full_sipp_sha256,
+    open_verified_full_sipp,
+)
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     require_assembled_support_provenance,
@@ -210,18 +215,8 @@ def us_voluntary_filing_stage_spec() -> SourceStageSpec:
     return spec
 
 
-def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    for chunk in iter(lambda: stream.read(chunk_size), b""):
-        digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
+    return full_sipp_sha256(path)
 
 
 def _file_matches(
@@ -312,6 +307,7 @@ def fetch_sipp_2023_voluntary_filing_donor(
                 f"expected {expected_sha256}, got {actual_sha256}."
             )
         partial.replace(target)
+        cache_verified_full_sipp_sha256(target, actual_sha256)
     except Exception:
         partial.unlink(missing_ok=True)
         raise
@@ -359,41 +355,48 @@ def load_sipp_2023_voluntary_filing_donor(
     """Transform the pinned SIPP person file to measured filing tax units."""
 
     path = Path(path)
-    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 voluntary-filing donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(path)
-        if actual_sha256 != expected_sha256:
+    with open_verified_full_sipp(path) as verified:
+        if (
+            expected_size_bytes is not None
+            and verified.fingerprint.size_bytes != expected_size_bytes
+        ):
             raise ValueError(
-                "SIPP 2023 voluntary-filing donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
+                "SIPP 2023 voluntary-filing donor failed byte-length verification: "
+                f"expected {expected_size_bytes}, got {verified.fingerprint.size_bytes}."
             )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
+        if expected_sha256 is not None:
+            actual_sha256 = verified.sha256
+            if actual_sha256 != expected_sha256:
+                raise ValueError(
+                    "SIPP 2023 voluntary-filing donor failed sha-256 verification: "
+                    f"expected {expected_sha256}, got {actual_sha256}."
+                )
+        if chunksize < 1:
+            raise ValueError("chunksize must be a positive integer")
 
-    header = pd.read_csv(path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(
-            f"SIPP 2023 voluntary-filing donor missing column(s): {missing}."
+        header = pd.read_csv(verified.stream, delimiter="|", nrows=0)
+        verified.stream.seek(0)
+        missing = sorted(
+            set(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS) - set(header.columns)
         )
+        if missing:
+            raise ValueError(
+                f"SIPP 2023 voluntary-filing donor missing column(s): {missing}."
+            )
 
-    parts: list[pd.DataFrame] = []
-    reader = pd.read_csv(
-        path,
-        delimiter="|",
-        usecols=list(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=True,
-    )
-    for chunk in reader:
-        month = _numeric(chunk["MONTHCODE"])
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            parts.append(december)
+        parts: list[pd.DataFrame] = []
+        reader = pd.read_csv(
+            verified.stream,
+            delimiter="|",
+            usecols=list(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS),
+            chunksize=int(chunksize),
+            low_memory=True,
+        )
+        for chunk in reader:
+            month = _numeric(chunk["MONTHCODE"])
+            december = chunk.loc[month.eq(12)].copy()
+            if not december.empty:
+                parts.append(december)
     if not parts:
         raise ValueError("SIPP 2023 voluntary-filing donor has no December rows.")
     december = pd.concat(parts, ignore_index=True)

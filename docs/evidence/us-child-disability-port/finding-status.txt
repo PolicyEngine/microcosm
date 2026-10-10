@@ -1,0 +1,50 @@
+WP2 finding status (partial port; 2026-10-09)
+===========================================
+The medical stage is stopped at the sourcing decision described in
+sourcing-audit.txt. Rows marked deferred are NOT resolved by this change.
+Only the existing full-SIPP authentication and graph contract are changed.
+
+Finding                 Status / resolution and intended proof
+R1.1 wrong SSI input    Deferred: needs stage-to-export-to-engine SSI test.
+R1.2 stale checkpoint  Main v13 already binds staged bytes; new child mutation
+                       checkpoint proof deferred until stage exists.
+R1.3 general impacts   Deferred: RDIS_ALT layer and measured consumer changes.
+R1.4 final rates       Deferred: final calibrated/selected export signal gate.
+R1.5 adult bytes       Deferred: masked child writes + raw adult-byte proof.
+R1.6 conflicting head  No old merges/cherry-picks; changes based on a224dc110.
+                       Qualification port itself remains deferred.
+R1.7 time concepts     Deferred: monthly receipt audit only, no receipt label.
+R1.8 donor fallback    Shared mutation refusal/fallback improved; child-specific
+                       implicit resolver remains absent/deferred.
+R2.1 child items       Deferred: exact eight-item, age-universe recode tests.
+R2.2 tautological test Deferred: genuine child-stage/criteria/take-up/SSI chain.
+R2.3 lost diagnostics  Deferred: preserve rich early and final gate diagnostics.
+R2.4 hash fallback     Existing shared _file_matches catches mutation refusal;
+                       covered by existing fetch tests and new races.
+R2.5 source contract   Under-18 fence retained because child stage is absent.
+R3.1 CI skips          New SIPP tests are in registered engine_free/us, with no
+                       optional-engine skip. Child engine proof deferred.
+R3.2 weak assertions  New SIPP proofs require exact stream/cache behavior.
+                       All-row child/clone and parent-income proof deferred.
+R3.3 wrong estimand    Deferred: no receipt classifier or general-to-medical
+                       copy has been introduced.
+R3.4 floor arithmetic Main floor-aware formula retained unchanged. No medical
+                       solve allowed to reuse its endogenous prior.
+R3.5 stale v10 cache   Main staged-frame digest retained. Child proof deferred.
+R3.6 infant pool       Deferred: exact-age-one transport required.
+R3.7 take-up contract Existing fence retained consistently with source contract.
+R4.1 runtime graph    Shared artifact reader explicitly inventoried; actual
+                       graph pin 74 -> 75. Child registration deferred.
+R4.2 reporter loss     Deferred: under-15 criteria and all-under-18 eligible
+                       reporter floor need separate masks and engine proof.
+R4.3 medical severity Deferred: independently admissible rate is still missing
+                       under active provenance policy; see sourcing audit.
+R4.4 export bridge    Deferred: exported all-row equality and false-bridge mutant.
+R4.5 two TOCTOU races Descriptor-bound hash/cache + before/after parse identity
+                       checks; downloader-provided digest reverified against
+                       current bytes. Fourteen synthetic regression cases and
+                       in-memory mutation proofs prepared in engine_free/us.
+
+No new commit SHA is available: git add was denied creating .git/index.lock.
+Required heavy suites are blocked before pytest because sandbox denies ps.
+Do not describe this branch as a completed WP2 or a certified data release.

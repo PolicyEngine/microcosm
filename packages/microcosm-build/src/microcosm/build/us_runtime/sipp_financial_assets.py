@@ -32,10 +32,14 @@ intersection filter.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import BinaryIO
 
 import numpy as np
 import pandas as pd
+
+from microcosm.build.us_runtime.full_sipp_donor import (
+    full_sipp_sha256,
+    open_verified_full_sipp,
+)
 
 __all__ = [
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
@@ -211,18 +215,8 @@ _RECIPIENT_RETIREMENT_DISTRIBUTION_COLUMNS = (
 )
 
 
-def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    for chunk in iter(lambda: stream.read(chunk_size), b""):
-        digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
+    return full_sipp_sha256(path)
 
 
 def _file_matches(
@@ -395,42 +389,46 @@ def load_sipp_2023_financial_asset_donor(
     """Load the exact December SIPP asset-QRF donor surface from ``pu2023``."""
 
     source_path = Path(path)
-    if (
-        expected_size_bytes is not None
-        and source_path.stat().st_size != expected_size_bytes
-    ):
-        raise ValueError(
-            "SIPP 2023 financial-asset donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {source_path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(source_path)
-        if actual_sha256 != expected_sha256:
+    with open_verified_full_sipp(source_path) as verified:
+        if (
+            expected_size_bytes is not None
+            and verified.fingerprint.size_bytes != expected_size_bytes
+        ):
             raise ValueError(
-                "SIPP 2023 financial-asset donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
+                "SIPP 2023 financial-asset donor failed byte-length verification: "
+                f"expected {expected_size_bytes}, got {verified.fingerprint.size_bytes}."
             )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
+        if expected_sha256 is not None:
+            actual_sha256 = verified.sha256
+            if actual_sha256 != expected_sha256:
+                raise ValueError(
+                    "SIPP 2023 financial-asset donor failed sha-256 verification: "
+                    f"expected {expected_sha256}, got {actual_sha256}."
+                )
+        if chunksize < 1:
+            raise ValueError("chunksize must be a positive integer")
 
-    header = pd.read_csv(source_path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP financial-asset donor missing column(s): {missing}.")
+        header = pd.read_csv(verified.stream, delimiter="|", nrows=0)
+        verified.stream.seek(0)
+        missing = sorted(set(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS) - set(header.columns))
+        if missing:
+            raise ValueError(
+                f"SIPP financial-asset donor missing column(s): {missing}."
+            )
 
-    parts: list[pd.DataFrame] = []
-    for chunk in pd.read_csv(
-        source_path,
-        delimiter="|",
-        usecols=list(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        dtype={"SSUID": "string"},
-        low_memory=False,
-    ):
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            parts.append(december)
+        parts: list[pd.DataFrame] = []
+        for chunk in pd.read_csv(
+            verified.stream,
+            delimiter="|",
+            usecols=list(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS),
+            chunksize=int(chunksize),
+            dtype={"SSUID": "string"},
+            low_memory=False,
+        ):
+            month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
+            december = chunk.loc[month.eq(12)].copy()
+            if not december.empty:
+                parts.append(december)
     if not parts:
         raise ValueError("SIPP financial-asset donor has no December rows.")
     raw = pd.concat(parts, ignore_index=True)

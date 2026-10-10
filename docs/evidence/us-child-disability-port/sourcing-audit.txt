@@ -1,0 +1,123 @@
+WP2 / microcosm#453: child medical-qualification sourcing audit
+Reviewed 2026-10-09 on a224dc110, branch ssi-453-child-disability-v2.
+
+Status: qualification port not landed. The existing administrative-only
+take-up provenance rule needs an explicit exception before the independent
+research rate below can drive this stage. No medical prevalence was solved,
+no child take-up rate was assigned, and the under-18 delivery fence remains.
+
+Repository evidence
+-------------------
+ssi_take_up.py derives each prior from
+    p = (T - F) / (C - F)
+where T is the SSA target, F the eligible reporter floor, and C simulated
+candidate capacity. Its delivered-weight artifact authenticates C and F;
+it does not make the resulting rate independent of child qualification.
+Using this prior while solving qualification produces
+    F + p * (C - F) = T
+for every feasible C. It cannot identify medical prevalence.
+
+An AST-isolated execution of main's actual _band_prior (no mocked formula)
+with T=1001922 and F=100000 demonstrated:
+  C=2000000: p=.47469578947368424, expected recipients=1001922.
+  C=4000000: p=.2312620512820513,  expected recipients=1001922.
+Doubling eligible capacity still reproduces the target. Authenticating the
+capacity artifact does not remedy this identification failure.
+
+The old r5 draft's solver merely accepts a nonempty provenance dictionary;
+the builder never invokes the solver. Its reporter mask also excludes
+age-15--17 reporters from the under-18 reporter floor. Do not port these
+behaviors. Current main already hashes staged-frame contents in target
+checkpoint identity (materializer v13); a child stage must finish before
+that digest is computed.
+
+packages/microcosm-build/src/microcosm/build/us/take_up_contract.json,
+definitions.provenance_rule, permits rates traceable to administrative
+publications and excludes research-only estimates. No independent
+administrative child SSI participation rate was identified in this audit.
+
+Independent research evidence, requiring a disclosed exception
+--------------------------------------------------------------
+Levere and Wittenburg, Which Medicaid Recipients Might Be Eligible for SSI?,
+National Tax Journal 79(2), June 2026, DOI 10.1086/739783:
+https://www.journals.uchicago.edu/doi/10.1086/739783
+Author September 2024 manuscript, p.19 and Appendix Table 4, pp.47--48:
+https://hill1286.github.io/michaellevere/Levere%20Wittenburg%20(2024)%20-%20Which%20Medicaid%20Recipients%20Might%20be%20Eligible%20for%20SSI.pdf
+
+The December 2019, ages-0--17 research estimate is
+    (894687 + 262034) / (894687 + 262034 + 480514)
+  = 1156721 / 1637235 = 0.7065088395984693, reported as 70.7%.
+The numerator combines Medicaid SSI flags in 32 high-match states with SSA
+counts elsewhere. The denominator estimates additional potential eligibility
+from health-care utilization. Financial eligibility is assumed; people
+outside Medicaid are omitted; predicted probabilities below 5% are excluded
+in the preferred specification. The authors describe the estimate as an
+upper bound. Their unrestricted alternative is 57.3%. This is not an SSA
+administrative participation rate, and the study does not isolate the
+federal-payment universe from state-supplement classifications.
+
+SSA's December 2024 federal-payment child target is 1001922, comprising
+893939 federal-only and 107983 federal-and-state recipients. The broader
+1002887 count adds 965 state-only recipients:
+https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html
+Preserve the authenticated registry target; do not silently re-pin it.
+
+Conditional arithmetic if the research exception is authorized
+-------------------------------------------------------------
+The study estimates overall participation r, not a nonreporter draw rate.
+With all-under-18 eligible reporter floor F, target T, and fixed eligible
+nonreporter age-15--17 capacity A:
+    required qualifying eligible capacity C = T/r
+    nonreporter prior p = (T-F)/(T/r-F)
+    required under-15 nonreporter capacity = C-F-A
+This p does not depend on the child threshold being solved.
+
+Illustration only, T=1001922, F=100000, A=150000:
+  r=.707: C=1417145.685997, p=.684754928470,
+          required child capacity=1167145.685997.
+  r=.573: C=1748554.973822, p=.547098528300,
+          required child capacity=1498554.973822.
+Both give F+p*(A+child capacity)=1001922. Neither illustration establishes
+a severity threshold or a qualification prevalence on a population frame.
+
+Diagnostic application after the qualification port is completed
+---------------------------------------------------------------
+No public child-stage functions are installed by this partial change.
+Do not use the old draft as a drop-in diagnostic: it is unwired and its
+criterion/anchor assumptions need repair.
+
+The old draft names the intended interfaces:
+  load_sipp_2023_child_disability_donor(path, expected_sha256, expected_size_bytes)
+  with_us_child_disability_inputs(frame, seed, time_period, sipp_donor)
+  child_ssi_medical_severity_scores(frame, sipp_donor, seed)
+  with_us_child_ssi_financial_probe_criteria(frame, reporter_source_ids)
+  with_us_child_ssi_medical_qualification(...)
+These are reference interfaces on origin/ssi-453-child-disability-r5-wip,
+not callable APIs on this branch.
+
+A completed diagnostic must load an already released Frame with stable
+source person identity, support-copy provenance, household/person membership,
+age, sex, SSI_VAL reporter lineage, resolved person weights, general
+disability and all baseline income/resource/parent-role engine inputs. Read
+the pinned full SIPP donor locally through the verified stream, apply the
+general layer, compute battery-only severity, then probe December uncapped_ssi
+with all candidate children temporarily criteria-true. The probe needs
+baseline financial inputs and real parent links; it must not use a reform.
+Solve once with an independent rate and all-under-18 reporter floor, restore
+persisted criteria, run take-up once at the same documented child prior,
+and score the exported dataset. Compare every exported disability value with
+the Frame. This is local diagnostic evidence, not release certification.
+
+policyengine-us 2.2.1 does not deem a parent's resources to a child. Do not
+compensate in the data layer. A solved severity threshold would depend on
+the baseline engine's financial rules and must be re-solved when the engine
+adds resource deeming. Parent income deeming must remain active in the probe.
+
+Safe preparatory work
+---------------------
+The separate SIPP authentication change closes the two r4 hash-cache races
+and binds five existing full-SIPP loaders to the verified open descriptor.
+It does not implement child qualification, SSI wiring, child signal/export
+gates, or the under-18 fence removal. Review/test evidence is in the final
+task report. No release build, restricted-data read, push, or GitHub write
+was performed.

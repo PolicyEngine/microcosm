@@ -27,13 +27,17 @@ from __future__ import annotations
 
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.full_sipp_donor import (
+    full_sipp_sha256,
+    open_verified_full_sipp,
+)
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     require_assembled_support_provenance,
@@ -224,18 +228,8 @@ def us_sipp_head_start_stage_spec() -> SourceStageSpec:
     return spec
 
 
-def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    for chunk in iter(lambda: stream.read(chunk_size), b""):
-        digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
+    return full_sipp_sha256(path)
 
 
 def fetch_sipp_2023_head_start_donor(
@@ -318,41 +312,45 @@ def load_sipp_2023_head_start_donor(
     """Load strict December age-3--5 labels from the pinned full SIPP file."""
 
     source_path = Path(path).expanduser()
-    if not source_path.is_file():
-        raise FileNotFoundError(source_path)
-    if chunksize < 1:
-        raise ValueError("chunksize must be positive")
-    if (
-        expected_size_bytes is not None
-        and source_path.stat().st_size != expected_size_bytes
-    ):
-        raise ValueError(
-            "SIPP Head Start donor byte length does not match the pinned artifact."
-        )
-    if expected_sha256 is not None:
-        digest = _sha256_file(source_path)
-        if digest != expected_sha256:
+    with open_verified_full_sipp(source_path) as verified:
+        if not source_path.is_file():
+            raise FileNotFoundError(source_path)
+        if chunksize < 1:
+            raise ValueError("chunksize must be positive")
+        if (
+            expected_size_bytes is not None
+            and verified.fingerprint.size_bytes != expected_size_bytes
+        ):
             raise ValueError(
-                "SIPP Head Start donor SHA-256 does not match the pinned artifact."
+                "SIPP Head Start donor byte length does not match the pinned artifact."
+            )
+        if expected_sha256 is not None:
+            digest = verified.sha256
+            if digest != expected_sha256:
+                raise ValueError(
+                    "SIPP Head Start donor SHA-256 does not match the pinned artifact."
+                )
+
+        header = pd.read_csv(verified.stream, sep="|", nrows=0)
+        verified.stream.seek(0)
+        missing = sorted(set(SIPP_HEAD_START_SOURCE_COLUMNS) - set(header.columns))
+        if missing:
+            raise ValueError(
+                f"SIPP Head Start donor missing source column(s): {missing}."
             )
 
-    header = pd.read_csv(source_path, sep="|", nrows=0)
-    missing = sorted(set(SIPP_HEAD_START_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP Head Start donor missing source column(s): {missing}.")
-
-    december_parts: list[pd.DataFrame] = []
-    raw_rows = 0
-    for chunk in pd.read_csv(
-        source_path,
-        sep="|",
-        usecols=list(SIPP_HEAD_START_SOURCE_COLUMNS),
-        chunksize=chunksize,
-        low_memory=False,
-    ):
-        raw_rows += len(chunk)
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december_parts.append(chunk.loc[month.eq(12)].copy())
+        december_parts: list[pd.DataFrame] = []
+        raw_rows = 0
+        for chunk in pd.read_csv(
+            verified.stream,
+            sep="|",
+            usecols=list(SIPP_HEAD_START_SOURCE_COLUMNS),
+            chunksize=chunksize,
+            low_memory=False,
+        ):
+            raw_rows += len(chunk)
+            month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
+            december_parts.append(chunk.loc[month.eq(12)].copy())
     december = pd.concat(december_parts, ignore_index=True)
     if december.empty:
         raise ValueError("SIPP Head Start donor contains no December rows.")

@@ -268,6 +268,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "engine_lifecycle.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
+        # Shared immutable SIPP verification and descriptor-bound parsing;
+        # artifact I/O only, no population treatment or provenance exemption.
+        "full_sipp_donor.py",
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
@@ -3488,9 +3491,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # plus asec_sources.py, whose default ASEC pool the education sidecar
         # loader now defaults to. All four are classified in
         # _OTHER_US_RUNTIME_MODULES and scanned below like every other
-        # reached module.
-        assert len(runtime_graph) == 74, (
-            f"{tool.name} must reach the pinned 74-module runtime graph; "
+        # reached module. The shared descriptor-bound SIPP reader adds one
+        # reviewed artifact-I/O module, reached by the existing donor loaders.
+        assert len(runtime_graph) == 75, (
+            f"{tool.name} must reach the pinned 75-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
