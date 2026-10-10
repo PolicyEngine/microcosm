@@ -2764,8 +2764,11 @@ def _monthly_window_source_key(
         _str_at(fact, "observed_measure", "unit"),
         json.dumps(_at(fact, "entity"), sort_keys=True),
         json.dumps(_at(fact, "geography"), sort_keys=True),
+        # The parsed table, not its selector spec id: a publisher's monthly
+        # series can keep an established spec id on one month for consumers
+        # that select it alone (DWP's May 2025 UC cells, PolicyEngine/
+        # chronicle#314) while the publication, file and table are one.
         _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
-        _normalized_record_set_id(_str_at(fact, "layout", "record_set_spec_id")),
         _str_at(fact, "layout", "groupby_dimension"),
         _str_at(fact, "aggregation", "method"),
         _domain(fact),

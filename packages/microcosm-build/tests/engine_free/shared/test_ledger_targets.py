@@ -5319,3 +5319,18 @@ def test__given_a_base_overlay_beyond_geography__then_the_reference_refuses():
     operands[0] = {"role": "base", "source_measure_id": "other"}
     with pytest.raises(ValueError, match="only move the base below"):
         _rolled_reference(value_operands=tuple(operands))
+
+
+def test__given_one_month_keeps_an_established_spec_id__then_the_window_is_one_series():
+    # DWP's May 2025 UC area cells keep their established record-set spec id
+    # inside the monthly series (PolicyEngine/chronicle#314): the publication,
+    # file and parsed table are one, so the window averages them (#1123).
+    rows = [
+        _window_fact_row(month, value=index)
+        for index, month in enumerate(_FISCAL_MONTHS)
+    ]
+    rows[5]["layout"]["record_set_spec_id"] = "established.selector.spec.v1"
+    (target,) = compile_ledger_target_references(
+        rows, [_window_reference()], country="us"
+    ).specs
+    assert target.value == 5.5
