@@ -514,8 +514,8 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
     assert new_paid <= {reference.name for reference in monthly}
     assert set(element_windows) <= {reference.name for reference in monthly}
     # The #882 Housing Benefit caseload rows bind the Stat-Xplore client-type
-    # by tenure cube on the same calendar-2025 window; no other family
-    # declares source months.
+    # by tenure cube on the same calendar-2025 window, and since microcosm#1069
+    # c10 so do its pension-age rows.
     housing_benefit = [
         reference
         for reference in references
@@ -523,6 +523,9 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
     ]
     assert sorted(reference.name for reference in housing_benefit) == [
         "dwp.hb.households",
+        "dwp.hb.households_pension_age",
+        "dwp.hb.households_pension_age_private_rented",
+        "dwp.hb.households_pension_age_social_rented",
         "dwp.hb.households_private_rented",
         "dwp.hb.households_social_rented",
     ]
@@ -551,9 +554,59 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.value_operation == "monthly_window_sum_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
+    # The State Pension rows bind the four quarterly points inside calendar
+    # 2025; the amount bands keep the three DWP pays at the 2025-26 rate the
+    # engine pays (microcosm#1069 R1).
+    pension = [
+        reference for reference in references if reference.family == "dwp_state_pension"
+    ]
+    assert len(pension) == 59
+    for reference in pension:
+        months = json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS])
+        assert months == reference.ledger_selector["period_value"]
+        assert reference.period_match_policy == "source_window"
+        assert months == (
+            esa_quarters[1:] if "_by_weekly_amount." in reference.name else esa_quarters
+        )
+    # The Pension Credit caseload rows bind the same four quarterly points
+    # (microcosm#1069 c7).
+    pension_credit = [
+        reference
+        for reference in references
+        if reference.family == "dwp_pension_credit"
+    ]
+    assert len(pension_credit) == 14
+    for reference in pension_credit:
+        assert reference.ledger_selector["period_value"] == esa_quarters
+        assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
+    # The Attendance Allowance rows (England, Wales) bind the same four
+    # quarterly points (microcosm#1069 c10).
+    attendance = [
+        reference
+        for reference in references
+        if reference.family == "dwp_attendance_allowance"
+    ]
+    assert sorted(reference.name for reference in attendance) == [
+        "dwp.attendance_allowance.recipients_england",
+        "dwp.attendance_allowance.recipients_wales",
+    ]
+    for reference in attendance:
+        assert reference.ledger_selector["period_value"] == esa_quarters
+        assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
         if reference.family
-        not in {"dwp_universal_credit", "dwp_housing_benefit", "dwp_legacy_benefits"}
+        not in {
+            "dwp_universal_credit",
+            "dwp_housing_benefit",
+            "dwp_legacy_benefits",
+            "dwp_state_pension",
+            "dwp_pension_credit",
+            "dwp_attendance_allowance",
+        }
     )

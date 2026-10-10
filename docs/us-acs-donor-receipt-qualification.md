@@ -13,7 +13,7 @@ the exception precisely.
 The tool is [`tools/build_us_acs_donor_receipt_qualification.py`](../tools/build_us_acs_donor_receipt_qualification.py).
 It certifies nothing: it produces a local H5 and a receipt, never a release, a
 staged bundle, a calibration or a latest pointer. See
-[the PR-CI / certification boundary](../CLAUDE.md) for why that distinction is
+[the PR-CI / certification boundary](agent-guide.md) for why that distinction is
 load-bearing.
 
 ## Why the donor needs qualifying

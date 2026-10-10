@@ -59,7 +59,12 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: target-fit register from the PolicyEngine/chronicle#280 lane; earliest expiry
 #: 2026-10-21, the same entries) so the suite never drifts across an approval
 #: or expiry boundary. Move it forward when a register gains a later approval.
-CLOCK = date(2026, 9, 23)
+# The committed registers are evaluated as of this date; the microcosm#1063
+# c9 input-mass and QRF-tail entries take force on 2026-10-02, the
+# microcosm#1095 West Midlands target-fit deferral on 2026-10-06 and its two
+# UC payment-band measure exclusions on 2026-10-07. The earliest expiry is
+# 2026-10-15.
+CLOCK = date(2026, 10, 7)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -250,9 +255,9 @@ def _run_battery(
     artifacts: dict[str, object] = {
         "coverage_engine": object(),
         "exclusions_evaluated_on": clock,
-        # The staging pipeline's two scheduled stages declare no nonnegative
-        # outputs, so the nonnegative gate passes with zero required columns.
-        "build_stage_names": ("frs_hmrc_retained_leaves", "hmrc_spi_income"),
+        # This binding fixture schedules a stage with no declared nonnegative
+        # outputs; canonical family completeness has dedicated tests.
+        "build_stage_names": ("frs_household_draws",),
     }
     if fit_records is not None:
         artifacts["fit_weight_records"] = fit_records
@@ -483,19 +488,140 @@ class TestUKSurfaceAdapter:
 
         assert result.passed is True
 
+    def _salary_sacrifice_frames(self, *, carrier):
+        """The release frame without the pre-conversion pay carrier, the spine with it.
+
+        The carrier leaves at the release boundary
+        (UK_RELEASE_EXPORT_DROPPED_COLUMNS), so a certifier checking the
+        salary_sacrifice stage's declared non-negative outputs on the release
+        candidate finds it only on the spine frame (microcosm#1063).
+        """
+
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
+
+        person, benunit, household = _tables()
+        person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
+        release = uk_national_frame(
+            person=person.copy(),
+            benunit=benunit.copy(),
+            household=household.copy(),
+            time_period="2023",
+        )
+        spine_person = person.copy()
+        spine_person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = carrier
+        spine = uk_national_frame(
+            person=spine_person,
+            benunit=benunit.copy(),
+            household=household.copy(),
+            time_period="2023",
+        )
+        return release, spine
+
+    def test_nonnegative_binding_reads_export_dropped_columns_from_the_spine(
+        self,
+    ) -> None:
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        release, spine = self._salary_sacrifice_frames(carrier=[0.0, 30.0, 0.0, 20.0])
+        # Without the spine frame the dropped carrier is a missing column.
+        missing = binding.evaluate(
+            EvidenceContext(
+                frame=release, artifacts={"build_stage_names": ("salary_sacrifice",)}
+            ),
+            {},
+        )
+        assert missing.passed is False
+        assert "salary_sacrifice_pre_conversion_pay" in missing.failures[0]
+        # With it the carrier is checked where it lives.
+        checked = binding.evaluate(
+            EvidenceContext(
+                frame=release,
+                artifacts={
+                    "build_stage_names": ("salary_sacrifice",),
+                    "spine_frame": spine,
+                },
+            ),
+            {},
+        )
+        assert checked.passed is True
+        # The spine's values are really checked, not just their presence.
+        _, negative_spine = self._salary_sacrifice_frames(
+            carrier=[0.0, 30.0, -1.0, 20.0]
+        )
+        failing = binding.evaluate(
+            EvidenceContext(
+                frame=release,
+                artifacts={
+                    "build_stage_names": ("salary_sacrifice",),
+                    "spine_frame": negative_spine,
+                },
+            ),
+            {},
+        )
+        assert failing.passed is False
+        assert (
+            "salary_sacrifice_pre_conversion_pay: 1 finite value(s) below zero"
+            in (failing.failures[0])
+        )
+
+    def test_only_export_dropped_columns_are_read_from_the_spine(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _export_dropped_columns_from_spine,
+        )
+        from microcosm.build.uk_runtime.frs_disability import (
+            UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
+        )
+
+        release, spine = self._salary_sacrifice_frames(carrier=[0.0, 30.0, 0.0, 20.0])
+        spine_person = spine.table("person").copy()
+        spine_person["sic_industry_division"] = [1.0, 2.0, 3.0, 4.0]
+        spine_person[UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0]] = 0.0
+        spine = uk_national_frame(
+            person=spine_person,
+            benunit=spine.table("benunit"),
+            household=spine.table("household"),
+            time_period="2023",
+            household_weights=spine.weights_for("household").values,
+        )
+        found = _export_dropped_columns_from_spine(
+            EvidenceContext(frame=release, artifacts={"spine_frame": spine}),
+            [
+                "salary_sacrifice_pre_conversion_pay",
+                UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+                "sic_industry_division",
+                "never_declared",
+            ],
+        )
+        # A column the export keeps is never answered from the spine, even
+        # when the spine carries it; one absent from the spine is not found.
+        assert set(found) == {
+            "salary_sacrifice_pre_conversion_pay",
+            UK_INTERNAL_DISABILITY_REPORTED_COLUMNS[0],
+        }
+        assert found["salary_sacrifice_pre_conversion_pay"].tolist() == [
+            0.0,
+            30.0,
+            0.0,
+            20.0,
+        ]
+        assert (
+            _export_dropped_columns_from_spine(
+                EvidenceContext(frame=release, artifacts={}),
+                ["salary_sacrifice_pre_conversion_pay"],
+            )
+            == {}
+        )
+
     def test_nonnegative_binding_does_not_demand_unscheduled_stages(self) -> None:
-        # The national staging build schedules only the two HMRC stages,
-        # which declare no nonnegative outputs — the gate passes honestly
-        # with zero required columns rather than by silent pre-filtering.
+        # This isolated stage declares no nonnegative outputs. Outputs of
+        # unscheduled employment and income stages must not be demanded.
         binding = UK_GATE_REGISTRY["nonnegative_columns"]
         context = EvidenceContext(
             frame=self._nonnegative_frame(sic=None),
-            artifacts={
-                "build_stage_names": (
-                    "frs_hmrc_retained_leaves",
-                    "hmrc_spi_income",
-                )
-            },
+            artifacts={"build_stage_names": ("frs_household_draws",)},
         )
 
         result = binding.evaluate(context, {})
@@ -934,18 +1060,24 @@ class TestTerminalCoverageBinding:
             family_coverage={},
         )
         binding = UK_GATE_REGISTRY["release_input_coverage"]
+        # The binding needs the spine build state (microcosm#1115 review);
+        # here the spine frame is the frame itself.
         result = binding.evaluate(
             EvidenceContext(
                 frame=frame,
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "spine_frame": frame,
                 },
             ),
             {},
         )
         direct = uk_release_input_coverage_gate(
-            _uk_gate_surface(frame), engine, manifest=manifest
+            _uk_gate_surface(frame),
+            engine,
+            manifest=manifest,
+            build_state_frame=_uk_gate_surface(frame),
         )
 
         assert direct.name == "uk_release_input_coverage"
@@ -1489,3 +1621,43 @@ class TestEnumDomainResolution:
                 EvidenceContext(frame=frame, artifacts={"rules_engine": Bare()}),
                 {"columns": ["student_loan_plan"]},
             )
+
+
+def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
+    """The terminal weight gates read the support-family fold (microcosm#1045).
+
+    Four rows: root 1 split into three copies at 1.0 each (ids 1, 2, 3 share
+    the lineage key) and one household at 30.0. Row-level the ratio is 30;
+    folded it is 10, so a bound of 20 passes only on the fold.
+    """
+    person, benunit, household = _tables(n=4, weights=[1.0, 1.0, 1.0, 30.0])
+    household["household_is_capital_gains_clone"] = False
+    household["source_household_id"] = np.asarray([1, 1, 1, 4], dtype=np.int64)
+    household["household_support_channel"] = pd.array(["frs"] * 4, dtype="string")
+    household["household_support_clone_index"] = np.zeros(4, dtype=np.int64)
+    household["household_is_cgt_support_copy"] = [False, True, True, False]
+    household["cgt_support_copy_index"] = np.asarray([0, 1, 2, 0], dtype=np.int64)
+    household["household_is_cgt_residential_clone"] = False
+    household["cgt_residential_clone_index"] = np.zeros(4, dtype=np.int64)
+    frame = uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2023"
+    )
+
+    ratio = UK_GATE_REGISTRY["weight_ratio"].evaluate(
+        EvidenceContext(frame=frame), {"maximum_max_to_median_ratio": 20.0}
+    )
+    assert ratio.passed
+    assert ratio.details["max_to_median_positive_weight"] == 30.0
+    assert ratio.details["evaluated_on"] == "family_folded_weights"
+    assert ratio.details["family_folded"]["basis"] == "support_family_fold"
+    assert ratio.details["family_folded"]["families"] == 2
+    assert ratio.details["family_folded"]["max_to_median_positive_weight"] == (
+        30.0 / ((3.0 + 30.0) / 2)
+    )
+
+    ess = UK_GATE_REGISTRY["weight_ess"].evaluate(
+        EvidenceContext(frame=frame), {"minimum_ess_fraction": 0.01}
+    )
+    assert ess.details["evaluated_on"] == "family_folded_weights"
+    assert ess.details["family_folded"]["n_records"] == 2
+    assert ess.details["n_records"] == 4

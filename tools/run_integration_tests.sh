@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 uv sync --all-packages --locked --extra uk
 files=()
 while IFS= read -r file; do files+=("$file"); done < <(
-  uv run --no-sync python tools/ci_test_groups.py --list integration-uk
+  uv run --no-sync python tools/ci_test_plan.py list-job integration-uk
 )
 uv run --no-sync pytest "${files[@]}" \
   --run-integration -q -s -p no:cacheprovider

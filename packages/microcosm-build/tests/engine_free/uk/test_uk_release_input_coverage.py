@@ -1,6 +1,13 @@
 """Tests split from packages/microcosm-build/tests/test_uk_release_input_coverage.py."""
 
 # ruff: noqa: F403, F405
+from importlib.resources import files
+
+from microcosm.build.uk_runtime.release_input_coverage import (
+    UK_FAMILY_MASS_CHANGE_SEMANTICS,
+    _parse_family_coverage,
+    _valid_mass_record,
+)
 from test_support.microcosm_build.uk_release_input_coverage import *
 
 
@@ -127,3 +134,74 @@ class TestFamilyBuildStateFrame:
         )
         assert result.passed, result.failures
         assert result.details["family_build_state_frame"] == "spine"
+
+    def test_binding_refuses_to_judge_the_calibrated_frame_without_build_state(
+        self,
+    ) -> None:
+        """microcosm#1115 review: no spine build state means evidence absent,
+        never a verdict read off the calibrated frame's weights."""
+        from microcosm.build.gate_battery import EvidenceContext
+        from microcosm.build.uk_runtime.battery_bindings import (
+            UK_GATE_REGISTRY,
+            _evaluate_release_input_coverage,
+        )
+
+        _, release = self._frames()
+        artifacts = {
+            "coverage_engine": _StubEngine({"gift_aid": 0.0}),
+            "coverage_manifest": self._contract(),
+        }
+        with pytest.raises(ValueError, match="spine build state"):
+            _evaluate_release_input_coverage(
+                EvidenceContext(frame=release, artifacts=artifacts), {}
+            )
+        binding = UK_GATE_REGISTRY["release_input_coverage"]
+        assert "spine_frame" in binding.required_artifacts({})
+        assert "spine_frame" not in binding.required_artifacts(
+            {"check": "manifest_current"}
+        )
+
+
+class TestFamilyMassSemantics:
+    """Every family conserves household mass (microcosm#1063 item 3)."""
+
+    def _payload(self) -> dict[str, dict[str, object]]:
+        resource = files("microcosm.build.uk").joinpath(
+            "release_input_coverage_manifest.json"
+        )
+        return json.loads(resource.read_text(encoding="utf-8"))["family_coverage"]
+
+    def test_parser_refuses_the_retired_mass_increasing_semantics(self) -> None:
+        payload = self._payload()
+        families = _parse_family_coverage(payload, resource="test")
+        assert {family["mass_change_semantics"] for family in families.values()} == {
+            UK_FAMILY_MASS_CHANGE_SEMANTICS
+        }
+        assert "spi_income_band_donors" in families
+        payload["spi_income_band_donors"] = {
+            **payload["spi_income_band_donors"],
+            "mass_change_semantics": "mass_increasing_support",
+        }
+        with pytest.raises(ValueError, match="the only semantics is 'mass_conserving'"):
+            _parse_family_coverage(payload, resource="test")
+
+    def test_a_record_that_adds_mass_never_satisfies_a_family(self) -> None:
+        conserving = MassChangeRecord(
+            entity="household",
+            old_total=2_000.0,
+            new_total=2_000.0,
+            declared_factor=1.0,
+            reason="reviewed",
+        )
+        assert _valid_mass_record(conserving)
+        # The pre-#1063 band-donor record: mass added, no declared factor.
+        assert not _valid_mass_record(
+            MassChangeRecord(
+                entity="household",
+                old_total=2_000.0,
+                new_total=2_450.0,
+                declared_factor=None,
+                reason="reviewed",
+            )
+        )
+        assert not _valid_mass_record({**conserving.__dict__, "entity": "person"})

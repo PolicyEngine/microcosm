@@ -4,6 +4,39 @@
 from test_support.microcosm_build.spec_engine_loader import *
 
 
+def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> None:
+    first = load_bundle(
+        _rich_minimal(tmp_path / "xx", note="first", store="local:a"),
+        kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS),
+    )
+    # Pin the domain separator, normalization rules, schema-set receipt, and
+    # exact normative projection as one reviewable golden vector.
+    assert first.spec_sha256 == (
+        "69de1ffc232c3a4da09925658c9d105af55bdaae90852824ac6283306932aab9"
+    )
+
+    second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
+    manifest_path = second_root / "country_package.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["country"] = "xx"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (second_root / "bundle.yaml").write_text(
+        (second_root / "bundle.yaml")
+        .read_text(encoding="utf-8")
+        .replace("country: xx", "country: xx"),
+        encoding="utf-8",
+    )
+    # Directory name is part of the CountrySpec seam, but load_bundle's typed
+    # manifest is the country authority and supports fixture locations.
+    second = load_bundle(
+        second_root, kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS)
+    )
+    assert second.spec_sha256 == first.spec_sha256
+    assert second.documentation_sha256 != first.documentation_sha256
+    assert second.package_fingerprint != first.package_fingerprint
+    assert second.surfaces.operational != first.surfaces.operational
+
+
 def test_loads_typed_domains_injects_defaults_and_emits_valid_lock(tmp_path) -> None:
     root = _rich_minimal(tmp_path / "xx")
     spec = load_bundle(

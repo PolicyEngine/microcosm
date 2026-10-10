@@ -40,7 +40,7 @@ def _spine(n: int = 40, *, spi_copies_parent_wealth: bool):
             "household_source_id": np.r_[np.arange(1, n + 1), np.arange(1, n + 1)],
             "household_support_channel": ["frs"] * n + ["spi"] * n,
             "household_is_capital_gains_clone": False,
-            "household_is_cgt_band_donor": False,
+            "household_is_cgt_support_copy": False,
             "household_weight": 1.0,
             "region": "LONDON",
             "gross_financial_wealth": np.r_[

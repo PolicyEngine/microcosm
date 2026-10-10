@@ -21,9 +21,10 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # spec carries its own band's lower edge in Ledger filter metadata. Two
 # encodings are in use — a numeric lower bound (HMRC SPI income bands) and a
 # published range label (DWP award bands, in monthly units, hence
-# ``band_period_factor``) — and both reduce to one lower edge, because no
-# reference anywhere declares an upper bound. A band's upper edge is its
-# sibling's lower edge within the same compiled contract target. Edges must
+# ``band_period_factor``) — and both reduce to one lower edge. A band's upper
+# edge is its sibling's lower edge within the same compiled contract target,
+# except for DWP's half-open labels ("£20.00 to under £40.00", "Under £20.00"),
+# which publish their own exclusive upper edge and keep it. Edges must
 # never derive from an exclusion-pruned roster, or excluding a band silently
 # widens its lower neighbour; only the compiled register's top band runs to
 # infinity unless the binding declares a source-unit ``band_upper_bound``.
@@ -33,13 +34,22 @@ _COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
 _RANGE_LABEL = re.compile(
-    r"([\d,]+(?:\.\d+)?)\s*(?:to|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
+    r"([\d,]+(?:\.\d+)?)\s*(?:to(?:\s+under)?|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 _OPEN_LABEL = re.compile(
     r"([\d,]+(?:\.\d+)?)\s*(?:or more|or over|and over|and above|\+)",
     re.IGNORECASE,
 )
+# DWP's half-open amount bands publish their own exclusive upper edge:
+# "£20.00 to under £40.00", and the bottom band "Under £20.00" (lower edge
+# zero). The bottom form needs the pound sign, so an age filter such as
+# "Under 25" never reads as an amount band.
+_HALF_OPEN_LABEL = re.compile(
+    r"^\s*£?\s*([\d,]+(?:\.\d+)?)\s*to\s+under\s*£?\s*([\d,]+(?:\.\d+)?)\s*$",
+    re.IGNORECASE,
+)
+_UNDER_LABEL = re.compile(r"^\s*under\s*£\s*([\d,]+(?:\.\d+)?)\s*$", re.IGNORECASE)
 _MISSING_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
 
 #: Provider kinds whose values are additionally masked by the binding's
@@ -63,6 +73,24 @@ class MeasureProvider(Protocol):
     def knows(self, entity: str, variable: str) -> bool: ...
 
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]: ...
+
+
+#: Prefix of the measure-input column a resolved counterfactual delta lands in.
+COUNTERFACTUAL_DELTA_COLUMN_PREFIX = "counterfactual_delta__"
+
+
+def counterfactual_column(binding: Mapping[str, Any]) -> str:
+    """The slash-free measure-input column of a counterfactual binding's delta.
+
+    A provider with ``counterfactual_delta(binding, period)`` resolves the
+    binding's per-row delta into this column; slashes in the metric name are
+    replaced because the prepared frame's HDF writer refuses them.
+    """
+
+    metric = str(binding.get("metric_name") or "")
+    if not metric:
+        raise ValueError("a counterfactual binding needs a metric_name")
+    return COUNTERFACTUAL_DELTA_COLUMN_PREFIX + re.sub(r"[^0-9A-Za-z_]", "_", metric)
 
 
 @dataclass(frozen=True)
@@ -174,6 +202,7 @@ def resolve_target_measures(
         "provider": _measure_provider_receipt(provider),
     }
     all_skips: list[dict[str, Any]] = []
+    specs_by_name = {spec.name: spec for spec in registry.specs}
 
     for round_index in range(max_rounds):
         probe = adapter_factory()
@@ -205,11 +234,24 @@ def resolve_target_measures(
         for skip in skipped:
             reason = str(skip.reason)
             if "counterfactual_delta" in reason or "counterfactual delta" in reason:
-                _raise_measure_resolution(
-                    "counterfactual target measure cannot be resolved",
-                    receipt,
-                    all_skips,
+                key, values, route = _resolve_counterfactual_skip(
+                    skip,
+                    specs_by_name=specs_by_name,
+                    contract=contract,
+                    provider=provider,
+                    period=period,
+                    provided_this_round=provided_this_round,
+                    provided_before=provided_before,
+                    receipt=receipt,
+                    all_skips=all_skips,
                 )
+                if values is not None:
+                    measure_inputs[key] = values
+                    provided_this_round.add(key)
+                    receipt["attached"][f"{key[0]}.{key[1]}"] = route
+                    receipt["provider"] = _measure_provider_receipt(provider)
+                    progressed = True
+                continue
             match = _MISSING_COLUMN.match(reason)
             if match is None:
                 _raise_measure_resolution(
@@ -269,6 +311,59 @@ def resolve_target_measures(
         receipt,
         all_skips,
     )
+
+
+def _resolve_counterfactual_skip(
+    skip: MaterializationSkip,
+    *,
+    specs_by_name: Mapping[str, Any],
+    contract: Mapping[str, Mapping[str, Any]],
+    provider: MeasureProvider,
+    period: int | str,
+    provided_this_round: set[tuple[str, str]],
+    provided_before: set[tuple[str, str]],
+    receipt: dict[str, Any],
+    all_skips: list[dict[str, Any]],
+) -> tuple[tuple[str, str], np.ndarray | None, str]:
+    """Resolve one counterfactual skip through the provider, or refuse.
+
+    Returns the measure-input key and the delta, or ``None`` values when this
+    round already provided the key (several fan-out specs share one binding).
+    """
+
+    resolve = getattr(provider, "counterfactual_delta", None)
+    spec = specs_by_name.get(skip.name)
+    target = (
+        None
+        if spec is None
+        else contract.get(str(spec.metadata.get("contract_target_id")))
+    )
+    if not callable(resolve) or target is None:
+        _raise_measure_resolution(
+            "counterfactual target measure cannot be resolved",
+            receipt,
+            all_skips,
+        )
+    binding = target["bindings"]["policyengine"]
+    entity = str(binding.get("from_entity") or spec.entity)
+    key = (entity, counterfactual_column(binding))
+    if key in provided_this_round:
+        return key, None, ""
+    if key in provided_before:
+        _raise_measure_resolution(
+            f"{entity}.{key[1]} remained unmaterializable after injection",
+            receipt,
+            all_skips,
+        )
+    try:
+        values, route = resolve(binding, binding.get("measurement_period", period))
+    except Exception as exc:  # noqa: BLE001 - receipt preserves cause
+        _raise_measure_resolution(
+            f"provider failed computing counterfactual {entity}.{key[1]}: {exc}",
+            receipt,
+            all_skips,
+        )
+    return key, np.asarray(values, dtype=float), str(route)
 
 
 def _measure_resolution_contract(
@@ -342,6 +437,9 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
         if key.endswith(_BAND_LOWER_BOUND_SUFFIX):
             numeric.append((key, float(str(value).replace(",", ""))))
             continue
+        if _UNDER_LABEL.match(str(value)):
+            labelled.append((key, 0.0))
+            continue
         match = _RANGE_LABEL.search(str(value)) or _OPEN_LABEL.search(str(value))
         if match is not None:
             labelled.append((key, float(match.group(1).replace(",", ""))))
@@ -350,6 +448,31 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
             continue
         return _select_band_edge(spec, binding, candidates) * factor
     return None
+
+
+def _band_label_upper_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
+    """The exclusive upper edge a half-open band label publishes, if any.
+
+    ``"£20.00 to under £40.00"`` and ``"Under £20.00"`` state their own upper
+    edge, so the band never borrows it from a sibling (whose exclusion would
+    otherwise widen it), in model units after ``band_period_factor``.
+    """
+
+    metadata = getattr(spec, "metadata", None) or {}
+    factor = float(binding.get("band_period_factor", 1) or 1)
+    uppers: list[tuple[str, float]] = []
+    for key, value in sorted(metadata.items()):
+        if not key.startswith(_LEDGER_FILTER_PREFIX) or key.endswith(
+            _BAND_LOWER_BOUND_SUFFIX
+        ):
+            continue
+        match = _HALF_OPEN_LABEL.match(str(value)) or _UNDER_LABEL.match(str(value))
+        if match is not None:
+            upper = match.group(match.lastindex or 1).replace(",", "")
+            uppers.append((key, float(upper)))
+    if not uppers:
+        return None
+    return _select_band_edge(spec, binding, uppers) * factor
 
 
 def _select_band_edge(
@@ -451,6 +574,15 @@ def _band_bounds(
         if edge > lower:
             upper = edge
             break
+    own_upper = _band_label_upper_edge(spec, binding)
+    if own_upper is not None:
+        if not own_upper > lower:
+            raise ValueError(
+                f"banded measure {getattr(spec, 'measure', '?')!r} publishes an "
+                f"upper edge {own_upper!r} that is not above its lower edge "
+                f"{lower!r}"
+            )
+        upper = own_upper
     # A consumer may bind only the finite portion of a published histogram.
     # Declare its source-unit ceiling instead of allowing the last included
     # row to absorb a separately published, unbound top-coded category.

@@ -1,0 +1,1505 @@
+{
+ "bindings": [
+  {
+   "canonical_input": "nz:regulations/acc/earners_levy#input.acc_earnings_for_earners_levy",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "acc_earnings_for_earners_levy",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "note": "Consumed in nz/regulations/acc/earners_levy.yaml by acc_standard_earners_levy_excluding_gst (source: Accident Compensation (Earners' Levy) Regulations 2025 regs 4, 5 and 8): 'min(max(0, acc_earnings_for_earners_levy), acc_earners_levy_maximum_earnings) * acc_earners_levy_rate_excluding_gst', and by acc_standard_earners_levy_including_gst (IRD PAYE-facing rate, rounded to cents). The module's test standard_negative_earnings feeds -100 and expects a nil levy, so the input admits a net loss. Read here as annual gross employee wages plus net non-farm and farm self-employment profit. Differences: the input is 'earnings' in the Accident Compensation Act sense (the definition is not in this module), a legal quantity; the concept's gross wages (with tips, bonuses, commissions) may not match the Act's earnings items; shareholder-employee earnings are not separated in the concepts; and this sum nets a self-employment loss against wages before the rule clamps at zero, which the module does not say the Act does. Both annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/acc/earners_levy#input.acc_employee_earnings_for_low_self_employed_formula",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "acc_employee_earnings_for_low_self_employed_formula",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "note": "Consumed in nz/regulations/acc/earners_levy.yaml by acc_low_self_employed_minimum_levy_excluding_gst (source: Accident Compensation (Earners' Levy) Regulations 2025 reg 6): 'if acc_self_employed_more_than_30_hours_per_week and acc_self_employed_earnings_for_earners_levy < acc_low_self_employed_minimum_earnings: acc_earners_levy_rate_excluding_gst * max(0, acc_low_self_employed_minimum_earnings - acc_employee_earnings_for_low_self_employed_formula)'. Read as the person's annual gross wages and salaries. Differences: the input is employee earnings as the Accident Compensation Act defines them (not in this module); the concept is the survey's gross employee cash income. Both annual. The gating flag (self-employed more than 30 hours a week) stays uncovered, so this binding only matters once it is set.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/acc/earners_levy#input.acc_self_employed_earnings_for_earners_levy",
+   "concepts": [
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "acc_self_employed_earnings_for_earners_levy",
+   "module": "nz/regulations/acc/earners_levy.yaml",
+   "note": "Consumed in nz/regulations/acc/earners_levy.yaml by acc_low_self_employed_minimum_levy_excluding_gst (source: Accident Compensation (Earners' Levy) Regulations 2025 reg 6), which applies the minimum-earnings formula when 'acc_self_employed_earnings_for_earners_levy < acc_low_self_employed_minimum_earnings' for a person self-employed more than 30 hours a week. Read as annual net non-farm plus farm self-employment profit. Differences: the input is self-employed earnings as the Accident Compensation Act defines them (not in this module), a legal quantity; shareholder-employee earnings are not identifiable in the concepts and are not included. Both annual; the concepts are signed and the rule compares the value as given.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/health_entitlement_cards/community_services_card/core#input.community_services_card_dependent_children_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "community_services_card_dependent_children_count",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "note": "Consumed in nz/regulations/health_entitlement_cards/community_services_card/core.yaml by community_services_card_family_group_for_dependent_child_threshold (source: Health Entitlement Cards Regulations 1993 reg 8(7)): '... and community_services_card_dependent_children_count >= 1', and by community_services_card_no_dependent_children_income_route (reg 8(1)(d)): 'community_services_card_dependent_children_count == 0 and ...'. Read as the number of co-resident persons aged 17 or under who name this person as a parent (birth, adoptive or step). Differences: the regulations' dependent-child definition is not in this module and the 17 cut is this mapping's assumption; a partner's child not recorded as this person's stepchild, and a non-parent caregiver's child, are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/health_entitlement_cards/community_services_card/core#input.community_services_card_person_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "community_services_card_person_age_years",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "note": "Consumed in nz/regulations/health_entitlement_cards/community_services_card/core.yaml by community_services_card_no_dependent_children_income_route (source: Health Entitlement Cards Regulations 1993 reg 8(1)(d)): '... and community_services_card_person_age_years >= community_services_card_minimum_age_without_dependent_children and ...'. The person's own age in years. Differences: completed years at the survey reference date versus age when the card's eligibility is assessed (the module evaluates by year and states no date).",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/health_entitlement_cards/community_services_card/core#input.community_services_card_person_married_or_partnered",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "community_services_card_person_married_or_partnered",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "note": "Consumed in nz/regulations/health_entitlement_cards/community_services_card/core.yaml by community_services_card_family_income_limit (source: Health Entitlement Cards Regulations 1993 reg 8(5)) and community_services_card_superannuation_income_limit (reg 8(5A)): 'if community_services_card_person_married_or_partnered: <partnered limit> else: <single limits>'. Read as having a co-resident spouse, civil partner or cohabiting partner. Differences: the regulations' test for married or partnered is not in this module; the concept is co-residence based, so a married person whose spouse lives elsewhere reads as unpartnered, and a cohabitation the regulations would not count is counted.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/health_entitlement_cards/community_services_card/core#input.community_services_card_student_in_recognised_full_time_tertiary_course",
+   "concepts": [
+    "fact:person.education_enrollment",
+    "fact:person.enrolled_full_time"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "community_services_card_student_in_recognised_full_time_tertiary_course",
+   "module": "nz/regulations/health_entitlement_cards/community_services_card/core.yaml",
+   "note": "Consumed in nz/regulations/health_entitlement_cards/community_services_card/core.yaml by community_services_card_student_route (source: Health Entitlement Cards Regulations 1993 reg 8(1)(f)): 'community_services_card_student_in_recognised_full_time_tertiary_course and community_services_card_ordinarily_resident_in_new_zealand and community_services_card_family_income_under_limit'. Read as enrolled full time in an ISCED 5-8 programme. Differences: the input requires a course that is recognised under the regulations (not defined in this module) and full time on that course's legal measure; the concept's full-time flag follows the programme's own definition and its tertiary band covers every ISCED 5-8 programme.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "tertiary"
+      ]
+     ],
+     [
+      "fact:person.enrolled_full_time",
+      [
+       true
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/social_security/childcare_assistance/core#input.childcare_assistance_dependent_children_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "childcare_assistance_dependent_children_count",
+   "module": "nz/regulations/social_security/childcare_assistance/core.yaml",
+   "note": "Consumed in nz/regulations/social_security/childcare_assistance/core.yaml by childcare_assistance_schedule_2_hourly_rate_before_fee_cap (source: Social Security Regulations 2018 Schedule 2): 'if childcare_assistance_dependent_children_count <= 1: ... else: if childcare_assistance_dependent_children_count == 2: ... else: <three-plus thresholds>' selects which set of income thresholds, compared with childcare_assistance_household_income_before_tax, fixes the hourly rate. The row is the caregiver (the module summary: s 77 gives assistance to a principal caregiver); read as the number of co-resident persons aged 17 or under who name this person as a parent (birth, adoptive or step). Differences: 'dependent child' is defined outside this module and the 17 cut is this mapping's assumption; children in the caregiver's care who do not name them as a parent (grandchildren, foster children, a partner's children not recorded as step) are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/student_allowances/core#input.student_allowance_has_children",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "student_allowance_has_children",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "note": "nz/regulations/student_allowances/core.yaml rules student_allowance_has_recognised_partner (Student Allowances Regulations 1998 reg 2: '... or student_allowance_has_children'), student_allowance_weekly_gross_allowance (Schedule 2: 'if student_allowance_has_children: student_allowance_students_with_children_gross'); rate excerpts read 'the student has 1 or more supported children'. Difference: the regulations' 'supported child' definition is not encoded in the module; max_child_age 17 is this mapping's reading, and supported children with no parent pointer to the student are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/student_allowances/core#input.student_allowance_has_partner",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "student_allowance_has_partner",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "note": "nz/regulations/student_allowances/core.yaml rule student_allowance_has_recognised_partner (Student Allowances Regulations 1998 reg 2): 'if student_allowance_has_partner and ((student_allowance_student_age >= student_allowance_partner_age_threshold and student_allowance_partner_age >= student_allowance_partner_age_threshold) or student_allowance_has_children): 1'. Difference: the regulations recognise a spouse or partner who lives apart (Schedule 2 has a rate for a student 'not living in the same home as their spouse or partner'); has_partner sees only a co-resident partner, and a survey cohabitant may not meet the regulations' partner definition.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/student_allowances/core#input.student_allowance_lives_with_partner",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "student_allowance_lives_with_partner",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "note": "nz/regulations/student_allowances/core.yaml rule student_allowance_lives_at_home (Student Allowances Regulations 1998 reg 2 and Schedule 2 clause 2): 'if student_allowance_has_recognised_partner > 0: if student_allowance_lives_with_partner: 1 else: 0'; rate excerpt 'is living in the same home as their spouse or partner'. The rule reads it only for a recognised partner, where a co-resident partner pointer is the same fact. Difference: the partner pointer is the survey's partner, which may not be the regulations' spouse or partner.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:regulations/student_allowances/core#input.student_allowance_student_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "student_allowance_student_age",
+   "module": "nz/regulations/student_allowances/core.yaml",
+   "note": "nz/regulations/student_allowances/core.yaml rules student_allowance_has_recognised_partner (reg 2: 'student_allowance_student_age >= student_allowance_partner_age_threshold', 24), student_allowance_single_student_no_children_gross and student_allowance_weekly_allowance (Schedule 2: 'student_allowance_student_age < student_allowance_rate_band_age_threshold', 24). Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/core/taxable_income#input.income_tax_activity_income",
+   "concepts": [
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "income_tax_activity_income",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "note": "Read by income_tax_activity_income_included (source 'Income Tax Act 2007 s MB 3; shared income-interface bridge for business and self-employment activity income'): 'max(0, income_tax_activity_income - income_tax_activity_deductions)'. The result is summed into income_tax_shared_income_bridge_total with the employment and schedular bridges. The input is gross activity income, with deductions in a separate input. The concepts are net non-farm and farm self-employment profit, so income_tax_activity_deductions stays uncovered (zero), and a net loss floors at zero instead of offsetting other income. Survey profit is not income as the Act measures it. Both sides are annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/core/taxable_income#input.income_tax_employment_income",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "income_tax_employment_income",
+   "module": "nz/statutes/income_tax/core/taxable_income.yaml",
+   "note": "Read by income_tax_employment_income_included (source 'Income Tax Act 2007 s CE 1; shared income-interface bridge for employment, salary, and wage income'): 'max(0, income_tax_employment_income - income_tax_employment_deductions)'. The result is summed into income_tax_shared_income_bridge_total. The input is employment income as s CE 1 defines it. The concept is survey gross wages and salaries from all employee jobs, including overtime, tips, bonuses and commissions, and excluding benefits in kind and employer contributions. Anything s CE 1 counts beyond cash wages is missed. Both sides are annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/credits/individual_credits#input.charitable_or_public_benefit_gift_refund_application_made",
+   "concepts": [
+    "fact:person.take_up_seed"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "charitable_or_public_benefit_gift_refund_application_made",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "note": "Consumed in nz/statutes/income_tax/credits/individual_credits.yaml by charitable_or_public_benefit_gift_section_41a_refund_requirements (source: Tax Administration Act 1994 s 41A), whose formula includes 'and charitable_or_public_benefit_gift_refund_application_made'. A claiming decision, drawn like policyengine-us's would_file_if_eligible_for_refundable_credit (TakeUpThreshold us.refundable_credit_filing): true when the person's nz.donation_tax_credit draw from the persistent seed falls below a claim rate supplied at encode time. Differences: the value is imputed and independent of whether the person gave anything. The credit still needs the gift amounts and the other s 41A inputs (application in time, information provided, LD 1 requirements met), which stay uncovered, so this binding alone changes no credit.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "take_up_threshold",
+    "program": "nz.donation_tax_credit"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/credits/individual_credits#input.independent_earner_tax_credit_receives_new_zealand_superannuation",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "independent_earner_tax_credit_receives_new_zealand_superannuation",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "note": "Consumed in nz/statutes/income_tax/credits/individual_credits.yaml by independent_earner_tax_credit_status_requirement (source: Income Tax Act 2007 s LC 13(1)), whose formula includes 'and not independent_earner_tax_credit_receives_new_zealand_superannuation'; independent_earner_tax_credit is zero when that requirement fails. Read as positive(public_pension_income); the concept's definition names NZ Superannuation. Differences: other old-age pensions the concept holds also set the flag, such as an overseas state pension, or a Veteran's Pension recorded as a public pension (the rule tests Veteran's Pension through its own input). LC 13 tests receipt within a credit period, while the concept counts receipt at any time in the year, and this Year-period rule then zeroes the whole year's credit rather than only the months of receipt. Transport drops the concept, so the binding executes only on frames built from NZ's own data.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/credits/individual_credits#input.payroll_donation_person_is_employee",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "payroll_donation_person_is_employee",
+   "module": "nz/statutes/income_tax/credits/individual_credits.yaml",
+   "note": "nz/statutes/income_tax/credits/individual_credits.yaml rule payroll_donation_credit_qualifies (Income Tax Act 2007 ss LD 4(1) and LD 8): 'payroll_donation_person_is_employee and payroll_donation_employer_files_employment_income_information_electronically and payroll_donation_employer_offers_payroll_giving and ...'. Difference: positive employee wages at any time in the reference year stands in for being an employee in the pay period the donation is made from.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/family_scheme/eligibility#input.in_work_tax_credit_person_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "in_work_tax_credit_person_age",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "note": "Read by in_work_tax_credit_age_requirement (source 'Income Tax Act 2007 s MD 5'): 'in_work_tax_credit_person_age >= wff_minimum_age' (16, ss MC 3 and MD 5). The input is the claimant's age, held on the Family entity. The binding takes the Family reference member's age in completed years at the survey reference date. The claimant need not be the reference member, and the dates differ.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/family_scheme/eligibility#input.wff_dependent_children_principal_caregiver_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "wff_dependent_children_principal_caregiver_count",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "note": "nz/statutes/income_tax/family_scheme/eligibility.yaml rule wff_principal_care_requirement (Income Tax Act 2007 s MC 4): 'wff_dependent_children_principal_caregiver_count >= 1' (test values 1 and 2); the module reads the count nowhere else. Group rule reference_member: counts co-resident persons aged 17 or under who name the Family's principal member as a parent (birth, adoptive or step). Difference: principal caregiver is a Commissioner determination (s MC 10; the separate input wff_commissioner_considers_primary_day_to_day_care). Children with no parent pointer to the principal member are missed, so a Family whose principal member is not recorded as the children's parent (for example a step-parent without a step-parent pointer while the partner is the recorded parent) counts zero and fails s MC 4. max_age 17 is this mapping's reading of 'dependent child', and the module handles an 18-year-old in school separately (s MC 9(1), wff_credit_child_school_tertiary_age = 18), which this count leaves out.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/family_scheme/eligibility#input.wff_person_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "wff_person_age",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/income_tax/family_scheme/eligibility.yaml",
+   "note": "nz/statutes/income_tax/family_scheme/eligibility.yaml rule wff_person_age_requirement (Income Tax Act 2007 s MC 3): 'wff_person_age >= wff_minimum_age', parameter 16. Group rule reference_member: the Family's principal member stands in for 'the person' claiming, whom the concepts do not identify. Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/family_scheme/family_scheme_income#input.family_scheme_activity_income",
+   "concepts": [
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "family_scheme_activity_income",
+   "group_rule": "sum_over_members",
+   "module": "nz/statutes/income_tax/family_scheme/family_scheme_income.yaml",
+   "note": "Read by family_scheme_activity_income_included (source 'Income Tax Act 2007 s MB 3(2)'): 'max(0, family_scheme_activity_income - family_scheme_activity_deductions)'. family_scheme_income_before_period_adjustment (ss MB 1 and MB 3 to MB 13) adds the result to family_scheme_base_income_excluding_mb3_to_mb13_adjustments. The input is gross income from an activity, with its deductions in a separate input. The concepts are net non-farm and farm self-employment profit, so family_scheme_activity_deductions stays uncovered (zero) and the rule's floor at zero drops a net loss. Members' profits are summed onto the Family entity. Because signed profits are summed across members and across farm and non-farm activity before the rule's single zero floor, one member's or one activity's loss offsets another's profit, which the Family-level input cannot separate. The module does not say whether its Family-level amount is one person's or a couple's family scheme income. A dependent child's profit would also be summed here, although the module handles dependent-child income separately (MB 11). Survey profit is not activity income as the Act measures it.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/family_scheme/tax_credits#input.in_work_tax_credit_allowed_children_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "in_work_tax_credit_allowed_children_count",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "note": "Read by in_work_tax_credit_relevant_children (source 'Income Tax Act 2007 s MD 10(3)(c)'): 'max(wff_in_work_tax_credit_minimum_children_for_base_amount, max(0, in_work_tax_credit_allowed_children_count))', where the minimum is 3. This scales in_work_tax_credit_before_abatement (s MD 10(2)) only when the uncovered input entitled_to_in_work_tax_credit is true. The module's test pairs a count of 2 with one eldest and one subsequent family-tax-credit child. The binding takes the Family reference member's count of co-resident persons aged 17 or under who name them as a parent. Differences: eligibility.yaml tests children through principal-caregiver and financial-dependency predicates (in_work_tax_credit_principal_caregiver, in_work_tax_credit_child_financially_dependent) that the concepts cannot evaluate. It also carries an MC 9(1) age parameter of 18 (wff_credit_child_school_tertiary_age) that the age-17 cut-off ignores. A reference member who is not the children's named parent counts zero.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/familyboost_tax_credit/core#input.has_relationship_partner",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "has_relationship_partner",
+   "module": "nz/statutes/income_tax/familyboost_tax_credit/core.yaml",
+   "note": "Read by fb_entitled (source 'Income Tax Act 2007 ss MH 3(1), MH 3(6)-(7)'): 'not (has_relationship_partner and not separated_with_no_partner_at_quarter_end and relationship_partner_is_couples_claimant_for_quarter)'. Also read by fb_tax_credit_income (s MH 4(7)-(8)): 'if has_relationship_partner and not separated_with_no_partner_at_quarter_end: partner_tax_credit_income_for_quarter'. The input is the Act's relationship-partner status for a tax credit quarter. The concept flags a co-resident spouse, civil partner or cohabiting partner at one survey reference date. It misses a partner the Act would count who lives elsewhere, and it cannot see changes within the quarter.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/income_tax/withholding/resident_withholding_tax#input.rwt_gross_interest_and_dividends",
+   "concepts": [
+    "fact:person.interest_income",
+    "fact:person.dividend_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "rwt_gross_interest_and_dividends",
+   "module": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml",
+   "note": "nz/statutes/income_tax/withholding/resident_withholding_tax.yaml rule rwt_withholding_amount (Income Tax Act 2007 subpart RE, cited at s RE 12): 'max(0, rwt_gross_interest_and_dividends) * rwt_applicable_rate', rule period Year; module summary 'resident withholding tax rates applied to interest and dividends for New Zealand residents'. Difference: the input is the interest and dividends RWT is withheld from, which the module does not define further; the survey totals (gross of tax withheld) can include amounts outside NZ withholding, such as foreign-paid interest or dividends, and any dividend-specific withholding adjustments are not encoded here.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/kiwisaver/contributions#input.kiwisaver_gross_salary_or_wages",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "kiwisaver_gross_salary_or_wages",
+   "module": "nz/statutes/kiwisaver/contributions.yaml",
+   "note": "Read by kiwisaver_employee_deduction (source 'KiwiSaver Act 2006 s 64; Inland Revenue KiwiSaver contribution guidance'): 'max(0, kiwisaver_gross_salary_or_wages) * kiwisaver_selected_employee_contribution_rate'. Also read by kiwisaver_minimum_employer_contribution ('KiwiSaver Act 2006 s 101B'): 'max(0, kiwisaver_gross_salary_or_wages) * kiwisaver_employer_minimum_contribution_rate'. The input is the gross salary or wages that KiwiSaver contributions are taken from. The concept is survey gross wages and salaries from all employee jobs, including tips and bonuses and excluding benefits in kind. Neither rule reads KiwiSaver membership, so the employer contribution is computed on every employee's wages. The employee rate is an election and stays uncovered. Both sides are annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/core#input.nz_super_person_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_person_age",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "note": "nz/statutes/new_zealand_superannuation/core.yaml rule nz_super_age_requirement (NZ Superannuation and Retirement Income Act 2001 s 7): 'nz_super_person_age >= nz_super_age_threshold and not nz_super_elected_weekly_compensation_instead_of_superannuation', threshold parameter 65. Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/core#input.nz_super_single",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_single",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "note": "nz/statutes/new_zealand_superannuation/core.yaml rules nz_super_living_alone (s 4A: 'nz_super_single and nz_super_principal_residence_is_qualifying_accommodation and ...') and nz_super_ordinary_weekly_rate_before_tax (s 12 and Schedule 1 Part 1 clause 1: 'if nz_super_single: ... else: nz_super_partnered_weekly_rate_before_tax'); nz/statutes/new_zealand_superannuation/special_rates.yaml rule nz_super_hospital_rate_population (s 19(2): 'nz_super_single or (nz_super_in_relationship and not nz_super_has_dependent_children)'). Difference: no_partner means no co-resident spouse, civil partner or cohabiting partner. The module does not define 'single'; a person whose spouse or partner lives elsewhere (for example in care) has no partner pointer and reads single here, and a survey-recorded cohabitant may not meet the Act's relationship test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/special_rates#input.nz_super_has_dependent_children",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_has_dependent_children",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "note": "nz/statutes/new_zealand_superannuation/special_rates.yaml rule nz_super_hospital_rate_population (NZ Superannuation and Retirement Income Act 2001 s 19(2)): '... or (nz_super_in_relationship and not nz_super_has_dependent_children)'. Difference: flags a person named as parent (birth, adoptive or step) by a co-resident person aged 17 or under. max_child_age 17 is this mapping's reading of 'dependent child' as under 18; the module does not encode the definition's age limit or its care and financial-dependence tests, and dependent children with no parent pointer to the person (or living elsewhere) are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/special_rates#input.nz_super_in_relationship",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_in_relationship",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "note": "nz/statutes/new_zealand_superannuation/special_rates.yaml rule nz_super_hospital_rate_population (NZ Superannuation and Retirement Income Act 2001 s 19(2)): 'nz_super_receives_or_becomes_entitled and (nz_super_single or (nz_super_in_relationship and not nz_super_has_dependent_children))'. Difference: has_partner means a co-resident spouse, civil partner or cohabiting partner; a partner living elsewhere is missed, and a survey-recorded cohabitant may not meet the Act's relationship test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/special_rates#input.nz_super_receives_or_becomes_entitled",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_receives_or_becomes_entitled",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "note": "Consumed in nz/statutes/new_zealand_superannuation/special_rates.yaml by nz_super_hospital_rate_population (source: New Zealand Superannuation and Retirement Income Act 2001 s 19(2)), which ANDs 'nz_super_receives_or_becomes_entitled' with single status or partnered status without dependent children. Read as positive(public_pension_income); the concept's definition names NZ Superannuation. Differences: the input also covers a person who becomes entitled, which reference-year receipt does not show; other old-age pensions the concept holds also set the flag, such as an overseas state pension or a Veteran's Pension recorded as a public pension; and the concept is an annual amount. The module's hospital inputs stay uncovered, so the flag matters only once they are fed. Transport drops the concept, so the binding executes only on frames built from NZ's own data.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/special_rates#input.nz_super_single",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_single",
+   "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
+   "note": "nz/statutes/new_zealand_superannuation/core.yaml rules nz_super_living_alone (s 4A: 'nz_super_single and nz_super_principal_residence_is_qualifying_accommodation and ...') and nz_super_ordinary_weekly_rate_before_tax (s 12 and Schedule 1 Part 1 clause 1: 'if nz_super_single: ... else: nz_super_partnered_weekly_rate_before_tax'); nz/statutes/new_zealand_superannuation/special_rates.yaml rule nz_super_hospital_rate_population (s 19(2): 'nz_super_single or (nz_super_in_relationship and not nz_super_has_dependent_children)'). Difference: no_partner means no co-resident spouse, civil partner or cohabiting partner. The module does not define 'single'; a person whose spouse or partner lives elsewhere (for example in care) has no partner pointer and reads single here, and a survey-recorded cohabitant may not meet the Act's relationship test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/parental_leave/paid_parental_leave#input.ppl_employees_average_weekly_earnings",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "ppl_employees_average_weekly_earnings",
+   "module": "nz/statutes/parental_leave/paid_parental_leave.yaml",
+   "note": "nz/statutes/parental_leave/paid_parental_leave.yaml rule ppl_entitlement_for_employee (Parental Leave and Employment Protection Act 1987 s 71B): 'if ppl_employee_is_eligible: min(max(0, ppl_employees_average_weekly_earnings), ppl_maximum_weekly_rate)', rule period Week; module summary 'The weekly PPL rate is the lower of the employee's average weekly earnings and the maximum PPL rate'. Scale 1/52: weekly = annual / 52. Difference: reference-year employee wages averaged over 52 weeks, against the Act's average weekly earnings over a pre-leave window the module does not state; self-employment earnings are not included.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_cash_assets",
+   "concepts": [
+    "fact:person.liquid_financial_assets"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_cash_assets",
+   "group_rule": "sum_over_members",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (source: Social Security Act 2018 s 65(1)(b); Social Security Regulations 2018 reg 15). It holds when accommodation_supplement_cash_assets is at most accommodation_supplement_cash_asset_limit_partnered_or_with_children (16200, reg 15(1)(a)) for a family in a relationship or with dependent children, and at most accommodation_supplement_cash_asset_limit_other (8100, reg 15(1)(b)) otherwise, and accommodation_supplement_non_rate_entitlement_requirements (ss 65 to 67) requires it. The module does not define cash assets. The Act does, in s 68(2), which Schedule 2 applies for the purposes of the accommodation supplement: money saved, invested or banked with a bank or other institution; money invested in securities, bonds or debentures, or advanced on mortgage; money withdrawn from a KiwiSaver scheme; and money invested in shares in a partnership, company or other body. It excludes KiwiSaver contributions and member's interests, and anything the regulations exempt (reg 16 and Schedule 8 Part 1). Under s 69(2), which reg 15(3) restates, an applicant's assets include those of their spouse or partner, so the binding sums members' amounts onto the Family entity. Group encoding (ConceptMapping.encode_groups) applies it to the Family units the unit-construction step (microcosm.frame.unit_construction) builds under a declared benefit-unit rule, which decides who is a member; no New Zealand build applies it yet, and the country pack's rule (method card MC7) awaits the D1 method review. Differences: the concept leaves out money advanced on mortgage, withdrawn KiwiSaver money held as cash, shares in a partnership or company the person runs, which s 68(2)(a)(iv) counts as money invested in shares in a partnership or limited liability company or other incorporated or unincorporated body (a sole trader's non-cash business equity is in neither), and a member's interest in a non-KiwiSaver superannuation scheme, which Schedule 8 item 10 exempts only while a lock-in clause prevents withdrawal (Schedule 8 cl 25); the other Schedule 8 exemptions are not applied; if the unit rule makes a dependent child a Family member, the child's assets will be summed too, although s 69(2) adds only a spouse's or partner's, and if it leaves out a spouse or partner in long-term residential care, whose assets s 69(2A) still counts, their assets will be missed; and the concept is the stock at the survey reference date, while the test applies when the supplement is assessed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_costs_are_homeownership",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_costs_are_homeownership",
+   "group_rule": "household_value",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_entry_threshold_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6): 'if accommodation_supplement_costs_are_homeownership: accommodation_supplement_homeownership_entry_threshold_rate else: accommodation_supplement_rent_board_entry_threshold_rate'. Read as the household owning its dwelling (outright or with a mortgage). Differences: the input describes this family's own accommodation costs; household_value gives every family in an owner-occupied household true, including a second family (a boarder or other resident) whose costs are board or rent, not homeownership costs.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "owned_outright",
+       "owned_with_mortgage"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_accommodation_costs",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_has_accommodation_costs",
+   "group_rule": "household_value",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_non_rate_entitlement_requirements (source: Social Security Act 2018 ss 65 to 67): 'accommodation_supplement_has_accommodation_costs and accommodation_supplement_cash_assets_within_limit and ...'. The module computes the amount of weekly accommodation costs separately, in accommodation_supplement_weekly_accommodation_costs (source: s 65AAA definition of accommodation costs), from other inputs; nothing in the module ties this gate to that amount or says what counts as having accommodation costs. Read as any tenure other than rent_free. Differences: the input asks whether this family itself has accommodation costs; household_value gives true to every family in a rented or owned household, including a family that pays nothing toward housing, and the legal components of accommodation costs are not checked.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "owned_outright",
+       "owned_with_mortgage",
+       "rented_public_authority",
+       "rented_nonprofit_social",
+       "rented_private"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_dependent_children",
+   "concepts": [
+    "fact:person.age",
+    "fact:person.partner_person_id",
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:household.reference_person_id"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_has_dependent_children",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (source: Social Security Act 2018 s 65(1)(b); Social Security Regulations 2018 reg 15), which picks the partnered-or-with-children asset limit, and by accommodation_supplement_maximum_weekly_rate (Schedule 4 Part 7 clauses 1 to 6), where 'accommodation_supplement_in_relationship and accommodation_supplement_has_dependent_children' selects the large-family rates. Read as the family holding at least one dependent child under the country pack's declared benefit-unit rule (microcosm.frame.unit_construction), which builds each family from the relationship pointers, age and the household reference person and states who counts as a dependent child. 'Dependent child' is a Social Security Act 2018 Schedule 2 term that this module does not define and rulespec-nz at 8dc2507 does not encode, so the rule's age limit and placements are spec data, not read from the Act. Differences: the care, maintenance and financial dependence the definition turns on are not observed, so the rule's co-residence test stands in for them; and a child with no co-resident parent is placed in the household reference person's family when the rule says so, which names a caregiver the Act would identify by care.",
+   "relation": "approximate",
+   "transform": {
+    "feature": "has_dependent_child",
+    "kind": "unit_composition"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_two_or_more_dependent_children",
+   "concepts": [
+    "fact:person.age",
+    "fact:person.partner_person_id",
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:household.reference_person_id"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_has_two_or_more_dependent_children",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6): 'accommodation_supplement_sole_parent and accommodation_supplement_has_two_or_more_dependent_children' selects the large-family rates, and a sole parent with one dependent child takes the middle-family rates. Read as the family holding at least two dependent children under the country pack's declared benefit-unit rule (microcosm.frame.unit_construction), which builds each family from the relationship pointers, age and the household reference person and states who counts as a dependent child. Differences: as for accommodation_supplement_has_dependent_children, dependency is the rule's co-residence test, not the Act's care and maintenance.",
+   "relation": "approximate",
+   "transform": {
+    "feature": "two_or_more_dependent_children",
+    "kind": "unit_composition"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_in_relationship",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_in_relationship",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (source: Social Security Act 2018 s 65(1)(b); Social Security Regulations 2018 reg 15), which picks the partnered-or-with-children cash asset limit, and by accommodation_supplement_maximum_weekly_rate (Schedule 4 Part 7 clauses 1 to 6), which picks the family category. Read as the family's reference member having a co-resident spouse, civil partner or cohabiting partner. Differences: the Act's test for being in a relationship is not in this module; the concept is co-residence based, so a partner living elsewhere is missed and a cohabitation the Act would not treat as a relationship is counted.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owner_weekly_required_payments",
+   "concepts": [
+    "fact:household.mortgage_interest",
+    "fact:household.mortgage_principal"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_owner_weekly_required_payments",
+   "group_rule": "allocate_to_reference_unit",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose first branch returns it when accommodation_supplement_owns_premises_and_not_joint_owner_with_resident holds; the result feeds the Schedule 4 Part 7 weekly formula, so the value is weekly although the rule declares period Year. Read as the household's annual mortgage interest plus mortgage principal repaid, summed and scaled by 1/52 (one scaled_sum, since a binding takes one transform), on the family that contains the household reference person and zero on the household's other families. Differences: the module does not define the owner's payments; rates (property tax), insurance and other home payments are not added, which understates owners' costs (method card MC8); the concept is what the household repaid in the year, not what the mortgage requires; and a second family in an owner-occupied household gets zero.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+   "group_rule": "household_value",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs): 'if accommodation_supplement_owns_premises_and_not_joint_owner_with_resident: accommodation_supplement_owner_weekly_required_payments'. Read as the household owning its dwelling, outright or with a mortgage. Differences: the concept says nothing about title or co-owners, so a joint owner who lives with another owner is read as a sole owner; and household_value gives true to every family in an owner-occupied household, including a boarder family, whose owner payments are then zero because the household's payments go to the family containing the reference person.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "owned_outright",
+       "owned_with_mortgage"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_relevant_weekly_income",
+   "group_rule": "sum_over_members",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_non_beneficiary_income_reduction (source: Social Security Regulations 2018 reg 18): 'if accommodation_supplement_non_beneficiary: max(0, accommodation_supplement_relevant_weekly_income - accommodation_supplement_non_beneficiary_income_cutout_weekly_amount) * accommodation_supplement_non_beneficiary_income_reduction_rate'. Read as the family's annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed over its members and scaled by 1/52. Differences: the module does not define relevant income and reg 18's definition is not in it; every member's income is summed, including a dependent child's, and whether reg 18 counts a child's income is not stated here; realized capital gains are left out; public pension income is left out: it is a donor program receipt, which transport drops, and New Zealand Superannuation receipt is the receipt layer's model state, which a non-beneficiary family lacks by construction; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_rent_paid_to_kainga_ora",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_rent_paid_to_kainga_ora",
+   "group_rule": "household_value",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_social_housing_exclusion_not_applies (source: Social Security Act 2018 s 66): 'not accommodation_supplement_rent_paid_to_kainga_ora and not accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing and not accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown'. The tenure concept's rented_public_authority category names NZ Kainga Ora as its public landlord. The input is narrower: it is one landlord, not any public authority, and it is this family's rent, while household_value gives true to every family in the household, including one that does not itself pay rent to Kainga Ora.",
+   "relation": "narrow_match",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "rented_public_authority"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_rent_paid_to_registered_community_housing_provider_social_housing",
+   "group_rule": "household_value",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_social_housing_exclusion_not_applies (source: Social Security Act 2018 s 66), alongside the Kainga Ora and concessionary-mortgage exclusions. The tenure concept's rented_nonprofit_social category names the NZ registered community housing provider as its non-profit social landlord. The input is narrower: a registered provider and a social-housing tenancy, and this family's own rent, while household_value gives true to every family in the household.",
+   "relation": "narrow_match",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "rented_nonprofit_social"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_sole_parent",
+   "concepts": [
+    "fact:person.age",
+    "fact:person.partner_person_id",
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:household.reference_person_id"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_sole_parent",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which gives a sole parent with two or more dependent children the large-family rates and one with one dependent child the middle-family rates. Read as the family having one adult (no partner in it) and at least one dependent child under the country pack's declared benefit-unit rule (microcosm.frame.unit_construction), which builds each family from the relationship pointers, age and the household reference person and states who counts as a dependent child. Differences: the module does not define a sole parent; the concept pointers are co-residence based, so a parent whose partner lives elsewhere counts here, and so does a family head with no partner who cares for a child the rule places with them (for example a household reference person and a younger relative with no co-resident parent).",
+   "relation": "approximate",
+   "transform": {
+    "feature": "sole_parent",
+    "kind": "unit_composition"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_weekly_rent_paid",
+   "concepts": [
+    "fact:household.rent"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_weekly_rent_paid",
+   "group_rule": "allocate_to_reference_unit",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose last branch returns accommodation_supplement_weekly_rent_paid when the family is not an owner, a joint owner with a resident, an additional resident in social housing or a boarder; the result feeds the Schedule 4 Part 7 weekly formula against weekly maximum rates (the module's tests feed weekly rents such as 700). Scale 1/52 turns the concept's annual contract rent into an average weekly amount; the rule declares period Year but the value is weekly. Differences: the concept is contract rent for the whole dwelling before housing subsidy, excluding separately billed utilities and service charges, and s 65AAA's own definition of rent is not in this module; the household amount goes to the family containing the household reference person, so another family in the household that pays the tenant gets zero here (in the rule's terms it pays board or contributions, which stay uncovered).",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/disability_allowance/core#input.disability_allowance_dependent_children_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "disability_allowance_dependent_children_count",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "note": "Read by disability_allowance_income_limit (source 'Social Security Act 2018 Schedule 5 Part 3'). 'disability_allowance_dependent_children_count <= 1' picks the sole-parent one-child limit (clause 13) over clause 14, and '== 0' is one condition of the 16-or-17 single limit (clause 10). The binding counts co-resident persons aged 17 or under who name this person as a parent. The Act's dependent child is a legal status this module does not define. Financial dependency and care arrangements are not in the concepts, and the age-17 cut-off is this mapping's stand-in, not a figure read from the module. Children in the person's care who do not name them as a parent are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/disability_allowance/core#input.disability_allowance_person_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "disability_allowance_person_age_years",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "note": "Read by disability_allowance_income_limit (source 'Social Security Act 2018 Schedule 5 Part 3') for a single applicant who is not a sole parent: 'disability_allowance_person_age_years >= disability_allowance_income_limit_young_single_minimum_age and disability_allowance_person_age_years <= disability_allowance_income_limit_young_single_maximum_age and disability_allowance_dependent_children_count == 0' (parameters 16 and 17, clause 10) selects the 16-or-17 single income limit. The input is the applicant's age when the rule is applied. The concept is age in completed years at the survey reference date, so a birthday between the two dates moves it by one.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/disability_allowance/core#input.disability_allowance_person_in_relationship",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "disability_allowance_person_in_relationship",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "note": "Read by disability_allowance_income_limit (source 'Social Security Act 2018 Schedule 5 Part 3'): 'if disability_allowance_person_in_relationship: disability_allowance_income_limit_partnered' (clause 12). The input is the Act's legal relationship status. The concept flags a co-resident spouse, civil partner or cohabiting partner at the survey reference date. It does not apply the Act's tests for a relationship, and it misses a partner the Act would count who does not live in the household.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/disability_allowance/core#input.disability_allowance_person_is_sole_parent",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "disability_allowance_person_is_sole_parent",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "note": "Read by disability_allowance_income_limit (source 'Social Security Act 2018 Schedule 5 Part 3') only in the branch where disability_allowance_person_in_relationship is false: 'if disability_allowance_person_is_sole_parent: if disability_allowance_dependent_children_count <= 1: disability_allowance_income_limit_sole_parent_one_child else: disability_allowance_income_limit_sole_parent_other' (clauses 13 and 14). The rule supplies the no-partner condition itself, so the binding flags a parent (birth, adoptive or step) of a co-resident child aged 17 or under. The Act's sole-parent status is a legal status this module does not define, and the co-resident parent flag stands in for it. The age-17 cut-off is this mapping's choice, not a figure read from the module. A caregiver who is not a parent of the child is not flagged.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/disability_allowance/core#input.disability_allowance_requires_ongoing_support_for_everyday_functions",
+   "concepts": [
+    "fact:person.has_disability"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "disability_allowance_requires_ongoing_support_for_everyday_functions",
+   "module": "nz/statutes/social_security/disability_allowance/core.yaml",
+   "note": "Read by disability_allowance_functional_need_requirement (source 'Social Security Act 2018 s 85(2)(a)'): 'disability_allowance_requires_ongoing_support_for_everyday_functions or disability_allowance_requires_ongoing_supervision_or_treatment_by_health_practitioner'. The concept is a functional survey measure (difficulty with everyday activities, as the source survey's functional-difficulty items record it). It stands in for the Act's need for ongoing support with everyday functions, which the module takes as a factual input and does not define. Difficulty with an activity is not the same as needing ongoing support. The module's separate six-month duration test reads disability_allowance_expected_disability_duration_months, which stays uncovered.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.jobseeker_applicant_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_applicant_age",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "Read by jobseeker_age_requirement (source 'Social Security Act 2018 s 23'): 'jobseeker_applicant_age >= jobseeker_minimum_age_without_dependent_child' (18, s 23(a)) without a dependent child, or '>= jobseeker_minimum_age_with_dependent_child' (20, s 23(b)) with one. The input is the applicant's age when the rule is applied. The concept is age in completed years at the survey reference date, so a birthday between the two dates moves it by one.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.jobseeker_full_time_student",
+   "concepts": [
+    "fact:person.enrolled_full_time"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_full_time_student",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "Read by jobseeker_not_ineligible (source 'Social Security Act 2018 ss 25 and 26'): '(not jobseeker_full_time_student or jobseeker_section_25_discretionary_student_eligibility) and not jobseeker_unemployed_due_to_strike and not jobseeker_unemployed_or_on_leave_for_employment_related_training'. The concept is full-time enrolment in any education programme, as the programme defines it, school included. The input is the Act's full-time student status, which the module does not define, so the programmes and study loads that count may differ.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.jobseeker_has_dependent_child",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_has_dependent_child",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "Read by jobseeker_age_requirement (source 'Social Security Act 2018 s 23'): 'not jobseeker_has_dependent_child and jobseeker_applicant_age >= jobseeker_minimum_age_without_dependent_child' (18) or 'jobseeker_has_dependent_child and jobseeker_applicant_age >= jobseeker_minimum_age_with_dependent_child' (20). The binding flags a parent (birth, adoptive or step) of a co-resident child aged 17 or under. The Act's dependent child is a legal status this module does not define. Financial dependency and care arrangements are not in the concepts, and the age-17 cut-off is this mapping's stand-in, not a figure read from the module. Caregivers who are not a parent of the child are not flagged.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.main_benefit_receiving_new_zealand_superannuation",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "main_benefit_receiving_new_zealand_superannuation",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/entitlement.yaml by main_benefit_concurrent_benefit_limit (source: Social Security Act 2018 s 18), whose formula includes 'and not main_benefit_receiving_new_zealand_superannuation'. Read as positive(public_pension_income): the concept's definition names NZ Superannuation among the social-insurance or state old-age pensions it holds. Differences: the concept also holds any other such pension (an overseas state pension, or a Veteran's Pension if the source records it as a public pension), so the flag can be true for someone who receives no NZ Superannuation. s 18 bars receiving a main benefit and NZ Superannuation at the same time, while the concept counts receipt at any time in the reference year. The concept's transport rule is drop, so on a transported frame encode skips this binding; the engine has no default for an absent input, so a transport run's input closure (build/nz/axiom_input_closure.json) feeds it instead. The binding executes only on frames built from NZ's own data.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.sole_parent_applicant_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_applicant_age",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule sole_parent_age_requirement (Social Security Act 2018 s 29(d)): 'sole_parent_applicant_age >= sole_parent_minimum_age', parameter 20. Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.sole_parent_caring_for_dependent_children_under_age_limit",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_caring_for_dependent_children_under_age_limit",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule sole_parent_child_requirement (Social Security Act 2018 ss 30 and 31): 'sole_parent_is_mother_or_father_or_child_regarded_as_child and sole_parent_caring_for_dependent_children_under_age_limit >= sole_parent_minimum_dependent_children' (minimum 1; the test file feeds it counts 0 and 1). The age limit is sole_parent_dependent_child_age_limit = 14 (ss 30 and 33), and rule sole_parent_support_expires_when_youngest_child_turns_age_limit ends support at 'sole_parent_youngest_dependent_child_age >= sole_parent_dependent_child_age_limit', so 'under the age limit' is 13 or under (max_age 13). Difference: counts co-resident persons aged 13 or under who name this person as a parent (birth, adoptive or step); the law counts dependent children the person is caring for, which adds children cared for without a parent pointer and drops children who are not dependent; each parent of a couple gets the count.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 13
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.sole_parent_is_mother_or_father_or_child_regarded_as_child",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_is_mother_or_father_or_child_regarded_as_child",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule sole_parent_child_requirement (Social Security Act 2018 ss 30 and 31): 'sole_parent_is_mother_or_father_or_child_regarded_as_child and sole_parent_caring_for_dependent_children_under_age_limit >= sole_parent_minimum_dependent_children'. Difference: parent pointers cover birth, adoptive and step parents of co-resident children; a child the law regards as the person's own without a parent pointer is missed, and whether the Act counts a step-parent as 'mother or father' is not stated in the module. max_child_age 17 reads 'dependent child' as under 18 (not encoded in the module); the conjoined count binding applies the under-14 limit, so the conjunction is unchanged by this choice.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.sole_parent_is_single",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_is_single",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule sole_parent_relationship_requirement (Social Security Act 2018 s 30): 'sole_parent_is_single or sole_parent_spouse_or_partner_died or sole_parent_marriage_or_civil_union_dissolved or sole_parent_living_apart_and_lost_or_lacks_partner_support or ...'. Difference: no_partner means no co-resident spouse, civil partner or cohabiting partner. The module does not define 'single'; a person whose spouse or partner lives elsewhere (for example in care) has no partner pointer and reads single here, and a survey-recorded cohabitant may not meet the Act's relationship test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.sole_parent_marriage_or_civil_union_dissolved",
+   "concepts": [
+    "fact:person.legal_marital_status"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_marriage_or_civil_union_dissolved",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule sole_parent_relationship_requirement (Social Security Act 2018 s 30): '... or sole_parent_marriage_or_civil_union_dissolved or ...'. The concept's 'married' includes civil unions, so 'divorced' covers a dissolved civil union when the source codes it so. Difference: legal status at the reference date; a person whose marriage was dissolved and who has since remarried reads false, and 'separated' (not dissolved) reads false.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.legal_marital_status",
+      [
+       "divorced"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.sole_parent_spouse_or_partner_died",
+   "concepts": [
+    "fact:person.legal_marital_status"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_spouse_or_partner_died",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule sole_parent_relationship_requirement (Social Security Act 2018 s 30): '... or sole_parent_spouse_or_partner_died or ...'. Difference: 'widowed' is legal marital status, so the death of an unmarried (de facto) partner is missed; a widowed person who has since remarried reads false.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.legal_marital_status",
+      [
+       "widowed"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.supported_living_applicant_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_applicant_age",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule supported_living_restricted_or_blind_age_requirement (Social Security Act 2018 s 34(c)): 'supported_living_applicant_age >= supported_living_restricted_or_blind_minimum_age', parameter 16. Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.supported_living_capacity_restricted_by_health_condition_injury_or_disability",
+   "concepts": [
+    "fact:person.has_disability"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_capacity_restricted_by_health_condition_injury_or_disability",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule supported_living_restricted_work_capacity (Social Security Act 2018 s 35): 'supported_living_capacity_restricted_by_health_condition_injury_or_disability and supported_living_restricted_work_capacity_permanent and supported_living_restricted_work_capacity_severe'; the module summary says administrative medical certificates, MSD satisfaction and other external determinations remain factual inputs. Difference: has_disability is a functional survey measure (difficulty with everyday activities, as survey functional-difficulty items record it); the input is a restriction of capacity for work by a health condition, injury or disability. The two overlap without either containing the other: a functional difficulty need not restrict work capacity, and a work-restricting condition need not produce a difficulty the survey records. Permanence (supported_living_restricted_work_capacity_permanent, from the expected-duration and terminal-condition inputs) and severity (supported_living_restricted_work_capacity_severe: supported_living_regular_open_employment_capacity_hours_per_week < 15) are separate derived conditions whose inputs this binding does not supply.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.supported_living_caring_applicant_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_caring_applicant_age",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule supported_living_caring_age_requirement (Social Security Act 2018 s 40(1)(c)): age >= supported_living_caring_minimum_age_without_dependent_child (18) or, with a dependent child, >= supported_living_caring_minimum_age_with_dependent_child (20). Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/entitlement#input.supported_living_caring_applicant_has_dependent_child",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_caring_applicant_has_dependent_child",
+   "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+   "note": "nz/statutes/social_security/main_benefits/entitlement.yaml rule supported_living_caring_age_requirement (Social Security Act 2018 s 40(1)(c)): '(not supported_living_caring_applicant_has_dependent_child and age >= ..._without_dependent_child) or (supported_living_caring_applicant_has_dependent_child and age >= ..._with_dependent_child)'. Difference: flags a person named as parent (birth, adoptive or step) by a co-resident person aged 17 or under. max_child_age 17 is this mapping's reading of 'dependent child' as under 18; the module does not encode the definition's age limit or its care and financial-dependence tests, and dependent children with no parent pointer to the person (or living elsewhere) are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_applicant_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_support_applicant_age",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Read by jobseeker_support_gross_weekly_rate (source 'Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3'). For a single applicant with no dependent children, 'jobseeker_support_applicant_age < jobseeker_support_under_20_living_with_parent_age_limit' (clause 1(a)) and 'jobseeker_support_applicant_age < jobseeker_support_under_25_without_children_age_limit' (clause 1(b)) select the weekly rate. The input is the applicant's age when the rule is applied. The concept is age in completed years at the survey reference date, so a birthday between the two dates moves it by one.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_dependent_children_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_support_dependent_children_count",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Read by jobseeker_support_gross_weekly_rate (source 'Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3') and jobseeker_support_weekly_income_test_reduction ('Schedule 2 Income Tests 1, 3, and 4; Schedule 4 Part 1 clauses 1 and 3'). Both test only 'jobseeker_support_dependent_children_count >= 1', which chooses the with-children rates and income tests. The binding counts co-resident persons aged 17 or under who name this person as a parent. The Act's dependent child is a legal status this module does not define. Financial dependency and care arrangements are not in the concepts, and the age-17 cut-off is this mapping's stand-in, not a figure read from the module. Children in the person's care who do not name them as a parent are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_single",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_support_single",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Read by jobseeker_support_gross_weekly_rate (source 'Social Security Act 2018 Schedule 4 Part 1 clauses 1 and 3') and jobseeker_support_weekly_income_test_reduction ('Schedule 2 Income Tests 1, 3, and 4'). 'if jobseeker_support_single:' selects the single-person rates and income tests; otherwise the partnered branches apply. The input is the Act's single status. The concept flags a person with no co-resident spouse, civil partner or cohabiting partner at the survey reference date. It does not apply the Act's tests for a relationship, and the two differ when a partner the Act would count lives elsewhere.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_total_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_support_total_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by jobseeker_support_weekly_income_test_reduction (source: Social Security Act 2018 Schedule 2 Income Tests 1, 3 and 4; Schedule 4 Part 1), which abates the Jobseeker Support rate above main_benefit_income_test_lower_weekly_threshold. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.main_benefit_income_test_assessable_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "main_benefit_income_test_assessable_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by main_benefit_income_test_1_weekly_reduction to main_benefit_income_test_4_weekly_reduction (source: Social Security Act 2018 Schedule 2 definitions of Income Tests 1 to 4), which abate above main_benefit_income_test_lower_weekly_threshold. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.sole_parent_support_total_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_support_total_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by sole_parent_support_income_for_income_test (source: Social Security Act 2018 Schedule 4 Part 2 clauses 1 and 2), 'max(0, sole_parent_support_total_income - sole_parent_support_income_disregarded_for_childcare)'. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_blind_average_weekly_earnings",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_blind_average_weekly_earnings",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "nz/statutes/social_security/main_benefits/rates.yaml rule supported_living_blind_subsidy_unconstrained_weekly_amount (Social Security Act 2018 Schedule 4 Part 3 clause 3): 'max(0, supported_living_blind_average_weekly_earnings) * supported_living_blind_subsidy_rate' (0.25), then capped in supported_living_blind_subsidy_weekly_amount. Weekly by name and by the module's weekly rate schedules, although the rule's period field says Year. Scale 1/52: weekly = annual / 52. Difference: the concept is employee wages over the reference year; the averaging period the Act uses is not in the module, and self-employment earnings are not included.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_blind_beneficiary_employed",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_blind_beneficiary_employed",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "nz/statutes/social_security/main_benefits/rates.yaml rule supported_living_blind_subsidy_weekly_amount (Social Security Act 2018 Schedule 4 Part 3 clauses 3 and 4): 'if supported_living_payment_totally_blind and supported_living_blind_beneficiary_employed: min(...)'. Difference: positive employee wages at any time in the reference year stands in for being in employment when the subsidy is assessed; a self-employed blind beneficiary reads false.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_payment_applicant_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_payment_applicant_age",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "nz/statutes/social_security/main_benefits/rates.yaml rule supported_living_payment_schedule_weekly_rate_before_residential_care_halving (Social Security Act 2018 Schedule 4 Part 3 clauses 1 and 7): 'supported_living_payment_applicant_age < supported_living_payment_single_under_18_age_limit' (18) selects the single under-18 rate. Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_payment_beneficiary_personal_earnings",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_payment_beneficiary_personal_earnings",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "nz/statutes/social_security/main_benefits/rates.yaml rule supported_living_payment_income_disregard_for_restricted_or_blind (Social Security Act 2018 Schedule 4 Part 3 clause 1): 'if supported_living_payment_restricted_or_blind: if supported_living_payment_totally_blind: max(0, supported_living_payment_beneficiary_personal_earnings) else: min(max(0, supported_living_payment_restricted_or_blind_earned_income_disregard_maximum), max(0, ..._personal_earnings))'. The cap parameter is 20 and the result offsets income tested against main_benefit_income_test_lower_weekly_threshold (160), and the module summary says it encodes weekly rate schedules, so the input is weekly although the rule's period field says Year. Scale 1/52: weekly = annual / 52. Difference: the concept is employee wages only; 'personal earnings' is not defined in the module and may include self-employment earnings (input broader); an annual average stands in for the week's earnings.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_payment_dependent_children_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_payment_dependent_children_count",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "nz/statutes/social_security/main_benefits/rates.yaml rule supported_living_payment_schedule_weekly_rate_before_residential_care_halving (Social Security Act 2018 Schedule 4 Part 3 clauses 1 and 7): 'if supported_living_payment_dependent_children_count >= 1: ..._with_children_weekly_rate'. Difference: counts co-resident persons aged 17 or under naming this person as a parent (birth, adoptive or step); max_age 17 is this mapping's reading of 'dependent child' as under 18, which the module does not encode, and dependent children with no parent pointer to the person are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count",
+    "max_age": 17
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_payment_single",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_payment_single",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "nz/statutes/social_security/main_benefits/rates.yaml rules supported_living_payment_schedule_weekly_rate_before_residential_care_halving (Schedule 4 Part 3 clauses 1 and 7: 'if supported_living_payment_single: ...'), supported_living_payment_full_income_test_weekly_reduction ('not supported_living_payment_single and ...') and supported_living_blind_subsidy_single_person_increase_if_applicable (clause 2). Difference: no_partner means no co-resident spouse, civil partner or cohabiting partner. The module does not define 'single'; a person whose spouse or partner lives elsewhere (for example in care) has no partner pointer and reads single here, and a survey-recorded cohabitant may not meet the Act's relationship test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_payment_total_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_payment_total_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by supported_living_payment_income_for_income_test (source: Social Security Act 2018 Schedule 4 Part 3 clause 1), 'max(0, supported_living_payment_total_income - supported_living_payment_income_disregard_for_restricted_or_blind)'. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/orphans_unsupported_child_benefit/core#input.caregiver_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "caregiver_age_years",
+   "module": "nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/orphans_unsupported_child_benefit/core.yaml by is_eligible_caregiver (source: Social Security Act 2018 s 44, excerpt 'P is aged 18 years or over'): 'caregiver_age_years >= ocb_caregiver_minimum_age and caregiver_is_not_a_parent_of_child and ...'. The module places one caregiver-child pair on a Person row (its tests set both caregiver_age_years and child_age_years on one request); this binding reads the row as the caregiver P, so it is the person's own age. Differences: completed years at the survey reference date versus age in the benefit week the rule evaluates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/winter_energy_payment/core#input.winter_energy_payment_has_dependent_children",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "winter_energy_payment_has_dependent_children",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "note": "nz/statutes/social_security/winter_energy_payment/core.yaml rule winter_energy_payment_rate_per_winter_period (Social Security Act 2018 Schedule 4 Part 8): 'if winter_energy_payment_single and not winter_energy_payment_has_dependent_children: ...'. Difference: flags a person named as parent (birth, adoptive or step) by a co-resident person aged 17 or under. Schedule 4 Part 8 clause 2 defines dependent child for this Part (the repository's corpus summary of Part 8; the module summary names Part 8's dependent-child category), and the module does not encode that definition, so max_child_age 17 is this mapping's reading of 'dependent child' as under 18. Dependent children with no parent pointer to the person (or living elsewhere) are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/winter_energy_payment/core#input.winter_energy_payment_person_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "winter_energy_payment_person_age",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "note": "nz/statutes/social_security/winter_energy_payment/core.yaml rules winter_energy_payment_aged_65_or_over_for_residential_care (Social Security Act 2018 s 72(2)(c): '>= winter_energy_payment_residential_care_older_age_threshold', 65) and winter_energy_payment_aged_50_to_64_for_residential_care (s 72(2)(ca): 50 to 64). Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/winter_energy_payment/core#input.winter_energy_payment_receiving_new_zealand_superannuation",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "winter_energy_payment_receiving_new_zealand_superannuation",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/winter_energy_payment/core.yaml by winter_energy_payment_receiving_qualifying_benefit (source: Social Security Act 2018 s 71 and s 72(1)(a)), whose formula includes 'or winter_energy_payment_receiving_new_zealand_superannuation'. Read as positive(public_pension_income); the concept's definition names NZ Superannuation. Differences: other old-age pensions the concept holds also set the flag, such as an overseas state pension, or a Veteran's Pension recorded as a public pension (the rule reads Veteran's Pension through its own input). s 72 entitles for days in the winter period on which a qualifying benefit is received, while the concept counts receipt at any time in the reference year. Transport drops the concept, so the binding executes only on frames built from NZ's own data.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/winter_energy_payment/core#input.winter_energy_payment_single",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "winter_energy_payment_single",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "note": "nz/statutes/social_security/winter_energy_payment/core.yaml rule winter_energy_payment_rate_per_winter_period (Social Security Act 2018 Schedule 4 Part 8): 'if winter_energy_payment_single and not winter_energy_payment_has_dependent_children: ..._single_no_dependent_children_rate_per_winter_period else: ..._other_rate_per_winter_period'. Difference: no_partner means no co-resident spouse, civil partner or cohabiting partner. The module does not define 'single'; a person whose spouse or partner lives elsewhere (for example in care) has no partner pointer and reads single here, and a survey-recorded cohabitant may not meet the Act's relationship test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/winter_energy_payment/core#input.winter_energy_payment_valid_election_not_to_receive_in_force",
+   "concepts": [
+    "fact:person.take_up_seed"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "winter_energy_payment_valid_election_not_to_receive_in_force",
+   "module": "nz/statutes/social_security/winter_energy_payment/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/winter_energy_payment/core.yaml by winter_energy_payment_not_elected_out (source: Social Security Act 2018 s 73): 'not winter_energy_payment_valid_election_not_to_receive_in_force'. An opt-out election, drawn like policyengine-uk's child_benefit_opts_out (TakeUpThreshold uk.child_benefit_opt_out): true when the person's nz.winter_energy_payment_opt_out draw from the persistent seed falls below an opt-out rate supplied at encode time. Differences: the value is imputed, not an observed election. s 73 requires both spouses or partners to elect for a relationship-rate payment, but each partner gets an independent draw, so partners can disagree.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "take_up_threshold",
+    "program": "nz.winter_energy_payment_opt_out"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/youth_young_parent_payment/core#input.young_person_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "young_person_age_years",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "note": "nz/statutes/social_security/youth_young_parent_payment/core.yaml rules youth_payment_entitled (Social Security Act 2018 s 49: 'young_person_age_years >= yp_youth_min_age and young_person_age_years <= yp_youth_max_age', 16 and 17), young_parent_payment_entitled (s 56: age bands 16-17, 18-19 via ypp_category_ii_min_age 18 and ypp_max_age 19) and applicable_weekly_rate (Schedule 4 Part 6 items 1-5). Difference: the concept is age in completed years at the survey reference date; the rule reads the person's age when the entitlement is assessed, which the module does not date, so ages near the threshold can differ by the gap between the two dates.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/youth_young_parent_payment/core#input.young_person_has_dependent_child",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "young_person_has_dependent_child",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "note": "nz/statutes/social_security/youth_young_parent_payment/core.yaml rule youth_payment_entitled (Social Security Act 2018 s 49; excerpt 'P has no dependent children'): '... and not young_person_has_dependent_child and ...'. Difference: flags a person named as parent (birth, adoptive or step) by a co-resident person aged 17 or under. max_child_age 17 is this mapping's reading of 'dependent child' as under 18; the module does not encode the definition's age limit or its care and financial-dependence tests, and dependent children with no parent pointer to the person (or living elsewhere) are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/youth_young_parent_payment/core#input.young_person_has_dependent_child_for_part6_rates",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "young_person_has_dependent_child_for_part6_rates",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "note": "nz/statutes/social_security/youth_young_parent_payment/core.yaml rule applicable_weekly_rate (Social Security Act 2018 Schedule 4 Part 6 items 1-5): 'if young_person_has_dependent_child_for_part6_rates: yp_rate_..._with_child'; excerpt 'In this Part, dependent child (as defined in Schedule 2) excludes a child in respect of whom an orphan's benefit or an unsupported child's benefit is being paid'. Difference: flags a person named as parent (birth, adoptive or step) by a co-resident person aged 17 or under. max_child_age 17 is this mapping's reading of 'dependent child' as under 18; the module does not encode the definition's age limit or its care and financial-dependence tests, and dependent children with no parent pointer to the person (or living elsewhere) are missed. The clause 6 exclusion depends on another program's payment and cannot be applied from the concepts.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/youth_young_parent_payment/core#input.young_person_is_in_relationship",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "young_person_is_in_relationship",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "note": "nz/statutes/social_security/youth_young_parent_payment/core.yaml rules applicable_weekly_rate (Social Security Act 2018 Schedule 4 Part 6 items 1-5: 'if young_person_is_in_relationship: ... yp_rate_partnered_...') and base_weekly_payment_after_income_test (subparts 1 and 4). Difference: has_partner means a co-resident spouse, civil partner or cohabiting partner; a partner living elsewhere is missed, and a survey-recorded cohabitant may not meet the Act's relationship test. The s 49/56 'is or has been in a relationship' test uses the separate input young_person_has_never_been_in_relationship, left unbound.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/youth_young_parent_payment/core#input.young_person_is_parent_or_step_parent_of_dependent_child",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "young_person_is_parent_or_step_parent_of_dependent_child",
+   "module": "nz/statutes/social_security/youth_young_parent_payment/core.yaml",
+   "note": "nz/statutes/social_security/youth_young_parent_payment/core.yaml rule young_parent_payment_entitled (Social Security Act 2018 s 56; excerpts 'P is a parent or step-parent of at least 1 dependent child' and 'a dependent child of a young person's spouse or partner must also be treated as a dependent child of the young person'). Parent pointers cover birth, adoptive and step parents; a partner's child counts only when the survey records the young person as that child's (step) parent. Difference: flags a person named as parent (birth, adoptive or step) by a co-resident person aged 17 or under. max_child_age 17 is this mapping's reading of 'dependent child' as under 18; the module does not encode the definition's age limit or its care and financial-dependence tests, and dependent children with no parent pointer to the person (or living elsewhere) are missed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "max_child_age": 17,
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/student_loan/repayments#input.student_loan_weekly_earnings",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "student_loan_weekly_earnings",
+   "module": "nz/statutes/student_loan/repayments.yaml",
+   "note": "nz/statutes/student_loan/repayments.yaml rule student_loan_weekly_deduction (Student Loan Scheme Act 2011 s 37; IRD excerpt \"You repay 12% of every dollar you earn over the pay period repayment threshold when you use a tax code with 'SL' for your main job (M SL or ME SL).\"): 'max(0, student_loan_weekly_earnings - student_loan_weekly_repayment_threshold) * student_loan_repayment_rate', rule period Week; student_loan_weekly_repayment_threshold is 464, one fifty-second of the 24,128 annual threshold (s 37(4)(a)). Scale 1/52: weekly = annual / 52. Difference: annual gross wages averaged over 52 weeks, against salary or wages in a weekly pay period from the main job; for part-year workers or several jobs the averaged figure and the pay-period figure differ, and the weekly threshold makes that difference non-linear. The module has no borrower input, so student_loan_weekly_deduction is computed for everyone whose earnings are fed; a build must restrict it to student loan borrowers, whom the concepts do not identify.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scale"
+   }
+  }
+ ],
+ "engine": "axiom:nz",
+ "engine_version": "6fe181fc4c65763150fe97501ef3443774e64869",
+ "entity_correspondence": {
+  "household": "Household",
+  "person": "Person"
+ },
+ "format": "microcosm.concept_mapping.v1",
+ "input_declaration": "usage_inferred",
+ "structural_inputs": [],
+ "unmapped": {
+  "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
+  "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",
+  "fact:person.realized_capital_gains": "rulespec-nz at 6fe181f has no input for gains on disposals: no rule mentions gains, disposals or the bright-line test, and the only capital input, income_tax_expenditure_or_loss_is_capital_nature (income_tax/core/taxable_income.yaml, s DA 2), classifies expenditure for the general deduction limitation.",
+  "fact:person.sex": "rulespec-nz at 6fe181f has no sex- or gender-dependent input: none of the 668 dense-surface input names or 40 module YAMLs mention sex, gender, male, female, man, woman, wife or husband, and the only related hit, sole_parent_is_mother_or_father_or_child_regarded_as_child (social_security/main_benefits/entitlement.yaml), tests parenthood, which this mapping binds to the parent_of_coresident_child role.",
+  "fact:person.usual_weekly_hours": "rulespec-nz at 6fe181f has no input that takes hours worked: the work-hours inputs are threshold statuses no transform can compute from hours, namely acc_self_employed_more_than_30_hours_per_week (regulations/acc/earners_levy.yaml, reg 6, which also needs self-employment hours alone), jobseeker_in_full_time_employment (main_benefits/entitlement.yaml, s 21), acc_weekly_compensation_is_full_time_earner and the Family-level in_work_tax_credit_normally_full_time_earner; the remaining hours_per_week inputs are childcare, programme-participation or work-capacity hours.",
+  "fact:person.weeks_worked": "rulespec-nz at 6fe181f has no input the concept determines: the closest, in_work_tax_credit_weekly_periods (Family, income_tax/family_scheme/tax_credits.yaml, s MD 10(2)), counts weeks in which the person or their partner meets the earner requirement, which needs the union of two partners' work weeks that no group rule gives (reference_member drops a working partner; sum_over_members double-counts and adds children's weeks), and minimum_family_tax_credit_weekly_periods and minimum_family_full_time_earner_weeks count only weeks as a full-time earner."
+ }
+}

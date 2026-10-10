@@ -1,9 +1,15 @@
-"""UK capital-gains incidence cloning, HMRC size-band support and the
-post-redraw incidence anchor (microcosm#970).
+"""UK capital-gains incidence cloning and the post-redraw incidence anchor
+(microcosm#970).
+
+The HMRC size-band donor stage that used to sit between them is retired by
+microcosm#1045: row support at the top of the gains distribution now comes
+from the mass-conserving support split in ``cgt_support`` that runs before
+the clone, and the Table 3 redraw owns every gain amount.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -11,7 +17,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.advani_summers import (
     ADVANI_SUMMERS_RESOURCE,
@@ -33,9 +39,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     uk_cgt_policy_parameters,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
-    HMRC_CGT_CONDITIONING_RESOURCE,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
-    load_hmrc_cgt_conditioning_facts,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
@@ -55,27 +59,10 @@ CGT_CLONE_MASS_SPLIT = 0.5
 CGT_PRIOR_SEED = 0
 CGT_PRIOR_SALT = "cgt_prior_amount"
 CGT_ADULT_MINIMUM_AGE = 16
-DONORS_PER_BAND = 30
-DONOR_BAND_COUNT = 9
-DONOR_TOTAL = 270
-MIN_DONOR_BAND_LOWER = 12_300
-DONOR_SEED = 1
-DONOR_NEVER_ZERO_WEIGHT = True
-#: Reviewed pins of the retained donor bands on the 2024-25 vintage
-#: (HMRC Table 2.1a, individuals, bands from GBP 12,300): a re-vendored
-#: resource that moves them fails the donor assert until reviewed here.
-DONOR_SIZE_BAND_VINTAGE = "2024-25"
-DONOR_RETAINED_TAXPAYERS = 392_000.0
-DONOR_RETAINED_GAINS_GBP = 118_209_000_000.0
 HOUSEHOLD_IS_CGT_CLONE = "household_is_capital_gains_clone"
-HOUSEHOLD_IS_CGT_BAND_DONOR = "household_is_cgt_band_donor"
 CGT_CLONE_MASS_CHANGE_REASON = (
     "Capital-gains incidence clone splits every household's mass equally across "
     "original and clone records; total household mass is conserved."
-)
-CGT_DONOR_MASS_CHANGE_REASON = (
-    "Stack 30 positive-weight HMRC Table 2.1a support households per retained "
-    "gain band; published donor mass is added explicitly."
 )
 CGT_INCIDENCE_ANCHOR_STAGE_NAME = "cgt_incidence_anchor"
 #: A clone never gains mass at the anchor: its factor is capped at one.
@@ -83,12 +70,12 @@ CGT_ANCHOR_MAXIMUM_FACTOR = 1.0
 #: The non-liable clone groups the anchor moves mass out of.
 CGT_ANCHOR_GROUPS = ("sub_exempt", "loss")
 #: What the anchor's groups, targets and receipt describe: the clone side of
-#: the pairs. Band donors and originals are outside its reach, so the receipt
-#: certifies the anchor's own arithmetic, not a population count.
+#: the pairs. Originals are outside its reach, so the receipt certifies the
+#: anchor's own arithmetic, not a population count.
 CGT_ANCHOR_SCOPE = (
-    "clone households paired to their originals; band donors and originals are "
-    "outside the anchor, so the groups, targets and masses are clone-side "
-    "quantities, not population counts"
+    "clone households paired to their originals; originals are outside the "
+    "anchor, so the groups, targets and masses are clone-side quantities, not "
+    "population counts"
 )
 CGT_ANCHOR_MASS_CHANGE_REASON = (
     "Capital-gains incidence anchor moves the mass of non-liable clone "
@@ -100,39 +87,6 @@ CGT_ANCHOR_MASS_CHANGE_REASON = (
 #: Bisection steps for the per-group scale; float64 brackets collapse long
 #: before this, so the solve is exact to rounding and deterministic.
 _ANCHOR_BISECTION_STEPS = 200
-
-
-def load_hmrc_cgt_size_bands() -> Mapping[str, Any]:
-    """HMRC Table 2.1a individuals by size of gain, as the donor stage reads it.
-
-    Built from the vendored 2024-25 conditioning facts
-    (``hmrc_cgt_conditioning_facts.json``); the hand-extracted 2023-24 copy
-    is retired (microcosm#725) so the donor weights sit on the same vintage
-    as the size-of-gain calibration targets. The rows keep people and
-    pounds, one row per published band.
-    """
-
-    facts = load_hmrc_cgt_conditioning_facts()
-    return {
-        "version": 2,
-        "country": "uk",
-        "source": {
-            "resource": facts.resource,
-            "resource_sha256": facts.resource_sha256,
-            "source_commit": facts.source_commit,
-            "table": "2.1a",
-            "tax_year": facts.tax_year,
-        },
-        "rows": [
-            {
-                "lower_limit": band.lower_bound,
-                "upper_limit": band.upper_bound,
-                "taxpayers": band.taxpayers,
-                "gains_gbp": band.gains,
-            }
-            for band in facts.size_bands
-        ],
-    }
 
 
 @dataclass(frozen=True)
@@ -154,26 +108,6 @@ class UKCGTIncidenceCloneResult:
             },
             "carrier_count": self.carrier_count,
             "negative_prior_count": self.negative_prior_count,
-        }
-
-
-@dataclass(frozen=True)
-class UKCGTBandDonorResult:
-    """Band-donor frame and the executed-effect receipt for stage 20."""
-
-    frame: Frame
-    band_rows: tuple[Mapping[str, object], ...]
-    frs_donors: int
-    spi_donors: int
-
-    def evidence(self) -> dict[str, object]:
-        return {
-            "stage": "cgt_band_donors",
-            "bands": [dict(row) for row in self.band_rows],
-            "support_channel_split": {
-                "frs": self.frs_donors,
-                "spi": self.spi_donors,
-            },
         }
 
 
@@ -203,44 +137,13 @@ class UKCGTIncidenceCloneStageTransform:
 
 
 @dataclass(frozen=True)
-class UKCGTBandDonorStageTransform:
-    """Whole-stage transform for positive-weight HMRC size-band donors."""
-
-    stage: SourceStageSpec
-    size_bands: Mapping[str, Any] | None = None
-    distribution: Mapping[str, Any] | None = None
-    last_result: UKCGTBandDonorResult | None = field(default=None, init=False)
-
-    def __call__(self, frame: Frame) -> Frame:
-        bands = self.size_bands or load_hmrc_cgt_size_bands()
-        distribution = self.distribution or load_advani_summers_distribution()
-        _assert_cgt_donor_stage_parameters(self.stage, size_bands=bands)
-        result = stack_cgt_band_donors(
-            frame,
-            size_bands=bands,
-            distribution=distribution,
-        )
-        object.__setattr__(self, "last_result", result)
-        return result.frame
-
-    @staticmethod
-    def output_columns() -> tuple[str, ...]:
-        return (HOUSEHOLD_IS_CGT_BAND_DONOR, "capital_gains")
-
-    def checkpoint_metadata(self) -> dict[str, object]:
-        if self.last_result is None:
-            raise RuntimeError("checkpoint metadata requires a completed stage run.")
-        return {"evidence": self.last_result.evidence()}
-
-
-@dataclass(frozen=True)
 class UKCGTIncidenceAnchorResult:
     """Anchored frame and the executed-effect receipt of the incidence anchor.
 
     Group masses are household weights over clone households; each clone
     household carries exactly one gainer, so they equal the weighted gainer
     persons of the group and are commensurate with ``liable_mass``. They are
-    clone-side quantities: band donors and originals are outside the anchor,
+    clone-side quantities: originals are outside the anchor,
     so ``after`` is what the anchor realised, not the population's sub-exempt
     or loss-making mass.
     """
@@ -264,7 +167,6 @@ class UKCGTIncidenceAnchorResult:
     max_pair_relative_error: float
     original_mass: float
     clone_mass: float
-    donor_mass: float
     by_income_band: tuple[Mapping[str, object], ...]
 
     def evidence(self) -> dict[str, object]:
@@ -296,7 +198,6 @@ class UKCGTIncidenceAnchorResult:
                 "false": self.original_mass,
                 "true": self.clone_mass,
             },
-            "donor_mass": self.donor_mass,
             "by_income_band": [dict(row) for row in self.by_income_band],
         }
 
@@ -435,152 +336,6 @@ def clone_cgt_incidence(
     )
 
 
-def stack_cgt_band_donors(
-    frame: Frame,
-    *,
-    size_bands: Mapping[str, Any],
-    distribution: Mapping[str, Any],
-) -> UKCGTBandDonorResult:
-    """Add 30 households per retained HMRC size band at band-exact weights."""
-
-    validate_uk_national_frame(frame)
-    person = frame.table("person").copy()
-    benunit = frame.table("benunit").copy()
-    household = frame.table("household").copy()
-    household[HOUSEHOLD_IS_CGT_BAND_DONOR] = False
-    bands = _retained_size_bands(size_bands)
-    carriers = _oldest_adult_indices(person, household_ids=set(household.household_id))
-    candidates = person.loc[carriers].copy()
-    candidates["_income"] = _component_sum_income(candidates)
-    candidates["_propensity"] = _incidence_propensity(
-        candidates["_income"].to_numpy(dtype=float), distribution=distribution
-    )
-    candidates = candidates.sort_values("person_household_id", kind="stable")
-    if len(candidates) < DONOR_TOTAL:
-        raise ValueError(
-            f"CGT donor stage requires at least {DONOR_TOTAL} candidate households; "
-            f"found {len(candidates)}."
-        )
-    propensities = candidates["_propensity"].to_numpy(dtype=float)
-    if not np.isfinite(propensities).all() or (propensities < 0).any():
-        raise ValueError("CGT donor propensities must be finite and non-negative.")
-    if propensities.sum() <= 0:
-        raise ValueError("CGT donor propensities have no positive mass.")
-    rng = np.random.default_rng(DONOR_SEED)
-    selected = rng.choice(
-        candidates["person_household_id"].to_numpy(),
-        size=DONOR_TOTAL,
-        replace=False,
-        p=propensities / propensities.sum(),
-    )
-    selected_set = set(selected.tolist())
-    donor_person = person.loc[person.person_household_id.isin(selected_set)].copy()
-    donor_benunit_ids = set(donor_person.person_benunit_id)
-    donor_benunit = benunit.loc[benunit.benunit_id.isin(donor_benunit_ids)].copy()
-    donor_household = household.loc[household.household_id.isin(selected_set)].copy()
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
-    for column in ("person_id", "person_household_id", "person_benunit_id"):
-        donor_person[column] = donor_person[column].astype("int64") + multiplier
-    donor_benunit["benunit_id"] = (
-        donor_benunit["benunit_id"].astype("int64") + multiplier
-    )
-    donor_household["household_id"] = (
-        donor_household["household_id"].astype("int64") + multiplier
-    )
-    position = {household_id: index for index, household_id in enumerate(selected)}
-    donor_household["_band_position"] = (
-        donor_household["household_id"].sub(multiplier).map(position)
-    )
-    if donor_household["_band_position"].isna().any():
-        raise ValueError("CGT donor selection failed to map every donor household.")
-    donor_household = donor_household.sort_values("_band_position", kind="stable")
-    band_index = (
-        donor_household["_band_position"].to_numpy(dtype=int) // DONORS_PER_BAND
-    )
-    taxpayers = np.asarray([row["taxpayers"] for row in bands], dtype=float)
-    means = np.asarray([row["mean_gain"] for row in bands], dtype=float)
-    donor_weights = taxpayers[band_index] / DONORS_PER_BAND
-    if DONOR_NEVER_ZERO_WEIGHT and not (donor_weights > 0.0).all():
-        raise ValueError("CGT band donors must all carry positive initial weight.")
-    donor_household[HOUSEHOLD_IS_CGT_BAND_DONOR] = True
-    gain_by_household = dict(
-        zip(donor_household.household_id, means[band_index], strict=True)
-    )
-    evidence_band_index = band_index.copy()
-    evidence_donor_weights = donor_weights.copy()
-    evidence_gains = means[band_index].copy()
-    donor_household["_donor_weight"] = donor_weights
-    donor_household = donor_household.drop(columns=["_band_position"]).sort_values(
-        "household_id", kind="stable"
-    )
-    donor_weights = donor_household.pop("_donor_weight").to_numpy(dtype=float)
-    donor_person["capital_gains"] = 0.0
-    donor_carriers = _oldest_adult_indices(
-        donor_person,
-        household_ids=set(donor_household.household_id),
-    )
-    donor_person.loc[donor_carriers, "capital_gains"] = donor_person.loc[
-        donor_carriers, "person_household_id"
-    ].map(gain_by_household)
-    final_person = pd.concat([person, donor_person], ignore_index=True)
-    final_benunit = pd.concat([benunit, donor_benunit], ignore_index=True)
-    final_household = pd.concat([household, donor_household], ignore_index=True)
-    final_weights = np.r_[frame.weights_for("household").values, donor_weights]
-    old_total = frame.weights_for("household").total
-    new_total = float(final_weights.sum())
-    receipt = MassChangeRecord(
-        entity="household",
-        old_total=old_total,
-        new_total=new_total,
-        declared_factor=None,
-        reason=CGT_DONOR_MASS_CHANGE_REASON,
-    )
-    result = uk_national_frame(
-        person=final_person,
-        benunit=final_benunit,
-        household=final_household,
-        time_period=uk_time_period(frame),
-        weight_kind=WeightKind.IMPORTANCE,
-        household_weights=final_weights,
-        mass_log=(*frame.mass_log, receipt),
-    )
-    validate_uk_national_frame(result)
-    channels = household.set_index("household_id").get("household_support_channel")
-    original_selected = donor_household.household_id.sub(multiplier)
-    selected_channels = (
-        original_selected.map(channels).fillna("unknown")
-        if channels is not None
-        else pd.Series("unknown", index=original_selected.index)
-    )
-    band_rows: list[Mapping[str, object]] = []
-    for index, band in enumerate(bands):
-        mask = evidence_band_index == index
-        realized = evidence_gains[mask]
-        band_rows.append(
-            {
-                "lower_limit": band["lower_limit"],
-                "donor_count": int(mask.sum()),
-                "donor_weight": float(evidence_donor_weights[mask][0]),
-                "weighted_taxpayers": float(evidence_donor_weights[mask].sum()),
-                "mean_gain": band["mean_gain"],
-                "realized_min_gain": float(realized.min()),
-                "realized_max_gain": float(realized.max()),
-            }
-        )
-    return UKCGTBandDonorResult(
-        frame=result,
-        band_rows=tuple(band_rows),
-        frs_donors=int(selected_channels.eq("frs").sum()),
-        spi_donors=int(selected_channels.eq("spi").sum()),
-    )
-
-
 def pair_clone_households(
     person: pd.DataFrame,
     benunit: pd.DataFrame,
@@ -589,20 +344,20 @@ def pair_clone_households(
     """Positions of every clone household and of its paired original.
 
     The clone stage offsets ids by ``id_multiplier_for_values`` over the rows
-    it saw; those rows are exactly the households flagged neither clone nor
-    band donor (band donors copy clones and originals alike and carry their
-    source's clone flag, so the donor flag is checked first). Recomputing the
-    multiplier from them reproduces the executor's lineage rule, and the
-    pairing must be a bijection: an unpaired clone or original fails closed.
+    it saw; those rows are exactly the households whose clone flag is false,
+    the support split's copies included (they are pre-clone rows with their
+    own clones, microcosm#1045). Recomputing the multiplier from them
+    reproduces the executor's lineage rule, and the pairing must be a
+    bijection: an unpaired clone or original fails closed.
     """
 
-    for column in (HOUSEHOLD_IS_CGT_CLONE, HOUSEHOLD_IS_CGT_BAND_DONOR):
-        if column not in household.columns:
-            raise ValueError(f"CGT incidence anchor requires household.{column}.")
+    if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
+        raise ValueError(
+            f"CGT incidence anchor requires household.{HOUSEHOLD_IS_CGT_CLONE}."
+        )
     is_clone = household[HOUSEHOLD_IS_CGT_CLONE].to_numpy(dtype=bool)
-    is_donor = household[HOUSEHOLD_IS_CGT_BAND_DONOR].to_numpy(dtype=bool)
-    original = ~is_clone & ~is_donor
-    clone = is_clone & ~is_donor
+    original = ~is_clone
+    clone = is_clone
     household_ids = (
         pd.to_numeric(household["household_id"], errors="raise")
         .astype("int64")
@@ -667,6 +422,19 @@ def reporter_composition_quantiles(
     return lower[indexes], upper[indexes]
 
 
+def _order_free_sum(values: np.ndarray) -> float:
+    """The correctly rounded sum, which does not depend on the row order.
+
+    Every sum the anchor's factors depend on goes through here: a pairwise
+    float sum moves in its last bits when the rows are permuted, the bisection
+    then settles on a neighbouring scale, and the anchored weights differ by a
+    few ulps between two orderings of the same households (the E8 identity
+    receipt found 1e-13 on the licensed spine; microcosm#1063).
+    """
+
+    return math.fsum(np.asarray(values, dtype=float).tolist())
+
+
 def _solve_group_factors(
     weights: np.ndarray,
     propensity: np.ndarray,
@@ -686,8 +454,8 @@ def _solve_group_factors(
         middle = 0.5 * (lower + upper)
         if middle <= lower or middle >= upper:
             break
-        achieved = float(
-            (weights * np.minimum(CGT_ANCHOR_MAXIMUM_FACTOR, middle * propensity)).sum()
+        achieved = _order_free_sum(
+            weights * np.minimum(CGT_ANCHOR_MAXIMUM_FACTOR, middle * propensity)
         )
         if achieved < target:
             lower = middle
@@ -717,7 +485,7 @@ def anchor_cgt_incidence(
     band's incidence and capped at one; every unit of mass a clone loses goes
     to its paired original, which is identical in every cell but the gains,
     so pair mass, household mass and every non-CGT aggregate are conserved.
-    Liable clones and band donors are untouched.
+    Liable clones are untouched.
     """
 
     validate_uk_national_frame(frame)
@@ -750,7 +518,7 @@ def anchor_cgt_incidence(
         raise ValueError("CGT incidence anchor found a person without a household.")
     person_positions = person_positions.astype(np.int64)
     liable = gains > annual_exempt_amount
-    liable_mass = float(weights[person_positions][liable].sum())
+    liable_mass = _order_free_sum(weights[person_positions][liable])
     if not liable_mass > 0.0:
         raise ValueError(
             "CGT incidence anchor requires positive liable mass above the annual "
@@ -787,10 +555,11 @@ def anchor_cgt_incidence(
     )
     clone_weights = weights[clone_positions]
     mix = clone_weights * propensity
-    if not mix.sum() > 0.0:
+    mix_total = _order_free_sum(mix)
+    if not mix_total > 0.0:
         raise ValueError("CGT incidence anchor found no clone mass to compose.")
-    zero_quantile = float((mix * zero_quantiles).sum() / mix.sum())
-    exempt_quantile = float((mix * exempt_quantiles).sum() / mix.sum())
+    zero_quantile = _order_free_sum(mix * zero_quantiles) / mix_total
+    exempt_quantile = _order_free_sum(mix * exempt_quantiles) / mix_total
     if not 0.0 <= zero_quantile < exempt_quantile < 1.0:
         raise ValueError(
             "CGT incidence anchor derived an unusable reporter composition: "
@@ -811,7 +580,9 @@ def anchor_cgt_incidence(
         "loss": carrier_gains < 0.0,
     }
     liable_clone = carrier_gains > annual_exempt_amount
-    before = {name: float(clone_weights[mask].sum()) for name, mask in groups.items()}
+    before = {
+        name: _order_free_sum(clone_weights[mask]) for name, mask in groups.items()
+    }
     before["liable"] = float(clone_weights[liable_clone].sum())
     factors = np.ones(len(clone_positions), dtype=float)
     scale: dict[str, float | None] = {}
@@ -836,7 +607,7 @@ def anchor_cgt_incidence(
     # ulps); no global exact-total correction is applied, because it would move
     # the summed rounding of every transfer onto one household, breaking that
     # household's pair (1.6e-13 relative on the licensed spine) and possibly
-    # touching a liable clone or a donor. The total is recorded as realised.
+    # touching a liable clone. The total is recorded as realised.
     values = new_weights
     if (values < 0.0).any() or not np.array_equal(values > 0.0, weights > 0.0):
         raise ValueError(
@@ -855,7 +626,6 @@ def anchor_cgt_incidence(
         for name, mask in groups.items()
     }
     after["liable"] = float(values[clone_positions][liable_clone].sum())
-    is_donor = household[HOUSEHOLD_IS_CGT_BAND_DONOR].to_numpy(dtype=bool)
     band_index = np.clip(
         np.searchsorted(
             np.asarray(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS, dtype=float),
@@ -924,7 +694,6 @@ def anchor_cgt_incidence(
         max_pair_relative_error=float(pair_error.max()),
         original_mass=float(values[original_positions].sum()),
         clone_mass=float(values[clone_positions].sum()),
-        donor_mass=float(values[is_donor].sum()),
         by_income_band=tuple(by_income_band),
     )
 
@@ -980,54 +749,6 @@ def _incidence_propensity(
     indexes = advani_summers_band_index(rows, income)
     rates = np.asarray([row["percent_with_gains"] for row in rows], dtype=float)
     return rates[indexes]
-
-
-def _retained_size_bands(resource: Mapping[str, Any]) -> list[dict[str, float]]:
-    rows = resource.get("rows")
-    if not isinstance(rows, list):
-        raise ValueError("HMRC CGT size-band resource must contain a rows list.")
-    retained: list[dict[str, float]] = []
-    for row in rows:
-        lower = float(row["lower_limit"])
-        if lower < MIN_DONOR_BAND_LOWER:
-            continue
-        taxpayers = float(row["taxpayers"])
-        gains = float(row["gains_gbp"])
-        if taxpayers <= 0.0:
-            raise ValueError(
-                "Retained CGT size bands may not produce a zero initial weight."
-            )
-        retained.append(
-            {
-                "lower_limit": lower,
-                "taxpayers": taxpayers,
-                "gains": gains,
-                "mean_gain": gains / taxpayers,
-            }
-        )
-    return retained
-
-
-def _operation(stage: SourceStageSpec, kind: str) -> SourceOperationSpec:
-    matches = [operation for operation in stage.operations if operation.kind == kind]
-    if len(matches) != 1:
-        raise ValueError(
-            f"Stage {stage.stage!r} must declare exactly one {kind!r} operation."
-        )
-    return matches[0]
-
-
-def _assert_parameters(
-    operation: SourceOperationSpec,
-    expected: Mapping[str, object],
-) -> None:
-    for name, value in expected.items():
-        actual = operation.parameters.get(name)
-        if actual != value:
-            raise ValueError(
-                f"{operation.kind} manifest parameter {name!r} drifted: "
-                f"expected {value!r}, got {actual!r}."
-            )
 
 
 def _assert_closed_world_operations(
@@ -1114,69 +835,6 @@ def _assert_cgt_incidence_stage_parameters(stage: SourceStageSpec) -> None:
     )
 
 
-def _assert_cgt_donor_stage_parameters(
-    stage: SourceStageSpec,
-    *,
-    size_bands: Mapping[str, Any],
-) -> None:
-    """Bind stage-20 parameters and recompute the band/weight invariants."""
-
-    _assert_closed_world_operations(
-        stage,
-        (
-            (
-                "stack_band_donor_households",
-                {
-                    "size_band_resource": HMRC_CGT_CONDITIONING_RESOURCE,
-                    "size_band_vintage": DONOR_SIZE_BAND_VINTAGE,
-                    "retained_taxpayers": DONOR_RETAINED_TAXPAYERS,
-                    "retained_gains_gbp": DONOR_RETAINED_GAINS_GBP,
-                    "incidence_resource": ADVANI_SUMMERS_RESOURCE,
-                    "minimum_band_lower": MIN_DONOR_BAND_LOWER,
-                    "donors_per_band": DONORS_PER_BAND,
-                    "expected_band_count": DONOR_BAND_COUNT,
-                    "expected_donor_count": DONOR_TOTAL,
-                    "candidate_order": "household_id ascending",
-                    "draw": "weighted_without_replacement",
-                    "propensity": (
-                        "Advani-Summers percent_with_gains at oldest-adult "
-                        "component-sum income"
-                    ),
-                    "seed": DONOR_SEED,
-                    "flag_column": HOUSEHOLD_IS_CGT_BAND_DONOR,
-                    "carrier": "oldest adult; person_id ascending breaks age ties",
-                    "initial_weight": "published band taxpayers / donors_per_band",
-                    "never_zero_weight": DONOR_NEVER_ZERO_WEIGHT,
-                    "weight_kind_out": WeightKind.IMPORTANCE.value,
-                    "reason": CGT_DONOR_MASS_CHANGE_REASON,
-                },
-            ),
-        ),
-    )
-    bands = _retained_size_bands(size_bands)
-    if len(bands) != DONOR_BAND_COUNT:
-        raise ValueError(
-            f"HMRC retained donor-band count drifted: expected {DONOR_BAND_COUNT}, "
-            f"got {len(bands)}."
-        )
-    if DONORS_PER_BAND * len(bands) != DONOR_TOTAL:
-        raise ValueError("CGT donor count no longer equals 30 times retained bands.")
-    weights = np.asarray([band["taxpayers"] / DONORS_PER_BAND for band in bands])
-    if DONOR_NEVER_ZERO_WEIGHT and not (weights > 0.0).all():
-        raise ValueError("HMRC retained donor bands imply a zero initial weight.")
-    retained_taxpayers = float(sum(band["taxpayers"] for band in bands))
-    retained_gains = float(sum(band["gains"] for band in bands))
-    if abs(retained_taxpayers - DONOR_RETAINED_TAXPAYERS) > 0.5 or (
-        abs(retained_gains - DONOR_RETAINED_GAINS_GBP) > 0.5
-    ):
-        raise ValueError(
-            "HMRC retained donor-band mass drifted from the reviewed "
-            f"{DONOR_SIZE_BAND_VINTAGE} pins: taxpayers {retained_taxpayers} vs "
-            f"{DONOR_RETAINED_TAXPAYERS}, gains {retained_gains} vs "
-            f"{DONOR_RETAINED_GAINS_GBP}."
-        )
-
-
 def cgt_incidence_anchor_operation_parameters() -> tuple[
     tuple[str, dict[str, object]], ...
 ]:
@@ -1187,12 +845,12 @@ def cgt_incidence_anchor_operation_parameters() -> tuple[
             "pair_clone_households_to_originals",
             {
                 "clone_flag_column": HOUSEHOLD_IS_CGT_CLONE,
-                "donor_flag_column": HOUSEHOLD_IS_CGT_BAND_DONOR,
                 "id_remapping": "id_multiplier_for_values",
                 "pairing": (
                     "clone household_id minus the clone stage's id multiplier, "
-                    "recomputed from the pre-clone rows (clone flag false and not "
-                    "a band donor)"
+                    "recomputed from the pre-clone rows (clone flag false; the "
+                    "support split's copies are pre-clone rows with their own "
+                    "clones)"
                 ),
                 "requirement": (
                     "bijection between clone and original households; an "
@@ -1221,8 +879,7 @@ def cgt_incidence_anchor_operation_parameters() -> tuple[
                 ),
                 "liable_mass": (
                     "weighted persons with capital_gains above the annual exempt "
-                    "amount on every household after the Table 3 redraw, clones "
-                    "and band donors alike"
+                    "amount on every household after the Table 3 redraw"
                 ),
                 "targets": (
                     "sub_exempt = liable_mass * (exempt_quantile - zero_quantile) "
@@ -1244,7 +901,6 @@ def cgt_incidence_anchor_operation_parameters() -> tuple[
                     "clone households whose carrier's capital_gains are negative"
                 ),
                 "liable_clones": "untouched",
-                "donors": "untouched",
                 "factor": (
                     "min(maximum_factor, scale * percent_with_gains) with scale "
                     "solved per group by bisection so the group's mass equals its "

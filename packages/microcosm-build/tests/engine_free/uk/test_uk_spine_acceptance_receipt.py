@@ -14,10 +14,7 @@ import json
 from importlib.resources import files
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.uk_runtime.graph import (
-    UK_SPINE_EXCLUSIONS,
-    uk_spine_graph,
-)
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.graph import compile_graph
 
 
@@ -32,11 +29,7 @@ def _receipt() -> dict:
 def _production_graph_stage_names() -> tuple[str, ...]:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    declared = {
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    }
+    declared = {stage.stage for stage in spec.sources.stages}
     compiled = compile_graph(uk_spine_graph(spec))
     return tuple(node_id for node_id in compiled.order if node_id in declared)
 
@@ -79,6 +72,11 @@ def _apply_pending_roster_transformations(
     # back to the originals right after the asset-type stage.
     assert "cgt_incidence_anchor" not in roster
     roster.insert(roster.index("hmrc_cgt_asset_type_spine") + 1, "cgt_incidence_anchor")
+    # #1045 re-mint pending: the band-donor stack is retired and the support
+    # split runs right before the incidence clone.
+    assert "cgt_support_split" not in roster
+    roster.remove("cgt_band_donors")
+    roster.insert(roster.index("cgt_incidence_clone"), "cgt_support_split")
     # #930 re-mint pending: the NTS bus-travel stage imputes the journeys the
     # consumption stage prices, so it runs right before lcfs_consumption.
     assert "nts_bus_travel" not in roster
@@ -105,6 +103,31 @@ def _apply_pending_roster_transformations(
     # from their own incomes right after the SPI income chain.
     assert "spi_housing_shell" not in roster
     roster.insert(roster.index("hmrc_spi_income_spine") + 1, "spi_housing_shell")
+    # #1003 re-mint pending: the Lifetime ISA holdings read the was_wealth
+    # household draws, so they run right after was_wealth.
+    assert "was_lisa" not in roster
+    roster.insert(roster.index("was_wealth") + 1, "was_lisa")
+    # microcosm#1069 re-mint pending: the Pension Credit take-up redraw reads
+    # the post-SPI incomes, so it runs right after UC capital coherence.
+    assert "pension_credit_take_up" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "pension_credit_take_up")
+    # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
+    # post-SPI incomes, right after the Pension Credit redraw.
+    assert "child_benefit_take_up" not in roster
+    roster.insert(roster.index("pension_credit_take_up") + 1, "child_benefit_take_up")
+    # microcosm#1095 re-mint pending: the SPI benefit pass runs after the last
+    # UC report writer and before every UC, PC and CB consumer.
+    assert "spi_benefit_coherence" not in roster
+    roster.insert(roster.index("uc_reporter_redraw") + 1, "spi_benefit_coherence")
+    # microcosm#1063 re-mint pending: the residential split carries the flag
+    # as weight after the anchor, and the asset-type stage types its arms.
+    assert "cgt_residential_split" not in roster
+    roster.remove("hmrc_cgt_asset_type_spine")
+    anchor = roster.index("cgt_incidence_anchor")
+    roster[anchor + 1 : anchor + 1] = [
+        "cgt_residential_split",
+        "hmrc_cgt_asset_type_spine",
+    ]
     return tuple(roster)
 
 

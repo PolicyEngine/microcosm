@@ -24,7 +24,7 @@
       "source": {
         "source": "Child Benefit statistics: 2022 annual release",
         "agency": "HMRC",
-        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022.",
+        "citation": "Child Benefit statistics annual release, August 2022: take-up fell to 89% in 2022. Since microcosm#1063 this is only frs_take_up's early draw, which the intermediate engine simulations read; child_benefit_take_up replaces it after the SPI income chain with HMRC's August 2025 claim rates of eligible children by single year of age (hmrc_child_benefit_statistics.json).",
         "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
         "status": "sourced_administrative"
       }
@@ -39,7 +39,7 @@
       "source": {
         "source": "Child Benefit Statistics: Annual Release, August 2022",
         "agency": "HMRC",
-        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS.",
+        "citation": "Incumbent derivation: 683k opt-out families over roughly 3m fully HICBC-liable families in the 2023 FRS. Since microcosm#1063 this is only frs_take_up's early draw over every benefit unit; child_benefit_take_up replaces it after the SPI income chain with the published opted-out share of registered families (August 2025), drawn among claiming families charged the whole benefit.",
         "url": "https://www.gov.uk/government/statistics/child-benefit-statistics-annual-release-august-2022/child-benefit-statistics-annual-release-data-at-august-2022",
         "status": "sourced_administrative_derived"
       }
@@ -54,8 +54,38 @@
       "source": {
         "source": "Income-related benefits: estimates of take-up, financial year 2019 to 2020",
         "agency": "DWP",
-        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline.",
+        "citation": "Pension Credit take-up estimate used by the incumbent UK pipeline. Since microcosm#1069 (R9) this is only frs_take_up's early draw on FRS incomes, which the intermediate engine simulations read; pension_credit_take_up replaces it after the SPI income chain with the FYE 2024 component rates.",
         "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020/income-related-benefits-estimates-of-take-up-financial-year-2019-to-2020",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_guarantee_credit",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.69
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Guarantee Credit: 69% in FYE 2024 (all Pension Credit 62%). Applied by pension_credit_take_up as the share of the component's entitled benefit units who claim, reporters first (microcosm#1069 R9).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
+        "status": "sourced_administrative"
+      }
+    },
+    {
+      "key": "pension_credit_savings_credit_only",
+      "output": "would_claim_pc",
+      "entity": "benunit",
+      "values": {
+        "2023-01-01": 0.37
+      },
+      "source": {
+        "source": "Income-related benefits: estimates of take-up, financial year ending 2024",
+        "agency": "DWP",
+        "citation": "Pension Credit caseload take-up, Savings Credit only: 37% in FYE 2024 (all Pension Credit 62%). Applied by pension_credit_take_up as the share of the component's entitled benefit units who claim, reporters first (microcosm#1069 R9).",
+        "url": "https://www.gov.uk/government/statistics/income-related-benefits-estimates-of-take-up-financial-year-ending-2024/income-related-benefits-estimates-of-take-up-financial-year-ending-2024",
         "status": "sourced_administrative"
       }
     },

@@ -576,7 +576,7 @@ def bounded_redistribution(run):
                 in [
                     "obr.income_tax@2025",
                     "obr.ni@2025",
-                    "obr.state_pension@2025",
+                    "dwp.state_pension.amount@2025",
                     "obr.child_benefit@2025",
                 ]
             ],

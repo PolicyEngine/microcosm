@@ -1,7 +1,7 @@
 # The Microcosm stack: design charter
 
 **Status:** founding document, updated 2026-08-06. Decisions here were agreed
-between Max and Claude after building and scoring the first Microcosm
+between Max and an AI assistant after building and scoring the first Microcosm
 population candidate, which surfaced every failure mode this design exists to
 prevent.
 
@@ -92,6 +92,18 @@ class RulesEngine(Protocol):
 Adapters: `policyengine_us` today; **Axiom `rulespec-us` when it lands**
 (interface tests written against the protocol now so the swap is a new adapter,
 not a migration). Nothing outside the adapter imports a rules engine.
+
+### microcosm.frame.concepts: engine-neutral content
+
+Content is described once, as engine-neutral primitive facts
+(`fact:person.employment_income`, `fact:household.tenure`): each concept
+declares its unit, period, currency and price-level handling, provenance class
+and transport rule. Each adapter maps concepts onto its own inputs
+(`concept_mapping()`), explicitly and with the relation that holds, so the same
+content can feed policyengine-us, policyengine-uk or an Axiom RuleSpec country.
+That is what lets a public donor file be transported to another country. See
+[the concept-schema ADR](docs/concept-schema-transport-adr.md); builds have not
+migrated to it yet.
 
 ### microcosm-fit: conditional models
 

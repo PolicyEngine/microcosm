@@ -6,6 +6,7 @@ modules implement execution, storage, provenance, and inspection against them.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib import metadata as _metadata
 
 from .decl import (
@@ -16,6 +17,7 @@ from .decl import (
     PARTITION_DTYPES,
     ROWS_ALL,
     WEIGHT_KINDS,
+    WEIGHT_UPDATE_MASS_POLICIES,
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
@@ -30,6 +32,7 @@ from .decl import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    WeightUpdate,
     compile_graph,
 )
 from .errors import (
@@ -57,6 +60,8 @@ from .kernel import (
 )
 from .keys import platform_fingerprint
 from .randomness import keyed_uniform
+from .schema import graph_schema
+from .weight_update import WEIGHT_UPDATE_AXIS_SCHEMA, weight_update_receipt
 
 __all__ = [
     "platform_fingerprint",
@@ -117,16 +122,23 @@ __all__ = [
     "StoreUnavailable",
     "StructuralDelta",
     "WeightTransition",
+    "WeightUpdate",
+    "WEIGHT_UPDATE_AXIS_SCHEMA",
+    "WEIGHT_UPDATE_MASS_POLICIES",
     "compile_graph",
     "describe",
     "explain_html",
     "graph_from_json",
+    "graph_schema",
     "graph_to_json",
     "keyed_uniform",
     "load_source",
     "load_source_bytes",
     "run_graph",
     "source_hash",
+    "weight_update_receipt",
+    "orrery_document",
+    "orrery_json",
 ]
 
 _FRAME_SERIES = "0.1"
@@ -146,6 +158,35 @@ def _check_frame_version() -> None:
 
 _check_frame_version()
 
+
+def orrery_document(
+    graph: Graph | CompiledGraph,
+    *,
+    title: str | None = None,
+    extensions: Mapping[str, object] | None = None,
+    execution: object | None = None,
+) -> dict[str, object]:
+    """Compile and transform a graph into a complete Orrery document."""
+
+    from .orrery import orrery_document as export
+
+    return export(graph, title=title, extensions=extensions, execution=execution)
+
+
+def orrery_json(
+    graph: Graph | CompiledGraph,
+    *,
+    title: str | None = None,
+    extensions: Mapping[str, object] | None = None,
+    execution: object | None = None,
+) -> str:
+    """Compile and return deterministic UTF-8-ready Orrery JSON."""
+
+    from .orrery import orrery_json as export
+
+    return export(graph, title=title, extensions=extensions, execution=execution)
+
+
 from .codecs import (  # noqa: E402 - check dependency series before runtime import
     SOURCE_CODECS,
     SourceBytesCodec,
@@ -153,6 +194,17 @@ from .codecs import (  # noqa: E402 - check dependency series before runtime imp
     SourceCodecRegistry,
     load_source,
     load_source_bytes,
+)
+from .evidence import (  # noqa: E402
+    ArtifactSummaryContext,
+    RecordedRun,
+    checkpoint_references,
+    collect_execution_evidence,
+    load_run_evidence,
+    publish_run_evidence,
+    record_run_binding,
+    save_graph_schema,
+    save_run_evidence,
 )
 from .executor import NodeRejected, run_graph  # noqa: E402
 from .explain import explain_html  # noqa: E402
@@ -168,3 +220,15 @@ from .store import (  # noqa: E402
     StoreUnavailable,
 )
 from .view import describe  # noqa: E402
+
+__all__ += [
+    "ArtifactSummaryContext",
+    "RecordedRun",
+    "checkpoint_references",
+    "collect_execution_evidence",
+    "load_run_evidence",
+    "publish_run_evidence",
+    "record_run_binding",
+    "save_graph_schema",
+    "save_run_evidence",
+]
