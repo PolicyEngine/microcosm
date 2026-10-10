@@ -44,6 +44,7 @@ from .graph_calibration import (
     register_uk_calibration_kernels,
     uk_calibration_nodes,
 )
+from .graph_evidence import SPINE_BUILD_STATE_TYPE
 from .graph_kernels import UKClaimKernel, UKIdentityKernel, _normalize_create_frame
 from .graph_population import (
     UKPoolCheckpointKernel,
@@ -298,10 +299,32 @@ class UKBoundSpineKernel(KernelBase):
         provenance = calibration_run.strict_spine_provenance_from_sidecar(
             sidecar_path, sidecar, gate_report_path=context.sources["uk_spine_gates"]
         )
+        created = _normalize_create_frame(frame, context)
         return KernelResult(
-            frame=_normalize_create_frame(frame, context),
-            artifacts={"spine_provenance": canonical_json(provenance)},
+            frame=created,
+            artifacts={
+                "spine_provenance": canonical_json(provenance),
+                "spine_build_state": canonical_json(spine_build_state(created)),
+            },
         )
+
+
+def spine_build_state(frame: Frame) -> dict[str, object]:
+    """The checkpoint's build state the terminal gates read as the spine frame.
+
+    The input-coverage gate's family build-state half checks each stage
+    family's typed importance weights, period and mass receipt on the spine
+    the stages produced (the certifier's ``--spine-h5``); a graph build has
+    no second population to hand a kernel, so the checkpoint publishes the
+    three things that half reads.
+    """
+
+    return {
+        "schema": "microcosm.uk.spine-build-state.v1",
+        "household_weight_kind": frame.weights_for("household").kind.value,
+        "time_period": str(frame.metadata["time_period"]),
+        "mass_log": [asdict(record) for record in frame.mass_log],
+    }
 
 
 def bound_spine_graph(frame: Frame) -> Graph:
@@ -366,6 +389,7 @@ def bound_spine_graph(frame: Frame) -> Graph:
                 outputs=outputs,
                 artifact_outputs=(
                     ArtifactOutput("spine_provenance", SPINE_PROVENANCE_TYPE),
+                    ArtifactOutput("spine_build_state", SPINE_BUILD_STATE_TYPE),
                 ),
                 description="Resume a canonical spine with its bound lineage and source evidence.",
             ),

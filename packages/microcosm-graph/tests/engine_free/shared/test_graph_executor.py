@@ -3771,6 +3771,27 @@ def test_a_gate_that_declares_evidence_and_raises_leaves_its_consumers_unreached
     registry = _gate_artifact_registry(raising=True)
     manifest = _run(graph, source, store, registry)
 
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        record_run_binding,
+    )
+
+    compiled = compile_graph(graph)
+    recorded = record_run_binding(
+        compiled, manifest, attempt_id="gate-error", phase="gate"
+    )
+    overlay = collect_execution_evidence(
+        graph_schema(compiled), runs=[recorded], store=store
+    )
+    outcomes = overlay["phases"][0]["operations"]
+    assert outcomes["gate"]["execution"] == "failed"
+    assert outcomes["gate"]["gate"] == "fail"
+    assert outcomes["gate"]["unavailable_artifacts"] == ["evidence"]
+    assert outcomes["use"]["execution"] == "unreached"
+    assert outcomes["use"]["cache"] == "unknown"
+    assert outcomes["use"]["blocked_by"] == {"gate": manifest.nodes["gate"].key}
+
     gate = manifest.nodes["gate"]
     assert gate.receipt["outcome"] == "fail"
     assert gate.receipt["execution"] == {

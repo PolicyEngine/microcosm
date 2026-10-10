@@ -586,7 +586,14 @@ def align_hmrc_row_by_itl_growth(
     ``ledger_targets.CALENDAR_YEAR_WINDOW_WEIGHTS`` and the measure is summed
     over the Table 2.5 bands the SPI band spans. Counts follow taxpayer
     numbers; total income and tax rows (the regional Table 3.11 anchors)
-    follow HMRC's projected total income and liabilities in the band.
+    follow HMRC's projected total income and liabilities in the band, and so
+    do the Table 3.6 employment, self-employment and private-pension amounts
+    by band (microcosm#1063, 2026-10-02): an amount held in a fixed nominal
+    band moves with the band's membership, which a flat national earnings or
+    pension index ignores. Under the flat index the GBP 15,000-20,000 band's
+    employment amount rose 10.7% from 2023-24 to 2025 while HMRC projects the
+    band's total income to fall 2.3%; the SPI tape re-banded under the
+    engine's own indices agrees with HMRC's direction.
     """
 
     if reference.uprating_index != index_concept:

@@ -54,6 +54,7 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "person_benunit_id": [201, 101],
             "age": [44, 40],
             "gender": ["FEMALE", "MALE"],
+            "is_uc_claimant": [True, True],
             "employment_income": [20.0, 10.0],
             "self_employment_income": [0.0, 0.0],
             "savings_interest_income": [2.0, 1.0],
@@ -407,7 +408,7 @@ def _synthetic_hmrc_targets(path: Path) -> HMRCIncomeTargetSet:
     )
 
 
-def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_stage2(
+def test_spi_income_zero_initializes_frs_charity_and_keeps_frs_dividends(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -452,7 +453,6 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
             "gift_aid": 0.0,
             "charitable_investment_gifts": 0.0,
         },
-        stage1_base_redraw_columns=("dividend_income",),
     )
     person = result.person
     base = person[support_channel_column("person")] != SPI_SYNTHETIC_SUPPORT_CHANNEL
@@ -464,7 +464,14 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
     # stage-time zero — the explicit initialization above and this fill are
     # now the same semantics, and the artifact ships no NaN.
     assert person.loc[base, "hmrc_spi_employment_benefits"].eq(0.0).all()
-    assert person.loc[base, "dividend_income"].tolist() == [100.0, 101.0]
+    # FRS rows keep their reported dividends (uk-data#498, microcosm#1095).
+    reported = support.person[support_channel_column("person")] != (
+        SPI_SYNTHETIC_SUPPORT_CHANNEL
+    )
+    assert (
+        person.loc[base, "dividend_income"].tolist()
+        == support.person.loc[reported, "dividend_income"].tolist()
+    )
     assert person.loc[spi, "dividend_income"].tolist() == [100.0, 101.0]
     assert _FakeQRF.events[1][0] == "stage2"
     assert _FakeQRF.events[1][2] == [20.0, 10.0]
@@ -675,13 +682,47 @@ def test_income_stage_parameters_accept_the_committed_manifest() -> None:
     )
 
 
-def test_income_stage_parameters_refuse_redraw_column_drift() -> None:
-    stage = _with_mutated_operation(
-        _committed_stage("hmrc_spi_income_spine"),
-        "redraw_columns_from_fitted_qrf",
-        columns=["savings_interest_income"],
+def test_income_stage_parameters_refuse_a_base_channel_redraw() -> None:
+    stage = _committed_stage("hmrc_spi_income_spine")
+    operations = [
+        {"kind": operation.kind, **dict(operation.parameters)}
+        for operation in stage.operations
+    ]
+    operations.append(
+        {
+            "kind": "redraw_columns_from_fitted_qrf",
+            "fit": "stage1",
+            "columns": ["dividend_income"],
+            "rows": "base_support_channel",
+        }
     )
-    with pytest.raises(ValueError, match="base redraw columns drifted"):
+    stage = SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
+    with pytest.raises(ValueError, match="must not redraw FRS-channel incomes"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "parameter", "value", "message"),
+    [
+        ("fit_weighted_qrf_stage1", "recipient_role_column", None, "recipient role"),
+        ("fit_weighted_qrf_stage1", "recipient_role_column", "is_adult", "role"),
+        (
+            "fit_weighted_qrf_stage2",
+            "target_population",
+            "spi_synthetic_support_channel",
+            "target population",
+        ),
+    ],
+)
+def test_income_stage_parameters_refuse_a_recipient_domain_drift(
+    kind, parameter, value, message
+) -> None:
+    stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"), kind, **{parameter: value}
+    )
+    with pytest.raises(ValueError, match=message):
         _assert_income_stage_parameters(
             stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
         )

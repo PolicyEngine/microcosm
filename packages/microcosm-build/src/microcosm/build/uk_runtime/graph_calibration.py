@@ -79,6 +79,7 @@ class UKGraphCalibrationConfig:
     dataset_households: int | None = None
     selection_seed: int | None = None
     selection_pi_hi: float = 1.0
+    selection_initial_lambda: float | None = None
     baseline_pi_floor: float = 0.0
     target_weight_rule: str = "uniform"
 
@@ -95,6 +96,7 @@ class UKGraphCalibrationConfig:
         ):
             raise ValueError("Dataset household count must be a positive integer.")
         dataset_size._check_pi_hi(self.selection_pi_hi)
+        dataset_size._check_initial_lambda(self.selection_initial_lambda)
         dataset_size._check_baseline_pi_floor(self.baseline_pi_floor)
 
 
@@ -810,6 +812,10 @@ def uk_calibration_nodes(
             else config.selection_seed,
             "households": config.dataset_households,
             "pi_hi": config.selection_pi_hi,
+            # microcosm#1115: a warm-start penalty for the budget search; the
+            # search verifies it like any probe, so it is a parameter of the
+            # search node and of the nodes that reuse its selection.
+            "initial_lambda": config.selection_initial_lambda,
         }
         dense_input = ArtifactInput("dense", dense_id, "result", RESULT_TYPE)
         search_id, draw_id, refit_id = (

@@ -641,6 +641,37 @@ def test_anchor_leaves_a_group_already_below_its_target_untouched() -> None:
     assert result.trimmed_households == 1
 
 
+def test_anchor_sums_do_not_depend_on_the_row_order() -> None:
+    """A pairwise float sum moves in its last bits when the rows are permuted,
+    which moved the anchor's bisection onto a neighbouring scale and the
+    anchored weights by a few ulps between two orderings of the same
+    households (the E8 identity receipt, microcosm#1063)."""
+
+    from microcosm.build.uk_runtime.cgt_structure import (
+        _order_free_sum,
+        _solve_group_factors,
+    )
+
+    # The case the helper exists for: a float sum that depends on the order.
+    awkward = np.array([1e16, 1.0, -1e16, 1.0])
+    assert float(awkward.sum()) != float(awkward[[0, 2, 1, 3]].sum())
+    assert _order_free_sum(awkward) == _order_free_sum(awkward[[0, 2, 1, 3]]) == 2.0
+
+    rng = np.random.default_rng(1063)
+    weights = rng.uniform(0.1, 3_000.0, 20_000) * 10.0 ** rng.integers(-3, 3, 20_000)
+    propensity = rng.uniform(0.001, 0.2, 20_000)
+    order = rng.permutation(weights.size)
+    assert _order_free_sum(weights) == _order_free_sum(weights[order])
+
+    target = 0.4 * _order_free_sum(weights)
+    scale, factors = _solve_group_factors(weights, propensity, target)
+    permuted_scale, permuted_factors = _solve_group_factors(
+        weights[order], propensity[order], target
+    )
+    assert permuted_scale == scale
+    np.testing.assert_array_equal(permuted_factors, factors[order])
+
+
 def test_anchor_is_deterministic_under_person_permutation() -> None:
     permutation = np.random.default_rng(5).permutation(
         (len(ANCHOR_PATTERN) + SUPPORT_COPY_COUNT) * 4

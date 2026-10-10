@@ -18,12 +18,24 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 uv sync --all-packages   # set up the whole workspace
 uv sync --all-packages --locked --extra us  # US engine environment
 uv sync --all-packages --locked --extra uk  # UK engine environment
-uv run pytest            # engine-free tests; integration tests remain excluded
+bash tools/run_engine_free_tests.sh  # complete engine-free test category
+uv run pytest <path>     # focused test while developing
 uv run ruff check .      # lint
 ```
 
+Each country keeps its own policyengine-core pin (#1086). The extras that
+install policyengine-us pin the core the certified US default was built with,
+and the extras that install policyengine-uk follow policyengine-uk's own core
+floor. So no environment can hold both engines: uv refuses any sync that asks
+for an extra that installs policyengine-us (`microcosm-build[us]`,
+`microcosm-data[us]` or `microcosm-frame[policyengine]`) together with one that
+installs policyengine-uk, such as `uv sync --all-packages --extra us --extra uk`
+or `uv sync --all-packages --all-extras`. To keep both countries set up, point
+`UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
+
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs.
+`engine-uk`, `integration-uk`, and `wheels` jobs, plus the
+`select-countries` orchestration job.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -34,13 +46,14 @@ or country mapping.
 
 Each ordinary behavioral job has a Python 3.13/3.14 matrix and reports the 25
 slowest tests. The engine-free job installs no country extra, always runs every
-engine-free test, and distributes files across two pytest workers with `--dist
-loadfile`. Changed-file selection only controls the more resource-intensive
-country jobs. A documentation-only pull request selects neither country; a
-US-only or UK-only pull request selects that country; shared, mixed, unknown,
-or empty changed-path sets select both. Main pushes select both without querying
-the pull-request API. The UK integration job follows the same UK selection as
-the ordinary UK engine job.
+engine-free test, installs its locked JavaScript test dependencies, and
+distributes files across two pytest workers with `--dist loadfile`.
+Changed-file selection only controls the more resource-intensive country jobs.
+A documentation-only pull request selects neither country; a US-only or UK-only
+pull request selects that country; shared, mixed, unknown, or empty changed-path
+sets select both. Main pushes select both without querying the pull-request API.
+The UK integration job follows the same UK selection as the ordinary UK engine
+job.
 
 The US engine job runs contract and scenario categories in small pytest
 processes with at most two processes active at once, then runs each complete
@@ -59,13 +72,38 @@ Ordinary behavioral jobs pass `-v --tb=short --maxfail=1 --durations=25`, so eac
 names tests as they run, prints a concise first-failure traceback, and reports
 its 25 slowest tests.
 
-Every automated test must run from `.github/workflows/test.yml`. Add a new test
-group to `TEST_GROUPS` before adding its executor to that workflow; do not create
-a separate selection system or test workflow.
+Every behavioral or cross-language compatibility assertion must be a pytest
+test in a directory registered by `TEST_GROUPS` and must run through that
+category's existing workflow job. Supporting programs and data may live under
+`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
+allows only registered test jobs and the explicitly declared orchestration,
+lint, and wheel-building jobs. Add a test category to `TEST_GROUPS` before its
+executor; do not create a separate selection system, test workflow, or
+single-purpose behavioral test job.
+
+The Orrery parser compatibility assertion lives in
+`packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The
+engine-free runner installs the supported public Orrery range and locked Node
+dependency set under `tools/orrery-contract/`; the pytest test generates a
+document through Microcosm's public Python API and requires Orrery's public
+parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
+uses the same pinned parser for groups, statuses, activities and artifacts.
+These CI tests perform no browser rendering.
+
+Workspace tests use an in-memory telemetry emitter by default. The shared
+fixture isolates Hugging Face credentials and cache paths and blocks collector
+HTTP requests outside loopback. Tests of actual emitter startup must request
+`real_local_telemetry` and supply an explicit loopback development collector;
+that opt-in retains credential isolation. Other build tests can inspect
+`fake_telemetry_emitters` without creating sockets or service processes.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.
+Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
+observed successful run) so a hung job releases its runner from the
+organization's shared pool; raise a job's cap when its suite legitimately
+grows past it.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is
@@ -170,6 +208,13 @@ to the private repository; when you run `microcosm-build-uk`
 (`tools/build_uk_full.py`, or its stub `tools/build_uk_rowwise_candidate.py`)
 yourself, pass `--staging-local-only` unless the operator asked for a staged
 upload.
+
+The versioned Route A driver is `tools/route_a/route_a.sh`; see its
+[runbook](../tools/route_a/README.md) for configuration, preserved admission
+and release gates, and the Modal-base hand-off. Its release stage enables
+staging telemetry by default, obtains the HF credential only in a runtime
+wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
+publisher's offline `--preflight-only` check and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
 Before a release rerun, run the small-H5 guard sweep described in
@@ -276,6 +321,14 @@ Axiom mappings are data (`adapters/axiom_concept_mappings/<country>.json`),
 checked against the engine-generated input surfaces in
 `packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/` (regenerate with
 `tools/refresh_axiom_input_surface.py`; it needs a real Axiom engine build).
+Group bindings run through `ConceptMapping.encode_groups` on units from
+`microcosm.frame.unit_construction`; `encode` still reports them as deferred.
+The Axiom engine fails a request that reaches an input it was not given, so a
+country pack that binds Axiom modules closes every root input in an input
+closure (`build/<cc>/axiom_input_closure.json`, read by
+`microcosm.frame.input_closure`), and its test checks the closure against the
+committed surface. A change that binds, unbinds or moves a mapping input
+updates its closure entry too; the closure test fails until the two agree.
 
 ## Root journals are history, not state
 
@@ -301,6 +354,59 @@ module instead of copying it or reconstructing alternate views in consumers.
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+The transport build driver (`tools/build_transport.py`, a shim over
+`microcosm.build.transport.cli`) composes a country's graph from its
+`transport_graph.json` spec resource and runs it locally: every file it
+writes, including its `.graph-store`, lies under `--out`, and it has no
+upload or staging path. Before it opens the store it refuses any link in an
+existing store tree (the root, `objects`, `tmp` or a shard), because the
+store creates those directories by following links; it does not guard
+against links planted while a build is running. Activation checks run before
+registry preparation, CREATE or any graph source read. Resource selections
+must name a present resource; value and JSON selections must have an
+existing path and a non-null selected value. Skeleton JSON selections require
+objects; entitlement JSON selections also accept lists. Value selections
+reject objects, using the same checks as parameter resolution. Selected JSON
+may retain optional null fields. Entitlement resource checks use the factory's
+common and selected scenario rows; explicit scenario `nodes` replaces the tier
+template, so unused templates contribute no selections. The preflight also
+checks the dependent-child age limit, mandatory and selected reference activation
+rows, required engine commit and wheel pin presence, and every null scenario
+knob. The receipt kernel's shared validator checks the executable receipt
+contract's fields, required text, program and exclusion structure, and declared
+rates before preparation; checks needing person data, weights or target surfaces
+run during receipt assignment.
+Tests for it run on the engine-free toy package in
+`test_support/microcosm_build/transport_composed.py`. The rules registry checks
+module hashes and binds the RuleSpec tree digest. Engine commit and wheel
+SHA-256 pins, and the RuleSpec commit for exported trees, are format-checked
+caller declarations; installed engine provenance is not checked.
+Fresh driver runs write identical HDF5 bytes with object timestamps disabled;
+readback keys continue to include the complete container bytes. CREATE's column
+inventory is cached by implementation, parameters and source bytes. A cold
+build runs CREATE twice (inventory probe and graph execution); warm inventory
+lookups hash the inputs without running the probe. Cold `--resume require`
+refuses before preparation. Output directories must also be disjoint from a
+local `--spec-dir`.
+Extensions can wrap a factory in `TransportExtension` to declare additional
+sources and ordered checkpoints. Source names must be new; skeleton predecessor
+sets must stay identical except for explicit `package_inputs` artifact edges
+from extension nodes to a terminal `transport.package@1` receipt. Other skeleton
+nodes cannot gain predecessors. Checkpoints run after calibration and before export,
+and must not depend on the exported dataset. `transport_rules_node` supplies
+the prepared engine reference and period from the binding, so extensions do
+not repeat period values.
+An optional `entitlement_graph.json` legacy resource installs the entitlement
+extension in both composition and the local driver. Its scenario templates,
+bridge parameters, comparison references and receipt connections are described
+in [the entitlement declaration contract](transport-entitlement.md).
+The zero solver requires independent, non-increasing row residuals and verifies
+the returned answers after its fixed iterations. Its receipt counts the final
+verification. The local differential driver validates call and output identities
+before execution and uses canonical RFC 6901 oracle pointers. The packaged NZ
+spec remains inactive; the approved golden-08 evaluation assembly, real WFF
+inputs and law certification remain deferred.
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)

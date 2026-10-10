@@ -28,6 +28,7 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.gate_battery import _signing_key
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -227,6 +228,10 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
         "selection_pi_hi": None
         if args.dataset_households is None
         else float(args.selection_pi_hi),
+        "selection_initial_lambda": None
+        if args.dataset_households is None
+        or getattr(args, "selection_initial_lambda", None) is None
+        else float(args.selection_initial_lambda),
         "baseline_pi_floor": None
         if args.dataset_households is None
         else float(args.baseline_pi_floor),
@@ -557,18 +562,31 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             refused.append("--measure-exclusions")
         if args.skip_holdout:
             refused.append("--skip-holdout")
-        if args.engine_blocks > 1:
-            refused.append("--engine-blocks > 1")
         if args.sample_fraction != 1.0:
             refused.append("--sample-fraction != 1.0")
         if _geography_assignment(args) == "legacy":
             # The release line is the identity-keyed atomic assignment.
             refused.append("--geography-assignment legacy")
+        target_levels = getattr(args, "target_geographies", None)
+        if target_levels is not None and not set(target_levels) & {
+            "constituency",
+            "la",
+        }:
+            # No local targets, no local fit claim: the signed local gate
+            # report a release candidate ships would have nothing to attest.
+            refused.append("--target-geographies without constituency or la")
         if refused:
             raise ValueError(
                 "--release-candidate refuses non-release settings: "
                 + ", ".join(refused)
             )
+        try:
+            _signing_key("uk")
+        except RuntimeError as error:
+            raise ValueError(
+                "--release-candidate signs its local gate report and needs the "
+                f"UK gate signing key: {error}"
+            ) from error
     if args.n_clones is not None and args.n_clones <= 0:
         raise ValueError("--n-clones must be positive.")
     if args.seed < 0:
@@ -798,23 +816,37 @@ def release_verdict(
     sample_fraction: float,
     engine_blocks: int,
     release_blocking_gates_passed: bool,
+    engine_population_exact: bool | None = None,
 ) -> tuple[bool, dict[str, bool]]:
-    """``releasable`` needs the full rung, a single-block engine resolution and
-    every release-blocking gate passed.
+    """``releasable`` needs the full rung, an engine resolution that measures the
+    pool exactly and every release-blocking gate passed.
 
-    Per-block engine resolution mis-measures population-normalised formulas
-    (each block reproduces a national aggregate: the ×K land-value artefact
-    behind the #736 erratum), so a run resolved in more than one block is
-    diagnostic-only whatever its gates say. The posture is written beside the
-    verdict so a reader sees which leg failed.
+    A per-block engine resolution used to be diagnostic-only: population-
+    normalised formulas (a national total allocated by weighted share) saw one
+    block's denominator and each block reproduced the whole aggregate, the
+    ``K`` times land-value artefact behind the #736 erratum. The measures loop
+    now scales every block's engine weights to the pool and records whether the
+    blocks are identical copies with identical allocation keys for the named
+    weight-share formulas (``engine_population_representation.exact``; the
+    formulas and their inputs are ``UK_WEIGHT_SHARE_FORMULA_INPUTS``); a single
+    block is exact by construction. ``engine_population_exact`` is that
+    record; left unset, a multi-block run is treated as inexact. The posture is
+    written beside the verdict so a reader sees which leg failed.
     """
 
+    single_block = int(engine_blocks) == 1
     posture = {
         "full_rung": float(sample_fraction) == 1.0,
-        "single_block_engine": int(engine_blocks) == 1,
+        "single_block_engine": single_block,
+        "engine_population_exact": single_block or bool(engine_population_exact),
         "release_blocking_gates_passed": bool(release_blocking_gates_passed),
     }
-    return all(posture.values()), posture
+    releasable = (
+        posture["full_rung"]
+        and posture["engine_population_exact"]
+        and posture["release_blocking_gates_passed"]
+    )
+    return releasable, posture
 
 
 _release_verdict = release_verdict

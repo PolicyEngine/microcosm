@@ -32,7 +32,7 @@ __all__ = ["POLICYENGINE_UK_CONCEPT_MAPPING"]
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.100.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.122.2. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -115,10 +115,13 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "The UK build does not set it, so the engine default (True) applies.",
     ),
     "child_benefit": (
-        "Whether this benefit unit would claim Child Benefit if eligible. "
-        "Generated stochastically in the dataset using take-up rates.",
+        "Whether this benefit unit would claim Child Benefit if eligible, "
+        "including registered claimants who opt out of payment. ... Datasets "
+        "must export claims rather than claims excluding opt-outs.",
         "The UK build forces reported recipients to take up and draws the rest "
-        "(frs_take_up.py); a threshold alone has no such anchor.",
+        "(frs_take_up.py), and on an engine with opt-outs the Child Benefit "
+        "redraw exports registered claims, opt-outs included "
+        "(child_benefit_take_up.py); a threshold alone has no such anchor.",
     ),
     "extended_childcare": (
         "Whether this family would claim extended childcare entitlement if eligible",
@@ -182,7 +185,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.100.0",
+    engine_version="2.122.2",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -412,11 +415,12 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             TakeUpThreshold(program="uk.child_benefit_opt_out"),
             AlignmentRelation.APPROXIMATE,
             (
-                "Engine documentation: 'Whether this family would opt out of "
-                "receiving Child Benefit payments. Generated stochastically in "
-                "the dataset using opt-out rates.' (default False). True when "
-                "the opt-out draw falls below the opt-out rate; the unit takes "
-                "its reference member's draw."
+                "Engine documentation: 'Whether a family would opt out of Child "
+                "Benefit payments because of the High Income Child Benefit "
+                "Charge. This is independent of would_claim_child_benefit and "
+                "never identifies a claim by itself. ...' (default False). True "
+                "when the opt-out draw falls below the opt-out rate; the unit "
+                "takes its reference member's draw."
             ),
             group_rule=GroupRule.REFERENCE_MEMBER,
         ),
@@ -503,6 +507,34 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "(frs_spine.py), an override the loader accepts, but it is not an "
             "input, so the mapping does not target it. Every housing input is "
             "household-level, so nothing is allocated to the reference person."
+        ),
+        "fact:person.liquid_financial_assets": (
+            "policyengine-uk holds financial wealth on the household: savings "
+            "('Household liquid savings'), corporate_wealth ('Wealth held in "
+            "corporations directly or through investment funds'), "
+            "gross_financial_wealth and net_financial_wealth are household "
+            "inputs, and no transform puts a person amount on a household "
+            "input. Its person-level GBP stock inputs are student_loan_balance, "
+            "a debt; car_list_price, the price vehicle excise duty's "
+            "expensive-car supplement tests; and lifetime_isa_balance "
+            "('Current value of the person's Lifetime ISAs, cash and stocks "
+            "and shares together'), one savings wrapper, which the engine "
+            "documents as already inside gross_financial_wealth and "
+            "net_financial_wealth. savings and corporate_wealth are two of "
+            "Universal Credit's capital sources "
+            "(gov.dwp.universal_credit.means_test.capital.sources), and "
+            "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
+            "value, is its one person-level source (capital.person_sources). "
+            "uc_reported_capital (benefit unit; 'Claimant-level capital for "
+            "Universal Credit when household-level asset data cannot be "
+            "attributed across multiple benefit units', default -1) is "
+            "Universal Credit capital: when it is zero or more, "
+            "uc_assessable_capital takes it in place of both the "
+            "household-capital proxy it otherwise sums from the household "
+            "sources, net of capital other benefit units report, and "
+            "apportions by claimant and partner count, and the person-level "
+            "sources of the unit's claimant and partner, so feeding it would be "
+            "a modelling choice for a UK build, not a mapping of this concept."
         ),
         "fact:person.public_pension_income": (
             "The State Pension is computed from state_pension_reported, which "

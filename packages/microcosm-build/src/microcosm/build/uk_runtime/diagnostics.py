@@ -487,6 +487,9 @@ UK_SUPPORT_FAMILY_KEY_COLUMNS = (
     "household_is_capital_gains_clone",
 )
 UK_SUPPORT_COPY_FLAG_COLUMN = "household_is_cgt_support_copy"
+#: The residential split's arms (microcosm#1063) carry their household's
+#: lineage key, so they fold onto it like the support copies.
+UK_RESIDENTIAL_ARM_FLAG_COLUMN = "household_is_cgt_residential_clone"
 
 
 def uk_support_family_geographic_clone_column() -> str:
@@ -517,11 +520,10 @@ def uk_support_family_weights(
     weights = pd.to_numeric(household["household_weight"], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    copies = (
-        household[UK_SUPPORT_COPY_FLAG_COLUMN].fillna(False).to_numpy(dtype=bool)
-        if UK_SUPPORT_COPY_FLAG_COLUMN in household.columns
-        else np.zeros(len(household), dtype=bool)
-    )
+    copies = np.zeros(len(household), dtype=bool)
+    for flag in (UK_SUPPORT_COPY_FLAG_COLUMN, UK_RESIDENTIAL_ARM_FLAG_COLUMN):
+        if flag in household.columns:
+            copies |= household[flag].fillna(False).to_numpy(dtype=bool)
     if not copies.any():
         return weights.copy(), {
             "basis": "rows",

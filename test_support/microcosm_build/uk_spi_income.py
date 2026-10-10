@@ -126,6 +126,8 @@ def _dead_support(
         "person_benunit_id": np.arange(201, 205, dtype="int64"),
         "age": [30, 40, 50, 60],
         "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
+        # Each one-person benefit unit is its own claimant.
+        "is_uc_claimant": np.ones(4, dtype=bool),
     }
     for position, column in enumerate(SPI_INCOME_IMPUTATION_COLUMNS, start=1):
         if column == drop_income_component:

@@ -504,6 +504,21 @@
    }
   },
   {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_cash_assets",
+   "concepts": [
+    "fact:person.liquid_financial_assets"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_cash_assets",
+   "group_rule": "sum_over_members",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (source: Social Security Act 2018 s 65(1)(b); Social Security Regulations 2018 reg 15). It holds when accommodation_supplement_cash_assets is at most accommodation_supplement_cash_asset_limit_partnered_or_with_children (16200, reg 15(1)(a)) for a family in a relationship or with dependent children, and at most accommodation_supplement_cash_asset_limit_other (8100, reg 15(1)(b)) otherwise, and accommodation_supplement_non_rate_entitlement_requirements (ss 65 to 67) requires it. The module does not define cash assets. The Act does, in s 68(2), which Schedule 2 applies for the purposes of the accommodation supplement: money saved, invested or banked with a bank or other institution; money invested in securities, bonds or debentures, or advanced on mortgage; money withdrawn from a KiwiSaver scheme; and money invested in shares in a partnership, company or other body. It excludes KiwiSaver contributions and member's interests, and anything the regulations exempt (reg 16 and Schedule 8 Part 1). Under s 69(2), which reg 15(3) restates, an applicant's assets include those of their spouse or partner, so the binding sums members' amounts onto the Family entity. Group encoding (ConceptMapping.encode_groups) applies it to the Family units the unit-construction step (microcosm.frame.unit_construction) builds under a declared benefit-unit rule, which decides who is a member; no New Zealand build applies it yet, and the country pack's rule (method card MC7) awaits the D1 method review. Differences: the concept leaves out money advanced on mortgage, withdrawn KiwiSaver money held as cash, shares in a partnership or company the person runs, which s 68(2)(a)(iv) counts as money invested in shares in a partnership or limited liability company or other incorporated or unincorporated body (a sole trader's non-cash business equity is in neither), and a member's interest in a non-KiwiSaver superannuation scheme, which Schedule 8 item 10 exempts only while a lock-in clause prevents withdrawal (Schedule 8 cl 25); the other Schedule 8 exemptions are not applied; if the unit rule makes a dependent child a Family member, the child's assets will be summed too, although s 69(2) adds only a spouse's or partner's, and if it leaves out a spouse or partner in long-term residential care, whose assets s 69(2A) still counts, their assets will be missed; and the concept is the stock at the survey reference date, while the test applies when the supplement is assessed.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_costs_are_homeownership",
    "concepts": [
     "fact:household.tenure"
@@ -557,20 +572,41 @@
   {
    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_dependent_children",
    "concepts": [
+    "fact:person.age",
+    "fact:person.partner_person_id",
     "fact:person.parent_1_person_id",
     "fact:person.parent_2_person_id",
-    "fact:person.age"
+    "fact:household.reference_person_id"
    ],
    "engine_entity": "Family",
    "engine_input": "accommodation_supplement_has_dependent_children",
-   "group_rule": "any_member",
+   "group_rule": "reference_member",
    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
-   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (reg 15 asset limits) and accommodation_supplement_maximum_weekly_rate (Schedule 4 Part 7 clauses 1 to 6: 'accommodation_supplement_in_relationship and accommodation_supplement_has_dependent_children' selects the large-family rates). Read as any family member being the parent (birth, adoptive or step) of a co-resident person aged 17 or under. Differences: 'dependent child' is a Social Security Act 2018 Schedule 2 term that this module does not define; the age cut at 17 is this mapping's assumption, not read from the Act; a non-parent caregiver's child is missed and a co-resident child who would not count as dependent is included.",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_cash_assets_within_limit (source: Social Security Act 2018 s 65(1)(b); Social Security Regulations 2018 reg 15), which picks the partnered-or-with-children asset limit, and by accommodation_supplement_maximum_weekly_rate (Schedule 4 Part 7 clauses 1 to 6), where 'accommodation_supplement_in_relationship and accommodation_supplement_has_dependent_children' selects the large-family rates. Read as the family holding at least one dependent child under the country pack's declared benefit-unit rule (microcosm.frame.unit_construction), which builds each family from the relationship pointers, age and the household reference person and states who counts as a dependent child. 'Dependent child' is a Social Security Act 2018 Schedule 2 term that this module does not define and rulespec-nz at 8dc2507 does not encode, so the rule's age limit and placements are spec data, not read from the Act. Differences: the care, maintenance and financial dependence the definition turns on are not observed, so the rule's co-residence test stands in for them; and a child with no co-resident parent is placed in the household reference person's family when the rule says so, which names a caregiver the Act would identify by care.",
    "relation": "approximate",
    "transform": {
-    "kind": "relationship_role",
-    "max_child_age": 17,
-    "role": "parent_of_coresident_child"
+    "feature": "has_dependent_child",
+    "kind": "unit_composition"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_has_two_or_more_dependent_children",
+   "concepts": [
+    "fact:person.age",
+    "fact:person.partner_person_id",
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:household.reference_person_id"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_has_two_or_more_dependent_children",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6): 'accommodation_supplement_sole_parent and accommodation_supplement_has_two_or_more_dependent_children' selects the large-family rates, and a sole parent with one dependent child takes the middle-family rates. Read as the family holding at least two dependent children under the country pack's declared benefit-unit rule (microcosm.frame.unit_construction), which builds each family from the relationship pointers, age and the household reference person and states who counts as a dependent child. Differences: as for accommodation_supplement_has_dependent_children, dependency is the rule's co-residence test, not the Act's care and maintenance.",
+   "relation": "approximate",
+   "transform": {
+    "feature": "two_or_more_dependent_children",
+    "kind": "unit_composition"
    }
   },
   {
@@ -587,6 +623,69 @@
    "transform": {
     "kind": "relationship_role",
     "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owner_weekly_required_payments",
+   "concepts": [
+    "fact:household.mortgage_interest",
+    "fact:household.mortgage_principal"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_owner_weekly_required_payments",
+   "group_rule": "allocate_to_reference_unit",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose first branch returns it when accommodation_supplement_owns_premises_and_not_joint_owner_with_resident holds; the result feeds the Schedule 4 Part 7 weekly formula, so the value is weekly although the rule declares period Year. Read as the household's annual mortgage interest plus mortgage principal repaid, summed and scaled by 1/52 (one scaled_sum, since a binding takes one transform), on the family that contains the household reference person and zero on the household's other families. Differences: the module does not define the owner's payments; rates (property tax), insurance and other home payments are not added, which understates owners' costs (method card MC8); the concept is what the household repaid in the year, not what the mortgage requires; and a second family in an owner-occupied household gets zero.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident",
+   "group_rule": "household_value",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs): 'if accommodation_supplement_owns_premises_and_not_joint_owner_with_resident: accommodation_supplement_owner_weekly_required_payments'. Read as the household owning its dwelling, outright or with a mortgage. Differences: the concept says nothing about title or co-owners, so a joint owner who lives with another owner is read as a sole owner; and household_value gives true to every family in an owner-occupied household, including a boarder family, whose owner payments are then zero because the household's payments go to the family containing the reference person.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "owned_outright",
+       "owned_with_mortgage"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_relevant_weekly_income",
+   "group_rule": "sum_over_members",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_non_beneficiary_income_reduction (source: Social Security Regulations 2018 reg 18): 'if accommodation_supplement_non_beneficiary: max(0, accommodation_supplement_relevant_weekly_income - accommodation_supplement_non_beneficiary_income_cutout_weekly_amount) * accommodation_supplement_non_beneficiary_income_reduction_rate'. Read as the family's annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed over its members and scaled by 1/52. Differences: the module does not define relevant income and reg 18's definition is not in it; every member's income is summed, including a dependent child's, and whether reg 18 counts a child's income is not stated here; realized capital gains are left out; public pension income is left out: it is a donor program receipt, which transport drops, and New Zealand Superannuation receipt is the receipt layer's model state, which a non-beneficiary family lacks by construction; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
    }
   },
   {
@@ -633,6 +732,26 @@
      ]
     ],
     "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_sole_parent",
+   "concepts": [
+    "fact:person.age",
+    "fact:person.partner_person_id",
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id",
+    "fact:household.reference_person_id"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "accommodation_supplement_sole_parent",
+   "group_rule": "reference_member",
+   "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_maximum_weekly_rate (source: Social Security Act 2018 Schedule 4 Part 7 clauses 1 to 6), which gives a sole parent with two or more dependent children the large-family rates and one with one dependent child the middle-family rates. Read as the family having one adult (no partner in it) and at least one dependent child under the country pack's declared benefit-unit rule (microcosm.frame.unit_construction), which builds each family from the relationship pointers, age and the household reference person and states who counts as a dependent child. Differences: the module does not define a sole parent; the concept pointers are co-residence based, so a parent whose partner lives elsewhere counts here, and so does a family head with no partner who cares for a child the rule places with them (for example a household reference person and a younger relative with no co-resident parent).",
+   "relation": "approximate",
+   "transform": {
+    "feature": "sole_parent",
+    "kind": "unit_composition"
    }
   },
   {
@@ -783,7 +902,7 @@
    "engine_entity": "Person",
    "engine_input": "main_benefit_receiving_new_zealand_superannuation",
    "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
-   "note": "Consumed in nz/statutes/social_security/main_benefits/entitlement.yaml by main_benefit_concurrent_benefit_limit (source: Social Security Act 2018 s 18), whose formula includes 'and not main_benefit_receiving_new_zealand_superannuation'. Read as positive(public_pension_income): the concept's definition names NZ Superannuation among the social-insurance or state old-age pensions it holds. Differences: the concept also holds any other such pension (an overseas state pension, or a Veteran's Pension if the source records it as a public pension), so the flag can be true for someone who receives no NZ Superannuation. s 18 bars receiving a main benefit and NZ Superannuation at the same time, while the concept counts receipt at any time in the reference year. The concept's transport rule is drop, so on a transported frame encode skips this binding and the input keeps its default; it executes only on frames built from NZ's own data.",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/entitlement.yaml by main_benefit_concurrent_benefit_limit (source: Social Security Act 2018 s 18), whose formula includes 'and not main_benefit_receiving_new_zealand_superannuation'. Read as positive(public_pension_income): the concept's definition names NZ Superannuation among the social-insurance or state old-age pensions it holds. Differences: the concept also holds any other such pension (an overseas state pension, or a Veteran's Pension if the source records it as a public pension), so the flag can be true for someone who receives no NZ Superannuation. s 18 bars receiving a main benefit and NZ Superannuation at the same time, while the concept counts receipt at any time in the reference year. The concept's transport rule is drop, so on a transported frame encode skips this binding; the engine has no default for an absent input, so a transport run's input closure (build/nz/axiom_input_closure.json) feeds it instead. The binding executes only on frames built from NZ's own data.",
    "relation": "approximate",
    "transform": {
     "kind": "positive"
@@ -1004,6 +1123,69 @@
    }
   },
   {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.jobseeker_support_total_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "jobseeker_support_total_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by jobseeker_support_weekly_income_test_reduction (source: Social Security Act 2018 Schedule 2 Income Tests 1, 3 and 4; Schedule 4 Part 1), which abates the Jobseeker Support rate above main_benefit_income_test_lower_weekly_threshold. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.main_benefit_income_test_assessable_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "main_benefit_income_test_assessable_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by main_benefit_income_test_1_weekly_reduction to main_benefit_income_test_4_weekly_reduction (source: Social Security Act 2018 Schedule 2 definitions of Income Tests 1 to 4), which abate above main_benefit_income_test_lower_weekly_threshold. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.sole_parent_support_total_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "sole_parent_support_total_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by sole_parent_support_income_for_income_test (source: Social Security Act 2018 Schedule 4 Part 2 clauses 1 and 2), 'max(0, sole_parent_support_total_income - sole_parent_support_income_disregarded_for_childcare)'. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
+   }
+  },
+  {
    "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_blind_average_weekly_earnings",
    "concepts": [
     "fact:person.employment_income"
@@ -1091,6 +1273,27 @@
    "transform": {
     "kind": "relationship_role",
     "role": "no_partner"
+   }
+  },
+  {
+   "canonical_input": "nz:statutes/social_security/main_benefits/rates#input.supported_living_payment_total_income",
+   "concepts": [
+    "fact:person.employment_income",
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income",
+    "fact:person.interest_income",
+    "fact:person.dividend_income",
+    "fact:person.rental_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "supported_living_payment_total_income",
+   "module": "nz/statutes/social_security/main_benefits/rates.yaml",
+   "note": "Consumed in nz/statutes/social_security/main_benefits/rates.yaml by supported_living_payment_income_for_income_test (source: Social Security Act 2018 Schedule 4 Part 3 clause 1), 'max(0, supported_living_payment_total_income - supported_living_payment_income_disregard_for_restricted_or_blind)'. Read as the person's own annual gross income from employment, non-farm and farm self-employment, interest, dividends, rent and private pensions, summed and scaled by 1/52. Differences: the module does not define the income it tests; the input is a person-level value, so a partner's income is not added, and whether the test reads a couple's joint income is not stated in this module; main-benefit and New Zealand Superannuation amounts are model state, not concepts, so neither is in the sum, and public pension income, a donor program receipt that transport drops, is left out; realized capital gains are left out; and annual flows averaged over 52 weeks stand in for the weekly income at assessment.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.019230769230769232,
+    "kind": "scaled_sum"
    }
   },
   {
@@ -1292,13 +1495,9 @@
  "input_declaration": "usage_inferred",
  "structural_inputs": [],
  "unmapped": {
-  "fact:household.mortgage_interest": "rulespec-nz at 6fe181f has no input mortgage interest determines on its own: the only owner-cost input, accommodation_supplement_owner_weekly_required_payments (Family, social_security/accommodation_supplement/core.yaml, s 65AAA), is the owner's weekly 'required mortgage-security payments and reasonably required home payments', which needs interest and principal (and other home payments) summed and then scaled by 1/52, and no transform composes a sum with a scale; accommodation_supplement_concessionary_mortgage_payments_to_kainga_ora_or_crown (s 66) needs the lender's identity.",
-  "fact:household.mortgage_principal": "rulespec-nz at 6fe181f has no input mortgage principal determines on its own: the only owner-cost input, accommodation_supplement_owner_weekly_required_payments (Family, social_security/accommodation_supplement/core.yaml, s 65AAA), needs principal and interest (and other home payments) summed and then scaled to a weekly amount, and no transform composes a sum with a scale.",
   "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
   "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",
-  "fact:person.private_pension_income": "rulespec-nz at 6fe181f has no input the concept determines: the pension inputs are Family-level family-scheme items defined by contribution source or exempt status rather than receipt (family_scheme_superannuation_distribution_income under MB 5 counts only distributions attributable to employer contributions; family_scheme_retirement_scheme_distribution_income is MB 6; family_scheme_exempt_pension_or_annuity_amount is MB 10's exempt pensions and annuities, half included), and community_services_card_raw_superannuation_income is the reg 8(5A) superannuitant income-test total.",
   "fact:person.realized_capital_gains": "rulespec-nz at 6fe181f has no input for gains on disposals: no rule mentions gains, disposals or the bright-line test, and the only capital input, income_tax_expenditure_or_loss_is_capital_nature (income_tax/core/taxable_income.yaml, s DA 2), classifies expenditure for the general deduction limitation.",
-  "fact:person.rental_income": "rulespec-nz at 6fe181f has no input for rental or other property income: the only activity-income inputs (income_tax_activity_income in income_tax/core/taxable_income.yaml and family_scheme_activity_income in family_scheme_income.yaml) are the MB 3 bridge the module labels 'business and self-employment activity income' and are already bound to self-employment profit; accommodation_supplement_weekly_rent_received_from_other_residents is rent from co-residents of the own dwelling, which the concept excludes; and the benefit income-test inputs are weekly totals of all income.",
   "fact:person.sex": "rulespec-nz at 6fe181f has no sex- or gender-dependent input: none of the 668 dense-surface input names or 40 module YAMLs mention sex, gender, male, female, man, woman, wife or husband, and the only related hit, sole_parent_is_mother_or_father_or_child_regarded_as_child (social_security/main_benefits/entitlement.yaml), tests parenthood, which this mapping binds to the parent_of_coresident_child role.",
   "fact:person.usual_weekly_hours": "rulespec-nz at 6fe181f has no input that takes hours worked: the work-hours inputs are threshold statuses no transform can compute from hours, namely acc_self_employed_more_than_30_hours_per_week (regulations/acc/earners_levy.yaml, reg 6, which also needs self-employment hours alone), jobseeker_in_full_time_employment (main_benefits/entitlement.yaml, s 21), acc_weekly_compensation_is_full_time_earner and the Family-level in_work_tax_credit_normally_full_time_earner; the remaining hours_per_week inputs are childcare, programme-participation or work-capacity hours.",
   "fact:person.weeks_worked": "rulespec-nz at 6fe181f has no input the concept determines: the closest, in_work_tax_credit_weekly_periods (Family, income_tax/family_scheme/tax_credits.yaml, s MD 10(2)), counts weeks in which the person or their partner meets the earner requirement, which needs the union of two partners' work weeks that no group rule gives (reference_member drops a working partner; sum_over_members double-counts and adds children's weeks), and minimum_family_tax_credit_weekly_periods and minimum_family_full_time_earner_weeks count only weeks as a full-time earner."

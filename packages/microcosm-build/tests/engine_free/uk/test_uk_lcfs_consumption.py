@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     assign_recipient_has_fuel,
     clean_lcfs_consumption_table,
     derive_energy_from_lcfs,
+    recipient_predictors,
     support_clip_to_donor,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
@@ -141,6 +142,47 @@ def test_recipient_has_fuel_is_conditioned_on_vehicle_count_and_deterministic() 
 
     assert first.tolist() == [False, True]
     assert second.tolist() == first.tolist()
+
+
+def test_negative_donor_consumption_is_floored_with_a_receipt() -> None:
+    """microcosm#1063 c9: a diary spend netting refunds below zero is raised to
+    the declared floor before the clip ranges and the imputation see it."""
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        CONSUMPTION_VARIABLE_RENAMES,
+        floor_negative_donor_consumption,
+    )
+
+    columns = list(CONSUMPTION_VARIABLE_RENAMES.values())
+    donor = pd.DataFrame({column: [10.0, 20.0, 30.0] for column in columns})
+    donor.loc[1, "housing_water_and_electricity_consumption"] = -14_165.0
+    donor.loc[2, "housing_water_and_electricity_consumption"] = -1.0
+
+    floored, receipt = floor_negative_donor_consumption(donor)
+
+    assert floored["housing_water_and_electricity_consumption"].tolist() == [
+        10.0,
+        0.0,
+        0.0,
+    ]
+    for column in columns:
+        if column != "housing_water_and_electricity_consumption":
+            assert floored[column].tolist() == [10.0, 20.0, 30.0]
+    assert receipt["floor"] == 0.0
+    assert receipt["rows_raised"] == 2
+    assert receipt["remaining_negative_rows"] == 0
+    housing = receipt["columns"]["housing_water_and_electricity_consumption"]
+    assert housing == {
+        "rows_raised": 2,
+        "negative_mass": -14_166.0,
+        "minimum_before": -14_165.0,
+    }
+    assert receipt["columns"]["food_and_non_alcoholic_beverages_consumption"] == {
+        "rows_raised": 0,
+        "negative_mass": 0.0,
+        "minimum_before": 10.0,
+    }
+    with pytest.raises(ValueError, match="missing consumption column"):
+        floor_negative_donor_consumption(donor.drop(columns=[columns[0]]))
 
 
 def test_support_clip_exempts_raked_energy_columns() -> None:
@@ -297,6 +339,7 @@ def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
                 "person_id": [1, 2, 3],
                 "person_benunit_id": [1, 2, 3],
                 "person_household_id": [10, 20, 30],
+                "age": [40.0, 35.0, 70.0],
             }
         ),
         benunit=pd.DataFrame({"benunit_id": [1, 2, 3]}),
@@ -681,8 +724,6 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         def materialize(self, frame, variables, period):
             rows = len(frame.table("household"))
             values = {
-                "is_adult": np.full(rows, 2.0),
-                "is_child": np.zeros(rows),
                 "employment_income": rng.uniform(0.0, 5e4, rows),
                 "self_employment_income": rng.uniform(0.0, 5e3, rows),
                 "private_pension_income": rng.uniform(0.0, 1e4, rows),
@@ -840,3 +881,51 @@ def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> N
         operations = ()
 
     assert fuel_litres_audit(draws, weights=weights, stage=Stage()) is None
+
+
+def test_recipient_counts_adults_and_children_by_age_not_engine_flags() -> None:
+    """The LCFS G018/G019 split is age 18, which the recipient counts from age.
+
+    The engine's is_adult and is_child flags are deprecated (policyengine-uk
+    #1896), so the household counts never ask the engine for them
+    (uk-data#486, microcosm#1095).
+    """
+
+    from types import SimpleNamespace
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5],
+            "person_benunit_id": [1, 1, 1, 2, 2],
+            "person_household_id": [1, 1, 1, 2, 2],
+            "age": [40.0, 10.0, 70.0, 17.0, 18.0],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2],
+            "num_vehicles": [1, 0],
+            "household_gross_income": [3e4, 2e4],
+            "household_weight": [1.0, 1.0],
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=household,
+        time_period="2024",
+    )
+    requested: list[str] = []
+
+    class _Engine:
+        def variable_metadata(self, name):
+            return SimpleNamespace(entity="household")
+
+        def materialize(self, frame, variables, period):
+            requested.extend(variables)
+            return {name: np.zeros(2) for name in variables}
+
+    result = recipient_predictors(frame, _Engine())
+    assert result["household_adult_count"].tolist() == [2.0, 1.0]
+    assert result["household_child_count"].tolist() == [1.0, 1.0]
+    assert not {"is_adult", "is_child"} & set(requested)

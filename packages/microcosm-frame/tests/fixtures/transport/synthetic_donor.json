@@ -1,0 +1,248 @@
+{
+  "description": "Synthetic US donor support records; these are never New Zealand microdata.",
+  "real_donor_pin": {
+    "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "size": 462915783,
+    "cache_relative_path": ".cache/huggingface/hub/datasets--policyengine--populace-us/blobs/48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
+  },
+  "tables": {
+    "person": [
+      {
+        "person_id": 9007199254741001,
+        "person_household_id": 101,
+        "source_person_id": "0000000000000000000001",
+        "person_support_channel": "asec",
+        "A_LINENO": 1,
+        "A_SPOUSE": 2,
+        "PEPAR1": -1,
+        "PEPAR2": -1,
+        "PECOHAB": -1,
+        "A_EXPRRP": 1,
+        "is_household_head": true,
+        "age": 40,
+        "is_female": false,
+        "employment_income_before_lsr": 0,
+        "taxable_interest_income": 1,
+        "tax_exempt_interest_income": 2,
+        "pre_subsidy_rent": 25,
+        "bank_account_assets": 10,
+        "stock_assets": 20,
+        "bond_assets": 30,
+        "source_year": 2024,
+        "source_household_id": 101,
+        "person_source_id": "0000000000000000000001"
+      },
+      {
+        "person_id": 9007199254741002,
+        "person_household_id": 101,
+        "source_person_id": "0000000000000000000002",
+        "person_support_channel": "asec",
+        "A_LINENO": 2,
+        "A_SPOUSE": 1,
+        "PEPAR1": -1,
+        "PEPAR2": -1,
+        "PECOHAB": -1,
+        "A_EXPRRP": 4,
+        "is_household_head": false,
+        "age": 38,
+        "is_female": true,
+        "employment_income_before_lsr": 10,
+        "taxable_interest_income": 2,
+        "tax_exempt_interest_income": 3,
+        "pre_subsidy_rent": 0,
+        "bank_account_assets": 0,
+        "stock_assets": 0,
+        "bond_assets": 0,
+        "source_year": 2024,
+        "source_household_id": 101,
+        "person_source_id": "0000000000000000000002"
+      },
+      {
+        "person_id": 9007199254741003,
+        "person_household_id": 101,
+        "source_person_id": "0000000000000000000003",
+        "person_support_channel": "asec",
+        "A_LINENO": 3,
+        "A_SPOUSE": 0,
+        "PEPAR1": 1,
+        "PEPAR2": 2,
+        "PECOHAB": -1,
+        "A_EXPRRP": 5,
+        "is_household_head": false,
+        "age": 10,
+        "is_female": false,
+        "employment_income_before_lsr": 20,
+        "taxable_interest_income": 0,
+        "tax_exempt_interest_income": 0,
+        "pre_subsidy_rent": 0,
+        "bank_account_assets": 0,
+        "stock_assets": 0,
+        "bond_assets": 0,
+        "source_year": 2024,
+        "source_household_id": 101,
+        "person_source_id": "0000000000000000000003"
+      },
+      {
+        "person_id": 9007199254741004,
+        "person_household_id": 202,
+        "source_person_id": "0000000000000000000004",
+        "person_support_channel": "puf_tax_detail",
+        "A_LINENO": 1,
+        "A_SPOUSE": 2,
+        "PEPAR1": -1,
+        "PEPAR2": -1,
+        "PECOHAB": null,
+        "A_EXPRRP": 1,
+        "is_household_head": true,
+        "age": 45,
+        "is_female": false,
+        "employment_income_before_lsr": 30,
+        "taxable_interest_income": 3,
+        "tax_exempt_interest_income": 4,
+        "pre_subsidy_rent": 0,
+        "bank_account_assets": 30,
+        "stock_assets": 60,
+        "bond_assets": 90,
+        "source_year": 2024,
+        "source_household_id": 202,
+        "person_source_id": "0000000000000000000004"
+      },
+      {
+        "person_id": 9007199254741005,
+        "person_household_id": 202,
+        "source_person_id": "0000000000000000000005",
+        "person_support_channel": "puf_tax_detail",
+        "A_LINENO": 2,
+        "A_SPOUSE": 1,
+        "PEPAR1": -1,
+        "PEPAR2": -1,
+        "PECOHAB": null,
+        "A_EXPRRP": 4,
+        "is_household_head": false,
+        "age": 42,
+        "is_female": true,
+        "employment_income_before_lsr": 40,
+        "taxable_interest_income": 0,
+        "tax_exempt_interest_income": 0,
+        "pre_subsidy_rent": 0,
+        "bank_account_assets": 0,
+        "stock_assets": 0,
+        "bond_assets": 0,
+        "source_year": 2024,
+        "source_household_id": 202,
+        "person_source_id": "0000000000000000000005"
+      },
+      {
+        "person_id": 9007199254741006,
+        "person_household_id": 202,
+        "source_person_id": "0000000000000000000006",
+        "person_support_channel": "puf_tax_detail",
+        "A_LINENO": 3,
+        "A_SPOUSE": 0,
+        "PEPAR1": -1,
+        "PEPAR2": 2,
+        "PECOHAB": null,
+        "A_EXPRRP": 5,
+        "is_household_head": false,
+        "age": 12,
+        "is_female": true,
+        "employment_income_before_lsr": 50,
+        "taxable_interest_income": 0,
+        "tax_exempt_interest_income": 0,
+        "pre_subsidy_rent": 0,
+        "bank_account_assets": 0,
+        "stock_assets": 0,
+        "bond_assets": 0,
+        "source_year": 2024,
+        "source_household_id": 202,
+        "person_source_id": "0000000000000000000006"
+      }
+    ],
+    "household": [
+      {
+        "household_id": 101,
+        "household_weight": 1,
+        "household_support_channel": "asec"
+      },
+      {
+        "household_id": 202,
+        "household_weight": 3,
+        "household_support_channel": "puf_tax_detail"
+      }
+    ]
+  },
+  "expected": {
+    "partner_person_id": [
+      9007199254741002,
+      9007199254741001,
+      null,
+      9007199254741005,
+      9007199254741004,
+      null
+    ],
+    "parent_1_person_id": [
+      null,
+      null,
+      9007199254741001,
+      null,
+      null,
+      9007199254741005
+    ],
+    "parent_2_person_id": [
+      null,
+      null,
+      9007199254741002,
+      null,
+      null,
+      null
+    ],
+    "reference_person_id": [
+      9007199254741001,
+      9007199254741004
+    ],
+    "liquid_financial_assets": [
+      60,
+      0,
+      0,
+      180,
+      0,
+      0
+    ],
+    "employment_income": [
+      0,
+      10,
+      20,
+      30,
+      40,
+      50
+    ],
+    "mapped_employment_income": [
+      0,
+      109.0909090909091,
+      127.27272727272727,
+      163.63636363636363,
+      236.36363636363637,
+      345.45454545454544
+    ],
+    "mapped_liquid_financial_assets": [
+      125,
+      0,
+      0,
+      250,
+      0,
+      0
+    ]
+  },
+  "target_bands": [
+    {
+      "lower": 100,
+      "upper": 200,
+      "share": 0.5
+    },
+    {
+      "lower": 200,
+      "upper": 400,
+      "share": 0.5
+    }
+  ]
+}

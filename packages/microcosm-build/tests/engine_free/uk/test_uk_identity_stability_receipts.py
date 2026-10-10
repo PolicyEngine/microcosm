@@ -120,6 +120,22 @@ class TestE7Receipt:
             "source_household_key",
         ]
 
+    def test_the_income_band_donors_sit_at_their_own_clone_index(self) -> None:
+        # The donors carry the synthetic flag of the SPI support copy but are
+        # stacked at clone index 2; reading every synthetic household as index
+        # 1 failed the receipt on every spine built since the donor stage.
+        tool = _load_tool()
+        frame = _frame()
+        household = frame.table("household")
+        household["household_is_spi_income_band_donor"] = [False, True]
+        household["household_support_clone_index"] = [0, 2]
+        receipt = tool.e7_identity_receipt(frame, permutation_seed=7)
+        assert receipt["matches_stored_columns"] is True
+
+        household["household_support_clone_index"] = [0, 1]
+        receipt = tool.e7_identity_receipt(frame, permutation_seed=7)
+        assert receipt["matches_stored_columns"] is False
+
     def test_an_artifact_without_the_e7_layer_is_refused(self) -> None:
         # Previously this returned a green receipt over an empty comparison.
         tool = _load_tool()
@@ -225,6 +241,7 @@ class TestE6Receipt:
                     "person_household_id": [100],
                     "age": [float(UK_AGE_TOP_CODE)],
                     "gender": ["FEMALE"],
+                    "is_uc_claimant": [True],
                 }
             ),
             benunit=pd.DataFrame({"benunit_id": [10], "benunit_household_id": [100]}),
@@ -457,6 +474,147 @@ class TestE9Receipt:
         assert receipt["benunits_recomputed"] == 1
         assert receipt["benunits_excluded_as_copies"] == 2
         assert receipt["matches_stored_columns"] is True
+
+
+class TestPreSalarySacrificeRestoration:
+    """A receipt of a stage before salary_sacrifice bands on pre-conversion pay.
+
+    The conversion rewrites a converted record's pay and employee contribution
+    in place after the CGT stages banded on them (microcosm#1069 c9); the
+    stage keeps the pre-conversion pay on its carrier and the tool reverses
+    the rewrite before recomputing (microcosm#1063).
+    """
+
+    @staticmethod
+    def _converted(frame):
+        """The split-then-cloned scenario after a conversion on household 6.
+
+        Household 6 is the band-37,700 family the split divides (wealth 20 over
+        household 5's 10). Its carrier sacrifices enough pay to fall into band
+        0, the way the stage rewrites a converted record: pay lowered,
+        employee contribution zeroed and moved whole into the salary-sacrifice
+        column, the pre-conversion pay kept on the carrier.
+        """
+
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
+
+        person = frame.table("person").copy()
+        person["employee_pension_contributions"] = 0.0
+        person[SALSAC_OUTPUT] = 0.0
+        person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = 0.0
+        members = person.loc[person["person_household_id"] == 6]
+        carrier = members.sort_values(
+            ["age", "person_id"], ascending=[False, True]
+        ).index[0]
+        pay = float(person.loc[carrier, "employment_income"])
+        sacrificed = pay - float(BAND_INCOMES[0])
+        assert sacrificed > 0.0
+        person.loc[carrier, "employment_income"] = pay - sacrificed
+        person.loc[carrier, SALSAC_OUTPUT] = sacrificed
+        person.loc[carrier, SALSAC_PRE_CONVERSION_PAY_COLUMN] = pay
+        rewritten = uk_national_frame(
+            person=person,
+            benunit=frame.table("benunit").copy(),
+            household=frame.table("household").copy(),
+            time_period="2024",
+            weight_kind=WeightKind.IMPORTANCE,
+            household_weights=frame.weights_for("household").values,
+            mass_log=frame.mass_log,
+        )
+        return rewritten, int(person.loc[carrier, "person_id"]), pay, sacrificed
+
+    def test_the_support_split_receipt_bands_on_the_restored_pay(self) -> None:
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        rewritten, _, _, _ = self._converted(frame)
+
+        def receipt(target):
+            problems: dict[str, object] = {}
+            tool._e8_support_split(
+                target,
+                problems,
+                distribution=support_distribution(_SPLIT_TOP_CELLS),
+                parameters=PARAMETERS,
+                permutation_seed=7,
+            )
+            return problems
+
+        # On the stored pay the rule moves household 6 to band 0, where the
+        # 500-wealth households outrank it, and divides household 5 instead.
+        assert receipt(rewritten) == {
+            "support_split_selection_stored": {"missing": 1, "extra": 1}
+        }
+        assert receipt(tool._pre_salary_sacrifice_frame(rewritten)) == {}
+
+    def test_the_restoration_reverses_the_conversion_exactly(self) -> None:
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_OUTPUT,
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
+
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        rewritten, carrier_id, pay, sacrificed = self._converted(frame)
+        restored = tool._pre_salary_sacrifice_frame(rewritten)
+        person = restored.table("person").set_index("person_id")
+        assert person.loc[carrier_id, "employment_income"] == pay
+        assert person.loc[carrier_id, "employee_pension_contributions"] == sacrificed
+        assert person.loc[carrier_id, SALSAC_OUTPUT] == 0.0
+        others = person.drop(index=carrier_id)
+        before = rewritten.table("person").set_index("person_id").drop(index=carrier_id)
+        pd.testing.assert_frame_equal(others, before, check_exact=True)
+        # The carrier itself is untouched, the weights and mass log pass through.
+        assert (person[SALSAC_PRE_CONVERSION_PAY_COLUMN] > 0).sum() == 1
+        assert restored.weights_for("household").values.tolist() == (
+            rewritten.weights_for("household").values.tolist()
+        )
+        assert restored.mass_log == rewritten.mass_log
+        # Scoping to a stage before salary_sacrifice restores; a later stage
+        # keeps the stored pay; an artifact without the carrier passes through.
+        split_view = tool._frame_as_stage_saw(rewritten, "cgt_support_split")
+        assert (
+            split_view.table("person")
+            .set_index("person_id")
+            .loc[carrier_id, "employment_income"]
+            == pay
+        )
+        later_view = tool._frame_as_stage_saw(rewritten, "student_loans")
+        assert (
+            later_view.table("person")
+            .set_index("person_id")
+            .loc[carrier_id, "employment_income"]
+            == pay - sacrificed
+        )
+        assert tool._pre_salary_sacrifice_frame(frame) is frame
+
+    def test_a_carrier_disagreeing_with_the_columns_is_refused(self) -> None:
+        from microcosm.build.uk_runtime.salary_sacrifice import (
+            SALSAC_PRE_CONVERSION_PAY_COLUMN,
+        )
+
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        rewritten, carrier_id, _, _ = self._converted(frame)
+        person = rewritten.table("person").copy()
+        # A positive employee contribution on a record the carrier calls
+        # converted is not the state the conversion leaves.
+        person.loc[
+            person["person_id"] == carrier_id, "employee_pension_contributions"
+        ] = 1.0
+        tampered = uk_national_frame(
+            person=person,
+            benunit=rewritten.table("benunit"),
+            household=rewritten.table("household"),
+            time_period="2024",
+            weight_kind=WeightKind.IMPORTANCE,
+            household_weights=rewritten.weights_for("household").values,
+            mass_log=rewritten.mass_log,
+        )
+        with pytest.raises(ValueError, match=SALSAC_PRE_CONVERSION_PAY_COLUMN):
+            tool._pre_salary_sacrifice_frame(tampered)
 
 
 class TestRosterOrderedScoping:

@@ -1,13 +1,18 @@
 """The canonical CLI restores declared files and preserves failure/scope semantics."""
 
 # ruff: noqa: F403, F405
+import base64
+import os
+import signal
 from types import SimpleNamespace
 
+import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
-def test_geography_assignment_arguments_are_closed(tmp_path):
+def test_geography_assignment_arguments_are_closed(tmp_path, monkeypatch):
     """Atomic is the default; the cross-flag rules live in the validator."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     assert arguments(tmp_path).geography_assignment == "atomic"
     cli.validate_cli_args(arguments(tmp_path))
     legacy = arguments(tmp_path, "--geography-assignment", "legacy", supports=())
@@ -347,7 +352,38 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert expected["readback_passed"] is True
     assert expected["release_authorized"] is False
     assert expected["release_role"] == "dense"
+    from microcosm.graph import (
+        ContentStore,
+        collect_execution_evidence,
+        load_run_evidence,
+    )
+    from microcosm.graph.orrery import orrery_document_from_schema
+
+    schema = json.loads((out / "graph.schema.json").read_bytes())
+    store = ContentStore(out / ".graph-store", create=False)
+    overlay = collect_execution_evidence(
+        schema,
+        runs=load_run_evidence(out / "execution.evidence.json", store=store),
+        store=store,
+    )
+    snapshot = orrery_document_from_schema(schema, execution=overlay)
+    assert any(
+        json.loads(node["id"]) == ["operation", "uk.full.export.readback"]
+        for node in snapshot["nodes"]
+    )
+    assert [phase["phase"] for phase in overlay["phases"]][-2:] == ["export", "final"]
+    assert not list(out.glob("*.orrery.json"))
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
+    cold = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    assert cold["nodes_total"] > 0 and cold["nodes_reused"] == 0
+    assert cold["nodes_computed"] == cold["nodes_total"]
+    assert cold["earlier_attempts"] == []
+    # An attempt of another request on the same store is counted, not listed.
+    attempts = Path(cold["attempt_directory"]).parent
+    (attempts / "unrelated").mkdir()
+    (attempts / "unrelated" / "request.json").write_text(
+        json.dumps({"schema": "other-request", "attempt": {"build_id": "x"}})
+    )
     for path in out.iterdir():
         if path.is_file():
             path.unlink()
@@ -363,6 +399,16 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert cli.execute_full_build(prepared(tmp_path), args) == 0
     actual = json.loads((out / "build.json").read_text())
     assert actual["content_sha256"] == expected["content_sha256"]
+    # The replay records that it reused the cold attempt's work and names it.
+    replay = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    assert replay["nodes_reused"] > 0
+    assert replay["nodes_total"] == replay["nodes_reused"] + replay["nodes_computed"]
+    assert [Path(item["directory"]) for item in replay["earlier_attempts"]] == [
+        Path(cold["attempt_directory"])
+    ]
+    assert replay["earlier_attempts_on_store"] == 2
+    assert replay["earlier_attempts_same_request"] == 1
+    assert replay["graph_store"] == cold["graph_store"]
     # The output names come from the dense posture and the FRS vintage.
     assert (out / f"{STEM}.h5").is_file()
     assert (out / f"{STEM}.holdout.json").is_file()
@@ -370,10 +416,133 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert not (out / "microcosm_uk_2025.h5").exists()
 
 
+def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(
+    tmp_path, monkeypatch
+):
+    """The six local outcomes of the graph's terminal document become a signed
+    battery report bound to the attempt, which the dense contract verifies."""
+    from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
+    from microcosm.data.contract import _check_uk_dense_gate_report
+
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    document = json.loads(gate_payload("terminal", release_candidate=True))
+    path = tmp_path / f"{STEM}.local_gates.json"
+    report = replay_uk_dense_gate_battery(
+        document,
+        report_path=path,
+        release_id="uk-local-candidate-f100-s0-test",
+        release_candidate=True,
+    )
+    assert json.loads(path.read_text()) == report
+    assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
+    assert report["posture"] == "local_candidate"
+    assert report["shippable"] is True and "signing_error" not in report["attestation"]
+    failures: list[str] = []
+    _check_uk_dense_gate_report(
+        report, failures=failures, attempt_id="uk-local-candidate-f100-s0-test"
+    )
+    assert failures == []
+    # A dev-posture document cannot be replayed as a release candidate.
+    with pytest.raises(ValueError, match="another release posture"):
+        replay_uk_dense_gate_battery(
+            json.loads(gate_payload("terminal")),
+            report_path=path,
+            release_id="uk-local-candidate-f100-s0-test",
+            release_candidate=True,
+        )
+
+
+def test_the_dense_gate_replay_stays_unsigned_without_a_key_or_an_attempt(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime.graph_national import (
+        UK_DENSE_UNBOUND_RELEASE_ID,
+        replay_uk_dense_gate_battery,
+    )
+    from microcosm.data.contract import _check_uk_dense_gate_report
+
+    document = json.loads(gate_payload("terminal", release_candidate=True))
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    unbound = replay_uk_dense_gate_battery(
+        document,
+        report_path=tmp_path / "unbound.local_gates.json",
+        release_id=None,
+        release_candidate=True,
+    )
+    assert unbound["release_id"] == UK_DENSE_UNBOUND_RELEASE_ID
+    assert unbound["attestation"]["signature"] is None
+    assert "No Logbook attempt" in unbound["attestation"]["signing_error"]
+    assert unbound["shippable"] is False
+    monkeypatch.delenv(SIGNING_KEY_ENV)
+    keyless = replay_uk_dense_gate_battery(
+        document,
+        report_path=tmp_path / "keyless.local_gates.json",
+        release_id="uk-local-candidate-f100-s0-test",
+        release_candidate=True,
+    )
+    assert keyless["attestation"]["signature"] is None
+    assert SIGNING_KEY_ENV in keyless["attestation"]["signing_error"]
+    assert keyless["shippable"] is False and keyless["posture"] == "local_candidate"
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    failures: list[str] = []
+    _check_uk_dense_gate_report(keyless, failures=failures)
+    assert any("signing error" in line for line in failures)
+
+
+def test_a_filtered_build_writes_no_local_gate_report(tmp_path, monkeypatch):
+    """No local targets, no local fit claim: the replay writes nothing rather
+    than filling the excluded local gates in as not applicable."""
+    from microcosm.build.uk_runtime.graph_national import replay_uk_dense_gate_battery
+
+    national_only = {
+        **support.SELECTION,
+        "selector": {"geography_levels": ["country"], "explicit": False},
+        "included": [{"name": "count", "period": 2025, "geography_level": "country"}],
+    }
+    monkeypatch.setattr(support, "SELECTION", national_only)
+    path = tmp_path / f"{STEM}.local_gates.json"
+    assert (
+        replay_uk_dense_gate_battery(
+            json.loads(gate_payload("terminal")),
+            report_path=path,
+            release_id="uk-local-candidate-f100-s0-test",
+            release_candidate=False,
+        )
+        is None
+    )
+    assert not path.exists()
+
+
+def test_a_release_candidate_needs_the_signing_key_and_local_targets(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv(SIGNING_KEY_ENV, raising=False)
+    release = arguments(tmp_path, "--release-candidate")
+    with pytest.raises(ValueError, match="needs the UK gate signing key"):
+        cli.validate_cli_args(release)
+    monkeypatch.setenv(SIGNING_KEY_ENV, base64.b64encode(b"\x05" * 16).decode())
+    with pytest.raises(ValueError, match="exactly 32 bytes"):
+        cli.validate_cli_args(release)
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
+    cli.validate_cli_args(release)
+    with pytest.raises(ValueError, match="--target-geographies without"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--target-geographies",
+                "country,region",
+            )
+        )
+    cli.validate_cli_args(
+        arguments(tmp_path, "--release-candidate", "--target-geographies", "la")
+    )
+
+
 def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     pytest.importorskip("tables")
     args = arguments(tmp_path, "--release-candidate")
-    assert cli.execute_full_build(prepared(tmp_path), args) == 0
+    assert cli.execute_full_build(prepared(tmp_path, release_candidate=True), args) == 0
     out = args.out
     manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["schema_version"] == 4
@@ -500,6 +669,137 @@ def test_dry_run_has_no_files_or_kernel_execution(tmp_path, monkeypatch, capsys)
     assert not args.out.exists()
 
 
+def test_dense_dry_run_starts_and_finishes_hosted_telemetry(tmp_path, monkeypatch):
+    args = arguments(tmp_path, "--dry-run")
+    events = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            events.append(("stage", stage_id, details))
+
+        def complete(self):
+            events.append(("complete",))
+
+        def close(self):
+            events.append(("close",))
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli,
+        "start_telemetry_emitter",
+        lambda requested, *, build_id, run_kind: (
+            events.append(("start", build_id, run_kind)) or FakeEmitter()
+        ),
+    )
+    monkeypatch.setattr(
+        cli, "_dry_run", lambda requested: events.append(("plan",)) or 0
+    )
+    monkeypatch.setattr(
+        cli,
+        "finalize_staging_run_bundle",
+        lambda requested, telemetry: None,
+    )
+
+    assert cli.main([]) == 0
+    assert [event[0] for event in events] == [
+        "start",
+        "stage",
+        "plan",
+        "complete",
+        "close",
+    ]
+    assert events[0][2] == "dry_run"
+
+
+def test_dense_preflight_failure_is_reported_by_early_emitter(tmp_path, monkeypatch):
+    args = arguments(tmp_path)
+    events = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            events.append(("stage", stage_id, details))
+
+        def fail(self, error, **classification):
+            events.append(("failed", None, str(error), classification))
+
+        def close(self):
+            events.append(("close",))
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli,
+        "start_telemetry_emitter",
+        lambda requested, *, build_id, run_kind: (
+            events.append(("start", build_id, run_kind)) or FakeEmitter()
+        ),
+    )
+
+    def refuse_preflight(requested):
+        events.append(("preflight",))
+        raise RuntimeError("staging credential unavailable")
+
+    monkeypatch.setattr(cli, "preflight_staged_dataset", refuse_preflight)
+    monkeypatch.setattr(
+        cli,
+        "fail_staging_run_bundle",
+        lambda telemetry, error: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "create_staging_run_bundle",
+        lambda *args, **kwargs: pytest.fail("preflight failure reached staging setup"),
+    )
+
+    with pytest.raises(RuntimeError, match="staging credential unavailable"):
+        cli.main([])
+    assert [event[0] for event in events] == [
+        "start",
+        "stage",
+        "preflight",
+        "failed",
+        "close",
+    ]
+    assert events[-2][1] is None
+    # Raised before the attempt took over, the error is classified all the same.
+    assert events[-2][3] == {"failure_class": "error", "error_code": "BUILD_FAILED"}
+
+
+def test_hosted_stage_reporting_survives_staging_bundle_refusal(monkeypatch, capsys):
+    from microcosm.build.staging_v2 import StagingContentError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    events = []
+
+    class RefusingBundle:
+        def stage(self, *args, **kwargs):
+            raise StagingContentError("synthetic staging bundle refusal")
+
+    class Emitter:
+        def transition_stage(self, stage_id, **details):
+            events.append((stage_id, details))
+
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
+
+    rowwise_staging.stage(
+        RefusingBundle(),
+        "target_compilation",
+        "started",
+        selected_target_count=10,
+    )
+
+    assert events == [
+        (
+            "target_compilation",
+            {"status": "started", "message": None, "selected_target_count": 10},
+        )
+    ]
+    assert "synthetic staging bundle refusal" in capsys.readouterr().err
+
+
 def test_rejected_output_inside_source_never_writes_failure_sidecar(
     tmp_path, monkeypatch
 ):
@@ -553,10 +853,19 @@ def test_main_runs_the_logbook_envelope_around_a_dense_build(tmp_path, monkeypat
     assert row.disposition == "iterating"
     assert row.artifact_location.endswith(f"{STEM}.h5")
     assert "published" in row.phases_reached
+    # The six local gates resolve in the signed local report; every other
+    # gate in the graph's full document, by its outcome position.
     assert row.gate_verdicts and all(
-        item["verdict"] == "passed" and ".local_gates.json#/gates/" in item["receipt"]
-        for item in row.gate_verdicts.values()
+        item["verdict"] == "passed" for item in row.gate_verdicts.values()
     )
+    for gate_id, item in row.gate_verdicts.items():
+        if gate_id in UK_LOCAL_GATE_SCOPE:
+            assert item["receipt"].endswith(f".local_gates.json#/gates/{gate_id}")
+        else:
+            assert (
+                f"{cli.FULL_GATE_REPORT_FILENAME}#/report/outcomes/"
+                in (item["receipt"])
+            )
     manifest = json.loads((args.out / "rowwise_candidate_manifest.json").read_text())
     assert manifest["staging_delivery"]["enabled"] is False
     assert manifest["staged_dataset"]["status"] == "skipped"
@@ -730,6 +1039,7 @@ def test_main_stages_the_bundle_locally_with_staging_local_only(
         "calibration",
         "gate_battery",
         "output_bundle",
+        "graph_execution",
         "dataset_staging",
         "complete",
     ]
@@ -878,11 +1188,11 @@ def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
     from microcosm.build.staging_v2 import StagingContractError
     from microcosm.build.uk_runtime import rowwise_staging
 
-    class Invalid(rowwise_staging.StagingTelemetryV2):
+    class Invalid(rowwise_staging.StagingRunBundleWriterV2):
         def validate_local_bundle(self):
             raise StagingContractError("synthetic bundle defect")
 
-    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Invalid)
+    monkeypatch.setattr(rowwise_staging, "StagingRunBundleWriterV2", Invalid)
     status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
     assert status == 0
     err = capsys.readouterr().err
@@ -901,11 +1211,11 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
     from microcosm.build.staging_v2 import StagingContentError, validate_v2_bundle
     from microcosm.build.uk_runtime import rowwise_staging
 
-    class Refusing(rowwise_staging.StagingTelemetryV2):
+    class Refusing(rowwise_staging.StagingRunBundleWriterV2):
         def calibration_progress(self, event):
             raise StagingContentError("Staging file exceeds the 5242880-byte limit.")
 
-    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Refusing)
+    monkeypatch.setattr(rowwise_staging, "StagingRunBundleWriterV2", Refusing)
     status, out = run_dense_main(
         tmp_path, monkeypatch, staging="--staging-local-only", on_prepare=_drive_epochs
     )
@@ -1236,18 +1546,22 @@ def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, 
     report = json.loads(
         Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
     )
-    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    # The local battery report carries the graph's outcomes for its six
+    # gates, blocked ones included, and is never shippable.
+    assert set(report["gates"]) == set(UK_LOCAL_GATE_SCOPE)
     for gate_id in ("uk_local_area_support", "uk_local_weight_ratio"):
-        assert outcomes[gate_id]["criticality"] == "release_blocking"
-        assert outcomes[gate_id]["status"] == "failed"
+        assert report["gates"][gate_id]["criticality"] == "release_blocking"
+        assert report["gates"][gate_id]["status"] == "failed"
+    assert report["shippable"] is False
     assert spool_rows(out)[0].disposition == "failed"
 
 
-def test_multi_block_engine_run_is_never_releasable(tmp_path, monkeypatch):
-    """End to end: ``--engine-blocks K`` on f100 writes ``releasable: false``.
-
-    Every release-blocking gate passes here; the posture alone withholds the
-    verdict, and the manifest names the leg (``single_block_engine``).
+def test_multi_block_engine_run_is_releasable_when_its_blocks_represent_the_pool(
+    tmp_path, monkeypatch
+):
+    """End to end: ``--engine-blocks K`` on f100 with every block an identical
+    copy scaled to the pool writes ``releasable: true``; the manifest names the
+    legs (``single_block_engine`` false, ``engine_population_exact`` true).
     """
     pytest.importorskip("tables")
     status, out = run_dense_main(
@@ -1257,10 +1571,33 @@ def test_multi_block_engine_run_is_never_releasable(tmp_path, monkeypatch):
     manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
     assert manifest["parameters"]["engine_blocks"] == 2
     assert manifest["blocking_failures"] == []
-    assert manifest["releasable"] is False
+    assert manifest["releasable"] is True
     posture = manifest["release_posture"]
     assert posture["full_rung"] is True
     assert posture["single_block_engine"] is False
+    assert posture["engine_population_exact"] is True
+    assert posture["release_blocking_gates_passed"] is True
+
+
+def test_multi_block_engine_run_without_an_exact_representation_is_never_releasable(
+    tmp_path, monkeypatch
+):
+    """The blocks were not identical copies: the scaling is approximate, the
+    measures receipt keeps its caveat, and the posture alone withholds the
+    verdict with every release-blocking gate passed (#736 erratum).
+    """
+    pytest.importorskip("tables")
+    monkeypatch.setattr(support, "ENGINE_POPULATION_EXACT", False)
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, "--n-clones", "2", "--engine-blocks", "2"
+    )
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["blocking_failures"] == []
+    assert manifest["releasable"] is False
+    posture = manifest["release_posture"]
+    assert posture["single_block_engine"] is False
+    assert posture["engine_population_exact"] is False
     assert posture["release_blocking_gates_passed"] is True
 
 
@@ -1389,4 +1726,376 @@ def test_dense_interrupt_records_a_discarded_row_and_re_raises(tmp_path, monkeyp
     failure = json.loads((args.out / "failure.json").read_text())
     assert failure["error_type"] == "KeyboardInterrupt"
     rows = load_spool_rows(args.out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]
+
+
+@pytest.mark.parametrize("failed", [None, "uk_local_geography_ladder_post_calibration"])
+def test_dense_validation_result_matches_emitted_run_status(
+    tmp_path, monkeypatch, fake_telemetry_emitters, failed
+):
+    status, _ = run_dense_main(tmp_path, monkeypatch, failed=failed)
+    assert status == (1 if failed else 0)
+    events = [
+        event
+        for event in fake_telemetry_emitters[-1].events
+        if event["event_type"] == "run"
+    ]
+    # A candidate the gates refused is a blocked run, not a failed one.
+    assert [event["status"] for event in events] == [
+        "blocked" if failed else "completed"
+    ]
+
+
+@pytest.mark.parametrize("role", ["dense", "national"])
+@pytest.mark.parametrize("outcome", [0, 7, "error", "interrupt"])
+def test_build_lifecycle_handles_returned_errors_and_exceptions(
+    tmp_path, monkeypatch, fake_telemetry_emitters, role, outcome
+):
+    args = (
+        arguments(tmp_path)
+        if role == "dense"
+        else cli.parse_args(_national_argv(tmp_path))
+    )
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cli, "_record_failure", lambda *args, **kwargs: None)
+    prepare_name = "prepare_full_build" if role == "dense" else "prepare_national_build"
+    execute_name = "execute_full_build" if role == "dense" else "execute_national_build"
+    monkeypatch.setattr(cli, prepare_name, lambda *args, **kwargs: object())
+    error = ValueError("synthetic build error")
+    interrupt = KeyboardInterrupt("synthetic interrupt")
+
+    def execute(*args, **kwargs):
+        if outcome == "error":
+            raise error
+        if outcome == "interrupt":
+            raise interrupt
+        return outcome
+
+    monkeypatch.setattr(cli, execute_name, execute)
+    if outcome == "interrupt":
+        with pytest.raises(KeyboardInterrupt) as caught:
+            cli.main([])
+        assert caught.value is interrupt
+    else:
+        assert cli.main([]) == (1 if outcome == "error" else outcome)
+    emitter = fake_telemetry_emitters[-1]
+    events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in events] == [
+        "completed" if outcome == 0 else "failed"
+    ]
+    if outcome == "error":
+        assert events[0]["message"] == str(error)
+    if outcome == 7:
+        # A non-zero return with no recorded block: the close-outs' vocabulary.
+        assert events[0]["details"]["error_code"] == "BUILD_REFUSED"
+        assert events[0]["details"]["failure_class"] == "refused"
+    assert not emitter.available
+
+
+@pytest.mark.parametrize("role", ["dense", "national"])
+def test_dry_run_nonzero_result_emits_failure(
+    tmp_path, monkeypatch, fake_telemetry_emitters, role
+):
+    args = (
+        arguments(tmp_path, "--dry-run")
+        if role == "dense"
+        else cli.parse_args(_national_argv(tmp_path, "--dry-run"))
+    )
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    if role == "dense":
+        monkeypatch.setattr(cli, "_dry_run", lambda *args, **kwargs: 7)
+    else:
+        monkeypatch.setattr(
+            cli.national_role, "national_dry_run", lambda *args, **kwargs: 7
+        )
+    assert cli.main([]) == 7
+    events = [
+        event
+        for event in fake_telemetry_emitters[-1].events
+        if event["event_type"] == "run"
+    ]
+    assert [event["status"] for event in events] == ["failed"]
+
+
+def test_staging_bundle_finalization_does_not_complete_hosted_run(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    args = arguments(tmp_path)
+    emitter = rowwise_staging.start_telemetry_emitter(args, build_id="cleanup-only")
+    rowwise_staging.finalize_staging_run_bundle(args, None)
+    assert emitter.events == []
+    assert emitter.available
+
+
+def test_an_attempt_names_itself_and_reports_its_graph_reuse(tmp_path, monkeypatch):
+    """The attempt's request evidence carries its Logbook and staging ids, and
+    the staging run gets the attempt's reuse counts before it closes."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+    )
+    assert status == 0
+    row = spool_rows(out)[0]
+    execution = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
+    request = json.loads(
+        (Path(execution["attempt_directory"]) / "request.json").read_text()
+    )
+    bundle = _only_staging_run(staging_dir)
+    assert request["attempt"] == {
+        "build_id": row.build_id,
+        "run_id": bundle["run_manifest"]["run_id"],
+    }
+    events = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"]) == ("graph_execution", "completed")
+    ]
+    assert len(events) == 1
+    assert events[0]["details"] == {
+        key: execution[key] for key in ("nodes_total", "nodes_reused", "nodes_computed")
+    }
+
+
+def test_a_block_the_staging_contract_refuses_closes_both_destinations_failed(
+    tmp_path,
+):
+    """A gate block whose details the staging content policy rejects (a gate id
+    that reads as a sensitive key) must not leave the run ``running``: the
+    staging run and the hosted emitter both close ``failed`` with the
+    unrecorded-block class, and a recordable block still closes both ``blocked``
+    with the gate statuses."""
+    from microcosm.build.run_outcome import UNRECORDED_GATE_BLOCK, GateBlock
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    def bundle(name):
+        return StagingRunBundleWriterV2(
+            run_id=name,
+            country_code="GB",
+            operation_id="uk_full_build",
+            pipeline_id="uk_local_candidate",
+            pipeline_version="2026.10",
+            candidate_id=name,
+            local_dir=tmp_path / name,
+            release_id=None,
+            run_kind="smoke",
+            delivery_mode="local_only",
+            repo_id=None,
+        )
+
+    def emitter(name):
+        return FakeTelemetryEmitter(
+            TelemetryRun(
+                run_id=name,
+                country_code="GB",
+                pipeline="uk_local_candidate",
+                candidate_id=name,
+                producer_id="producer-a",
+            )
+        )
+
+    def run_events(fake):
+        return [event for event in fake.events if event["event_type"] == "run"]
+
+    refused_bundle, refused_emitter = bundle("refused"), emitter("refused")
+    rowwise_staging.close_run_blocked(
+        refused_bundle,
+        refused_emitter,
+        GateBlock.of("terminal", ["token"], gate_statuses={"token": "failed"}),
+    )
+    failure = refused_bundle.validate_local_bundle()["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        UNRECORDED_GATE_BLOCK.error_code,
+        UNRECORDED_GATE_BLOCK.failure_class,
+    )
+    events = run_events(refused_emitter)
+    assert [event["status"] for event in events] == ["failed"]
+    assert events[0]["details"]["error_code"] == UNRECORDED_GATE_BLOCK.error_code
+
+    blocked_bundle, blocked_emitter = bundle("blocked"), emitter("blocked")
+    rowwise_staging.close_run_blocked(
+        blocked_bundle,
+        blocked_emitter,
+        GateBlock.of(
+            "terminal",
+            ["uk_local_target_fit"],
+            gate_statuses={"uk_local_target_fit": "failed"},
+        ),
+    )
+    assert blocked_bundle.validate_local_bundle()["progress"]["status"] == "blocked"
+    events = run_events(blocked_emitter)
+    assert [event["status"] for event in events] == ["blocked"]
+    assert events[0]["details"]["gate_statuses"] == {"uk_local_target_fit": "failed"}
+
+
+def _only_staging_run(staging_dir: Path):
+    from microcosm.build.staging_v2 import validate_staging_bundle
+
+    runs = sorted(path.name for path in (staging_dir / "runs").iterdir())
+    assert len(runs) == 1
+    return validate_staging_bundle(staging_dir, runs[0])
+
+
+def test_a_gate_block_closes_the_staging_run_as_blocked(tmp_path, monkeypatch):
+    """The terminal battery's refusal is a ``blocked`` run, not a completed one,
+    and the Logbook row records the same end as ``failed``."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+        failed=(("uk_local_area_support", "ESS 42.3 < 50"),),
+    )
+    assert status == 1
+    bundle = _only_staging_run(staging_dir)
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["failure"] is None
+    assert bundle["progress"]["block"] == {
+        "phase": "terminal",
+        "blocking_failure_count": 1,
+        "blocking_gate_ids": ["uk_local_area_support"],
+    }
+    terminal = bundle["events"][-1]
+    assert (terminal["stage_id"], terminal["status"]) == ("blocked", "blocked")
+    assert terminal["details"]["gate_statuses"]["uk_local_area_support"] == "failed"
+    assert spool_rows(out)[0].disposition == "failed"
+
+
+def test_a_preflight_refusal_is_blocked_at_preflight_not_passed(tmp_path, monkeypatch):
+    """Refused before solving, the run closes ``blocked`` at phase ``preflight``
+    with the refusing gate, and its Logbook receipts resolve in the preflight
+    gate document."""
+    pytest.importorskip("tables")
+    gate = "uk_target_surface_local_default_2025"
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+        failed=gate,
+    )
+    assert status == 1
+    bundle = _only_staging_run(staging_dir)
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["block"]["phase"] == "preflight"
+    assert bundle["progress"]["block"]["blocking_gate_ids"] == [gate]
+    stages = [event["stage_id"] for event in bundle["events"]]
+    assert "preflight_gates" in stages and "calibration" not in stages
+    row = spool_rows(out)[0]
+    assert row.disposition == "failed"
+    assert "candidate_blocked_at_preflight" in row.phases_reached
+    report_path = out / "uk.full.gates.preflight.gate_report.json"
+    assert report_path.is_file()
+    receipt = row.gate_verdicts[gate]["receipt"]
+    assert receipt.startswith(local_ref(report_path))
+    index = int(receipt.rsplit("/", 1)[1])
+    outcome = json.loads(report_path.read_text())["report"]["outcomes"][index]
+    assert outcome["id"] == gate and row.gate_verdicts[gate]["verdict"] == "failed"
+
+
+def test_a_raised_error_is_classified_in_the_staging_run(tmp_path, monkeypatch):
+    """A build that raises closes ``failed`` with a mapped code and class."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    original_run = cli.run_graph
+
+    def run_out_of_memory(compiled, **kwargs):
+        if "uk.full.gates.calibrated" in {node.id for node in compiled.graph.nodes}:
+            raise MemoryError("pool too large")
+        return original_run(compiled, **kwargs)
+
+    monkeypatch.setattr(cli, "run_graph", run_out_of_memory)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+    )
+    assert status == 1
+    failure = _only_staging_run(staging_dir)["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        "OUT_OF_MEMORY",
+        "out_of_memory",
+    )
+    assert spool_rows(out)[0].disposition == "failed"
+
+
+def test_a_sigterm_closes_the_dense_run_as_terminated_and_exits_143(
+    tmp_path, monkeypatch
+):
+    """A supervisor's SIGTERM is recorded like Ctrl-C (a discarded row, a
+    failed staging run) with its own class, and the command exits 143."""
+    pytest.importorskip("tables")
+    staging_dir = tmp_path / "staging-bundle"
+    original_run = cli.run_graph
+
+    def terminated(compiled, **kwargs):
+        if "uk.full.gates.calibrated" in {node.id for node in compiled.graph.nodes}:
+            os.kill(os.getpid(), signal.SIGTERM)
+        return original_run(compiled, **kwargs)
+
+    monkeypatch.setattr(cli, "run_graph", terminated)
+    previous_handler = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(SystemExit) as raised:
+        run_dense_main(
+            tmp_path,
+            monkeypatch,
+            "--staging-dir",
+            str(staging_dir),
+            staging="--staging-local-only",
+        )
+    assert raised.value.code == 143
+    assert signal.getsignal(signal.SIGTERM) == previous_handler
+    out = tmp_path / "out"
+    failure = _only_staging_run(staging_dir)["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        "TERMINATED",
+        "terminated",
+    )
+    assert json.loads((out / "failure.json").read_text())["error_type"] == (
+        "BuildTerminatedError"
+    )
+    assert spool_rows(out)[0].disposition == "discarded"
+
+
+def test_a_sigterm_during_the_national_build_records_a_discarded_row(
+    tmp_path, monkeypatch
+):
+    """The national line routes a SIGTERM through its interrupt arm too."""
+    argv = _national_argv(tmp_path)
+    monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
+    monkeypatch.setattr(
+        cli,
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: "prepared",
+    )
+
+    def terminated(prepared, args, *, telemetry=None, attempt=None):
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise AssertionError("SIGTERM did not stop the build")
+
+    monkeypatch.setattr(cli, "execute_national_build", terminated)
+    with pytest.raises(SystemExit) as raised:
+        cli.main(argv)
+    assert raised.value.code == 143
+    out = tmp_path / "out"
+    assert json.loads((out / "failure.json").read_text())["error_type"] == (
+        "BuildTerminatedError"
+    )
+    rows = load_spool_rows(out / "logbook-spool")
     assert [row.disposition for row in rows] == ["discarded"]

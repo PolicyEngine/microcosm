@@ -101,6 +101,7 @@ def test_problem_target_definitions_do_not_densify_the_whole_sparse_system(monke
 def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
     import microcosm.calibrate.solve as solve
     from microcosm.calibrate import calibrate
+    from microcosm.calibrate.graph_evidence import result_summary_data
 
     frame = Frame(
         {
@@ -113,7 +114,11 @@ def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
         {"household": problem().initial_weights},
         pd.Series(["a", "a"]),
     )
-    bound = decode_problem(encode_problem(problem(), entity_ids=(10, 20)))
+    bound = decode_problem(
+        encode_problem(
+            problem(), entity_ids=(10, 20), target_metadata=({"se": 2.0}, {})
+        )
+    )
     for penalty in (0.0, 0.01):
         result = calibrate(
             frame,
@@ -134,7 +139,57 @@ def test_complete_result_rebuild_preserves_dense_and_search_state(monkeypatch):
         np.testing.assert_array_equal(restored.weights, result.weights)
         np.testing.assert_array_equal(restored.loss_trajectory, result.loss_trajectory)
         assert restored.options == result.options
+        summary = result_summary_data(restored, bound)
+        rows = summary["tables"]["targets"]
+        assert rows[0]["uncertainty"] == {"status": "recorded", "se": 2.0}
+        assert rows[1]["uncertainty"] == {"status": "not_recorded"}
+        assert [row["achieved"] for row in rows] == [
+            diagnostic.final_estimate for diagnostic in restored.diagnostics
+        ]
+        assert summary["overview"]["final_weights"]["total"] == pytest.approx(
+            restored.weights.sum()
+        )
+        assert "entity_ids" not in summary and "weights" not in summary
         if penalty:
             np.testing.assert_array_equal(
                 restored.gate_open_probabilities, result.gate_open_probabilities
             )
+
+
+def test_compiled_rows_guard_the_axis_without_iterating_the_id_column(monkeypatch):
+    """Every compiled row checks the frame's entity axis against one shared
+    array with a vectorised comparison. Rebuilding the axis as a Python tuple
+    per row made 22,053 local rows over a 1.6 million-household pool cost
+    ~3.5e10 scalar conversions (the first K=25 UK dense build, 2026-10-05)."""
+    restored = decode_problem(encode_problem(problem(), entity_ids=(10, 20)))
+    targets = restored.to_target_set()
+    axes = {id(target.measure.axis) for target in targets.targets}
+    assert len(axes) == 1
+    assert targets.targets[0].measure.axis.dtype == np.int64
+
+    def frame_for(ids):
+        return Frame(
+            {
+                "person": pd.DataFrame(
+                    {"person_id": [1, 2], "person_household_id": list(ids)}
+                ),
+                "household": pd.DataFrame({"household_id": list(ids)}),
+            },
+            EntitySchema(group_entities=("household",)),
+            {"household": problem().initial_weights},
+            pd.Series(["a", "a"]),
+        )
+
+    def refuse_iteration(self):
+        raise AssertionError("the axis guard must not iterate the id column")
+
+    monkeypatch.setattr(pd.Series, "__iter__", refuse_iteration)
+    recompiled = build_constraint_matrix(
+        frame_for((10, 20)), targets, weight_entity="household"
+    )
+    np.testing.assert_array_equal(
+        recompiled.matrix.toarray(), problem().matrix.toarray()
+    )
+    # A frame on another axis (same length, valid ascending ids) is refused.
+    with pytest.raises(ValueError, match="exact ordered entity axis"):
+        targets.targets[0].measure(frame_for((10, 30)))

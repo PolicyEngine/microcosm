@@ -33,7 +33,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 COUNTRY_PACKAGE_ROOT = _TEST_PATHS.package / "src/microcosm/build"
 GOLDEN_ROOT = _TEST_PATHS.tests / "golden"
-GOLDEN_COUNTRIES = ("am", "be")
+GOLDEN_COUNTRIES = ("am", "be", "nz")
 FORBIDDEN_TARGET_VALUE_KEYS = {"value", "values", "observed", "observed_value"}
 
 
@@ -926,7 +926,7 @@ class TestUKCountryPackage:
             "frs_release.json",
             "chronicle_feed.json",
             "gates.json",
-            "brma_rent_counts.json",
+            "brma_private_rented_households.json",
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
@@ -945,6 +945,7 @@ class TestUKCountryPackage:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -1009,10 +1010,12 @@ class TestUKCountryPackage:
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
         # spi_income_band_donors (PolicyEngine/chronicle#280 lane), the SPI
-        # housing shell (#1012), was_lisa (#1003) and pension_credit_take_up
-        # (microcosm#1069) as the newest); the frs_hmrc_retained_leaves /
-        # hmrc_spi_income pair is retired (#901).
-        assert len(spec.sources.stages) == 36
+        # housing shell (#1012), was_lisa (#1003), pension_credit_take_up
+        # (microcosm#1069) and child_benefit_take_up (microcosm#1063) as the
+        # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
+        # retired (#901).
+        # microcosm#1063 also adds cgt_residential_split after the anchor.
+        assert len(spec.sources.stages) == 39
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1048,7 +1051,7 @@ class TestExistingPackagesGeneralize:
             "frs_release.json",
             "chronicle_feed.json",
             "gates.json",
-            "brma_rent_counts.json",
+            "brma_private_rented_households.json",
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
@@ -1067,6 +1070,7 @@ class TestExistingPackagesGeneralize:
             "ons_age_tail_band_populations.json",
             "ashe_employer_pension_contribution_rates.json",
             "ons_single_year_age_populations.json",
+            "hmrc_child_benefit_statistics.json",
             "lcfs_consumption_support_bounds.json",
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
@@ -1128,7 +1132,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1230
+            len(references) == 1231
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1146,7 +1150,8 @@ class TestExistingPackagesGeneralize:
         # the DWP employer contribution total, less the salary-sacrifice users
         # total (the Table 3.8 rows and the DWP employee total left the fit); two
         # Attendance Allowance and three pension-age Housing Benefit rows; the
-        # income-tax relief total on salary sacrifice in place of the amount row
+        # income-tax relief total on salary sacrifice in place of the amount row;
+        # microcosm#1095: Great Britain pension-age Housing Benefit spending
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1380,6 +1385,7 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1393,11 +1399,14 @@ class TestUKGatesManifest:
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_spi_benefit_coherence",
             "uk_stage_pension_credit_take_up",
+            "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_cgt_residential_split_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
@@ -1483,6 +1492,7 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1496,11 +1506,14 @@ class TestUKGatesManifest:
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_spi_benefit_coherence",
             "uk_stage_pension_credit_take_up",
+            "uk_stage_child_benefit_take_up",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_cgt_residential_split_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
