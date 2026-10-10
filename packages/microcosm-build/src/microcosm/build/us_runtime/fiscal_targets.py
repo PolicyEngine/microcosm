@@ -151,10 +151,19 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # floating export-input columns. Income legs sum the positive part of the
     # signed model variable, loss legs the negative-part magnitude
     # (see _signed_component), matching SOI's returns-with-net-income vs
-    # returns-with-net-loss split. estate_income/miscellaneous_income do not
-    # currently add to AGI (loss-cap / catch-all only), but they are the export
-    # columns the export-mass gate tracks, so pinning them identifies those
-    # dimensions.
+    # returns-with-net-loss split. Both are export columns that hold reviewed
+    # exclusions in US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    # (tools/build_us_fiscal_refresh_release.py), so the export-mass gate does
+    # not check their drift; pinning them to these SOI lines identifies those
+    # dimensions. Both move federal income tax. In policyengine-us 2.2.1 and
+    # 2.23.2 a non-dependent's positive miscellaneous_income is gross income;
+    # estate_income losses are deducted above the line through loss_ald,
+    # subject to the section 461(l) limit; and estate_income counts toward
+    # qualified business income while estate_income_would_be_qualified is true
+    # (the default). From 2.23.2 (PolicyEngine/policyengine-us#9633) a
+    # non-dependent's positive estate_income is also gross income, and so AGI,
+    # and a non-dependent's signed estate_income plus the Schedule K-1
+    # (Form 1041) box 14 code H adjustment enters net investment income.
     "estate_trust_net_income_amount": "estate_income",
     "estate_trust_net_loss_amount": "estate_losses",
     "other_income_net_income_amount": "miscellaneous_income",
