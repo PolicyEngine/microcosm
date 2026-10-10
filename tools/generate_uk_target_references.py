@@ -638,6 +638,22 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
                     ),
                 )
             )
+        operands = target.get("value_operands") or ()
+        if (
+            target.get("value_operation") == "rolled_forward_by_ratio"
+            and operands
+            and operands[0].get("geography_level")
+        ):
+            # A roll-forward whose base sits below the row (Northern
+            # Ireland's districts' census cells for its nation row, #1123) is
+            # a composed row: it declares its own geography for the hierarchy.
+            metadata.update(
+                {
+                    "composed_from_level": str(operands[0]["geography_level"]),
+                    "geography_level": "country",
+                    "geography_id": _geography_id_for_target(target),
+                }
+            )
         if metadata:
             result[str(target["target_id"])] = metadata
     return result
