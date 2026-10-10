@@ -63,6 +63,10 @@ from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
 )
+from microcosm.build.us_runtime.spm_independence_role import (
+    us_declared_dataset_source_inputs,
+)
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import (
     Frame,
     WeightKind,
@@ -240,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     donor_release = _donor_release_identity(args.donor_release_manifest, base_sha256)
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
+    _require_donor_spm_independence_role(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
@@ -277,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
+    _require_pooled_spm_independence_role(result)
     transfer_coverage = _require_default_transfer_coverage(
         result,
         base,
@@ -374,6 +380,84 @@ def _require_benefit_participation_inputs(base: Frame) -> None:
             "Dense ASEC-by-PUF donor has no takes_up_* benefit-participation "
             "inputs. This tool must run after the benefit input-family stages."
         )
+
+
+def _require_donor_spm_independence_role(base: Frame) -> None:
+    """Fail before any fit unless the donor delivers the source SPM role.
+
+    The engine declares ``is_spm_independent_minor_role`` a dataset source
+    input that may not be defaulted, and the ACS spine derives it only to
+    match a donor that carries it; a role-free donor would leave the staging
+    column absent or half-filled.
+    """
+
+    person = base.table("person")
+    if NATIVE_SPM_ROLE not in person:
+        raise SystemExit(
+            f"Dense ASEC-by-PUF donor carries no {NATIVE_SPM_ROLE}. The engine "
+            "declares it a dataset source input that may not be defaulted; build "
+            "the donor through the spm_independence_role stage (or the Build P "
+            "SPM role enrichment) first."
+        )
+    failure = _spm_role_column_failure(person[NATIVE_SPM_ROLE])
+    if failure is not None:
+        raise SystemExit(f"Dense ASEC-by-PUF donor {NATIVE_SPM_ROLE} {failure}")
+
+
+def _require_pooled_spm_independence_role(
+    result: AcsMultispineResult,
+) -> dict[str, object]:
+    """Prove the staged role is complete, Boolean, and derived for the ACS rows."""
+
+    receipt = result.provenance.get("spm_independence_role")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine derived no SPM independence role for the ACS spine; "
+            f"refusing to stage {NATIVE_SPM_ROLE} as a reviewed null."
+        )
+    person = result.frame.table("person")
+    if NATIVE_SPM_ROLE not in person:
+        raise SystemExit(f"Combined multispine frame lost {NATIVE_SPM_ROLE}.")
+    column = person[NATIVE_SPM_ROLE]
+    missing = column.isna()
+    if missing.any():
+        tag = spine_column("person")
+        by_spine = (
+            {
+                str(spine): int(count)
+                for spine, count in person.loc[missing, tag]
+                .astype(str)
+                .value_counts()
+                .sort_index()
+                .items()
+            }
+            if tag in person
+            else {}
+        )
+        raise SystemExit(
+            f"Combined multispine frame leaves {NATIVE_SPM_ROLE} null on "
+            f"{int(missing.sum())} person row(s) (by spine {by_spine}); the "
+            "engine forbids a default for a declared dataset source input."
+        )
+    failure = _spm_role_column_failure(column)
+    if failure is not None:
+        raise SystemExit(f"Combined multispine frame {NATIVE_SPM_ROLE} {failure}")
+    tag = spine_column("person")
+    acs_rows = int(person[tag].eq(ACS_2024_1YR_SPINE).sum()) if tag in person else 0
+    if receipt.get("persons") != acs_rows:
+        raise SystemExit(
+            f"ACS SPM independence role receipt covers {receipt.get('persons')!r} "
+            f"person(s), but the combined frame holds {acs_rows} ACS person row(s)."
+        )
+    return receipt
+
+
+def _spm_role_column_failure(column: pd.Series) -> str | None:
+    if column.isna().any():
+        return f"is null on {int(column.isna().sum())} person row(s)."
+    if pd.api.types.infer_dtype(column, skipna=False) != "boolean":
+        return f"must be Boolean; found dtype {column.dtype}."
+    return None
 
 
 def _require_dense_donor_coverage(
@@ -727,7 +811,7 @@ def _reviewed_limitations(
     if not isinstance(structural_pending, list):
         raise TypeError("transfer_coverage.structural_pending must be a list.")
 
-    return [
+    limitations = [
         {
             "id": "acs_group_quarters_housing_universe",
             "status": "reviewed_structural_absence",
@@ -831,6 +915,50 @@ def _reviewed_limitations(
             "calibration_blocker": False,
         },
     ]
+    spm_role = result.provenance.get("spm_independence_role")
+    if isinstance(spm_role, dict):
+        limitations.append(_spm_role_limitation(spm_role))
+    return limitations
+
+
+def _spm_role_limitation(receipt: dict[str, object]) -> dict[str, object]:
+    """Document the ACS arm of the SPM independence role and what it cannot see."""
+
+    return {
+        "id": "acs_spm_independence_role_household_partition",
+        "status": "reviewed_source_derivation",
+        "affected_spine": ACS_2024_1YR_SPINE,
+        "affected_columns": {"person": [NATIVE_SPM_ROLE]},
+        "rule": receipt.get("rule"),
+        "partition": receipt.get("partition"),
+        "asec_rule": receipt.get("asec_rule"),
+        "reason": (
+            "ACS PUMS carries no Census SPM fields and no SPM_ID, so each ACS "
+            "household is one SPM unit. On that partition the ASEC rule's unit "
+            "head is the reference person (or a group-quarters record's sole "
+            "person) and its family branch is the reference person's spouse."
+        ),
+        "treatment": (
+            "Derive the role from RELSHIPP on the household partition; never "
+            "default it. The ASEC rule's unrelated-subfamily branch has no ACS "
+            "counterpart, and a household unit cannot see a teen who would head "
+            "a separate Census SPM unit. Group-quarters persons under 15 remain "
+            "one-person units with no classified adult under any role; the "
+            "source places group quarters outside the ACS SPM universe."
+        ),
+        "counts": {
+            key: receipt.get(key)
+            for key in (
+                "persons",
+                "role_true_persons",
+                "independent_minor_persons",
+                "housing_units_classified_only_by_role",
+                "group_quarters_units_without_classified_adult",
+            )
+        },
+        "validation": "experiments/acs-spm-role-asec-validation.md",
+        "calibration_blocker": False,
+    }
 
 
 def _acs_group_quarters_counts(frame: Frame) -> dict[str, int]:
@@ -1156,7 +1284,13 @@ def _engine_input_null_audit(
     frame: Frame,
     engine: Any | None = None,
 ) -> list[dict[str, object]]:
-    """Inventory nullable engine inputs for the reviewed-limitations summary."""
+    """Inventory nullable engine inputs for the reviewed-limitations summary.
+
+    Every entry becomes ``reviewed_engine_input_nulls``, which the local
+    release fills with the engine default. A declared dataset source input
+    (``policyengine_us.spm.DATASET_SOURCE_INPUTS``) may not be defaulted, so a
+    null one refuses the staging build instead of entering the register.
+    """
 
     if engine is None:
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -1188,6 +1322,20 @@ def _engine_input_null_audit(
                     "missing_rows_by_spine": by_spine,
                 }
             )
+    declared = us_declared_dataset_source_inputs(engine)
+    refused = [entry for entry in entries if entry["column"] in declared]
+    if refused:
+        detail = "; ".join(
+            f"{entry['entity']}.{entry['column']} ({entry['missing_rows']} null "
+            f"rows, by spine {entry['missing_rows_by_spine']})"
+            for entry in refused
+        )
+        raise SystemExit(
+            "Declared dataset source input(s) carry nulls and may not enter "
+            "reviewed_engine_input_nulls: policyengine_us.spm says the "
+            "declaration 'does not permit synthesizing a default value when "
+            f"data are absent'. {detail}"
+        )
     return entries
 
 

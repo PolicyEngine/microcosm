@@ -311,6 +311,26 @@ class UnregisteredNullError(ValueError):
     """NaN in an engine-input column NOT in reviewed_engine_input_nulls."""
 
 
+class DeclaredSourceInputNullError(UnregisteredNullError):
+    """A declared dataset source input is null or registered for a default fill.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` "does not permit
+    synthesizing a default value when data are absent", so no register entry
+    can authorize a fill for one.
+    """
+
+
+#: The remedy a staging artifact without the ACS SPM role is told to take.
+_DECLARED_SOURCE_INPUT_REMEDY = (
+    "Rebuild the ACS multispine staging (tools/build_us_acs_multispine_base.py): "
+    "it derives is_spm_independent_minor_role for ACS persons from RELSHIPP on "
+    "the household SPM partition "
+    "(microcosm.build.us_runtime.acs_inputs.with_acs_spm_independence_role) "
+    "and refuses to register it as a reviewed null. Staging built before that "
+    "carries the role only on donor rows."
+)
+
+
 def project_input_only(base_frame, period: int = PERIOD):
     """Hold back every non-input variable so FED SET == ENGINE INPUT SET.
 
@@ -378,19 +398,25 @@ def fill_reviewed_nulls(
     summary_path: Path,
     manifest_path: Path | None = None,
     period: int = PERIOD,
+    *,
+    engine=None,
+    system=None,
 ):
     """Apply the nullable-artifact contract for the engine pass (H5 untouched).
 
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled.
+    defect, surfaced not filled. A declared dataset source input is never
+    filled: a register that names one, or a null one, raises
+    :class:`DeclaredSourceInputNullError`. ``engine`` and ``system`` default
+    to the PolicyEngine-US adapter and tax-benefit system.
     """
 
-    from policyengine_us import CountryTaxBenefitSystem
-
     from microcosm.build.us_runtime.base_pool import spine_column
-    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.build.us_runtime.spm_independence_role import (
+        us_declared_dataset_source_inputs,
+    )
 
     summary = json.loads(Path(summary_path).read_text())
     register = {
@@ -402,9 +428,25 @@ def fill_reviewed_nulls(
             f"{summary_path} carries no reviewed_engine_input_nulls register; "
             "cannot apply the nullable-artifact engine-pass contract."
         )
-    adapter = PolicyEngineUSEngine()
-    input_names = set(adapter.variables())
-    system = CountryTaxBenefitSystem()
+    if engine is None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        engine = PolicyEngineUSEngine()
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    declared = us_declared_dataset_source_inputs(engine)
+    registered_declared = sorted(
+        f"{entity}.{column}" for entity, column in register if column in declared
+    )
+    if registered_declared:
+        raise DeclaredSourceInputNullError(
+            f"{summary_path} registers declared dataset source input(s) "
+            f"{registered_declared} for a default fill; policyengine_us.spm "
+            "forbids synthesizing them. " + _DECLARED_SOURCE_INPUT_REMEDY
+        )
+    input_names = set(engine.variables())
 
     fills, drift_warnings, violations = [], [], []
     for entity in frame.entities:
@@ -422,7 +464,7 @@ def fill_reviewed_nulls(
                     for spine in sorted(map(str, table[tag].dropna().unique()))
                     if int((missing & table[tag].eq(spine)).sum())
                 }
-            if (entity, column) not in register:
+            if column in declared or (entity, column) not in register:
                 violations.append(
                     {
                         "entity": entity,
@@ -430,6 +472,7 @@ def fill_reviewed_nulls(
                         "missing_rows": n_missing,
                         "rows": len(table),
                         "missing_rows_by_spine": by_spine,
+                        "declared_dataset_source_input": column in declared,
                     }
                 )
                 continue
@@ -491,11 +534,17 @@ def fill_reviewed_nulls(
             f"by spine {v['missing_rows_by_spine']})"
             for v in violations
         )
-        raise UnregisteredNullError(
+        message = (
             f"{len(violations)} engine-input column(s) carry NaN but are NOT "
             "in the reviewed_engine_input_nulls register — artifact defect, "
             f"refusing to fill: {detail}"
         )
+        if any(v["declared_dataset_source_input"] for v in violations):
+            raise DeclaredSourceInputNullError(
+                f"{message}. A declared dataset source input may not be "
+                "defaulted. " + _DECLARED_SOURCE_INPUT_REMEDY
+            )
+        raise UnregisteredNullError(message)
     return fills, drift_warnings
 
 
