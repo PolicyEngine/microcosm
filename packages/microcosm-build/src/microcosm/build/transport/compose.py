@@ -390,7 +390,9 @@ def _declared_resource_selections(document: Mapping) -> Iterator[Mapping]:
             continue
         for value in params.values():
             for selection in _selections(value):
-                if isinstance(selection.get("resource"), str):
+                # Any mapping naming a resource is a selection, whatever the
+                # name's type: a malformed name is refused here, not later.
+                if "resource" in selection:
                     yield selection
 
 
@@ -422,7 +424,11 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         if _has_resource(spec, GRAPH_RESOURCE)
         else ()
     )
-    selected = {_stem(selection["resource"]) for selection in selections}
+    selected = {
+        selection["resource"].removesuffix(".json")
+        for selection in selections
+        if isinstance(selection["resource"], str) and selection["resource"]
+    }
     for selection in selections:
         try:
             _resource_param(spec, selection)

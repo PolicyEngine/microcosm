@@ -690,6 +690,24 @@ def test_activation_refuses_invalid_selected_values_before_preparation(
     assert "['factor']" in str(error.value)
 
 
+@pytest.mark.parametrize("name", [None, "", 7, ["currency"]])
+def test_activation_refuses_a_malformed_resource_name_before_preparation(
+    composed, tmp_path, monkeypatch, name
+):
+    spec = copy.deepcopy(composed.spec)
+    currency = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == TRANSPORT_CURRENCY.ref
+    )
+    currency["params"]["probe"] = [
+        {"resource": name, "path": ["factor"], "encoding": "value"}
+    ]
+    _assert_activation_refuses_before_preparation(
+        spec, composed, tmp_path, monkeypatch, "must name a nonempty string"
+    )
+
+
 @pytest.mark.parametrize("gap", ["empty", "seed", "judgment", "rate"])
 def test_activation_refuses_invalid_receipt_contract_before_preparation(
     composed, tmp_path, monkeypatch, gap
