@@ -1,0 +1,127 @@
+{
+ "ids_in_both_with_different_bytes": [],
+ "ids_only_in_new": [
+  "irs_soi.ty2020.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount",
+  "irs_soi.ty2020.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount"
+ ],
+ "ids_only_in_old": [
+  "irs_soi.ty2023.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount",
+  "irs_soi.ty2023.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount",
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount",
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.taxpayer_count"
+ ],
+ "new": {
+  "bytes": 164591409,
+  "facts_sha256": "a81cbcc504caa71e4eb23b4d70a11528c8e6db6523e41283f8482569a23df04c",
+  "rows": 39155
+ },
+ "new_feed_sorted_by_aggregate_fact_key": true,
+ "new_only_rows": {
+  "irs_soi.ty2020.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount": {
+   "fields_changed": {
+    "aggregate_fact_key": [
+     "ledger.aggregate_fact.v2:8f327e6f8743a570967d6c6e",
+     "ledger.aggregate_fact.v2:51d2feb7b4c4ddfe18eb53e2"
+    ],
+    "label": [
+     "United States 2023 tax year sum irs soi form w2 401k elective deferrals for tax unit [irs_soi Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020 20in04w2all.xlsx tax_year_2023]",
+     "United States 2020 tax year sum irs soi form w2 401k elective deferrals for tax unit [irs_soi Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020 20in04w2all.xlsx tax_year_2020]"
+    ],
+    "layout.record_set_id": [
+     "irs_soi.ty2023.form_w2_401k_elective_deferrals",
+     "irs_soi.ty2020.form_w2_401k_elective_deferrals"
+    ],
+    "layout.record_set_spec_hash": [
+     "8e7516eb16b98e31575928d7",
+     "0d8f03f75753fe74a7c3d7f7"
+    ],
+    "legacy_fact_key": [
+     "ledger.fact.v1:4196175a325b82b1742c136e",
+     "ledger.fact.v1:8f42ed2ce6cc255ccc5bd3ae"
+    ],
+    "lineage.source_record_id": [
+     "irs_soi.ty2023.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount",
+     "irs_soi.ty2020.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount"
+    ],
+    "period.value": [
+     2023,
+     2020
+    ],
+    "semantic_fact_key": [
+     "ledger.semantic_fact.v2:0eb672dc84ef89b509d6dd07",
+     "ledger.semantic_fact.v2:5148171c03407554ec9edad4"
+    ],
+    "source.vintage": [
+     "tax_year_2023",
+     "tax_year_2020"
+    ],
+    "source_release_key": [
+     "ledger.source_release.v2:e160bbe5850bccc8157b4753",
+     "ledger.source_release.v2:249f35d435e1b0c55f4e0606"
+    ]
+   },
+   "old_source_record_id": "irs_soi.ty2023.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount",
+   "source_cell_keys_equal": true,
+   "value_equal": true
+  },
+  "irs_soi.ty2020.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount": {
+   "fields_changed": {
+    "aggregate_fact_key": [
+     "ledger.aggregate_fact.v2:389b3202578b67596ebc0284",
+     "ledger.aggregate_fact.v2:f1737fc1e1b8ddbe91b0d32a"
+    ],
+    "label": [
+     "United States 2023 tax year sum irs soi form w2 designated roth 401k contributions for tax unit [irs_soi Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020 20in04w2all.xlsx tax_year_2023]",
+     "United States 2020 tax year sum irs soi form w2 designated roth 401k contributions for tax unit [irs_soi Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020 20in04w2all.xlsx tax_year_2020]"
+    ],
+    "layout.record_set_id": [
+     "irs_soi.ty2023.form_w2_designated_roth_401k_contributions",
+     "irs_soi.ty2020.form_w2_designated_roth_401k_contributions"
+    ],
+    "layout.record_set_spec_hash": [
+     "aa782f50bae2d6dcb9592090",
+     "90656a57a04039035f81f102"
+    ],
+    "legacy_fact_key": [
+     "ledger.fact.v1:f2768e74a0c730466ab6195b",
+     "ledger.fact.v1:b9cd6ee65bd8bd5fa9a49c1f"
+    ],
+    "lineage.source_record_id": [
+     "irs_soi.ty2023.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount",
+     "irs_soi.ty2020.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount"
+    ],
+    "period.value": [
+     2023,
+     2020
+    ],
+    "semantic_fact_key": [
+     "ledger.semantic_fact.v2:53522560d80a79fad85bd5b0",
+     "ledger.semantic_fact.v2:eea093242a6a4233755bfc2e"
+    ],
+    "source.vintage": [
+     "tax_year_2023",
+     "tax_year_2020"
+    ],
+    "source_release_key": [
+     "ledger.source_release.v2:e160bbe5850bccc8157b4753",
+     "ledger.source_release.v2:249f35d435e1b0c55f4e0606"
+    ]
+   },
+   "old_source_record_id": "irs_soi.ty2023.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount",
+   "source_cell_keys_equal": true,
+   "value_equal": true
+  }
+ },
+ "old": {
+  "bytes": 164603204,
+  "facts_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "rows": 39158
+ },
+ "old_only_ids_with_no_new_twin": [
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount",
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.taxpayer_count"
+ ],
+ "rows_byte_identical": 39153
+}

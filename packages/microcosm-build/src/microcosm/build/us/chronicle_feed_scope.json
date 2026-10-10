@@ -2,9 +2,9 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
- "rule": "Exactly the (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
- "pair_count": 586,
+ "source_commit": "f98acf4edcc9488343446fda46db77914de8611f",
+ "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, with the three W-2 item record sets it stamped ty2023 replaced by the TY2020 record sets of the table they are read from (IRS SOI Table 4.B, Tax Year 2020; IRS publishes no later year); each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 585,
  "runs": {
   "2020": [
    "packages/bea/nipa_total_wages_salaries",
@@ -49,8 +49,7 @@
    "packages/irs_soi/table_2_1",
    "packages/irs_soi/table_2_5",
    "packages/irs_soi/table_2_5_eitc_agi_children_2023",
-   "packages/irs_soi/table_4_3",
-   "packages/irs_soi/w2_statistics_2020"
+   "packages/irs_soi/table_4_3"
   ],
   "2024": [
    "packages/bea/nipa_total_wages_salaries",
@@ -3011,6 +3010,22 @@
    "build_year": 2024
   },
   {
+   "record_set_id": "irs_soi.ty2020.form_w2_401k_elective_deferrals",
+   "period_type": "tax_year",
+   "period_value": "2020",
+   "package_id": "soi-w2-statistics-2020",
+   "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2020
+  },
+  {
+   "record_set_id": "irs_soi.ty2020.form_w2_designated_roth_401k_contributions",
+   "period_type": "tax_year",
+   "period_value": "2020",
+   "package_id": "soi-w2-statistics-2020",
+   "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2020
+  },
+  {
    "record_set_id": "irs_soi.ty2020.form_w2_social_security_tips",
    "period_type": "tax_year",
    "period_value": "2020",
@@ -4320,30 +4335,6 @@
    "period_value": "2023",
    "package_id": "soi-congressional-district-2022",
    "package": "packages/irs_soi/congressional_district_2022",
-   "build_year": 2023
-  },
-  {
-   "record_set_id": "irs_soi.ty2023.form_w2_401k_elective_deferrals",
-   "period_type": "tax_year",
-   "period_value": "2023",
-   "package_id": "soi-w2-statistics-2020",
-   "package": "packages/irs_soi/w2_statistics_2020",
-   "build_year": 2023
-  },
-  {
-   "record_set_id": "irs_soi.ty2023.form_w2_designated_roth_401k_contributions",
-   "period_type": "tax_year",
-   "period_value": "2023",
-   "package_id": "soi-w2-statistics-2020",
-   "package": "packages/irs_soi/w2_statistics_2020",
-   "build_year": 2023
-  },
-  {
-   "record_set_id": "irs_soi.ty2023.form_w2_social_security_tips",
-   "period_type": "tax_year",
-   "period_value": "2023",
-   "package_id": "soi-w2-statistics-2020",
-   "package": "packages/irs_soi/w2_statistics_2020",
    "build_year": 2023
   },
   {

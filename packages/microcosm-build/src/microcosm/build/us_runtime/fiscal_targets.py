@@ -10,6 +10,7 @@ columns.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
@@ -27,6 +28,9 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
+)
+from microcosm.build.us_runtime.target_aging import (
+    _period_year as _aging_period_year,
 )
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
@@ -343,6 +347,18 @@ _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
         "box_7_social_security_tips",
     }
 )
+# An IRS SOI table title ends with the tax year it is for ("..., Tax Year
+# 2020"). The span is the year or years that follow "Tax Year(s)", so a title
+# for several years ("Tax Years 2019 and 2020") is told apart from one year.
+_TITLE_YEAR = r"(?<!\d)(?:19|20)\d{2}(?!\d)"
+_SOURCE_TABLE_TAX_YEAR_SPAN = re.compile(
+    rf"\btax\s+years?\s+({_TITLE_YEAR}"
+    rf"(?:\s*(?:,|-|–|—|&|\bto\b|\band\b|\bthrough\b)\s*(?:and\s+)?{_TITLE_YEAR})*)"
+    # "2020-21" abbreviates a second year the span cannot read: no match.
+    r"(?!\s*[-–—/]\s*\d)",
+    re.IGNORECASE,
+)
+_TAX_YEAR_VINTAGE = re.compile(r"tax_year_(\d{4})")
 _SOI_ITEMIZED_ONLY_VARIABLES = frozenset(
     {
         "charitable_deduction",
@@ -662,14 +678,15 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "support in the under-$1 AGI slice; this narrow offset-income cell needs "
         "richer state/tail support before it can be calibrated."
     ),
-    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
+    "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
         "The SIPP tip stage now materializes tip_income (549 carriers, $9.9B "
         "weighted on certified Build M), but that support is under 1% of the "
         "6.04M-return W-2 Box 7 class, so binding the return-count target "
         "would demand ~600x weight concentration on those carriers. The "
         "dollar-amount target binds first; the count target waits for tip "
         "support widening (PolicyEngine/microcosm#451 item 3). Every vintage "
-        "of the cell is excluded (decision d179)."
+        "of the cell is excluded (decision d179). The key is the TY2020 id: "
+        "Tax Year 2020 is the latest Table 4.B IRS has published."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -826,22 +843,25 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
 # - the four #564 other-income rows: the Form 4797 concept mismatch does not
 #   depend on the tax year;
 # - the #451 W-2 Box 7 tips return count: tip support is thin at every
-#   vintage, and the ty2020 fact carries the same 6,038,613 returns as the
-#   excluded ty2023 row (the pinned feed's ty2023 W-2 record sets come from
-#   the soi-w2-statistics-2020 package, chronicle_feed_scope.json). The July
-#   feed (consumer_facts_buildn_v9_4, facts b3c0835...) carried only the
-#   ty2020 vintage, so the ty2023-keyed exclusion matched nothing and the
-#   row calibrated (-52% in experiments/replacement_scorecard/
-#   incumbent_48b9d479.md). The pinned feed carries both, latest-vintage
-#   fallback selected ty2020, and #1016 kept it as the one reviewed vintage
-#   bypass until decision d179 ruled to enforce #451 at every vintage.
+#   vintage (decision d179). TY2020 is the latest vintage IRS has
+#   published, so the entry is keyed to the ty2020 id. It was keyed ty2023
+#   while the feed carried the same cell twice: the c5e5bf8 feed built the
+#   soi-w2-statistics-2020 package at --year 2023 as well, which stamped the
+#   Tax Year 2020 workbook's 6,038,613 returns as ty2023. The July feed
+#   (consumer_facts_buildn_v9_4, facts b3c0835...) carried only the ty2020
+#   row, so the ty2023-keyed exclusion matched nothing and the row calibrated
+#   (-52% in experiments/replacement_scorecard/incumbent_48b9d479.md); #1016
+#   kept the ty2020 row as a reviewed vintage bypass until d179 ruled to
+#   enforce #451 at every vintage. The feed now carries the ty2020 row alone
+#   (docs/us-chronicle-feed-repin.md), and _check_w2_item_fact_tax_years
+#   refuses a feed that stamps the table with another year again.
 US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
     {
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount",
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns",
         "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount",
         "irs_soi.ty2023.table_1_4.all.other_income_net_income_returns",
-        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+        "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count",
     }
 )
 
@@ -1010,6 +1030,7 @@ def compile_us_fiscal_target_registry(
             ``period_contract_waiver`` metadata in diagnostics.
     """
     materialized_facts = tuple(facts)
+    _check_w2_item_fact_tax_years(materialized_facts)
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
@@ -1096,10 +1117,12 @@ def us_fiscal_target_exclusion_receipt(
 
     It replays the compiler's fact filter and latest-vintage selection, so pass
     the same ``target_period`` and crosswalk as the compile. Like the compile,
-    it raises on a vintage bypass nobody reviewed.
+    it raises on a vintage bypass nobody reviewed and on a Form W-2 item fact
+    whose tax year its source table does not back.
     """
 
     materialized_facts = tuple(facts)
+    _check_w2_item_fact_tax_years(materialized_facts)
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
@@ -2425,6 +2448,89 @@ def _check_exclusion_vintage_scope(
         for source_record_id, keys in bypasses.items()
         if source_record_id in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES
     }
+
+
+def _source_table_tax_year(source_table: str) -> int | None:
+    """The one tax year a source table's title names, else ``None``.
+
+    ``None`` covers both a title that names no tax year and a title that names
+    more than one: neither says which year a cell of the table is for.
+    """
+
+    years = {
+        int(year)
+        for span in _SOURCE_TABLE_TAX_YEAR_SPAN.findall(source_table)
+        for year in re.findall(_TITLE_YEAR, span)
+    }
+    return years.pop() if len(years) == 1 else None
+
+
+def _is_soi_form_w2_item_fact(fact: object) -> bool:
+    return (
+        _str_at(fact, "layout", "groupby_dimension")
+        == _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION
+    )
+
+
+def _w2_item_tax_year_mismatches(facts: Iterable[object]) -> tuple[str, ...]:
+    """Describe each Form W-2 item fact its source table does not back.
+
+    A fact passes when its source table's title names exactly one tax year
+    and that is the year target aging reads from the fact's period; a
+    ``tax_year_<year>`` source vintage must name it too. The result is
+    sorted, so it does not depend on feed order.
+    """
+
+    problems: list[str] = []
+    for fact in facts:
+        if not _is_soi_form_w2_item_fact(fact):
+            continue
+        identity = _source_record_id(fact) or "a fact with no source_record_id"
+        source_table = _str_at(fact, "source", "source_table")
+        table_year = _source_table_tax_year(source_table)
+        if table_year is None:
+            problems.append(
+                f"{identity}: source table {source_table!r} names no single tax year"
+            )
+            continue
+        stamped = [f"period {_period_value(fact)!r}"]
+        agrees = _aging_period_year(_period_value(fact)) == table_year
+        vintage = _str_at(fact, "source", "vintage")
+        vintage_year = _TAX_YEAR_VINTAGE.fullmatch(vintage)
+        if vintage_year is not None:
+            stamped.append(f"vintage {vintage!r}")
+            agrees = agrees and int(vintage_year.group(1)) == table_year
+        if not agrees:
+            problems.append(
+                f"{identity}: {' and '.join(stamped)}, but source table "
+                f"{source_table!r} is for tax year {table_year}"
+            )
+    return tuple(sorted(problems))
+
+
+def _check_w2_item_fact_tax_years(facts: Iterable[object]) -> None:
+    """Refuse Form W-2 item facts stamped with a year their table is not for.
+
+    Target aging starts from a fact's period, so a W-2 item fact stamped with
+    a later year than its table loses the growth in between. The feed pinned
+    at Chronicle c5e5bf8 stamped Table 4.B for Tax Year 2020 as ty2023, and
+    the Box 7 tips amount aged one year to 2024 where it needed four
+    (docs/us-chronicle-feed-repin.md). The check covers the three W-2 item
+    families (``irs_soi.form_w2_item`` layout): tips, 401(k) elective
+    deferrals and designated Roth contributions.
+    """
+
+    problems = _w2_item_tax_year_mismatches(facts)
+    if problems:
+        raise ValueError(
+            "Form W-2 item facts whose tax year disagrees with their source "
+            "table: "
+            + "; ".join(problems)
+            + ". A W-2 item fact's period, and its tax_year vintage, must be "
+            "the tax year its source table's title names. Rebuild the feed "
+            "from a Chronicle commit that stamps the published year "
+            "(docs/us-chronicle-feed-repin.md)."
+        )
 
 
 def _zero_value_means_missing_for_latest_selection(
