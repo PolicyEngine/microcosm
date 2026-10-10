@@ -3539,22 +3539,59 @@ def _authority_receipt(
     }
 
 
+#: Target families the pool gained after the canonical v11 authority. The
+#: attested schema-9 pools were sealed before them, so the v11 reconstruction
+#: those pools are scored against leaves them out.
+_POST_V11_AUTHORITY_TARGET_FAMILIES: frozenset[tuple[str, str]] = frozenset(
+    {("person", "source_operator_esi_premiums")}
+)
+
+
+def _without_post_v11_target_families(surface: TargetFamilies) -> TargetFamilies:
+    """Drop the families a v11 authority could not have declared."""
+
+    return {
+        entity: {
+            family: tuple(targets)
+            for family, targets in families.items()
+            if (entity, family) not in _POST_V11_AUTHORITY_TARGET_FAMILIES
+        }
+        for entity, families in surface.items()
+    }
+
+
 def _legacy_stacked_authority_receipt() -> dict[str, object]:
     """Reconstruct the canonical v11 authority for attested schema-9 scoring."""
 
     authority = _make_stacked_authority(
         authority_id=_STACKED_AUTHORITY_ID,
         version=11,
-        gap_fill_plan=_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR,
-        post_puf_transfer_surface=(_CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR),
-        post_puf_puf_producer_surface=(
+        gap_fill_plan=tuple(
+            replace(
+                direction,
+                target_families=_without_post_v11_target_families(
+                    direction.target_families
+                ),
+            )
+            for direction in _CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR
+        ),
+        post_puf_transfer_surface=_without_post_v11_target_families(
+            _CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE_ANCHOR
+        ),
+        post_puf_puf_producer_surface=_without_post_v11_target_families(
             _CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE_ANCHOR
         ),
-        post_puf_source_producer_surface=(
+        post_puf_source_producer_surface=_without_post_v11_target_families(
             _CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE_ANCHOR
         ),
-        declared_surface=_CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR,
-        metric_registry=_CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+        declared_surface=_without_post_v11_target_families(
+            _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR
+        ),
+        metric_registry={
+            key: metric
+            for key, metric in _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR.items()
+            if key[:2] not in _POST_V11_AUTHORITY_TARGET_FAMILIES
+        },
         joint_metric_registry=_CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY_ANCHOR,
         support_profile=_CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE_ANCHOR,
         late_producer_schedule=legacy_us_late_producer_schedule_receipt(),
