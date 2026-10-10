@@ -75,7 +75,7 @@ def test_batched_engines_partition_release_and_order_their_work(
     validation = consumers["reform_validation"].record()
     demographics = consumers["demographics"].record()
     probes = len(us_release_reform_coverage_probes())
-    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 43
+    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 42
     assert validation["reform_systems"] == validation["reform_passes"] > 0
     assert demographics["reform_systems"] == demographics["reform_passes"] == 0
     assert all(engine.reform is None for engine in constructions)
@@ -1377,7 +1377,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
 ) -> None:
     sweep = _load_sweep_module()
     plans, requests, counts = sweep._record_requests(builder)
-    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 43
+    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 42
     specs = reform_validation_module.load_default_reform_specs(period=builder.PERIOD)
     assert counts["validation_specs"] == sum(not spec.in_sample for spec in specs) == 52
     assert (
@@ -1421,7 +1421,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert (
         len(requests)
         == counts["smoke_probes"] + counts["validation_reform_passes"]
-        == 109
+        == 108
     )
 
     frame, log = _nested_frame(), _EngineLog()

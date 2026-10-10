@@ -591,8 +591,10 @@ def test_esi_employer_premium_is_owned_by_its_own_stage_not_proxied_here() -> No
         "NOW_HIPAID",
         "NOW_GRPFTYP",
         "NOW_GRPFTYP2",
-        "PHIP_VAL",
     } <= source_columns
+    # The employer premium never reads the reported premium: PHIP_VAL stays
+    # this stage's source alone.
+    assert "PHIP_VAL" not in source_columns
     forbidden_proxies = {"has_esi", "NOW_GRP", "is_esi_dependent", "tax_unit_size"}
     assert forbidden_proxies.isdisjoint(source_columns)
     assert not any(
