@@ -1554,7 +1554,14 @@
             "2025-10",
             "2025-11",
             "2025-12"
-          ]
+          ],
+          "dimension_values": {
+            "number_of_children": [
+              3,
+              4,
+              "5 or more"
+            ]
+          }
         },
         "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.3plus_children"
@@ -28416,7 +28423,14 @@
           "2025-10",
           "2025-11",
           "2025-12"
-        ]
+        ],
+        "dimension_values": {
+          "number_of_children": [
+            3,
+            4,
+            "5 or more"
+          ]
+        }
       },
       "category_id": "dwp.universal_credit",
       "label": "Households by area children 3 or more",

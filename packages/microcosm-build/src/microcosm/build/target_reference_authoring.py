@@ -827,6 +827,7 @@ def target_references_resource(
                         "monthly_window_count_x_mean",
                         "linear_combination",
                         "scaled_by_ratio",
+                        "rolled_forward_by_ratio",
                         "calendar_year_window",
                     }
                 }
