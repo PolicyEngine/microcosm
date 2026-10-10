@@ -176,3 +176,41 @@ def test_the_joint_pass_may_not_rescale_a_national_row_again():
         assert_uk_national_rows_unmoved(_joint_receipt("region", 1.1))
     assert_uk_national_rows_unmoved(_joint_receipt("region", 1.0 + 1e-12))
     assert_uk_national_rows_unmoved(_joint_receipt("constituency", 1.1))
+
+
+def test_the_uk_composition_takes_the_nations_household_sum():
+    """#1123, nations win: the composition partition keeps its shares and
+    scales onto the nations' official estimates summed."""
+
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        _apply_sum_bridges,
+        uk_sum_bridges,
+    )
+
+    (bridge,) = uk_sum_bridges()
+    specs = [
+        _spec(f"{target_id}@x", target_id, value)
+        for target_id, value in zip(
+            bridge.higher_target_ids, (240.0, 14.0, 26.0, 8.0), strict=True
+        )
+    ] + [
+        _spec(f"{target_id}@K02000001", target_id, 28.0)
+        for target_id in bridge.lower_target_ids
+    ]
+    (receipt,) = _apply_sum_bridges(specs, (bridge,))
+    lower = [spec.value for spec in specs[len(bridge.higher_target_ids) :]]
+    assert math.fsum(lower) == pytest.approx(288.0)
+    assert receipt["declared_factor"] == pytest.approx(288.0 / 280.0)
+    assert len(set(lower)) == 1
+
+
+def test_a_partly_bound_sum_bridge_is_refused():
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        _apply_sum_bridges,
+        uk_sum_bridges,
+    )
+
+    (bridge,) = uk_sum_bridges()
+    specs = [_spec("a", bridge.higher_target_ids[0], 1.0)]
+    with pytest.raises(ValueError, match="partly bound"):
+        _apply_sum_bridges(specs, (bridge,))

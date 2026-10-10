@@ -98,6 +98,7 @@ def uk_cross_grain_bridges(
             concept=str(entry["concept"]),
             higher_target_ids=tuple(str(value) for value in entry["higher_target_ids"]),
             lower_side=str(entry["lower_side"]),
+            per_geography=bool(entry.get("per_geography", False)),
         )
         for entry in declared["bridges"]
     )
@@ -247,6 +248,9 @@ def uk_cross_grain_overlap_candidates(
     for fanout in uk_fanout_sum_bridges(declarations):
         for side in (fanout.higher_target_id, fanout.lower_target_id):
             bridged.setdefault(side, set()).add(fanout.bridge_id)
+    for entry in declarations.get("sum_bridges", ()):
+        for side in (*entry["higher_target_ids"], *entry["lower_target_ids"]):
+            bridged.setdefault(str(side), set()).add(str(entry["bridge_id"]))
     incomplete = _incomplete_targets(declarations)
     by_measure: dict[tuple[Any, ...], list[str]] = {}
     for target_id, target in contract.items():
@@ -316,6 +320,9 @@ def uk_cross_grain_coverage_violations(
         for target_id in (fanout.higher_target_id, fanout.lower_target_id):
             known(target_id, f"fan-out sum bridge {fanout.bridge_id}")
         bridge_lower.add(fanout.lower_target_id)
+    for entry in declared.get("sum_bridges", ()):
+        for target_id in (*entry["higher_target_ids"], *entry["lower_target_ids"]):
+            known(str(target_id), f"sum bridge {entry['bridge_id']}")
     partition_members = set()
     for partition in partitions:
         for target_id in (partition.parent_target_id, *partition.member_target_ids):

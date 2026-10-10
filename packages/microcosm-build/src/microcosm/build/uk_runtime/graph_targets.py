@@ -60,7 +60,10 @@ from .ladder_targets import (
     ladder_target_provenance,
     ladder_vs_chronicle_household_dispersion,
 )
-from .ledger_targets import uk_census_household_uprating, uk_ledger_households_total
+from .ledger_targets import (
+    uk_census_household_uprating,
+    uk_nation_households_reference,
+)
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
 
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
@@ -262,9 +265,14 @@ def compile_uk_full_target_surface(
         ladder_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
     national = inputs["national_registry"]
     local = inputs["local_registry"]
+    # microcosm#1123: the census household cells are uprated to the nations'
+    # official estimates summed (the nation and region bridge then places the
+    # level per leg); the LFS UK total stays a diagnostic with its gap.
     uprating = uk_census_household_uprating(
         local,
-        uk_ledger_households_total(inputs["artifact"].facts, period=period),
+        uk_nation_households_reference(
+            national, inputs["artifact"].facts, period=period
+        ),
         period=period,
     )
     dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
