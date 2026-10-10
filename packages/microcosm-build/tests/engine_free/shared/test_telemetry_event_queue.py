@@ -619,6 +619,10 @@ def test_retry_reads_a_moving_deadline_after_every_lock_error(
 
     def operation():
         attempts.append(clock.now)
+        # Once the deadline is finite, at most window / (shortest wait) more
+        # attempts fit: 5 s / 0.025 s. A helper that kept an old reading of
+        # infinity would retry a spool that stays locked forever.
+        assert len(attempts) <= finite_from + 250, "the deadline was not re-read"
         kind = outcomes[min(len(attempts) - 1, len(outcomes) - 1)]
         clock.now += 0.01
         if kind == "locked":
