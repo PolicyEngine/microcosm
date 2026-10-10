@@ -49,8 +49,21 @@ until you restart the kernel, load it by path with
 Supported US and UK build commands always start the local telemetry emitter
 service. It reports live progress to the hosted collector when the operator's
 existing Hugging Face login is accepted; otherwise it retains the events
-locally and the build continues. This live event path is independent of the
-staging run files described below.
+locally and the build continues. Every build on a host shares one local
+event spool; a service that finds it locked by another process waits for it
+until shortly before the build stops waiting. One that still cannot register
+prints one warning line, without a traceback, and the build adds its own
+warning and runs without telemetry, hosted or local. Once it is running, the
+service replies to each event as soon as the event is queued in its memory,
+and a separate writer thread appends queued events to the spool in the order
+they arrived, retrying for as long as another process holds the spool's lock,
+so a busy spool never delays the build. The queue holds at most 10,000 events
+or 16 MiB, keeping room for the run's started, completed, failed and blocked
+events; when it is full the service refuses further updates and prints one
+warning line. When the build closes or dies, the service spends up to 15 s
+writing what is still queued and reports in one line anything it could not
+write. This live event path is independent of the staging run files described
+below.
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. Progress JSON is uploaded to `policyengine/populace-us-staging`

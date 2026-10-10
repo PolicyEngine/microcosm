@@ -61,8 +61,8 @@ from microcosm.build.telemetry_sanitization import (
 def _recent_timestamp() -> str:
     """A stored-row timestamp inside the spool's retention window.
 
-    The spool prunes rows older than ``RETENTION_DAYS`` when it opens, so a
-    fixed calendar date in a migrated-spool fixture expires a week later.
+    The service's delivery worker prunes rows older than ``RETENTION_DAYS``,
+    so a fixed calendar date in a migrated-spool fixture expires a week later.
     """
 
     return (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
@@ -632,7 +632,7 @@ class _FakeDelivery:
         return False
 
 
-def test_local_socket_acknowledges_after_durable_queue(
+def test_local_socket_acknowledges_a_queued_event_that_then_reaches_the_spool(
     tmp_path, real_local_telemetry
 ) -> None:
     socket_path = (
@@ -640,6 +640,7 @@ def test_local_socket_acknowledges_after_durable_queue(
     )
     spool = EventSpool(tmp_path / "events.sqlite3")
     registration = _registration()
+    spool.register(registration)
     emitter = EmitterService(
         socket_path=socket_path,
         registration=registration,
@@ -662,7 +663,12 @@ def test_local_socket_acknowledges_after_durable_queue(
         )
         assert client.recv(16) == b"ok\n"
 
-    assert spool.batch("run-a", "producer-a")[0]["resources"]["rss_bytes"] == 100
+    # "ok" means queued in memory; the writer thread stores it moments later.
+    deadline = time.monotonic() + 5
+    while not (stored := spool.batch("run-a", "producer-a")):
+        assert time.monotonic() < deadline, "the acknowledged event was not stored"
+        time.sleep(0.01)
+    assert stored[0]["resources"]["rss_bytes"] == 100
 
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.connect(str(socket_path))
