@@ -259,7 +259,20 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 BASE = Resources(
     "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
 )
-RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT, BASE)}
+# Route A's head-to-head: each spawned worker retains a full repaired frame.
+# The independent review's 9-10 GiB/worker is unmeasured: 20 * 10 GiB plus
+# 24 GiB for the parent and headroom, not a measured aggregate peak. At
+# 1,030 slices * 4.7 minutes / 20 workers the tool takes about 14,523 s.
+# 17,100 s leaves staging, the normal 900 s runner reserve and compute margin.
+# CPU is capped at the request; memory remains request-only like the other
+# classes. The non-preemptible ceiling at the request is $38.95 at timeout.
+HEAD_TO_HEAD = Resources(
+    "head-to-head", cpu=20.0, memory_mib=224 * 1024, timeout_s=17_100, cpu_limit=20.0
+)
+HEAD_TO_HEAD_COST_CAP_USD = 40.0
+RESOURCE_CLASSES = {
+    item.name: item for item in (CHECK, HEAVY, LIGHT, BASE, HEAD_TO_HEAD)
+}
 #: Max's cap for the base run (2026-09-29: non-preemptible, 4 hours, "about
 #: $15"). The base class's ceiling at its request (its timeout,
 #: non-preemptible, at list price) must not exceed it; a test holds this.
@@ -835,9 +848,73 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     stage_hash_seed_default=HASH_SEED,
 )
 
+
+def _release_head_to_head_argv(
+    plan: Plan, input_paths: Mapping[str, str], state_dir: str
+) -> list[str]:
+    return [
+        "--incumbent",
+        input_paths["incumbent_h5"],
+        "--candidate",
+        input_paths["candidate_h5"],
+        "--ledger-facts",
+        input_paths["ledger_facts"],
+        "--out-prefix",
+        str(PurePosixPath(state_dir) / "h2h"),
+    ]
+
+
+US_RELEASE_HEAD_TO_HEAD = ToolSpec(
+    name="us-release-head-to-head",
+    script="tools/score_us_release_head_to_head.py",
+    inputs=("incumbent_h5", "candidate_h5", "ledger_facts"),
+    stages={
+        "score": StageSpec(
+            "score",
+            HEAD_TO_HEAD,
+            ("incumbent_h5", "candidate_h5", "ledger_facts"),
+            mirror_first=("h2h.json", "h2h.md"),
+        )
+    },
+    options={
+        "workers": OptionFlag("--workers", int),
+        "maximum_microsim_batch_size": OptionFlag("--maximum-microsim-batch-size", int),
+        # Off unless a plan sets it; the scorer refuses it on interpreters
+        # where replacing a recycled worker can deadlock.
+        "worker_max_slices": OptionFlag("--worker-max-slices", int),
+    },
+    owned_flags=frozenset(
+        {
+            "--incumbent",
+            "--candidate",
+            "--ledger-facts",
+            "--out-prefix",
+            "--candidate-manifest-sha256",
+            "--candidate-worker-identity-attestation",
+            "--congressional-district-vintage-crosswalk",
+            # Omit both BooleanOptionalActions to preserve the local run's
+            # defaults (age_targets=False, allow_unaged_dollar_targets=True).
+            # Reserve both spellings so plans cannot change that yardstick.
+            "--age-targets",
+            "--no-age-targets",
+            "--allow-unaged-dollar-targets",
+            "--no-allow-unaged-dollar-targets",
+            # Only the canonical batch-size spelling is a plan option.
+            "--maximum-microsimulation-batch-size",
+        }
+    ),
+    argv_builder=_release_head_to_head_argv,
+    parse_function="_parse_args",
+)
+
 TOOLS: dict[str, ToolSpec] = {
     tool.name: tool
-    for tool in (US_ACS_LOCAL_RELEASE, RUNNER_SMOKE, US_PUF_SUPPORT_BASE)
+    for tool in (
+        US_ACS_LOCAL_RELEASE,
+        RUNNER_SMOKE,
+        US_PUF_SUPPORT_BASE,
+        US_RELEASE_HEAD_TO_HEAD,
+    )
 }
 
 
