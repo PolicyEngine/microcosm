@@ -636,3 +636,47 @@ def test_malformed_composite_metadata_is_refused(fresh, composite):
     contract["operations"]["survey"]["composite"] = composite
     with pytest.raises(ValueError, match="composite"):
         orrery_document(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
+
+
+def test_item_heavy_native_evidence_is_read_hashed_and_copied(fresh, tmp_path):
+    """A real spine manifest holds over a million small JSON items in 13 MB."""
+    from microcosm.graph.evidence import read_bytes, read_json
+    from microcosm.graph.presentation import PRESENTATION_EXTENSION
+
+    heavy = tmp_path / "manifest.json"
+    heavy.write_bytes(json.dumps({"receipts": [[0, 1]] * 1_500_000}).encode())
+    assert heavy.stat().st_size < 32 * 1024 * 1024
+    value, payload = read_json(heavy)
+    assert len(value["receipts"]) == 1_500_000
+    assert sha256(payload) == sha256(read_bytes(heavy))
+    record = {
+        "graph_declaration": {"path": str(heavy), "sha256": sha256(payload)},
+        "graph_manifest": {"path": str(heavy), "sha256": sha256(payload)},
+    }
+    refs, missing = checkpoint_references(record, base=tmp_path)
+    assert len(refs) == 2 and missing is None
+    contract = presentation(fresh.compiled)
+    contract["scope"]["boundaries"] = [
+        {"operation": "survey", "kind": "checkpoint", "upstream": refs}
+    ]
+    saved = save_graph_schema(fresh.compiled, tmp_path / "out", presentation=contract)
+    copied = json.loads(saved.read_bytes())["extensions"][PRESENTATION_EXTENSION]
+    url = copied["scope"]["boundaries"][0]["upstream"][0]["url"]
+    assert (saved.parent / url).read_bytes() == payload
+
+
+@pytest.mark.parametrize(
+    "text, message",
+    [
+        ("[NaN]", "finite"),
+        ("[" * 70 + "]" * 70, "nesting"),
+        ('{"a": 1, "a": 2}', "duplicate"),
+    ],
+)
+def test_native_evidence_reader_refuses_malformed_json(tmp_path, text, message):
+    from microcosm.graph.evidence import read_json
+
+    path = tmp_path / "bad.json"
+    path.write_text(text)
+    with pytest.raises(ValueError, match=message):
+        read_json(path)

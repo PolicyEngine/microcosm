@@ -52,7 +52,13 @@ from .store import ContentStore
 BINDING_PROTOCOL = "microcosm.graph.run-binding.v1"
 EVIDENCE_INPUT_PROTOCOL = "microcosm.graph.execution-input.v1"
 EXECUTION_PROTOCOL = "microcosm.graph.execution-evidence.v1"
-_MAX_BYTES = 32 * 1024 * 1024
+# Native evidence files are exact copies of run manifests and graphs, which a
+# real build already holds in memory; they are bounded by bytes and nesting
+# depth only. The per-item complexity charge of the compiler-schema reader is
+# not applied here: a licensed spine manifest has over a million JSON items in
+# 13 MB and must remain loadable and hashable.
+_MAX_BYTES = 1024 * 1024 * 1024
+_MAX_DEPTH = 64
 _SUMMARY_FIELDS = frozenset({"node", "artifact", "key", "type", "data"})
 _LOG = logging.getLogger(__name__)
 
@@ -73,8 +79,23 @@ def _unique(pairs):
     return result
 
 
-def read_json(path: Path) -> tuple[object, bytes]:
-    """Bounded regular-file reader used for all native evidence inputs."""
+def _reject_constant(_value: str) -> None:
+    raise ValueError("Graph evidence: evidence input requires finite JSON numbers.")
+
+
+def _bounded_depth(value: object) -> None:
+    pending = [(value, 0)]
+    while pending:
+        item, depth = pending.pop()
+        require(depth <= _MAX_DEPTH, "evidence input nesting limit")
+        if type(item) is list:
+            pending.extend((child, depth + 1) for child in item)
+        elif type(item) is dict:
+            pending.extend((child, depth + 1) for child in item.values())
+
+
+def read_bytes(path: Path) -> bytes:
+    """Bounded regular-file reader for hashing or copying native evidence."""
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -82,8 +103,21 @@ def read_json(path: Path) -> tuple[object, bytes]:
         require(info.st_size <= _MAX_BYTES, "evidence input byte limit")
         payload = stream.read(_MAX_BYTES + 1)
     require(len(payload) <= _MAX_BYTES, "evidence input byte limit")
-    value = json.loads(payload, object_pairs_hook=_unique)
-    return _plain_json(value), payload
+    return payload
+
+
+def read_json(path: Path) -> tuple[object, bytes]:
+    """Bounded regular-file reader used for all native evidence inputs.
+
+    Duplicate keys, non-finite numbers and nesting beyond the depth limit are
+    refused; item count is not charged, only bytes.
+    """
+    payload = read_bytes(path)
+    value = json.loads(
+        payload, object_pairs_hook=_unique, parse_constant=_reject_constant
+    )
+    _bounded_depth(value)
+    return value, payload
 
 
 @dataclass(frozen=True)
@@ -752,7 +786,7 @@ def checkpoint_references(
             missing.append(f"{label} bytes unavailable (sha256 {recorded})")
             continue
         require(
-            sha256(read_json(path)[1]) == recorded,
+            sha256(read_bytes(path)) == recorded,
             f"recorded checkpoint {label.lower()} digest mismatch",
         )
         refs.append({"label": label, "url": str(path.resolve()), "sha256": recorded})
@@ -790,7 +824,7 @@ def save_graph_schema(
                 source = Path(url)
                 if not source.is_absolute() or not source.is_file():
                     continue
-                payload = read_json(source)[1]
+                payload = read_bytes(source)
                 require(
                     sha256(payload) == digest(ref.get("sha256")),
                     "checkpoint reference changed during capture",
@@ -864,7 +898,7 @@ def publish_run_evidence(
                     "restore it or clear the published evidence",
                 )
                 require(
-                    sha256(read_json(target)[1]) == digest(ref["sha256"]),
+                    sha256(read_bytes(target)) == digest(ref["sha256"]),
                     f"published evidence file {relative} no longer matches its digest",
                 )
             runs.append(entry)
@@ -880,7 +914,7 @@ def publish_run_evidence(
             filename = (
                 f"{prefix}-{entry['attempt_id']}-{relative.parent.name}-{field}.json"
             )
-            payload = read_json(index_path.parent / relative)[1]
+            payload = read_bytes(index_path.parent / relative)
             require(
                 sha256(payload) == digest(entry[field]["sha256"]),
                 "native phase evidence changed during capture",
