@@ -336,13 +336,14 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
     ]
     # 24 local targets before microcosm#929; the three council-tax families
     # add 25 by_area targets and retire eight, and the City's band A is no
-    # longer a separate suppression.
-    assert len(rows) == 41
-    assert sum(len(row["area_ids"]) for row in rows) == 78
+    # longer a separate suppression. microcosm#1123 adds the higher rate
+    # taxpayer cells (Scilly's is signed under the SPI coverage gap).
+    assert len(rows) == 42
+    assert sum(len(row["area_ids"]) for row in rows) == 79
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 37, "E09000001": 41}
+    } == {"E06000053": 37, "E09000001": 42}
     assert all(row["defer_if_compiles"] is True for row in rows)
     # The English band-H family is wholly deferred on spine support, so it
     # carries no support-floor row; the Welsh and Scottish band-H targets do
@@ -381,13 +382,13 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
         for row in declarations
         if row.reason_id == "local_authority_support_floor_excluded"
     ]
-    assert len(support) == 41
-    assert sum(len(row.area_ids) for row in support) == 78
+    assert len(support) == 42
+    assert sum(len(row.area_ids) for row in support) == 79
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 37, "E09000001": 41}
+    assert by_area == {"E06000053": 37, "E09000001": 42}
     assert all(row.defer_if_compiles for row in support)
     assert "mhclg.council_tax_stock.by_area.band_h" not in {
         row.target_id for row in support

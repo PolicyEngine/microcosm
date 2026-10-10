@@ -45,6 +45,7 @@ PROJECTION_FAMILIES = {
     "slc_borrowers",
     "scotgov_social_security",
     "hmrc_itl",
+    "hmrc_itl_marginal_rate",
     "dwp_benefit_expenditure",
 }
 NATIONAL_SELECTOR_KEYS = {
@@ -216,7 +217,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
     # pension-age Housing Benefit spending; microcosm#1123 adds the four nation
     # household controls (LFS English regions, NRS, Welsh Government, NI).
-    assert len(resource["targets"]) == 396
+    assert len(resource["targets"]) == 399
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -230,10 +231,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 345
-    assert len(profile_scope) == 51
-    assert target_ids[:345] == registry_scope
-    assert target_ids[345:] == profile_scope
+    assert len(registry_scope) == 347
+    assert len(profile_scope) == 52
+    assert target_ids[:347] == registry_scope
+    assert target_ids[347:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -247,7 +248,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     assert len(mapped_target_ids) == 192
-    assert len(unmapped_declarations) == 153
+    assert len(unmapped_declarations) == 155
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -266,9 +267,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 51
+    assert parity["contract_target_count"] == 52
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 26
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 27
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -366,7 +367,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 396
+    assert len(target_ids) == 399
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -638,8 +639,8 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 18
-    assert len(metric_names_from_target_profile(resource, "la")) == 31
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 19
+    assert len(metric_names_from_target_profile(resource, "la")) == 32
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -843,7 +844,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 396
+    assert len(targets) == 399
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

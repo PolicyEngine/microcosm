@@ -753,6 +753,8 @@
       "hmrc.itl.taxpayers_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle (income_tax_liabilities_july_2026): taxpayers by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds SPI 2023-24 component counts only (PolicyEngine/chronicle#280 lane).",
       "hmrc.itl.total_income_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: total income by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry has no total-income anchor (PolicyEngine/chronicle#280 lane).",
       "hmrc.itl.income_tax_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: Income Tax liabilities by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds the OBR receipts total only (PolicyEngine/chronicle#280 lane).",
+      "hmrc.itl.higher_rate_taxpayers": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.2, July 2026, in Chronicle: Income Tax payers by marginal rate for each English region and nation, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1123).",
+      "hmrc.itl.additional_rate_taxpayers": "Post-freeze fact family (HMRC Income Tax liabilities statistics Table 2.2, July 2026, in Chronicle: Income Tax payers by marginal rate for each English region and nation, the calendar-2025 window of the 2024-25 and 2025-26 projections), no uk-data metric (microcosm#1123).",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest from banks and building societies in Chronicle (spi_income_bands_2023_24); the incumbent registry deliberately excludes savings interest from its SPI targets (uk-data incomes_projection.py) and binds the ONS D.41 row instead (microcosm#866, #280 lane).",
       "hmrc.spi.savings_interest_income.count_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest recipient counts in Chronicle (spi_income_bands_2023_24); the incumbent registry has no savings-interest count target (microcosm#866, #280 lane).",
       "hmrc.spi_region.taxpayers_by_region_12570_15000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
@@ -1135,6 +1137,8 @@
       "hmrc.itl.taxpayers_by_total_income_band",
       "hmrc.itl.total_income_by_total_income_band",
       "hmrc.itl.income_tax_by_total_income_band",
+      "hmrc.itl.higher_rate_taxpayers",
+      "hmrc.itl.additional_rate_taxpayers",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "hmrc.spi.savings_interest_income.count_by_total_income_band",
       "hmrc.spi_region.taxpayers_by_region_12570_15000",
@@ -1224,7 +1228,7 @@
     "source_schema_version": "policyengine_ledger.target_profile.v1",
     "source_profile_id": "uk_local_geography",
     "source_target_count": 25,
-    "contract_target_count": 51,
+    "contract_target_count": 52,
     "corrected_rows": 25,
     "corrected": [
       {
@@ -1673,7 +1677,7 @@
         "reason": "Narrowed to the private-rent local-area record-set spec; non-English/masked absences are signed by the area compiler."
       }
     ],
-    "activation_added_rows": 26,
+    "activation_added_rows": 27,
     "activation_additions": [
       {
         "target_id": "ons.census.households",
@@ -1778,6 +1782,10 @@
       {
         "target_id": "scotgov.council_tax_stock.by_area.band_h",
         "basis": "microcosm#929; pinned Scottish Government CTAXBASE chargeable dwellings by band and council area"
+      },
+      {
+        "target_id": "hmrc.higher_rate_taxpayers.count",
+        "basis": "microcosm#1123; pinned HMRC SPI 2023-24 Tables 3.14 and 3.15 higher rate taxpayers by constituency and local authority, England, Wales and Northern Ireland"
       }
     ],
     "scope_target_ids": [
@@ -1831,7 +1839,8 @@
       "scotgov.council_tax_stock.by_area.band_e",
       "scotgov.council_tax_stock.by_area.band_f",
       "scotgov.council_tax_stock.by_area.band_g",
-      "scotgov.council_tax_stock.by_area.band_h"
+      "scotgov.council_tax_stock.by_area.band_h",
+      "hmrc.higher_rate_taxpayers.count"
     ]
   },
   "targets": [
@@ -19154,6 +19163,134 @@
       "label": "Income Tax liabilities by total income band"
     },
     {
+      "target_id": "hmrc.itl.higher_rate_taxpayers",
+      "family": "hmrc_itl_marginal_rate",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.marginal_rate",
+            "equals": "higher"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/higher",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "tax_band",
+              "operator": "==",
+              "value": "HIGHER"
+            }
+          ],
+          "notes": "Higher rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band does the same on adjusted net income less allowances. From 2024-25 Scotland's higher row is the Scottish higher rate alone, as the engine's HIGHER band is for a Scottish taxpayer. microcosm#1123."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/higher",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Higher rate Income Tax payers by region and nation"
+    },
+    {
+      "target_id": "hmrc.itl.additional_rate_taxpayers",
+      "family": "hmrc_itl_marginal_rate",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.marginal_rate",
+            "equals": "additional"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/additional",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "tax_band",
+              "operator": "==",
+              "value": "ADDITIONAL"
+            }
+          ],
+          "notes": "Additional rate Income Tax payers, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window) from Income Tax liabilities statistics Table 2.2 (July 2026). HMRC classes a taxpayer by the highest rate paid on any income; the engine's tax_band does the same on adjusted net income less allowances. From 2024-25 Scotland's additional row is the Scottish advanced and top rates together, as the engine's ADDITIONAL band is for a Scottish taxpayer (the advanced rate began in 2024-25, so the 2023-24 row is the top rate alone). microcosm#1123."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_taxpayers_marginal_rate/additional",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Additional rate Income Tax payers by region and nation"
+    },
+    {
       "target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "family": "hmrc_spi",
       "geography_levels": [
@@ -30521,6 +30658,82 @@
           ]
         }
       }
+    },
+    {
+      "target_id": "hmrc.higher_rate_taxpayers.count",
+      "family": "hmrc",
+      "geography_levels": [
+        "constituency",
+        "local_authority"
+      ],
+      "area_scope": {
+        "constituency": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "N"
+          ]
+        },
+        "local_authority": {
+          "gss_prefixes": [
+            "E",
+            "W",
+            "N"
+          ]
+        }
+      },
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.marginal_rate",
+            "equals": "higher"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/higher_rate_taxpayers/count",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "tax_band",
+              "operator": "==",
+              "value": "HIGHER"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/higher_rate_taxpayers/count",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_measure_id": "higher_rate_count",
+        "record_set_spec_id": [
+          "uk.local_geography.spi_income.by_constituency.v1",
+          "uk.local_geography.spi_income.by_local_authority.v1"
+        ]
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Higher rate taxpayers",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), higher rate taxpayers, the latest edition (2024-25 due early 2027). England, Wales and Northern Ireland only (area_scope): the Scottish cells of 2023-24 predate the Scottish advanced rate, which HMRC counts as additional from 2024-25, so their split cannot be carried to 2025. Each region or nation's Table 2.2 row for calendar 2025 (hmrc.itl.higher_rate_taxpayers) sets the level of its area cells through a per-geography bridge; the cells keep their 2023-24 shares within it (a control_rescaled hold). At source the area cells sum to within 1.2% of each Table 2.2 row for 2023-24, at both grains (microcosm#1123). The additional-rate area cells are not bound: rounded to the thousand and suppressed in 85 constituencies, they cannot sum to their controls."
     }
   ],
   "diagnostic_references": {

@@ -40,6 +40,16 @@
       "reason": "Each nation's official household estimate controls its census household cells (microcosm#1123, nations win): the LFS 2025 rows for the nine English regions, NRS 2025 for Scotland, Welsh Government mid-2024 rolled to 2025 for Wales, Census 2021 rolled by LPS dwelling stock for Northern Ireland. Each row covers its own legs; the census cells keep their shares within a leg."
     },
     {
+      "bridge_id": "itl_higher_rate_taxpayers_vs_area",
+      "concept": "uk.person.count",
+      "higher_target_ids": [
+        "hmrc.itl.higher_rate_taxpayers"
+      ],
+      "lower_side": "contract:hmrc.higher_rate_taxpayers.count",
+      "per_geography": true,
+      "reason": "Each English region's and nation's Table 2.2 higher rate taxpayer row for calendar 2025 controls its SPI 2023-24 area cells, which keep their shares within it (microcosm#1123). Scotland's row has no area cells: its 2023-24 cells predate the Scottish advanced rate (area_scope E, W, N)."
+    },
+    {
       "bridge_id": "national_uc_caseload_vs_uc_households_by_area",
       "concept": "uk.benefit_unit.count",
       "higher_target_ids": [
@@ -728,6 +738,30 @@
       ],
       "relation": "subset",
       "reason": "Taxpayers with self-employment income in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells take their level from the SPI band partition through their fan-out sum bridge."
+    },
+    {
+      "targets": [
+        "hmrc.higher_rate_taxpayers.count",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "reason": "Higher rate taxpayers in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells take their level from the Table 2.2 region and nation rows through their per-geography bridge (microcosm#1123)."
+    },
+    {
+      "targets": [
+        "hmrc.itl.additional_rate_taxpayers",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "reason": "Additional rate taxpayers by region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1123)."
+    },
+    {
+      "targets": [
+        "hmrc.itl.higher_rate_taxpayers",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "reason": "Higher rate taxpayers by region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1123)."
     }
   ],
   "signature_incomplete": [

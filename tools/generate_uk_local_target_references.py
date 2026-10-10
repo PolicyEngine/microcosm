@@ -451,6 +451,7 @@ def _area_signed_deferrals(
         "hmrc.self_employment_income.count",
         "hmrc.employment_income.amount",
         "hmrc.employment_income.count",
+        "hmrc.higher_rate_taxpayers.count",
     ):
         add(
             target_id=target_id,

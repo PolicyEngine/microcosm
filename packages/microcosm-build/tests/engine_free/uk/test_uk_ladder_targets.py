@@ -195,6 +195,7 @@ def test_households_metric_is_in_the_computed_surface() -> None:
             "self_employment_income": [0.0, 100.0, 0.0, 50.0],
             "employment_income": [10.0, 20.0, 0.0, 30.0],
             "income_tax": [1.0, 0.0, 2.0, 3.0],
+            "tax_band": ["HIGHER", "NONE", "BASIC", "NONE"],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
             "is_uc_claimant": [False, True, True, False],
