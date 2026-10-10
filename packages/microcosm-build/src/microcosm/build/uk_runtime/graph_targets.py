@@ -61,8 +61,10 @@ from .ladder_targets import (
     ladder_vs_chronicle_household_dispersion,
 )
 from .ledger_targets import (
+    load_uk_local_target_reference_membership,
     uk_census_household_uprating,
     uk_nation_households_reference,
+    uk_small_cell_deferred_cells,
 )
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
 
@@ -286,6 +288,9 @@ def compile_uk_full_target_surface(
         area_region_codes=uk_area_region_codes(ladder),
         fanout_sum_controls=(inputs.get("national_reconciliation") or {}).get(
             "fanout_sum_controls"
+        ),
+        deferred_cells=uk_small_cell_deferred_cells(
+            load_uk_local_target_reference_membership()
         ),
     )
     assert_uk_national_rows_unmoved(reconciliation)

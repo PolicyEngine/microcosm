@@ -1006,6 +1006,7 @@ class TestUKCountryPackage:
             "target_doctrine_exceptions.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "local_small_cell_rule.json",
         )
 
     def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
@@ -1138,6 +1139,7 @@ class TestExistingPackagesGeneralize:
             "target_doctrine_exceptions.json",
             "uprating_holds.json",
             "ons_spree_tenure_dwellings.json",
+            "local_small_cell_rule.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:

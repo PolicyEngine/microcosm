@@ -23,9 +23,11 @@ from microcosm.build.uk_runtime.chronicle_feed import (
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import (
+    assert_uk_local_deferrals_in_force,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
+    load_uk_local_target_reference_membership,
 )
 from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.build.uk_runtime.measure_simulation import (
@@ -215,6 +217,9 @@ def load_uk_full_target_inputs(
         register_registry=national_registry,
         band_edge_registry=band_edges,
         exclusion_receipt=exclusion_receipt,
+    )
+    assert_uk_local_deferrals_in_force(
+        load_uk_local_target_reference_membership(), evaluated_on
     )
     uprating_holds = {
         # The full compiled register, not the approved one: a measure

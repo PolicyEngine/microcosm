@@ -872,6 +872,69 @@ def load_uk_local_target_reference_membership() -> dict[str, Any]:
     )
 
 
+UK_LOCAL_SMALL_CELL_RULE_RESOURCE = "local_small_cell_rule.json"
+
+
+def uk_small_cell_deferred_cells(
+    membership: Mapping[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    """The cells the small-cell rule deferred, with their compiled values.
+
+    The joint surface adds them to the reconciliation frame only: they take
+    their share of their leg's control and never reach the solve, so deferring
+    a cell does not inflate its neighbours (microcosm#1123 item 7).
+    """
+
+    rule_ids = {
+        str(rule["rule_id"])
+        for rule in json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(UK_LOCAL_SMALL_CELL_RULE_RESOURCE)
+            .read_text(encoding="utf-8")
+        )["rules"]
+    }
+    cells = []
+    for target_id, target in sorted(membership.get("targets", {}).items()):
+        for level, payload in sorted(target["geography_levels"].items()):
+            for candidate in payload["candidates"]:
+                if (
+                    candidate.get("status") == "signed_deferred"
+                    and candidate.get("signed_reason_id") in rule_ids
+                    and candidate.get("deferred_value") is not None
+                ):
+                    cells.append(
+                        {
+                            "target_id": target_id,
+                            "geography_level": level,
+                            "geography_id": str(candidate["geography_id"]),
+                            "value": float(candidate["deferred_value"]),
+                        }
+                    )
+    return tuple(cells)
+
+
+def assert_uk_local_deferrals_in_force(
+    membership: Mapping[str, Any],
+    evaluated_on: Any,
+) -> None:
+    """Refuse a signed area deferral past its declared expiry."""
+
+    from datetime import date
+
+    expired = sorted(
+        f"{deferral['target_id']}@{deferral['geography_level']}"
+        for deferral in membership.get("signed_deferrals", ())
+        if deferral.get("expires_on")
+        and date.fromisoformat(str(deferral["expires_on"])) < evaluated_on
+    )
+    if expired:
+        raise ValueError(
+            f"UK local signed deferrals expired before {evaluated_on}: {expired}. "
+            "Renew the rule in uk/local_small_cell_rule.json and regenerate the "
+            "local references (microcosm#1123)."
+        )
+
+
 def _uk_licensed_empty_legs_from_membership(
     membership: Mapping[str, Any],
     *,
@@ -2067,6 +2130,7 @@ def uk_local_target_surface(
     census_household_uprating: Mapping[str, Any] | None = None,
     area_region_codes: Mapping[str, str] | None = None,
     fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None = None,
+    deferred_cells: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface.
 
@@ -2334,6 +2398,20 @@ def uk_local_target_surface(
         output_rows, fanout_sum_controls
     )
     reconciliation_rows.extend(fanout_rows)
+    # Small-cell deferrals (#1123 item 7) take their share of their leg's
+    # control in the reconciliation and are dropped from the output.
+    reconciliation_rows.extend(
+        {
+            "grain": "la"
+            if cell["geography_level"] == "local_authority"
+            else str(cell["geography_level"]),
+            "geography_id": str(cell["geography_id"]),
+            "target_id": f"contract:{cell['target_id']}",
+            "value": float(cell["value"]),
+            "_output_position": None,
+        }
+        for cell in deferred_cells
+    )
     bound_control_ids = (
         *bound_control_ids,
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
