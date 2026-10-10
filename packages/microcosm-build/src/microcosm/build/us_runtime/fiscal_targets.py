@@ -10,6 +10,7 @@ columns.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
@@ -350,6 +351,7 @@ _SOI_STATE_AGI_BAND_MEASURES = frozenset({"return_count", "adjusted_gross_income
 _SOI_STATE_AGI_BAND_RECORD_SET_PREFIX = "irs_soi.historic_table_2.state_agi."
 _SOI_STATE_AGI_BAND_CONTROL_RECORD_SET_PREFIX = "irs_soi.historic_table_2.state_broad."
 _SOI_STATE_AGI_BAND_REBASE_FLAG = "requires_state_agi_band_rebase"
+_SOI_STATE_AGI_BAND_RECORD_SET_KEY = "state_agi_band_record_set"
 _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
 _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
     {
@@ -1056,11 +1058,7 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
-    registry = _rebase_soi_state_agi_bands(
-        registry,
-        materialized_facts,
-        target_period=target_period,
-    )
+    registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
         registry,
         _load_us_fiscal_target_profile(),
@@ -1987,8 +1985,6 @@ def _soi_total_uprating_index(measure_id: str) -> str:
 def _rebase_soi_state_agi_bands(
     registry: TargetRegistry,
     facts: tuple[object, ...],
-    *,
-    target_period: int | str,
 ) -> TargetRegistry:
     """Bind state HT2 AGI bands as shares of the state total that binds (#940).
 
@@ -2006,9 +2002,10 @@ def _rebase_soi_state_agi_bands(
       same vintage, measure and record set over the whole AGI line (under $1
       to $1M+). HT2 publishes amounts additively exactly and counts rounded
       to tens, so the shares over one partition sum to one.
-    * ``control`` is the state's HT2 all-returns total of the latest vintage
-      not after the target period: the ``state_broad`` fact that already
-      binds as the state's return count or AGI. Congressional-district
+    * ``control`` is the state's HT2 ``state_broad`` all-returns total as the
+      registry binds it: the selected, non-excluded row, so a band's share of
+      the total it calibrates beside is the share it records. A state whose
+      total does not bind has no control. Congressional-district
       ``<st>_total`` rows are a processing-window subset stamped with the
       wrong vintage and never anchor a state.
 
@@ -2018,13 +2015,11 @@ def _rebase_soi_state_agi_bands(
     the latest published shares scale onto the level the state total binds
     at, which keeps the two consistent instead of mixing levels.
 
-    One vintage per state and measure: the newest vintage whose published
-    partition is complete binds, and every other vintage's rows are dropped,
-    so a collapsed ``500k_plus`` row from one year never binds beside another
-    year's split ``500k_to_1m``/``1m_plus`` rows. A newest vintage with a gap
-    falls back to the next complete one. With no complete partition or no
-    control a state's bands are dropped, never shipped as unanchored nominal
-    levels; the ``irs_state_agi_top_tail`` release requirement then fails.
+    The vintage is chosen before this pass, in latest-vintage selection
+    (:func:`_with_one_state_agi_band_vintage`), so the exclusion vintage guard
+    and receipt see only the band ids that can bind. A state with no control
+    has its bands dropped, never shipped as unanchored nominal levels; the
+    per-state ``irs_state_agi_top_tail_*`` release requirements then fail.
     """
 
     flagged = [
@@ -2034,32 +2029,35 @@ def _rebase_soi_state_agi_bands(
     ]
     if not flagged:
         return registry
-    controls = _soi_state_agi_band_controls(facts, target_period=target_period)
+    controls = _soi_state_agi_band_controls(registry)
     band_rows = _soi_state_agi_band_rows(facts)
-    candidates: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    vintages: dict[tuple[str, str], set[tuple[str, str]]] = {}
     for spec in flagged:
-        candidates.setdefault(_soi_state_agi_band_key_from_spec(spec), set()).add(
-            _soi_state_agi_band_vintage_from_spec(spec)
+        vintages.setdefault(_state_agi_band_key(spec.metadata), set()).add(
+            _state_agi_band_vintage(spec.metadata)
         )
-    chosen: dict[tuple[str, str], tuple[tuple[str, str], float]] = {}
-    for key, vintages in candidates.items():
-        if key not in controls:
-            continue
-        selected = _latest_complete_state_agi_band_vintage(key, vintages, band_rows)
-        if selected is not None:
-            chosen[key] = selected
+    partitions: dict[tuple[str, str], float] = {}
+    for key, kept in vintages.items():
+        if len(kept) != 1:
+            raise ValueError(
+                f"State {key[0]} {key[1]} reached the AGI band rebase with more "
+                f"than one vintage: {sorted(kept)}; latest-vintage selection "
+                "keeps one (microcosm#940)."
+            )
+        group = (*key, *next(iter(kept)))
+        partition = _state_agi_band_partition_total(group, band_rows.get(group, ()))
+        if partition:
+            partitions[key] = partition
 
     specs: list[TargetSpec] = []
     for spec in registry.specs:
         if spec.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) != "true":
             specs.append(spec)
             continue
-        key = _soi_state_agi_band_key_from_spec(spec)
-        if key not in chosen:
+        key = _state_agi_band_key(spec.metadata)
+        if key not in partitions or key not in controls:
             continue
-        vintage, partition = chosen[key]
-        if _soi_state_agi_band_vintage_from_spec(spec) != vintage:
-            continue
+        partition = partitions[key]
         control = controls[key]
         source_period = spec.metadata.get("source_period", "")
         share = spec.value / partition
@@ -2086,77 +2084,136 @@ def _rebase_soi_state_agi_bands(
     return TargetRegistry(specs, country=registry.country)
 
 
-def _soi_state_agi_band_key_from_spec(spec: TargetSpec) -> tuple[str, str]:
+def _state_agi_band_key(metadata: Mapping[str, str]) -> tuple[str, str]:
+    """(state FIPS, measure) of a flagged band reference or spec."""
     return (
-        spec.metadata.get("state_fips", ""),
-        spec.metadata.get("source_measure_id", ""),
+        metadata.get("state_fips", ""),
+        metadata.get("source_measure_id", ""),
     )
 
 
-def _soi_state_agi_band_vintage_from_spec(spec: TargetSpec) -> tuple[str, str]:
-    """(source period, period-free record set) of a flagged band row."""
+def _state_agi_band_vintage(metadata: Mapping[str, str]) -> tuple[str, str]:
+    """(source period, period-free record set) of a flagged band."""
     return (
-        spec.metadata.get("source_period", ""),
-        _normalized_record_set_id(spec.metadata.get("ledger_layout_record_set_id", "")),
+        metadata.get("source_period", ""),
+        metadata.get(_SOI_STATE_AGI_BAND_RECORD_SET_KEY, ""),
+    )
+
+
+def _with_one_state_agi_band_vintage(
+    selected: tuple[tuple[str, LedgerTargetReference], ...],
+    facts: tuple[object, ...],
+) -> tuple[tuple[str, LedgerTargetReference], ...]:
+    """Keep each state's AGI bands of one vintage: the newest that tiles (#940).
+
+    Binding state bands keep their period in the selection key, so every
+    vintage arrives here. Per (state, measure) the newest vintage whose
+    published partition tiles the AGI line is kept and every other vintage's
+    rows are dropped: a collapsed ``500k_plus`` row from one year never binds
+    beside another year's split ``500k_to_1m``/``1m_plus`` rows, and a newest
+    vintage with a gap falls back to the last complete one. Choosing here,
+    inside selection, means the exclusion vintage guard and the receipt audit
+    only the band ids that can bind.
+    """
+
+    flagged = [
+        reference
+        for _, reference in selected
+        if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true"
+    ]
+    if not flagged:
+        return selected
+    band_rows = _soi_state_agi_band_rows(facts)
+    vintages: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for reference in flagged:
+        vintages.setdefault(_state_agi_band_key(reference.metadata), set()).add(
+            _state_agi_band_vintage(reference.metadata)
+        )
+    chosen = {
+        key: _latest_complete_state_agi_band_vintage(key, kept, band_rows)
+        for key, kept in vintages.items()
+    }
+    return tuple(
+        (source_record_id, reference)
+        for source_record_id, reference in selected
+        if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) != "true"
+        or chosen[_state_agi_band_key(reference.metadata)]
+        == _state_agi_band_vintage(reference.metadata)
     )
 
 
 def _soi_state_agi_band_rows(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], dict[str, tuple[float, float, float]]]:
-    """Every published state HT2 AGI band, as ``(lower, upper, value)``.
+) -> dict[tuple[str, str, str, str], list[tuple[str, tuple[float, float, float]]]]:
+    """Every published state HT2 AGI band of the binding measures.
 
-    Keyed ``(state_fips, measure_id, period, period-free record set)`` and
-    then by source record id. All bands count, those below the binding floor
-    and negative AGI under $1 included. An identical re-emission of one id
-    collapses to one row; one id with two different rows raises.
+    Keyed ``(state_fips, measure_id, period, period-free record set)``; each
+    row is ``(source record id, (lower, upper, value))``. All bands count,
+    those below the binding floor and negative AGI under $1 included. Rows
+    are not validated here: a group is checked only when a binding band asks
+    for its partition.
     """
 
-    groups: dict[tuple[str, str, str, str], dict[str, tuple[float, float, float]]] = {}
+    groups: dict[
+        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float]]]
+    ] = {}
     for fact in facts:
         if _soi_state_agi_band_status(fact, _measure_id(fact)) is None:
             continue
         if _filing_status_label(_dimensions(fact).get("filing_status")) != "All":
             continue
         lower, upper = _agi_bounds(fact)
-        row = (
-            _bound_from_metadata_value(lower),
-            _bound_from_metadata_value(upper),
-            _numeric_value(fact),
-        )
         key = (
             _state_fips(fact) or "",
             _measure_id(fact),
             str(_period_value(fact)),
             _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
         )
-        rows = groups.setdefault(key, {})
-        source_record_id = _source_record_id(fact)
-        if rows.get(source_record_id, row) != row:
-            raise ValueError(
-                f"State AGI band {source_record_id} appears twice with different "
-                f"bounds or values: {rows[source_record_id]} and {row} "
-                "(microcosm#940)."
+        groups.setdefault(key, []).append(
+            (
+                _source_record_id(fact),
+                (
+                    _bound_from_metadata_value(lower),
+                    _bound_from_metadata_value(upper),
+                    _numeric_value(fact),
+                ),
             )
-        rows[source_record_id] = row
+        )
     return groups
 
 
 def _state_agi_band_partition_total(
     key: tuple[str, str, str, str],
-    rows: Mapping[str, tuple[float, float, float]],
+    rows: Iterable[tuple[str, tuple[float, float, float]]],
 ) -> float | None:
     """The sum of one group's bands if they tile the whole AGI line.
 
-    A gap leaves the partition incomplete (``None``). Overlapping bands are a
-    packaging error and raise.
+    A gap leaves the partition incomplete (``None``). A NaN bound or value,
+    overlapping bands, or one source record id with two different rows is a
+    packaging error and raises; an identical re-emission of one id counts
+    once. (A binding band's own fact is still subject to the compile's
+    one-fact-per-record-id rule, which refuses any duplicate.)
     """
 
+    state_fips, measure_id, period, record_set = key
+    unique: dict[str, tuple[float, float, float]] = {}
+    for source_record_id, row in rows:
+        if any(math.isnan(component) for component in row):
+            raise ValueError(
+                f"State AGI band {source_record_id} has a NaN bound or value: "
+                f"{row} (microcosm#940)."
+            )
+        if unique.get(source_record_id, row) != row:
+            raise ValueError(
+                f"State AGI band {source_record_id} appears twice with different "
+                f"bounds or values: {unique[source_record_id]} and {row} "
+                "(microcosm#940)."
+            )
+        unique[source_record_id] = row
     cursor = -float("inf")
     complete = True
-    for lower, upper, _ in sorted(rows.values()):
+    for lower, upper, _ in sorted(unique.values()):
         if lower < cursor or upper <= lower:
-            state_fips, measure_id, period, record_set = key
             raise ValueError(
                 f"Overlapping state AGI bands in {record_set} ({period}) "
                 f"for state {state_fips} {measure_id}: a band starting at "
@@ -2169,38 +2226,40 @@ def _state_agi_band_partition_total(
         cursor = upper
     if not complete or cursor != float("inf"):
         return None
-    return sum(value for _, _, value in rows.values())
+    return sum(value for _, _, value in unique.values())
 
 
 def _latest_complete_state_agi_band_vintage(
     key: tuple[str, str],
     vintages: set[tuple[str, str]],
     band_rows: Mapping[
-        tuple[str, str, str, str], Mapping[str, tuple[float, float, float]]
+        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float]]]
     ],
-) -> tuple[tuple[str, str], float] | None:
+) -> tuple[str, str] | None:
     """The newest vintage of a state's bands with a complete, nonzero partition.
 
-    Only the vintages some flagged row asks for are examined, so a malformed
-    vintage that could never bind cannot stop the compile. Two record sets of
-    one period that both tile the line are ambiguous and raise.
+    Vintages are examined newest first and the search stops at the first
+    complete one, so an older malformed vintage that could never bind cannot
+    stop the compile. Two record sets of one period that both tile the line
+    are ambiguous and raise.
     """
 
     by_period: dict[tuple[int, int], list[tuple[str, str]]] = {}
     for vintage in vintages:
         by_period.setdefault(_period_key_from_value(vintage[0])[:2], []).append(vintage)
     for period_key in sorted(by_period, reverse=True):
-        complete = []
-        for vintage in sorted(by_period[period_key]):
-            group = (*key, *vintage)
-            partition = _state_agi_band_partition_total(group, band_rows.get(group, {}))
-            if partition:
-                complete.append((vintage, partition))
+        complete = [
+            vintage
+            for vintage in sorted(by_period[period_key])
+            if _state_agi_band_partition_total(
+                (*key, *vintage), band_rows.get((*key, *vintage), ())
+            )
+        ]
         if len(complete) > 1:
             raise ValueError(
                 f"State {key[0]} {key[1]} has complete AGI band partitions in "
-                f"more than one record set for one period: "
-                f"{[vintage for vintage, _ in complete]} (microcosm#940)."
+                f"more than one record set for one period: {complete} "
+                "(microcosm#940)."
             )
         if complete:
             return complete[0]
@@ -2208,54 +2267,56 @@ def _latest_complete_state_agi_band_vintage(
 
 
 def _soi_state_agi_band_controls(
-    facts: tuple[object, ...],
-    *,
-    target_period: int | str,
+    registry: TargetRegistry,
 ) -> dict[tuple[str, str], _SoiTotalControl]:
-    """The latest state HT2 all-returns total per (state, measure)."""
+    """The bound HT2 ``state_broad`` all-returns total per (state, measure).
+
+    Read from the registry, not the facts: the control is the row latest-
+    vintage selection kept and the exclusions let through, so the bands are
+    shares of the very total that calibrates beside them. Two such rows for
+    one state and measure are ambiguous and raise.
+    """
 
     controls: dict[tuple[str, str], _SoiTotalControl] = {}
-    target_period_key = _period_key_from_value(target_period)
-    for fact in facts:
-        if _source_name(fact) != "irs_soi":
+    for spec in registry.specs:
+        if spec.family != "irs_soi":
             continue
-        measure_id = _measure_id(fact)
+        metadata = spec.metadata
+        measure_id = metadata.get("source_measure_id", "")
         if measure_id not in _SOI_STATE_AGI_BAND_MEASURES:
             continue
         if not _normalized_record_set_id(
-            _str_at(fact, "layout", "record_set_id")
+            metadata.get("ledger_layout_record_set_id", "")
         ).startswith(_SOI_STATE_AGI_BAND_CONTROL_RECORD_SET_PREFIX):
             continue
-        state_fips = _state_fips(fact)
-        if _geography_level(fact) != "state" or state_fips is None:
-            continue
-        if not _is_all_income_range(fact):
-            continue
-        if _soi_return_universe_from_fact(fact) != "all_returns":
-            continue
-        period_key = _period_key(fact)
-        if not period_key[0] or not _not_after_target_period(
-            period_key, target_period_key
+        state_fips = metadata.get("state_fips", "")
+        if (
+            not state_fips
+            or metadata.get("congressional_district_geoid")
+            or metadata.get("ledger_geography_level") != "state"
         ):
             continue
-        source_record_id = _source_record_id(fact)
-        if not source_record_id:
+        if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
             continue
+        if metadata.get("filing_status") != "All":
+            continue
+        if metadata.get("soi_return_universe", "all_returns") != "all_returns":
+            continue
+        source_period = metadata.get("source_period", "")
         candidate = _SoiTotalControl(
-            value=_numeric_value(fact),
-            source_period=str(_period_value(fact)),
-            source_record_id=source_record_id,
-            period_key=period_key,
+            value=spec.value,
+            source_period=source_period,
+            source_record_id=metadata.get("ledger_source_record_id", spec.name),
+            period_key=_period_key_from_value(source_period),
         )
         key = (state_fips, measure_id)
-        current = controls.get(key)
-        # Latest period wins; a same-period tie resolves on the record id so
-        # the choice never depends on feed order.
-        if current is None or (candidate.period_key[1], candidate.source_record_id) > (
-            current.period_key[1],
-            current.source_record_id,
-        ):
-            controls[key] = candidate
+        if key in controls:
+            raise ValueError(
+                f"Two state totals bind for state {state_fips} {measure_id}: "
+                f"{controls[key].source_record_id} and {candidate.source_record_id}; "
+                "a state's AGI bands need one control (microcosm#940)."
+            )
+        controls[key] = candidate
     return controls
 
 
@@ -2597,9 +2658,13 @@ def _latest_dynamic_target_references(
     """Select one fact per model target shape: the latest eligible period.
 
     Returns ``(source_record_id, reference)`` pairs so the exclusion vintage
-    guard and receipt can see which fact won each key.
+    guard and receipt can see which fact won each key. State AGI bands are
+    the one family selected by vintage rather than per key: every vintage is
+    a candidate, and :func:`_with_one_state_agi_band_vintage` keeps one per
+    state and measure (microcosm#940).
     """
 
+    facts = tuple(facts)
     candidates: list[
         tuple[
             tuple[str, ...],
@@ -2617,10 +2682,10 @@ def _latest_dynamic_target_references(
         if reference is not None:
             key = _dynamic_target_key(fact)
             if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true":
-                # Every vintage of a state AGI band reaches the registry:
-                # _rebase_soi_state_agi_bands picks one vintage per state and
-                # measure by partition completeness, which per-band latest
-                # selection cannot see (microcosm#940).
+                # Every vintage of a state AGI band stays a candidate: one
+                # vintage is chosen per state and measure by partition
+                # completeness, which per-band latest selection cannot see
+                # (microcosm#940).
                 key = (*key, str(_period_value(fact)))
             candidates.append(
                 (
@@ -2658,9 +2723,12 @@ def _latest_dynamic_target_references(
             target_period_key=target_period_key,
         ):
             latest[key] = (period_key, source_record_id, reference)
-    return tuple(
-        (source_record_id, reference)
-        for _, source_record_id, reference in latest.values()
+    return _with_one_state_agi_band_vintage(
+        tuple(
+            (source_record_id, reference)
+            for _, source_record_id, reference in latest.values()
+        ),
+        facts,
     )
 
 
@@ -3085,6 +3153,9 @@ def _soi_reference_from_fact(
         metadata["requires_total_soi_uprating"] = "true"
     if requires_state_agi_band_rebase:
         metadata[_SOI_STATE_AGI_BAND_REBASE_FLAG] = "true"
+        metadata[_SOI_STATE_AGI_BAND_RECORD_SET_KEY] = _normalized_record_set_id(
+            _str_at(fact, "layout", "record_set_id")
+        )
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
@@ -4059,6 +4130,38 @@ US_SOI_FISCAL_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
     if reference.family == "irs_soi"
 )
 
+
+def _state_agi_top_tail_requirements() -> tuple[TargetCoverageRequirement, ...]:
+    """One release requirement per state and measure for the $1M+ band (#940).
+
+    State totals leave a state's top tail free, which is what progressive
+    state rate schedules tax. A state's AGI above $1M is pinned only by its
+    $1M+ AGI and return count together, and each measure's bands are dropped
+    independently when its partition or bound state total is missing, so the
+    release requires both rows for every state: a feed without the split
+    Historic Table 2 state bands fails, naming each state it leaves free.
+    """
+    return tuple(
+        TargetCoverageRequirement(
+            requirement_id=f"irs_state_agi_top_tail_{postal.lower()}_{measure_id}",
+            label=f"SOI {noun} of returns at $1M+ AGI in {postal}",
+            accepted_families=("irs_soi",),
+            required_metadata=(
+                (_SOI_STATE_AGI_BAND_REBASE_FLAG, "true"),
+                ("source_measure_id", measure_id),
+                ("state_fips", state_fips),
+                ("agi_lower_bound", "1000000.0"),
+                ("agi_upper_bound", "inf"),
+            ),
+        )
+        for state_fips, postal in sorted(US_STATE_FIPS_TO_POSTAL.items())
+        for measure_id, noun in (
+            ("adjusted_gross_income", "AGI"),
+            ("return_count", "count"),
+        )
+    )
+
+
 US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = (
     TargetCoverageRequirement(
         requirement_id="federal_income_tax_total",
@@ -4078,40 +4181,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         accepted_name_substrings=(".adjusted_gross_income",),
         min_matches=20,
     ),
-    TargetCoverageRequirement(
-        requirement_id="irs_state_agi_top_tail",
-        label="SOI AGI of returns at $1M+ in every state",
-        accepted_families=("irs_soi",),
-        required_metadata=(
-            (_SOI_STATE_AGI_BAND_REBASE_FLAG, "true"),
-            ("source_measure_id", "adjusted_gross_income"),
-            ("agi_lower_bound", "1000000.0"),
-        ),
-        min_matches=len(US_STATE_FIPS_TO_POSTAL),
-        notes=(
-            "State totals leave a state's top tail free, which is what "
-            "progressive state rate schedules tax (microcosm#940). A feed "
-            "without the split Historic Table 2 state bands must fail here, "
-            "not ship without the constraint."
-        ),
-    ),
-    TargetCoverageRequirement(
-        requirement_id="irs_state_agi_top_tail_returns",
-        label="SOI returns at $1M+ AGI in every state",
-        accepted_families=("irs_soi",),
-        required_metadata=(
-            (_SOI_STATE_AGI_BAND_REBASE_FLAG, "true"),
-            ("source_measure_id", "return_count"),
-            ("agi_lower_bound", "1000000.0"),
-        ),
-        min_matches=len(US_STATE_FIPS_TO_POSTAL),
-        notes=(
-            "The count half of irs_state_agi_top_tail: a state's AGI above $1M "
-            "is pinned only by its $1M+ AGI and return count together, and "
-            "each measure's bands are dropped independently when its "
-            "partition or state total is missing (microcosm#940)."
-        ),
-    ),
+    *_state_agi_top_tail_requirements(),
     TargetCoverageRequirement(
         requirement_id="irs_wages_distribution",
         label="SOI wages by AGI bracket",

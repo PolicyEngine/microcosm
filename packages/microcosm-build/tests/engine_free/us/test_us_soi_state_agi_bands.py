@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib.util
 import math
 import random
+from dataclasses import replace
 from hashlib import sha256
 
 import pytest
@@ -604,37 +605,44 @@ def test_rebased_bands_age_with_the_state_total() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    ("requirement_id", "measure"),
-    [
-        ("irs_state_agi_top_tail", "adjusted_gross_income"),
-        ("irs_state_agi_top_tail_returns", "return_count"),
-    ],
-)
-def test_release_coverage_requires_top_tail_rows_in_every_state(
-    requirement_id: str, measure: str
-) -> None:
-    """Both halves of a state's $1M+ cell are release requirements: dropping
-    one state's row of either measure fails the gate."""
-    requirement = next(
+def test_release_coverage_requires_both_top_tail_rows_in_each_state() -> None:
+    """The release requires a $1M+ AGI row and a $1M+ count row for every one
+    of the 51 states: dropping one state's row fails exactly that state's
+    requirement, and another state's duplicate cannot stand in for it."""
+    requirements = [
         requirement
         for requirement in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS
-        if requirement.requirement_id == requirement_id
-    )
+        if requirement.requirement_id.startswith("irs_state_agi_top_tail_")
+    ]
     facts = []
     for postal in sorted(POSTAL_TO_FIPS):
         facts += _partition(postal, 2023, CO_2023)
         facts += _totals(postal, 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI)
     registry = _compile(facts)
-    everything = target_profile_coverage_gate(registry.specs, [requirement])
-    one_state_short = target_profile_coverage_gate(
-        [spec for spec in registry.specs if spec.name != _co_name("1m_plus", measure)],
-        [requirement],
-    )
 
-    assert requirement.min_matches == 51
-    assert everything.passed
-    assert not one_state_short.passed
+    assert len(requirements) == 51 * 2
+    assert target_profile_coverage_gate(registry.specs, requirements).passed
+    for measure in MEASURES:
+        dropped = _co_name("1m_plus", measure)
+        alabama = next(
+            spec
+            for spec in registry.specs
+            if spec.name == _co_name("1m_plus", measure).replace(".co.", ".al.")
+        )
+        stand_in = {
+            "name": f"{alabama.name}.copy",
+            "measure": f"{alabama.name}.copy",
+            "family": alabama.family,
+            "metadata": dict(alabama.metadata),
+        }
+        result = target_profile_coverage_gate(
+            [*[spec for spec in registry.specs if spec.name != dropped], stand_in],
+            requirements,
+        )
+        assert not result.passed
+        assert [failure.split(":")[0] for failure in result.failures] == [
+            f"irs_state_agi_top_tail_co_{measure}"
+        ]
 
 
 def test_state_bands_below_the_floor_never_bind_even_in_their_own_year() -> None:
@@ -692,20 +700,149 @@ def test_an_incomplete_newest_vintage_falls_back_to_the_last_complete_one() -> N
     }
 
 
-def test_identical_reemissions_collapse_and_conflicting_ones_raise() -> None:
-    """One source record id emitted twice with the same bytes is one band;
-    the same id with a different value is a feed error."""
+def test_reemissions_follow_the_one_fact_per_record_id_rule() -> None:
+    """A partition counts an identical re-emission of a sub-floor band once,
+    and refuses one record id with two different values. A binding band's own
+    fact is a target fact, so the compile's one-fact-per-record-id rule
+    refuses any duplicate of it, identical or not, as it does for every other
+    family."""
     base = [
         *_partition("CO", 2023, CO_2023),
         *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
     ]
-    duplicate = dict(base[0])
-    registry = _compile([*base, duplicate])
+    sub_floor = base[0]
+    assert ".under_1." in str(sub_floor["lineage"]["source_record_id"])
+    registry = _compile([*base, dict(sub_floor)])
     assert len(_band_specs(registry)) == len(BINDING_BANDS) * len(MEASURES)
 
-    conflicting = {**base[0], "value": base[0]["value"] + 10}
     with pytest.raises(ValueError, match="appears twice with different"):
-        _compile([*base, conflicting])
+        _compile([*base, {**sub_floor, "value": sub_floor["value"] + 10}])
+
+    binding = next(
+        fact
+        for fact in base
+        if str(fact["lineage"]["source_record_id"]).endswith("1m_plus.return_count")
+    )
+    with pytest.raises(ValueError, match="matched multiple Ledger facts"):
+        _compile([*base, dict(binding)])
+
+
+def test_bands_are_shares_of_the_state_total_the_registry_binds() -> None:
+    """Two same-period Colorado totals with one selection key but different
+    record ids and values (the second is twice the first): latest-vintage
+    selection binds one of them, and in either feed order every band is a
+    share of the one that binds, with the share it records."""
+    totals = _totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI)
+    doubled = []
+    for fact in totals:
+        twin_id = f"{fact['lineage']['source_record_id']}_restated"
+        doubled.append(
+            {
+                **fact,
+                "value": 2 * fact["value"],
+                "lineage": {"source_record_id": twin_id},
+                "aggregate_fact_key": f"{fact['aggregate_fact_key']}_restated",
+                "semantic_fact_key": f"{fact['semantic_fact_key']}_restated",
+                "legacy_fact_key": f"{fact['legacy_fact_key']}_restated",
+            }
+        )
+    facts = [*_partition("CO", 2023, CO_2023), *totals, *doubled]
+    bound_controls = set()
+    for ordering in (facts, list(reversed(facts))):
+        registry = _compile(ordering)
+        bound = {
+            spec.metadata["ledger_source_record_id"]: spec
+            for spec in registry.specs
+            if ".state_broad." in spec.name
+        }
+        assert len(bound) == 2  # one total per measure binds
+        bands = _band_specs(registry)
+        assert len(bands) == len(BINDING_BANDS) * len(MEASURES)
+        for spec in bands.values():
+            control = bound[spec.metadata["uprating_index_source_record_id"]]
+            assert spec.value / control.value == pytest.approx(
+                float(spec.metadata["state_agi_band_share"]), rel=1e-12
+            )
+        bound_controls |= set(bound)
+    # The two orders bind different twins, so the check covered both values.
+    assert len(bound_controls) == 4
+
+
+def test_an_excluded_state_total_anchors_no_bands(monkeypatch) -> None:
+    """When a state's total is a reviewed support exclusion it does not bind,
+    so the state's bands have no control and are dropped (and the release
+    requirement for that state then fails)."""
+    from microcosm.build.us_runtime import fiscal_targets
+
+    excluded = (
+        "irs_soi.ty2022.historic_table_2.state_broad.co.all.adjusted_gross_income"
+    )
+    monkeypatch.setitem(
+        fiscal_targets.US_FISCAL_TARGET_SUPPORT_EXCLUSIONS, excluded, "test"
+    )
+    registry = _compile(
+        [
+            *_partition("CO", 2023, CO_2023),
+            *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+        ]
+    )
+    measures = {
+        spec.metadata["source_measure_id"] for spec in _band_specs(registry).values()
+    }
+
+    assert excluded not in {spec.name for spec in registry.specs}
+    assert measures == {"return_count"}
+
+
+def test_the_exclusion_guard_sees_only_the_chosen_band_vintage(monkeypatch) -> None:
+    """A reviewed TY2020 exclusion with a reviewed TY2023 bypass: the complete
+    TY2021 bands are discarded by vintage choice before the guard runs, so
+    they cannot trip it."""
+    from microcosm.build.us_runtime import fiscal_targets
+
+    cell = "historic_table_2.state_agi.co.1m_plus.return_count"
+    monkeypatch.setitem(
+        fiscal_targets.US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
+        f"irs_soi.ty2020.{cell}",
+        "test",
+    )
+    monkeypatch.setitem(
+        fiscal_targets.US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
+        f"irs_soi.ty2023.{cell}",
+        "test",
+    )
+    registry = _compile(
+        [
+            *_partition("CO", 2021, CO_2023),
+            *_partition("CO", 2023, CO_2023),
+            *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+        ]
+    )
+
+    assert {
+        spec.metadata["uprating_from_period"] for spec in _band_specs(registry).values()
+    } == {"2023"}
+
+
+def test_a_nan_bound_in_a_partition_is_refused() -> None:
+    nan_under_1 = [
+        {
+            **fact,
+            "universe_constraints": {
+                "constraints": [{"variable": AGI, "operator": "<", "value": "nan"}]
+            },
+        }
+        if str(fact["lineage"]["source_record_id"]).endswith("under_1.return_count")
+        else fact
+        for fact in _partition("CO", 2023, CO_2023)
+    ]
+    with pytest.raises(ValueError, match="NaN bound or value"):
+        _compile(
+            [
+                *nan_under_1,
+                *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+            ]
+        )
 
 
 def test_a_malformed_vintage_that_cannot_bind_does_not_stop_the_compile() -> None:
@@ -732,8 +869,6 @@ def test_period_contract_reads_the_period_a_rebased_band_sits_at() -> None:
     """Without aging, TY2023 AGI bands rebased onto a TY2022 state total hold
     2022-level dollars: at a 2023 build they violate the period contract like
     the state total they are shares of, and at a 2022 build neither does."""
-    from dataclasses import replace
-
     from microcosm.build.us_runtime.target_aging import (
         find_period_contract_violations,
     )
