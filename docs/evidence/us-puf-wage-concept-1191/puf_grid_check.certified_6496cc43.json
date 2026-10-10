@@ -1,0 +1,310 @@
+{
+ "h5": "populace_us_2024.h5",
+ "h5_sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
+ "soi_targets_sha256": "0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb",
+ "relative_tolerance": 1e-11,
+ "employment_income_before_lsr": {
+  "soi_variable": "employment_income",
+  "get_growth_from_2015": {
+   "2021": 1.187079295246555,
+   "2022": 1.277293835626433,
+   "2023": 1.3444200494690635
+  },
+  "groups": {
+   "puf_tax_detail/clone1": {
+    "tax_units_with_positive_total_count": 35742,
+    "share_whole_source_dollars_at_2021_scalar": 0.9923339488556879,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 5e-06,
+    "on_grid_distinct_values_count": 2777,
+    "off_grid_count": 274,
+    "off_grid_distinct_values_count": 274,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 5,
+      "distinct_values_if_under_5": [
+       2.0
+      ],
+      "share_multiple_of_10": 0.0,
+      "share_multiple_of_100": 0.0,
+      "share_multiple_of_1000": 0.0
+     },
+     "5_to_10k": {
+      "on_grid_count": 2835,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 0.07301587301587302,
+      "share_multiple_of_1000": 0.007407407407407408
+     },
+     "10k_to_100k": {
+      "on_grid_count": 24000,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.09433333333333334
+     },
+     "100k_and_over": {
+      "on_grid_count": 8628,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.08159480760315253
+     }
+    }
+   },
+   "asec/clone0": {
+    "tax_units_with_positive_total_count": 24122,
+    "share_whole_source_dollars_at_2021_scalar": 0.0,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 1e-05,
+    "on_grid_distinct_values_count": 0,
+    "off_grid_count": 24122,
+    "off_grid_distinct_values_count": 3611,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 0
+     },
+     "5_to_10k": {
+      "on_grid_count": 0
+     },
+     "10k_to_100k": {
+      "on_grid_count": 0
+     },
+     "100k_and_over": {
+      "on_grid_count": 0
+     }
+    }
+   }
+  }
+ },
+ "qualified_dividend_income": {
+  "soi_variable": "qualified_dividends",
+  "get_growth_from_2015": {
+   "2021": 1.3627673957749655,
+   "2022": 1.4379736208331595,
+   "2023": 1.549880970850305
+  },
+  "groups": {
+   "puf_tax_detail/clone1": {
+    "tax_units_with_positive_total_count": 11290,
+    "share_whole_source_dollars_at_2021_scalar": 0.8742249778565102,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 1e-05,
+    "on_grid_distinct_values_count": 1119,
+    "off_grid_count": 1420,
+    "off_grid_distinct_values_count": 1420,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 547,
+      "distinct_values_if_under_5": [
+       2.0
+      ],
+      "share_multiple_of_10": 0.0,
+      "share_multiple_of_100": 0.0,
+      "share_multiple_of_1000": 0.0
+     },
+     "5_to_10k": {
+      "on_grid_count": 7999,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 0.06950868858607326,
+      "share_multiple_of_1000": 0.005375671958994874
+     },
+     "10k_to_100k": {
+      "on_grid_count": 1198,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.09682804674457429
+     },
+     "100k_and_over": {
+      "on_grid_count": 126,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.12698412698412698
+     }
+    }
+   },
+   "asec/clone0": {
+    "tax_units_with_positive_total_count": 7075,
+    "share_whole_source_dollars_at_2021_scalar": 0.0,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 0.0,
+    "on_grid_distinct_values_count": 0,
+    "off_grid_count": 7075,
+    "off_grid_distinct_values_count": 1444,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 0
+     },
+     "5_to_10k": {
+      "on_grid_count": 0
+     },
+     "10k_to_100k": {
+      "on_grid_count": 0
+     },
+     "100k_and_over": {
+      "on_grid_count": 0
+     }
+    }
+   }
+  }
+ },
+ "taxable_private_pension_income": {
+  "soi_variable": "taxable_pension_income",
+  "get_growth_from_2015": {
+   "2021": 1.1636648594128258,
+   "2022": 1.2325126002712883,
+   "2023": 1.2658969715620647
+  },
+  "groups": {
+   "puf_tax_detail/clone1": {
+    "tax_units_with_positive_total_count": 13108,
+    "share_whole_source_dollars_at_2021_scalar": 0.6586054317973756,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 0.0,
+    "on_grid_distinct_values_count": 1594,
+    "off_grid_count": 4475,
+    "off_grid_distinct_values_count": 4475,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 3,
+      "distinct_values_if_under_5": [
+       2.0
+      ],
+      "share_multiple_of_10": 0.0,
+      "share_multiple_of_100": 0.0,
+      "share_multiple_of_1000": 0.0
+     },
+     "5_to_10k": {
+      "on_grid_count": 3141,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 0.13276026743075453,
+      "share_multiple_of_1000": 0.024196115886660298
+     },
+     "10k_to_100k": {
+      "on_grid_count": 5192,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.09938366718027734
+     },
+     "100k_and_over": {
+      "on_grid_count": 297,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.18855218855218855
+     }
+    }
+   },
+   "asec/clone0": {
+    "tax_units_with_positive_total_count": 3471,
+    "share_whole_source_dollars_at_2021_scalar": 0.0,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 5e-06,
+    "on_grid_distinct_values_count": 0,
+    "off_grid_count": 3471,
+    "off_grid_distinct_values_count": 1499,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 0
+     },
+     "5_to_10k": {
+      "on_grid_count": 0
+     },
+     "10k_to_100k": {
+      "on_grid_count": 0
+     },
+     "100k_and_over": {
+      "on_grid_count": 0
+     }
+    }
+   }
+  }
+ },
+ "taxable_ira_distributions": {
+  "soi_variable": "ira_distributions",
+  "get_growth_from_2015": {
+   "2021": 1.5091982531835977,
+   "2022": 1.6126846883670145,
+   "2023": 1.6214386581626195
+  },
+  "groups": {
+   "puf_tax_detail/clone1": {
+    "tax_units_with_positive_total_count": 6689,
+    "share_whole_source_dollars_at_2021_scalar": 0.7829271939004335,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 0.0,
+    "on_grid_distinct_values_count": 1267,
+    "off_grid_count": 1452,
+    "off_grid_distinct_values_count": 1452,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 7,
+      "distinct_values_if_under_5": [
+       2.0
+      ],
+      "share_multiple_of_10": 0.0,
+      "share_multiple_of_100": 0.0,
+      "share_multiple_of_1000": 0.0
+     },
+     "5_to_10k": {
+      "on_grid_count": 2876,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 0.2329624478442281,
+      "share_multiple_of_1000": 0.06884561891515995
+     },
+     "10k_to_100k": {
+      "on_grid_count": 2224,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.23965827338129497
+     },
+     "100k_and_over": {
+      "on_grid_count": 130,
+      "distinct_values_if_under_5": null,
+      "share_multiple_of_10": 1.0,
+      "share_multiple_of_100": 1.0,
+      "share_multiple_of_1000": 0.25384615384615383
+     }
+    }
+   },
+   "asec/clone0": {
+    "tax_units_with_positive_total_count": 1572,
+    "share_whole_source_dollars_at_2021_scalar": 0.0,
+    "share_whole_source_dollars_at_2022_scalar": 0.0,
+    "share_whole_source_dollars_at_2023_scalar": 0.0,
+    "uniform_random_control_share_at_2021_scalar": 0.0,
+    "on_grid_distinct_values_count": 0,
+    "off_grid_count": 1572,
+    "off_grid_distinct_values_count": 551,
+    "implied_source_amount_bands_at_2021_scalar": {
+     "under_5": {
+      "on_grid_count": 0
+     },
+     "5_to_10k": {
+      "on_grid_count": 0
+     },
+     "10k_to_100k": {
+      "on_grid_count": 0
+     },
+     "100k_and_over": {
+      "on_grid_count": 0
+     }
+    }
+   }
+  }
+ }
+}

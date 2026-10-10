@@ -1,0 +1,24 @@
+weighted persons            325,952,369
+gross wages                 10,446,862,521,444
+rows with negative wages    0
+wage earners                159,823,825
+stored desired deferrals    298,716,596,961
+deferrals capped at wages   298,422,444,703
+contributors                54,372,968
+contributors with wages     54,372,968
+stored column traditional_403b_contributions_desired: False
+stored column pre_tax_health_insurance_premiums: False
+stored column health_savings_account_payroll_contributions: False
+
+by support channel
+  asec             persons 432,523  wages   5,638.3B  desired deferrals   167.0B
+  puf_tax_detail   persons 475,340  wages   4,808.5B  desired deferrals   131.7B
+
+source persons on both channels
+  asec persons 432,523; puf_tax_detail persons 432,523; on both 432,523
+  correlation of the two wages          0.5236
+  both positive                         198,762
+  median puf/asec ratio, both positive  0.8535
+  5th and 95th percentile of that ratio 0.4901 1.8163
+  positive on one channel only          13,957
+  unweighted mean wage, asec and puf    33,046 28,249
