@@ -17,12 +17,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "825406f98913ab7324c834c3642804e9317a2256",
+    "source_commit": "942a1fa0adc50d645734481c88f403ac2175e896",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 344402,
-    "facts_sha256": "28b7105761be48ff01244bd0e28f4b579bac103f2c4a98473a04e2cc4303eb3d",
-    "manifest_sha256": "6e04a43d7dca4d398e14c0ec59ec983477633ba3e9bef062a8843f554dcb7119"
+    "fact_row_count": 927239,
+    "facts_sha256": "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da",
+    "manifest_sha256": "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c"
   },
   "selections": [
     {
@@ -64,7 +64,12 @@
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "geography_id": "K02000001",
-        "dimensions": []
+        "dimensions": [],
+        "period_type": "calendar_year",
+        "period_value": [
+          "2023",
+          "2024"
+        ]
       },
       "row_count": 2
     }
@@ -3094,9 +3099,9 @@
       "value": 68265209
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_6c212695ea75be0d2a635e9b",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_df8b6543eefc1357184d4aeb",
       "semantic_fact_key": "ledger_semantic_fact_v2_065ea5242b0c7b9f810a9ce6",
-      "source_record_id": "ons.mid2024.mye2_persons.uk.all_ages.uk.population",
+      "source_record_id": "ons.mid2024.revised_2026.mye3.all_ages.k02000001.population",
       "concept": "ons.mid_year_population_estimate",
       "measure_id": "population",
       "unit": "count",
@@ -3115,26 +3120,26 @@
         "value": 2024
       },
       "period_coverage": {
-        "start_date": null,
-        "end_date": null,
-        "basis": null
+        "start_date": "2024-06-30",
+        "end_date": "2024-06-30",
+        "basis": "calendar"
       },
       "layout": {
-        "record_set_id": "ons.mid2024.mye2_persons.uk.all_ages",
-        "groupby_dimension": "age",
-        "groupby_value_id": "uk",
+        "record_set_id": "ons.mid2024.revised_2026.mye3.all_ages",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "k02000001",
         "table_record_kind": "total"
       },
       "dimensions": {},
       "source": {
         "source_name": "ons",
-        "source_table": "Mid-2024 population estimates, UK: countries and regions by single year of age and sex (MYE2)",
-        "source_file": "mye24tablesuk.xlsx",
-        "source_sha256": "f78d50e8d77fe5ed9d04667d6875aefcf62b56380af7aceb2e90dce067981526",
-        "vintage": "mid_2024",
-        "raw_r2_key": "raw/ons/ons-mye-2024-uk/2024/f78d50e8d77fe5ed9d04667d6875aefcf62b56380af7aceb2e90dce067981526/mye24tablesuk.xlsx"
+        "source_table": "ONS revised mid-2024 UK, country and English-region population totals, October 2026 vintage",
+        "source_file": "mye25tablesuk.xlsx",
+        "source_sha256": "8ae244e3341257ecccaee55f4973fe12f46afe6656ead6c1a9ed3f4f8585e40f",
+        "vintage": "mid_2024_revised_in_mid_2025_2026_10_01",
+        "raw_r2_key": "raw/uk/ons/ons-mye-2025-uk/2025/8ae244e3341257ecccaee55f4973fe12f46afe6656ead6c1a9ed3f4f8585e40f/mye25tablesuk.xlsx"
       },
-      "value": 69281437
+      "value": 69256274
     }
   ]
 }

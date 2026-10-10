@@ -121,3 +121,21 @@ match two facts each (the new 2023-24 Table 6.2 rows beside the bound 2024-25 on
 resolve to the 2024-25 fact. For the same reason the 2023 production compile-parity receipt gains
 five ledger-only rows (the relief targets now compile at that comparison period from the 2023-24
 facts); the two 2025 incumbent receipts are unchanged.
+
+The `942a1fa` re-pin (microcosm#1123, PolicyEngine/chronicle#313 via #314, on top of `825406f`)
+brought the publisher inputs for the 2025 calibration: household estimates by nation and region
+(LFS 2025 for England's regions and the GB countries, NRS 2025, Welsh Government mid-2024, LPS
+dwelling stock 2021–2026), mid-2025 population estimates (the UK, country and region workbook,
+every local authority and the devolved council and district tables) with ONS's revision of
+mid-2024, the census residence-type tables (RM120, UV101a, CT0105), monthly Universal Credit by
+area from January 2025, PIPR and Scottish rent statistics, SPREE and the Welsh and Scottish
+dwelling stock by tenure, and newer editions of SLC repayments, ISC, public sector employment,
+land values and the DfI receipts (927,239 rows, 2.7 times the previous feed). Three selectors had to
+move with the data: the ONS mid-2025 workbook lays its rows out by geography, so the population
+selectors pin ages through `dimension_values` and no longer require the age layout; the
+preliminary end-2025 land rows carry `publication_status: preliminary` and are bound explicitly;
+and public sector employment is the mean of its four 2025 quarters. Three vendor selections pin
+the periods their stages were built on (UK and regional population 2023 and 2024, the DfI series
+to FY2024-25), so the only spine inputs that move are publisher revisions: the revised mid-2024
+population (UK 69,256,274 against 69,281,437, twelve regional totals) and the DfI edition's
+rounding of eleven earlier receipts and journeys.

@@ -1016,10 +1016,12 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert tcl_households.value == 469_780
     assert tcl_households.metadata["ledger_fact_period"] == "2025-04"
 
+    # The staged rows predate mid-2025; the committed reference carries no
+    # hold stamp since the pinned feed resolves it at 2025 (microcosm#1123).
     population = targets["ons.population.uk_total"]
     assert population.value == 69_281_437
     assert population.metadata["ledger_value_operation"] == "sum"
-    assert population.metadata["uprating_from_period"] == "2024"
+    assert "uprating_from_period" not in population.metadata
 
     spi_band = targets["hmrc/employment_income_income_band_12_570_to_15_000"]
     assert spi_band.value == 16_900_000_000
@@ -1065,9 +1067,10 @@ def test_paid_child_count_windows_remove_only_their_uprating_holds() -> None:
         assert candidates[0]["status"] == "active"
         assert candidates[0]["matched_fact_count_in_source_window"] == 12
     # A genuinely older stock observation retains its independent hold.
+    # (The ISC census of 16 January 2025, an in-year snapshot since #1123.)
     assert holds["isc.private_school_students"] == {
         "name": "isc.private_school_students",
-        "from": "2024-01",
+        "from": "2025-01",
         "to": "2025",
     }
 
@@ -1600,11 +1603,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows, and
     # 18 English-region State Pension cells (microcosm#1069).
     assert sum(len(by_contract[target_id]) for target_id in two_level) == 591
-    # The twelve ONS cells of a band sum to the retired UK row of the same
-    # publication (the 0-9 band: 7,553,013 at mid-2024).
+    # The twelve ONS cells of a band sum to the UK row of the same
+    # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
     assert sum(entry["resolved_value"] for entry in zero_to_nine["candidates"]) == (
-        7_553_013.0
+        7_364_365.0
     )
 
 

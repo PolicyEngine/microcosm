@@ -7151,11 +7151,11 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimensions": []
       },
       "category_id": "ons.population",
-      "label": "UK population"
+      "label": "UK population",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_0_9_by_region",
@@ -7210,7 +7210,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -7227,7 +7226,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 0 9 by region"
+      "label": "Age 0 9 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_10_19_by_region",
@@ -7282,7 +7282,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -7299,7 +7298,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 10 19 by region"
+      "label": "Age 10 19 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_20_29_by_region",
@@ -7354,7 +7354,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -7371,7 +7370,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 20 29 by region"
+      "label": "Age 20 29 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_30_39_by_region",
@@ -7426,7 +7426,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -7443,7 +7442,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 30 39 by region"
+      "label": "Age 30 39 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_40_49_by_region",
@@ -7498,7 +7498,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -7515,7 +7514,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 40 49 by region"
+      "label": "Age 40 49 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_50_59_by_region",
@@ -7570,7 +7570,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -7587,7 +7586,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 50 59 by region"
+      "label": "Age 50 59 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_60_69_by_region",
@@ -7642,7 +7642,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -7659,7 +7658,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 60 69 by region"
+      "label": "Age 60 69 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_70_79_by_region",
@@ -7714,7 +7714,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -7731,7 +7730,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 70 79 by region"
+      "label": "Age 70 79 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.age_80_89_by_region",
@@ -7786,7 +7786,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -7803,7 +7802,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Age 80 89 by region"
+      "label": "Age 80 89 by region",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_0_4",
@@ -7864,7 +7864,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -7877,7 +7876,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 0 4"
+      "label": "Female 0 4",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_10_14",
@@ -7938,7 +7938,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -7951,7 +7950,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 10 14"
+      "label": "Female 10 14",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_15_19",
@@ -8012,7 +8012,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8025,7 +8024,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 15 19"
+      "label": "Female 15 19",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_20_24",
@@ -8086,7 +8086,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8099,7 +8098,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 20 24"
+      "label": "Female 20 24",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_25_29",
@@ -8160,7 +8160,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8173,7 +8172,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 25 29"
+      "label": "Female 25 29",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_30_34",
@@ -8234,7 +8234,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8247,7 +8246,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 30 34"
+      "label": "Female 30 34",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_35_39",
@@ -8308,7 +8308,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8321,7 +8320,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 35 39"
+      "label": "Female 35 39",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_40_44",
@@ -8382,7 +8382,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8395,7 +8394,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 40 44"
+      "label": "Female 40 44",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_45_49",
@@ -8456,7 +8456,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8469,7 +8468,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 45 49"
+      "label": "Female 45 49",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_50_54",
@@ -8530,7 +8530,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8543,7 +8542,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 50 54"
+      "label": "Female 50 54",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_55_59",
@@ -8604,7 +8604,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8617,7 +8616,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 55 59"
+      "label": "Female 55 59",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_5_9",
@@ -8678,7 +8678,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8691,7 +8690,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 5 9"
+      "label": "Female 5 9",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_60_64",
@@ -8752,7 +8752,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8765,7 +8764,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 60 64"
+      "label": "Female 60 64",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_65_69",
@@ -8826,7 +8826,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8839,7 +8838,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 65 69"
+      "label": "Female 65 69",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_70_74",
@@ -8900,7 +8900,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8913,7 +8912,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 70 74"
+      "label": "Female 70 74",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_75_79",
@@ -8974,7 +8974,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -8987,7 +8986,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 75 79"
+      "label": "Female 75 79",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_80_84",
@@ -9048,7 +9048,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -9061,7 +9060,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 80 84"
+      "label": "Female 80 84",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_85_89",
@@ -9122,7 +9122,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -9135,7 +9134,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 85 89"
+      "label": "Female 85 89",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.female_90_plus",
@@ -9186,7 +9186,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -9195,7 +9194,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Female 90 plus"
+      "label": "Female 90 plus",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_0_4",
@@ -9256,7 +9256,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9269,7 +9268,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 0 4"
+      "label": "Male 0 4",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_10_14",
@@ -9330,7 +9330,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9343,7 +9342,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 10 14"
+      "label": "Male 10 14",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_15_19",
@@ -9404,7 +9404,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9417,7 +9416,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 15 19"
+      "label": "Male 15 19",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_20_24",
@@ -9478,7 +9478,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9491,7 +9490,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 20 24"
+      "label": "Male 20 24",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_25_29",
@@ -9552,7 +9552,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9565,7 +9564,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 25 29"
+      "label": "Male 25 29",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_30_34",
@@ -9626,7 +9626,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9639,7 +9638,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 30 34"
+      "label": "Male 30 34",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_35_39",
@@ -9700,7 +9700,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9713,7 +9712,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 35 39"
+      "label": "Male 35 39",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_40_44",
@@ -9774,7 +9774,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9787,7 +9786,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 40 44"
+      "label": "Male 40 44",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_45_49",
@@ -9848,7 +9848,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9861,7 +9860,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 45 49"
+      "label": "Male 45 49",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_50_54",
@@ -9922,7 +9922,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -9935,7 +9934,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 50 54"
+      "label": "Male 50 54",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_55_59",
@@ -9996,7 +9996,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10009,7 +10008,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 55 59"
+      "label": "Male 55 59",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_5_9",
@@ -10070,7 +10070,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10083,7 +10082,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 5 9"
+      "label": "Male 5 9",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_60_64",
@@ -10144,7 +10144,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10157,7 +10156,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 60 64"
+      "label": "Male 60 64",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_65_69",
@@ -10218,7 +10218,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10231,7 +10230,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 65 69"
+      "label": "Male 65 69",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_70_74",
@@ -10292,7 +10292,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10305,7 +10304,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 70 74"
+      "label": "Male 70 74",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_75_79",
@@ -10366,7 +10366,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10379,7 +10378,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 75 79"
+      "label": "Male 75 79",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_80_84",
@@ -10440,7 +10440,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10453,7 +10452,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 80 84"
+      "label": "Male 80 84",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_85_89",
@@ -10514,7 +10514,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10527,7 +10526,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 85 89"
+      "label": "Male 85 89",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.male_90_plus",
@@ -10578,7 +10578,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -10587,7 +10586,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Male 90 plus"
+      "label": "Male 90 plus",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.scotland_children_under_16",
@@ -10638,7 +10638,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -10661,7 +10660,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Scotland children under 16"
+      "label": "Scotland children under 16",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.scotland_babies_under_1",
@@ -10712,7 +10712,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0
@@ -10720,7 +10719,8 @@
         }
       },
       "category_id": "ons.population",
-      "label": "Scotland babies under 1"
+      "label": "Scotland babies under 1",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.population.scotland_households_3plus_children",
@@ -10772,11 +10772,11 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age"
+        "source_concept": "ons.mid_year_population_estimate"
       },
       "category_id": "ons.population",
-      "label": "Scotland households 3 or more children"
+      "label": "Scotland households 3 or more children",
+      "selector_note": "The selector pins ages through dimension_values and no longer requires the table's layout to group by age: the ONS mid-2025 workbook lays its rows out by geography (microcosm#1123)."
     },
     {
       "target_id": "ons.household_composition.lone_households_under_65",
@@ -13247,10 +13247,20 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_measure_id": "total_public_sector"
+        "source_measure_id": "total_public_sector",
+        "period_type": "month",
+        "period_value": [
+          "2025-03",
+          "2025-06",
+          "2025-09",
+          "2025-12"
+        ]
       },
       "category_id": "ons.employment",
-      "label": "Public sector employment"
+      "label": "Public sector employment",
+      "value_operation": "monthly_window_average",
+      "selector_note": "The mean of the four 2025 quarter-end headcounts (March, June, September, December) in ONS's June 2026 edition, a calendar-2025 level rather than the December snapshot (microcosm#1123, PolicyEngine/chronicle#313).",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "ons.land.land_value",
@@ -13277,10 +13287,14 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e44r",
-        "entity_name": "institutional_sector"
+        "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        }
       },
       "category_id": "ons.land",
-      "label": "Land value"
+      "label": "Land value",
+      "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
       "target_id": "ons.land.household_land_value",
@@ -13307,10 +13321,14 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e44n",
-        "entity_name": "institutional_sector"
+        "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        }
       },
       "category_id": "ons.land",
-      "label": "Household land value"
+      "label": "Household land value",
+      "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
       "target_id": "ons.land.corporate_land_value",
@@ -13337,10 +13355,14 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e43b",
-        "entity_name": "institutional_sector"
+        "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        }
       },
       "category_id": "ons.land",
-      "label": "Corporate land value"
+      "label": "Corporate land value",
+      "selector_note": "Bound to ONS's preliminary end-2025 national balance sheet (published 10 June 2026), the latest official estimate for the calibration year, flagged preliminary; the final 2024 figures are the previous edition (microcosm#1123, PolicyEngine/chronicle#313)."
     },
     {
       "target_id": "slc.repayments.devolved_total",

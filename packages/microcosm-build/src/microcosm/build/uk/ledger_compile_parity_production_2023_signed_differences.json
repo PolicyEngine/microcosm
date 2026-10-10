@@ -1,12 +1,34 @@
 {
- "compiled_count": 919,
+ "compiled_count": 916,
  "counts_by_kind": {
-  "calibration_drift": 120,
+  "calibration_drift": 118,
   "fixture_only": 17,
+  "ledger_absent": 3,
   "ledger_only": 787
  },
- "difference_count": 924,
+ "difference_count": 925,
  "differences": [
+  {
+   "kind": "ledger_absent",
+   "name": "ons.land.corporate_land_value",
+   "period": 2023,
+   "reason": "Packaged Ledger reference did not resolve for this comparison period.",
+   "fixture_value": 1957550396058.5835
+  },
+  {
+   "kind": "ledger_absent",
+   "name": "ons.land.household_land_value",
+   "period": 2023,
+   "reason": "Packaged Ledger reference did not resolve for this comparison period.",
+   "fixture_value": 4798764603941.416
+  },
+  {
+   "kind": "ledger_absent",
+   "name": "ons.land.land_value",
+   "period": 2023,
+   "reason": "Packaged Ledger reference did not resolve for this comparison period.",
+   "fixture_value": 6756315000000.0
+  },
   {
    "fixture_value": 82000.0,
    "kind": "fixture_only",
@@ -156,7 +178,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 135820000.0,
+   "ledger_value": 135900000.0,
    "name": "dfi_ni.bus.passenger_receipts",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5644,22 +5666,6 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
-   "fixture_value": 1957550396058.5835,
-   "kind": "calibration_drift",
-   "ledger_value": 1976893000000.0,
-   "name": "ons.land.corporate_land_value",
-   "period": 2023,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 4798764603941.416,
-   "kind": "calibration_drift",
-   "ledger_value": 4383082000000.0,
-   "name": "ons.land.household_land_value",
-   "period": 2023,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
    "fixture_value": 283000.0,
    "kind": "calibration_drift",
    "ledger_value": 282659.0,
@@ -6542,7 +6548,7 @@
   {
    "fixture_value": 5900000.0,
    "kind": "calibration_drift",
-   "ledger_value": 6089000.0,
+   "ledger_value": 6176000.0,
    "name": "ons.public_sector_employment",
    "period": 2023,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."

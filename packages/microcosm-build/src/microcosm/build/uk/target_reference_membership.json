@@ -1,5 +1,5 @@
 {
-  "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
+  "source_fact_feed": "chronicle-uk-942a1fa0-consumer-facts",
   "target_period": 2025,
   "candidate_count": 1254,
   "contract_target_count": 341,
@@ -4250,7 +4250,7 @@
     },
     {
       "name": "isc.private_school_students",
-      "from": "2024-01",
+      "from": "2025-01",
       "to": "2025"
     },
     {
@@ -6026,751 +6026,6 @@
       "to": "2025"
     },
     {
-      "name": "ons.population.uk_total",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_0_9_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_10_19_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_20_29_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_30_39_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_40_49_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_50_59_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_60_69_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_70_79_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000001",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000005",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000006",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000007",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000008",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@E12000009",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@W92000004",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@S92000003",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.age_80_89_by_region@N92000002",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_0_4",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_10_14",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_15_19",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_20_24",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_25_29",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_30_34",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_35_39",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_40_44",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_45_49",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_50_54",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_55_59",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_5_9",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_60_64",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_65_69",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_70_74",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_75_79",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_80_84",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_85_89",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.female_90_plus",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_0_4",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_10_14",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_15_19",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_20_24",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_25_29",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_30_34",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_35_39",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_40_44",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_45_49",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_50_54",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_55_59",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_5_9",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_60_64",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_65_69",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_70_74",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_75_79",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_80_84",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_85_89",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.male_90_plus",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.scotland_children_under_16",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.population.scotland_babies_under_1",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
       "name": "mhclg.council_tax_stock.band_a@E12000001",
       "from": "2025-10",
       "to": "2025"
@@ -7221,51 +6476,6 @@
       "to": "2025"
     },
     {
-      "name": "ons.public_sector_employment",
-      "from": "2024-12",
-      "to": "2025"
-    },
-    {
-      "name": "ons.land.land_value",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.land.household_land_value",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "ons.land.corporate_land_value",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "slc.repayments.england_total_higher_education",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "slc.repayments.england_plan_1",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "slc.repayments.england_plan_2",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "slc.repayments.england_postgraduate",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "slc.repayments.england_plan_5",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
       "name": "slc.support.maintenance_loan_recipients",
       "from": "2024",
       "to": "2025"
@@ -7358,11 +6568,6 @@
     },
     {
       "name": "welshgov.bus.public_support",
-      "from": "2024",
-      "to": "2025"
-    },
-    {
-      "name": "dfi_ni.bus.passenger_receipts",
       "from": "2024",
       "to": "2025"
     },
@@ -11442,12 +10647,12 @@
         {
           "name": "isc.private_school_students",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 556551.0,
-          "resolved_fact_period": "2024-01",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_67bd24e7f9158af756625865"
+          "resolved_value": 545640.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_45d924ab74cebe51d4664b38"
         }
       ]
     },
@@ -15315,12 +14520,12 @@
         {
           "name": "ons.population.uk_total",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 69281437.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6c212695ea75be0d2a635e9b"
+          "resolved_value": 69483939.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aa255f1b2a9a0f1d07d52369"
         }
       ]
     },
@@ -15330,146 +14535,146 @@
         {
           "name": "ons.population.age_0_9_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 285165.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c796672d4d88aa11ab15a31a"
+          "resolved_value": 279456.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e7ffba522621012a2498622e"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 865892.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_de0fc360f660f7a387628062"
+          "resolved_value": 848707.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e14086fa947ee68ce63ba5f7"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 626938.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cbc8ee6d7552af4ba61edcb1"
+          "resolved_value": 611749.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eca2a0ca6110bb60508b75fd"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 543004.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f858f629484e7989a9dc1f0b"
+          "resolved_value": 530178.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c9aaed566d7256ea45a86efe"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 718837.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_de2d9b45547f640fbc7ebb5a"
+          "resolved_value": 703000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7e0d99f5f193de73e0a675c"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 744698.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fec32a4b3417958969f5f2d9"
+          "resolved_value": 731339.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d43010833c500d0d2c1e3c43"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 1054493.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cdd134faa924b905bd8a36ad"
+          "resolved_value": 1014089.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ed28d8c27e25c6b78bba507e"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1059434.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f0ef951a6bad79d44726fe11"
+          "resolved_value": 1036231.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff919a2209f362a101847ee5"
         },
         {
           "name": "ons.population.age_0_9_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 575506.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d6a250010241c987a217b54f"
+          "resolved_value": 560179.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c5a02a0ee95356fc479e400e"
         },
         {
           "name": "ons.population.age_0_9_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 321552.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eef268031d128fde4eec5d91"
+          "resolved_value": 312131.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d84b3cf83118dc31d77d0a67"
         },
         {
           "name": "ons.population.age_0_9_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 527989.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9862176e9cdec891820dfa2"
+          "resolved_value": 513367.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fadd26b2e388e2bde251b61c"
         },
         {
           "name": "ons.population.age_0_9_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 229505.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eb8519582dac5a21a72f8360"
+          "resolved_value": 223939.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5a9132f9cebec343c75fd5d"
         }
       ]
     },
@@ -15479,146 +14684,146 @@
         {
           "name": "ons.population.age_10_19_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 326306.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ce36092d33f50f712f620485"
+          "resolved_value": 326135.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe906580dd8e2995f2a1570e"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 952864.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f6fc45432de26717dc50151d"
+          "resolved_value": 948264.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f336b837a2c4b57862859855"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 696780.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f1942c03893e2aeccb514e34"
+          "resolved_value": 689988.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8c557dddd27d2407b7c995b"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 615630.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d96b0e1445c879a8267ef553"
+          "resolved_value": 613290.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d7bae85a347ca8c4151ff95e"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 785062.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ff921d8727a6c1ea11548896"
+          "resolved_value": 777925.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e32f2bb77ce2e948c2a85c2d"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 785091.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d66fd1b48bc1e9ae4d38f778"
+          "resolved_value": 782243.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d49c066108776da23acb67ca"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 1068691.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8b79fef8b80acc1deb297b7"
+          "resolved_value": 1023090.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6ce36f11a0f22ad0bae4b58"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1183235.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ba4c8f8e6cb789626f191523"
+          "resolved_value": 1176322.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d4b88a4786b7b53f9c1b57be"
         },
         {
           "name": "ons.population.age_10_19_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 677228.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8ea04bba18d65ed2ac0dd74"
+          "resolved_value": 673970.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb7e167b44a67b7e84a556c2"
         },
         {
           "name": "ons.population.age_10_19_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 374851.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f040814c3de37f315671a60d"
+          "resolved_value": 366636.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fac81398d9df3a9dc9e45955"
         },
         {
           "name": "ons.population.age_10_19_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 612935.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d8cb95f3b8a4eb5725ec1e0d"
+          "resolved_value": 607601.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f63390631158948e207e3e80"
         },
         {
           "name": "ons.population.age_10_19_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 252764.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ef301c6ab42b35eb692e20b0"
+          "resolved_value": 254084.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dd0ad0512753e3e2a74e068d"
         }
       ]
     },
@@ -15628,146 +14833,146 @@
         {
           "name": "ons.population.age_20_29_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 343015.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ebe0b2ced4987cd701db581a"
+          "resolved_value": 339077.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f073e315eb526dbece99a96c"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 986590.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fe94b1572d6db93b57407bcd"
+          "resolved_value": 987726.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e37effccfe813afd9e812c1b"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 717479.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cb721748c503839a9229a404"
+          "resolved_value": 708022.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe9e01d0c43d0a2372c921d4"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 612108.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f7be7895d4f680a502caeb4b"
+          "resolved_value": 604999.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2a3b6254f3e5d39ee713609"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 766058.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f539e665a5478f92346bb4d4"
+          "resolved_value": 765265.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fbb9a69042c4bdf770e5b2b7"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 727218.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ff31c89cfa957bdd279c9947"
+          "resolved_value": 717233.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e9643412091aa97a13a20414"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 1508607.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f0ffc4e5795625b9238d6dde"
+          "resolved_value": 1533954.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe8a0f1ea0b3f82645729a2f"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1066121.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f3a720e9d1d4664e83307a9a"
+          "resolved_value": 1060724.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ea6f5f2b79729b0536a17842"
         },
         {
           "name": "ons.population.age_20_29_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 684393.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fe520978b4f4105aa292a3f5"
+          "resolved_value": 678928.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cca846eba63bccc516661119"
         },
         {
           "name": "ons.population.age_20_29_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 380557.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fe44434fdb2e33179826ee35"
+          "resolved_value": 376576.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff42683bc062a215719a0e92"
         },
         {
           "name": "ons.population.age_20_29_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 703554.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_dadba40aea2eb5dcdb2e5d6e"
+          "resolved_value": 701623.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe4eaaeca1c88b34ef9230de"
         },
         {
           "name": "ons.population.age_20_29_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 219525.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_afe826389a344a01c4be2862"
+          "resolved_value": 218575.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a1ca03c67e4710df2f89fe83"
         }
       ]
     },
@@ -15777,146 +14982,146 @@
         {
           "name": "ons.population.age_30_39_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 363357.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ceb94ab430de1f0bc8c19ce4"
+          "resolved_value": 360166.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f75b7e544e6a3985e8939efa"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 1064968.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eeb6e6194f0405a4b7010913"
+          "resolved_value": 1070583.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a6002700647eee56efdbd6b6"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 770809.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ebc2a149da9287a3a2b28d45"
+          "resolved_value": 768828.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f212c782cc57f79eb5caa138"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 676709.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fefffb16e9e1a25fd0da3435"
+          "resolved_value": 682492.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb8b4e59d59b21a8d6fcc32a"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 839114.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eaee3d4e99154692dbad24b9"
+          "resolved_value": 842839.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d85e594afb1325d10ba7855f"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 895639.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fbb89267af1b9a1a349f3274"
+          "resolved_value": 902358.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f795575100ba8f2126155584"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 1537372.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c7d5874566b099143ddbac28"
+          "resolved_value": 1546691.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_df8aeb9d59aa4f12ee5598bd"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1284552.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ff4aa5baed49b53887253b70"
+          "resolved_value": 1286795.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ba1ac41754df21a1aeedca12"
         },
         {
           "name": "ons.population.age_30_39_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 742082.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8c6ce01a5aa83ce392ccf3a"
+          "resolved_value": 741210.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ec114dbae426b13b7d40f2cb"
         },
         {
           "name": "ons.population.age_30_39_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 410248.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fa74c4da871af17e8af431d6"
+          "resolved_value": 406834.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c4f84edbe3513d57bb0dce55"
         },
         {
           "name": "ons.population.age_30_39_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 733480.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f045b554aebb8f1b21df5a5c"
+          "resolved_value": 729179.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ee2f8230e5cdaea506b69c09"
         },
         {
           "name": "ons.population.age_30_39_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 254067.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eb383d007487ef1df14f4946"
+          "resolved_value": 251999.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8afcb5d3c8aefbaf9a9b6de"
         }
       ]
     },
@@ -15926,146 +15131,146 @@
         {
           "name": "ons.population.age_40_49_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 320860.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f081bcb6c2e794e8ec3b0161"
+          "resolved_value": 325882.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc3d0d63696e81aeee6cc064"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 930967.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f7744877e123c00b96511818"
+          "resolved_value": 952998.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe134b40d0f1e8f8ac3f2ef9"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 674349.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d6e708c298712163b552e6c7"
+          "resolved_value": 686208.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d6a65d7fd3f24e91a8ee0aab"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 610611.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e861cd162b6b06a1107ca177"
+          "resolved_value": 624432.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2162f20517ca5652d2c7d67"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 746341.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fa28a64a0b8ec87502b44a9f"
+          "resolved_value": 763623.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_da335fc3f47d021b1df22a8f"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 838578.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f94400c214a5c3c3847cc562"
+          "resolved_value": 856913.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f12b3ba278035b7e1c51b878"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 1268973.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fb8228a78efb8cdb3dd46764"
+          "resolved_value": 1288929.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e05c0ab9088250114a7f38e7"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1255951.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_edac715ea904f29dbd3332f9"
+          "resolved_value": 1279313.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c94e55553dfeebe988a84721"
         },
         {
           "name": "ons.population.age_40_49_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 688417.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f6ecf5ebd09a5d638cf6dd15"
+          "resolved_value": 700576.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f55d91080c07c6aa0d5ab2df"
         },
         {
           "name": "ons.population.age_40_49_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 365951.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f6496b4ebd88792d288206a1"
+          "resolved_value": 370871.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d5a6a151d08c8a9a8827a99a"
         },
         {
           "name": "ons.population.age_40_49_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 675368.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e159eb5144ceae58dccb4dc0"
+          "resolved_value": 683165.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e1fba6382feb8f03ea52cd7b"
         },
         {
           "name": "ons.population.age_40_49_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 246140.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b71979cb27997e512ea68888"
+          "resolved_value": 248860.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8bae2d3dbafd93917190439"
         }
       ]
     },
@@ -16075,146 +15280,146 @@
         {
           "name": "ons.population.age_50_59_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 360074.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8febade5d1aa4eff5515f79"
+          "resolved_value": 352336.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d2135211faac91156263ed73"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 995810.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ce316c567d2d3919bad74247"
+          "resolved_value": 980650.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8cc6ac1d2d5d095590c0dc1"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 736903.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f07e470e70895701083be7b4"
+          "resolved_value": 725345.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ccb2c08e3860bbf51fcf57df"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 676307.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fc3b848c0d546908542f7522"
+          "resolved_value": 668214.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eedffff08ecc6b3abfd8af73"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 794143.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eced9fed4ca113ee655134b7"
+          "resolved_value": 785103.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f4292a12436676c7313a141a"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 866946.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8011436193a375ac63a33af"
+          "resolved_value": 862060.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c0d2d6e96cf2cce7e35079b8"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 1087518.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c0999183e74a6f6978377427"
+          "resolved_value": 1100048.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e62e84a089d4da6bf132909c"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1287719.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f5b6740db34f7f702bb230fb"
+          "resolved_value": 1281037.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f4aa5cdc97993a5901ef583e"
         },
         {
           "name": "ons.population.age_50_59_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 784718.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cf32f90895454cdb82d3a611"
+          "resolved_value": 772769.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5ce8cb7a7750230d235514e"
         },
         {
           "name": "ons.population.age_50_59_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 424694.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ed905faab304a40013587ffd"
+          "resolved_value": 415486.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b8cc8760993fadb06da01037"
         },
         {
           "name": "ons.population.age_50_59_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 766715.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f332e28940d1c94b1e2dec31"
+          "resolved_value": 749563.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fadf4539dfd64a47a9a9b69d"
         },
         {
           "name": "ons.population.age_50_59_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 255269.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f786aada1891e9f309902c1c"
+          "resolved_value": 250863.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d46c0214ac1967aa9f29f541"
         }
       ]
     },
@@ -16224,146 +15429,146 @@
         {
           "name": "ons.population.age_60_69_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 349719.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ff4466f1cb6fb29ce9b132b0"
+          "resolved_value": 358713.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff78e25dd4268b8b82ed126a"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 884043.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f861d328dbb8a01929eb1e91"
+          "resolved_value": 910717.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f92cd4888bc3fa1375390c3f"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 652931.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9ab6846d67db88fda81fa30"
+          "resolved_value": 671969.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f902d472c08455e3b366b079"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 591429.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e884ef403c95938c7ebf961b"
+          "resolved_value": 611920.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f299899015ba42251e01a753"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 677922.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fd4d62d07376896553d9fb66"
+          "resolved_value": 697195.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff6d40d24ed4f0efb1241497"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 744651.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f77f96051d8340645148d138"
+          "resolved_value": 770854.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b60bcb0333fa8359a7eb533e"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 787666.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e9f63f0939b77a41ec815de0"
+          "resolved_value": 818948.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e5577405bc73ba4567e97c47"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 1089421.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8667b0358441f18c2f8e548"
+          "resolved_value": 1125764.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cdb67ac5bb0aa44b8ae5b9ba"
         },
         {
           "name": "ons.population.age_60_69_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 736639.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f923cb193de625676c40b5c4"
+          "resolved_value": 759591.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fed3db6ac9e143c51c3136e5"
         },
         {
           "name": "ons.population.age_60_69_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 401775.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f518ad65099be8a424a62142"
+          "resolved_value": 412789.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d3661d0cdec50d6127024ea1"
         },
         {
           "name": "ons.population.age_60_69_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 721727.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e893656e104d3c1c375fa5e7"
+          "resolved_value": 739039.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa973e54ff42c13fc9764847"
         },
         {
           "name": "ons.population.age_60_69_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 223111.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9f6e8f32b460fefc304aeee"
+          "resolved_value": 228232.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7bf355d042b78faa822dbce"
         }
       ]
     },
@@ -16373,146 +15578,146 @@
         {
           "name": "ons.population.age_70_79_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 265573.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f135bc83bf0e2495ccab922b"
+          "resolved_value": 269819.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f3378c27dbc89a4addbacd88"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 669277.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f18853f5a9046c59334188d3"
+          "resolved_value": 675208.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f72313854318cea8e9b27c79"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 504131.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f71c0090e322cc6b02a80193"
+          "resolved_value": 507786.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_db363905e78a768435aeee0d"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 466530.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f1eaa2a27d34d75f4fcaf147"
+          "resolved_value": 468480.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_efcc542fc0763439d0102640"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 528207.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f6ed607ecc20a6bd1c0c8bef"
+          "resolved_value": 528891.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fecf355dd79d9fbbe67c4490"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 599882.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ef2c110c9bb5462379338b17"
+          "resolved_value": 603534.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e3963765265038f732bbb54c"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 485057.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d9b7f415855dd808a1aee77c"
+          "resolved_value": 498084.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef32c70fac012f22b3095f30"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 865392.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_dea0c6655095781f862cf7ac"
+          "resolved_value": 873028.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f3e2492ff93cf862db9cac16"
         },
         {
           "name": "ons.population.age_70_79_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 618254.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e8898137aad748593321b2fb"
+          "resolved_value": 622182.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fbad7c8632eadc5485c77bb2"
         },
         {
           "name": "ons.population.age_70_79_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 321668.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f1de159eac6f90c69f7aef22"
+          "resolved_value": 322818.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc1745c43faf175f0f415fcb"
         },
         {
           "name": "ons.population.age_70_79_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 519252.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f506930ca553f609fe076c9c"
+          "resolved_value": 529933.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8e367de8c140e57b854362b"
         },
         {
           "name": "ons.population.age_70_79_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 155382.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ec559b1c9b44b3acc8de9073"
+          "resolved_value": 156629.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe5da70b45db62be83768f0e"
         }
       ]
     },
@@ -16522,146 +15727,146 @@
         {
           "name": "ons.population.age_80_89_by_region@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 122118.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eec7f31aac48f686e0d9a343"
+          "resolved_value": 125800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c0ad523d2561f889ca550826"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 324141.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f5dcf6bfa6186fc6200bb9cd"
+          "resolved_value": 332900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dd0aeca0695453e9850a2e7b"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 243274.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ed30948324557f6bd25a0064"
+          "resolved_value": 251139.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb52711783e0e3e5684b6210"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 225626.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f32be81803e3b527361467e0"
+          "resolved_value": 234889.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dd147a53ea8f579cb3c7e762"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 275030.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f252d1b20801bc91a40a9a12"
+          "resolved_value": 283777.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cbcd8def6e568a6eccda3055"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 305691.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d387c1edf10113b2b8602fc3"
+          "resolved_value": 317198.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8b8dc9c7f962c43266eba49"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 237061.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fa7d5971f83d3ece501a33c7"
+          "resolved_value": 242901.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c83339c73df3c2ab497e7f65"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 447958.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bb61f66f5159481b73615674"
+          "resolved_value": 466197.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6eec2724c42244993b398ba"
         },
         {
           "name": "ons.population.age_80_89_by_region@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 313605.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ea5f3461bbda1967761f0d48"
+          "resolved_value": 327097.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5fcf8de92b09e4c277c99f3"
         },
         {
           "name": "ons.population.age_80_89_by_region@W92000004",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "W92000004",
           "resolved_period": 2025,
-          "resolved_value": 154319.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d766d2003f1fd56635d53589"
+          "resolved_value": 159376.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa3a457b670418d1972f2174"
         },
         {
           "name": "ons.population.age_80_89_by_region@S92000003",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "S92000003",
           "resolved_period": 2025,
-          "resolved_value": 238904.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f206015a88100a72b83bbe9f"
+          "resolved_value": 243413.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fdbe0efbf253d20c26dce5b8"
         },
         {
           "name": "ons.population.age_80_89_by_region@N92000002",
           "status": "active",
-          "matched_fact_count_overall": 20,
-          "matched_fact_count_at_or_before_period": 20,
+          "matched_fact_count_overall": 30,
+          "matched_fact_count_at_or_before_period": 30,
           "geography_level": "country",
           "geography_id": "N92000002",
           "resolved_period": 2025,
-          "resolved_value": 77441.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fb5795d1ea12a7a7005a9ee9"
+          "resolved_value": 79953.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ec891cc660f8b4aea3750a6a"
         }
       ]
     },
@@ -16671,12 +15876,12 @@
         {
           "name": "ons.population.female_0_4",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1744355.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fb55d5f20f74ee39a1e8fcb4"
+          "resolved_value": 1701788.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fcd621e0b299801f6856397b"
         }
       ]
     },
@@ -16686,12 +15891,12 @@
         {
           "name": "ons.population.female_10_14",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2052052.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9a457edc9491e5810c39f5f"
+          "resolved_value": 2014595.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8cf5de9613ddbb9aedfd9484"
         }
       ]
     },
@@ -16701,12 +15906,12 @@
         {
           "name": "ons.population.female_15_19",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2002835.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f0e2139b52c615925c9075dd"
+          "resolved_value": 2002099.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5adba03177e435af73792b18"
         }
       ]
     },
@@ -16716,12 +15921,12 @@
         {
           "name": "ons.population.female_20_24",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2034609.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b4e36c0dc0a924667be47bbc"
+          "resolved_value": 2036764.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e409529d9630a0cec74a0450"
         }
       ]
     },
@@ -16731,12 +15936,12 @@
         {
           "name": "ons.population.female_25_29",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2291610.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d9d6a711d0cbc4919a8643c0"
+          "resolved_value": 2269669.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e3be7e5ce9d24f9b276f779b"
         }
       ]
     },
@@ -16746,12 +15951,12 @@
         {
           "name": "ons.population.female_30_34",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2463301.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f5b1d6c400b912b05c79c477"
+          "resolved_value": 2439546.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_932e998b9cf5d0e0179a6e4d"
         }
       ]
     },
@@ -16761,12 +15966,12 @@
         {
           "name": "ons.population.female_35_39",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2472291.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f927cc9b3eab0494caf1479f"
+          "resolved_value": 2501726.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_faa74ea63d164c9e237b53e4"
         }
       ]
     },
@@ -16776,12 +15981,12 @@
         {
           "name": "ons.population.female_40_44",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2333109.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d9cdf746ffe5df2fd3d85279"
+          "resolved_value": 2363855.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_db8f015b04ce930bf1180e69"
         }
       ]
     },
@@ -16791,12 +15996,12 @@
         {
           "name": "ons.population.female_45_49",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2088285.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b679e4770750b86af6b1756b"
+          "resolved_value": 2140231.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b9231c58f87fd57ec7b58a95"
         }
       ]
     },
@@ -16806,12 +16011,12 @@
         {
           "name": "ons.population.female_50_54",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2255231.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_65b8a4cc92c4565b00007877"
+          "resolved_value": 2211381.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_95578f884ca9071be9214c39"
         }
       ]
     },
@@ -16821,12 +16026,12 @@
         {
           "name": "ons.population.female_55_59",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2360202.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ba87a7d66cb9f8694b952159"
+          "resolved_value": 2348471.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d1774fafcbe14e323719e923"
         }
       ]
     },
@@ -16836,12 +16041,12 @@
         {
           "name": "ons.population.female_5_9",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1941658.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bca9c38347810a944bbd08b3"
+          "resolved_value": 1886581.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_774dd6dfdbd411781ceeb83a"
         }
       ]
     },
@@ -16851,12 +16056,12 @@
         {
           "name": "ons.population.female_60_64",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2193915.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f3b1f78e4b752640465521f0"
+          "resolved_value": 2258870.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e0fc44cb2ceeebb67d1ee475"
         }
       ]
     },
@@ -16866,12 +16071,12 @@
         {
           "name": "ons.population.female_65_69",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1838574.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_dbeb583b16bcb530ee1296e1"
+          "resolved_value": 1899277.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc8a62616b588154f9471313"
         }
       ]
     },
@@ -16881,12 +16086,12 @@
         {
           "name": "ons.population.female_70_74",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1622996.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b962c8b6d3d68808831aad6a"
+          "resolved_value": 1625449.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f95ccf4b755148b8e4fb01d7"
         }
       ]
     },
@@ -16896,12 +16101,12 @@
         {
           "name": "ons.population.female_75_79",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1551183.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_aa0a8a7ab2d3894db7a7d7aa"
+          "resolved_value": 1578946.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d2c601cc87810519a779617a"
         }
       ]
     },
@@ -16911,12 +16116,12 @@
         {
           "name": "ons.population.female_80_84",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1024480.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fcdc2e2f119de0b65769ef90"
+          "resolved_value": 1064928.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8e4c43a2aae9305afea2b46"
         }
       ]
     },
@@ -16926,12 +16131,12 @@
         {
           "name": "ons.population.female_85_89",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 665267.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c76df00751abbf64b5ab056b"
+          "resolved_value": 676458.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_90250139fc199c4b9d9fa419"
         }
       ]
     },
@@ -16941,12 +16146,12 @@
         {
           "name": "ons.population.female_90_plus",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 414716.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_009d5dd487f317483e9d7b3d"
+          "resolved_value": 425428.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c2a1d774be0d4dd13a406b95"
         }
       ]
     },
@@ -16956,12 +16161,12 @@
         {
           "name": "ons.population.male_0_4",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1829801.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ccdfe5dde7b46840510e21d2"
+          "resolved_value": 1790962.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b5148574a75d0a1e0ebfb116"
         }
       ]
     },
@@ -16971,12 +16176,12 @@
         {
           "name": "ons.population.male_10_14",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2152800.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_86d603b352e77fd0c03ddaa8"
+          "resolved_value": 2115846.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d45cce3312fab1e0dbdac6e1"
         }
       ]
     },
@@ -16986,12 +16191,12 @@
         {
           "name": "ons.population.male_15_19",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2123750.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ecf390d4b25b71d12aae6bc7"
+          "resolved_value": 2107008.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d4534116ee44f57db1120c83"
         }
       ]
     },
@@ -17001,12 +16206,12 @@
         {
           "name": "ons.population.male_20_24",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2131646.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_edb961b3528b22769eece352"
+          "resolved_value": 2127062.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_db1d9a6c38202edb79d3c61d"
         }
       ]
     },
@@ -17016,12 +16221,12 @@
         {
           "name": "ons.population.male_25_29",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2257360.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fd52338de8e1557cdd024c36"
+          "resolved_value": 2259207.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_feb656e107fe15ad7abcf5b8"
         }
       ]
     },
@@ -17031,12 +16236,12 @@
         {
           "name": "ons.population.male_30_34",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2333326.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b81f56fab808ad1d38d70f3d"
+          "resolved_value": 2315894.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9ce8f68088ec27e2dcdfd1a0"
         }
       ]
     },
@@ -17046,12 +16251,12 @@
         {
           "name": "ons.population.male_35_39",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2303479.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_be9bedc792e0d419ebaf5316"
+          "resolved_value": 2332808.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d5126011d416db33681e3a8a"
         }
       ]
     },
@@ -17061,12 +16266,12 @@
         {
           "name": "ons.population.male_40_44",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2196013.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d41ff91bfe885debcc12d759"
+          "resolved_value": 2223098.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aac836f3ebdcde70db9f02de"
         }
       ]
     },
@@ -17076,12 +16281,12 @@
         {
           "name": "ons.population.male_45_49",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2005099.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fafcbae6e55f9ae20bc0050d"
+          "resolved_value": 2054586.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6f56efa4ee04f48b34c9029"
         }
       ]
     },
@@ -17091,12 +16296,12 @@
         {
           "name": "ons.population.male_50_54",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2164862.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b8fe92cfb43b9a95f8a9f7ef"
+          "resolved_value": 2133309.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c5764808c47ef3b0b2915267"
         }
       ]
     },
@@ -17106,12 +16311,12 @@
         {
           "name": "ons.population.male_55_59",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2256521.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_86b57e4ed1e5186f23dc4021"
+          "resolved_value": 2250313.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_978f751603c11a91a6d4f17d"
         }
       ]
     },
@@ -17121,12 +16326,12 @@
         {
           "name": "ons.population.male_5_9",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2037199.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e272f955c58535b8b9304759"
+          "resolved_value": 1985034.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff96c74dc7d083238d61aaed"
         }
       ]
     },
@@ -17136,12 +16341,12 @@
         {
           "name": "ons.population.male_60_64",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 2094462.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e60d33e33dcbc1ba2292edf5"
+          "resolved_value": 2152532.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff6a8d2b809dc1854b41e442"
         }
       ]
     },
@@ -17151,12 +16356,12 @@
         {
           "name": "ons.population.male_65_69",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1734083.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a4878efd0023575bded6b67a"
+          "resolved_value": 1795052.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1cd7364a1efd59f751e21bd"
         }
       ]
     },
@@ -17166,12 +16371,12 @@
         {
           "name": "ons.population.male_70_74",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1473758.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d34aca91f9d1621ea96e72bc"
+          "resolved_value": 1478885.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cee3784b59d5c64e5eb8ead5"
         }
       ]
     },
@@ -17181,12 +16386,12 @@
         {
           "name": "ons.population.male_75_79",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 1350668.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f74158203e735d37a67c5409"
+          "resolved_value": 1373112.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ebb5eaee4eb0c2e6c3f1adbc"
         }
       ]
     },
@@ -17196,12 +16401,12 @@
         {
           "name": "ons.population.male_80_84",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 815910.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_60aa57af44ada9286df3d649"
+          "resolved_value": 854188.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a7055b5eceb7a8d06f5b6187"
         }
       ]
     },
@@ -17211,12 +16416,12 @@
         {
           "name": "ons.population.male_85_89",
           "status": "active",
-          "matched_fact_count_overall": 10,
-          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_overall": 15,
+          "matched_fact_count_at_or_before_period": 15,
           "resolved_period": 2025,
-          "resolved_value": 459511.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bbfd4e781a7d1151855e4edb"
+          "resolved_value": 469066.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c5faf87af2e9a19e1b6fd425"
         }
       ]
     },
@@ -17226,12 +16431,12 @@
         {
           "name": "ons.population.male_90_plus",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 210520.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8ec6d2d034546c9693c4f6ed"
+          "resolved_value": 219915.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7fda3b8e3421d972d2363a7"
         }
       ]
     },
@@ -17241,12 +16446,12 @@
         {
           "name": "ons.population.scotland_children_under_16",
           "status": "active",
-          "matched_fact_count_overall": 32,
-          "matched_fact_count_at_or_before_period": 32,
+          "matched_fact_count_overall": 48,
+          "matched_fact_count_at_or_before_period": 48,
           "resolved_period": 2025,
-          "resolved_value": 896833.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9862176e9cdec891820dfa2"
+          "resolved_value": 877999.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fadd26b2e388e2bde251b61c"
         }
       ]
     },
@@ -17256,12 +16461,12 @@
         {
           "name": "ons.population.scotland_babies_under_1",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 46776.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_edd043df0081e63ad0876932"
+          "resolved_value": 45774.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_efa784b358dd73f8f478d3ab"
         }
       ]
     },
@@ -17271,8 +16476,8 @@
         {
           "name": "ons.population.scotland_households_3plus_children",
           "status": "signed_excluded",
-          "matched_fact_count_overall": 552,
-          "matched_fact_count_at_or_before_period": 552,
+          "matched_fact_count_overall": 828,
+          "matched_fact_count_at_or_before_period": 828,
           "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
         }
       ]
@@ -18450,8 +17655,8 @@
         {
           "name": "welshgov.council_tax_stock.band_a",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 194973.29,
           "resolved_fact_period": "2025",
@@ -18465,8 +17670,8 @@
         {
           "name": "welshgov.council_tax_stock.band_b",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 285787.52,
           "resolved_fact_period": "2025",
@@ -18480,8 +17685,8 @@
         {
           "name": "welshgov.council_tax_stock.band_c",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 301699.86,
           "resolved_fact_period": "2025",
@@ -18495,8 +17700,8 @@
         {
           "name": "welshgov.council_tax_stock.band_d",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 225179.88,
           "resolved_fact_period": "2025",
@@ -18510,8 +17715,8 @@
         {
           "name": "welshgov.council_tax_stock.band_e",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 185447.46,
           "resolved_fact_period": "2025",
@@ -18525,8 +17730,8 @@
         {
           "name": "welshgov.council_tax_stock.band_f",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 114672.0,
           "resolved_fact_period": "2025",
@@ -18540,8 +17745,8 @@
         {
           "name": "welshgov.council_tax_stock.band_g",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 52211.0,
           "resolved_fact_period": "2025",
@@ -18555,8 +17760,8 @@
         {
           "name": "welshgov.council_tax_stock.band_h",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 12357.0,
           "resolved_fact_period": "2025",
@@ -18570,8 +17775,8 @@
         {
           "name": "welshgov.council_tax_stock.band_i",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 5305.0,
           "resolved_fact_period": "2025",
@@ -18585,8 +17790,8 @@
         {
           "name": "welshgov.council_tax_stock.total",
           "status": "active",
-          "matched_fact_count_overall": 436,
-          "matched_fact_count_at_or_before_period": 339,
+          "matched_fact_count_overall": 447,
+          "matched_fact_count_at_or_before_period": 349,
           "resolved_period": 2025,
           "resolved_value": 1377633.03,
           "resolved_fact_period": "2025",
@@ -18765,12 +17970,13 @@
         {
           "name": "ons.public_sector_employment",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
           "resolved_period": 2025,
-          "resolved_value": 6146000.0,
-          "resolved_fact_period": "2024-12",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ff79b4e2301f564ec4203235"
+          "resolved_value": 6176000.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_01661bb2209e73145f786ab8"
         }
       ]
     },
@@ -18780,12 +17986,12 @@
         {
           "name": "ons.land.land_value",
           "status": "active",
-          "matched_fact_count_overall": 30,
-          "matched_fact_count_at_or_before_period": 30,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 7117771000000.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4daf8d1b8830f72bba924d56"
+          "resolved_value": 6872455000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ee3c191d116dacbc2d5e08aa"
         }
       ]
     },
@@ -18795,12 +18001,12 @@
         {
           "name": "ons.land.household_land_value",
           "status": "active",
-          "matched_fact_count_overall": 30,
-          "matched_fact_count_at_or_before_period": 30,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 4559831000000.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0e5f9867ab377dffd8a8941f"
+          "resolved_value": 4485171000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_45a7195e1c73a6420339163e"
         }
       ]
     },
@@ -18810,12 +18016,12 @@
         {
           "name": "ons.land.corporate_land_value",
           "status": "active",
-          "matched_fact_count_overall": 30,
-          "matched_fact_count_at_or_before_period": 30,
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 2103053000000.0,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ab561a17be0af52de30cca88"
+          "resolved_value": 2063534000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9bb6e233ca9b1a7061427ad4"
         }
       ]
     },
@@ -18837,12 +18043,12 @@
         {
           "name": "slc.repayments.england_total_higher_education",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 5018231834.949999,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b947d1f3c3659d252194c102"
+          "resolved_value": 5339303976.37,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f0246325a330628012ee76e8"
         }
       ]
     },
@@ -18852,12 +18058,12 @@
         {
           "name": "slc.repayments.england_plan_1",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 1852699178.55,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1d9680e6eaf243227fed5ef2"
+          "resolved_value": 1604190700.89,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a53459aedc5b84595b83c3c8"
         }
       ]
     },
@@ -18867,12 +18073,12 @@
         {
           "name": "slc.repayments.england_plan_2",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 2778253361.64,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_882329821c90dc683aa778d8"
+          "resolved_value": 3234379913.2999997,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b93d57062e37c3331c56e26c"
         }
       ]
     },
@@ -18882,12 +18088,12 @@
         {
           "name": "slc.repayments.england_postgraduate",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 346409713.95000005,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ac1b07c69f1e1baa2a0fb787"
+          "resolved_value": 427019983.79,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d1ed6adea71769e10e3c3f36"
         }
       ]
     },
@@ -18897,12 +18103,12 @@
         {
           "name": "slc.repayments.england_plan_5",
           "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 40869580.81,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_496af6b8fe31c71c43f1d292"
+          "resolved_value": 73713378.39,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9fcbf3e10321a3659d441d2"
         }
       ]
     },
@@ -19318,7 +18524,7 @@
           "resolved_period": 2025,
           "resolved_value": 26522000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_69cd660b943ae8f21761f76a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_643fd0413421fbcff9ea2bb5"
         }
       ]
     },
@@ -19333,7 +18539,7 @@
           "resolved_period": 2025,
           "resolved_value": 15339000000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b56be49c552300f6c02fc559"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_03c5f13d5fbab023177a1aea"
         }
       ]
     },
@@ -19388,12 +18594,12 @@
         {
           "name": "dfi_ni.bus.passenger_receipts",
           "status": "active",
-          "matched_fact_count_overall": 12,
-          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 14,
           "resolved_period": 2025,
-          "resolved_value": 150082817.48999995,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_96f72989614e0c5faaeeabbb"
+          "resolved_value": 152500000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb908f8be713f90f9536e6a2"
         }
       ]
     },

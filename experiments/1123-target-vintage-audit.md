@@ -110,3 +110,18 @@ The UC caseload headline binds the calendar-2025 window.
 `uk/target_doctrine_exceptions.json` lists the holds a later #1123 change
 closes, each naming that change. The compile refuses an undeclared, expired
 or stale hold.
+
+## Outcome of the re-pin (942a1fa, 2026-10-09)
+
+- **Moved to a 2025 edition:**
+  - the national population rows (ONS mid-2025);
+  - local-authority ages (mid-2025, every authority including Northern Ireland);
+  - SLC repayments (FY2025-26);
+  - land values (preliminary end-2025, bound explicitly as preliminary);
+  - public sector employment (mean of the four 2025 quarters);
+  - ISC (January 2025 census day, an `in_year_snapshot` hold);
+  - DfI receipts (FY2025-26).
+- **Still held, with a declared reason:**
+  - SLC student support: the provisional 2025/26 early-year tables report totals by level and domicile, not the products bound; the final edition is due 26 November 2026.
+  - Cars fuel duty: the cars share needs a fiscal-to-calendar roll-forward of HMRC's provisional FY2025-26 total, which is not built yet.
+  - Constituency ages: no mid-2025 constituency edition is published yet. They are `control_rescaled` under the mid-2025 regional controls.

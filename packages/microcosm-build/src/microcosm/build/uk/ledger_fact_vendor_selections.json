@@ -120,7 +120,12 @@
             "source_name": "ons",
             "source_concept": "ons.mid_year_population_estimate",
             "geography_id": "K02000001",
-            "dimensions": []
+            "dimensions": [],
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 2
         }
@@ -334,7 +339,15 @@
               "dfi_ni.translink_bus.passenger_journeys",
               "dfi_ni.translink_bus.passenger_receipts"
             ],
-            "period_type": "fiscal_year"
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 24
         },
@@ -726,7 +739,11 @@
               "E12000008",
               "E12000009"
             ],
-            "dimensions": []
+            "dimensions": [],
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 26
         }
