@@ -17,18 +17,22 @@ another's collector request is in flight):
   run goes local-only only after a collector answer about the run itself.
 - While a producer's service is alive, no other service sends any request for
   that producer's run.
-- A run goes local-only only right after a collector answer (or, for a missing
-  credential, the absence of one) that justifies it, and a refused credential
-  is exchanged once.
+- A run goes local-only only when the deciding service's latest collector
+  answer is the refusal that justifies it. Two cases have no fresh answer: a
+  missing credential, and a credential the collector already refused to that
+  service, which is exchanged once and not again.
 - Local-only is final: no request about a run reaches the collector after it
   goes local-only, even from a service that listed the run before.
 - Once every service has gone, a run left pending is delivered in full by a
-  service whose credential owns it.
+  service whose credential owns it, including a service that was refused for
+  the run under an earlier login.
 """
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 import signal
 import sqlite3
 import subprocess
@@ -59,17 +63,24 @@ from microcosm.build.telemetry_emitter_service import (
 )
 from microcosm.build.telemetry_emitter_service import collector as collector_module
 from microcosm.build.telemetry_emitter_service import leases as leases_module
+from microcosm.build.telemetry_emitter_service import main as main_module
 from microcosm.build.telemetry_emitter_service.constants import (
+    DEFAULT_TOKEN_LIFETIME_SECONDS,
     LOCAL_ONLY_MISSING_CREDENTIAL,
     LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
     LOCAL_ONLY_REJECTED_CREDENTIAL,
     LOCAL_ONLY_REJECTED_EVENTS,
     LOCAL_ONLY_REJECTED_REGISTRATION,
+    MAX_RETRY_SECONDS,
     ORPHAN_IDLE_SECONDS,
+    OWN_LEASE_UNAVAILABLE_MESSAGE,
     RUN_REGISTRATION_PATH,
     TOKEN_EXCHANGE_PATH,
 )
-from microcosm.build.telemetry_emitter_service.leases import ProducerLeases
+from microcosm.build.telemetry_emitter_service.leases import (
+    OwnLeaseUnavailableError,
+    ProducerLeases,
+)
 from microcosm.build.telemetry_protocol import BUILD_COMPLETED_MESSAGE
 
 MEMBER = "hf-member:"
@@ -98,21 +109,44 @@ def _registration(run_id: str, producer_id: str) -> dict[str, Any]:
     ).as_registration()
 
 
+def _run_of(registration: dict[str, Any]) -> Run:
+    return registration["run_id"], registration["producer_id"]
+
+
 class FakeCollector:
     """The hosted collector's answers, as its authorization model gives them."""
 
-    def __init__(self, rejected_run_ids: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        rejected_run_ids: set[str] | None = None,
+        conflicted_run_ids: set[str] | None = None,
+    ) -> None:
         self.rejected_run_ids = set(rejected_run_ids or ())
         self.owners: dict[str, str] = {}
-        self.metadata: dict[str, dict[str, Any]] = {}
+        # A conflicted run id was registered before with other metadata, so
+        # whoever owns it gets 409 for this registration.
+        self.metadata: dict[str, dict[str, Any]] = {
+            run_id: {"pipeline": "something-else"}
+            for run_id in conflicted_run_ids or ()
+        }
         self.producers: set[Run] = set()
         self.accepted: dict[Run, set[str]] = {}
         # (caller's run, kind, run asked about or None, status)
         self.requests: list[tuple[Run, str, Run | None, int]] = []
-        # (caller's run, Hugging Face token) for every refused exchange
+        # (caller's run, Hugging Face token) for every refused exchange, and
+        # where in ``requests`` the first refusal of each falls
         self.refused: list[tuple[Run, str]] = []
+        self.refused_at: dict[tuple[Run, str], int] = {}
         # Runs once, while the next request is in flight.
         self.during_next_request: Callable[[], None] | None = None
+
+    @property
+    def conflicted_run_ids(self) -> set[str]:
+        return {
+            run_id
+            for run_id, metadata in self.metadata.items()
+            if metadata.get("pipeline") == "something-else"
+        }
 
     def post(self, caller: Run, url: str, payload, token: str) -> tuple[int, dict]:
         if self.during_next_request is not None:
@@ -122,6 +156,7 @@ class FakeCollector:
         if path == TOKEN_EXCHANGE_PATH:
             if not token.startswith(MEMBER):
                 self.refused.append((caller, token))
+                self.refused_at.setdefault((caller, token), len(self.requests))
             if token.startswith(MEMBER):
                 user = token.removeprefix(MEMBER)
                 return self._answer(
@@ -160,6 +195,14 @@ class FakeCollector:
         self.requests.append((caller, kind, run, status))
         return status, body
 
+    def latest(self, caller: Run, before: int) -> tuple[str, Run | None, int] | None:
+        """The caller's last request among the first ``before``: kind, run, status."""
+
+        for who, kind, about, status in reversed(self.requests[:before]):
+            if who == caller:
+                return kind, about, status
+        return None
+
     def asked(self, caller: Run, kind: str, run: Run | None = None) -> list[int]:
         return [
             status
@@ -181,7 +224,7 @@ class Producer:
 
     @property
     def run(self) -> Run:
-        return self.registration["run_id"], self.registration["producer_id"]
+        return _run_of(self.registration)
 
 
 class Host:
@@ -196,10 +239,20 @@ class Host:
         self.local_only: list[tuple[Run, Run, str, str | None, int]] = []
         # Requests a service sent about another producer's run while it lived.
         self.intrusions: list[tuple[Run, str, Run]] = []
+        # Each flush comes after any retry delay a service set itself, as the
+        # service's one-second worker ticks would reach it.
+        self.clock = 0.0
 
-    def start(self, credential: str | None, run_id: str | None = None) -> Producer:
+    def start(
+        self,
+        credential: str | None,
+        run_id: str | None = None,
+        producer_id: str | None = None,
+    ) -> Producer:
         index = len(self.producers)
-        registration = _registration(run_id or f"run-{index}", f"producer-{index}")
+        registration = _registration(
+            run_id or f"run-{index}", producer_id or f"producer-{index}"
+        )
         spool = EventSpool(self.spool_path)
         # As in the service's main(): the lease is taken before registration.
         delivery = CollectorDelivery(
@@ -242,11 +295,15 @@ class Host:
                 self.intrusions.append((producer.run, url, about))
             return status, body
 
+        self.clock += MAX_RETRY_SECONDS + 1
         with (
             mock.patch.object(
                 collector_module, "_huggingface_token", lambda: producer.credential
             ),
             mock.patch.object(collector_module, "_http_post", post),
+            mock.patch.object(
+                collector_module, "time", SimpleNamespace(monotonic=lambda: self.clock)
+            ),
         ):
             return producer.delivery.flush_once()
 
@@ -293,28 +350,44 @@ def _assert_own_credential_only(host: Host) -> None:
 
     assert host.intrusions == []
     rejected = host.collector.rejected_run_ids
+    conflicted = host.collector.conflicted_run_ids
     for caller, run, reason, credential, at in host.local_only:
         # Local-only is final: nothing about the run reaches the collector after.
         later = host.collector.requests[at:]
         assert all(about != run for _, _, about, _ in later), (run, later)
+        # What this service last heard from the collector before deciding.
+        latest = host.collector.latest(caller, at)
         if caller != run:
             # Another producer's run: only the collector's answer about the
-            # run's data, never one about this service's credential.
-            assert reason == LOCAL_ONLY_REJECTED_EVENTS, (caller, run, reason)
-            assert run[0] in rejected
-            assert 422 in host.collector.asked(caller, "events", run)
+            # run itself, never one about this service's credential.
+            if reason == LOCAL_ONLY_REJECTED_REGISTRATION:
+                assert run[0] in conflicted, (caller, run)
+                assert latest == ("register", run, 409), (caller, run, latest)
+            else:
+                assert reason == LOCAL_ONLY_REJECTED_EVENTS, (caller, run, reason)
+                assert run[0] in rejected, (caller, run)
+                assert latest == ("events", run, 422), (caller, run, latest)
             continue
         if reason == LOCAL_ONLY_MISSING_CREDENTIAL:
             assert credential is None
         elif reason == LOCAL_ONLY_REJECTED_CREDENTIAL:
-            assert set(host.collector.asked(caller, "exchange")) & {401, 403}
+            # The collector refused this very login to this service, just now
+            # or earlier: a refused login is not exchanged a second time.
+            first_refused = host.collector.refused_at.get((caller, credential), at)
+            assert first_refused < at, (caller, credential)
         elif reason == LOCAL_ONLY_REJECTED_REGISTRATION:
-            assert set(host.collector.asked(caller, "register", run)) & {403, 409}
+            assert latest in (("register", run, 403), ("register", run, 409)), (
+                run,
+                latest,
+            )
         elif reason == LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION:
-            assert 403 in host.collector.asked(caller, "events", run)
+            assert latest == ("events", run, 403), (run, latest)
         else:
             assert reason == LOCAL_ONLY_REJECTED_EVENTS
-            assert set(host.collector.asked(caller, "events", run)) & {404, 422}
+            assert latest in (("events", run, 404), ("events", run, 422)), (
+                run,
+                latest,
+            )
     # A refused credential is exchanged once per service, not on every pass.
     refused = host.collector.refused
     assert len(set(refused)) == len(refused), refused
@@ -433,6 +506,260 @@ def test_an_orphan_owned_by_another_user_is_passed_over_not_made_local_only(host
     host.flush(rescuer)
     assert host.collector.accepted[build_a.run] == set(build_a.appended)
     _assert_own_credential_only(host)
+
+
+@pytest.mark.parametrize("refused", [OUTSIDER, EXPIRED])
+def test_a_passed_over_orphan_is_offered_again_once_the_login_changes(host, refused):
+    """Once a service's own run is local-only and every other pending run is
+    passed over, no delivery reads the login any more. The pass itself must
+    notice the new login, or the orphan waits for another service."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a, 2)
+    host.kill(build_a)
+    build_b = host.start(refused)
+    host.emit(build_b)
+    for _ in range(2):
+        host.flush(build_b)
+    assert host.states()[build_b.run] == (
+        "local_only",
+        LOCAL_ONLY_REJECTED_CREDENTIAL,
+    )
+    assert host.queued(build_a.run) == 2
+
+    build_b.credential = MEMBER + "alice"
+    host.flush(build_b)
+
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    assert host.queued(build_a.run) == 0
+    # The refused login was exchanged once, and so was the new one.
+    assert host.collector.asked(build_b.run, "exchange") == [
+        403 if refused == OUTSIDER else 401,
+        200,
+    ]
+    _assert_own_credential_only(host)
+
+
+def test_a_passed_over_orphan_waits_out_the_session_of_the_login_that_was_refused(
+    host,
+):
+    """A session the collector issued stays in use until it expires, so a new
+    login takes effect then, as it does for the service's own run."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a, 2)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "bob")
+    host.emit(build_b)
+    host.flush(build_b)
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [403]
+
+    build_b.credential = MEMBER + "alice"
+    host.flush(build_b)
+    # Bob's session is still what this service sends, and it was refused.
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [403]
+    assert host.queued(build_a.run) == 2
+
+    host.clock += DEFAULT_TOKEN_LIFETIME_SECONDS
+    host.flush(build_b)
+
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [403, 201]
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    _assert_own_credential_only(host)
+
+
+def test_a_refusal_for_one_run_does_not_pass_over_a_run_with_similar_ids(host):
+    """Run and producer ids may contain colons, so two runs can share the text
+    ``run_id:producer_id``. From review: Bob was refused Alice's ``a:b``/``c``
+    and then never offered his own ``a``/``b:c``."""
+
+    build_a = host.start(MEMBER + "alice", run_id="a:b", producer_id="c")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "bob", run_id="a", producer_id="b:c")
+    host.emit(build_b)
+    host.flush(build_b)
+    host.emit(build_b)
+    host.kill(build_b)
+    adopter = host.start(MEMBER + "bob")
+
+    for _ in range(2):
+        host.flush(adopter)
+
+    assert host.collector.asked(adopter.run, "register", build_a.run) == [403]
+    assert host.collector.accepted[build_b.run] == set(build_b.appended)
+    assert host.queued(build_b.run) == 0
+    assert host.queued(build_a.run) == 1
+    _assert_own_credential_only(host)
+
+
+def test_registering_one_run_does_not_count_for_a_run_with_similar_ids(host):
+    """Both orphans are Alice's and neither was registered. The adopter must
+    register each: the second is not registered just because the first's ids
+    join to the same text."""
+
+    orphans = [
+        host.start(MEMBER + "alice", run_id="a:b", producer_id="c"),
+        host.start(MEMBER + "alice", run_id="a", producer_id="b:c"),
+    ]
+    for orphan in orphans:
+        host.emit(orphan)
+        host.kill(orphan)
+    adopter = host.start(MEMBER + "alice")
+
+    for _ in range(2):
+        host.flush(adopter)
+
+    for orphan in orphans:
+        assert host.collector.asked(adopter.run, "register", orphan.run) == [201]
+        assert host.collector.accepted[orphan.run] == set(orphan.appended)
+        assert host.states()[orphan.run] == ("pending", None)
+    _assert_own_credential_only(host)
+
+
+def _refuse_locks(patch, refusals: int | None) -> list[int]:
+    """Make the next ``refusals`` lock attempts fail (all of them, if ``None``)
+    as a system that has run out of locks would."""
+
+    real = leases_module.fcntl
+    attempts: list[int] = []
+
+    def flock(descriptor: int, operation: int) -> None:
+        attempts.append(descriptor)
+        if refusals is None or len(attempts) <= refusals:
+            raise OSError(errno.ENOLCK, "No locks available")
+        real.flock(descriptor, operation)
+
+    patch.setattr(
+        leases_module,
+        "fcntl",
+        SimpleNamespace(flock=flock, LOCK_EX=real.LOCK_EX, LOCK_NB=real.LOCK_NB),
+    )
+    return attempts
+
+
+def test_a_lock_refused_once_at_startup_does_not_expose_the_run(host, monkeypatch):
+    """From review: the system refused build A's lock once, so A ran without
+    its lease, and the attempt left a lease file nobody held. Build B took
+    that for an orphan's and registered A's live run under its own login."""
+
+    with monkeypatch.context() as patch:
+        attempts = _refuse_locks(patch, 1)
+        build_a = host.start(MEMBER + "alice")
+    build_b = host.start(MEMBER + "bob")
+    host.emit(build_a)
+    host.emit(build_b)
+
+    for _ in range(2):
+        host.flush(build_b)
+
+    assert all(about != build_a.run for _, _, about, _ in host.collector.requests)
+    host.flush(build_a)
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    assert host.states()[build_a.run] == ("pending", None)
+    _assert_own_credential_only(host)
+    # A took its lease on the attempt after the refusal.
+    assert len(attempts) == 2
+
+
+@pytest.mark.parametrize("obstacle", ["locks_refused", "lease_held"])
+def test_a_service_that_cannot_take_its_lease_does_not_start(
+    tmp_path, monkeypatch, capsys, obstacle
+):
+    """A lease file nobody holds reads as an exited producer's, and a failed
+    attempt can leave one. So a service that cannot take its lease serves
+    nothing: its run never has an event another service could adopt."""
+
+    registration = _registration("run-a", "producer-a")
+    spool_path = tmp_path / "events.sqlite3"
+    arguments = [
+        *("--socket", str(tmp_path / "service.sock")),
+        *("--spool", str(spool_path)),
+        *("--development-collector-url", DEVELOPMENT_COLLECTOR),
+        *("--registration-json", json.dumps(registration)),
+        *("--parent-pid", str(os.getpid())),
+    ]
+    served: list[EmitterService] = []
+    monkeypatch.setattr(EmitterService, "run", lambda self: served.append(self))
+    spools: list[EventSpool] = []
+
+    def opened(path: Path) -> EventSpool:
+        spools.append(EventSpool(path))
+        return spools[-1]
+
+    monkeypatch.setattr(main_module, "EventSpool", opened)
+    monkeypatch.setattr(collector_module, "OWN_LEASE_TIMEOUT_SECONDS", 0.05)
+    try:
+        with monkeypatch.context() as patch:
+            if obstacle == "locks_refused":
+                _refuse_locks(patch, None)
+                holder = None
+            else:
+                # An adopter is still delivering an earlier run with these ids.
+                holder = ProducerLeases.beside(spool_path).try_acquire(
+                    *_run_of(registration), create=True
+                )
+                assert holder is not None
+            with pytest.raises(OwnLeaseUnavailableError):
+                CollectorDelivery(
+                    opened(spool_path),
+                    registration,
+                    development_collector_url=DEVELOPMENT_COLLECTOR,
+                )
+            assert main_module.main(arguments) == 1
+            assert served == []
+            assert capsys.readouterr().err.strip() == OWN_LEASE_UNAVAILABLE_MESSAGE
+            if holder is not None:
+                holder.release()
+
+        # With the obstacle gone, the same service starts.
+        assert main_module.main(arguments) == 0
+        assert [service.registration for service in served] == [registration]
+        assert capsys.readouterr().err == ""
+    finally:
+        for spool in spools:
+            spool._engine.dispose()
+
+
+def test_an_own_lease_waits_out_refused_locks_until_its_deadline(tmp_path, monkeypatch):
+    leases = ProducerLeases(tmp_path / "leases")
+    now = [0.0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    def hold():
+        return leases.hold(
+            "run-a",
+            "producer-a",
+            timeout_seconds=1,
+            clock=lambda: now[0],
+            sleep=sleep,
+        )
+
+    with monkeypatch.context() as patch:
+        attempts = _refuse_locks(patch, 3)
+        lease = hold()
+        assert lease is not None
+        assert len(attempts) == 4
+        lease.release()
+
+    with monkeypatch.context() as patch:
+        attempts = _refuse_locks(patch, None)
+        assert hold() is None
+        # It kept asking until the deadline rather than giving up at once.
+        assert len(attempts) > 50
+
+    # The refused attempts left nothing locked.
+    lease = leases.try_acquire("run-a", "producer-a", create=False)
+    assert lease is not None
+    lease.release()
 
 
 @pytest.mark.parametrize("answer", ["unacceptable_events", "registration_conflict"])
@@ -619,6 +946,24 @@ def test_a_lease_file_replaced_between_open_and_lock_is_not_trusted(
         leases.try_acquire("run-a", "producer-a", create=False)
 
 
+def test_a_lease_that_cannot_be_checked_is_not_left_locked(tmp_path, monkeypatch):
+    leases = ProducerLeases(tmp_path / "leases")
+    leases.try_acquire("run-a", "producer-a", create=True).release()
+
+    def unreadable(path, descriptor):
+        raise PermissionError("cannot stat the lease file")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(leases_module, "_names_open_file", unreadable)
+        with pytest.raises(PermissionError):
+            leases.try_acquire("run-a", "producer-a", create=False)
+
+    # The failed attempt closed its descriptor, so the lock went with it.
+    lease = leases.try_acquire("run-a", "producer-a", create=False)
+    assert lease is not None
+    lease.release()
+
+
 def test_a_killed_service_releases_its_lease(tmp_path):
     leases = ProducerLeases(tmp_path / "leases")
     holder = textwrap.dedent(
@@ -666,8 +1011,9 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
     tmp_path, monkeypatch, real_local_telemetry
 ):
     """Build A has a credential, build B has none, and both services share one
-    spool. A's token exchange is held until B's worker has made two passes
-    over A's queued run; A's run must still arrive in full."""
+    spool. A's token exchange is held until B's worker has made a pass over
+    A's queued run, and for 1.5 s more (the worker passes every second); A's
+    run must still arrive in full."""
 
     release = threading.Event()
     received: dict[str, list[dict[str, Any]]] = {}
@@ -727,7 +1073,7 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
         build_a.stage("compile", message="Started.")
         build_b.stage("compile", message="Started.")
         # B's first delivery pass, which meets A's queued run too, makes B's own
-        # run local-only. Let B make another pass, then let A deliver.
+        # run local-only. Leave time for another pass, then let A deliver.
         deadline = time.monotonic() + 60
         while _upload_state(spool_path, "build-b") != "local_only":
             assert time.monotonic() < deadline, "build B's worker never ran"
@@ -819,6 +1165,9 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     builds=st.lists(BUILD, min_size=2, max_size=4),
     operations=OPERATIONS,
     rejected=st.sets(st.integers(0, 7), max_size=2),
+    conflicted=st.sets(st.integers(0, 7), max_size=2),
+    # The logins the two last services start under, before Alice's and Bob's.
+    rescue_logins=st.tuples(st.sampled_from(CREDENTIALS), st.sampled_from(CREDENTIALS)),
 )
 # Shrunk from a 1,500-example run against a delivery that trusted its listed
 # runs: B makes its own run local-only and exits while A's exchange is in
@@ -827,13 +1176,27 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     builds=[(MEMBER + "alice", 0), (None, 0)],
     operations=[("interleave", 0, 1, True)],
     rejected=set(),
+    conflicted=set(),
+    rescue_logins=(MEMBER + "alice", MEMBER + "bob"),
+)
+# From review: a service refused for every pending run, whose own run is not
+# pending either, never read its login again, so a new login went unseen.
+@example(
+    builds=[(MEMBER + "alice", 0), (MEMBER + "alice", 0)],
+    operations=[],
+    rejected=set(),
+    conflicted=set(),
+    rescue_logins=(OUTSIDER, EXPIRED),
 )
 def test_no_service_decides_another_producers_run_from_its_own_credential(
-    tmp_path_factory, builds, operations, rejected
+    tmp_path_factory, builds, operations, rejected, conflicted, rescue_logins
 ):
     host = Host(
         tmp_path_factory.mktemp("foreign"),
-        FakeCollector({f"run-{index}" for index in rejected}),
+        FakeCollector(
+            {f"run-{index}" for index in rejected},
+            {f"run-{index}" for index in conflicted},
+        ),
     )
     try:
         # Builds already running, each with an event queued.
@@ -870,26 +1233,42 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
                 host.flush(producer)
                 host.collector.during_next_request = None
             _assert_own_credential_only(host)
-        _label_paths(host)
 
-        # Every service goes. A run still pending is an orphan, and a service
-        # whose login owns it delivers it in full.
+        # Every service goes. A run still pending is an orphan. Two more
+        # services start under any login and make a pass, which may refuse
+        # them. Then their logins become Alice's and Bob's and any session
+        # they held runs out: between them they deliver each orphan in full.
         for producer in host.producers:
             if producer.alive:
                 host.kill(producer)
-        rescuers = [host.start(MEMBER + user) for user in ("alice", "bob")]
         before = host.states()
+        rescuers = [host.start(login) for login in rescue_logins]
+        for rescuer in rescuers:
+            host.flush(rescuer)
+        _assert_own_credential_only(host)
+        for rescuer, user in zip(rescuers, ("alice", "bob"), strict=True):
+            rescuer.credential = MEMBER + user
+        host.clock += DEFAULT_TOKEN_LIFETIME_SECONDS
         for _ in range(3):
             for rescuer in rescuers:
                 host.flush(rescuer)
+        _label_paths(host)
         _assert_own_credential_only(host)
         after = host.states()
         for producer in host.producers:
             if producer in rescuers or before[producer.run][0] != "pending":
                 continue
-            if producer.run[0] in host.collector.rejected_run_ids and (
-                producer.appended
+            run_id = producer.run[0]
+            if host.queued(producer.run) and (
+                run_id in host.collector.conflicted_run_ids
             ):
+                # Its owner, whoever that is, gets 409: a refusal about the run.
+                assert after[producer.run] == (
+                    "local_only",
+                    LOCAL_ONLY_REJECTED_REGISTRATION,
+                ), producer.run
+                continue
+            if run_id in host.collector.rejected_run_ids and producer.appended:
                 if host.queued(producer.run):
                     assert after[producer.run] == (
                         "local_only",
