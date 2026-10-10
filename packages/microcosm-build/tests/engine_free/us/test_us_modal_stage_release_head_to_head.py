@@ -60,6 +60,13 @@ def _plan() -> plan_lib.Plan:
     return plan_lib.parse_plan(_plan_data())
 
 
+_PARSER_FUNCTIONS = {
+    "_parse_args",
+    "_positive_workers",
+    "_positive_worker_max_slices",
+}
+
+
 @pytest.fixture(scope="module")
 def scorer_parser():
     """Run only the scorer's argparse functions, without its engine imports.
@@ -92,10 +99,9 @@ def scorer_parser():
     functions = [
         node
         for node in ast.parse(SCORER.read_text()).body
-        if isinstance(node, ast.FunctionDef)
-        and node.name in {"_parse_args", "_positive_workers"}
+        if isinstance(node, ast.FunctionDef) and node.name in _PARSER_FUNCTIONS
     ]
-    assert {node.name for node in functions} == {"_parse_args", "_positive_workers"}
+    assert {node.name for node in functions} == _PARSER_FUNCTIONS
     exec(
         compile(ast.Module(body=functions, type_ignores=[]), str(SCORER), "exec"),
         namespace,
@@ -166,7 +172,7 @@ def test_modal_argv_equals_the_local_d844_command_apart_from_paths_and_workers(
     assert all(plan.env[name] == "1" for name in plan_lib.THREAD_ENV_KEYS)
 
 
-def test_owned_flags_cover_the_scorer_surface_except_the_two_plan_options(
+def test_owned_flags_cover_the_scorer_surface_except_the_plan_options(
     scorer_parser,
 ) -> None:
     tool = plan_lib.US_RELEASE_HEAD_TO_HEAD
@@ -175,9 +181,17 @@ def test_owned_flags_cover_the_scorer_surface_except_the_two_plan_options(
         for flag in scorer_parser.parser._option_string_actions
         if flag.startswith("--")
     } - {"--help"}
-    option_flags = {"--workers", "--maximum-microsim-batch-size"}
+    option_flags = {
+        "--workers",
+        "--maximum-microsim-batch-size",
+        "--worker-max-slices",
+    }
     assert {option.flag for option in tool.options.values()} == option_flags
-    assert set(tool.options) == {"workers", "maximum_microsim_batch_size"}
+    assert set(tool.options) == {
+        "workers",
+        "maximum_microsim_batch_size",
+        "worker_max_slices",
+    }
     assert tool.owned_flags == flags - option_flags
     assert {
         "--age-targets",

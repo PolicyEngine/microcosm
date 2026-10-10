@@ -1031,12 +1031,11 @@ same `run_id` would refuse either way; none is planned.
 (`populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z`) with the US
 default (`populace-us-2024-spm-20260915`) on the frozen
 `consumer_facts_us_c5e5bf8.jsonl` ledger. The plan pins scorer commit
-`5d1f71a2cb28b130f4ecbd5a17a29e8f639c7698` on `h2h-scorer-workers` (#1171).
-The runner registration comes from this checkout. Before the paid run,
-incorporate #1171's separate scorer fix round and update `source.commit`
-and `source.branch` to its reviewed, pushed revision; repeat the local
-validation and Modal check after repinning. This plan's current immutable
-pin will not acquire those fixes when the branch moves.
+`7639ef8b02f65e295d8311cb51ec801f4030a3cd` on `main`, the merge of #1171
+(`--workers`, the per-slice release of Core's variable modules, and the
+recycling guard). The runner registration comes from this checkout. A plan's
+pin is immutable: to pick up a later scorer change, update `source.commit`,
+then repeat the local validation and the Modal check.
 
 The stage runs the local comparison's argv with staged paths and
 `--workers 20` added:
@@ -1045,7 +1044,10 @@ The stage runs the local comparison's argv with staged paths and
 --incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 20
 ```
 
-Only `workers` and `maximum_microsim_batch_size` are plan options. Every
+Only `workers`, `maximum_microsim_batch_size` and `worker_max_slices` are
+plan options. `worker_max_slices` is unset in the d844 plan: the image's
+Python 3.14 patch level decides whether the scorer accepts recycling (it
+refuses below 3.14.7), and the per-slice module release is the memory fix. Every
 path flag, `--out-prefix`, the candidate-manifest pin, both spellings of
 each boolean, and the alternative batch-size spelling are runner-owned.
 The builder omits `--age-targets` and `--allow-unaged-dollar-targets`, so
@@ -1129,30 +1131,28 @@ MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json \
 ```
 
 Require `CHECK OK`, including the pinned parser and all three volume
-digests, before the paid run. Launch the paid run through
-`893/bin/lsubmit.sh` under launchd, never from a session shell.
-Prepare this job script in the assigned checkout; the absolute CLI and
-working directory make the payload independent of launchd's default
-`PATH` and working directory:
+digests, before the paid run. Launch the paid run under launchd, never from a
+session shell: a restart of the launching session kills a session-owned
+client, and Modal then cancels the paid input (this happened to Route A's
+base on 2026-09-29). From the checkout that holds this plan:
 
 ```bash
-mkdir -p modal-runs/route-a-h2h-d844-20261009
-cat > modal-runs/route-a-h2h-d844-20261009/launch.sh <<'SH'
+mkdir -p modal-runs/route-a-h2h-d844-20261010
+cat > modal-runs/route-a-h2h-d844-20261010/launch.sh <<SH
 #!/bin/bash
 set -euo pipefail
-cd /Users/maxghenis/PolicyEngine/_worktrees/microcosm-h2h-modal
-export PATH=/Users/maxghenis/.local/bin:/opt/homebrew/bin:/usr/bin:/bin
+cd "$PWD"
+export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
 export MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json
-exec /Users/maxghenis/.local/bin/modal run --detach tools/modal_us_stage.py --run
+exec modal run --detach tools/modal_us_stage.py --run
 SH
+chmod +x modal-runs/route-a-h2h-d844-20261010/launch.sh
 ```
 
-Submit `/bin/bash` with the absolute path to that script through the main
-session's `893/bin/lsubmit.sh`. **The exact submission command still needs
-the main session's launcher path and argument interface:** that script is
-absent from this checkout and the known build-machine locations. Do not
-run `launch.sh` directly in a session shell. The main session should fill
-in the submission command before launching; the payload above is complete.
+Submit that script as a transient launchd job. On the build Mac the helper
+is `lsubmit.sh <label> <log> <cwd> /bin/bash <path to launch.sh>`; any
+launchd submission whose parent is launchd works. Do not run `launch.sh`
+directly in a session shell.
 
 Once the launch reports a receipt path, fetch that `score-<utc>.json` and
 the two scorecards. The receipt's `outputs` lists their relative paths,
@@ -1160,7 +1160,7 @@ byte counts and sha256s. Fetch the tiny complete state, including the logs,
 so strict verification covers everything:
 
 ```bash
-R=route-a-h2h-d844-20261009
+R=route-a-h2h-d844-20261010
 mkdir -p "modal-runs/$R"
 modal volume get microcosm-us-stage-runs "runs/$R/receipts" "./modal-runs/$R/"
 modal volume get microcosm-us-stage-runs "runs/$R/state" "./modal-runs/$R/"

@@ -2,10 +2,10 @@
   "schema": "microcosm-modal-us-stage-plan/1",
   "tool": "us-release-head-to-head",
   "stage": "score",
-  "run_id": "route-a-h2h-d844-20261009",
+  "run_id": "route-a-h2h-d844-20261010",
   "source": {
-    "commit": "5d1f71a2cb28b130f4ecbd5a17a29e8f639c7698",
-    "branch": "h2h-scorer-workers"
+    "commit": "7639ef8b02f65e295d8311cb51ec801f4030a3cd",
+    "branch": "main"
   },
   "inputs": {
     "incumbent_h5": {

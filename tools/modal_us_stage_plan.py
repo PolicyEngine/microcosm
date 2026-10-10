@@ -879,6 +879,9 @@ US_RELEASE_HEAD_TO_HEAD = ToolSpec(
     options={
         "workers": OptionFlag("--workers", int),
         "maximum_microsim_batch_size": OptionFlag("--maximum-microsim-batch-size", int),
+        # Off unless a plan sets it; the scorer refuses it on interpreters
+        # where replacing a recycled worker can deadlock.
+        "worker_max_slices": OptionFlag("--worker-max-slices", int),
     },
     owned_flags=frozenset(
         {
