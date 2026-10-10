@@ -432,14 +432,15 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
 
 
 @pytest.mark.parametrize(
-    ("status", "retried"), [(422, False), (404, False), (429, True), (408, True)]
+    ("status", "retried"), [(422, False), (413, False), (429, True), (408, True)]
 )
 def test_a_settled_collector_rejection_goes_local_only_instead_of_retrying(
     tmp_path, monkeypatch, capsys, status, retried
 ) -> None:
     """A 4xx the collector will repeat (an event shape it does not accept, say)
     must not wedge the queue: the run goes local-only with a reason and one
-    warning. A timeout or a rate limit still retries."""
+    warning. A timeout or a rate limit still retries. A 404 is first answered
+    by registering the run again: see ``test_telemetry_collector_delivery``."""
     spool = EventSpool(tmp_path / "events.sqlite3")
     registration = _registration()
     spool.register(registration)
