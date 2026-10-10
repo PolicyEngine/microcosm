@@ -26,6 +26,7 @@ from microcosm.build.transport.column_kernels import (
     TRANSPORT_UNIT_ATTRIBUTES,
     assign_receipts,
     register_column_kernels,
+    validate_receipt_contract,
 )
 from microcosm.build.transport.target_kernels import compile_target_surface
 from microcosm.frame import Frame, WeightKind, Weights
@@ -333,6 +334,50 @@ def _contract(rate=0.6):
         ],
         "exclusion_groups": [["receives_alpha", "receives_beta", "receives_super"]],
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("rate", None, "rate must be a number"),
+        ("rate", True, "rate must be a number"),
+        ("rate", -1, "rate must be finite and non-negative"),
+        ("rate", float("nan"), "rate must be finite and non-negative"),
+        ("rate", 2, "rate must lie on"),
+        ("payment_column", "", "payment_column must be non-empty text"),
+        ("exclude_columns", None, "exclude_columns must be distinct columns"),
+        ("exclude_columns", ["same", "same"], "exclude_columns must be distinct"),
+        ("exclude_columns", [None], "exclude column must be non-empty text"),
+        ("target", None, "target must be non-empty text"),
+        ("target_measure", None, "target_measure must be non-empty text"),
+    ],
+)
+def test_receipt_contract_refuses_invalid_program_fields_without_person_data(
+    field, value, message
+):
+    contract = _contract(1)
+    program = contract["programs"][0]
+    if field in {"target", "target_measure"}:
+        del program["rate"]
+        program["target"] = "toy_target"
+    program[field] = value
+    with pytest.raises(ValueError, match=message):
+        validate_receipt_contract(contract)
+    with pytest.raises(ValueError, match=message):
+        assign_receipts(pd.DataFrame(), contract)
+
+
+def test_receipt_contract_allows_optional_null_payment_without_person_data():
+    contract = _contract(1)
+    program = contract["programs"][0]
+    program["payment_column"] = None
+    del program["rate"]
+    program["target"] = "toy_target"
+    seed_column, programs, groups = validate_receipt_contract(contract)
+    assert seed_column == contract["seed_column"]
+    assert programs[0]["payment_column"] is None
+    assert programs[0]["target"] == "toy_target"
+    assert groups == contract["exclusion_groups"]
 
 
 def _context(kernel, frame, params, outputs, *, artifacts=None):

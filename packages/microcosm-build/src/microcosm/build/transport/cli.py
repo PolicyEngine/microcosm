@@ -225,7 +225,11 @@ def prepare_transport_build(
 ) -> PreparedTransportBuild:
     """Check activation, build the registry and CREATE inventory, then compose.
 
-    Activation is checked before any engine is built or donor read.
+    Before registry preparation, CREATE or graph source reads, activation
+    checks declaration resource paths, non-null selected roots and encoding
+    shapes, the receipt kernel's data-independent contract constraints,
+    reference activation rows, required age/pin presence and null scenario
+    knobs. Optional null JSON fields remain allowed.
     ``sources`` maps every declared source name except the exported dataset
     (which the run writes) to a local path. ``engines_by_binding`` is the
     registry's seam for pure-Python adapters; without it, Axiom adapters are

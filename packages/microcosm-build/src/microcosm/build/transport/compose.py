@@ -43,8 +43,11 @@ version). Explicit ``package_inputs`` may add extension artifacts to the final
 receipt; every other skeleton predecessor set remains fixed.
 
 Composition reads no donor, no facts and no engine, and writes nothing.
-Unresolved country evidence is refused up front with every missing item
-named (:func:`validate_transport_activation`); no proposed value is chosen.
+Activation checks selected resource paths, non-null selected roots and encoding
+shapes, the receipt kernel's data-independent contract constraints, reference
+activation rows, required age/pin presence and null scenario knobs. Refusals
+name every enumerated gap (:func:`validate_transport_activation`). Optional
+null JSON fields remain allowed; no proposed value is chosen.
 """
 
 from __future__ import annotations
@@ -81,6 +84,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from .artifact_types import KERNEL_OUTPUTS
+from .column_kernels import validate_receipt_contract
 
 __all__ = [
     "GRAPH_RESOURCE",
@@ -387,8 +391,9 @@ def _selections(value: object) -> Iterator[Mapping]:
             yield from _selections(item)
 
 
-def _selected_resources(document: Mapping) -> set[str]:
-    names = set()
+def _declared_resource_selections(document: Mapping) -> Iterator[Mapping]:
+    """Resource selections in declaration parameters, including nested lists."""
+
     for row in document.get("nodes", ()):
         if not isinstance(row, Mapping):
             continue
@@ -397,9 +402,10 @@ def _selected_resources(document: Mapping) -> set[str]:
             continue
         for value in params.values():
             for selection in _selections(value):
-                if isinstance(selection.get("resource"), str):
-                    names.add(_stem(selection["resource"]))
-    return names
+                # Any mapping naming a resource is a selection, whatever the
+                # name's type: a malformed name is refused here, not later.
+                if "resource" in selection:
+                    yield selection
 
 
 def _null_paths(value: object, path: str = "") -> Iterator[str]:
@@ -414,34 +420,48 @@ def _null_paths(value: object, path: str = "") -> Iterator[str]:
 
 
 def validate_transport_activation(spec: Mapping[str, object]) -> None:
-    """Refuse unresolved declaration resources and country evidence before I/O.
+    """Refuse enumerated activation gaps before registry/CREATE/source reads.
 
-    Check every selected reference resource, the mandatory pre-calibration,
-    target and hold-out reference sets, and every null scenario knob. Missing
-    resources are the declaration's explicit selections, including selections
-    inside parameter lists; selected resource data remains literal data.
+    Resolve declaration resource selections with the same path, non-null root
+    and encoding checks as parameter resolution. Optional JSON nulls remain
+    allowed. Reuse the receipt kernel's data-independent contract validator.
+    Also check dependent-child age and required engine pin presence, mandatory
+    and selected reference activation rows, and every null scenario knob.
+    Selections inside parameter lists count; selected resource data is literal.
+    Entitlement selections use the factory's instantiated rows, so explicit
+    scenario nodes replace their tier templates during preflight too.
     """
 
     missing = []
-    selected = (
-        _selected_resources(transport_resource(spec, GRAPH_RESOURCE))
+    selections = (
+        tuple(_declared_resource_selections(transport_resource(spec, GRAPH_RESOURCE)))
         if _has_resource(spec, GRAPH_RESOURCE)
-        else set()
+        else ()
     )
-    if _has_resource(spec, "entitlement_graph"):
-        entitlement = transport_resource(spec, "entitlement_graph")
-        extension_rows = [
-            row
-            for name in ("nodes", "scenario_nodes", "variant_nodes")
-            for row in _sequence(entitlement.get(name, ()), name)
-        ]
-        if _has_resource(spec, "scenarios"):
-            extension_rows.extend(
-                node
-                for row in transport_resource(spec, "scenarios").get("scenarios", ())
-                for node in row.get("nodes", ())
+    selections = [(selection, False) for selection in selections]
+    if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
+        from .entitlement import _rows
+
+        rows, _ = _rows(spec)
+        selections.extend(
+            (selection, True)
+            for selection in _declared_resource_selections(
+                {"nodes": [row for row, _ in rows]}
             )
-        selected.update(_selected_resources({"nodes": extension_rows}))
+        )
+    selected = {
+        selection["resource"].removesuffix(".json")
+        for selection, _ in selections
+        if isinstance(selection["resource"], str) and selection["resource"]
+    }
+    for selection, allow_json_sequences in selections:
+        try:
+            _resource_param(spec, selection, allow_json_sequences=allow_json_sequences)
+        except (ValueError, TypeError) as error:
+            missing.append(
+                f"Resource {selection['resource']!r} path {selection.get('path', [])!r}: "
+                f"{error}"
+            )
     for name in ("benefit_unit_rule", "axiom_rules_bindings", "scenarios"):
         if not _has_resource(spec, name):
             missing.append(f"{name}.json")
@@ -484,15 +504,15 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     contracts = None if receipt is None else receipt.get("receipts")
     if not isinstance(contracts, Mapping):
         missing.append(
-            "receipt_contract.json (the input closure's receipt_requirements "
+            "receipt_contract.json path ['receipts'] "
+            "(the input closure's receipt_requirements "
             "are prose, not an executable contract)"
         )
-    elif any(
-        not isinstance(row.get("programs"), list) or not row["programs"]
-        for row in ((contracts,) if "programs" in contracts else contracts.values())
-        if isinstance(row, Mapping)
-    ):
-        missing.append("receipt_contract.json receipts.programs")
+    else:
+        try:
+            validate_receipt_contract(contracts)
+        except (ValueError, TypeError) as error:
+            missing.append(f"receipt_contract.json path ['receipts']: {error}")
     if _has_resource(spec, "axiom_rules_bindings"):
         bindings = transport_resource(spec, "axiom_rules_bindings")
         pins = _mapping(bindings.get("engine", {}), "axiom_rules_bindings.engine")
@@ -508,12 +528,6 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                 missing.append(f"scenario {scenario.get('id', '?')} {path}")
     if not _has_resource(spec, GRAPH_RESOURCE):
         missing.append(f"{GRAPH_RESOURCE}.json (the skeleton declaration)")
-    else:
-        missing.extend(
-            f"{name}.json (selected by {GRAPH_RESOURCE}.json)"
-            for name in sorted(selected)
-            if not _has_resource(spec, name)
-        )
     if missing:
         raise ValueError("Transport spec is not activated: " + "; ".join(missing) + ".")
 
@@ -847,6 +861,19 @@ def _param(
         return canonical_json(
             {"engine_refs": dict(sorted(engine_refs.items()))}
         ).decode("utf-8")
+    return _resource_param(spec, value)
+
+
+def _resource_param(
+    spec: Mapping[str, object], value: Mapping, *, allow_json_sequences: bool = False
+) -> object:
+    """Resolve and validate one literal resource selection for preflight/params.
+
+    Selected roots cannot be null; skeleton JSON roots must be objects.
+    Entitlement JSON may also select lists. Value roots must not be objects.
+    Optional JSON fields remain unchanged.
+    """
+
     if set(value) - {"resource", "path", "encoding"} or "resource" not in value:
         raise ValueError(
             "An object parameter must be a resource or prepared selection."
@@ -872,12 +899,17 @@ def _param(
     if document is None:
         raise ValueError(f"Resource {name!r} path {list(path)!r} is not activated.")
     if encoding == "json":
-        if not isinstance(document, Mapping):
-            raise ValueError(f"Resource {name!r} json selection must be an object.")
+        if not isinstance(document, Mapping) and not (
+            allow_json_sequences and isinstance(document, list | tuple)
+        ):
+            raise ValueError(
+                f"Resource {name!r} path {list(path)!r} json selection must be an object."
+            )
         return canonical_json(document).decode("utf-8")
     if isinstance(document, Mapping):
         raise ValueError(
-            f"Resource {name!r} value selection is an object; use json encoding."
+            f"Resource {name!r} path {list(path)!r} value selection is an object; "
+            "use json encoding."
         )
     return _literal_data(document)
 

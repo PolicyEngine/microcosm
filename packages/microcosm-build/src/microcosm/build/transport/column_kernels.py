@@ -97,6 +97,7 @@ __all__ = [
     "UnitAttributesKernel",
     "assign_receipts",
     "register_column_kernels",
+    "validate_receipt_contract",
 ]
 
 
@@ -494,18 +495,18 @@ def _finite_nonnegative(value: object, name: str) -> float:
     return value
 
 
-def assign_receipts(
-    person: pd.DataFrame,
+def validate_receipt_contract(
     contract: Mapping[str, object],
-    *,
-    weights: np.ndarray | None = None,
-    targets: Mapping[str, float] | None = None,
-) -> tuple[pd.DataFrame, dict[str, object]]:
-    """Apply explicit receipt priorities to determined eligible program draws.
+) -> tuple[str, list[dict[str, object]], list | tuple]:
+    """Validate all receipt contract checks independent of person/target data.
 
-    This shared pure operation contains receipt orchestration only. G4's
-    judgment decoder and the content layer's stable program draws supply its
-    semantics. Existing exclusions are read as booleans and never rewritten.
+    Return the seed column, parsed programs and exclusion groups without reading
+    person data, weights or a target surface. Check the exact contract fields,
+    non-empty seed and required program text, an ordered non-empty program list,
+    program fields and rate-or-target declarations, distinct program/output
+    identities, exclusion groups naming distinct declared outputs, optional
+    column/reference text, distinct exclusion columns, and finite rates in
+    [0, 1]. A null optional payment column remains allowed.
     """
     if set(contract) != {"seed_column", "programs", "exclusion_groups"}:
         raise ValueError(
@@ -536,7 +537,30 @@ def assign_receipts(
             raise ValueError("A receipt program declares exactly one rate or target.")
         if "target_measure" in row and "target" not in row:
             raise ValueError("A target_measure requires a target reference.")
-        parsed.append({**row, **{key: _text(row[key], key) for key in required}})
+        parsed_row = {**row, **{key: _text(row[key], key) for key in required}}
+        payment_column = row.get("payment_column")
+        if payment_column is not None:
+            parsed_row["payment_column"] = _text(payment_column, "payment_column")
+        excludes = row.get("exclude_columns", [])
+        if not isinstance(excludes, list | tuple) or len(set(excludes)) != len(
+            excludes
+        ):
+            raise ValueError("Receipt exclude_columns must be distinct columns.")
+        parsed_row["exclude_columns"] = [
+            _text(column, "exclude column") for column in excludes
+        ]
+        if "target" in row:
+            parsed_row["target"] = _text(row["target"], "target")
+            if "target_measure" in row:
+                parsed_row["target_measure"] = _text(
+                    row["target_measure"], "target_measure"
+                )
+        else:
+            rate = _finite_nonnegative(row["rate"], "rate")
+            if rate > 1:
+                raise ValueError("Receipt rate must lie on [0, 1].")
+            parsed_row["rate"] = rate
+        parsed.append(parsed_row)
     outputs = [row["output"] for row in parsed]
     keys = [row["program"] for row in parsed]
     if len(set(outputs)) != len(outputs) or len(set(keys)) != len(keys):
@@ -549,6 +573,24 @@ def assign_receipts(
             or not set(group) <= set(outputs)
         ):
             raise ValueError("Each receipt exclusion group names distinct outputs.")
+    return seed_column, parsed, groups
+
+
+def assign_receipts(
+    person: pd.DataFrame,
+    contract: Mapping[str, object],
+    *,
+    weights: np.ndarray | None = None,
+    targets: Mapping[str, float] | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Apply explicit receipt priorities to determined eligible program draws.
+
+    This shared pure operation contains receipt orchestration only. G4's
+    judgment decoder and the content layer's stable program draws supply its
+    semantics. Existing exclusions are read as booleans and never rewritten.
+    The data-independent contract checks use ``validate_receipt_contract``.
+    """
+    seed_column, parsed, groups = validate_receipt_contract(contract)
     out = person.loc[:, ["person_id"]].copy()
     audit = {}
     if weights is not None:
@@ -568,19 +610,12 @@ def assign_receipts(
         )
         payment_column = row.get("payment_column")
         if payment_column is not None:
-            payment = person[_text(payment_column, "payment_column")].to_numpy(
-                dtype=np.float64
-            )
+            payment = person[payment_column].to_numpy(dtype=np.float64)
             if not np.isfinite(payment).all():
                 raise ValueError("Receipt payment values must be finite.")
             eligible &= payment > 0
-        excludes = row.get("exclude_columns", [])
-        if not isinstance(excludes, list | tuple) or len(set(excludes)) != len(
-            excludes
-        ):
-            raise ValueError("Receipt exclude_columns must be distinct columns.")
-        for column in excludes:
-            values = person[_text(column, "exclude column")]
+        for column in row["exclude_columns"]:
+            values = person[column]
             if str(values.dtype) not in {"bool", "boolean"} or values.isna().any():
                 raise ValueError(
                     "Existing receipt exclusions must be non-null booleans."
@@ -594,7 +629,7 @@ def assign_receipts(
         target = None
         mass = None if weights is None else math.fsum(weights[eligible].tolist())
         if "target" in row:
-            name = _text(row["target"], "target")
+            name = row["target"]
             if targets is None or name not in targets or weights is None:
                 raise ValueError(
                     f"Receipt target {name!r} needs a surface and weights."
@@ -607,9 +642,7 @@ def assign_receipts(
             # target <= mass, so a zero eligible mass has a zero target.
             rate = target / mass if mass else target
         else:
-            rate = _finite_nonnegative(row["rate"], "rate")
-            if rate > 1:
-                raise ValueError("Receipt rate must lie on [0, 1].")
+            rate = row["rate"]
         draws = derive_take_up_draws(person[seed_column].to_numpy(), row["program"])
         assigned = eligible & (draws < rate)
         out[output] = assigned
@@ -662,6 +695,7 @@ class TakeupAssignKernel(_ColumnKernel):
             context, self.ref, ("person",), artifact_aliases=frozenset({"surface"})
         )
         contract = _document(context, self.ref, "receipt_contract")
+        _, programs, _ = validate_receipt_contract(contract)
         targets = None
         if context.artifacts:
             if (
@@ -671,14 +705,11 @@ class TakeupAssignKernel(_ColumnKernel):
                 raise ValueError(f"{self.ref} reads only the typed surface artifact.")
             surface = decode_target_surface(context.artifacts["surface"].payload)
             targets = {}
-            programs = contract.get("programs", ())
             for row in programs:
-                if not isinstance(row, Mapping) or "target" not in row:
+                if "target" not in row:
                     continue
-                name = _text(row["target"], "target")
-                expected_measure = _text(
-                    row.get("target_measure", row.get("output")), "target_measure"
-                )
+                name = row["target"]
+                expected_measure = row.get("target_measure", row["output"])
                 matches = [
                     target for target in surface.registry.specs if target.name == name
                 ]

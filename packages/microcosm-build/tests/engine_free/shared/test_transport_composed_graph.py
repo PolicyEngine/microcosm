@@ -44,6 +44,7 @@ import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -65,6 +66,7 @@ from microcosm.build.transport.compose import (
     load_transport_spec,
     validate_transport_activation,
 )
+from microcosm.build.transport.population_kernels import TRANSPORT_CURRENCY
 from microcosm.build.transport.terminal_kernels import materialize_export
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
@@ -628,6 +630,110 @@ def test_activation_names_generic_selected_gaps_before_donor_read(
         )
 
 
+def _assert_activation_refuses_before_preparation(
+    spec, composed, tmp_path, monkeypatch, match
+):
+    spies = []
+    for owner, name in (
+        (cli_module, "build_transport_registry"),
+        (cli_module, "prepare_create_outputs"),
+        (cli_module, "source_content_key"),
+        (cli_module.TRANSPORT_CREATE, "run"),
+    ):
+        spy = Mock(side_effect=AssertionError(f"Activation entered {name}."))
+        monkeypatch.setattr(owner, name, spy)
+        spies.append(spy)
+    with pytest.raises(ValueError, match=match):
+        validate_transport_activation(spec)
+    inventory = tmp_path / "inventory"
+    with pytest.raises(ValueError, match=match):
+        prepare_transport_build(
+            spec,
+            sources=composed.sources,
+            engines_by_binding=composed.engines_by_binding,
+            inventory_store=inventory,
+        )
+    for spy in spies:
+        spy.assert_not_called()
+    assert not inventory.exists()
+
+
+@pytest.mark.parametrize(
+    ("encoding", "resource", "reason"),
+    [
+        ("value", {"factor": None}, "not activated"),
+        ("json", {"factor": None}, "not activated"),
+        ("value", {}, "no selected path"),
+        ("json", {"factor": 1}, "json selection must be an object"),
+        ("value", {"factor": {}}, "value selection is an object"),
+    ],
+)
+def test_activation_refuses_invalid_selected_values_before_preparation(
+    composed, tmp_path, monkeypatch, encoding, resource, reason
+):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["currency"] = resource
+    currency = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == TRANSPORT_CURRENCY.ref
+    )
+    currency["params"]["probe"] = [
+        {"resource": "currency", "path": ["factor"], "encoding": encoding}
+    ]
+    _assert_activation_refuses_before_preparation(
+        spec, composed, tmp_path, monkeypatch, reason
+    )
+    with pytest.raises(ValueError) as error:
+        validate_transport_activation(spec)
+    assert "currency" in str(error.value)
+    assert "['factor']" in str(error.value)
+
+
+@pytest.mark.parametrize("name", [None, "", 7, ["currency"]])
+def test_activation_refuses_a_malformed_resource_name_before_preparation(
+    composed, tmp_path, monkeypatch, name
+):
+    spec = copy.deepcopy(composed.spec)
+    currency = next(
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["kernel"] == TRANSPORT_CURRENCY.ref
+    )
+    currency["params"]["probe"] = [
+        {"resource": name, "path": ["factor"], "encoding": "value"}
+    ]
+    _assert_activation_refuses_before_preparation(
+        spec, composed, tmp_path, monkeypatch, "must name a nonempty string"
+    )
+
+
+@pytest.mark.parametrize("gap", ["empty", "seed", "judgment", "rate"])
+def test_activation_refuses_invalid_receipt_contract_before_preparation(
+    composed, tmp_path, monkeypatch, gap
+):
+    spec = copy.deepcopy(composed.spec)
+    receipt = spec["resources"]["receipt_contract"]
+    if gap == "empty":
+        receipt["receipts"] = {}
+    elif gap == "seed":
+        receipt["receipts"]["seed_column"] = None
+    else:
+        key = "judgment_column" if gap == "judgment" else "rate"
+        receipt["receipts"]["programs"][0][key] = None
+    _assert_activation_refuses_before_preparation(
+        spec, composed, tmp_path, monkeypatch, "receipt_contract.*receipts"
+    )
+
+
+def test_activation_accepts_optional_json_nulls(composed):
+    spec = copy.deepcopy(composed.spec)
+    spec["resources"]["receipt_contract"]["receipts"]["programs"][0][
+        "payment_column"
+    ] = None
+    validate_transport_activation(spec)
+
+
 class _IllegalOwner(KernelBase):
     ref = "test.illegal_owner@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -953,6 +1059,12 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         validate_transport_activation(spec)
     for gap in _GAPS:
         assert gap in str(error.value), gap
+    for resource in ("precal_references", "target_references", "holdout_references"):
+        for reference in spec["resources"][resource]["target_references"]:
+            if reference["metadata"].get("activation_status", "active") != "active":
+                assert f"placeholder reference {resource}.{reference['name']}" in str(
+                    error.value
+                )
     config = TransportGraphConfig(
         engine_refs={"x": "y"}, create_outputs=(Owned("person", "age", "int64"),)
     )
