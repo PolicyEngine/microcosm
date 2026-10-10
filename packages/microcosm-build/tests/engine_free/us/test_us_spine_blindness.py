@@ -266,8 +266,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
-        # MEPS-IC employer-premium and pre-tax premium inputs (#454): a
-        # base-builder pre-clone stage keyed on restored ASEC coverage fields,
+        # MEPS-IC employer-premium input (#454): a base-builder pre-clone
+        # stage keyed on restored ASEC coverage fields,
         # not yet a multispine pool operator. Reads no spine or support-channel
         # column and remains subject to the all-runtime source-identity scan.
         "esi_premiums.py",

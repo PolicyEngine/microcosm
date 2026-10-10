@@ -70,10 +70,7 @@ from microcosm.build.us_runtime.educator_expenses import (
     US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
-from microcosm.build.us_runtime.esi_premiums import (
-    US_ESI_EMPLOYER_PREMIUM_COLUMN,
-    US_ESI_PRE_TAX_PREMIUM_COLUMN,
-)
+from microcosm.build.us_runtime.esi_premiums import US_ESI_EMPLOYER_PREMIUM_COLUMN
 from microcosm.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
@@ -193,10 +190,6 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         # pinned Census ASEC person files; the certified default carries it
         # through the Build P source enrichment.
         *US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
-        # PolicyEngine/microcosm#454: the employee section 125 premium leaf the
-        # meps_esi_premiums base-builder stage writes beside the restored
-        # employer premium. Absent, income-tax and FICA wages both overstate.
-        US_ESI_PRE_TAX_PREMIUM_COLUMN,
     }
 )
 

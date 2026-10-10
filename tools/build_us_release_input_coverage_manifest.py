@@ -89,9 +89,6 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
     "is_spm_independent_minor_role",
-    # PolicyEngine/microcosm#454: the employee section 125 premium leaf the
-    # meps_esi_premiums base stage writes (the reference eCPS never had one).
-    "pre_tax_health_insurance_premiums",
     # PolicyEngine/microcosm#978 option 1: the ASEC reported-receipt inputs the
     # ACS local-area transfer requires in its donor.
     "receives_wic",
@@ -121,24 +118,14 @@ POST_REFERENCE_COLUMN_NOTES = {
         "(PolicyEngine/microcosm#454), written by the meps_esi_premiums "
         "base-builder stage from Census ASEC NOW_OWNGRP / NOW_HIPAID / "
         "NOW_GRPFTYP2 / PEMLR / NOEMP (restored from the pinned Census person "
-        "files) and MEPS-IC tier x firm-size x State cells, scaled to BEA NIPA "
-        "7.8 line 17. A release must persist it: CBO household market income "
-        "(gov.household.cbo_market_income_additions) and every ESI-to-wages "
-        "reform bind through it. Required with NO reviewed exclusion; absent "
-        "on pre-#454 bases by construction — the intended red gate until a "
-        "base built with the stage ships. The release also holds its total to "
-        "the anchor (us_esi_premiums_anchor_gate)."
-    ),
-    "pre_tax_health_insurance_premiums": (
-        "Employee premium paid through section 125 payroll deduction "
-        "(PolicyEngine/microcosm#454), written by the same meps_esi_premiums "
-        "stage: an employed policyholder with wages, a reported premium "
-        "(PHIP_VAL) and an employee share pays it pre-tax at the MEPS-IC 2025 "
-        "firm-size pretax-offer rate. PolicyEngine-US 2.2.1 subtracts it from "
-        "income-tax and FICA wages (gov.irs.gross_income.pre_tax_contributions, "
-        "fica_pre_tax_contributions); absent, both wage bases overstate. "
-        "Required with NO reviewed exclusion; absent on pre-#454 bases by "
-        "construction."
+        "files) and MEPS-IC tier x firm-size x State cells, scaled over every "
+        "policyholder to CMS NHE Table 24. A release must persist it: CBO "
+        "household market income (gov.household.cbo_market_income_additions) "
+        "and every ESI-to-wages reform bind through it. Required with NO "
+        "reviewed exclusion; absent on pre-#454 bases by construction — the "
+        "intended red gate until a base built with the stage ships. The "
+        "release also holds the anchor-universe total to the anchor "
+        "(us_esi_premiums_anchor_gate)."
     ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
@@ -393,36 +380,13 @@ REFORM_COVERAGE_PROBES = [
             "to CBO household market income through "
             "gov.household.cbo_market_income_additions, its only consumer, so "
             "neutralizing it lowers cbo_household_market_income by the "
-            "weighted employer-premium total: about $977 billion at 2024 "
-            "(BEA NIPA 7.8 line 17, the meps_esi_premiums anchor; the stage "
-            "measured $977.0 billion over 74.0 million weighted employed "
-            "policyholders on the default 2023-2025 pool, before calibration). "
-            "The floor sits at about half of that. A structural zero means "
-            "the column was dropped or the stage never ran."
-        ),
-        "issue": "PolicyEngine/microcosm#454",
-    },
-    {
-        "id": "pre_tax_health_insurance_premium_neutralization",
-        "name": "Pre-tax health insurance premium neutralization",
-        "parameter_changes": {},
-        "neutralized_variable": "pre_tax_health_insurance_premiums",
-        "budget_measure": "income_tax",
-        "period": 2024,
-        "effect_direction": "baseline_minus_reform",
-        "expected_sign": "negative",
-        "binding_inputs": ["pre_tax_health_insurance_premiums"],
-        "min_abs_effect": 5_000_000_000.0,
-        "reason": (
-            "PolicyEngine-US 2.2.1 subtracts pre_tax_health_insurance_premiums "
-            "from employment_income in irs_employment_income (through "
-            "gov.irs.gross_income.pre_tax_contributions), so neutralizing it "
-            "raises taxable wages and income tax: baseline-minus-reform is "
-            "negative. The meps_esi_premiums stage measured $181.1 billion of "
-            "pre-tax premiums over 52.5 million weighted workers on the default "
-            "2023-2025 pool; at a typical 10-22 percent marginal rate that is "
-            "roughly $18-40 billion, so a $5 billion floor separates a "
-            "structural zero (the column dropped) from any plausible effect."
+            "weighted employer-premium total: about $926 billion at 2024 (the "
+            "employed policyholders' part of CMS NHE Table 24's $1,047.0 "
+            "billion, the meps_esi_premiums anchor; the stage measured $925.7 "
+            "billion over 74.0 million weighted employed policyholders on the "
+            "default 2023-2025 pool, before calibration). The floor sits at "
+            "about half of that. A structural zero means the column was "
+            "dropped or the stage never ran."
         ),
         "issue": "PolicyEngine/microcosm#454",
     },
@@ -1706,9 +1670,7 @@ def build_manifest() -> dict:
             "(PolicyEngine/microcosm#978 option 1), and the engine's declared "
             "dataset source input is_spm_independent_minor_role (the "
             "spm_independence_role base-builder stage; "
-            "PolicyEngine/microcosm#893), and the employee section 125 "
-            "premium leaf pre_tax_health_insurance_premiums (the "
-            "meps_esi_premiums base-builder stage; PolicyEngine/microcosm#454). "
+            "PolicyEngine/microcosm#893). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "

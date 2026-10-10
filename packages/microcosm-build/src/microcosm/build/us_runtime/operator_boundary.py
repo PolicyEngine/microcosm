@@ -44,6 +44,7 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.esi_premiums import US_ESI_PREMIUMS_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.geography_ladder import US_GEOGRAPHY_LADDER_COLUMNS
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
@@ -319,6 +320,11 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "retirement_distributions": {
         "person": frozenset(US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS),
+    },
+    # Base-build only (microcosm#454): no pool operator produces these yet, so
+    # a raw source frame that already carries them was staged elsewhere.
+    "esi_premiums": {
+        "person": frozenset(US_ESI_PREMIUMS_OUTPUT_COLUMNS),
     },
     "immigration": {
         "person": frozenset(US_IMMIGRATION_OUTPUT_COLUMNS),

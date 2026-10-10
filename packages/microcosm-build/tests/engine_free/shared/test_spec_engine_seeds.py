@@ -50,7 +50,6 @@ EXPECTED_LEGACY_V1_SITES = {
     "legacy_puma_ladder",
     "medicaid_take_up_assignment",
     "other_health_insurance_training_cap",
-    "pre_tax_health_premium_assignment",
     "pregnancy_assignment",
     "primary_qrf_fit_draw",
     "prior_year_income_training_cap",
@@ -137,7 +136,6 @@ AUDITED_SOURCE_BY_SITE = {
     ),
     "snap_take_up_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/snap_take_up.py",
     "pregnancy_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/pregnancy.py",
-    "pre_tax_health_premium_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/esi_premiums.py",
     "wic_claim_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/wic_claim.py",
     "snap_discretionary_exemption_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/snap_discretionary_exemption.py",
     **dict.fromkeys(

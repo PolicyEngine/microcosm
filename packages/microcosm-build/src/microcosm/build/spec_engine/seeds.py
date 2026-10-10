@@ -315,7 +315,6 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.congressional_district_geography",
     "microcosm.build.us_runtime.disability_benefits",
     "microcosm.build.us_runtime.energy_subsidy",
-    "microcosm.build.us_runtime.esi_premiums",
     "microcosm.build.us_runtime.geography_ladder",
     "microcosm.build.us_runtime.housing_inputs",
     "microcosm.build.us_runtime.immigration",
@@ -724,15 +723,6 @@ LEGACY_V1_SITES = (
             "else_person_id",
         ),
         candidate_universe="all_person_rows_before_sex_and_age_eligibility_mask",
-    ),
-    _stable_site(
-        "pre_tax_health_premium_assignment",
-        salt="pre_tax_health_insurance_premiums",
-        key_grammar=(
-            "source_year:source_household_id:source_person_id_if_complete",
-            "else_person_id",
-        ),
-        candidate_universe="all_person_rows_before_pre_tax_eligibility_mask",
     ),
     _stable_site(
         "wic_claim_assignment",

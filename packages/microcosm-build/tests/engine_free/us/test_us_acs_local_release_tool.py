@@ -2096,3 +2096,49 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     assert "'chi_square'" in penalized["reason"]
     assert "'softmax'" in penalized["reason"]
     assert "l2_lambda=0 " not in penalized["reason"]
+
+
+def test_a_null_esi_premium_input_is_refused_before_any_default_fill(tmp_path) -> None:
+    """microcosm#454: an ACS-spine null in the ESI premium input is never a zero.
+
+    The ``meps_esi_premiums`` stage runs on the ASEC donor rows only. A pooled
+    frame therefore carries the input as NaN on its ACS rows, and the
+    reviewed-null register would default-fill it to zero for half the
+    population while input coverage reads green. The refusal comes first: it
+    needs neither the engine nor the register file.
+    """
+
+    from microcosm.build.source_runtime import SourceRuntimeError
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    module = _load_tool_module()
+    ids = np.arange(1, 5)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            # Two ASEC donor rows, two ACS rows the stage never saw.
+            "employer_sponsored_insurance_premiums": [9_000.0, 0.0, np.nan, np.nan],
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        US_SCHEMA,
+        {"household": Weights(values=np.ones(4), kind=WeightKind.DESIGN)},
+    )
+    absent_register = tmp_path / "no_such_summary.json"
+    with pytest.raises(SourceRuntimeError, match="never filled") as error:
+        module.fill_reviewed_nulls(frame, absent_register)
+    assert "ACS local release" in str(error.value)
+    assert "'employer_sponsored_insurance_premiums': 2" in str(error.value)

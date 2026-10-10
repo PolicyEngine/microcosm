@@ -2,17 +2,23 @@
 
 Invariants the stage and its gates must hold for every valid input:
 
-* **Conservation**: the weighted employer premium total equals the BEA NIPA
-  7.8 line 17 anchor of the build year, whatever the frame.
-* **Bounds**: both outputs are finite and nonnegative; a pre-tax premium is
-  either zero or the person's reported premium.
+* **Conservation**: the weighted employer share over every policyholder (the
+  column plus the other policyholders' share at the same scale factor) equals
+  the CMS NHE Table 24 anchor of the build year, whatever the frame. The
+  column total is the anchor times the employed policyholders' share of the
+  weighted raw mass, so it equals the anchor exactly when no one outside the
+  column carries an employer share.
+* **Monotonicity**: pricing a policyholder outside the column never raises a
+  worker's premium.
+* **Bounds**: the output is finite and nonnegative.
 * **Structural zeros**: no employer premium outside employed policyholders
-  with an employer, nor where the employer pays none; no pre-tax premium
-  outside eligible workers.
+  with an employer, nor where the employer pays none.
 * **Proportionality**: every employer premium is the same multiple of its
   MEPS-IC cell share.
-* **Determinism and order invariance**: values depend on the person, the
-  frame's weighted raw mass and the seed, never on row order; support clones
+* **Cell reconciliation**: a cohort with MEPS-IC's own pays-all / pays-some
+  mix reproduces the cell's published employer mean.
+* **Determinism and order invariance**: values depend on the person and the
+  frame's weighted raw mass, never on the seed or row order; support clones
   agree.
 * **Weight homogeneity**: scaling every weight by ``c`` leaves the total at
   the anchor and scales each person's value by ``1 / c``.
@@ -35,17 +41,14 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.source_runtime import SourceRuntimeError
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime import (
     US_ESI_EMPLOYER_PREMIUM_COLUMN,
-    US_ESI_PRE_TAX_PREMIUM_COLUMN,
     US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS,
     US_ESI_PREMIUMS_OUTPUT_COLUMNS,
     US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS,
     US_ESI_PREMIUMS_STAGE_NAME,
     US_SOURCE_MANIFEST,
     derive_us_employer_esi_premiums_from_manifest,
-    derive_us_pre_tax_health_insurance_premiums_from_manifest,
     load_meps_ic_esi_premium_cells,
     us_esi_premiums_anchor_gate,
     us_esi_premiums_signal_gate,
@@ -57,6 +60,10 @@ from microcosm.build.us_runtime import esi_premiums as esi
 from microcosm.build.us_runtime.asec_census_person_columns import (
     ASEC_CENSUS_PERSON_COLUMNS,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    meps_ic_private_active_employer_totals,
+    refuse_unassigned_us_esi_premiums,
+)
 from microcosm.build.us_runtime.release_input_coverage import (
     us_release_input_coverage_required_columns,
     us_release_input_coverage_reviewed_exclusions,
@@ -67,15 +74,17 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
 TIME_PERIOD = 2024
-ANCHOR = 977_034e6
+#: CMS NHE Table 24 employer contribution, CY2024: the scale anchor.
+ANCHOR = 1_047_000e6
+#: BEA NIPA Table 7.8 line 17, CY2024 (2026-09-30 vintage): the cross-check.
+BEA = 977_034e6
 EMPLOYER = US_ESI_EMPLOYER_PREMIUM_COLUMN
-PRE_TAX = US_ESI_PRE_TAX_PREMIUM_COLUMN
 _REPOSITORY_ROOT = paths_for("microcosm-build").repository
 _CELLS = load_meps_ic_esi_premium_cells()
 _STATES = sorted(int(state) for state in _CELLS["state_census_division"])
 
 #: An employed private-sector self-only policyholder in a large California
-#: firm whose employer pays some of the premium, with wages and a premium.
+#: firm whose employer pays some of the premium.
 _BASE_ROW = {
     "NOW_OWNGRP": 1,
     "NOW_HIPAID": 2,
@@ -84,8 +93,6 @@ _BASE_ROW = {
     "PEMLR": 1,
     "NOEMP": 6,
     "PEIO1COW": 4,
-    "PHIP_VAL": 2_000,
-    "WSAL_VAL": 60_000,
     "state_fips": 6,
 }
 _NO_COVERAGE = {"NOW_OWNGRP": 2, "NOW_HIPAID": 0, "NOW_GRPFTYP": 0, "NOW_GRPFTYP2": 0}
@@ -152,6 +159,24 @@ def _private(tier: str, measure: str, state: int, size: str) -> float:
     return _CELLS["private_state_2025"][tier][measure]["rows"][f"{state:02d}"][size]
 
 
+def _no_contribution(tier: str, size: str) -> float:
+    return _CELLS["no_contribution_share_2025"][tier][size] / 100.0
+
+
+def _column_total(frame: Frame) -> float:
+    return float(_weights(frame) @ _values(frame, EMPLOYER))
+
+
+def _reweighted(frame: Frame, weights: np.ndarray) -> Frame:
+    """The same people at different household weights (a calibrated export)."""
+
+    return Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        US_SCHEMA,
+        {"household": Weights(values=np.asarray(weights), kind=WeightKind.DESIGN)},
+    )
+
+
 def _realistic_rows(count: int = 400) -> list[dict]:
     """A mix whose weighted shares sit inside the signal-gate bands."""
 
@@ -167,13 +192,12 @@ def _realistic_rows(count: int = 400) -> list[dict]:
                     "NOW_GRPFTYP": 1 if tier in (1, 2) else 2,
                     "NOEMP": (index // 7) % 7,
                     "PEIO1COW": (1, 2, 3, 4, 5, 6)[(index // 3) % 6],
-                    "PHIP_VAL": 1_000 + 37 * index,
                     "state_fips": state,
                 }
             )
         elif kind == 4:  # employer pays all
-            rows.append({"NOW_HIPAID": 1, "PHIP_VAL": 0, "state_fips": state})
-        elif kind == 5:  # retiree policyholder: no wages concept
+            rows.append({"NOW_HIPAID": 1, "state_fips": state})
+        elif kind == 5:  # retiree policyholder: priced, outside the column
             rows.append({"PEMLR": 5, "PEIO1COW": 0, "NOEMP": 0, "state_fips": state})
         else:  # no employment-based coverage of their own
             rows.append(
@@ -194,11 +218,11 @@ class TestManifestDeclaration:
         spec = us_esi_premiums_stage_spec()
         assert spec.stage == US_ESI_PREMIUMS_STAGE_NAME == "meps_esi_premiums"
         assert tuple(spec.outputs) == US_ESI_PREMIUMS_OUTPUT_COLUMNS
-        assert US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS == (EMPLOYER, PRE_TAX)
+        assert US_ESI_PREMIUMS_OUTPUT_COLUMNS == (EMPLOYER,)
+        assert US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS == (EMPLOYER,)
         assert [operation.kind for operation in spec.operations] == [
             "read_table",
             "derive_employer_sponsored_insurance_premiums",
-            "derive_pre_tax_health_insurance_premiums",
         ]
         assert spec is not None and US_SOURCE_MANIFEST.stage_map()[spec.stage]
 
@@ -208,34 +232,35 @@ class TestManifestDeclaration:
             handlers["derive_employer_sponsored_insurance_premiums"]
             is derive_us_employer_esi_premiums_from_manifest
         )
-        assert (
-            handlers["derive_pre_tax_health_insurance_premiums"]
-            is derive_us_pre_tax_health_insurance_premiums_from_manifest
-        )
+        # The pre-tax employee premium is not this stage's: the engine treats
+        # it as disjoint from the reported premium (policyengine-us#10046).
+        assert "derive_pre_tax_health_insurance_premiums" not in handlers
 
     def test_manifest_pins_the_cells_the_anchor_and_every_source_pdf(self) -> None:
         spec = us_esi_premiums_stage_spec()
         employer = spec.operations[1].parameters
         assert employer["cells_sha256"] == esi._CELLS_SHA256
-        assert employer["anchor"]["series"] == "B4923C"
+        assert employer["anchor"]["table"].startswith("NHE Table 24")
+        assert employer["anchor"]["row"] == esi.EMPLOYER_PREMIUM_ANCHOR["row"]
         assert employer["anchor"]["values"]["2024"] == ANCHOR
+        assert employer["anchor_universe"] == "NOW_OWNGRP == 1"
+        assert "PEMLR in (1, 2)" in employer["universe"]
+        # A zip member is addressed as "<zip url>!<member>".
         pinned = {
-            artifact["locator"]: artifact["sha256"]
+            artifact["locator"].split("!")[0]: artifact["sha256"]
             for artifact in spec.artifacts
             if artifact.get("sha256")
         }
         for source in _CELLS["sources"].values():
             assert pinned[source["url"]] == source["sha256"]
-        assert (
-            pinned[esi.EMPLOYER_PREMIUM_ANCHOR["source"]]
-            == (esi.EMPLOYER_PREMIUM_ANCHOR["sha256"])
-        )
+        for pin in (esi.EMPLOYER_PREMIUM_ANCHOR, esi.EMPLOYER_PREMIUM_CROSS_CHECK):
+            assert pinned[pin["source"]] == pin["sha256"]
 
     def test_a_drifted_manifest_operation_is_refused(self, monkeypatch) -> None:
         monkeypatch.setattr(
             esi,
-            "_PRE_TAX_PARAMETERS",
-            {**esi._PRE_TAX_PARAMETERS, "employer_payment_codes": [2]},
+            "_EMPLOYER_PREMIUM_PARAMETERS",
+            {**esi._EMPLOYER_PREMIUM_PARAMETERS, "tier_column": "NOW_GRPFTYP"},
         )
         with pytest.raises(ValueError, match="drifted"):
             us_esi_premiums_stage_spec()
@@ -248,8 +273,6 @@ class TestManifestDeclaration:
         assert restored["NOEMP"].domain == esi._CODE_DOMAINS["NOEMP"]
         assert set(restored) >= set(US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS) - {
             "PEIO1COW",
-            "PHIP_VAL",
-            "WSAL_VAL",
             "state_fips",
         }
 
@@ -316,6 +339,9 @@ class TestCells:
                         _CELLS, tier, "employee_contribution", state, size
                     )
                     assert 0 < paid < premium < 60_000
+                    # The contribution of an employee who pays one still
+                    # leaves the employer a share.
+                    assert paid / (1 - _no_contribution(tier, size)) < premium
             for division in set(_CELLS["state_census_division"].values()):
                 for column in ("state", "all_state_and_local"):
                     premium = esi._government_cell(
@@ -325,33 +351,153 @@ class TestCells:
                         _CELLS, tier, "employee_contribution", division, column
                     )
                     assert 0 < paid < premium < 60_000
+                    assert paid / (1 - _no_contribution(tier, "50plus")) < premium
 
-    def test_pre_tax_shares_are_offer_rate_ratios(self) -> None:
-        shares = esi._pre_tax_shares(_CELLS)
-        assert shares == pytest.approx(
-            {"lt50": 15.9 / 32.1, "50plus": 87.8 / 94.8, "total": 35.5 / 49.2}
+    def test_no_contribution_shares_are_the_published_national_rows(self) -> None:
+        # MEPS-IC 2025 Tables II.C.4.a, II.D.4.a and II.E.4.a, United States.
+        published = {
+            "single": {"total": 13.0, "lt50": 35.5, "50plus": 8.7},
+            "family": {"total": 7.7, "lt50": 28.6, "50plus": 4.6},
+            "employee_plus_one": {"total": 6.0, "lt50": 23.1, "50plus": 3.6},
+        }
+        for tier, row in published.items():
+            table = _CELLS["no_contribution_share_2025"][tier]
+            assert {size: table[size] for size in row} == row
+            assert "required no" in table["title"]
+
+    def test_private_enrollment_rows_price_the_active_employee_total(self) -> None:
+        totals = meps_ic_private_active_employer_totals(_CELLS)
+        rows = _CELLS["private_enrollment_national"]["2024"]
+        assert rows["employees"]["total"] == 139_441_077
+        assert rows["offer_percent"]["total"] == 85.1
+        assert rows["enrolled_percent"]["total"] == 55.3
+        enrolled = 139_441_077 * 0.851 * 0.553
+        by_hand = enrolled * (
+            0.587 * (8_486 - 1_789)
+            + 0.237 * (24_540 - 7_216)
+            + 0.176 * (16_931 - 4_707)
         )
-        assert all(0 < share < 1 for share in shares.values())
+        assert totals["2024"] == pytest.approx(by_hand, rel=1e-12)
+        assert totals["2024"] == pytest.approx(668.6e9, rel=5e-4)
+        assert totals["2025"] == pytest.approx(714.4e9, rel=5e-4)
+        for year in ("2024", "2025"):
+            shares = _CELLS["private_enrollment_national"][year]["tier_share_percent"]
+            assert sum(shares[tier]["total"] for tier in _CELLS["tiers"]) == (
+                pytest.approx(100.0)
+            )
 
 
 # --- the employer premium -------------------------------------------------------
 
 
 class TestEmployerPremium:
-    def test_weighted_total_is_the_bea_anchor(self) -> None:
+    def test_weighted_total_over_every_policyholder_is_the_nhe_anchor(self) -> None:
         result = _run(_realistic_rows(), weights=np.linspace(50, 5_000, 400))
-        total = _weights(result) @ _values(result, EMPLOYER)
-        assert total == pytest.approx(ANCHOR, rel=1e-12)
+        summary = us_esi_premiums_summary(result)
+        assert summary["anchor_universe_employer_total"] == pytest.approx(
+            ANCHOR, rel=1e-12
+        )
+        # The retiree policyholders are priced, so the column is the employed
+        # policyholders' part of the anchor, not all of it.
+        share = summary["employed_share_of_anchor_universe"]
+        assert 0 < share < 1
+        assert _column_total(result) == pytest.approx(ANCHOR * share, rel=1e-12)
+        assert summary["other_policyholder_employer_total"] == pytest.approx(
+            ANCHOR * (1 - share), rel=1e-9
+        )
+
+    def test_without_other_policyholders_the_column_is_the_whole_anchor(self) -> None:
+        rows = [{"NOW_HIPAID": 1}, {"NOW_HIPAID": 2}, dict(_NO_COVERAGE)]
+        assert _column_total(_run(rows)) == pytest.approx(ANCHOR, rel=1e-12)
+
+    def test_a_priced_retiree_takes_their_share_out_of_the_column(self) -> None:
+        # A worker and a retiree whose former employer pays the whole premium.
+        # The retiree has no employer class, so they take California's
+        # all-sizes private cell; the worker takes the 50-or-more cell.
+        retiree = {"NOW_HIPAID": 1, "PEMLR": 5, "PEIO1COW": 0, "NOEMP": 0}
+        alone = _values(_run([{"NOW_HIPAID": 1}]), EMPLOYER)
+        result = _run([{"NOW_HIPAID": 1}, retiree])
+        together = _values(result, EMPLOYER)
+        worker = _private("single", "premium", 6, "50plus")
+        retired = _private("single", "premium", 6, "total")
+        assert alone[0] == pytest.approx(ANCHOR)
+        assert together[1] == 0
+        assert together[0] == pytest.approx(ANCHOR * worker / (worker + retired))
+        summary = us_esi_premiums_summary(result)
+        assert summary["other_policyholder_employer_total"] == pytest.approx(
+            ANCHOR * retired / (worker + retired)
+        )
+        assert summary["weighted_other_policyholders_with_employer_share"] == 1
+
+    def test_a_non_employed_policyholder_keeps_the_cell_of_a_reported_employer(
+        self,
+    ) -> None:
+        # Unemployed, last job with a State government in Texas, small NOEMP:
+        # the State-government division cell, whatever the firm size.
+        former = {"NOW_HIPAID": 1, "PEMLR": 4, "PEIO1COW": 2, "NOEMP": 1}
+        result = _run([{"NOW_HIPAID": 1}, {**former, "state_fips": 48}])
+        summary = us_esi_premiums_summary(result)
+        published = _CELLS["public_division_2024"]["single"]["premium"]["rows"][
+            "West South Central"
+        ]["state"]
+        aged = published * 9_025 / 8_486
+        assert summary["other_policyholder_employer_total"] / _column_total(
+            result
+        ) == pytest.approx(aged / _private("single", "premium", 6, "50plus"))
 
     def test_payment_status_sets_the_share_of_the_cell(self) -> None:
-        rows = [{"NOW_HIPAID": code, "PHIP_VAL": 500} for code in (1, 2, 3)]
+        rows = [{"NOW_HIPAID": code} for code in (1, 2, 3)]
         employer = _values(_run(rows), EMPLOYER)
         premium = _private("single", "premium", 6, "50plus")
         paid = _private("single", "employee_contribution", 6, "50plus")
+        # The published average contribution counts the 8.7% who pay nothing.
+        paying = paid / (1 - 0.087)
+        assert _no_contribution("single", "50plus") == 0.087
         assert employer[2] == 0
-        assert employer[0] / employer[1] == pytest.approx(premium / (premium - paid))
+        assert employer[0] / employer[1] == pytest.approx(premium / (premium - paying))
         # One scale factor: both are the same multiple of their raw share.
-        assert employer[0] / premium == pytest.approx(employer[1] / (premium - paid))
+        assert employer[0] / premium == pytest.approx(employer[1] / (premium - paying))
+
+    @pytest.mark.parametrize("tier_code", [1, 2, 3])
+    @pytest.mark.parametrize(("noemp", "size"), [(1, "lt50"), (4, "50plus")])
+    @pytest.mark.parametrize("state", [6, 36, 48])
+    def test_the_published_mix_reproduces_the_published_employer_mean(
+        self, tier_code, noemp, size, state
+    ) -> None:
+        tier = esi._TIER_BY_CODE[tier_code]
+        share = _no_contribution(tier, size)
+        cell = {
+            "NOW_GRPFTYP2": tier_code,
+            "NOW_GRPFTYP": 1 if tier_code in (1, 2) else 2,
+            "NOEMP": noemp,
+            "state_fips": state,
+        }
+        # MEPS-IC's own mix: `share` of enrollees pay nothing, the rest pay.
+        result = _run(
+            [{**cell, "NOW_HIPAID": 1}, {**cell, "NOW_HIPAID": 2}],
+            weights=[share, 1 - share],
+        )
+        summary = us_esi_premiums_summary(result)
+        assert summary["raw_over_published_employer_mean"] == pytest.approx(1.0)
+        published = _private(tier, "premium", state, size) - esi._private_cell(
+            _CELLS, tier, "employee_contribution", f"{state:02d}", size
+        )
+        modeled = _column_total(result) / summary["scale_factor"]
+        assert modeled == pytest.approx(published)
+
+    def test_the_unconditional_contribution_would_overstate_the_cell_mean(self) -> None:
+        # The national under-50 single-coverage cell: premium $9,034, average
+        # contribution $1,924, 35.5% of enrollees pay nothing. Subtracting the
+        # average from every payer gives $7,793, above the published $7,110.
+        rows = _CELLS["private_state_2025"]["single"]
+        premium = rows["premium"]["rows"]["US"]["lt50"]
+        paid = rows["employee_contribution"]["rows"]["US"]["lt50"]
+        share = _no_contribution("single", "lt50")
+        assert (premium, paid, share) == (9_034, 1_924, 0.355)
+        unconditional = share * premium + (1 - share) * (premium - paid)
+        conditional = share * premium + (1 - share) * (premium - paid / (1 - share))
+        assert unconditional == pytest.approx(7_793.02)
+        assert conditional == pytest.approx(premium - paid) == pytest.approx(7_110)
 
     def test_only_employed_policyholders_with_an_employer_carry_a_premium(self) -> None:
         rows = [
@@ -435,9 +581,13 @@ class TestEmployerPremium:
             / contributions["US"]["total"]
         )
         premium = _private("family", "premium", 2, "lt50")
-        assert employer[1] / employer[0] == pytest.approx(
-            (premium - fallback) / premium
-        )
+        paying = fallback / (1 - _no_contribution("family", "lt50"))
+        assert employer[1] / employer[0] == pytest.approx((premium - paying) / premium)
+
+    def test_the_assignment_does_not_depend_on_the_seed(self) -> None:
+        rows = _realistic_rows(120)
+        first, second = _run(rows, seed=1), _run(rows, seed=2)
+        assert np.array_equal(_values(first, EMPLOYER), _values(second, EMPLOYER))
 
     def test_state_may_already_sit_on_the_person_table(self) -> None:
         rows = _realistic_rows(60)
@@ -451,10 +601,10 @@ class TestEmployerPremium:
             _values(on_household, EMPLOYER), _values(on_person, EMPLOYER)
         )
 
-    @pytest.mark.parametrize("year", [2023, 2025])
+    @pytest.mark.parametrize("year", [2023, 2024])
     def test_each_pinned_year_scales_to_its_own_anchor(self, year) -> None:
         result = _run(_realistic_rows(60), time_period=year)
-        total = _weights(result) @ _values(result, EMPLOYER)
+        total = us_esi_premiums_summary(result)["anchor_universe_employer_total"]
         assert total == pytest.approx(
             esi.EMPLOYER_PREMIUM_ANCHOR["values"][str(year)], rel=1e-12
         )
@@ -501,65 +651,29 @@ class TestRefusals:
         with pytest.raises(SourceRuntimeError, match=violation):
             _run([{}, row])
 
-    def test_a_frame_with_no_employer_paid_mass_cannot_be_scaled(self) -> None:
+    @pytest.mark.parametrize(
+        "other",
+        [
+            dict(_NO_COVERAGE),
+            # A priced retiree does not give the column any mass to scale.
+            {"NOW_HIPAID": 1, "PEMLR": 5, "PEIO1COW": 0},
+        ],
+    )
+    def test_a_frame_with_no_employer_paid_mass_cannot_be_scaled(self, other) -> None:
         with pytest.raises(SourceRuntimeError, match="no weighted employer-paid"):
-            _run([{"NOW_HIPAID": 3}, dict(_NO_COVERAGE)])
+            _run([{"NOW_HIPAID": 3}, other])
 
-    def test_an_unpinned_build_year_is_refused(self) -> None:
-        with pytest.raises(SourceRuntimeError, match="no BEA anchor for 2030"):
-            _run([{}], time_period=2030)
+    @pytest.mark.parametrize("year", [2025, 2030])
+    def test_an_unpinned_build_year_is_refused(self, year) -> None:
+        # NHE Table 24 ends at CY2024; BEA's 2025 value does not stand in.
+        with pytest.raises(
+            SourceRuntimeError, match=f"no NHE Table 24 anchor for {year}"
+        ):
+            _run([{}], time_period=year)
 
     def test_an_unknown_state_is_refused(self) -> None:
         with pytest.raises(SourceRuntimeError, match="State FIPS 72"):
             _run([{}, {"state_fips": 72}])
-
-
-# --- the pre-tax employee premium ------------------------------------------------
-
-
-class TestPreTaxPremium:
-    def test_only_eligible_workers_can_pay_pre_tax(self) -> None:
-        eligible = [{"person_id": index + 1} for index in range(300)]
-        ineligible = [
-            {"NOW_HIPAID": 1},  # the employer pays everything
-            {"WSAL_VAL": 0},  # no wages to deduct from
-            {"PHIP_VAL": 0},  # no premium reported
-            {"PEMLR": 5, "PEIO1COW": 0},  # not employed
-            {"PEIO1COW": 7},  # no employer
-            dict(_NO_COVERAGE),  # not a policyholder
-        ]
-        result = _run(eligible + ineligible)
-        pre_tax = _values(result, PRE_TAX)
-        assert (pre_tax[300:] == 0).all()
-        assert set(np.unique(pre_tax[:300])) == {0.0, 2_000.0}
-
-    @pytest.mark.parametrize(
-        ("noemp", "size"), [(0, "total"), (1, "lt50"), (2, "lt50"), (6, "50plus")]
-    )
-    def test_selection_rate_is_the_firm_size_offer_ratio(self, noemp, size) -> None:
-        # Both payment statuses that leave the worker a share to pay.
-        rows = [{"NOEMP": noemp, "NOW_HIPAID": 2 + index % 2} for index in range(6_000)]
-        pre_tax = _values(_run(rows, seed=11), PRE_TAX)
-        share = esi._pre_tax_shares(_CELLS)[size]
-        # Six thousand Bernoulli draws: five standard errors is under 3.3 points.
-        assert (pre_tax > 0).mean() == pytest.approx(share, abs=0.033)
-
-    def test_draws_are_the_shared_identity_keyed_uniforms(self) -> None:
-        rows = [{"source_household_id": 900 + index} for index in range(50)]
-        pre_tax = _values(_run(rows, seed=5), PRE_TAX)
-        draws = stable_identity_uniforms(
-            [f"2024:{900 + index}:1" for index in range(50)],
-            seed=5,
-            salt=PRE_TAX,
-        )
-        expected = np.where(draws < esi._pre_tax_shares(_CELLS)["50plus"], 2_000.0, 0.0)
-        assert np.array_equal(pre_tax, expected)
-
-    def test_the_seed_changes_who_is_selected_not_the_employer_premium(self) -> None:
-        rows = [{"NOEMP": 1} for _ in range(400)]
-        first, second = _run(rows, seed=1), _run(rows, seed=2)
-        assert not np.array_equal(_values(first, PRE_TAX), _values(second, PRE_TAX))
-        assert np.array_equal(_values(first, EMPLOYER), _values(second, EMPLOYER))
 
 
 # --- idempotence and support clones -----------------------------------------------
@@ -636,18 +750,26 @@ class TestSignalGate:
         gate = us_esi_premiums_signal_gate(self._staged())
         assert gate.passed, gate.failures
         details = gate.details
-        assert details["employer_premium_total"] == pytest.approx(ANCHOR, rel=1e-12)
+        column = details["employer_premium_total"]
+        assert details["source_columns_missing"] == []
+        assert details["anchor_universe_employer_total"] == pytest.approx(
+            ANCHOR, rel=1e-12
+        )
+        assert column == pytest.approx(
+            ANCHOR * details["employed_share_of_anchor_universe"], rel=1e-12
+        )
         assert details["scale_factor"] == pytest.approx(
-            ANCHOR / details["raw_employer_share_total"]
+            ANCHOR / details["raw_anchor_universe_total"]
         )
         assert details["scale_factor_spread"] <= 1e-9 * details["scale_factor"]
         assert details["cells_sha256"] == esi._CELLS_SHA256
-        assert details["anchor"]["series"] == "B4923C"
+        assert details["anchor"]["row"].startswith("Employer Contribution")
+        assert details["cross_check"]["series"] == "B4923C"
         assert sum(details["employer_premium_by_tier"].values()) == pytest.approx(
-            ANCHOR
+            column
         )
         assert sum(details["employer_premium_by_sector"].values()) == pytest.approx(
-            ANCHOR
+            column
         )
         json.dumps(dict(details))  # the base summary serializes it
 
@@ -696,23 +818,9 @@ class TestSignalGate:
 
     def test_a_negative_value_fails(self) -> None:
         self._fails_with(
-            lambda person: person.__setitem__(PRE_TAX, -person[PRE_TAX]),
+            lambda person: person.__setitem__(EMPLOYER, -person[EMPLOYER]),
             "negative value",
         )
-
-    def test_a_pre_tax_premium_for_an_ineligible_person_fails(self) -> None:
-        def mutate(person):
-            outsider = int(np.flatnonzero(person["NOW_OWNGRP"].to_numpy() == 2)[0])
-            person.loc[outsider, PRE_TAX] = float(person.loc[outsider, "PHIP_VAL"])
-
-        self._fails_with(mutate, "ineligible people")
-
-    def test_a_pre_tax_premium_that_is_not_the_reported_premium_fails(self) -> None:
-        def mutate(person):
-            payer = int(np.flatnonzero(person[PRE_TAX].to_numpy() > 0)[0])
-            person.loc[payer, PRE_TAX] += 1.0
-
-        self._fails_with(mutate, "not equal to PHIP_VAL")
 
     def test_clone_disagreement_fails(self) -> None:
         cloned = _cloned(self._staged())
@@ -726,68 +834,96 @@ class TestSignalGate:
         gate = us_esi_premiums_signal_gate(_run([{} for _ in range(50)]))
         assert any("positive share" in failure for failure in gate.failures)
 
-    def test_a_broken_cell_table_cannot_hide_behind_the_scale_factor(
-        self, monkeypatch
-    ) -> None:
-        broken = json.loads(json.dumps(_CELLS))
-        for tier in broken["tiers"]:
+    @staticmethod
+    def _scaled_cells(factor: float) -> dict:
+        scaled = json.loads(json.dumps(_CELLS))
+        for tier in scaled["tiers"]:
             for measure in ("premium", "employee_contribution"):
-                for row in broken["private_state_2025"][tier][measure]["rows"].values():
+                for row in scaled["private_state_2025"][tier][measure]["rows"].values():
                     for size in ("total", "lt50", "50plus"):
                         if row[size] is not None:
-                            row[size] /= 100.0
-                for row in broken["public_division_2024"][tier][measure][
+                            row[size] *= factor
+                for row in scaled["public_division_2024"][tier][measure][
                     "rows"
                 ].values():
                     for column in row:
-                        row[column] /= 100.0
+                        row[column] *= factor
+        return scaled
+
+    def test_a_unit_error_in_the_cells_cannot_hide_behind_the_scale_factor(
+        self, monkeypatch
+    ) -> None:
+        # Dollars read as hundreds of dollars.
+        broken = self._scaled_cells(0.01)
         monkeypatch.setattr(esi, "load_meps_ic_esi_premium_cells", lambda: broken)
         frame = _run(_realistic_rows())
-        total = _weights(frame) @ _values(frame, EMPLOYER)
+        total = us_esi_premiums_summary(frame)["anchor_universe_employer_total"]
         assert total == pytest.approx(ANCHOR)  # the scale factor hid the level
         gate = us_esi_premiums_signal_gate(frame)
-        assert any("the cell table is broken" in f for f in gate.failures)
+        assert any("units are broken" in f for f in gate.failures)
 
-    def test_an_export_frame_without_raw_columns_is_still_graded(self) -> None:
-        frame = self._staged()
-        frame.table("person").drop(
-            columns=[
-                column
-                for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS
-                if column != "state_fips"
-            ],
-            inplace=True,
-        )
-        gate = us_esi_premiums_signal_gate(frame)
+    def test_a_level_error_inside_the_band_is_outside_this_gates_reach(
+        self, monkeypatch
+    ) -> None:
+        # The documented limit: every cell 20% low still averages inside the
+        # raw-mean band, the scale factor absorbs it, and this gate passes. A
+        # re-pinned table is reviewed against the PDFs, not caught here.
+        low = self._scaled_cells(0.8)
+        monkeypatch.setattr(esi, "load_meps_ic_esi_premium_cells", lambda: low)
+        gate = us_esi_premiums_signal_gate(_run(_realistic_rows()))
         assert gate.passed, gate.failures
+        low_band, high_band = esi._RAW_MEAN_BAND
+        mean = gate.details["raw_employer_share_mean_per_positive_person"]
+        assert low_band <= mean <= high_band
+
+    @pytest.mark.parametrize(
+        "column",
+        [c for c in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS if c != "state_fips"],
+    )
+    def test_a_frame_without_a_raw_column_cannot_be_certified(self, column) -> None:
+        frame = self._staged()
+        frame.table("person").drop(columns=[column], inplace=True)
+        gate = us_esi_premiums_signal_gate(frame)
+        assert not gate.passed
+        assert gate.details["source_columns_missing"] == [column]
+        assert any("assignment provenance incomplete" in f for f in gate.failures)
         assert "scale_factor" not in gate.details
-        frame.table("person")[EMPLOYER] = 0.0
-        assert not us_esi_premiums_signal_gate(frame).passed
+
+    def test_a_misassignment_cannot_pass_by_dropping_a_raw_column(self) -> None:
+        # Reverse the premium vector: the weighted total is unchanged, the
+        # people who carry it are wrong. With the raw columns the gate names
+        # the misassignment; with one dropped it still fails, on provenance.
+        frame = _run(_realistic_rows())  # unit weights: the total is preserved
+        person = frame.table("person")
+        before = person[EMPLOYER].sum()
+        person[EMPLOYER] = person[EMPLOYER].to_numpy()[::-1].copy()
+        assert person[EMPLOYER].sum() == pytest.approx(before)
+        with_raw = us_esi_premiums_signal_gate(frame)
+        assert not with_raw.passed
+        assert any("outside employed policyholders" in f for f in with_raw.failures)
+        person.drop(columns=["NOEMP"], inplace=True)
+        without = us_esi_premiums_signal_gate(frame)
+        assert not without.passed
+        assert any("assignment provenance incomplete" in f for f in without.failures)
+        anchor = us_esi_premiums_anchor_gate(frame, time_period=TIME_PERIOD)
+        assert not anchor.passed
+        assert any("assignment provenance incomplete" in f for f in anchor.failures)
 
 
 # --- the release anchor gate --------------------------------------------------------
 
 
 class TestAnchorGate:
-    def _export(self, *, scale: float = 1.0, pre_tax_scale: float = 1.0) -> Frame:
-        """A calibrated export: engine inputs only, reweighted by ``scale``."""
+    def _export(self, *, weight_scale: float = 1.0) -> Frame:
+        """A calibrated export: the staged people at rescaled weights."""
 
         frame = _run(_realistic_rows(), weights=np.linspace(10, 900, 400))
-        person = frame.table("person")
-        person.drop(
-            columns=list(
-                set(US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS) & set(person.columns)
-            ),
-            inplace=True,
-        )
-        person[EMPLOYER] *= scale
-        person[PRE_TAX] *= pre_tax_scale
-        return frame
+        return _reweighted(frame, frame.weights_for("household").values * weight_scale)
 
     @pytest.mark.parametrize("scale", [0.951, 1.0, 1.049])
     def test_passes_inside_the_stated_tolerance(self, scale) -> None:
         gate = us_esi_premiums_anchor_gate(
-            self._export(scale=scale), time_period=TIME_PERIOD
+            self._export(weight_scale=scale), time_period=TIME_PERIOD
         )
         assert gate.passed, gate.failures
         assert gate.details["relative_error"] == pytest.approx(scale - 1.0)
@@ -797,19 +933,55 @@ class TestAnchorGate:
     @pytest.mark.parametrize("scale", [0.94, 1.06])
     def test_fails_outside_the_stated_tolerance(self, scale) -> None:
         gate = us_esi_premiums_anchor_gate(
-            self._export(scale=scale), time_period=TIME_PERIOD
+            self._export(weight_scale=scale), time_period=TIME_PERIOD
         )
         assert not gate.passed
-        assert any("from BEA NIPA 7.8 line 17" in f for f in gate.failures)
+        assert any("from NHE Table 24" in f for f in gate.failures)
 
-    def test_the_retiree_inclusive_nhe_total_is_an_upper_bound(self) -> None:
-        # NHE is 7.2% above BEA, so the tolerance fails first; the bound must
-        # also be named for a release that drifted to the NHE concept.
-        gate = us_esi_premiums_anchor_gate(
-            self._export(scale=1.08), time_period=TIME_PERIOD
+    def test_the_verdict_is_over_every_policyholder_not_the_column(self) -> None:
+        gate = us_esi_premiums_anchor_gate(self._export(), time_period=TIME_PERIOD)
+        details = gate.details
+        assert details["anchor_universe_employer_total"] == pytest.approx(ANCHOR)
+        assert details["employer_premium_total"] < ANCHOR
+        assert details["employer_premium_total"] + details[
+            "other_policyholder_employer_total"
+        ] == pytest.approx(ANCHOR)
+        assert details["employer_premium_total"] == pytest.approx(
+            ANCHOR * details["employed_share_of_anchor_universe"]
         )
-        assert any("exceeds the retiree-inclusive NHE" in f for f in gate.failures)
-        assert esi.ANCHOR_RELATIVE_TOLERANCE < 1_047.0e9 / ANCHOR - 1.0
+
+    def test_reweighting_workers_against_other_policyholders_is_red(self) -> None:
+        # Calibration that keeps the column's total but piles weight onto
+        # retiree policyholders moves the anchor-universe total and the split.
+        frame = _run(_realistic_rows(), weights=np.full(400, 100.0))
+        person = frame.table("person")
+        retiree = (person["PEMLR"].to_numpy() == 5) & (
+            person["NOW_OWNGRP"].to_numpy() == 1
+        )
+        weights = np.where(retiree, 500.0, 100.0)
+        gate = us_esi_premiums_anchor_gate(
+            _reweighted(frame, weights), time_period=TIME_PERIOD
+        )
+        assert gate.details["employer_premium_total"] == pytest.approx(
+            _column_total(frame)
+        )
+        assert not gate.passed
+        assert any("from NHE Table 24" in f for f in gate.failures)
+        assert any("employed policyholders carry" in f for f in gate.failures)
+
+    def test_the_cross_checks_are_recorded_not_gated(self) -> None:
+        gate = us_esi_premiums_anchor_gate(self._export(), time_period=TIME_PERIOD)
+        assert gate.passed, gate.failures
+        # BEA's estimate of the same concept is 6.7% below NHE's for 2024.
+        assert gate.details["cross_check_ratio"] == pytest.approx(ANCHOR / BEA)
+        assert ANCHOR / BEA - 1 > esi.ANCHOR_RELATIVE_TOLERANCE
+        active = gate.details["private_active_cross_check"]
+        assert active["meps_ic_private_active_employer_total"] == pytest.approx(
+            668.6e9, rel=5e-4
+        )
+        assert active["ratio"] == pytest.approx(
+            active["employer_premium_private_sector"] / 668.6e9, rel=5e-4
+        )
 
     @pytest.mark.parametrize("column", US_ESI_PREMIUMS_OUTPUT_COLUMNS)
     def test_an_absent_column_is_red(self, column) -> None:
@@ -827,27 +999,63 @@ class TestAnchorGate:
         assert not gate.passed
         assert f"{column}: zero weighted mass." in gate.failures
 
-    def test_pre_tax_premiums_cannot_exceed_nhe_employee_contributions(self) -> None:
+    @pytest.mark.parametrize("column", ["NOW_OWNGRP", "NOW_HIPAID", "PEMLR", "NOEMP"])
+    def test_an_export_without_a_raw_column_is_red(self, column) -> None:
+        # The anchor counts every policyholder, so the gate cannot grade a
+        # frame that no longer says who they are.
         frame = self._export()
-        total = _weights(frame) @ _values(frame, PRE_TAX)
-        gate = us_esi_premiums_anchor_gate(
-            self._export(pre_tax_scale=1.01 * 382.1e9 / total),
-            time_period=TIME_PERIOD,
-        )
-        assert any("employee contribution" in f for f in gate.failures)
+        frame.table("person").drop(columns=[column], inplace=True)
+        gate = us_esi_premiums_anchor_gate(frame, time_period=TIME_PERIOD)
+        assert not gate.passed
+        assert any("assignment provenance incomplete" in f for f in gate.failures)
+        assert "anchor_universe_employer_total" not in gate.details
 
-    def test_a_year_without_an_anchor_is_red(self) -> None:
-        gate = us_esi_premiums_anchor_gate(self._export(), time_period=2031)
+    @pytest.mark.parametrize("year", [2025, 2031])
+    def test_a_year_without_an_anchor_is_red(self, year) -> None:
+        gate = us_esi_premiums_anchor_gate(self._export(), time_period=year)
         assert not gate.passed
         assert any(
-            "no BEA NIPA 7.8 line 17 anchor for 2031" in f for f in gate.failures
+            f"no NHE Table 24 employer-contribution anchor for {year}" in f
+            for f in gate.failures
         )
 
     def test_details_serialize_for_the_release_evidence_file(self) -> None:
         gate = us_esi_premiums_anchor_gate(self._export(), time_period=TIME_PERIOD)
         payload = json.loads(json.dumps(dict(gate.details)))
         assert payload["anchor"]["sha256"] == esi.EMPLOYER_PREMIUM_ANCHOR["sha256"]
-        assert payload["cross_check"]["employer_contribution"]["2024"] == 1_047.0e9
+        assert payload["anchor"]["values"]["2024"] == ANCHOR
+        assert payload["cross_check"]["values"]["2024"] == BEA
+
+
+class TestOperatorBoundary:
+    def test_a_raw_source_frame_that_carries_the_outputs_is_refused(self) -> None:
+        from microcosm.build.us_runtime.operator_boundary import (
+            PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+            assert_operator_free_source_frame,
+        )
+
+        assert PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["esi_premiums"] == {
+            "person": frozenset(US_ESI_PREMIUMS_OUTPUT_COLUMNS)
+        }
+        assert_operator_free_source_frame(_frame(_realistic_rows(40)), label="raw")
+        with pytest.raises(ValueError, match="esi_premiums:person="):
+            assert_operator_free_source_frame(_run(_realistic_rows(40)), label="raw")
+
+
+class TestUnassignedRefusal:
+    def test_a_staged_frame_and_a_frame_without_the_columns_pass(self) -> None:
+        refuse_unassigned_us_esi_premiums(_run(_realistic_rows(60)), consumer="t")
+        refuse_unassigned_us_esi_premiums(_frame(_realistic_rows(60)), consumer="t")
+
+    @pytest.mark.parametrize("column", US_ESI_PREMIUMS_OUTPUT_COLUMNS)
+    def test_a_null_on_any_row_is_refused(self, column) -> None:
+        # ACS-spine rows pooled beside an ASEC donor carry no assignment.
+        frame = _run(_realistic_rows(60))
+        frame.table("person").loc[[3, 4], column] = np.nan
+        with pytest.raises(SourceRuntimeError, match="never filled") as error:
+            refuse_unassigned_us_esi_premiums(frame, consumer="ACS local release")
+        assert "ACS local release" in str(error.value)
+        assert f"'{column}': 2" in str(error.value)
 
 
 # --- properties and the differential reference ------------------------------------
@@ -871,8 +1079,6 @@ def _person_rows(draw) -> dict:
         "PEMLR": draw(st.sampled_from([0, 1, 1, 1, 2, 3, 4, 5, 6, 7])),
         "NOEMP": draw(st.integers(0, 6)),
         "PEIO1COW": draw(st.sampled_from([0, 1, 2, 3, 4, 4, 4, 5, 6, 7, 8])),
-        "PHIP_VAL": draw(st.sampled_from([0, 0, 350, 1_800, 7_400, 22_000])),
-        "WSAL_VAL": draw(st.sampled_from([0, 12_000, 48_000, 250_000])),
         "state_fips": draw(st.sampled_from(_STATES)),
     }
 
@@ -898,18 +1104,17 @@ def _populations(draw):
     return rows, weights
 
 
-def _reference(rows: list[dict], weights: list[float], *, seed: int):
+def _reference(rows: list[dict], weights: list[float]) -> list[float]:
     """A scalar restatement of the declared rules, one person at a time."""
 
     tiers = {1: "family", 2: "employee_plus_one", 3: "single"}
     raw: list[float] = []
-    pre_tax: list[float] = []
-    for index, partial in enumerate(rows):
+    in_column: list[bool] = []
+    for partial in rows:
         row = {**_BASE_ROW, **partial}
+        holder = row["NOW_OWNGRP"] == 1
         in_universe = (
-            row["NOW_OWNGRP"] == 1
-            and row["PEMLR"] in (1, 2)
-            and row["PEIO1COW"] in (1, 2, 3, 4, 5, 6)
+            holder and row["PEMLR"] in (1, 2) and row["PEIO1COW"] in (1, 2, 3, 4, 5, 6)
         )
         size = (
             "total"
@@ -919,21 +1124,16 @@ def _reference(rows: list[dict], weights: list[float], *, seed: int):
             else "50plus"
         )
         share = 0.0
-        if in_universe and row["NOW_HIPAID"] in (1, 2):
+        if holder and row["NOW_HIPAID"] in (1, 2):
             tier = tiers[row["NOW_GRPFTYP2"]]
             state = f"{row['state_fips']:02d}"
+            government = row["PEIO1COW"] in (1, 2, 3)
+            # No employer class: the State's all-sizes private cell.
+            cell_size = size if row["PEIO1COW"] in (4, 5, 6) else "total"
             cell = {}
             for measure in ("premium", "employee_contribution"):
                 private = _CELLS["private_state_2025"][tier][measure]["rows"]
-                if row["PEIO1COW"] in (4, 5, 6):
-                    value = private[state][size]
-                    if value is None:
-                        value = (
-                            private["US"][size]
-                            * private[state]["total"]
-                            / private["US"]["total"]
-                        )
-                else:
+                if government:
                     division = _CELLS["state_census_division"][state]
                     column = "state" if row["PEIO1COW"] == 2 else "all_state_and_local"
                     value = (
@@ -943,32 +1143,37 @@ def _reference(rows: list[dict], weights: list[float], *, seed: int):
                         * private["US"]["total"]
                         / _CELLS["private_national_2024"][tier][measure]["total"]
                     )
+                else:
+                    value = private[state][cell_size]
+                    if value is None:
+                        value = (
+                            private["US"][cell_size]
+                            * private[state]["total"]
+                            / private["US"]["total"]
+                        )
                 cell[measure] = value
+            unpaid = (
+                _CELLS["no_contribution_share_2025"][tier][
+                    "50plus" if government else cell_size
+                ]
+                / 100.0
+            )
             share = (
                 cell["premium"]
                 if row["NOW_HIPAID"] == 1
-                else max(cell["premium"] - cell["employee_contribution"], 0.0)
+                else max(
+                    cell["premium"] - cell["employee_contribution"] / (1.0 - unpaid),
+                    0.0,
+                )
             )
         raw.append(share)
-        eligible = (
-            in_universe
-            and row["NOW_HIPAID"] in (2, 3)
-            and row["WSAL_VAL"] > 0
-            and row["PHIP_VAL"] > 0
-        )
-        draw = stable_identity_uniforms(
-            [f"2024:{index + 1}:1"], seed=seed, salt=PRE_TAX
-        )[0]
-        offer = _CELLS["pretax_contribution_2025"]["rows"][size]
-        probability = (
-            offer["pretax_contribution_offer_percent"]
-            / offer["health_insurance_offer_percent"]
-        )
-        pre_tax.append(
-            float(row["PHIP_VAL"]) if eligible and draw < probability else 0.0
-        )
+        in_column.append(in_universe)
+    # One factor over every policyholder; only the column's people keep it.
     total = sum(weight * share for weight, share in zip(weights, raw, strict=True))
-    return [share * ANCHOR / total for share in raw], pre_tax
+    return [
+        share * ANCHOR / total if keep else 0.0
+        for share, keep in zip(raw, in_column, strict=True)
+    ]
 
 
 _PROPERTY_SETTINGS = settings(
@@ -983,9 +1188,9 @@ _PROPERTY_SETTINGS = settings(
 def test_stage_agrees_with_the_scalar_reference(population, seed) -> None:
     rows, weights = population
     result = _run(rows, weights=weights, seed=seed)
-    employer, pre_tax = _reference(rows, weights, seed=seed)
-    np.testing.assert_allclose(_values(result, EMPLOYER), employer, rtol=1e-11)
-    assert _values(result, PRE_TAX).tolist() == pre_tax
+    np.testing.assert_allclose(
+        _values(result, EMPLOYER), _reference(rows, weights), rtol=1e-11
+    )
 
 
 @_PROPERTY_SETTINGS
@@ -994,10 +1199,15 @@ def test_conservation_bounds_and_structural_zeros(population, seed) -> None:
     rows, weights = population
     result = _run(rows, weights=weights, seed=seed)
     person = result.table("person")
-    employer, pre_tax = _values(result, EMPLOYER), _values(result, PRE_TAX)
-    assert _weights(result) @ employer == pytest.approx(ANCHOR, rel=1e-11)
-    assert np.isfinite(employer).all() and np.isfinite(pre_tax).all()
-    assert (employer >= 0).all() and (pre_tax >= 0).all()
+    employer = _values(result, EMPLOYER)
+    summary = us_esi_premiums_summary(result)
+    assert summary["anchor_universe_employer_total"] == pytest.approx(ANCHOR, rel=1e-11)
+    assert _weights(result) @ employer == pytest.approx(
+        ANCHOR * summary["employed_share_of_anchor_universe"], rel=1e-11
+    )
+    assert _weights(result) @ employer <= ANCHOR * (1 + 1e-11)
+    assert np.isfinite(employer).all()
+    assert (employer >= 0).all()
     universe = (
         person["NOW_OWNGRP"].eq(1)
         & person["PEMLR"].isin([1, 2])
@@ -1006,16 +1216,6 @@ def test_conservation_bounds_and_structural_zeros(population, seed) -> None:
     assert (employer[~universe] == 0).all()
     assert (employer[universe & person["NOW_HIPAID"].eq(3).to_numpy()] == 0).all()
     assert (employer[universe & person["NOW_HIPAID"].isin([1, 2]).to_numpy()] > 0).all()
-    phip = person["PHIP_VAL"].to_numpy(dtype=float)
-    assert ((pre_tax == 0) | (pre_tax == phip)).all()
-    eligible = (
-        universe
-        & person["NOW_HIPAID"].isin([2, 3]).to_numpy()
-        & (person["WSAL_VAL"].to_numpy() > 0)
-        & (phip > 0)
-    )
-    assert (pre_tax[~eligible] == 0).all()
-    summary = us_esi_premiums_summary(result)
     for key in (
         "nonfinite_rows",
         "negative_rows",
@@ -1023,8 +1223,6 @@ def test_conservation_bounds_and_structural_zeros(population, seed) -> None:
         "employer_premium_outside_universe_rows",
         "employer_premium_where_employer_pays_none_rows",
         "employer_premium_without_raw_share_rows",
-        "pre_tax_ineligible_rows",
-        "pre_tax_not_reported_premium_rows",
     ):
         assert summary[key] == 0, key
     assert summary["scale_factor_spread"] <= 1e-9 * summary["scale_factor"]
@@ -1051,7 +1249,6 @@ def test_row_order_does_not_change_anyone(population, random) -> None:
     np.testing.assert_allclose(
         shuffled[EMPLOYER].to_numpy(), straight[EMPLOYER].to_numpy(), rtol=1e-11
     )
-    assert shuffled[PRE_TAX].tolist() == straight[PRE_TAX].tolist()
 
 
 @_PROPERTY_SETTINGS
@@ -1063,37 +1260,106 @@ def test_weights_are_homogeneous_of_degree_minus_one(population, factor) -> None
     np.testing.assert_allclose(
         _values(scaled, EMPLOYER) * factor, _values(base, EMPLOYER), rtol=1e-10
     )
-    assert _weights(scaled) @ _values(scaled, EMPLOYER) == pytest.approx(
-        ANCHOR, rel=1e-11
-    )
-    assert _values(scaled, PRE_TAX).tolist() == _values(base, PRE_TAX).tolist()
+    assert _column_total(scaled) == pytest.approx(_column_total(base), rel=1e-10)
+    assert us_esi_premiums_summary(scaled)[
+        "anchor_universe_employer_total"
+    ] == pytest.approx(ANCHOR, rel=1e-11)
 
 
 @_PROPERTY_SETTINGS
-@given(_populations())
-def test_staging_is_idempotent_and_clone_safe(population) -> None:
+@given(_populations(), st.integers(0, 2**31 - 1))
+def test_staging_is_deterministic_restageable_and_clone_safe(population, seed) -> None:
     rows, weights = population
-    once = _run(rows, weights=weights)
-    assert (
-        us_esi_premiums_summary(_cloned(once))["clone_disagreement_source_persons"] == 0
+    once = _run(rows, weights=weights, seed=seed)
+    # The assignment draws nothing, so another seed changes no one.
+    again = _run(rows, weights=weights, seed=seed + 1)
+    # Staging a staged frame again from its raw columns changes no one: the
+    # stage reads only the raw ASEC columns, never its own outputs.
+    stripped = _reweighted(once, once.weights_for("household").values)
+    stripped.table("person").drop(
+        columns=list(US_ESI_PREMIUMS_OUTPUT_COLUMNS), inplace=True
     )
+    restaged = with_us_esi_premium_inputs(stripped, seed=seed, time_period=TIME_PERIOD)
+    for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        assert _values(again, column).tolist() == _values(once, column).tolist()
+        assert _values(restaged, column).tolist() == _values(once, column).tolist()
     cloned = _cloned(once)
+    assert us_esi_premiums_summary(cloned)["clone_disagreement_source_persons"] == 0
     for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
         assert _weights(cloned) @ _values(cloned, column) == pytest.approx(
             _weights(once) @ _values(once, column), rel=1e-11, abs=1e-6
         )
+    assert us_esi_premiums_summary(cloned)[
+        "anchor_universe_employer_total"
+    ] == pytest.approx(ANCHOR, rel=1e-11)
+
+
+@_PROPERTY_SETTINGS
+@given(_populations())
+def test_pricing_other_policyholders_never_raises_a_workers_premium(population) -> None:
+    rows, weights = population
+    priced = _run(rows, weights=weights)
+    person = priced.table("person")
+    universe = (
+        person["NOW_OWNGRP"].eq(1)
+        & person["PEMLR"].isin([1, 2])
+        & person["PEIO1COW"].isin([1, 2, 3, 4, 5, 6])
+    ).to_numpy()
+    # The same frame with every policyholder outside the column uncovered:
+    # nothing is left to price but the column, so it carries the whole anchor.
+    workers_only = _run(
+        [
+            row if keep else {**row, **_NO_COVERAGE}
+            for row, keep in zip(rows, universe, strict=True)
+        ],
+        weights=weights,
+    )
+    assert _column_total(workers_only) == pytest.approx(ANCHOR, rel=1e-11)
+    assert (
+        _values(priced, EMPLOYER) <= _values(workers_only, EMPLOYER) * (1 + 1e-11)
+    ).all()
+    assert _column_total(priced) <= ANCHOR * (1 + 1e-11)
+
+
+@_PROPERTY_SETTINGS
+@given(
+    st.sampled_from([1, 2, 3]),
+    st.sampled_from([1, 2, 3, 4, 5, 6]),
+    st.sampled_from([4, 5, 6]),
+    st.sampled_from(_STATES),
+    st.floats(0.5, 500.0, allow_nan=False),
+)
+def test_the_published_mix_reconciles_every_private_cell(
+    tier_code, noemp, sector, state, mass
+) -> None:
+    tier = esi._TIER_BY_CODE[tier_code]
+    share = _no_contribution(tier, esi._SIZE_BY_NOEMP[noemp])
+    cell = {
+        "NOW_GRPFTYP2": tier_code,
+        "NOW_GRPFTYP": 1 if tier_code in (1, 2) else 2,
+        "NOEMP": noemp,
+        "PEIO1COW": sector,
+        "state_fips": state,
+    }
+    result = _run(
+        [{**cell, "NOW_HIPAID": 1}, {**cell, "NOW_HIPAID": 2}],
+        weights=[mass * share, mass * (1 - share)],
+    )
+    summary = us_esi_premiums_summary(result)
+    assert summary["raw_over_published_employer_mean"] == pytest.approx(1.0)
 
 
 # --- the registers the stage moves -------------------------------------------------
 
 
 class TestRegisters:
-    def test_both_inputs_are_required_release_columns_with_no_exclusion(self) -> None:
+    def test_the_input_is_a_required_release_column_with_no_exclusion(self) -> None:
         required = us_release_input_coverage_required_columns()
-        assert {EMPLOYER, PRE_TAX} <= required
-        assert not {EMPLOYER, PRE_TAX} & set(
-            us_release_input_coverage_reviewed_exclusions()
-        )
+        assert EMPLOYER in required
+        assert EMPLOYER not in set(us_release_input_coverage_reviewed_exclusions())
+        # Not produced, so not required: the pre-tax employee premium waits
+        # for the engine's disjoint premium contract (policyengine-us#10046).
+        assert "pre_tax_health_insurance_premiums" not in required
 
     def test_the_parity_gap_register_no_longer_exempts_the_employer_premium(
         self,
@@ -1105,7 +1371,7 @@ class TestRegisters:
         )
         assert EMPLOYER not in payload["known_gaps"]
 
-    def test_shipped_reform_probes_bind_through_both_inputs(self) -> None:
+    def test_a_shipped_reform_probe_binds_through_the_input(self) -> None:
         probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
         employer = probes["employer_sponsored_insurance_premium_neutralization"]
         assert employer.neutralized_variable == EMPLOYER
@@ -1113,12 +1379,9 @@ class TestRegisters:
         assert employer.effect_direction == "baseline_minus_reform"
         assert employer.expected_sign == "positive"
         assert 0 < employer.min_abs_effect < ANCHOR
-        pre_tax = probes["pre_tax_health_insurance_premium_neutralization"]
-        assert pre_tax.neutralized_variable == PRE_TAX
-        assert pre_tax.budget_measure == "income_tax"
-        assert pre_tax.expected_sign == "negative"
+        assert "pre_tax_health_insurance_premium_neutralization" not in probes
 
-    def test_the_nhe_target_family_is_fenced_as_a_broader_concept(self) -> None:
+    def test_the_nhe_target_family_is_gated_not_compiled(self) -> None:
         manifest = json.loads(
             files("microcosm.build.us")
             .joinpath("target_parity_manifest.json")
@@ -1132,23 +1395,25 @@ class TestRegisters:
             entry = families[family]
             assert entry["status"] == "reviewed_exclusion"
             assert entry["classification"] == "deferred"
-            assert "retiree" in entry["reason"]
+            assert "every current ESI policyholder" in entry["reason"]
+            assert "retirees" in entry["reason"]
             assert "us_esi_premiums_anchor_gate" in entry["reason"]
         absent = families["bea_nipa.private_group_health_insurance"]
         assert absent["classification"] == "source_absent"
         assert "B4923C" in absent["reason"]
+        assert "active and retired" in absent["fence"]["purpose"]
 
     @pytest.mark.parametrize(
-        ("pool", "scale", "holders", "mean", "pre_tax", "nhe_ratio"),
+        ("pool", "scale", "holders", "column", "mean", "share"),
         [
             # The default pool (docs/us-asec-source-pins.md) and the historical
             # Build J/N/P pool; figures quoted in the docs and the registers.
-            ("2023_2025", 1.0703, 73.97e6, 13_209, 181.1e9, 0.985),
-            ("2022_2024", 1.0664, 74.06e6, 13_193, 174.6e9, 0.990),
+            ("2023_2025", 1.0404, 73.97e6, 925.7e9, 12_515, 0.8842),
+            ("2022_2024", 1.0345, 74.06e6, 923.9e9, 12_476, 0.8824),
         ],
     )
     def test_the_receipts_reproduce_the_documented_measurements(
-        self, pool, scale, holders, mean, pre_tax, nhe_ratio
+        self, pool, scale, holders, column, mean, share
     ) -> None:
         receipt = json.loads(
             (
@@ -1163,21 +1428,41 @@ class TestRegisters:
         assert receipt["anchor_gate"]["passed"] is True
         clone = receipt["puf_support_clone"]
         assert clone["signal_gate"]["passed"] and clone["anchor_gate"]["passed"]
-        assert clone["anchor_gate"]["employer_premium_total"] == pytest.approx(
-            ANCHOR, rel=1e-12
-        )
-        assert summary["employer_premium_total"] == pytest.approx(ANCHOR, rel=1e-12)
+        for totals in (summary, clone["anchor_gate"]):
+            assert totals["anchor_universe_employer_total"] == pytest.approx(
+                ANCHOR, rel=1e-12
+            )
+            assert totals["employer_premium_total"] == pytest.approx(column, rel=1e-4)
         assert summary["cells_sha256"] == esi._CELLS_SHA256
+        assert summary["source_columns_missing"] == []
         assert summary["scale_factor"] == pytest.approx(scale, abs=5e-5)
+        assert summary["employed_share_of_anchor_universe"] == pytest.approx(
+            share, abs=5e-5
+        )
         assert summary["employer_premium_positive_persons"] == pytest.approx(
             holders, rel=1e-3
         )
         assert summary["employer_premium_mean_per_positive_person"] == pytest.approx(
             mean, abs=1
         )
-        assert summary["pre_tax_premium_total"] == pytest.approx(pre_tax, rel=1e-3)
-        assert receipt["nhe_concept_check"]["raw_all_policyholders_over_nhe"] == (
-            pytest.approx(nhe_ratio, abs=5e-4)
+        details = receipt["anchor_gate"]["details"]
+        assert details["cross_check_ratio"] == pytest.approx(ANCHOR / BEA)
+        active = details["private_active_cross_check"]
+        assert active["meps_ic_private_active_employer_total"] == pytest.approx(
+            668.6e9, rel=5e-4
+        )
+        assert 1.06 < active["ratio"] < 1.07
+        sensitivity = receipt["other_policyholder_sensitivity"]
+        assert sensitivity["as_built_other_priced_as_active"][
+            "employer_premium_total"
+        ] == pytest.approx(summary["employer_premium_total"])
+        assert sensitivity["other_not_priced_all_anchor_on_employed"][
+            "employer_premium_total"
+        ] == pytest.approx(ANCHOR)
+        assert (
+            summary["employer_premium_total"]
+            < sensitivity["other_65_plus_priced_at_half"]["employer_premium_total"]
+            < ANCHOR
         )
         restored = ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP", "NOW_GRPFTYP2"]
         for source in receipt["pool_census_person_columns"]:
@@ -1218,6 +1503,20 @@ class TestCellsTool:
         assert unreliable == [False, False, True, False, False, False, False, False]
         virginia, _ = tool._row_values(block, "Virginia", 8, "II.D.2")
         assert virginia[0] == 7000
+
+    def test_a_flagged_or_suppressed_national_row_is_refused(self) -> None:
+        tool = _load_cells_tool()
+        pin = next(pin for pin in tool.PDFS if pin.key == "private_state_2025")
+        head = "Table II.C.4.a Percent of enrollees: United States, 2025"
+        good = "United States   13.0%  52.7%  32.6%  24.4%  13.4%  4.8%  35.5%  8.7%"
+        row = tool._national_row([head, good], pin, "II.C.4.a")
+        assert (row["total"], row["lt50"], row["50plus"]) == (13.0, 35.5, 8.7)
+        # A flag on a column the stage does not read is tolerated.
+        tolerated = good.replace("4.8%", "4.8% *")
+        assert tool._national_row([head, tolerated], pin, "II.C.4.a")["lt50"] == 35.5
+        for bad in (good.replace("35.5%", "35.5% *"), good.replace("8.7%", "--")):
+            with pytest.raises(tool.ExtractionError, match="suppressed or flagged"):
+                tool._national_row([head, bad], pin, "II.C.4.a")
 
     def test_row_parser_refuses_a_missing_duplicated_or_short_row(self) -> None:
         tool = _load_cells_tool()

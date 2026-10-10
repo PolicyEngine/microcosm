@@ -1,19 +1,16 @@
-"""Engine contract of the two ESI premium inputs (microcosm #454).
+"""Engine contract of the ESI employer premium input (microcosm #454).
 
 ``docs/us-esi-employer-premiums.md`` and the ``meps_esi_premiums`` stage notes
-say how PolicyEngine-US consumes each input. These tests compute it in the
-locked engine, so an engine release that reroutes either input fails here
-rather than silently changing what the stage's columns mean.
+say how PolicyEngine-US consumes the input. These tests compute it in the
+locked engine, so an engine release that reroutes it fails here rather than
+silently changing what the stage's column means.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from microcosm.build.us_runtime import (
-    US_ESI_EMPLOYER_PREMIUM_COLUMN,
-    US_ESI_PRE_TAX_PREMIUM_COLUMN,
-)
+from microcosm.build.us_runtime import US_ESI_EMPLOYER_PREMIUM_COLUMN
 
 PERIOD = 2024
 WAGES = 60_000.0
@@ -55,51 +52,22 @@ def baseline() -> dict[str, float]:
     return _totals()
 
 
-def test_both_inputs_are_person_year_input_leaves() -> None:
+def test_the_input_is_a_person_year_input_leaf() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    variables = CountryTaxBenefitSystem().variables
-    for name in (US_ESI_EMPLOYER_PREMIUM_COLUMN, US_ESI_PRE_TAX_PREMIUM_COLUMN):
-        variable = variables[name]
-        assert variable.is_input_variable(), name
-        assert variable.entity.key == "person", name
-        assert str(variable.definition_period).lower() == "year", name
+    variable = CountryTaxBenefitSystem().variables[US_ESI_EMPLOYER_PREMIUM_COLUMN]
+    assert variable.is_input_variable()
+    assert variable.entity.key == "person"
+    assert str(variable.definition_period).lower() == "year"
 
 
-def test_the_engine_parameter_lists_name_the_inputs() -> None:
+def test_the_engine_parameter_list_names_the_input() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
     parameters = CountryTaxBenefitSystem().parameters
-    instant = f"{PERIOD}-01-01"
     assert US_ESI_EMPLOYER_PREMIUM_COLUMN in (
-        parameters.gov.household.cbo_market_income_additions(instant)
+        parameters.gov.household.cbo_market_income_additions(f"{PERIOD}-01-01")
     )
-    assert US_ESI_PRE_TAX_PREMIUM_COLUMN in (
-        parameters.gov.irs.gross_income.pre_tax_contributions(instant)
-    )
-    assert US_ESI_PRE_TAX_PREMIUM_COLUMN in (
-        parameters.gov.irs.gross_income.fica_pre_tax_contributions(instant)
-    )
-
-
-def test_a_pre_tax_premium_lowers_income_tax_and_fica_wages_dollar_for_dollar(
-    baseline,
-) -> None:
-    premium = 2_000.0
-    reduced = _totals(**{US_ESI_PRE_TAX_PREMIUM_COLUMN: premium})
-
-    for measure in (
-        "irs_employment_income",
-        "payroll_tax_gross_wages",
-        "adjusted_gross_income",
-    ):
-        assert reduced[measure] - baseline[measure] == pytest.approx(-premium), measure
-    assert baseline["irs_employment_income"] == pytest.approx(WAGES)
-    assert reduced["income_tax"] < baseline["income_tax"]
-    # 6.2% employee OASDI on the premium no longer in FICA wages.
-    assert reduced["employee_social_security_tax"] - baseline[
-        "employee_social_security_tax"
-    ] == pytest.approx(-0.062 * premium)
 
 
 def test_an_employer_premium_moves_only_cbo_household_market_income(baseline) -> None:

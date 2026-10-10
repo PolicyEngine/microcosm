@@ -93,7 +93,6 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_immigration_status",
         "derive_medicare_take_up",
         "derive_other_health_insurance_premiums",
-        "derive_pre_tax_health_insurance_premiums",
         "derive_prior_year_income",
         "derive_snap_abawd_discretionary_exemption",
         "derive_snap_take_up",

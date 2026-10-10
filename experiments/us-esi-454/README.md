@@ -25,10 +25,11 @@ About 80 seconds per pool.
 
 Each receipt records the input digests, the columns the restoration added per
 vintage with their observed code counts, the stage summary (scale factor, raw
-and scaled totals, totals by tier and employer sector, weighted policyholder
-counts), totals by vintage, both gate verdicts before and after the clone, and
-`nhe_concept_check`: the same MEPS-IC cells applied to every current
-policyholder, which is how NHE Table 24's broader concept was measured.
+and scaled totals for both universes, totals by tier and employer sector,
+weighted policyholder counts), totals by vintage, both gate verdicts before
+and after the clone with the BEA and MEPS-IC cross-checks, and
+`other_policyholder_sensitivity`: the employed column under each reading of
+the anchor and of how policyholders outside the column are priced.
 
 These are pre-calibration figures at pooled ASEC weights. They are evidence
 about the stage, not about a release:

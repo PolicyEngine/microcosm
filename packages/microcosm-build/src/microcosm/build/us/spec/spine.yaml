@@ -322,10 +322,6 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: pregnancy
-- site: pre_tax_health_premium_assignment
-  owners:
-  - kind: source_stage
-    id: meps_esi_premiums
 - site: wic_claim_assignment
   owners:
   - kind: source_stage
