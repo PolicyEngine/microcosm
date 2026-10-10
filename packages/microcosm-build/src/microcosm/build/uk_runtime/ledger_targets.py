@@ -50,6 +50,7 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
+from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
 )
@@ -655,6 +656,7 @@ def align_dft_bus_fare_receipts_to_period(
 UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
     **hmrc_uprating_appliers(),
+    **tenure_drift_appliers(),
 }
 
 

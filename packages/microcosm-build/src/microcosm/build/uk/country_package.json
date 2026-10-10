@@ -451,6 +451,11 @@
       "path": "uprating_holds.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "ons_spree_tenure_dwellings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

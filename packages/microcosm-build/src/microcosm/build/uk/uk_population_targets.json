@@ -28279,7 +28279,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.owned_outright.v1"
       },
       "category_id": "ons.housing",
-      "label": "Owned outright"
+      "label": "Owned outright",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.tenure.owned_mortgage",
@@ -28319,7 +28321,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.owned_mortgage.v1"
       },
       "category_id": "ons.housing",
-      "label": "Owned mortgage"
+      "label": "Owned mortgage",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.tenure.private_rent",
@@ -28359,7 +28363,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.private_rent.v1"
       },
       "category_id": "ons.housing",
-      "label": "Private rent"
+      "label": "Private rent",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.tenure.social_rent",
@@ -28405,7 +28411,9 @@
         "record_set_spec_id": "uk.local_geography.tenure.social_rent.v1"
       },
       "category_id": "ons.housing",
-      "label": "Social rent"
+      "label": "Social rent",
+      "uprating_index": "ons.spree.tenure_share_drift",
+      "selector_note": "Census tenure share drifted, for English authorities, by ONS SPREE's change in the category's share of the authority's dwellings from 2022 to 2024 (dwellings move shares, never levels); other nations hold their census shares; the level follows the authority's household reconciliation through the tenure partition (microcosm#1123)."
     },
     {
       "target_id": "ons.rent.private_rent",
