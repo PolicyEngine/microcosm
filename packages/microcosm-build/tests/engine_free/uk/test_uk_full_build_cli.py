@@ -2177,3 +2177,37 @@ def test_a_sigterm_during_the_national_build_records_a_discarded_row(
     )
     rows = load_spool_rows(out / "logbook-spool")
     assert [row.disposition for row in rows] == ["discarded"]
+
+
+@pytest.mark.parametrize(
+    ("message", "skipped"),
+    [
+        ("Graph evidence: native evidence byte limit.", True),
+        ("Graph schema exceeds the metadata size limit.", True),
+        ("recorded checkpoint producing run manifest digest mismatch", False),
+    ],
+)
+def test_checkpoint_skips_only_evidence_past_its_bounds(
+    monkeypatch, tmp_path, message, skipped
+):
+    def oversized(*args, **kwargs):
+        raise ValueError(message)
+
+    monkeypatch.setattr(cli, "persist_uk_run_evidence", oversized)
+    manifest = SimpleNamespace(to_json_bytes=lambda: b"{}", nodes={})
+    attempt = tmp_path / "attempt"
+    attempt.mkdir()
+    args = SimpleNamespace(out=tmp_path, attempt_evidence=str(attempt))
+    if not skipped:
+        with pytest.raises(ValueError, match="digest mismatch"):
+            cli._persist_checkpoint(manifest, None, args, "preflight", graph=None)
+        return
+    cli._persist_checkpoint(manifest, None, args, "preflight", graph=None)
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "evidence-capture-timing.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    assert records == [{"phase": "preflight", "reason": message, "skipped": True}]
+    assert (attempt / "evidence-index.json").is_file()

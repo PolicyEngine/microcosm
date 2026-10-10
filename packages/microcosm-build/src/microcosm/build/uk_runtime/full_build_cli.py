@@ -1146,6 +1146,32 @@ def _record_capture_cost(
     )
 
 
+#: The size bounds of microcosm.graph evidence and schema documents.
+_EVIDENCE_BOUND_MESSAGES = (
+    "native evidence byte limit",
+    "evidence input byte limit",
+    "Graph schema exceeds the metadata size limit.",
+    "Graph schema exceeds the metadata complexity limit.",
+    "Graph schema exceeds the serialized size limit.",
+)
+
+
+def _is_evidence_bound_error(error: ValueError) -> bool:
+    return any(message in str(error) for message in _EVIDENCE_BOUND_MESSAGES)
+
+
+def _record_capture_skip(out: Path, phase: str, error: ValueError) -> None:
+    """Append a phase whose native evidence exceeded the evidence bounds."""
+    record = {"phase": phase, "skipped": True, "reason": str(error)}
+    with (out / "evidence-capture-timing.jsonl").open("a", encoding="utf-8") as sink:
+        sink.write(json.dumps(record, sort_keys=True) + "\n")
+    print(
+        f"warning: evidence capture {phase} skipped: {error}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _persist_checkpoint(manifest, store, args, phase: str, *, graph: Graph) -> None:
     """Keep receipts and small evidence durable if a later kernel refuses."""
     import resource
@@ -1156,8 +1182,18 @@ def _persist_checkpoint(manifest, store, args, phase: str, *, graph: Graph) -> N
     materialize_bytes(payload, attempt / f"{phase}.graph.json")
     started = time.perf_counter()
     rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    persist_uk_run_evidence(graph, manifest, store, args, phase=phase)
-    _record_capture_cost(args.out, phase, started, rss_before)
+    try:
+        persist_uk_run_evidence(graph, manifest, store, args, phase=phase)
+    except ValueError as error:
+        # Native Orrery evidence is presentation, not build output. At full
+        # scale the pool expansion's per-entity lineage receipt alone is
+        # hundreds of megabytes (K=25: 222 MB), past the evidence bounds, so
+        # the phase is recorded as skipped rather than failing the build.
+        if not _is_evidence_bound_error(error):
+            raise
+        _record_capture_skip(args.out, phase, error)
+    else:
+        _record_capture_cost(args.out, phase, started, rss_before)
     evidence = {}
     for node_id, receipt in manifest.nodes.items():
         for name, key in receipt.opaque_artifacts.items():
