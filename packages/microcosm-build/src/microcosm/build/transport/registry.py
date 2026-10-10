@@ -7,9 +7,8 @@ commit for exported trees, are format-checked caller declarations. Module
 bytes and tree contents are hashed; installed engine provenance is not checked.
 Kernel implementation identity binds adapter classes,
 never spec data, so adding a binding of an existing class leaves it unchanged.
-The AS bridge and gap kernels are registered by their owning package when
-that package is available; this module
-does not substitute computations for kernels that have not been implemented.
+Counterfactual and zero-cutout bridges share the same prepared engine mapping.
+Gap and scenario-band kernels are registered with the other transport kernels.
 """
 
 from __future__ import annotations
@@ -32,7 +31,11 @@ from microcosm.frame.adapters.axiom import (
     rulespec_tree_digest,
 )
 from microcosm.frame.rules import RulesEngine
-from microcosm.frame.rules_kernels import SimulateRulesByRefKernel
+from microcosm.frame.rules_kernels import (
+    SimulateCounterfactualKernel,
+    SimulateRulesByRefKernel,
+    SimulateSolveZeroKernel,
+)
 from microcosm.frame.unit_construction import BenefitUnitRule
 from microcosm.graph import KernelRegistry
 from microcosm.graph.canonical import canonical_json
@@ -44,6 +47,7 @@ from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
 from .population_kernels import register_population_kernels
+from .takeup_kernels import register_takeup_kernels
 from .target_kernels import register_target_kernels
 from .terminal_kernels import register_terminal_kernels
 
@@ -373,6 +377,9 @@ def build_transport_registry(
     register_gate_kernel(kernels, TRANSPORT_GATE_REGISTRY)
     register_terminal_kernels(kernels, codecs=codecs)
     kernels.register(SimulateRulesByRefKernel(engine_mapping, dependencies))
+    kernels.register(SimulateCounterfactualKernel(engine_mapping, dependencies))
+    kernels.register(SimulateSolveZeroKernel(engine_mapping, dependencies))
+    register_takeup_kernels(kernels)
     return TransportRegistry(
         kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
     )

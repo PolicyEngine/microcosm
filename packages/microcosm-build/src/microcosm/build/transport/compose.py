@@ -39,7 +39,8 @@ and checkpoints, run after calibration and before export. The public
 from its binding, including for extension nodes.
 Composition refuses an extension whose nodes change any skeleton node's
 compiled predecessors (for example a new member of a calibration base
-version), so an extension can never re-key the skeleton.
+version). Explicit ``package_inputs`` may add extension artifacts to the final
+receipt; every other skeleton predecessor set remains fixed.
 
 Composition reads no donor, no facts and no engine, and writes nothing.
 Activation checks selected resource paths, non-null selected roots and encoding
@@ -208,12 +209,15 @@ class TransportExtension:
     Sources must have new names, so they cannot replace a skeleton input.
     Checkpoints name nodes in the extended graph and run after calibration,
     before the skeleton H5 is written; they cannot read the exported dataset.
+    ``package_inputs`` explicitly connect typed extension evidence to a
+    skeleton package receipt. No other skeleton node can gain predecessors.
     The factory receives a deep copy of the caller's spec.
     """
 
     factory: TransportGraphExtension
     sources: tuple[SourceRef, ...] = ()
     checkpoints: tuple[str, ...] = ()
+    package_inputs: tuple[tuple[str, ArtifactInput], ...] = ()
 
     def __post_init__(self) -> None:
         if not callable(self.factory):
@@ -226,6 +230,14 @@ class TransportExtension:
             raise TypeError("Extension checkpoints must be a tuple of node ids.")
         for checkpoint in self.checkpoints:
             _safe_node_id(checkpoint)
+        if not isinstance(self.package_inputs, tuple):
+            raise TypeError("Extension package inputs must be a tuple.")
+        for target, edge in self.package_inputs:
+            _safe_node_id(target)
+            if not isinstance(edge, ArtifactInput):
+                raise TypeError(
+                    "Extension package inputs require typed artifact edges."
+                )
 
     def __call__(
         self,
@@ -416,6 +428,8 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     Also check dependent-child age and required engine pin presence, mandatory
     and selected reference activation rows, and every null scenario knob.
     Selections inside parameter lists count; selected resource data is literal.
+    Entitlement selections use the factory's instantiated rows, so explicit
+    scenario nodes replace their tier templates during preflight too.
     """
 
     missing = []
@@ -424,14 +438,25 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
         if _has_resource(spec, GRAPH_RESOURCE)
         else ()
     )
+    selections = [(selection, False) for selection in selections]
+    if _has_resource(spec, "entitlement_graph") and _has_resource(spec, "scenarios"):
+        from .entitlement import _rows
+
+        rows, _ = _rows(spec)
+        selections.extend(
+            (selection, True)
+            for selection in _declared_resource_selections(
+                {"nodes": [row for row, _ in rows]}
+            )
+        )
     selected = {
         selection["resource"].removesuffix(".json")
-        for selection in selections
+        for selection, _ in selections
         if isinstance(selection["resource"], str) and selection["resource"]
     }
-    for selection in selections:
+    for selection, allow_json_sequences in selections:
         try:
-            _resource_param(spec, selection)
+            _resource_param(spec, selection, allow_json_sequences=allow_json_sequences)
         except (ValueError, TypeError) as error:
             missing.append(
                 f"Resource {selection['resource']!r} path {selection.get('path', [])!r}: "
@@ -764,6 +789,9 @@ def transport_endpoints(
 ) -> dict[str, object]:
     """Geography, calibration, extension checkpoints, then export and terminals."""
 
+    from .entitlement import transport_extensions
+
+    extensions = transport_extensions(spec, extensions)
     values = _mapping(
         transport_graph_document(spec).get("endpoints"), "transport endpoints"
     )
@@ -836,11 +864,14 @@ def _param(
     return _resource_param(spec, value)
 
 
-def _resource_param(spec: Mapping[str, object], value: Mapping) -> object:
+def _resource_param(
+    spec: Mapping[str, object], value: Mapping, *, allow_json_sequences: bool = False
+) -> object:
     """Resolve and validate one literal resource selection for preflight/params.
 
-    Selected roots cannot be null; JSON roots must be objects, and value roots
-    must not be objects. Optional JSON fields remain unchanged.
+    Selected roots cannot be null; skeleton JSON roots must be objects.
+    Entitlement JSON may also select lists. Value roots must not be objects.
+    Optional JSON fields remain unchanged.
     """
 
     if set(value) - {"resource", "path", "encoding"} or "resource" not in value:
@@ -868,7 +899,9 @@ def _resource_param(spec: Mapping[str, object], value: Mapping) -> object:
     if document is None:
         raise ValueError(f"Resource {name!r} path {list(path)!r} is not activated.")
     if encoding == "json":
-        if not isinstance(document, Mapping):
+        if not isinstance(document, Mapping) and not (
+            allow_json_sequences and isinstance(document, list | tuple)
+        ):
             raise ValueError(
                 f"Resource {name!r} path {list(path)!r} json selection must be an object."
             )
@@ -1012,6 +1045,9 @@ def _node(
     row: Mapping,
     config: TransportGraphConfig,
     types: Mapping[tuple[str, str], ArtifactType],
+    *,
+    allowed_kernels: frozenset[str] = SKELETON_KERNELS,
+    resolved_params: Mapping[str, object] | None = None,
 ) -> Node:
     _safe_node_id(row.get("id"))
     unknown = set(row) - _NODE_FIELDS
@@ -1020,14 +1056,18 @@ def _node(
             f"Transport node {row.get('id')!r} has unknown fields {sorted(unknown)}."
         )
     kernel = row.get("kernel")
-    if kernel not in SKELETON_KERNELS:
+    if kernel not in allowed_kernels:
         raise ValueError(
             f"Kernel {kernel!r} is not a skeleton kernel; add it through an extension."
         )
-    params = {
-        name: _param(spec, value, config.engine_refs)
-        for name, value in _mapping(row.get("params", {}), "node params").items()
-    }
+    params = (
+        dict(resolved_params)
+        if resolved_params is not None
+        else {
+            name: _param(spec, value, config.engine_refs)
+            for name, value in _mapping(row.get("params", {}), "node params").items()
+        }
+    )
     if "rules_binding" in row:
         params = _rules_params(spec, row, params, config)
     elif kernel == RULES_ROUTER:
@@ -1136,6 +1176,7 @@ def compose_transport_graph(
 ) -> Graph:
     """The skeleton declared by the spec, plus any extension branches.
 
+    An optional entitlement graph resource installs its extension automatically.
     The result is a pure function of the spec's resources and ``config``:
     composing twice gives equal ``graph_to_json``. Activation is checked
     first, so pending country evidence fails with its items named.
@@ -1144,6 +1185,9 @@ def compose_transport_graph(
     if not isinstance(config, TransportGraphConfig):
         raise TypeError("config must be a TransportGraphConfig.")
     validate_transport_activation(spec)
+    from .entitlement import transport_extensions
+
+    config = replace(config, extensions=transport_extensions(spec, config.extensions))
     document = transport_graph_document(spec)
     validate_transport_calibration_ancestry(spec, config=config)
     rows = tuple(
@@ -1175,9 +1219,26 @@ def compose_transport_graph(
     transport_pending_outputs(spec)
     additional: list[Node] = []
     additional_sources: list[SourceRef] = []
+    package_inputs: dict[str, list[ArtifactInput]] = {}
     source_names = {source.name for source in skeleton.sources}
     for factory in config.extensions:
         if isinstance(factory, TransportExtension):
+            for target, edge in factory.package_inputs:
+                if (
+                    target not in compiled.order
+                    or skeleton.node(target).kernel != "transport.package@1"
+                ):
+                    raise ValueError(
+                        "Extension artifact edges may target only a skeleton package node."
+                    )
+                if any(
+                    target in predecessors
+                    for predecessors in compiled.predecessors.values()
+                ):
+                    raise ValueError(
+                        "Extension package inputs require a terminal skeleton package node."
+                    )
+                package_inputs.setdefault(target, []).append(edge)
             for source in factory.sources:
                 if source.name in source_names:
                     raise ValueError(
@@ -1193,20 +1254,36 @@ def compose_transport_graph(
         for node in nodes:
             _safe_node_id(node.id)
         additional.extend(nodes)
-    if not additional and not additional_sources:
+    if not additional and not additional_sources and not package_inputs:
         _check_extension_checkpoints(spec, config, skeleton, compiled)
         return skeleton
+    skeleton_nodes = []
+    for node in skeleton.nodes:
+        edges = tuple(package_inputs.get(node.id, ()))
+        aliases = [edge.name for edge in (*node.artifact_inputs, *edges)]
+        if len(aliases) != len(set(aliases)):
+            raise ValueError(
+                "Extension package artifact aliases must be new and distinct."
+            )
+        if any(edge.producer not in {item.id for item in additional} for edge in edges):
+            raise ValueError("Extension package inputs must come from extension nodes.")
+        skeleton_nodes.append(
+            replace(node, artifact_inputs=(*node.artifact_inputs, *edges))
+        )
     graph = Graph(
         skeleton.country,
         (*skeleton.sources, *additional_sources),
-        (*skeleton.nodes, *additional),
+        (*skeleton_nodes, *additional),
         skeleton.mass_partition,
     )
     extended = compile_graph(graph)
     _check_extension_checkpoints(spec, config, graph, extended)
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
     for node in skeleton.nodes:
-        if extended.predecessors[node.id] != compiled.predecessors[node.id]:
+        expected = set(compiled.predecessors[node.id]) | {
+            edge.producer for edge in package_inputs.get(node.id, ())
+        }
+        if set(extended.predecessors[node.id]) != expected:
             raise ValueError(
                 f"An extension would re-key skeleton node {node.id!r}; "
                 "branch a new FILTER population instead."
