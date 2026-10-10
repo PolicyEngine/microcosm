@@ -864,6 +864,21 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
             ("person", "schedule_d_capital_gain_distributions"),
             ("tax_unit", "tax_unit_id"),
         },
+        "with_us_esi_premium_pool_anchor": {
+            ("person", "employer_sponsored_insurance_premiums"),
+            *{
+                ("person", column)
+                for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS
+                if column != "state_fips"
+            },
+            ("person", "employment_income_before_lsr"),
+            ("person", "person_source_id"),
+            ("person", "person_support_clone_index"),
+            ("person", "person_household_id"),
+            ("person", "<resolved_weight>"),
+            ("household", "household_id"),
+            ("household", "<resolved_weight>"),
+        },
         "with_us_qbi_input_reconciliation": {
             *{("person", variable) for variable in US_QBI_OUTPUT_COLUMNS},
             ("person", "self_employment_income_before_lsr"),

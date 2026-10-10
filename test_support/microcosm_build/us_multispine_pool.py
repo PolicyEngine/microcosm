@@ -29,6 +29,11 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_PREMIUMS_OUTPUT_COLUMNS,
+    US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS,
+    US_ESI_PREMIUMS_WAGE_COLUMN,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
@@ -113,6 +118,7 @@ _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_medicare_take_up_input",
     "with_us_housing_inputs",
     "with_us_eligibility_inputs",
+    "with_us_esi_premium_inputs",
     "with_us_pregnancy_inputs",
     "with_us_wic_claim_input",
     "impute_us_housing_assistance_to_puf_support",
@@ -136,6 +142,7 @@ _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_relationship_inputs",
     "with_us_housing_inputs",
     "with_us_eligibility_inputs",
+    "with_us_esi_premium_inputs",
 )
 
 _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
@@ -187,6 +194,8 @@ def _overlap_person_table() -> pd.DataFrame:
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
+    "with_us_esi_premium_inputs": "esi_premiums_at_pool_share",
+    "with_us_esi_premium_pool_anchor": "anchor_esi_premiums_with_receipt",
     "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
 }
 
@@ -1044,6 +1053,26 @@ def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
     }
 
 
+def _with_esi_premium_pool_surface(frame: Frame) -> Frame:
+    """Give a fixture pool the ESI premium surface the derive stage requires.
+
+    ASEC-channel rows carry the raw ASEC fields the stage reads; every other
+    row holds a transferred premium. Everyone has the same premium, and wages
+    unless the fixture already sets them.
+    """
+
+    person = frame.table("person").copy()
+    asec = person["person_support_channel"].eq("asec").to_numpy()
+    for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS:
+        if column != "state_fips":
+            person[column] = np.where(asec, 1.0, np.nan)
+    for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        person[column] = 100.0
+    if US_ESI_PREMIUMS_WAGE_COLUMN not in person:
+        person[US_ESI_PREMIUMS_WAGE_COLUMN] = 1_000.0
+    return _replace_person(frame, person)
+
+
 def _qbi_ready_derive_frame() -> Frame:
     assembled = assemble_spines(
         {"asec": _source_frame(), "acs": _source_frame()},
@@ -1058,7 +1087,7 @@ def _qbi_ready_derive_frame() -> Frame:
     person["self_employment_income_before_lsr"] = 10.0
     person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
-    return _replace_person(frame, person)
+    return _with_esi_premium_pool_surface(_replace_person(frame, person))
 
 
 class _FakeEngine:
