@@ -276,6 +276,9 @@ def compile_uk_full_target_surface(
         reviewed_unbound_higher_targets=inputs["reviewed_unbound_higher_targets"],
         census_household_uprating=uprating,
         area_region_codes=uk_area_region_codes(ladder),
+        fanout_sum_controls=(inputs.get("national_reconciliation") or {}).get(
+            "fanout_sum_controls"
+        ),
     )
     assert_uk_national_rows_unmoved(reconciliation)
     full = TargetRegistry(

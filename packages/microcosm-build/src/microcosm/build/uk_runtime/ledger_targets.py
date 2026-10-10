@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import json
 import math
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import resources as importlib_resources
@@ -17,6 +17,7 @@ import pandas as pd
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.cross_grain import (
+    CrossGrainBridge,
     CrossGrainRule,
     apply_cross_grain_partitions,
     apply_cross_grain_reconciliation,
@@ -38,6 +39,7 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
     uk_cross_grain_bridges,
     uk_cross_grain_grain,
     uk_cross_grain_partitions,
+    uk_fanout_sum_bridges,
 )
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
@@ -190,6 +192,7 @@ UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS: dict[str, tuple[str, ...]] = {
 #: reasons; the country-spec fingerprint covers the file.
 UK_CROSS_GRAIN_BRIDGES = uk_cross_grain_bridges(_UK_CROSS_GRAIN_DECLARATIONS)
 UK_CROSS_GRAIN_PARTITIONS = uk_cross_grain_partitions(_UK_CROSS_GRAIN_DECLARATIONS)
+UK_FANOUT_SUM_BRIDGES = uk_fanout_sum_bridges(_UK_CROSS_GRAIN_DECLARATIONS)
 UK_CROSS_GRAIN_RULE = CrossGrainRule(
     grain_precedence=UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
     signature_fields=tuple(_UK_CROSS_GRAIN_DECLARATIONS["signature_fields"]),
@@ -1664,8 +1667,13 @@ def apply_uk_cross_grain_reconciliation(
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     area_region_codes: Mapping[str, str] | None = None,
+    extra_bridges: Sequence[CrossGrainBridge] = (),
+    extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
+
+    ``extra_bridges`` and ``extra_signatures`` carry the summed fan-out
+    controls the joint surface adds for its declared fan-out sum bridges.
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -1689,10 +1697,15 @@ def apply_uk_cross_grain_reconciliation(
         if area_region_codes is None
         else replace(UK_CROSS_GRAIN_RULE, leg_of_area=leg_of_area)
     )
+    if extra_bridges:
+        rule = replace(rule, bridges=(*rule.bridges, *extra_bridges))
+    signatures = uk_cross_grain_contract_signatures()
+    if extra_signatures:
+        signatures = {**signatures, **extra_signatures}
     return apply_cross_grain_reconciliation(
         local_frame,
         bound_higher_targets,
-        uk_cross_grain_contract_signatures(),
+        signatures,
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
@@ -2001,11 +2014,15 @@ def uk_local_target_surface(
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     census_household_uprating: Mapping[str, Any] | None = None,
     area_region_codes: Mapping[str, str] | None = None,
+    fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface.
 
     ``census_household_uprating`` is the #887 per-grain receipt. Eligible
     census-household and tenure holds take their grain's factor.
+    ``fanout_sum_controls`` is the national reconciliation's receipt of each
+    declared fan-out's total over the full register (#1123): a surface that
+    binds a fan-out sum bridge's area cells must carry it.
     """
 
     if census_household_uprating is None:
@@ -2261,6 +2278,14 @@ def uk_local_target_surface(
         if str(target_id) not in fanout_target_ids
     )
 
+    fanout_bridges, fanout_signatures, fanout_rows = _uk_fanout_sum_controls(
+        output_rows, fanout_sum_controls
+    )
+    reconciliation_rows.extend(fanout_rows)
+    bound_control_ids = (
+        *bound_control_ids,
+        *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
+    )
     reconciliation = pd.DataFrame(
         reconciliation_rows,
         columns=["grain", "geography_id", "target_id", "value", "_output_position"],
@@ -2273,7 +2298,10 @@ def uk_local_target_surface(
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licensed_empty_legs,
         area_region_codes=area_region_codes,
+        extra_bridges=fanout_bridges,
+        extra_signatures=fanout_signatures,
     )
+    receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_factors(receipt)
     reconciled, partition_receipt = apply_cross_grain_partitions(
         raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
     )
@@ -2318,6 +2346,91 @@ def uk_local_target_surface(
     )
     receipt["private_rent_mean_to_total"] = private_rent_receipt
     return surface, receipt
+
+
+def _uk_fanout_sum_controls(
+    output_rows: Sequence[Mapping[str, Any]],
+    fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None,
+) -> tuple[
+    tuple[CrossGrainBridge, ...],
+    dict[str, Mapping[str, Any]],
+    list[dict[str, Any]],
+]:
+    """Summed fan-out control rows for the area targets this surface binds.
+
+    Each declared fan-out sum bridge whose area target has cells here adds one
+    control row (the fan-out's total at its geography, a country-grain row)
+    and a bridge from it to the area cells. The control's synthetic target id
+    gets a signature of its own, so it groups only through its bridge.
+    """
+
+    present = {str(row["contract_target_id"]) for row in output_rows}
+    bridges: list[CrossGrainBridge] = []
+    signatures: dict[str, Mapping[str, Any]] = {}
+    rows: list[dict[str, Any]] = []
+    for fanout in UK_FANOUT_SUM_BRIDGES:
+        if fanout.lower_target_id not in present:
+            continue
+        control = (fanout_sum_controls or {}).get(fanout.bridge_id)
+        if control is None:
+            raise ValueError(
+                f"UK local surface binds {fanout.lower_target_id!r} but has no "
+                f"summed control for fan-out sum bridge {fanout.bridge_id!r}; "
+                "pass the national reconciliation's fanout_sum_controls "
+                "(microcosm#1123)."
+            )
+        synthetic = fanout.control_target_id
+        bridges.append(
+            CrossGrainBridge(
+                bridge_id=fanout.bridge_id,
+                concept=f"fanout_sum:{fanout.higher_target_id}",
+                higher_target_ids=(synthetic,),
+                lower_side=f"contract:{fanout.lower_target_id}",
+            )
+        )
+        signatures[synthetic] = {
+            "filters": [{"concept": "uk.target_identity", "equals": synthetic}]
+        }
+        rows.append(
+            {
+                "grain": "country",
+                "geography_id": fanout.geography_id,
+                "target_id": f"contract:{synthetic}",
+                "value": float(control["control"]),
+                "_output_position": None,
+            }
+        )
+    return tuple(bridges), signatures, rows
+
+
+def _assert_uk_fanout_sum_factors(receipt: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Refuse a fan-out sum bridge whose factor leaves its declared tolerance."""
+
+    by_id = {bridge.bridge_id: bridge for bridge in UK_FANOUT_SUM_BRIDGES}
+    checked: list[dict[str, Any]] = []
+    for group in receipt.get("groups", ()):
+        bridge = by_id.get(str(group.get("bridge_id")))
+        if bridge is None:
+            continue
+        for leg in group["legs"]:
+            factor = float(leg["declared_factor"])
+            if abs(factor - 1.0) > bridge.max_factor_shift:
+                raise ValueError(
+                    f"UK fan-out sum bridge {bridge.bridge_id!r} rescales its "
+                    f"{group['lower_grain']} cells by {factor!r}, beyond the "
+                    f"declared {bridge.max_factor_shift!r}: the area cells and "
+                    "the national bands no longer measure one quantity "
+                    "(microcosm#1123)."
+                )
+            checked.append(
+                {
+                    "bridge_id": bridge.bridge_id,
+                    "lower_grain": group["lower_grain"],
+                    "declared_factor": factor,
+                    "max_factor_shift": bridge.max_factor_shift,
+                }
+            )
+    return checked
 
 
 def _validate_uk_cross_grain_declarations() -> None:

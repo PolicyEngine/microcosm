@@ -4,26 +4,6 @@
   "entries": [
     {
       "kind": "local_target_without_control",
-      "target_id": "hmrc.employment_income.amount",
-      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "hmrc.employment_income.count",
-      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "hmrc.self_employment_income.amount",
-      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "hmrc.self_employment_income.count",
-      "closed_by": "C8: HMRC area rows uprated by the all-band ITL index and bridged to the SPI band partition"
-    },
-    {
-      "kind": "local_target_without_control",
       "target_id": "ons.tenure.owned_mortgage",
       "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
     },
@@ -61,30 +41,6 @@
       "kind": "local_target_without_control",
       "target_id": "dwp.uc.households_by_area_children_3plus",
       "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "hmrc.employment_income.amount",
-      "closed_by": "C8: the area rows are uprated by HMRC's all-band ITL growth and bridged to the SPI band partition"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "hmrc.employment_income.count",
-      "closed_by": "C8: the area rows are uprated by HMRC's all-band ITL growth and bridged to the SPI band partition"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "hmrc.self_employment_income.amount",
-      "closed_by": "C8: the area rows are uprated by HMRC's all-band ITL growth and bridged to the SPI band partition"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "hmrc.self_employment_income.count",
-      "closed_by": "C8: the area rows are uprated by HMRC's all-band ITL growth and bridged to the SPI band partition"
     },
     {
       "kind": "undeclared_hold",
