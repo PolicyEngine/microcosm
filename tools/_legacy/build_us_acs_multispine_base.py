@@ -175,11 +175,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--allow-esi-premium-gaps",
         action="store_true",
         help=(
-            "Diagnostic escape hatch (microcosm#454): build from a donor that "
-            "lacks employer_sponsored_insurance_premiums or fails its gates "
-            "(for example a release built before the meps_esi_premiums stage). "
-            "The ACS rows then get no premium, or keep one that failed a gate; "
-            "what was red is written to the staging summary. Release builds "
+            "Diagnostic escape hatch (microcosm#454): build from a donor "
+            "release that predates the meps_esi_premiums stage. No row then "
+            "carries employer_sponsored_insurance_premiums and both ESI gates "
+            "are red; what was red is written to the staging summary. A donor "
+            "that carries the column but fails qualification leaves it null "
+            "on the ACS spine, which the release tool refuses. Release builds "
             "must leave this unset."
         ),
     )
@@ -264,9 +265,10 @@ def main(argv: list[str] | None = None) -> int:
         donor_channel=args.donor_channel,
         target_families=transfer_plan,
     )
-    esi_premium_donor, esi_premium_waiver = _qualify_esi_premium_donor(
+    esi_premium_waiver = _qualify_esi_premium_donor(
         base, allow_gaps=args.allow_esi_premium_gaps
     )
+    transfer_esi_premiums = esi_premium_waiver is None
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
     puma_ladder_sha256 = _sha256(args.puma_ladder)
@@ -290,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         hours_under15_policy=args.hours_under15_policy,
         esi_premium_donor_factory=(
-            None if esi_premium_donor is None else lambda _base: esi_premium_donor
+            prepare_acs_local_esi_premium_donor if transfer_esi_premiums else None
         ),
         donor_channel=args.donor_channel,
         seed=args.seed,
@@ -304,11 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     transfer_coverage = _require_default_transfer_coverage(
         result,
         base,
-        target_families=_local_coverage_plan(
-            esi_premiums=esi_premium_donor is not None
-        ),
+        target_families=_local_coverage_plan(esi_premiums=transfer_esi_premiums),
     )
-    del esi_premium_donor
     weights_audit = _audit_fits(result)
 
     # The pooled frame owns its assembled blocks. Release the dense donor
@@ -370,19 +369,17 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _qualify_esi_premium_donor(
-    base: Frame,
-    *,
-    allow_gaps: bool,
-) -> tuple[tuple[Frame, dict[str, object]] | None, str | None]:
+def _qualify_esi_premium_donor(base: Frame, *, allow_gaps: bool) -> str | None:
     """Qualify the donor of the employer premium before ACS acquisition.
 
-    Returns the ASEC observation role and its receipt, or ``None`` and the
-    refusal a diagnostic build waived (``--allow-esi-premium-gaps``).
+    Returns ``None`` for a qualified donor, or the refusal a diagnostic build
+    waived (``--allow-esi-premium-gaps``). The transfer qualifies the donor
+    again when it selects its rows, so no selection is held through the ACS
+    load.
     """
 
     try:
-        return prepare_acs_local_esi_premium_donor(base), None
+        prepare_acs_local_esi_premium_donor(base)
     except ValueError as exc:
         if not allow_gaps:
             raise SystemExit(
@@ -390,7 +387,8 @@ def _qualify_esi_premium_donor(
                 f"qualification: {exc} Pass --allow-esi-premium-gaps only for "
                 "a diagnostic build."
             ) from exc
-        return None, str(exc)
+        return str(exc)
+    return None
 
 
 def _local_coverage_plan(*, esi_premiums: bool) -> TargetFamilies:
@@ -401,7 +399,8 @@ def _local_coverage_plan(*, esi_premiums: bool) -> TargetFamilies:
         for entity, families in acs_local_transfer_target_families().items()
     }
     if esi_premiums:
-        for entity, families in acs_local_esi_premium_transfer_target_families().items():
+        local = acs_local_esi_premium_transfer_target_families()
+        for entity, families in local.items():
             plan.setdefault(entity, {}).update(families)
     return plan
 

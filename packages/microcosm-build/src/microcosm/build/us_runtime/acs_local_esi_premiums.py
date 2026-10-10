@@ -237,8 +237,7 @@ def prepare_acs_local_esi_premium_donor(
         "donor_rows": int(frame.n(_PERSON)),
         "asec_observation_rows": int(donor.n(_PERSON)),
         "donor_employer_premium_total": float(
-            weights
-            @ person[US_ESI_EMPLOYER_PREMIUM_COLUMN].to_numpy(dtype=np.float64)
+            weights @ person[US_ESI_EMPLOYER_PREMIUM_COLUMN].to_numpy(dtype=np.float64)
         ),
         "asec_observation_positive_share": (
             float(donor_weights[positive].sum() / donor_weights.sum())
@@ -313,9 +312,7 @@ def with_acs_local_esi_premium_anchor(frame: Frame) -> tuple[Frame, dict[str, ob
             "Local ESI premium anchor: the kernel reordered the person table."
         )
     tables = {
-        entity: (
-            person.copy(deep=False) if entity == _PERSON else frame.table(entity)
-        )
+        entity: (person.copy(deep=False) if entity == _PERSON else frame.table(entity))
         for entity in frame.entities
     }
     tables.update({name: frame.link(name) for name in frame.links})
