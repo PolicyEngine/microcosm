@@ -1141,6 +1141,52 @@ def _require_partly_native_acs_inputs(
         )
 
 
+def _legacy_inputs_without_native_partial_targets(
+    loaded: _LoadedInputs,
+) -> _LoadedInputs:
+    """Keep the retiring two-spine route on its ASEC-filled usual hours.
+
+    That route has no ASEC-only early direction: its one post-clone transfer
+    draws donors from the PUF-detail role of both origins, so carrying measured
+    ACS hours would add ACS donors and change its preserved methodology. It
+    therefore drops the native mapping and its receipt before its boundary
+    check, as before ACS hours were mapped. The raw WKHP, WKL and FWKHP columns
+    stay as source evidence; no operator reads them.
+    """
+
+    acs = loaded.acs
+    dropped = {
+        entity: sorted(set(columns) & set(acs.table(entity).columns))
+        for entity, columns in POOL_NATIVE_PARTIAL_TRANSFER_TARGETS.items()
+        if entity in acs.entities
+    }
+    dropped = {entity: columns for entity, columns in dropped.items() if columns}
+    receipts = {
+        output: receipt
+        for output, receipt in loaded.acs_native_inputs.items()
+        if not any(output in columns for columns in dropped.values())
+    }
+    if not dropped and len(receipts) == len(loaded.acs_native_inputs):
+        return loaded
+    tables = {
+        entity: acs.table(entity).drop(columns=dropped.get(entity, []))
+        for entity in acs.entities
+    }
+    tables.update({link: acs.link(link) for link in acs.links})
+    return replace(
+        loaded,
+        acs=Frame(
+            tables,
+            acs.schema,
+            {entity: acs.weights_for(entity) for entity in acs.weighted_entities},
+            acs.strata,
+            mass_log=acs.mass_log,
+            metadata=acs.metadata,
+        ),
+        acs_native_inputs=receipts,
+    )
+
+
 def _load_puf_donor(
     args: argparse.Namespace,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
@@ -5019,7 +5065,9 @@ def _main_legacy(args: argparse.Namespace) -> int:
     puf_donor: pd.DataFrame | None = None
     source_native_inputs: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None
     if resume is None:
-        loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
+        loaded = _legacy_inputs_without_native_partial_targets(
+            _load_inputs(args, acs_source_manifest=acs_source_manifest)
+        )
         checkpoint_store.bind_input_receipts(_loaded_input_receipts(loaded))
         asec = loaded.asec
         acs = loaded.acs

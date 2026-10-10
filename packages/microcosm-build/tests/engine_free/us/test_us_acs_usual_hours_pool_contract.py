@@ -44,6 +44,7 @@ from microcosm.build.us_runtime.acs_inputs import (
     _acs_usual_hours_native_mapping,
     map_acs_native_inputs,
 )
+from microcosm.build.us_runtime.acs_transfer import AcsTransferResult
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
 )
@@ -712,3 +713,70 @@ def test_gap_fill_refuses_a_transfer_that_rewrites_an_observed_cell(
             seed=578,
             n_estimators=10,
         )
+
+
+def _with_repeated_person_index(frame: Frame) -> Frame:
+    """Give every ASEC person the pandas index label of an ACS person.
+
+    Frame keeps entity IDs unique but not pandas index labels.
+    """
+
+    person = frame.table("person").copy()
+    labels = np.arange(len(person)) % 6
+    person.index = pd.Index(labels)
+    strata = frame.strata.copy()
+    strata.index = person.index
+    return Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _verify_hours_outcome(before: Frame, after: Frame) -> dict[str, object]:
+    direction = _HOURS_GAP_FILL_PLAN[0]
+    return stacked_spine_module._verify_gap_fill_outcome(
+        after,
+        direction=direction,
+        pre_counts=stacked_spine_module._verify_gap_fill_activation_authority(
+            before, direction=direction
+        ),
+        donor_snapshot={
+            "person": stacked_spine_module._direction_targets_snapshot(
+                before, entity="person", targets=(_HOURS,), channel="asec"
+            )
+        },
+        observed_recipient_snapshot={
+            "person": stacked_spine_module._observed_recipient_targets_snapshot(
+                before, entity="person", targets=(_HOURS,), channel="acs"
+            )
+        },
+        result=AcsTransferResult(frame=after),
+    )
+
+
+def test_recipient_proof_keys_cells_by_entity_id_not_index_label() -> None:
+    complete = [40.0, 0.0, 20.0, 35.0, 0.0, 50.0, 10.0, 45.0, 0.0, 30.0, 99.0]
+    frame = _with_repeated_person_index(_stacked_hours_fixture(complete))
+    person = frame.table("person")
+    assert person.index.duplicated().any()
+    assert person["person_id"].is_unique
+
+    receipt = _verify_hours_outcome(frame, frame)
+    assert receipt["targets"][_HOURS_GAP_FILL_TARGET]["authorized_null_rows"] == 0
+
+    rewritten = person.copy()
+    acs_rows = np.flatnonzero(
+        rewritten[support_channel_column("person")].eq("acs").to_numpy()
+    )
+    hours = rewritten[_HOURS].to_numpy(copy=True)
+    hours[acs_rows[0]] = 41.0
+    rewritten[_HOURS] = hours
+    with pytest.raises(ValueError, match="observed recipient byte identity failed"):
+        _verify_hours_outcome(frame, _with_person(frame, rewritten))

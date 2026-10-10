@@ -125,10 +125,12 @@ byte-identical. The loader refuses an ACS archive that yields no usual-hours
 mapping, and a stage checkpoint whose ACS arm carries no raw `WKHP` was written
 before the pool kept measured hours and is rebuilt instead of resumed.
 
-The retiring `--legacy-two-spine` entry has no early ASEC-only direction. Its
+The retiring `--legacy-two-spine` entry keeps its earlier contract: hours on
+ACS rows are wholly ASEC-filled. It has no early ASEC-only direction, and its
 single post-clone transfer selects the PUF-detail role of both origins as
-donors, so measured ACS hours (all aged 16 and over) join the donor pool for
-the ACS rows still blank (all under 16).
+donors, so carrying measured ACS hours there would also add ACS donors. That
+entry therefore drops the native hours mapping and its receipt before its
+boundary check; raw `WKHP`, `WKL` and `FWKHP` stay as unread source evidence.
 
 ### Default sequence
 

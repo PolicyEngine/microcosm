@@ -9875,18 +9875,39 @@ def _observed_recipient_targets_snapshot(
 
     A recipient can carry a target natively; ACS usual hours are measured for
     everyone 16 and over. The transfer fills nulls only, so these cells must
-    leave the gap fill byte-identical.
+    leave the gap fill byte-identical. Cells are keyed by structural entity
+    ID, which the frame keeps unique, not by pandas index labels, which it
+    does not.
     """
 
     table = frame.table(entity)
-    recipient_rows = table[support_channel_column(entity)].astype(str).eq(channel)
-    return {
-        target: table.loc[recipient_rows & table[target].notna(), target].copy(
-            deep=True
+    entity_id = frame.schema.entity_id_column(entity)
+    recipient_rows = (
+        table[support_channel_column(entity)].astype(str).eq(channel).to_numpy()
+    )
+    snapshot: dict[str, pd.Series] = {}
+    for target in targets:
+        if target not in table.columns:
+            continue
+        observed = np.flatnonzero(recipient_rows & table[target].notna().to_numpy())
+        snapshot[target] = _cells_by_entity_id(
+            table, entity_id=entity_id, target=target, positions=observed
         )
-        for target in targets
-        if target in table.columns
-    }
+    return snapshot
+
+
+def _cells_by_entity_id(
+    table: pd.DataFrame,
+    *,
+    entity_id: str,
+    target: str,
+    positions: np.ndarray,
+) -> pd.Series:
+    cells = table[target].iloc[positions].copy(deep=True)
+    cells.index = pd.Index(
+        table[entity_id].iloc[positions].to_numpy(copy=True), name=entity_id
+    )
+    return cells
 
 
 def _canonical_donor_series_payload(
@@ -10180,8 +10201,21 @@ def _verify_gap_fill_outcome(
                     )
                 observed_before = observed_recipient_snapshot[entity].get(target)
                 if observed_before is not None and len(observed_before):
-                    observed_after = table.loc[observed_before.index, target]
-                    if _canonical_donor_series_payload(
+                    entity_id = frame.schema.entity_id_column(entity)
+                    positions = pd.Index(table[entity_id]).get_indexer(
+                        observed_before.index
+                    )
+                    observed_after = (
+                        None
+                        if (positions < 0).any()
+                        else _cells_by_entity_id(
+                            table,
+                            entity_id=entity_id,
+                            target=target,
+                            positions=positions,
+                        )
+                    )
+                    if observed_after is None or _canonical_donor_series_payload(
                         observed_before,
                         boundary=f"{label} observed recipient identity before transfer",
                     ) != _canonical_donor_series_payload(

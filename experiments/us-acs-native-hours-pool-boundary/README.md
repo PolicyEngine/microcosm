@@ -23,7 +23,7 @@ Each receipt records both paths and the checkout's commit.
 | Receipt | Code | Boundary |
 |---|---|---|
 | `receipts/origin_main_7639ef8b0.json` | origin/main at 7639ef8b0 | refuses the frame |
-| `receipts/fix.json` | this change | admits the frame |
+| `receipts/fix_56bc5e0b8.json` | this change (56bc5e0b8) | admits the frame |
 
 ## What the receipts show
 

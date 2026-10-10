@@ -3913,45 +3913,119 @@ def test_stacked_entry_refuses_operator_hours_before_assembly(
     assert order == []
 
 
-def test_two_spine_builder_keeps_native_usual_hours_through_cloning(
+class _ReachedLegacyBuildError(Exception):
+    """The legacy entry passed its inputs to the two-spine builder."""
+
+
+def test_legacy_entry_keeps_usual_hours_asec_filled(
     pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """The retiring route drops native hours, keeping its ASEC-only donors."""
+
     acs, native_inputs = _with_native_usual_hours(
         _source_frame(measured_offset=99.0, include_peridnum=False)
     )
-    native = acs.table("person").set_index("measured")[_USUAL_HOURS]
-    assert native.isna().tolist() == [True, False]
+    loaded = pool_tool._LoadedInputs(
+        asec=_source_frame(),
+        acs=acs,
+        acs_rent_donor=pd.DataFrame({"fixture": [1.0]}),
+        puf_donor=pd.DataFrame({"fixture": [1.0]}),
+        asec_raw_stage_checkpoint={"artifact": "fixture-raw-stage"},
+        acs_build={"artifact": "fixture-acs-build"},
+        acs_native_inputs=native_inputs,
+        puf_donor_build={"artifact": "fixture-puf-build"},
+    )
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    monkeypatch.setattr(
+        pool_tool,
+        "_verify_inputs",
+        lambda _args, _outputs: (verified, pool_tool.load_acs_source_manifest()),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_load_inputs",
+        lambda _args, *, acs_source_manifest: loaded,
+    )
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
+    def stop_at_build(*args: object, **kwargs: object):
+        calls.append((args, kwargs))
+        raise _ReachedLegacyBuildError
+
+    monkeypatch.setattr(pool_tool, "build_multispine_pool", stop_at_build)
+    argv: list[str] = []
+    for option in (
+        "asec-raw-stage-h5",
+        "acs-household-zip",
+        "acs-person-zip",
+        "acs-rent-h5",
+        "puf-h5",
+        "puf-source-year-csv",
+    ):
+        argv.extend([f"--{option}", str(tmp_path / option)])
+        argv.extend([f"--{option}-sha256", "1" * 64])
+    argv.extend(
+        [
+            "--checkpoint-root",
+            str(tmp_path / "checkpoints"),
+            "--out",
+            str(tmp_path / "legacy-pool.h5"),
+            "--legacy-two-spine",
+        ]
+    )
+
+    with pytest.raises(_ReachedLegacyBuildError):
+        pool_tool.main(argv)
+
+    ((positional, keywords),) = calls
+    legacy_acs = positional[1]
+    person = legacy_acs.table("person")
+    assert _USUAL_HOURS not in person.columns
+    pd.testing.assert_series_equal(person["WKHP"], acs.table("person")["WKHP"])
+    receipts = keywords["source_native_inputs"]["acs"]
+    assert _USUAL_HOURS not in receipts
+    assert set(receipts) == set(native_inputs) - {_USUAL_HOURS}
+    bound = keywords["checkpoint"].__self__.input_receipts
+    assert _USUAL_HOURS not in bound["acs_native_inputs"]
+    # What the legacy builder receives passes its own boundary unchanged.
+    pool_tool.assert_operator_free_source_frame(
+        legacy_acs,
+        label="ACS native-mapped pool input",
+        native_inputs=receipts,
+    )
+
+
+def test_legacy_projection_leaves_inputs_without_native_hours_untouched(
+    pool_tool: ModuleType,
+) -> None:
+    loaded = pool_tool._LoadedInputs(
+        asec=_source_frame(),
+        acs=_source_frame(measured_offset=99.0, include_peridnum=False),
+        acs_rent_donor=pd.DataFrame(),
+        puf_donor=pd.DataFrame(),
+        asec_raw_stage_checkpoint={},
+        acs_build={},
+        acs_native_inputs={"age": {"entity": "person"}},
+        puf_donor_build={},
+    )
+
+    assert pool_tool._legacy_inputs_without_native_partial_targets(loaded) is loaded
+
+
+def test_two_spine_builder_refuses_unreceipted_acs_usual_hours(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    acs, _native_inputs = _with_native_usual_hours(
+        _source_frame(measured_offset=99.0, include_peridnum=False)
+    )
     store = _checkpoint_fixture_store(pool_tool, tmp_path / "checkpoints")
     store.bind_input_receipts(_checkpoint_fixture_input_receipts())
-    result, order = _run_checkpoint_fixture(
-        pool_tool,
-        tmp_path,
-        store=store,
-        acs=acs,
-        source_native_inputs={"acs": native_inputs},
-    )
-
-    assert order == ["impute", "derive", "seed", "simulate"]
-    person = result.frame.table("person")
-    acs_rows = person[support_channel_column("person")].eq("acs")
-    assert set(person.loc[acs_rows, support_clone_index_column("person")]) == {0, 1}
-    carried = person.loc[acs_rows].set_index("measured")[_USUAL_HOURS]
-    for measured, hours in carried.items():
-        expected_hours = native.loc[measured]
-        assert (pd.isna(hours) and pd.isna(expected_hours)) or hours == expected_hours
-    assert _USUAL_HOURS not in person.columns or (
-        person.loc[~acs_rows, _USUAL_HOURS].isna().all()
-    )
 
     with pytest.raises(ValueError, match="hours_worked:person"):
-        _run_checkpoint_fixture(
-            pool_tool,
-            tmp_path,
-            store=_checkpoint_fixture_store(pool_tool, tmp_path / "unreceipted"),
-            acs=acs,
-        )
+        _run_checkpoint_fixture(pool_tool, tmp_path, store=store, acs=acs)
 
 
 def test_resume_guard_names_an_acs_arm_loaded_without_usual_hours(
