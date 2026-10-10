@@ -181,6 +181,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("household")["congressional_district_geoid"] = [101, 200]
     combined.table("household")["county_fips"] = ["01001", "02020"]
     combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    combined.table("person")["employer_sponsored_insurance_premiums"] = [9_000.0, 0.0]
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -261,7 +262,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "column": "takes_up_snap_if_eligible",
                         "family": "benefit_participation",
                         "unmodeled_recipient_rows": 0,
-                    }
+                    },
+                    # The lane owes the ACS spine the employer premium too.
+                    {
+                        "column": "employer_sponsored_insurance_premiums",
+                        "family": "source_operator_esi_premiums",
+                        "unmodeled_recipient_rows": 0,
+                    },
                 ],
             },
         )
