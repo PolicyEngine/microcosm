@@ -107,9 +107,9 @@ The UC caseload headline binds the calendar-2025 window.
 ## Where the outcome is recorded
 
 `uk/uprating_holds.json` records each held family's kind, reason and expiry.
-`uk/target_doctrine_exceptions.json` lists the holds a later #1123 change
-closes, each naming that change. The compile refuses an undeclared, expired
-or stale hold.
+The compile refuses an undeclared, expired or stale hold. The transitional
+exceptions ledger that tolerated holds a later #1123 change closed is gone:
+the last change closed them all.
 
 ## Outcome of the re-pin (942a1fa, 2026-10-09)
 

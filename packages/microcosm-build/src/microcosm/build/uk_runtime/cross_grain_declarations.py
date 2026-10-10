@@ -18,9 +18,7 @@ exhaustive and enforced: :func:`uk_cross_grain_coverage_violations` refuses
 Targets whose measurement block does not carry their population (the
 binding's filters or groupby do) cannot be compared by signature and are
 listed under ``signature_incomplete``; their relations are declared by hand.
-``uk/target_doctrine_exceptions.json`` tolerates the gaps that still exist,
-each naming the change that closes it; a tolerated entry that no longer
-matches a violation is refused as stale.
+Every gap is refused: microcosm#1123 closed the last one.
 """
 
 from __future__ import annotations
@@ -40,19 +38,6 @@ from microcosm.build.cross_grain import (
 )
 
 UK_CROSS_GRAIN_DECLARATIONS_RESOURCE = "cross_grain_declarations.json"
-UK_TARGET_DOCTRINE_EXCEPTIONS_RESOURCE = "target_doctrine_exceptions.json"
-UK_COVERAGE_VIOLATION_KINDS = frozenset(
-    (
-        "unknown_target",
-        "unknown_local_route",
-        "stale_local_route",
-        "local_target_without_control",
-        "stale_signature_incomplete",
-        "undeclared_signature_incomplete",
-        "malformed_relation",
-        "undeclared_overlap",
-    )
-)
 UK_LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
 _RELATION_KINDS = ("subset", "independent")
 _LOCAL_ROUTE_KINDS = ("no_higher_control",)
@@ -72,17 +57,6 @@ def load_uk_cross_grain_declarations() -> Mapping[str, Any]:
     if payload.get("schema_version") != 1:
         raise ValueError(
             "UK cross-grain declarations schema_version must be 1, got "
-            f"{payload.get('schema_version')!r}."
-        )
-    return payload
-
-
-@functools.lru_cache(maxsize=1)
-def load_uk_target_doctrine_exceptions() -> Mapping[str, Any]:
-    payload = _load_resource(UK_TARGET_DOCTRINE_EXCEPTIONS_RESOURCE)
-    if payload.get("schema_version") != 1:
-        raise ValueError(
-            "UK target doctrine exceptions schema_version must be 1, got "
             f"{payload.get('schema_version')!r}."
         )
     return payload
@@ -427,32 +401,16 @@ def assert_uk_cross_grain_coverage(
     contract: Mapping[str, Mapping[str, Any]],
     *,
     declarations: Mapping[str, Any] | None = None,
-    exceptions: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Refuse an undeclared or stale coverage gap; return the tolerated ones."""
+    """Refuse any coverage gap; receipt how many targets the check read."""
 
     violations = uk_cross_grain_coverage_violations(contract, declarations)
-    # The ledger also tolerates uprating holds (``undeclared_hold``), which
-    # ``uk_runtime.uprating_holds`` checks; coverage reads only its own kinds.
-    tolerated_entries = [
-        entry
-        for entry in (exceptions or load_uk_target_doctrine_exceptions())["entries"]
-        if entry["kind"] in UK_COVERAGE_VIOLATION_KINDS
-    ]
-    tolerated = {(entry["kind"], entry["target_id"]) for entry in tolerated_entries}
-    found = {(violation["kind"], violation["target_id"]) for violation in violations}
-    untolerated = sorted(found - tolerated)
-    stale = sorted(tolerated - found)
-    if untolerated or stale:
-        raise ValueError(
-            "UK cross-grain coverage refused: undeclared gap(s) "
-            f"{untolerated}; stale doctrine exception(s) {stale}. Declare the "
-            "route in uk/cross_grain_declarations.json or retire the exception."
+    if violations:
+        found = sorted(
+            {(violation["kind"], violation["target_id"]) for violation in violations}
         )
-    return {
-        "violations_tolerated": [
-            entry
-            for entry in tolerated_entries
-            if (entry["kind"], entry["target_id"]) in found
-        ],
-    }
+        raise ValueError(
+            f"UK cross-grain coverage refused: undeclared gap(s) {found}. "
+            "Declare the route in uk/cross_grain_declarations.json."
+        )
+    return {"checked_targets": len(contract)}

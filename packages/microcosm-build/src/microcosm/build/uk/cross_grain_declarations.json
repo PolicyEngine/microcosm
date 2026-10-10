@@ -766,7 +766,7 @@
         "hmrc.itl.income_tax_by_total_income_band",
         "hmrc.itl.total_income_by_total_income_band"
       ],
-      "reason": "Banded by groupby on total income; the band is the fan-out dimension, not a measurement filter. The regional SPI cells' relation to these bands is a reconciliation (see target_doctrine_exceptions.json until it lands)."
+      "reason": "Banded by groupby on total income; the band is the fan-out dimension, not a measurement filter. The regional SPI cells reconcile to these bands through the ITL band bridges."
     },
     {
       "targets": [

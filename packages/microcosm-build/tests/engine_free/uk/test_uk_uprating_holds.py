@@ -45,9 +45,6 @@ def _hold(target_id: str, kind: str = "in_year_snapshot", **fields) -> dict:
     }
 
 
-_NO_EXCEPTIONS = {"schema_version": 1, "entries": []}
-
-
 @pytest.mark.parametrize(
     ("period", "metadata", "held"),
     [
@@ -75,7 +72,6 @@ def test_an_undeclared_hold_is_refused():
             evaluated_on=date(2026, 10, 7),
             scope="national",
             holds=_holds(),
-            exceptions=_NO_EXCEPTIONS,
         )
 
 
@@ -87,7 +83,6 @@ def test_a_declared_hold_is_receipted_by_kind():
         evaluated_on=date(2026, 10, 7),
         scope="national",
         holds=_holds(_hold("t")),
-        exceptions=_NO_EXCEPTIONS,
     )
     assert receipt["by_kind"] == {"in_year_snapshot": ["t"]}
 
@@ -101,7 +96,6 @@ def test_an_expired_hold_is_refused():
             evaluated_on=date(2026, 10, 7),
             scope="national",
             holds=_holds(_hold("t", expires_on="2026-01-01")),
-            exceptions=_NO_EXCEPTIONS,
         )
 
 
@@ -114,31 +108,6 @@ def test_a_declaration_for_a_target_no_longer_held_is_stale():
             evaluated_on=date(2026, 10, 7),
             scope="national",
             holds=_holds(_hold("t")),
-            exceptions=_NO_EXCEPTIONS,
-        )
-
-
-def test_a_tolerated_hold_must_still_be_held():
-    registry = TargetRegistry([_spec("t", "2025")], country="uk")
-    exceptions = {
-        "schema_version": 1,
-        "entries": [
-            {
-                "kind": "undeclared_hold",
-                "scope": "national",
-                "target_id": "t",
-                "closed_by": "test",
-            }
-        ],
-    }
-    with pytest.raises(ValueError, match=r"stale doctrine exceptions \['t'\]"):
-        assert_uk_uprating_holds_declared(
-            registry,
-            calibration_period=2025,
-            evaluated_on=date(2026, 10, 7),
-            scope="national",
-            holds=_holds(),
-            exceptions=exceptions,
         )
 
 
