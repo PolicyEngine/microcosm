@@ -1060,6 +1060,7 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
     assert UK_CROSS_GRAIN_RULE.control_grains == ("country", "nation", "region")
     assert [bridge.bridge_id for bridge in UK_CROSS_GRAIN_BRIDGES] == [
         "nation_household_controls_vs_census_households",
+        "itl_higher_rate_taxpayers_vs_area",
         "national_uc_caseload_vs_uc_households_by_area",
         "national_age_0_9_vs_local_age_0_10",
         "national_age_10_19_vs_local_age_10_20",
@@ -1078,7 +1079,13 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
         "nrs.households.scotland",
         "nisra.households.northern_ireland",
     )
-    assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == ("dwp.uc.households",)
+    # #1123: each region's and nation's ITL Table 2.2 row controls its
+    # higher rate taxpayer area cells.
+    assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == (
+        "hmrc.itl.higher_rate_taxpayers",
+    )
+    assert UK_CROSS_GRAIN_BRIDGES[1].per_geography
+    assert UK_CROSS_GRAIN_BRIDGES[2].higher_target_ids == ("dwp.uc.households",)
 
 
 def test_uk_age_cross_grain_bridges_are_complete_and_exclude_80_89():

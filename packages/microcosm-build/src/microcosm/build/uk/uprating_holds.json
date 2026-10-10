@@ -219,6 +219,19 @@
       "expires_on": "2027-04-01"
     },
     {
+      "scope": "local",
+      "kind": "control_rescaled",
+      "target_ids": [
+        "hmrc.higher_rate_taxpayers.count"
+      ],
+      "reason": "SPI 2023-24 higher rate taxpayer cells by constituency and local authority (England, Wales and Northern Ireland): their level is set by each region's and nation's Table 2.2 row for calendar 2025 through the per-geography bridge, so only their 2023-24 shares within a region or nation are held. The 2024-25 area tables are due early 2027.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
       "scope": "national",
       "kind": "reviewed_no_index",
       "target_ids": [
