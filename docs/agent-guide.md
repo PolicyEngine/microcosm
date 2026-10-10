@@ -100,6 +100,10 @@ that opt-in retains credential isolation. Other build tests can inspect
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.
+Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
+observed successful run) so a hung job releases its runner from the
+organization's shared pool; raise a job's cap when its suite legitimately
+grows past it.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is
