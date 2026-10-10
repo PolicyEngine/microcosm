@@ -29,6 +29,7 @@ import functools
 import itertools
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib import resources as importlib_resources
 from typing import Any
 
@@ -100,6 +101,53 @@ def uk_cross_grain_bridges(
         )
         for entry in declared["bridges"]
     )
+
+
+@dataclass(frozen=True)
+class UKFanoutSumBridge:
+    """A banded national target, summed over its cells, controls area cells.
+
+    A fan-out (several cells at one geography, a ``groupby_dimension`` in its
+    measurement) is a distribution, never an exact-signature control: on the
+    joint surface its cells are skipped as controls. Summed over every cell of
+    the full compiled register, measure-excluded bands included, it is the
+    total the area cells divide (HMRC SPI Table 3.6 bands over Tables 3.14 and
+    3.15). The bridge refuses a reconciliation factor further than
+    ``max_factor_shift`` from one: the publisher's tables agree closely, so a
+    larger move means the two sides no longer measure one quantity.
+    """
+
+    bridge_id: str
+    higher_target_id: str
+    lower_target_id: str
+    geography_id: str
+    max_factor_shift: float
+
+    @property
+    def control_target_id(self) -> str:
+        return f"{self.higher_target_id}#sum"
+
+
+def uk_fanout_sum_bridges(
+    declarations: Mapping[str, Any] | None = None,
+) -> tuple[UKFanoutSumBridge, ...]:
+    declared = declarations or load_uk_cross_grain_declarations()
+    return tuple(
+        UKFanoutSumBridge(
+            bridge_id=str(entry["bridge_id"]),
+            higher_target_id=str(entry["higher_target_id"]),
+            lower_target_id=str(entry["lower_target_id"]),
+            geography_id=str(entry["geography_id"]),
+            max_factor_shift=float(entry["max_factor_shift"]),
+        )
+        for entry in declared.get("fanout_sum_bridges", ())
+    )
+
+
+def is_uk_fanout_target(target: Mapping[str, Any]) -> bool:
+    """A target whose measurement fans out over a groupby dimension."""
+
+    return bool((target.get("measurement") or {}).get("groupby_dimension"))
 
 
 def uk_cross_grain_partitions(
@@ -196,6 +244,9 @@ def uk_cross_grain_overlap_candidates(
     for entry in declarations.get("band_bridges", ()):
         for side in (entry["higher_target_id"], *entry["lower_target_ids"]):
             bridged.setdefault(str(side), set()).add(str(entry["bridge_id"]))
+    for fanout in uk_fanout_sum_bridges(declarations):
+        for side in (fanout.higher_target_id, fanout.lower_target_id):
+            bridged.setdefault(side, set()).add(fanout.bridge_id)
     incomplete = _incomplete_targets(declarations)
     by_measure: dict[tuple[Any, ...], list[str]] = {}
     for target_id, target in contract.items():
@@ -217,7 +268,13 @@ def uk_cross_grain_overlap_candidates(
                 continue
             left_filters = _filter_set(contract[left])
             right_filters = _filter_set(contract[right])
-            if left_filters == right_filters:
+            fanout = is_uk_fanout_target(contract[left]) or is_uk_fanout_target(
+                contract[right]
+            )
+            # Equal filters put two targets in one exact-signature group, which
+            # reconciles them, unless one side fans out: a fan-out's cells are
+            # never a control, so the pair needs a declared route.
+            if left_filters == right_filters and not fanout:
                 continue
             if not (left_filters <= right_filters or right_filters <= left_filters):
                 continue
@@ -255,6 +312,10 @@ def uk_cross_grain_coverage_violations(
     for entry in declared.get("band_bridges", ()):
         for target_id in (entry["higher_target_id"], *entry["lower_target_ids"]):
             known(str(target_id), f"band bridge {entry['bridge_id']}")
+    for fanout in uk_fanout_sum_bridges(declared):
+        for target_id in (fanout.higher_target_id, fanout.lower_target_id):
+            known(target_id, f"fan-out sum bridge {fanout.bridge_id}")
+        bridge_lower.add(fanout.lower_target_id)
     partition_members = set()
     for partition in partitions:
         for target_id in (partition.parent_target_id, *partition.member_target_ids):
@@ -267,6 +328,7 @@ def uk_cross_grain_coverage_violations(
         for target_id, target in contract.items()
         if set(target.get("geography_levels") or ()) - UK_LOCAL_GEOGRAPHY_LEVELS
         and target_id not in incomplete_ids
+        and not is_uk_fanout_target(target)
     }
     local_routes = declared.get("local_routes") or {}
     for target_id, route in local_routes.items():

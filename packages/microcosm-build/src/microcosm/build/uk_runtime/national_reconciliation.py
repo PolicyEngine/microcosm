@@ -38,6 +38,7 @@ import pandas as pd
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     load_uk_cross_grain_declarations,
     uk_cross_grain_grain,
+    uk_fanout_sum_bridges,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -257,10 +258,43 @@ def reconcile_uk_national_registry(
     _assert_national_closure(out, reviewed_unbound_higher_targets, declarations)
     return out, {
         "band_bridges": band_receipts,
+        "fanout_sum_controls": uk_fanout_sum_controls(out, declarations),
         "cross_grain": receipt,
         "fanout_targets_not_controls": sorted(fanout),
         "rows_moved_by_exact_signature": moved,
     }
+
+
+def uk_fanout_sum_controls(
+    registry: TargetRegistry,
+    declarations: Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Each declared fan-out's total over every cell of the full register.
+
+    Read from the compiled register before the measure exclusions, so a band
+    the solve does not bind (the SPI £1m-and-over cells, whose spine support
+    is zero) still counts in the total the area cells divide.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import _spec_geography
+
+    controls: dict[str, dict[str, Any]] = {}
+    for bridge in uk_fanout_sum_bridges(declarations):
+        cells = [
+            spec
+            for spec in registry.specs
+            if _contract_target_id(spec) == bridge.higher_target_id
+            and _spec_geography(spec)[1] == bridge.geography_id
+        ]
+        if not cells:
+            continue
+        controls[bridge.bridge_id] = {
+            "higher_target_id": bridge.higher_target_id,
+            "geography_id": bridge.geography_id,
+            "control": math.fsum(float(spec.value) for spec in cells),
+            "cells": sorted(spec.name for spec in cells),
+        }
+    return controls
 
 
 def _assert_national_closure(

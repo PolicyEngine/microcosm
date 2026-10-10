@@ -3368,7 +3368,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.employment.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3377,7 +3384,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/employment_income_income_band",
@@ -3394,7 +3408,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -3410,6 +3424,11 @@
         "filters": [
           {
             "concept": "uk.income.employment.amount",
+            "operator": "!=",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -3422,6 +3441,11 @@
           "filters": [
             {
               "variable": "employment_income",
+              "operator": "!=",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3444,7 +3468,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
@@ -3456,7 +3480,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.self_employment.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3465,7 +3496,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_income_band",
@@ -3482,7 +3520,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -3498,6 +3536,11 @@
         "filters": [
           {
             "concept": "uk.income.self_employment.amount",
+            "operator": "!=",
+            "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -3510,6 +3553,11 @@
           "filters": [
             {
               "variable": "self_employment_income",
+              "operator": "!=",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3532,7 +3580,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere). Counted as income != 0: HMRC includes an individual whose source made a loss, with nil income (SPI Table 3.10 notes), so the national and area counts share one rule."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -3544,7 +3592,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.dividends.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3553,7 +3608,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/dividend_income_income_band",
@@ -3570,7 +3632,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -3588,6 +3650,11 @@
             "concept": "uk.income.dividends.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3598,6 +3665,11 @@
           "filters": [
             {
               "variable": "dividend_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3620,7 +3692,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -3632,7 +3704,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.property.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3641,7 +3720,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). SPI Table 3.7 net income from property is landlords' profit after allowable expenses and before residential finance costs, the concept property_income holds, so the facts bind unscaled. The incumbent's x1.9 adjustment set HMRC Property Rental Income Statistics receipts, which are before expenses, against this net amount and is retired (microcosm#1106, ruled 2026-10-05); the receipts are constructed on property_rental_income by the property_components stage, and PRIS stays a diagnostic (ruled 2026-10-08). Uprated to 2025 by total_income_growth_by_total_income_band, the index the paired count rows' taxpayer_count_growth_by_total_income_band belongs with (microcosm#1063): the flat obr.per_capita.gdp, which policyengine-uk gives property_income itself, would have implied per-band mean profit moves of about -13% (GBP 100,000 to 150,000) to +11% (GBP 15,000 to 20,000) between 2023 and 2025 against those counts, where the band index keeps the pairing within about 2.5%, the GBP 1,000,000 and over band at +2.51% (ruled 2026-10-11 on the microcosm#1145 review). The dividend amount rows keep the flat index."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20). The x1.9 property-income undercount adjustment is a populace-side value declaration, not a fact property.",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/property_income_income_band",
@@ -3657,8 +3743,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national index ignores (microcosm#1063, 2026-10-02). Property joins the employment, self-employment and private pension amount rows on María's ruling of 2026-10-11 (microcosm#1145 review): paired with the count rows' taxpayer_count_growth_by_total_income_band, the flat per-capita GDP index implied per-band mean profit moves of -13% to +11% between 2023 and 2025. The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",
@@ -3676,6 +3762,11 @@
             "concept": "uk.income.property.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3686,6 +3777,11 @@
           "filters": [
             {
               "variable": "property_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3708,7 +3804,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -3720,7 +3816,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.private_pension.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3729,7 +3832,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/private_pension_income_income_band",
@@ -3746,7 +3856,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -3764,6 +3874,11 @@
             "concept": "uk.income.private_pension.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3774,6 +3889,11 @@
           "filters": [
             {
               "variable": "private_pension_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3796,7 +3916,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -3808,7 +3928,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.state_pension.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3817,7 +3944,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20)."
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (compute/income.py:8-20).",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/state_pension_income_band",
@@ -3834,7 +3968,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period as recipients times the amount per recipient: the band's recipients grow by HMRC's projected Income Tax payer growth for the Table 2.5 band containing it (the index its count row declares, the calendar-2025 window of the 2024-25 and 2025-26 projections over the 2023-24 outturn), and the amount per recipient by the new State Pension weekly rate the engine pays (203.85 at 2023, 230.25 at 2025 on the pinned engine). The rate alone held the band's recipients at the 2023-24 number while the count row grew them, so the two rows described different populations (microcosm#1069). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -3852,6 +3986,11 @@
             "concept": "uk.income.state_pension.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -3862,6 +4001,11 @@
           "filters": [
             {
               "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -3884,7 +4028,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",
@@ -18725,7 +18869,14 @@
         "entity": "person",
         "map_to": "household",
         "concept": "uk.income.savings_interest.amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -18734,7 +18885,14 @@
           "from_entity": "person",
           "map_to": "household",
           "groupby_variable": "total_income",
-          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension."
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension.",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
         },
         "axiom": {
           "metric_name": "hmrc/savings_interest_income_income_band",
@@ -18751,7 +18909,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
       "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866). Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
@@ -18769,6 +18927,11 @@
             "concept": "uk.income.savings_interest.amount",
             "operator": ">",
             "value": 0
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
           }
         ]
       },
@@ -18779,6 +18942,11 @@
           "filters": [
             {
               "variable": "savings_interest_income",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "income_tax",
               "operator": ">",
               "value": 0
             }
@@ -18801,7 +18969,7 @@
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax > 0), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
     },
     {
       "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
@@ -26996,7 +27164,7 @@
         "concept": "uk.income.self_employment.amount",
         "filters": [
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27033,9 +27201,10 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec.",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
-      "label": "Amount"
+      "label": "Amount",
+      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
     },
     {
       "target_id": "hmrc.self_employment_income.count",
@@ -27055,7 +27224,7 @@
             "value": 0
           },
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27095,7 +27264,9 @@
         ]
       },
       "category_id": "hmrc.tax_statistics",
-      "label": "Count"
+      "label": "Count",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123)."
     },
     {
       "target_id": "hmrc.employment_income.amount",
@@ -27110,7 +27281,7 @@
         "concept": "uk.income.employment.amount",
         "filters": [
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27147,9 +27318,10 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "No Chronicle amount fact exists; count_x_mean consumes the ordered count and mean facts from the same SPI area record-set spec.",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
-      "label": "Amount"
+      "label": "Amount",
+      "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
     },
     {
       "target_id": "hmrc.employment_income.count",
@@ -27169,7 +27341,7 @@
             "value": 0
           },
           {
-            "concept": "uk.tax.income_tax",
+            "concept": "uk.tax.income_tax.amount",
             "operator": ">",
             "value": 0
           }
@@ -27209,7 +27381,9 @@
         ]
       },
       "category_id": "hmrc.tax_statistics",
-      "label": "Count"
+      "label": "Count",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (taxpayer counts, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123)."
     },
     {
       "target_id": "ons.age.0_10",

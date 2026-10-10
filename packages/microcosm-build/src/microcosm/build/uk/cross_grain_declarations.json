@@ -408,6 +408,40 @@
       "reason": "The SPI 2023-24 regional cells (Table 3.11, twelve region-tier areas, uprated by ITL band growth) of these total-income bands sum to HMRC's projected UK band(s) (ITL Table 2.5, calendar-2025 window) about 0.5 percent short: the regional tables leave out taxpayers HMRC cannot place. National wins: the regional cells are rescaled onto the UK band."
     }
   ],
+  "fanout_sum_bridges": [
+    {
+      "bridge_id": "spi_employment_amount_bands_vs_area",
+      "higher_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
+      "lower_target_id": "hmrc.employment_income.amount",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.02,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. At source the tables agree within 0.5%, so a factor beyond 2% is refused."
+    },
+    {
+      "bridge_id": "spi_employment_count_bands_vs_area",
+      "higher_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
+      "lower_target_id": "hmrc.employment_income.count",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.02,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. At source the tables agree within 0.5%, so a factor beyond 2% is refused."
+    },
+    {
+      "bridge_id": "spi_self_employment_amount_bands_vs_area",
+      "higher_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
+      "lower_target_id": "hmrc.self_employment_income.amount",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.02,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. At source the tables agree within 0.5%, so a factor beyond 2% is refused."
+    },
+    {
+      "bridge_id": "spi_self_employment_count_bands_vs_area",
+      "higher_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
+      "lower_target_id": "hmrc.self_employment_income.count",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.02,
+      "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. At source the tables agree within 0.5%, so a factor beyond 2% is refused."
+    }
+  ],
   "local_routes": {
     "ons.rent.private_rent": {
       "route": "no_higher_control",
@@ -554,6 +588,102 @@
       ],
       "relation": "subset",
       "reason": "Residential-property gains are part of all chargeable gains, whose regional cells partition the UK total; parts <= whole."
+    },
+    {
+      "targets": [
+        "dwp.uc.households_by_area",
+        "dwp.uc.payment_distribution_couple_no_children"
+      ],
+      "relation": "independent",
+      "reason": "Each payment-distribution fan-out counts one administrative family type's UC caseload by award band (the family type sits in the binding filter uc_calibration_administrative_family_type, not in the measurement block): a cut across the area cells, not their control. The area cells take the GB caseload through national_uc_caseload_vs_uc_households_by_area."
+    },
+    {
+      "targets": [
+        "dwp.uc.households_by_area",
+        "dwp.uc.payment_distribution_couple_with_children"
+      ],
+      "relation": "independent",
+      "reason": "Each payment-distribution fan-out counts one administrative family type's UC caseload by award band (the family type sits in the binding filter uc_calibration_administrative_family_type, not in the measurement block): a cut across the area cells, not their control. The area cells take the GB caseload through national_uc_caseload_vs_uc_households_by_area."
+    },
+    {
+      "targets": [
+        "dwp.uc.households_by_area",
+        "dwp.uc.payment_distribution_lone_parent"
+      ],
+      "relation": "independent",
+      "reason": "Each payment-distribution fan-out counts one administrative family type's UC caseload by award band (the family type sits in the binding filter uc_calibration_administrative_family_type, not in the measurement block): a cut across the area cells, not their control. The area cells take the GB caseload through national_uc_caseload_vs_uc_households_by_area."
+    },
+    {
+      "targets": [
+        "dwp.uc.households_by_area",
+        "dwp.uc.payment_distribution_single"
+      ],
+      "relation": "independent",
+      "reason": "Each payment-distribution fan-out counts one administrative family type's UC caseload by award band (the family type sits in the binding filter uc_calibration_administrative_family_type, not in the measurement block): a cut across the area cells, not their control. The area cells take the GB caseload through national_uc_caseload_vs_uc_households_by_area."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.gains_by_age_band",
+        "hmrc.cgt.gains_by_region"
+      ],
+      "relation": "subset",
+      "reason": "The Table 6 (age) cells partition the same individuals with gains above the annual exempt amount by another dimension; each cell is part of the UK total the regional table's UK row carries; parts <= whole. The CGT tables' mutual consistency is the CGT calibration's (uk_runtime.cgt_calibration)."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.gains_by_gain_band",
+        "hmrc.cgt.gains_by_region"
+      ],
+      "relation": "subset",
+      "reason": "The Table 2 (size of gain) cells partition the same individuals with gains above the annual exempt amount by another dimension; each cell is part of the UK total the regional table's UK row carries; parts <= whole. The CGT tables' mutual consistency is the CGT calibration's (uk_runtime.cgt_calibration)."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.gains_by_region",
+        "hmrc.cgt.gains_by_taxable_income_band"
+      ],
+      "relation": "subset",
+      "reason": "The Table 3 (taxable income) cells partition the same individuals with gains above the annual exempt amount by another dimension; each cell is part of the UK total the regional table's UK row carries; parts <= whole. The CGT tables' mutual consistency is the CGT calibration's (uk_runtime.cgt_calibration)."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.taxpayers_by_age_band",
+        "hmrc.cgt.taxpayers_by_region"
+      ],
+      "relation": "subset",
+      "reason": "The Table 6 (age) cells partition the same individuals with gains above the annual exempt amount by another dimension; each cell is part of the UK total the regional table's UK row carries; parts <= whole. The CGT tables' mutual consistency is the CGT calibration's (uk_runtime.cgt_calibration)."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.taxpayers_by_gain_band",
+        "hmrc.cgt.taxpayers_by_region"
+      ],
+      "relation": "subset",
+      "reason": "The Table 2 (size of gain) cells partition the same individuals with gains above the annual exempt amount by another dimension; each cell is part of the UK total the regional table's UK row carries; parts <= whole. The CGT tables' mutual consistency is the CGT calibration's (uk_runtime.cgt_calibration)."
+    },
+    {
+      "targets": [
+        "hmrc.cgt.taxpayers_by_region",
+        "hmrc.cgt.taxpayers_by_taxable_income_band"
+      ],
+      "relation": "subset",
+      "reason": "The Table 3 (taxable income) cells partition the same individuals with gains above the annual exempt amount by another dimension; each cell is part of the UK total the regional table's UK row carries; parts <= whole. The CGT tables' mutual consistency is the CGT calibration's (uk_runtime.cgt_calibration)."
+    },
+    {
+      "targets": [
+        "hmrc.employment_income.count",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "reason": "Taxpayers with employment income in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells take their level from the SPI band partition through their fan-out sum bridge."
+    },
+    {
+      "targets": [
+        "hmrc.itl.taxpayers_by_total_income_band",
+        "hmrc.self_employment_income.count"
+      ],
+      "relation": "subset",
+      "reason": "Taxpayers with self-employment income in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells take their level from the SPI band partition through their fan-out sum bridge."
     }
   ],
   "signature_incomplete": [
@@ -593,18 +723,6 @@
         "hmrc.itl.total_income_by_total_income_band"
       ],
       "reason": "Banded by groupby on total income; the band is the fan-out dimension, not a measurement filter. The regional SPI cells' relation to these bands is a reconciliation (see target_doctrine_exceptions.json until it lands)."
-    },
-    {
-      "targets": [
-        "hmrc.spi.dividend_income.amount_by_total_income_band",
-        "hmrc.spi.employment_income.amount_by_total_income_band",
-        "hmrc.spi.private_pension_income.amount_by_total_income_band",
-        "hmrc.spi.property_income.amount_by_total_income_band",
-        "hmrc.spi.savings_interest_income.amount_by_total_income_band",
-        "hmrc.spi.self_employment_income.amount_by_total_income_band",
-        "hmrc.spi.state_pension.amount_by_total_income_band"
-      ],
-      "reason": "Banded by groupby on total income. The employment and self-employment band partitions control the income-by-area cells (see target_doctrine_exceptions.json until that bridge lands); the other components have no other grain."
     },
     {
       "targets": [
