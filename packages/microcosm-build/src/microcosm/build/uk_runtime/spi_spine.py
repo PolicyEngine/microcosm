@@ -59,8 +59,11 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_AGE_POPULATION_PERIOD,
     SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
+    SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
+    SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
     SPI_INCOME_UPRATING_VARIABLES,
     SPI_MINIMUM_RECIPIENT_AGE,
+    SPI_RECIPIENT_ROLE_COLUMN,
     SPI_SOURCE_TI_FORMULA,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
@@ -111,6 +114,10 @@ SPI_SPINE_BAND_DONOR_POOL = (
     "narrowed to the carrier's SPI age band where that pool holds the age "
     "minimum (composites never age-match), then to the carrier's region where "
     "that pool holds the regional minimum"
+)
+SPI_SPINE_BAND_DONOR_DRAW = (
+    "identity_keyed_inverse_cdf: stable_identity_uniforms(draw_key, seed, salt) "
+    "over the pool's cumulative FACT in tape order"
 )
 SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM = 20
 SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM = 20
@@ -241,11 +248,16 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
     and column
     not in (FRS_HMRC_PAY_COLUMN, FRS_HMRC_UBISJA_COLUMN, FRS_HMRC_INCPBEN_COLUMN)
 )
+#: Both forests are queried over every SPI-channel person aged 16 and over,
+#: and the dependants' rows are discarded (uk-data#504, microcosm#1095).
+SPI_SPINE_STAGE2_TARGET_POPULATION = (
+    "spi_synthetic_support_channel claimants and partners (is_uc_claimant) "
+    "aged 16 and over"
+)
 SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
     "gift_aid": 0.0,
     "charitable_investment_gifts": 0.0,
 }
-SPI_SPINE_BASE_REDRAW_COLUMNS = ("dividend_income",)
 SPI_SPINE_SUPPORT_CHANNELS = {"base": "frs", "synthetic": SPI_SYNTHETIC_SUPPORT_CHANNEL}
 SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
 #: The reviewed SPI-channel prior share of households with a member at or over
@@ -308,6 +320,8 @@ class UKSPIIncomeSpineResult:
                 self.imputation.reviewed_absent_stage2_outputs
             ),
             "recipient_minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
+            "recipient_role_column": SPI_RECIPIENT_ROLE_COLUMN,
+            "recipient_domain": self.imputation.recipient_domain,
             "pension_receipt_bridge": self.imputation.pension_receipt_bridge,
             "income_uprating": self.imputation.income_uprating,
             "band_donor_resample": self.imputation.band_donor_resample,
@@ -650,7 +664,6 @@ class UKSPIIncomeSpineStageTransform:
         assert_frs_hmrc_auxiliary_crosswalk_available(tables["person"])
         support = _support_result_from_frame(frame, tables)
         stage1_op = _operation(self.stage, "fit_weighted_qrf_stage1")
-        redraw_op = _operation(self.stage, "redraw_columns_from_fitted_qrf")
         resample_op = _optional_operation(self.stage, "resample_band_donor_leaves")
         band_donor_resample = (
             None
@@ -704,7 +717,6 @@ class UKSPIIncomeSpineStageTransform:
             initialize_frs_channel_columns=stage1_op.parameters[
                 "initialize_frs_channel_columns"
             ],
-            stage1_base_redraw_columns=redraw_op.parameters["columns"],
             rebase_income_to_build_period=stage1_op.parameters[
                 "rebase_income_to_build_period"
             ],
@@ -1068,7 +1080,12 @@ def _assert_income_stage_parameters(
 ) -> None:
     stage1 = _operation(stage, "fit_weighted_qrf_stage1")
     stage2 = _operation(stage, "fit_weighted_qrf_stage2")
-    redraw = _operation(stage, "redraw_columns_from_fitted_qrf")
+    if _optional_operation(stage, "redraw_columns_from_fitted_qrf") is not None:
+        raise ValueError(
+            "SPI income stage must not redraw FRS-channel incomes from the SPI "
+            "forest: FRS respondents keep their reported dividends "
+            "(uk-data#498, microcosm#1095)."
+        )
     effective_mass = _operation(stage, "gate_distributional_effective_mass")
     if stage1.parameters.get("seed") != seed:
         raise ValueError("SPI income stage-1 seed drifted from the reviewed value.")
@@ -1089,6 +1106,11 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income stage-1 predictors drifted.")
     if stage1.parameters.get("recipient_minimum_age") != SPI_MINIMUM_RECIPIENT_AGE:
         raise ValueError("SPI income recipient age domain drifted.")
+    if stage1.parameters.get("recipient_role_column") != SPI_RECIPIENT_ROLE_COLUMN:
+        raise ValueError(
+            "SPI income recipient role drifted: the tape's draws go to FRS "
+            "claimants and partners only (uk-data#504, microcosm#1095)."
+        )
     if stage1.parameters.get("rebase_income_to_build_period") is not True:
         raise ValueError("SPI income build-year rebasing drifted.")
     if stage1.parameters.get("donor_income_period") != SPI_DONOR_INCOME_YEAR:
@@ -1105,17 +1127,13 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income FRS-channel initialization map drifted.")
     if tuple(stage2.parameters.get("predictors", ())) != SPI_SPINE_STAGE2_PREDICTORS:
         raise ValueError("SPI income stage-2 predictors drifted.")
+    if stage2.parameters.get("target_population") != SPI_SPINE_STAGE2_TARGET_POPULATION:
+        raise ValueError("SPI income stage-2 target population drifted.")
     if tuple(stage2.parameters.get("outputs", ())) != SPI_SPINE_STAGE2_OUTPUT_COLUMNS:
         raise ValueError("SPI income stage-2 outputs drifted.")
     reviewed_absent = stage2.parameters.get("reviewed_absent_outputs", {})
     if set(reviewed_absent) != set(SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS):
         raise ValueError("SPI income stage-2 reviewed-absent outputs drifted.")
-    if redraw.parameters.get("fit") != "stage1":
-        raise ValueError("SPI income base redraw must use the stage-1 fit.")
-    if redraw.parameters.get("rows") != "base_support_channel":
-        raise ValueError("SPI income base redraw must target the base support channel.")
-    if tuple(redraw.parameters.get("columns", ())) != SPI_SPINE_BASE_REDRAW_COLUMNS:
-        raise ValueError("SPI income base redraw columns drifted.")
     if (
         tuple(effective_mass.parameters.get("columns", ()))
         != SPI_SPINE_EFFECTIVE_MASS_COLUMNS
@@ -1144,6 +1162,9 @@ def _assert_income_stage_parameters(
             "age_pool_minimum": SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM,
             "weighting": "FACT",
             "with_replacement": True,
+            "draw": SPI_SPINE_BAND_DONOR_DRAW,
+            "draw_key": SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
+            "salt": SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
             "outputs": "stage-1 outputs, uprated as the stage-1 draws",
             "seed": seed + 2,
         }

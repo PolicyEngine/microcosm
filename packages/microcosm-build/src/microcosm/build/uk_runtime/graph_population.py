@@ -81,6 +81,8 @@ UK_GEOGRAPHY_IDENTITY_INPUTS = (
     "household_is_cgt_support_copy",
     "cgt_support_copy_index",
     "household_is_capital_gains_clone",
+    "household_is_cgt_residential_clone",
+    "cgt_residential_clone_index",
     ladder_clone_index_column("household"),
 )
 _BASE_SUPPORT_CHANNEL = "frs"
@@ -397,9 +399,14 @@ class UKGeographyIdentityKernel(_PopulationKernel):
             raise ValueError("Geography identity requires int64 source household ids.")
         if lineage["cgt_support_copy_index"].dtype != np.dtype("int64"):
             raise ValueError("Geography identity requires an int64 support copy index.")
+        if lineage["cgt_residential_clone_index"].dtype != np.dtype("int64"):
+            raise ValueError(
+                "Geography identity requires an int64 residential arm index."
+            )
         for column in (
             "household_is_cgt_support_copy",
             "household_is_capital_gains_clone",
+            "household_is_cgt_residential_clone",
         ):
             dtype = lineage[column].dtype
             if dtype != np.dtype("bool") and not isinstance(dtype, pd.BooleanDtype):
@@ -412,6 +419,8 @@ class UKGeographyIdentityKernel(_PopulationKernel):
             support_copy,
             copy_index,
             cgt,
+            residential_arm,
+            residential_index,
             clone_index,
         ) in zip(
             lineage["source_household_id"].to_numpy(),
@@ -420,12 +429,21 @@ class UKGeographyIdentityKernel(_PopulationKernel):
             lineage["household_is_cgt_support_copy"].to_numpy(),
             lineage["cgt_support_copy_index"].to_numpy(),
             lineage["household_is_capital_gains_clone"].to_numpy(),
+            lineage["household_is_cgt_residential_clone"].to_numpy(),
+            lineage["cgt_residential_clone_index"].to_numpy(),
             lineage[ladder_clone_index_column("household")].to_numpy(),
             strict=True,
         ):
             channel = str(channel)
             support_index, clone_index = int(support_index), int(clone_index)
             copy_index = int(copy_index)
+            residential_index = int(residential_index)
+            if residential_index < 0:
+                raise ValueError("Geography identity refuses negative clone indices.")
+            if bool(residential_arm) != (residential_index != 0):
+                raise ValueError(
+                    "Household residential-arm flag and arm index disagree."
+                )
             if channel not in {_BASE_SUPPORT_CHANNEL, _SPI_SUPPORT_CHANNEL}:
                 raise ValueError(f"Unknown household support channel {channel!r}.")
             if support_index < 0 or clone_index < 0 or copy_index < 0:
@@ -445,6 +463,8 @@ class UKGeographyIdentityKernel(_PopulationKernel):
                 path.append(("cgt_support_split", copy_index))
             if bool(cgt):
                 path.append(("cgt_incidence_clone", 1))
+            if residential_index:
+                path.append(("cgt_residential_split", residential_index))
             if clone_index:
                 path.append(("geographic_support", clone_index))
             keys.append(

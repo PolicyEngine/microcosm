@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from importlib.resources import files
@@ -78,7 +78,10 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
-from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
+from microcosm.build.uk_runtime.national_frame import (
+    UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    _uk_gate_surface,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
@@ -122,6 +125,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_gate,
 )
 from microcosm.calibrate.registry import TargetSpec
+from microcosm.frame import Frame
 
 __all__ = [
     "UK_GATE_REGISTRY",
@@ -226,19 +230,46 @@ def _evaluate_release_input_coverage(
     # The release cut supplies the spine frame the stages produced, so the
     # family build-state half reads importance weights and stage receipts
     # where they live; the coverage halves read the release frame.
+    # The spine frame itself (the certifier's ``--spine-h5``), or the spine
+    # checkpoint's published build state (weight kind, period, mass log: all
+    # the build-state half reads) when a graph build hands it over.
     spine_frame = context.artifacts.get("spine_frame")
+    if spine_frame is None:
+        # Never the calibrated frame: its weights are the solve's, so the
+        # build-state half would judge the wrong frame (the first K=25 build
+        # failed all 17 families on weight kind that way). The binding's
+        # artifact selector marks the gate evidence_absent before this point;
+        # this refusal is the backstop.
+        raise ValueError(
+            "release_input_coverage needs the spine build state: the certifier "
+            "supplies --spine-h5 and a graph build the checkpoint's "
+            "spine_build_state artifact; none arrived, so the family "
+            "build-state half cannot be evaluated."
+        )
+    if isinstance(spine_frame, Frame):
+        build_state = _uk_gate_surface(spine_frame)
+    else:
+        build_state = spine_frame
     return uk_release_input_coverage_gate(
         _uk_gate_surface(context.frame),
         engine,
         manifest=manifest,
-        build_state_frame=None
-        if spine_frame is None
-        else _uk_gate_surface(spine_frame),
+        build_state_frame=build_state,
     )
 
 
 def _coverage_requires_frame(parameters: Mapping[str, Any]) -> bool:
     return parameters.get("check") != "manifest_current"
+
+
+def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str]:
+    # The preflight check reads the engine and the manifest only; the
+    # evaluation needs the spine build state beside them (microcosm#1115
+    # review): without it the gate is evidence_absent, never a verdict on
+    # the calibrated frame.
+    if parameters.get("check") == "manifest_current":
+        return frozenset({"coverage_engine"})
+    return frozenset({"coverage_engine", "spine_frame"})
 
 
 def _evaluate_source_coverage(
@@ -332,10 +363,55 @@ def _evaluate_nonnegative_columns(
         table = context.frame.table(entity)
         for column in table.columns:
             column_values.setdefault(str(column), table[column])
+    # A declared column the release boundary drops is checked where it
+    # lives: on the spine frame the certifier supplies. Without that frame
+    # the column stays required and its absence fails, as before.
+    for column, values in _export_dropped_columns_from_spine(
+        context, [column for column in required if column not in column_values]
+    ).items():
+        column_values[column] = values
     return nonnegative_columns_gate(
         column_values,
         required,
     )
+
+
+def _export_dropped_columns_from_spine(
+    context: EvidenceContext, columns: Iterable[str]
+) -> dict[str, Any]:
+    """Columns the release export drops, read from the certifier's spine frame.
+
+    ``UK_RELEASE_EXPORT_DROPPED_COLUMNS`` leave at the release boundary
+    (microcosm#1063 c9 and the salary-sacrifice pre-conversion pay carrier),
+    so a gate that checks every declared stage output cannot find them on
+    the release candidate. The certifier passes the spine frame as the
+    ``spine_frame`` artifact; this returns each requested column that is an
+    export-dropped column present on that frame, keyed by column name. Any
+    other requested column, or any column when no spine frame is supplied,
+    is left to the caller's missing-column path.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+    )
+
+    spine_frame = context.artifacts.get("spine_frame")
+    if spine_frame is None:
+        return {}
+    dropped = {
+        column: entity
+        for entity, names in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
+        for column in names
+    }
+    found: dict[str, Any] = {}
+    for column in columns:
+        entity = dropped.get(str(column))
+        if entity is None:
+            continue
+        table = spine_frame.table(entity)
+        if column in table.columns:
+            found[str(column)] = table[column]
+    return found
 
 
 def _evaluate_column_implication(
@@ -889,6 +965,10 @@ def _evaluate_degenerate_release_surface(
         _uk_gate_surface(context.frame),
         reviewed_exclusions=resolved,
         now=_exclusion_clock(context),
+        # The release boundary drops these before writing; the certifier never
+        # sees them on the exported H5, so a gate fed the pre-export frame
+        # must not report them (found by the first graph dense build).
+        dropped_at_export=UK_RELEASE_EXPORT_DROPPED_COLUMNS,
         **kwargs,
     )
 
@@ -1439,6 +1519,26 @@ def _evaluate_tail_concentration(
         reviewed_exclusions=exclusions,
     )
     values, weights, surface = uk_qrf_tail_concentration_columns(context.frame)
+    # Declared QRF outputs the release export drops are checked on the spine
+    # frame the certifier supplies, at the spine's person weights.
+    absent = [str(column) for column in surface.get("absent_columns", ())]
+    on_spine = _export_dropped_columns_from_spine(context, absent)
+    if on_spine:
+        spine_values, spine_weights, spine_surface = uk_qrf_tail_concentration_columns(
+            context.artifacts["spine_frame"], output_columns=tuple(on_spine)
+        )
+        checked_on_spine = list(spine_surface["checked_columns"])
+        for column in checked_on_spine:
+            values[column] = spine_values[column]
+            weights[column] = spine_weights[column]
+        surface = {
+            **surface,
+            "checked_columns": sorted([*surface["checked_columns"], *checked_on_spine]),
+            "absent_columns": [
+                column for column in absent if column not in checked_on_spine
+            ],
+            "export_dropped_checked_on_spine": sorted(checked_on_spine),
+        }
     return uk_qrf_tail_concentration_gate(
         values,
         weights,
@@ -1582,6 +1682,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_release_input_coverage,
         parameter_keys=frozenset({"check"}),
         artifact_keys=frozenset({"coverage_engine"}),
+        artifact_selector=_coverage_required_artifacts,
         frame_predicate=_coverage_requires_frame,
         legacy_name="uk_release_input_coverage",
     ),
@@ -1622,6 +1723,15 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1095 spi_benefit_coherence stage-health check.
+                "zeroed_columns",
+                "restored_columns",
+                # microcosm#1063 child_benefit_take_up stage-health check.
+                "maximum_claim_rate_deviation",
+                "maximum_age_claim_rate_deviation",
+                "minimum_age_child_rows",
+                "maximum_opt_out_share_deviation",
+                "minimum_eligible_family_units",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -1634,7 +1744,6 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "max_grid_reciprocity_mismatches",
                 "require_partition_closure",
                 # #725 cgt_asset_type_summary stage-health check.
-                "maximum_gains_sigma",
                 "maximum_solve_relative_error",
                 "support_bounds_resource",
                 "minimum_band_rows",
@@ -1648,10 +1757,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "headroom",
                 "maximum_copy_weight",
                 "maximum_relative_mass_deviation",
-                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
-                # reserved bands and the donors each must carry.
+                # #1063 cgt_residential_split stage-health check: the
+                # identities' tolerance and the arm-count ceiling.
+                "maximum_identity_relative_error",
+                "maximum_liable_gainers_per_household",
+                # #1063 c9 lcfs support_clip check: the declared donor floor.
+                "donor_floor",
+                # spi_income_band_donor_support check (PolicyEngine/chronicle#280
+                # lane; mass-conserving since #1063): the reserved bands, the
+                # seating rule's constants and the funding floor.
                 "band_lower_bounds",
-                "donors_per_band",
+                "minimum_donors_per_band",
+                "maximum_donor_weight",
+                "minimum_funding_factor",
+                "maximum_band_taxpayer_deviation",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # prior weights, with the published gas-connected share, and
                 # a converged (not truncated) terminal residual (#1012).
@@ -1665,6 +1784,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "trip_rates_period_value",
                 "maximum_user_share_deviation",
                 "maximum_trip_rate_deviation",
+                # #1063 wealth_coherence check: the reviewed excess of owner
+                # households without a main-residence value over the donor's.
+                "maximum_owner_share_without_main_residence_excess",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

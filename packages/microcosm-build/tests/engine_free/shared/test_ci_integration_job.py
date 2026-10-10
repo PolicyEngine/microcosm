@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import yaml
+
 from test_support.paths import paths_for
 from tools import ci_test_plan
 
@@ -67,6 +69,27 @@ def test_integration_job_is_uk_selected_and_read_only() -> None:
     assert "head.repo.full_name" not in integration
     assert "HF_STAGING_READ_TOKEN: ${{ secrets.HF_STAGING_READ_TOKEN }}" in integration
     assert "run: bash tools/run_integration_tests.sh" in integration
+
+
+def test_every_workflow_job_caps_its_runtime() -> None:
+    """A hung job must not hold an org-shared runner for GitHub's 6-hour default."""
+    jobs = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+    assert jobs
+    for name, job in jobs.items():
+        cap = job.get("timeout-minutes")
+        # A literal number of minutes below GitHub's 360-minute default.
+        assert type(cap) is int and 0 < cap < 360, name
+
+
+def test_plan_verifier_sees_every_workflow_job() -> None:
+    """The plan verifier reads job names from the workflow text, so a job it
+    cannot see (a quoted key, for example) would escape its checks."""
+    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    assert ci_test_plan.workflow_job_names(workflow) == tuple(
+        yaml.safe_load(workflow)["jobs"]
+    )
 
 
 def test_workflow_uses_one_country_selector_only_for_country_jobs() -> None:

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_disability import (
     UKDWPDisabilityCategoryRates,
     UKDWPDisabilityFlagRates,
@@ -73,6 +74,12 @@ DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
 # FRS dependent-child status can extend to ages 16-19; this guard is an age
 # support boundary, not a crosswalk to that household-composition definition.
 SPI_MINIMUM_RECIPIENT_AGE = 16
+#: The tape samples taxpayers in their own right, so its draws go to the FRS
+#: benefit unit's claimant or partner; a dependent child aged 16 to 19 is
+#: neither and keeps every value of its FRS twin (uk-data#504, microcosm#1095).
+#: The column persists the FRS adult-file role from
+#: ``uc_relationships.frs_uc_claimant_mask``.
+SPI_RECIPIENT_ROLE_COLUMN = "is_uc_claimant"
 SPI_DONOR_INCOME_YEAR = 2022
 # Use the pinned engine's variable-specific indices. None explicitly retains
 # nominal amounts where no same-scope indexed mapping has been reviewed;
@@ -534,6 +541,7 @@ class UKSPIIncomeImputationResult:
     band_donor_resample: Mapping[str, object] | None = None
     donor_age_draw: Mapping[str, object] | None = None
     state_pension_age_guard: tuple[Mapping[str, object], ...] = ()
+    recipient_domain: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -634,7 +642,6 @@ def impute_uk_spi_income_support(
     verified_donor: VerifiedSPIDonorIdentity | None = None,
     donor_table: pd.DataFrame | None = None,
     initialize_frs_channel_columns: Mapping[str, float] | None = None,
-    stage1_base_redraw_columns: Sequence[str] = (),
     condition_on_state_pension_receipt: bool = False,
     rebase_income_to_build_period: bool = False,
     band_donor_resample: Mapping[str, object] | None = None,
@@ -731,11 +738,32 @@ def impute_uk_spi_income_support(
     spi_channel_people = person[person_channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL
     if not spi_channel_people.any():
         raise ValueError("SPI support has no person rows to impute.")
-    _require_columns(person, ("age",), label="SPI recipient age domain")
+    _require_columns(
+        person, ("age", SPI_RECIPIENT_ROLE_COLUMN), label="SPI recipient domain"
+    )
     _require_finite_numeric(person[["age"]], label="SPI recipient ages")
-    spi_people = spi_channel_people & person.age.ge(SPI_MINIMUM_RECIPIENT_AGE)
+    if not pd.api.types.is_bool_dtype(person[SPI_RECIPIENT_ROLE_COLUMN].dtype):
+        raise ValueError(
+            f"SPI recipient role column {SPI_RECIPIENT_ROLE_COLUMN!r} must be boolean."
+        )
+    # Both forests are queried over the age domain, the recipient rule before
+    # uk-data#504, so each recipient keeps the draw it has always had; the
+    # rows of dependants aged 16 to 19 are then discarded.
+    spi_age_domain = spi_channel_people & person.age.ge(SPI_MINIMUM_RECIPIENT_AGE)
+    spi_people = spi_age_domain & person[SPI_RECIPIENT_ROLE_COLUMN]
     if not spi_people.any():
         raise ValueError("SPI support has no recipients in the donor age domain.")
+    recipient_domain = {
+        "minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
+        "role_column": SPI_RECIPIENT_ROLE_COLUMN,
+        "recipient_rows": int(spi_people.sum()),
+        "dependant_rows_kept_on_twin_values": int((spi_age_domain & ~spi_people).sum()),
+        "dependant_weight_kept_on_twin_values": float(
+            _person_household_weights(person, household)
+            .loc[spi_age_domain & ~spi_people]
+            .sum()
+        ),
+    }
     base_people = person[person_channel] == BASE_FRS_SUPPORT_CHANNEL
     if not base_people.any():
         raise ValueError("SPI support has no FRS base rows.")
@@ -744,15 +772,6 @@ def impute_uk_spi_income_support(
             person,
             base_people=base_people,
             columns=initialize_frs_channel_columns,
-        )
-    base_redraw_columns = tuple(stage1_base_redraw_columns)
-    unknown_redraw = sorted(
-        set(base_redraw_columns) - set(SPI_INCOME_QRF_OUTPUT_COLUMNS)
-    )
-    if unknown_redraw:
-        raise ValueError(
-            "SPI stage-1 base redraw columns must be stage-1 QRF outputs; "
-            f"unknown column(s): {unknown_redraw}."
         )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
 
@@ -783,14 +802,14 @@ def impute_uk_spi_income_support(
         expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
         label="SPI stage-1",
     )
-    # Hold the existing RNG stream fixed: the fitted forest is also used
-    # later for the base-channel dividend redraw. Consume the legacy query
-    # shape, then discard under-age draws before any assignment. This keeps
-    # adult stage-1 draw pool and the base redraw stream identical.
-    adult_positions = (
-        person.loc[spi_channel_people, "age"].ge(SPI_MINIMUM_RECIPIENT_AGE).to_numpy()
-    )
-    stage1_draws = stage1_draws.iloc[np.flatnonzero(adult_positions)].copy()
+    # Hold the existing RNG stream fixed: query the legacy shape (every
+    # SPI-channel person), then discard the draws outside the recipient domain
+    # (children, and dependants aged 16 to 19: uk-data#504) before any
+    # assignment, so each recipient keeps the draw it has always had.
+    # FRS-channel rows keep their own reported incomes, dividends included
+    # (uk-data#498, microcosm#1095).
+    recipient_positions = spi_people.loc[spi_channel_people].to_numpy(dtype=bool)
+    stage1_draws = stage1_draws.iloc[np.flatnonzero(recipient_positions)].copy()
     income_uprating = None
     uprating_factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
     if rebase_income_to_build_period:
@@ -878,10 +897,16 @@ def impute_uk_spi_income_support(
         household,
         income_predictors=income_predictors,
     )
+    # Queried over the age domain like stage 1; a dependant's row conditions
+    # on its twin's values and is discarded below, and the draws consume the
+    # RNG stream row by row, so no recipient's draw depends on it.
     target_predictors = _person_predictors(
-        person.loc[spi_people],
+        person.loc[spi_age_domain],
         household,
         income_predictors=income_predictors,
+    )
+    stage2_recipient_positions = np.flatnonzero(
+        spi_people.loc[spi_age_domain].to_numpy(dtype=bool)
     )
     pension_bridge = None
     if condition_on_state_pension_receipt:
@@ -891,7 +916,7 @@ def impute_uk_spi_income_support(
         # to a stage-1 vector whose HMRC pension leaf is already determined.
         train_receipt = person.loc[training_people, "state_pension_reported"].gt(0)
         target_receipt = person.loc[
-            spi_people, SPI_HMRC_STATE_PENSION_INCOME_COLUMN
+            spi_age_domain, SPI_HMRC_STATE_PENSION_INCOME_COLUMN
         ].gt(0)
         train_predictors["state_pension_receipt"] = train_receipt.astype(float)
         target_predictors["state_pension_receipt"] = target_receipt.astype(float)
@@ -899,7 +924,9 @@ def impute_uk_spi_income_support(
             "training_source": "state_pension_reported > 0",
             "recipient_source": "hmrc_spi_state_pension_income > 0",
             "training_positive_rows": int(train_receipt.sum()),
-            "recipient_positive_rows": int(target_receipt.sum()),
+            "recipient_positive_rows": int(
+                target_receipt.iloc[stage2_recipient_positions].sum()
+            ),
         }
     encoded_train, encoded_target = _encode_predictor_pair(
         train_predictors,
@@ -930,6 +957,7 @@ def impute_uk_spi_income_support(
         expected=stage2_outputs,
         label="FRS-only stage-2",
     )
+    stage2_draws = stage2_draws.iloc[stage2_recipient_positions].copy()
     if (stage2_draws.to_numpy(dtype=np.float64) < 0.0).any():
         raise ValueError("FRS-only stage-2 produced negative non-negative outputs.")
     for column in stage2_outputs:
@@ -948,35 +976,6 @@ def impute_uk_spi_income_support(
         )
         guard_receipts.append(receipt)
 
-    if base_redraw_columns:
-        base_predictors = _stage1_query_predictors(person.loc[base_people], household)
-        _, encoded_base = _encode_predictor_pair(
-            donor[["age", "gender", "region"]],
-            base_predictors,
-        )
-        base_draws = stage1.predict(encoded_base)
-        _validate_predictions(
-            base_draws,
-            expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
-            label="SPI stage-1 base redraw",
-        )
-        if (
-            base_draws[list(base_redraw_columns)]
-            .to_numpy(dtype=np.float64)
-            .min(initial=0.0)
-            < 0.0
-        ):
-            raise ValueError("SPI stage-1 base redraw produced negative outputs.")
-        for column in base_redraw_columns:
-            # This redraw also uses adult SPI donors. Preserve observed FRS
-            # child dividends, while consuming the same base query stream.
-            base_adults = (
-                person.loc[base_people, "age"].ge(SPI_MINIMUM_RECIPIENT_AGE).to_numpy()
-            )
-            person.loc[
-                base_people & person.age.ge(SPI_MINIMUM_RECIPIENT_AGE), column
-            ] = base_draws[column].to_numpy()[base_adults] * uprating_factors[column]
-
     tax_free = person.loc[spi_people, "tax_free_savings_income"].to_numpy(
         dtype=np.float64
     )
@@ -984,6 +983,7 @@ def impute_uk_spi_income_support(
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
+    person = _refresh_uc_start_up_period(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -1010,11 +1010,16 @@ def impute_uk_spi_income_support(
         band_donor_resample=band_donor_receipt,
         donor_age_draw=donor_age_draw,
         state_pension_age_guard=tuple(guard_receipts),
+        recipient_domain=recipient_domain,
     )
 
 
 SPI_INCOME_BAND_CARRIER_COLUMN = "person_is_spi_income_band_carrier"
 SPI_INCOME_BAND_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
+#: The carrier's leaf draw is keyed on the FRS person it copies (the support
+#: lineage column), falling back to ``person_id`` on a frame without lineage.
+SPI_INCOME_BAND_CARRIER_KEY_COLUMN = "person_source_id"
+SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT = "spi_income_band_donor_leaf_draw"
 
 
 def _spi_agerange_codes(ages: np.ndarray) -> np.ndarray:
@@ -1060,7 +1065,10 @@ def _resample_band_donor_leaves(
     not inherit the zero State Pension leaf of a donor drawn below it. One
     record is drawn FACT-weighted with replacement and all stage-1 leaves are
     copied from it, then uprated exactly as the forest draws were; the
-    accounting aggregates derive after the draw as usual. Composite records
+    accounting aggregates derive after the draw as usual. The draw is keyed on
+    the carrier's identity (the id of the FRS person it copies, where the frame
+    carries it), so a carrier draws the same record whatever the row order and
+    whoever else is seated (microcosm#1063). Composite records
     stay in the pools as published. Every carrier's realised total income is
     checked against its band after the draw and any breach refuses the stage.
     """
@@ -1097,12 +1105,20 @@ def _resample_band_donor_leaves(
         ("household_id", "region", SPI_INCOME_BAND_LOWER_BOUND_COLUMN),
         label="band donor households",
     )
+    _require_columns(
+        person, ("person_id", "person_household_id"), label="band donor carriers"
+    )
     for column in ("total_income", "is_composite", "region", "FACT"):
         if column not in donor.columns:
             raise ValueError(f"band donor resample needs donor column {column!r}.")
-    carriers = person[SPI_INCOME_BAND_CARRIER_COLUMN].astype(bool) & spi_people.astype(
-        bool
-    )
+    flagged = person[SPI_INCOME_BAND_CARRIER_COLUMN].astype(bool)
+    if (flagged & ~spi_people.astype(bool)).any():
+        raise ValueError(
+            "band donor carriers must be SPI recipients; a carrier outside the "
+            "recipient domain would keep its twin's values and leave its band "
+            "unfilled."
+        )
+    carriers = flagged
     if not carriers.any():
         raise ValueError("band donor resample found no reserved carriers.")
     by_household = household.set_index("household_id")
@@ -1172,7 +1188,16 @@ def _resample_band_donor_leaves(
         if state_pension_age is not None
         else np.zeros(len(carrier_rows), dtype=bool)
     )
-    rng = np.random.default_rng(seed)
+    key_column = (
+        SPI_INCOME_BAND_CARRIER_KEY_COLUMN
+        if SPI_INCOME_BAND_CARRIER_KEY_COLUMN in carrier_rows.columns
+        else "person_id"
+    )
+    uniforms = stable_identity_uniforms(
+        carrier_rows[key_column].to_numpy(),
+        seed=seed,
+        salt=SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
+    )
     drawn = np.empty(len(carrier_rows), dtype=np.int64)
     matched = np.zeros(len(carrier_rows), dtype=bool)
     age_matched = np.zeros(len(carrier_rows), dtype=bool)
@@ -1206,8 +1231,12 @@ def _resample_band_donor_leaves(
                 base_is_sided,
             )
         pool, matched[index], age_matched[index], side_matched[index] = pool_cache[key]
-        weights = fact[pool]
-        drawn[index] = int(rng.choice(pool, p=weights / weights.sum()))
+        # Inverse CDF over the pool in tape order at the carrier's own uniform.
+        cumulative = np.cumsum(fact[pool])
+        position = int(
+            np.searchsorted(cumulative, uniforms[index] * cumulative[-1], side="right")
+        )
+        drawn[index] = int(pool[min(position, pool.size - 1)])
     leaves = leaf_values[drawn] * factors
     person = person.copy()
     person.loc[carriers, columns] = leaves
@@ -1259,6 +1288,8 @@ def _resample_band_donor_leaves(
         "age_pool_minimum": age_pool_minimum,
         "state_pension_age": state_pension_age,
         "seed": seed,
+        "salt": SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
+        "draw_key": key_column,
         "weighting": "FACT",
         "with_replacement": True,
         "total_income_basis": "published TEI + TII, 2022-23 terms",
@@ -1982,6 +2013,42 @@ def _refresh_carer_take_up_input(
     return person
 
 
+#: employment_status values of the self-employed (FRS EMPSTATI 3 and 4).
+SELF_EMPLOYED_STATUSES = ("FT_SELF_EMPLOYED", "PT_SELF_EMPLOYED")
+
+
+def _refresh_uc_start_up_period(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Clear the UC start-up period where a redrawn row is no longer self-employed.
+
+    The root stage dates the period from the donor's claim and trade; a
+    redrawn row keeps the donor's employment status but takes new imputed
+    income, so the flag survives only while that status or the refilled
+    self-employment income still shows self-employment (uk-data#527).
+    """
+
+    if "uc_is_in_startup_period" not in person.columns:
+        return person
+    rows = person.loc[spi_people]
+    still_self_employed = rows["employment_status"].isin(
+        SELF_EMPLOYED_STATUSES
+    ).to_numpy() | (
+        pd.to_numeric(rows["self_employment_income"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy()
+        != 0.0
+    )
+    _assign_spi_values(
+        person,
+        spi_people,
+        "uc_is_in_startup_period",
+        rows["uc_is_in_startup_period"].astype(bool).to_numpy() & still_self_employed,
+        default=False,
+    )
+    return person
+
+
 def _assign_spi_values(
     person: pd.DataFrame,
     spi_people: pd.Series,
@@ -2021,6 +2088,8 @@ __all__ = [
     "SPI_QRF_SOURCE_COLUMNS",
     "SPI_SOURCE_COMPOSITE_INDICATOR",
     "SPI_INCOME_BAND_CARRIER_COLUMN",
+    "SPI_INCOME_BAND_CARRIER_KEY_COLUMN",
+    "SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT",
     "SPI_INCOME_BAND_LOWER_BOUND_COLUMN",
     "prepare_spi_donor_table",
     "SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP",

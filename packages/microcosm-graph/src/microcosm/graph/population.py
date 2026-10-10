@@ -20,12 +20,14 @@ from .canonical import canonical_json
 from .decl import (
     MASS_POLICIES,
     ROWS_ALL,
+    GraphError,
     Node,
     Owned,
     Ownership,
     StructuralDelta,
     WeightUpdate,
 )
+from .expansion import declared_expand_cells
 from .kernel import KernelResult
 from .store import _encode_object_scalar
 from .weight_update import weight_update_receipt
@@ -1184,34 +1186,10 @@ def patch(
 def _expand_cells(node: Node) -> tuple[tuple[str, str, str], ...]:
     """Return the normative ``(entity, column, dtype)`` EXPAND overlays."""
 
-    raw = node.params.get("expand_cells")
-    if not isinstance(raw, tuple):
-        raise PopulationError(
-            f"EXPAND node {node.id!r} needs tuple params['expand_cells']."
-        )
-    cells: list[tuple[str, str, str]] = []
-    for item in raw:
-        if (
-            not isinstance(item, tuple)
-            or len(item) != 3
-            or any(not isinstance(part, str) or not part for part in item)
-        ):
-            raise PopulationError(
-                f"EXPAND node {node.id!r} has malformed expand_cells entry {item!r}."
-            )
-        entity, column, dtype = item
-        if "." in entity or "." in column:
-            raise PopulationError(
-                f"EXPAND node {node.id!r} params['expand_cells'] entity and "
-                f"column names must be dot-free; got {entity!r}, {column!r}."
-            )
-        # Reuse the declaration token validator without importing frozen
-        # declaration internals into this runtime convention.
-        dtype_for_token(dtype)
-        cells.append((entity, column, dtype))
-    if len({(entity, column) for entity, column, _ in cells}) != len(cells):
-        raise PopulationError(f"EXPAND node {node.id!r} repeats an expanded cell.")
-    return tuple(cells)
+    try:
+        return declared_expand_cells(node)
+    except GraphError as error:
+        raise PopulationError(str(error)) from error
 
 
 def _expand_weight_entity(node: Node) -> str | None:

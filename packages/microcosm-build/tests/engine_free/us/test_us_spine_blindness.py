@@ -338,6 +338,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "take_up.py",
         "take_up_contract.py",
         "target_aging.py",
+        # Calibration loss weights computed from target specs alone; reads no
+        # frame and treats no population.
+        "target_loss_weights.py",
         # Data-only final-owner matrix; provenance owner above.
         "us_late_overlap_ownership.py",
         # Data-only late input/output registry; provenance owner above.

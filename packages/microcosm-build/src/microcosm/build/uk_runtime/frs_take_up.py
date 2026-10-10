@@ -54,7 +54,7 @@ UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # a unit with every adult at or over State Pension age is never drawn (#882,
 # microcosm#867). The bounds come from the engine at the build instant through
 # ``uk_take_up_population_policy``: State Pension age from the
-# ``gov.dwp.state_pension.age`` parameters and the adult threshold from the
+# ``gov.dwp.state_pension.age`` timetable and the adult threshold from the
 # engine's ``is_adult`` formula (a constant there, pinned by the lockstep test).
 # The stage manifest declares the same population on the ``would_claim_uc``
 # operation; ``assert_take_up_stage_population_declaration`` refuses a manifest
@@ -74,9 +74,11 @@ UK_UC_CHILDCARE_RATE_KEYS = {
 # would_claim_pc is redrawn after the SPI chain by ``pension_credit_take_up``,
 # whose rates are shares of the entitled units the engine finds; its stage
 # gate measures them, so the terminal signal gate does not (microcosm#1069 R9).
+# would_claim_child_benefit and child_benefit_opts_out are redrawn by
+# ``child_benefit_take_up`` against HMRC's claim rates of eligible children and
+# opted-out share of registered families; its stage gate measures them
+# (microcosm#1063).
 UK_TAKE_UP_SIGNAL_OUTPUTS = (
-    ("benunit", "would_claim_child_benefit", "child_benefit"),
-    ("benunit", "child_benefit_opts_out", "child_benefit_opts_out_rate"),
     ("benunit", "would_claim_uc", "universal_credit"),
     ("benunit", "would_claim_tfc", "tax_free_childcare"),
     ("benunit", "would_claim_extended_childcare", "extended_childcare"),
@@ -101,9 +103,10 @@ class UKTakeUpPopulationPolicy:
     """Engine bounds of the Universal Credit take-up population at one instant.
 
     ``adult_age`` is the engine's ``is_adult`` threshold and
-    ``state_pension_age`` its ``gov.dwp.state_pension.age`` value, so a unit is
-    in the population exactly when the engine's ``is_WA_adult`` is true for one
-    of its members.
+    ``state_pension_age`` the age its ``gov.dwp.state_pension.age`` timetable
+    sets for the cohort attaining it in the build year, so a unit is in the
+    population exactly when the engine's ``is_WA_adult`` is true for one of its
+    members (the lockstep test checks every age).
     """
 
     adult_age: int
@@ -130,21 +133,38 @@ def uk_take_up_population_policy(build_period: int | str) -> UKTakeUpPopulationP
     parameters = ParameterNode(
         directory_path=str(Path(policyengine_uk.__file__).parent / "parameters")
     )
-    instant = f"{int(build_period)}-01-01"
-    ages = parameters.gov.dwp.state_pension.age
-    male, female = float(ages.male(instant)), float(ages.female(instant))
-    if male != female or not float(male).is_integer():
+    year = int(build_period)
+    instant = f"{year}-01-01"
+    timetable = parameters.gov.dwp.state_pension.age.age_by_birth_date(instant)
+    # From policyengine-uk 2.112.0 State Pension age follows the statutory
+    # timetable by date of birth (in months; zero where the statute sets a
+    # day instead). The population needs one whole-year age: the age at which
+    # everyone born in a single calendar year attains it, for the cohort that
+    # attains it in the build year.
+    ages = [
+        age
+        for age in range(UK_ENGINE_ADULT_AGE, 100)
+        if (timetable.calc(_birth_dates_in_year(year - age)) == age * 12).all()
+    ]
+    if len(ages) != 1:
         raise ValueError(
             "the take-up population needs one State Pension age for every adult "
-            f"at {instant}; the engine has male {male} and female {female}, so the "
-            "stage must consume sex before it can form the population"
+            f"at {instant}; the engine's timetable gives {ages or 'none'}, so the "
+            "stage must consume dates of birth before it can form the population"
         )
     return UKTakeUpPopulationPolicy(
         adult_age=UK_ENGINE_ADULT_AGE,
-        state_pension_age=int(male),
+        state_pension_age=ages[0],
         instant=instant,
         source="policyengine-uk parameters " + metadata.version("policyengine-uk"),
     )
+
+
+def _birth_dates_in_year(year: int) -> np.ndarray:
+    """Every date of ``year`` as the YYYYMMDD numbers the timetable is keyed by."""
+
+    days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+    return (days.year * 10_000 + days.month * 100 + days.day).to_numpy()
 
 
 def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:

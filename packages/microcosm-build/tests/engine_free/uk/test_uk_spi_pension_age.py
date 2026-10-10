@@ -189,6 +189,7 @@ def _band_resample_inputs(carrier_age: float):
     donor.loc[30:, spi_income.SPI_HMRC_STATE_PENSION_INCOME_COLUMN] = 10_000.0
     person = pd.DataFrame(
         {
+            "person_id": [1],
             "person_household_id": [1],
             "age": [carrier_age],
             spi_income.SPI_INCOME_BAND_CARRIER_COLUMN: [True],

@@ -288,6 +288,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
             "person_id": [1, 2, 3, 4],
             "person_household_id": [10, 10, 10, 20],
             "person_benunit_id": [100, 100, 100, 200],
+            "is_uc_claimant": [True, True, False, True],
         }
     )
     benunit = pd.DataFrame({"benunit_id": [100, 200], "benunit_household_id": [10, 20]})
@@ -301,6 +302,9 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
 
     result = recipient_predictors(frame, _FakeEngine())
 
+    # The adult and child counts are the FRS family roles (microcosm#1095).
+    assert result["is_adult"].tolist() == [2.0, 1.0]
+    assert result["is_child"].tolist() == [1.0, 0.0]
     assert result["count_primary_education"].tolist() == [1.0, 0.0]
     assert result["count_secondary_education"].tolist() == [0.0, 1.0]
     assert result["count_further_education"].tolist() == [1.0, 0.0]

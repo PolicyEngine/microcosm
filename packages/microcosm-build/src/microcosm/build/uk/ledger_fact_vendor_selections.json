@@ -941,6 +941,114 @@
           "expected_row_count": 13
         }
       ]
+    },
+    {
+      "resource": "hmrc_child_benefit_statistics.json",
+      "purpose": "HMRC Child Benefit statistics, annual release at August 2025, United Kingdom: the percentage of eligible children for whom Child Benefit is claimed, opted-out families included, by single year of age and for all ages (Table 15, May 2025 reference month); families registered, families in payment and families opted out of payment because of the High Income Child Benefit Charge; children registered; children in payment and children in opted-out families by single year of age. Consumed by the child_benefit_take_up stage, which draws family claims to the claim rates by age and opt-outs to the opted-out share of registered families, and reports the frame's families and children in payment beside the published ones (microcosm#1063).",
+      "consumers": [
+        "uk_runtime.child_benefit_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "claim_rate_of_eligible_children_by_age_may_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.percentage_of_eligible_children_for_whom_child_benefit_is_claimed",
+            "source_measure_id": "claim_rate",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-05"
+            ]
+          },
+          "expected_row_count": 21
+        },
+        {
+          "label": "families_registered_august_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.families_registered_for_child_benefit",
+            "source_measure_id": "families_registered",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-08"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "families_in_payment_august_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.families_in_receipt_of_child_benefit_payments",
+            "source_measure_id": "families_in_payment",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-08"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "families_opted_out_august_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.families_opted_out_of_child_benefit_payment",
+            "source_measure_id": "families_opted_out_claimant_all",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-08"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "children_registered_august_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.children_registered_for_child_benefit",
+            "source_measure_id": "children_registered",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-08"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "children_in_payment_by_age_august_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.children_for_whom_child_benefit_payment_is_received",
+            "source_measure_id": "children_in_payment_united_kingdom",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-08"
+            ]
+          },
+          "expected_row_count": 21
+        },
+        {
+          "label": "children_in_opted_out_families_by_age_august_2025",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": "hmrc.children_within_families_opted_out_of_child_benefit_payment",
+            "source_measure_id": "children_opted_out_united_kingdom",
+            "geography_id": "K02000001",
+            "period_type": "month",
+            "period_value": [
+              "2025-08"
+            ]
+          },
+          "expected_row_count": 21
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,91 @@
+{
+  "_description": "Closed Frame export contract for the New Zealand v0 population dataset, which the planned CLI (package G6) is to write outside the graph after the export-prepare node. Donor records remain US support records; the dataset is never described as New Zealand microdata. The required set is the structural and household-weight columns. Encoded engine-input columns enter only when the G4 input-closure table names them and this contract lists them, so an undeclared column is to fail the export gate. formula_owned_excluded is exactly the set of variables the graph requests from the bound rulespec-nz modules (axiom_rules_bindings.json): no rule output may persist as an input.",
+  "_source": {
+    "rules_bindings": "axiom_rules_bindings.json",
+    "unit_rule": "benefit_unit_rule.json"
+  },
+  "_schema": {
+    "entities": [
+      "person",
+      "household",
+      "family"
+    ],
+    "engine_entity_names": {
+      "person": "Person",
+      "household": "Household",
+      "family": "Family"
+    },
+    "structural_columns": {
+      "person": [
+        "person_id",
+        "person_household_id",
+        "person_family_id"
+      ],
+      "household": [
+        "household_id"
+      ],
+      "family": [
+        "family_id",
+        "family_household_id"
+      ]
+    }
+  },
+  "_period": {
+    "label": "2026-27",
+    "period_kind": "tax_year",
+    "start": "2026-04-01",
+    "end": "2027-03-31",
+    "dataset_time_period": 2026
+  },
+  "_weight_contract": {
+    "stored_weight_entity": "household",
+    "stored_weight_column": "household_weight",
+    "family_weight_column_stored": false,
+    "family_weight_resolution": "The frame must call resolve_weights('family'); each family must map to exactly one household and inherit that household's calibrated weight.",
+    "forbid_manual_person_weight_aggregation": true
+  },
+  "required": [
+    "person_id",
+    "person_household_id",
+    "person_family_id",
+    "household_id",
+    "household_weight",
+    "family_id",
+    "family_household_id"
+  ],
+  "forbidden": [
+    "person_weight",
+    "family_weight"
+  ],
+  "optional": [
+    "age",
+    "sex",
+    "region_code",
+    "support_stratum",
+    "donor_country_code"
+  ],
+  "formula_owned_excluded": [
+    "accommodation_supplement_cash_assets_within_limit",
+    "accommodation_supplement_maximum_weekly_rate",
+    "accommodation_supplement_non_beneficiary_income_reduction",
+    "accommodation_supplement_non_rate_entitlement_requirements",
+    "accommodation_supplement_other_funding_exclusion_not_applies",
+    "accommodation_supplement_rounded_weekly_payment",
+    "accommodation_supplement_social_housing_exclusion_not_applies",
+    "accommodation_supplement_weekly_amount_before_rounding",
+    "accommodation_supplement_weekly_qualifying_accommodation_costs",
+    "entitled_to_jobseeker_support",
+    "entitled_to_new_zealand_superannuation",
+    "entitled_to_sole_parent_support",
+    "entitled_to_supported_living_payment_caring",
+    "entitled_to_supported_living_payment_restricted_or_blind",
+    "family_tax_credit_prescribed_amount",
+    "jobseeker_support_gross_weekly_rate",
+    "jobseeker_support_net_weekly_payment",
+    "jobseeker_support_weekly_income_test_reduction",
+    "nz_super_weekly_amount_before_tax",
+    "sole_parent_support_net_weekly_payment",
+    "supported_living_payment_net_weekly_payment"
+  ],
+  "closed": true
+}

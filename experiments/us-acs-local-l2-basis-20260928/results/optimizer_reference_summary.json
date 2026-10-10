@@ -1,0 +1,78 @@
+{
+  "small": {
+    "conserve/projection": {
+      "excess_objective_mean_by_lambda": {
+        "0.0": 0.02845412794123445,
+        "0.001": 0.026839507744498267,
+        "0.01": 0.030362929221783165,
+        "0.1": 0.16078164325949462,
+        "1.0": 0.06969125358614563
+      },
+      "excess_objective_max": 0.33839540883393904,
+      "share_of_problems_with_nonmonotone_distance": 0.9375,
+      "loss_cap_ever_binds": false
+    },
+    "conserve/softmax": {
+      "excess_objective_mean_by_lambda": {
+        "0.0": 0.0012821812906891445,
+        "0.001": 0.0015809406657602664,
+        "0.01": 0.0012789268526110487,
+        "0.1": 0.0017160138689238569,
+        "1.0": 0.0008163538729455415
+      },
+      "excess_objective_max": 0.0034301448654111884,
+      "share_of_problems_with_nonmonotone_distance": 0.0,
+      "loss_cap_ever_binds": false
+    },
+    "free/projection": {
+      "excess_objective_mean_by_lambda": {
+        "0.0": 0.0003642760565690286,
+        "0.001": 0.001518543664018342,
+        "0.01": 0.001994542571775621,
+        "0.1": 0.0018815233281515567,
+        "1.0": 0.0014337905967686784
+      },
+      "excess_objective_max": 0.004152423589030884,
+      "share_of_problems_with_nonmonotone_distance": 0.0,
+      "loss_cap_ever_binds": false
+    }
+  },
+  "large": {
+    "conserve/projection": {
+      "excess_objective_mean_by_lambda": {
+        "0.0": 0.002262939583278505,
+        "0.001": 0.0037192884929632595,
+        "0.01": 0.006203441428948663,
+        "0.1": 0.008113761501418697,
+        "1.0": 0.006134161679049156
+      },
+      "excess_objective_max": 0.013943041185228384,
+      "share_of_problems_with_nonmonotone_distance": 0.0,
+      "loss_cap_ever_binds": false
+    },
+    "conserve/softmax": {
+      "excess_objective_mean_by_lambda": {
+        "0.0": 0.0012218803331678649,
+        "0.001": 0.0015992978766301432,
+        "0.01": 0.0018320170196287006,
+        "0.1": 0.0012204001179234314,
+        "1.0": 0.0009663682023961737
+      },
+      "excess_objective_max": 0.0022978128453950775,
+      "share_of_problems_with_nonmonotone_distance": 0.0,
+      "loss_cap_ever_binds": false
+    },
+    "free/projection": {
+      "excess_objective_mean_by_lambda": {
+        "0.0": 0.000919882766251255,
+        "0.001": 0.0015554791822153583,
+        "0.01": 0.001826734425510309,
+        "0.1": 0.001281251813600551,
+        "1.0": 0.0009958584361207112
+      },
+      "excess_objective_max": 0.002343049488705443,
+      "share_of_problems_with_nonmonotone_distance": 0.0,
+      "loss_cap_ever_binds": false
+    }
+  }
+}

@@ -810,12 +810,25 @@ def build_manifest(
                 stage_name="cgt_incidence_anchor",
                 candidate_source=candidate_source,
             ),
+            # The residential split conserves mass like the other CGT
+            # structural stages (microcosm#1063).
+            "cgt_residential_split": _source_stage_family_coverage_contract(
+                stage_name="cgt_residential_split",
+                candidate_source=candidate_source,
+            ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
             ),
             "student_loans": _source_stage_family_coverage_contract(
                 stage_name="student_loans",
+                candidate_source=candidate_source,
+            ),
+            # The reserved income rows are a support channel funded from the
+            # incumbent households (microcosm#1063): the terminal gate demands
+            # their conserving receipt like any other stage's.
+            "spi_income_band_donors": _source_stage_family_coverage_contract(
+                stage_name="spi_income_band_donors",
                 candidate_source=candidate_source,
             ),
             "hmrc_spi_income": _hmrc_family_coverage_contract(
@@ -915,10 +928,15 @@ def _source_stage_family_coverage_contract(
             "assert the mass was conserved."
         )
     required_mass_change_reason = declared_reasons[-1]
-    # Every spine stage conserves household mass since microcosm#1045 retired
-    # the band-donor stack; the validator keeps ``mass_increasing_support``
-    # only until the SPI income-band donors follow (microcosm#1063).
-    mass_change_semantics = "mass_conserving"
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        UK_FAMILY_MASS_CHANGE_SEMANTICS,
+    )
+
+    # Every spine stage conserves household mass: microcosm#1045 retired the
+    # CGT band-donor stack and microcosm#1063 made the SPI income-band donors
+    # a funded support channel, so no family adds mass and the validator
+    # accepts no other semantics.
+    mass_change_semantics = UK_FAMILY_MASS_CHANGE_SEMANTICS
     return {
         "status": "required_at_build",
         "stage": stage_name,

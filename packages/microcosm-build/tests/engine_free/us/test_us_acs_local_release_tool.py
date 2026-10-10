@@ -1636,3 +1636,463 @@ def test_package_rechecks_final_bytes_after_copy_or_reuse(
         assert root_copy.exists(), "the calibrated H5 itself is never removed"
     else:
         assert not root_copy.exists(), "a refused copy is not left at the root"
+
+
+def _calibrate_stage_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--stage",
+        "calibrate",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--out-h5",
+        str(tmp_path / "out.h5"),
+        *extra,
+    ]
+
+
+def test_penalty_options_default_to_the_historical_solve(tmp_path: Path) -> None:
+    """``--l2-basis`` and ``--mass-parametrization`` take the kernel's names.
+
+    Their defaults are the kernel defaults, so a refresh that passes neither
+    solves exactly as every earlier ACS local release did.
+    """
+    from microcosm.calibrate import (
+        L2_BASES,
+        L2_BASIS_RECORD,
+        MASS_PARAMETRIZATION_PROJECTION,
+        MASS_PARAMETRIZATIONS,
+        calibrate,
+    )
+
+    module = _load_tool_module()
+    # The tool spells the kernel's values so parsing never imports torch.
+    assert module.L2_BASIS_CHOICES == tuple(sorted(L2_BASES))
+    assert module.MASS_PARAMETRIZATION_CHOICES == tuple(sorted(MASS_PARAMETRIZATIONS))
+    defaults = inspect.signature(calibrate).parameters
+    for key, value in module.HISTORICAL_PENALTY.items():
+        assert defaults[key].default == value, key
+    args = module._parse_args(_calibrate_stage_argv(tmp_path))
+    assert args.l2_basis == L2_BASIS_RECORD
+    assert args.mass_parametrization == MASS_PARAMETRIZATION_PROJECTION
+    assert args.l2_lambda == 0.0
+    for basis in L2_BASES:
+        parsed = module._parse_args(
+            _calibrate_stage_argv(tmp_path, "--l2-basis", basis)
+        )
+        assert parsed.l2_basis == basis
+    for parametrization in MASS_PARAMETRIZATIONS:
+        parsed = module._parse_args(
+            _calibrate_stage_argv(tmp_path, "--mass-parametrization", parametrization)
+        )
+        assert parsed.mass_parametrization == parametrization
+    for flag in ("--l2-basis", "--mass-parametrization"):
+        with pytest.raises(SystemExit):
+            module._parse_args(_calibrate_stage_argv(tmp_path, flag, "bogus"))
+
+
+def _tiny_calibration_surface(n: int = 30):
+    """A real frame, design weights and target set small enough to solve."""
+
+    from microcosm.calibrate import Target, TargetSet
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    rng = np.random.default_rng(0)
+    income = rng.lognormal(10.0, 1.0, n)
+    design = rng.lognormal(2.0, 0.8, n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame({"household_id": range(n), "income": income}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=design, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * design).sum() * 1.2),
+                measure="income",
+            ),
+        )
+    )
+    return frame, design, targets
+
+
+def _recording_calibrate(monkeypatch) -> list[dict]:
+    """Wrap the kernel's calibrate to record each call's keyword arguments."""
+
+    import microcosm.calibrate as calibrate_package
+
+    calls: list[dict] = []
+    real = calibrate_package.calibrate
+
+    def recording(*args, **kwargs):
+        calls.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(calibrate_package, "calibrate", recording)
+    return calls
+
+
+def test_calibrate_surface_threads_the_penalty_settings(monkeypatch) -> None:
+    module = _load_tool_module()
+    calls = _recording_calibrate(monkeypatch)
+    frame, _design, targets = _tiny_calibration_surface()
+    result, done = module.calibrate_surface(
+        frame,
+        targets,
+        epochs=4,
+        epoch_batch=2,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.01,
+        seed=0,
+        l2_basis="chi_square",
+        mass_parametrization="softmax",
+    )
+    assert done == 4 and len(calls) == 2
+    for kwargs in calls:
+        assert kwargs["l2_basis"] == "chi_square"
+        assert kwargs["mass_parametrization"] == "softmax"
+        assert kwargs["l2_lambda"] == 0.01
+    assert result.options["mass_parametrization"] == "softmax"
+    # Callers that pass neither get the historical solve.
+    calls.clear()
+    module.calibrate_surface(
+        frame,
+        targets,
+        epochs=2,
+        epoch_batch=2,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.0,
+        seed=0,
+    )
+    assert calls[0]["l2_basis"] == "record"
+    assert calls[0]["mass_parametrization"] == "projection"
+
+
+def test_do_calibrate_stamps_and_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The penalty settings reach the solve, its stamp, the checkpoint and summary."""
+
+    from scipy import sparse
+
+    import microcosm.calibrate as calibrate_package
+    from microcosm.calibrate import TargetSpec
+
+    module = _load_tool_module()
+    calls = _recording_calibrate(monkeypatch)
+    frame, design, targets = _tiny_calibration_surface()
+    identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    income = TargetSpec(
+        name="income",
+        entity="household",
+        measure="income",
+        value=next(iter(targets)).value,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_measure_id": "adjusted_gross_income_amount",
+            "ledger_measure_unit": "usd",
+            "ledger_geography_level": "state",
+            "state_fips": "06",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "load_checkpoint_surface",
+        lambda *a, **k: (
+            frame,
+            design,
+            SimpleNamespace(specs=(income,)),
+            [{"name": "income", "role": "train"}],
+            sparse.csr_array((1, len(design)), dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(
+        module.cd_surface, "calibration_target_set", lambda *a, **k: targets
+    )
+    monkeypatch.setattr(
+        module,
+        "calibration_evidence",
+        lambda **kwargs: {"cd_holdout": {"n_targets": 0}, "n_holdout_targets": 0},
+    )
+    monkeypatch.setattr(module, "_write_calibrated_artifact", lambda *a, **k: None)
+    monkeypatch.setattr(
+        calibrate_package,
+        "write_calibration_diagnostics",
+        lambda *a, **k: SimpleNamespace(
+            status="available", schema_version=8, sha256="diagnostics"
+        ),
+    )
+    args = module._parse_args(
+        _calibrate_stage_argv(
+            tmp_path,
+            "--epochs",
+            "4",
+            "--epoch-batch",
+            "2",
+            "--l2-lambda",
+            "0.01",
+            "--l2-basis",
+            "chi_square",
+            "--mass-parametrization",
+            "softmax",
+        )
+    )
+    args.checkpoint_dir.mkdir()
+    module.do_calibrate(args)
+
+    assert len(calls) == 2
+    for kwargs in calls:
+        assert kwargs["l2_basis"] == "chi_square"
+        assert kwargs["mass_parametrization"] == "softmax"
+    summary = json.loads((args.checkpoint_dir / "calibration_summary.json").read_text())
+    assert summary["l2_basis"] == "chi_square"
+    assert summary["mass_parametrization"] == "softmax"
+    assert summary["chi_square_distance"] >= 0.0
+    exhausted = summary["softmax_cap_rounds_exhausted_epochs"]
+    assert isinstance(exhausted, int) and 0 <= exhausted <= 2
+    assert summary["solver_settings"]["l2_basis"] == "chi_square"
+    assert summary["solver_settings"]["mass_parametrization"] == "softmax"
+    saved = np.load(args.checkpoint_dir / "weights_latest.npz")
+    stamp = json.loads(str(saved["solver_settings"]))
+    assert stamp["l2_basis"] == "chi_square"
+    assert stamp["mass_parametrization"] == "softmax"
+
+    # Extending the run under another basis is refused before any solve.
+    calls.clear()
+    args.epochs = 6
+    args.resume = True
+    args.l2_basis = "record"
+    with pytest.raises(SystemExit, match="different solver settings"):
+        module.do_calibrate(args)
+    assert calls == []
+
+
+def test_a_stamp_from_before_the_penalty_settings_reads_as_the_historical_solve(
+    tmp_path: Path,
+) -> None:
+    module = _load_tool_module()
+    defaults = module._parse_args(_calibrate_stage_argv(tmp_path))
+    softmax = module._parse_args(
+        _calibrate_stage_argv(tmp_path, "--mass-parametrization", "softmax")
+    )
+    target_loss = module.release_target_loss_weights(defaults, [])[1]
+    legacy = {
+        key: value
+        for key, value in module._solver_settings(defaults, target_loss).items()
+        if key not in ("l2_basis", "mass_parametrization")
+    }
+    assert module._stamped_settings(legacy) == module._solver_settings(
+        defaults, target_loss
+    )
+    assert module._stamped_settings(legacy) != module._solver_settings(
+        softmax, target_loss
+    )
+    assert module._stamped_settings(None) is None
+    # A recorded value always wins over the fill.
+    recorded = {**legacy, "mass_parametrization": "softmax"}
+    assert module._stamped_settings(recorded) == module._solver_settings(
+        softmax, target_loss
+    )
+    # The loss weights are not filled: a stamp from before them never matches.
+    unweighted = {k: v for k, v in legacy.items() if k != "target_loss"}
+    assert module._stamped_settings(unweighted) != module._solver_settings(
+        defaults, target_loss
+    )
+
+
+def test_package_manifest_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(
+        l2_lambda=0.003,
+        l2_basis="chi_square",
+        mass_parametrization="softmax",
+        chi_square_distance=0.21,
+    )
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["l2_lambda"] == 0.003
+    assert manifest["calibration"]["l2_basis"] == "chi_square"
+    assert manifest["calibration"]["mass_parametrization"] == "softmax"
+    assert manifest["calibration"]["chi_square_distance"] == 0.21
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--l2-lambda") + 1] == "0.003"
+    assert recipe[recipe.index("--l2-basis") + 1] == "chi_square"
+    assert recipe[recipe.index("--mass-parametrization") + 1] == "softmax"
+
+
+def test_package_manifest_records_the_loss_weights(tmp_path: Path, monkeypatch) -> None:
+    """The package stage carries the loss-weight stamp and its multipliers."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    target_loss = {
+        "weighting": (
+            "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_"
+            "target_scale_cap_100pct"
+        ),
+        "row_mapping": "us_acs_local.v1",
+        "family_multipliers": {"usda_snap": 4.0},
+        "n_targets": 3,
+        "weights_sha256": "0" * 64,
+    }
+    summary["target_loss"] = target_loss
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["target_loss"] == target_loss
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--target-family-loss-multiplier") + 1] == (
+        "usda_snap=4.0"
+    )
+
+
+def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
+    """The recipe names every penalty setting, so a default change cannot move it."""
+
+    module = _load_tool_module()
+    plain = shlex.split(module.release_refresh_recipe("state"))
+    assert plain[plain.index("--l2-lambda") + 1] == "0.0"
+    assert plain[plain.index("--l2-basis") + 1] == "record"
+    assert plain[plain.index("--mass-parametrization") + 1] == "projection"
+    # A legacy summary records none of them: the historical solve.
+    legacy = {"l2_lambda": None, "l2_basis": None, "mass_parametrization": None}
+    assert shlex.split(module.release_refresh_recipe("state", penalty=legacy)) == plain
+    assert (
+        shlex.split(
+            module.release_refresh_recipe("state", penalty=module.HISTORICAL_PENALTY)
+        )
+        == plain
+    )
+    # Every flag is spelled out (asserted above), so the parse below does not
+    # lean on the parser's defaults: the historical recipe is the historical
+    # solve whatever those defaults become.
+    historical = module._parse_args(plain[3:])
+    assert historical.l2_lambda == 0.0
+    assert historical.l2_basis == "record"
+    assert historical.mass_parametrization == "projection"
+    penalized = shlex.split(
+        module.release_refresh_recipe(
+            "state",
+            penalty={
+                "l2_lambda": 0.03,
+                "l2_basis": "chi_square",
+                "mass_parametrization": "projection",
+            },
+        )
+    )
+    assert penalized[penalized.index("--l2-lambda") + 1] == "0.03"
+    assert penalized[penalized.index("--l2-basis") + 1] == "chi_square"
+    assert penalized[penalized.index("--mass-parametrization") + 1] == "projection"
+    # The recipe's arguments are ones the tool itself accepts.
+    args = module._parse_args(penalized[3:])
+    assert args.l2_lambda == 0.03
+    assert args.l2_basis == "chi_square"
+    assert args.mass_parametrization == "projection"
+
+
+def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A summary from before the settings existed was solved the only way there was."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["l2_basis"] == "record"
+    assert manifest["calibration"]["mass_parametrization"] == "projection"
+    assert manifest["calibration"]["chi_square_distance"] is None
+    assert manifest["calibration"]["softmax_cap_rounds_exhausted_epochs"] is None
+
+
+def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
+    module = _load_tool_module()
+    base = {
+        "effective_sample_size": 13631.3,
+        "ess_fraction": 0.0086,
+        "households": 1_588_854,
+        "max_weight_ratio": 5.0,
+    }
+    historical = module._ess_concentration_limitation({**base, "l2_lambda": 0.0})
+    assert historical["id"] == "low_effective_sample_size_lambda_zero"
+    assert historical["status"] == "reviewed_concentration"
+    assert module._ess_concentration_limitation(base) == historical
+
+    assert (
+        module._ess_concentration_limitation(
+            {**base, "l2_lambda": 0.0, "mass_parametrization": "projection"}
+        )
+        == historical
+    )
+    # An unpenalized softmax solve is a new optimizer, not the certified default.
+    unpenalized_softmax = module._ess_concentration_limitation(
+        {**base, "l2_lambda": 0.0, "mass_parametrization": "softmax"}
+    )
+    assert unpenalized_softmax["id"] == "effective_sample_size_under_nondefault_solve"
+    assert unpenalized_softmax["status"] == "recorded_concentration"
+    assert "certified default" not in unpenalized_softmax["reason"]
+
+    penalized = module._ess_concentration_limitation(
+        {
+            **base,
+            "l2_lambda": 0.003,
+            "l2_basis": "chi_square",
+            "mass_parametrization": "softmax",
+            "chi_square_distance": 0.21,
+        }
+    )
+    assert penalized["id"] == "effective_sample_size_under_nondefault_solve"
+    # A summary from before l2_basis was recorded used the record basis.
+    legacy_penalized = module._ess_concentration_limitation({**base, "l2_lambda": 0.1})
+    assert "l2_basis='record'" in legacy_penalized["reason"]
+    assert penalized["status"] == "recorded_concentration"
+    assert "l2_lambda=0.003" in penalized["reason"]
+    assert "'chi_square'" in penalized["reason"]
+    assert "'softmax'" in penalized["reason"]
+    assert "l2_lambda=0 " not in penalized["reason"]

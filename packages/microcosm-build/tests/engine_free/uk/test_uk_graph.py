@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
+import hashlib
+
+from microcosm.graph import graph_schema, orrery_document
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_graph import *
 
 
@@ -44,11 +48,13 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
     # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
     # (PolicyEngine/chronicle#280) spi_income_band_donors stages, the #1012
-    # spi_housing_shell, the #1003 was_lisa and the microcosm#1069
-    # pension_credit_take_up; the frs_hmrc_retained_leaves / hmrc_spi_income
-    # certified-pair alternatives are retired (#901), so the manifest roster is
-    # the graph roster.
-    assert len(expected) == 36
+    # spi_housing_shell, the #1003 was_lisa, the microcosm#1069
+    # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
+    # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
+    # are retired (#901), so the manifest roster is the graph roster.
+    # microcosm#1063 also adds cgt_residential_split after the anchor, and
+    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw.
+    assert len(expected) == 39
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -222,6 +228,62 @@ def test_uk_graph_json_round_trip_is_canonical() -> None:
 
     assert graph_from_json(serialized) == graph
     assert graph_to_json(graph_from_json(serialized)) == serialized
+
+
+def test_uk_spine_exports_complete_orrery_document() -> None:
+    compiled = compile_graph(uk_spine_graph())
+    schema = graph_schema(compiled)
+    materialized_claims = [
+        binding
+        for binding in schema["input_bindings"]
+        if binding["kind"] == "materialized_expand_output"
+    ]
+
+    document = orrery_document(compiled, title="UK spine")
+    nodes = {node["id"]: node for node in document["nodes"]}
+    materialized_reads = [
+        edge
+        for edge in document["edges"]
+        if edge["kind"] == "declared_read"
+        and edge["data"]["read_kind"] == "materialized_expand_output"
+    ]
+    expected_reads = {
+        (
+            binding["node"],
+            binding["population"],
+            binding["entity"],
+            binding["column"],
+            binding["provider"],
+            binding["declared_in"],
+            binding["rows"],
+        )
+        for binding in materialized_claims
+    }
+    actual_reads = {
+        (
+            nodes[edge["target"]]["label"],
+            nodes[edge["source"]]["data"]["population"],
+            nodes[edge["source"]]["data"]["entity"],
+            nodes[edge["source"]]["data"]["column"],
+            nodes[edge["source"]]["data"]["provider"],
+            nodes[edge["source"]]["data"]["declared_in"],
+            edge["data"]["rows"],
+        )
+        for edge in materialized_reads
+    }
+
+    assert materialized_claims
+    assert actual_reads == expected_reads
+    assert document["schemaVersion"] == "graph-explorer/v1"
+    summary = document["metadata"]["microcosm"]
+    assert summary["graph_sha256"] == schema["graph_sha256"]
+    assert (
+        summary["schema_sha256"] == hashlib.sha256(canonical_json(schema)).hexdigest()
+    )
+    assert summary["counts"]["operations"] == len(schema["graph"]["nodes"])
+    assert summary["counts"]["fields"] == len(schema["fields"])
+    assert "graph" not in summary
+    assert document["metadata"]["truncated"] is False
 
 
 def test_conserve_rejects_a_mass_shift_across_household_sizes() -> None:

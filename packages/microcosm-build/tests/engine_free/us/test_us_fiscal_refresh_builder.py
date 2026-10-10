@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -92,6 +93,72 @@ def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> N
         "target_materialization_cache_dir",
         "legacy_pe_flat_h5",
     }
+
+
+def test_telemetry_attempt_id_is_available_before_release_inputs_are_loaded() -> None:
+    builder = _load_builder_module()
+    timestamp = datetime(2026, 10, 5, 12, 30, tzinfo=UTC)
+
+    assert (
+        builder._telemetry_run_id(
+            SimpleNamespace(staging_run_id="staged-attempt", release_id="release"),
+            timestamp=timestamp,
+        )
+        == "staged-attempt"
+    )
+    assert (
+        builder._telemetry_run_id(
+            SimpleNamespace(staging_run_id=None, release_id="release"),
+            timestamp=timestamp,
+        )
+        == "release"
+    )
+    generated = builder._telemetry_run_id(
+        SimpleNamespace(staging_run_id=None, release_id=None),
+        timestamp=timestamp,
+    )
+    assert generated.startswith("populace-us-build-20261005T123000Z-")
+    assert len(generated.rsplit("-", 1)[-1]) == 8
+
+
+def test_us_emitter_starts_before_dirty_worktree_refusal(monkeypatch) -> None:
+    builder = _load_builder_module()
+    calls = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            calls.append(("stage", stage_id, details))
+
+        def fail(self, error, **details):
+            calls.append(("failed", type(error).__name__, details))
+
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+        ),
+    )
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", lambda args, argv: None)
+    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
+
+    def start_emitter(**run):
+        calls.append(("started", run))
+        return FakeEmitter()
+
+    monkeypatch.setattr(builder, "start_local_telemetry_emitter_service", start_emitter)
+
+    with pytest.raises(SystemExit, match="dirty git worktree"):
+        builder.main([])
+
+    assert calls[0][0] == "started"
+    assert calls[0][1]["run_id"] == "observed-run"
+    assert calls[1][0:2] == ("stage", "preflight")
+    assert calls[2][0:2] == ("failed", "SystemExit")
 
 
 @pytest.mark.parametrize(
@@ -6768,6 +6835,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             run_id = "live-telemetry-test"
             repo_id = "policyengine/populace-us-staging"
             uploads_succeeded = 3
+            staging_bundle = object()
+            staging_opt_out_reason = None
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
@@ -6800,7 +6869,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         live_telemetry = LiveTelemetry()
         monkeypatch.setattr(
             builder,
-            "_staging_telemetry",
+            "_build_progress",
             lambda *args, **kwargs: live_telemetry,
         )
     if terminal_mode in {
@@ -13321,7 +13390,28 @@ def test_us_release_id_guard() -> None:
         raise AssertionError("Expected non-US release id to fail.")
 
 
-def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeypatch):
+class _TestEmitter:
+    available = True
+
+    def __init__(self) -> None:
+        self.events = []
+
+    def transition_stage(self, stage, **details):
+        self.events.append(("stage", stage, details))
+
+    def transition_calibration_progress(self, event):
+        self.events.append(("calibration", event))
+
+    def fail(self, error):
+        self.events.append(("failed", error))
+
+    def complete(self):
+        self.events.append(("completed",))
+
+
+def test_staging_bundle_defaults_on_and_no_staging_disables_files(
+    tmp_path, monkeypatch
+):
     module = _load_builder_module()
 
     # The parser defaults staging uploads ON (overridable by env).
@@ -13353,20 +13443,51 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
             staging_upload_interval_seconds=60.0,
         )
 
-    telemetry = module._staging_telemetry(
-        namespace(no_staging=False), release_root=tmp_path, release_id="rel-1"
+    progress = module._build_progress(
+        namespace(no_staging=False),
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=_TestEmitter(),
     )
-    assert telemetry is not None
-    assert telemetry.run_id == "rel-1"
-    assert telemetry.repo_id is None
+    assert progress.run_id == "rel-1"
+    assert progress.staging_bundle is not None
+    assert progress.repo_id is None
 
-    # --no-staging wins even when a staging destination is configured.
-    assert (
-        module._staging_telemetry(
-            namespace(no_staging=True), release_root=tmp_path, release_id="rel-1"
-        )
-        is None
+    # --no-staging disables files without disabling hosted progress.
+    progress = module._build_progress(
+        namespace(no_staging=True),
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=_TestEmitter(),
     )
+    assert progress.staging_bundle is None
+    assert progress.staging_opt_out_reason == "--no-staging"
+
+
+def test_hosted_progress_survives_staging_bundle_failure() -> None:
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+
+    class FailingBundle:
+        def stage(self, *args, **kwargs):
+            raise OSError("staging disk unavailable")
+
+    progress = module._BuildProgress(
+        run_id="rel-1",
+        emitter=emitter,
+        staging_bundle=FailingBundle(),
+    )
+
+    with pytest.raises(OSError, match="staging disk unavailable"):
+        progress.stage("target_compilation", batches=4)
+
+    assert emitter.events == [
+        (
+            "stage",
+            "target_compilation",
+            {"status": "running", "message": None, "batches": 4},
+        )
+    ]
 
 
 def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
@@ -13416,7 +13537,7 @@ def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
         def fail(self, error):
             recorded.append(error)
 
-    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(module, "_ACTIVE_PROGRESS", Telemetry())
     monkeypatch.setattr(
         module,
         "_main",
@@ -13436,7 +13557,7 @@ def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) 
         def fail(self, error):
             raise RuntimeError("telemetry itself is broken")
 
-    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", ExplodingTelemetry())
+    monkeypatch.setattr(module, "_ACTIVE_PROGRESS", ExplodingTelemetry())
     monkeypatch.setattr(
         module,
         "_main",
@@ -13449,7 +13570,7 @@ def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) 
     assert "could not record the staging run as failed" in capsys.readouterr().err
 
 
-def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
+def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
     module = _load_builder_module()
     args = SimpleNamespace(
         no_staging=False,
@@ -13459,15 +13580,24 @@ def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
         staging_upload_interval_seconds=60.0,
     )
-    module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
-    assert module._ACTIVE_TELEMETRY is not None
+    first = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=_TestEmitter(),
+    )
+    assert module._ACTIVE_PROGRESS is first
+    assert first.staging_bundle is not None
 
     args.no_staging = True
-    assert (
-        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-2")
-        is None
+    second = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-2",
+        emitter=_TestEmitter(),
     )
-    assert module._ACTIVE_TELEMETRY is None
+    assert module._ACTIVE_PROGRESS is second
+    assert second.staging_bundle is None
 
 
 def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
@@ -13482,6 +13612,8 @@ def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
         run_id = "rel-1"
         repo_id = "policyengine/populace-us-staging"
         uploads_succeeded = 7
+        staging_bundle = object()
+        staging_opt_out_reason = None
 
     assert module._staging_manifest_block(Delivered()) == {
         "enabled": True,
@@ -13494,6 +13626,8 @@ def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
         run_id = "rel-2"
         repo_id = None
         uploads_succeeded = 0
+        staging_bundle = object()
+        staging_opt_out_reason = None
 
     block = module._staging_manifest_block(Undelivered())
     assert block["enabled"] is True
@@ -13501,7 +13635,7 @@ def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
     assert block["repo_id"] is None
 
 
-def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:
+def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
     module = _load_builder_module()
     args = SimpleNamespace(
         no_staging=False,
@@ -13513,7 +13647,12 @@ def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None
     )
 
     with pytest.raises(ValueError, match="no destination"):
-        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+        module._build_progress(
+            args,
+            release_root=tmp_path,
+            release_id="rel-1",
+            emitter=_TestEmitter(),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -14720,7 +14859,7 @@ def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
         allow_concentration=allow,
         terminal_gate_failures=failures,
         release_dir=tmp_path,
-        telemetry=builder._TerminalBatchTelemetry(recorder, failures),
+        telemetry=builder._TerminalBatchProgress(recorder, failures),
     )
     return register_failures, recorder
 
@@ -16744,3 +16883,37 @@ def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
         main_source
     )
     assert '"soi-congressional-district-2022",' not in main_source
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "expected_status"),
+    [(None, "completed"), (0, "completed"), (1, "failed"), (2, "failed")],
+)
+def test_main_reports_actual_dry_run_outcome(
+    monkeypatch, exit_code, expected_status
+) -> None:
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    builder = _load_builder_module()
+    emitter = FakeTelemetryEmitter(TelemetryRun("dry-run", "US", "us_fiscal_refresh"))
+    emitter.transition_stage("validation")
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", emitter)
+    monkeypatch.setattr(builder, "_ACTIVE_PROGRESS", None)
+    monkeypatch.setattr(builder, "_main", lambda argv: exit_code)
+
+    if exit_code is None:
+        builder.main([])
+    else:
+        with pytest.raises(SystemExit) as result:
+            builder.main([])
+        assert result.value.code == exit_code
+
+    run_events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert len(run_events) == 1
+    assert run_events[0]["status"] == expected_status
+    assert emitter.events[1]["status"] == expected_status
+    assert not emitter.available
+    if expected_status == "failed":
+        assert str(exit_code) in run_events[0]["message"]
+        assert run_events[0]["details"]["failure_class"] == "build_failure"

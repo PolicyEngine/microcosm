@@ -1,7 +1,15 @@
 {
-  "schema_version": 3,
-  "description": "Reviewed input-mass parity exclusions for the UK terminal battery, scoped per named comparison reference (microcosm#630): an exclusion suppresses only when its reference is the armed one, so a column excluded on a channel-blind reference is compared normally against a channel-aware one with no register change. Each entry is a complete approval receipt (schema-2 fields per #610). The gate reports dormant entries, FAILS stale ones, and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
-  "references": {
-    "efrs-post-calibration": {}
+ "schema_version": 3,
+ "description": "Reviewed input-mass parity exclusions for the UK terminal battery, scoped per named comparison reference (microcosm#630): an exclusion suppresses only when its reference is the armed one, so a column excluded on a channel-blind reference is compared normally against a channel-aware one with no register change. Each entry is a complete approval receipt (schema-2 fields per #610). The gate reports dormant entries, FAILS stale ones, and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+ "references": {
+  "efrs-post-calibration": {
+   "dfe_education_spending": {
+    "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
+    "approved_by": "juaristi22",
+    "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
+    "approved_on": "2026-10-02",
+    "expires_on": "2027-04-02"
+   }
   }
+ }
 }

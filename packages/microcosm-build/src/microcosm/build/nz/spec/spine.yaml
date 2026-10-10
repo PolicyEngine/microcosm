@@ -1,0 +1,10 @@
+channels:
+- id: populace_us_support
+  source: nz_populace_us_support_contract
+  observed_geography: country
+assembly:
+  mass_anchor_channel: populace_us_support
+  shared_dtype_policy: canonical_string_storage
+support_roles:
+- id: populace_us_donor_base
+  kind: none

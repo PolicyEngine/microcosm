@@ -249,6 +249,87 @@
       "stage": "cgt_incidence_clone",
       "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence"
     },
+    "cgt_residential_split": {
+      "artifacts": [
+        {
+          "dependency": "policyengine-uk>=2.122.2 via microcosm-build[uk]",
+          "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
+          "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+          "kind": "versioned_parameter_tree",
+          "parameters": [
+            "gov.hmrc.cgt.annual_exempt_amount"
+          ],
+          "role": "policy_parameters",
+          "runtime_sha256_required": false
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_cgt_asset_type_facts.json",
+          "role": "cgt_asset_type_facts",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "cgt_residential_probability",
+        "capital_gains_residential_property"
+      ],
+      "notes": "Structural stage after the incidence anchor and before the asset-type stage (microcosm#1063). The residential-property flag used to be realised by a weighted systematic walk, one whole flag per row, whose gains error is bounded by one row's stake: at the top of the gains distribution one stake is several times a band's expected residential gains, so the realised gains sat short of expectation by the lottery expectation of the giant stakes or over it by one of them. This stage solves the same logistic (intercept to the Table 8a 2024-25 taxpayers on the individuals basis, slope to the gains, with the stock shift) and carries the probability as weight instead: every household with liable gainers becomes 2^k arms at product weights, one per subset of residential gainers, the arm with no residential gainer keeping the household's ids and arm j taking every entity id plus j times the id multiplier, the lineage rule the executor, the geography identity kernel and the identity tool read for the support split and the clone. At design weights the residential count and gains equal the solved expectations in every gain band, with no draw, no offset and no seed; the calibration, which binds hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains, decides between the arms afterwards as it does between the incidence clone's halves. Every household's mass and composition and the total household mass are conserved; the receipt is gated at stage time.",
+      "operations": [
+        {
+          "artifact_role": "cgt_asset_type_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2024,
+          "period_mapping": "published_tax_year_equals_build_period",
+          "record_sets": [
+            "hmrc.cgt_table8_2026.table8a.ty2024",
+            "hmrc.cgt_table8_2026.table8b.ty2024"
+          ],
+          "require_before_source_read": true,
+          "resource": "hmrc_cgt_asset_type_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "2024-25"
+        },
+        {
+          "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, a residential gainer's whole net gain is attributed to residential property, and the gainers of one household are residential independently of each other",
+          "conservation": "exact_total",
+          "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
+          "declared_factor": 1,
+          "flag_column": "household_is_cgt_residential_clone",
+          "gainer_order": "person_id ascending within the household",
+          "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
+          "id_remapping": "id_multiplier_for_values; arm j takes every entity id + j x multiplier, bit m of j marking the household's m-th liable gainer residential",
+          "index_column": "cgt_residential_clone_index",
+          "kind": "split_liable_gainers_by_residential_probability",
+          "maximum_liable_gainers_per_household": 3,
+          "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
+          "output_column": "capital_gains_residential_property",
+          "output_semantics": "the person's capital_gains on an arm where the person is residential, 0 otherwise",
+          "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
+          "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
+          "probability_column": "cgt_residential_probability",
+          "realization": "probability carried as weight, no draw: a household carrying k liable gainers becomes 2^k arms, one per subset of residential gainers, at the household's weight times the product of p over the residential gainers and 1 - p over the others; the arm with no residential gainer keeps the household's ids; at design weights the residential count and gains equal the solved expectations sum(p w) and sum(p w g) in every gain band",
+          "reason": "Capital-gains residential split divides every household carrying liable gainers into arms weighted by the solved residential probabilities, one arm per subset of residential gainers; every household's mass and the total household mass are conserved.",
+          "stock_log_odds": 1.6,
+          "stock_signal": "household other residential property value above zero, or the person's property income above zero",
+          "values": "every other column copied unchanged; no draw, no seed, no salt",
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [
+        "household_is_cgt_residential_clone",
+        "cgt_residential_clone_index",
+        "cgt_residential_probability",
+        "capital_gains_residential_property"
+      ],
+      "rewrites": [],
+      "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+      "stage": "cgt_residential_split",
+      "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative) on the amounts the Table 3 redraw placed"
+    },
     "cgt_support_split": {
       "artifacts": [
         {
@@ -342,6 +423,79 @@
       "stage": "cgt_support_split",
       "survey": "Family Resources Survey 2024-25, SPI synthetic support and HMRC Capital Gains Tax statistics Table 3 (2024-25 individuals by size of gain and taxable income)"
     },
+    "child_benefit_take_up": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_child_benefit_statistics.json",
+          "role": "child_benefit_statistics",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the SPI income chain, UC capital coherence and the Pension Credit redraw, before CGT cloning (microcosm#1063). frs_take_up draws would_claim_child_benefit early at one flat rate over every benefit unit with the reporters on top, and child_benefit_opts_out at a flat rate whatever the unit's income; this stage redraws both. One temporary engine materialization gives each person's eligibility as a child or qualifying young person and each person's adjusted net income (consumed only). A family claims for all its children or none, so the draw is by family, keyed on the age of its eldest eligible child: a reporter claims, and the other families claim at rates solved from the eldest age down so that the claimed share of the eligible children of each single year of age is HMRC's published one (Table 15, May 2025, opted-out families included), weighted at the stage's household weights. The published opted-out share of registered families (August 2025) is drawn among claiming non-reporters, fully charged first. Opt-out-aware models restrict both the full-charge and taper pools to a positive charge fraction at least the installed opt_out_charge_share. With the default share of one, only fully charged families can opt out; an insufficient pool is recorded as a shortfall instead of selecting paid taper families. Legacy models retain the original full-charge pool and taper fallback. Models exposing gov.hmrc.child_benefit.opt_out_charge_share (policyengine-uk#2140) receive registered claims, including opted-out families, in would_claim_child_benefit and the separate opt-out in child_benefit_opts_out. Older models receive the legacy claims-and-not-opted-out payment flag because they ignore the opt-out input. Stage evidence records the selected encoding, evaluated opt-out charge share and engine parameter source. The in-payment audit counts claims-and-not-opted-out in the draw, with new candidates aligned to baseline payment suppression; it is not a fresh model run or population calibration evidence. A benefit unit with no eligible child keeps its early draw and is never opted out.",
+      "operations": [
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "is_child_or_qualifying_young_person_for_child_benefit",
+            "adjusted_net_income"
+          ]
+        },
+        {
+          "aggregates": {
+            "child_benefit_reported_anchor": "child_benefit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_positive"
+        },
+        {
+          "anchor": "child_benefit_reported_anchor",
+          "draw": "would_claim_child_benefit",
+          "eligibility": "is_child_or_qualifying_young_person_for_child_benefit",
+          "family_key": "age of the benefit unit's eldest eligible child",
+          "kind": "assign_family_claims_by_child_age",
+          "output": "would_claim_child_benefit",
+          "rate_measure": "claim_rate",
+          "rate_period": "2025-05",
+          "resource": "hmrc_child_benefit_statistics.json",
+          "rule": "a reporter claims; a non-reporting family whose eldest eligible child is aged g claims at r_g = (t_g * C_g - R_g - sum over k > g of N_gk * r_k) / N_gg, weighted, solved from the eldest age down and clipped to [0, 1]",
+          "seed": 0,
+          "weight_mapping": "household_to_benunit"
+        },
+        {
+          "caseload_period": "2025-08",
+          "charge_income": "adjusted_net_income",
+          "charge_parameters": "gov.hmrc.income_tax.charges.CB_HITC",
+          "denominator_measure": "families_registered",
+          "draw": "child_benefit_opts_out",
+          "kind": "assign_opt_out_by_charge_income",
+          "numerator_measure": "families_opted_out_claimant_all",
+          "output": "child_benefit_opts_out",
+          "payment_rule": "would_claim_child_benefit = claims on families with an eligible child when the model exposes gov.hmrc.child_benefit.opt_out_charge_share; otherwise claims and not opted out for legacy models; a benefit unit without an eligible child keeps its early draw",
+          "pools": [
+            "fully_charged",
+            "taper"
+          ],
+          "resource": "hmrc_child_benefit_statistics.json",
+          "rule": "published opted-out share of registered families, of the claiming families; drawn among claiming non-reporting families, fully charged first then inside the taper; opt-out-aware models restrict both pools to a positive charge fraction at least the installed opt_out_charge_share, recording any pool shortfall; legacy models retain the unfiltered pools",
+          "seed": 0,
+          "weight_mapping": "household_to_benunit"
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "would_claim_child_benefit",
+        "child_benefit_opts_out"
+      ],
+      "source": "HMRC Child Benefit statistics, annual release at August 2025 (percentage of eligible children for whom Child Benefit is claimed by single year of age; families registered and families opted out of payment), applied to PolicyEngine-UK Child Benefit eligibility and adjusted net income after the SPI income chain.",
+      "stage": "child_benefit_take_up",
+      "survey": "Family Resources Survey 2024-25"
+    },
     "etb_services": {
       "artifacts": [
         {
@@ -405,7 +559,7 @@
         "nhs_admitted_patient_spending",
         "nhs_outpatient_spending"
       ],
-      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the",
+      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the #890 rake to the published net support retired on Mar\u00eda's ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing's boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
       "operations": [
         {
           "annualization_weeks": 52,
@@ -443,12 +597,12 @@
           "derived_predictors": {
             "count_further_education": "current_education in (UPPER_SECONDARY, TERTIARY)",
             "count_primary_education": "current_education == PRIMARY",
-            "count_secondary_education": "current_education == LOWER_SECONDARY"
+            "count_secondary_education": "current_education == LOWER_SECONDARY",
+            "is_adult": "count of household members with is_uc_claimant (FRS claimants and partners)",
+            "is_child": "count of household members without is_uc_claimant (dependent children)"
           },
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
-            "is_adult",
-            "is_child",
             "is_SP_age",
             "dla",
             "pip",
@@ -782,7 +936,7 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth.",
+      "notes": "Ports ETB VAT imputation using the 2023 donor year and cited VAT anchors; missing or NaN rates fail loud rather than falling back. The donor-realized support includes negative rates (4 of 4,199 cleaned 2023 donor rows, minimum -3.4: totvat can exceed expdis in the raw ETB accounts), so the output is deliberately absent from nonnegative_outputs and the support gate is the guard - the net_financial_wealth precedent from was_wealth. The recipient is_adult and is_child counts are the household's FRS claimants and partners and its other members (is_uc_claimant), as the donor's adults and childs count adults and dependent children, not the engine's age-18 split (uk-data#486, microcosm#1095).",
       "operations": [
         {
           "annualization_weeks": 52,
@@ -793,10 +947,12 @@
           "year": 2023
         },
         {
+          "derived_predictors": {
+            "is_adult": "count of household members with is_uc_claimant (FRS claimants and partners)",
+            "is_child": "count of household members without is_uc_claimant (dependent children)"
+          },
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
-            "is_adult",
-            "is_child",
             "is_SP_age",
             "household_net_income"
           ]
@@ -841,7 +997,7 @@
         {
           "format": "json",
           "kind": "public_aggregated_counts",
-          "resource": "brma_rent_counts.json",
+          "resource": "brma_private_rented_households.json",
           "role": "count_resource"
         }
       ],
@@ -864,7 +1020,7 @@
           ],
           "collapse_method": "uniform_member_pick",
           "collapse_to": "household",
-          "count_resource": "brma_rent_counts.json",
+          "count_resource": "brma_private_rented_households.json",
           "kind": "sample_categorical_from_count_table",
           "output": "brma",
           "seed": 0
@@ -874,7 +1030,7 @@
         "brma"
       ],
       "rewrites": [],
-      "source": "Valuation Office Agency LHA list-of-rents count table and policyengine-uk LHA_category predictor.",
+      "source": "Census private-rented households by region, BRMA and bedrooms (ONS and NISRA 2021, NRS 2022) and policyengine-uk LHA_category predictor.",
       "stage": "frs_brma",
       "survey": "Family Resources Survey 2024-25"
     },
@@ -886,8 +1042,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "c56d5f75ee60027e6ff74f54889f6880ade9f6deb0bace0f27d21f8e5976c6a1",
-          "size_bytes": 15173,
+          "sha256": "c16fdc0dfbe254127a1decd9ebd796cc0584ecd0cf9c372da6143f5e223227bb",
+          "size_bytes": 17280,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -896,7 +1052,7 @@
       "nonnegative_outputs": [
         "council_tax"
       ],
-      "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. Scottish Water charges are netted before cell means; no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped.",
+      "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped.",
       "operations": [
         {
           "delimiter": "\t",
@@ -912,10 +1068,10 @@
             "ctband",
             "adulth == 1"
           ],
-          "donor_filter": "raw ctannual > 0",
+          "donor_filter": "raw ctreb != 1 and ctannual > 0",
           "kind": "impute_cell_means",
           "missing": "raw ctannual < 0 or NaN",
-          "value": "Scottish-water-netted CTANNUAL"
+          "value": "council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 365.25/7, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 365.25/7 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean"
         }
       ],
       "outputs": [
@@ -930,7 +1086,7 @@
       "artifacts": [],
       "grain": "person",
       "nonnegative_outputs": [],
-      "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed.",
+      "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed. is_severely_disabled_for_benefits is the tax credit severe disability condition on the derived categories (DLA care at the highest rate, PIP daily living at the enhanced rate, or higher-rate Attendance Allowance), so it agrees with policyengine-uk's own formula (pe-uk#1946, uk-data#494); an Armed Forces Compensation Scheme payment alone no longer counts, since FRS code 8 cannot be told apart from Armed Forces Independence Payment.",
       "operations": [
         {
           "kind": "derive",
@@ -966,8 +1122,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
-          "size_bytes": 24966,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -977,8 +1133,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "fd24138e8c97aa641b126ed03b867e6ea177d22cbcc8c1e53b44530ba045724a",
-          "size_bytes": 2123,
+          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
+          "size_bytes": 2185,
           "table": "child",
           "vintage": "synthetic-h2"
         }
@@ -1082,8 +1238,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
-          "size_bytes": 24966,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1125,8 +1281,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
-          "size_bytes": 24966,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1136,8 +1292,8 @@
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e438d4e81045c45caa93a1d6f8462a484429f510647c267b67ae3cefc05a1acc",
-          "size_bytes": 14946,
+          "sha256": "d79e0f4a8fed6ca6aeda4de928a3ca27f66c12274ac9669806e93e36af9b1844",
+          "size_bytes": 18064,
           "table": "benefits",
           "vintage": "synthetic-h2"
         },
@@ -1147,8 +1303,8 @@
           "locator": "job.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "0f787336f16448b3b9ec0b7ca46ca50da12b4fa90892161c0054fa89282189d7",
-          "size_bytes": 2643,
+          "sha256": "f54570510234710ec5e89e67be70139ae2b1033bc1cbcb6bd1a9c7d5a2e7804a",
+          "size_bytes": 3861,
           "table": "job",
           "vintage": "synthetic-h2"
         },
@@ -1343,8 +1499,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
-          "size_bytes": 24966,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1454,8 +1610,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
-          "size_bytes": 24966,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1465,8 +1621,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "fd24138e8c97aa641b126ed03b867e6ea177d22cbcc8c1e53b44530ba045724a",
-          "size_bytes": 2123,
+          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
+          "size_bytes": 2185,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -1476,8 +1632,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "c56d5f75ee60027e6ff74f54889f6880ade9f6deb0bace0f27d21f8e5976c6a1",
-          "size_bytes": 15173,
+          "sha256": "c16fdc0dfbe254127a1decd9ebd796cc0584ecd0cf9c372da6143f5e223227bb",
+          "size_bytes": 17280,
           "table": "househol",
           "vintage": "synthetic-h2"
         }
@@ -1679,8 +1835,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "79801434b27f0b0b2f82af0f4d0750688c53aabda049bc2c30994fc35b338a5f",
-          "size_bytes": 24966,
+          "sha256": "e716297716a3fa0fee2118ef95da64b82a8115b933988158c9b3660fe642d0ad",
+          "size_bytes": 30240,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1690,8 +1846,8 @@
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "e438d4e81045c45caa93a1d6f8462a484429f510647c267b67ae3cefc05a1acc",
-          "size_bytes": 14946,
+          "sha256": "d79e0f4a8fed6ca6aeda4de928a3ca27f66c12274ac9669806e93e36af9b1844",
+          "size_bytes": 18064,
           "table": "benefits",
           "vintage": "synthetic-h2"
         },
@@ -1701,8 +1857,8 @@
           "locator": "benunit.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "2a1dacb6dcdb3c498fc9297f566e1367b7ae5191da5970b0300e3e873ce48f86",
-          "size_bytes": 2094,
+          "sha256": "55354eaa18ef88d1ccc37c906f2321b57bc0c975c51bc445534cf5c0bdae60f0",
+          "size_bytes": 2643,
           "table": "benunit",
           "vintage": "synthetic-h2"
         },
@@ -1712,8 +1868,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "fd24138e8c97aa641b126ed03b867e6ea177d22cbcc8c1e53b44530ba045724a",
-          "size_bytes": 2123,
+          "sha256": "1ce507a1363e7f44c9ed3f81eaa207f9c92e6801a7db722e37fe953e21dddef2",
+          "size_bytes": 2185,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -1745,8 +1901,8 @@
           "locator": "househol.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "c56d5f75ee60027e6ff74f54889f6880ade9f6deb0bace0f27d21f8e5976c6a1",
-          "size_bytes": 15173,
+          "sha256": "c16fdc0dfbe254127a1decd9ebd796cc0584ecd0cf9c372da6143f5e223227bb",
+          "size_bytes": 17280,
           "table": "househol",
           "vintage": "synthetic-h2"
         },
@@ -1756,8 +1912,8 @@
           "locator": "job.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "0f787336f16448b3b9ec0b7ca46ca50da12b4fa90892161c0054fa89282189d7",
-          "size_bytes": 2643,
+          "sha256": "f54570510234710ec5e89e67be70139ae2b1033bc1cbcb6bd1a9c7d5a2e7804a",
+          "size_bytes": 3861,
           "table": "job",
           "vintage": "synthetic-h2"
         },
@@ -1819,6 +1975,8 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [
+        "rent_paid_as_boarder",
+        "rent_paid_as_lodger",
         "age",
         "hours_worked",
         "employment_income",
@@ -1844,7 +2002,7 @@
         "external_child_payments",
         "care_hours"
       ],
-      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882).",
+      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except one identity-keyed draw (uk-data#527). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882).",
       "operations": [
         {
           "delimiter": "\t",
@@ -1856,7 +2014,7 @@
         },
         {
           "kind": "replace_sentinels",
-          "sentinel_policy": "raw numeric blanks and nonnumeric sentinels are coerced to NaN, then produced E2 columns are filled to the Frame no-NaN contract. Clamping is deliberately per-column, mirroring the incumbent base build: redamt stays unclamped, tuborr clamps at zero, and the property/royalties components clamp only in their aggregate."
+          "sentinel_policy": "raw numeric blanks and nonnumeric sentinels are coerced to NaN, then produced E2 columns are filled to the Frame no-NaN contract. Clamping is deliberately per-column, mirroring the incumbent base build: redamt stays unclamped, tuborr clamps at zero, and property income clamps SUBRENT and ROYYR1 at zero separately before adding them, counting an ROYYR1 loss (RENTPROF 2) as zero. The household subrent column also clamps at zero."
         },
         {
           "benunit_id": "sernum * 100 + benunit",
@@ -1868,15 +2026,24 @@
         },
         {
           "kind": "map_columns",
-          "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)"
+          "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence); Scottish water_and_sewerage_charges is the charge paid, (CWATAMT1 + CSEWAMT1) less the CTDISC/CT25D50D status discount, or where CTREB is 1 less the larger of that discount and the Water Charges Reduction Scheme's 35% (the full-reduction case), and CWATAMTD where CWATAMT1 is not positive (uk-data#499, microcosm#1095); access_fund is ACCSSAMT annualised, except that a calendar-month award (ACCSSPD 5) that annualises to more than twice the largest annual-coded (ACCSSPD 52) award on the tab is read as the annual award, ACCSSAMT x 52/12 (microcosm#1095), and a tab with calendar-month awards but no annual-coded award refuses, since the threshold comes from that award; the stage evidence records the awards by period code, the threshold and the repaired count; is_blind is SPCREG1 = 1, registered blind or severely sight impaired with the local authority, read on the adult and child tabs alike, while partial-sight registration (SPCREG2) is not read (uk-data#523); uc_is_in_startup_period holds for a self-employed person (EMPSTATI 3 or 4, a held self-employed JOB row with ETYPE 2-7 and no SEEND, or nonzero SEINCAM2) whose benefit unit's UC claim (BENEFIT 95, UCSTART month/day/year) or whose first self-employed job (SEJBLONG, main job first) began less than 12 calendar months before INTDATE, except that a self-employed-job answer under a year from someone self-employed all year (SAMESIT 2 or every SDEMP month 3 or 4) who does not describe a business (JOBBUS 2) is a new engagement and does not date the trade (UC Regs 2013 reg 63, uk-data#527); is_claimant_or_partner is adult-table membership and is_hbai_dependent_child child-table membership (uk-data#524, uk-data#486), the claimant derivation already refusing a benefit unit without one or two adult records; CVPAY, the rent a boarder or lodger pays the householder, is not the payer's property income but rent_paid_as_boarder where CONVBL is 1 and rent_paid_as_lodger otherwise, and liable_for_share_of_household_rent holds for a later benefit unit of a shared household (HHSTAT 2) with a rent share (SRENTAMT), Housing Benefit (HBOTHAMT) or a linked UC housing element (UCHOUSEL on BENEFIT 95) (pe-uk#2006, uk-data#512)"
         },
         {
           "kind": "map_coded_amounts",
-          "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings; adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance"
+          "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings (Scotland's Adult and Child Disability Payment codes 117/118 and 121/122 into the PIP and DLA columns they replace; benefit recovery codes 69 and 70 unmapped); adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance"
         },
         {
           "kind": "annualize_periodic_amounts",
           "weeks_in_year": 52.17857142857143
+        },
+        {
+          "assignment_unit": "benefit unit",
+          "draw": "uc_is_in_startup_period",
+          "eligibility": "benefit units reporting Universal Credit (BENEFIT 95) with no linked claim start date (blank UCSTART)",
+          "kind": "assign_binary_from_rate",
+          "output": "uc_is_in_startup_period",
+          "rate_derivation": "GROSS4-weighted share of self-employed persons with a linked UC claim whose claim began less than 12 calendar months before INTDATE; a drawn unit's claim counts as inside the window (uk-data#527)",
+          "seed": 0
         }
       ],
       "outputs": [
@@ -1891,7 +2058,13 @@
         "is_household_head",
         "is_benunit_head",
         "is_parent",
+        "is_blind",
         "is_uc_claimant",
+        "is_claimant_or_partner",
+        "is_hbai_dependent_child",
+        "uc_is_in_startup_period",
+        "rent_paid_as_boarder",
+        "rent_paid_as_lodger",
         "employment_income",
         "self_employment_income",
         "private_pension_income",
@@ -1951,6 +2124,7 @@
         "frs_benunit_capital",
         "is_married",
         "dependent_children",
+        "liable_for_share_of_household_rent",
         "household_id",
         "region",
         "tenure_type",
@@ -2105,7 +2279,7 @@
     "hmrc_cgt_asset_type_spine": {
       "artifacts": [
         {
-          "dependency": "policyengine-uk>=2.100.0 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.122.2 via microcosm-build[uk]",
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time",
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "kind": "versioned_parameter_tree",
@@ -2127,10 +2301,9 @@
       ],
       "grain": "person",
       "nonnegative_outputs": [
-        "capital_gains_residential_property",
         "capital_gains_badr"
       ],
-      "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725).",
+      "notes": "Spine stage after the amounts redraw, the incidence anchor and the residential split: every liable gainer carries one main asset type; a residential arm (capital_gains_residential_property above zero, written by cgt_residential_split since microcosm#1063) is typed residential and its net gain is already restated there; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential arms carry the Table 8a 2024-25 totals on the individuals basis at design weights, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only: since microcosm#1063 the type is fitted once per claimant status (claimants to Table 7's composition among the types the reliefs apply to, non-claimants to the composition that restores Table 7 overall) and realised by a deterministic walk that keeps the realised gains by type on the fit. Carried interest (Table 9) is not modelled (microcosm#725).",
       "operations": [
         {
           "artifact_role": "cgt_asset_type_facts",
@@ -2156,22 +2329,6 @@
           "source_vintage": "2024-25"
         },
         {
-          "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, and a flagged person's whole net gain is attributed to residential property",
-          "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
-          "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
-          "kind": "assign_residential_property_flag",
-          "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
-          "output_column": "capital_gains_residential_property",
-          "output_semantics": "the person's capital_gains where flagged residential, 0 otherwise",
-          "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
-          "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
-          "realization": "weighted systematic sampling in ascending gain order with one seeded offset: a person is flagged when the expected weight owed so far reaches their own weight, so the flagged weight tracks the expected weight within one person's weight along the gains axis and the realised count and gains sit close to their expectations; the Bernoulli sigma of each is reported as the envelope",
-          "seed": 553,
-          "seed_mixing": "seed combined with the build period",
-          "stock_log_odds": 1.6,
-          "stock_signal": "household other residential property value above zero, or the person's property income above zero"
-        },
-        {
           "band_pool": "the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit",
           "bands": "HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)",
           "basis_assumption": "Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent",
@@ -2183,7 +2340,7 @@
             "gov.hmrc.cgt.badr.lifetime_limit",
             "gov.hmrc.cgt.badr.rate"
           ],
-          "population": "liable gainers not flagged residential",
+          "population": "liable gainers whose arm is not residential (capital_gains_residential_property == 0, cgt_residential_split)",
           "qualifying_amount": "below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit",
           "realization": "weighted systematic sampling within each band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order whether or not the band carries a target",
           "reported_not_fitted": "tax at the relief rate, with the annual exempt amount set against the main-rate gains first as the engine allocates it, against Table 4.1's tax column",
@@ -2195,6 +2352,7 @@
           "type_coupling": "a claimant's main asset type is drawn only from unlisted_shares, agricultural_commercial_industrial_land_buildings, other_non_financial_assets"
         },
         {
+          "basis_assumption": "Table 7 does not split gains by relief, so claimants are given its composition among the claimant categories",
           "categories": [
             "listed_shares",
             "unlisted_shares",
@@ -2208,16 +2366,16 @@
             "other_non_financial_assets"
           ],
           "claimant_restriction": "a BADR or Investors' Relief claimant draws only from the claimant categories, so the type follows the claim",
+          "claimant_share_targets": "the share targets among the claimant categories, each over their sum",
           "diagnostic_only": true,
           "kernel": "log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width, multiplied by the stock floor where the type declares a stock signal the gainer does not show; types without a declared signal are not scaled",
           "kind": "assign_main_asset_type",
           "log_sigma": 1.5,
+          "non_claimant_share_targets": "(share target - k x claimant share target) / (1 - k) with k the claimants' share of the non-residential gains, the composition that restores the share targets over claimants and non-claimants together",
           "none_semantics": "no positive net gains",
           "output_column": "capital_gains_asset_type",
           "population": "liable gainers not flagged residential",
-          "realization": "one seeded uniform per person against the cumulative type probabilities, consumed in person_id order",
-          "seed": 554,
-          "seed_mixing": "seed combined with the build period",
+          "realization": "error diffusion per claimant status in descending (gain, person_id) order: each person adds weight x gain x type probability to a running balance per type and takes the type it may hold with the largest balance, which is drawn down by the whole weight x gain, so the realised gains by type track the fitted composition instead of following the heaviest rows; deterministic, no seed",
           "share_targets": "Table 7 2023-24 gains by asset type excluding residential land and buildings, as shares",
           "stock_signals": {
             "listed_shares": "household stocks-and-shares ISA above zero, or the person's dividend income above zero",
@@ -2236,7 +2394,7 @@
             "agricultural_commercial_industrial_land_buildings",
             "other_non_financial_assets"
           ],
-          "weight_fitting": "multiplicative updates of the type weights, with claimants restricted to the claimant categories, until the household-weighted expected gains shares by type match the share targets; the fit refuses if it has not converged within the iteration limit, and refuses up front when claimants hold more of the gains than the claimant categories' share",
+          "weight_fitting": "one fit per claimant status: multiplicative updates of the type weights until the household-weighted expected gains shares by type match that status's share targets; a fit refuses if it has not converged within the iteration limit, and the stage refuses up front when claimants hold more of the gains than the claimant categories' share",
           "weight_fitting_iterations": 200,
           "weight_fitting_tolerance": 1e-06
         },
@@ -2260,7 +2418,6 @@
       ],
       "outputs": [
         "capital_gains_asset_type",
-        "capital_gains_residential_property",
         "capital_gains_badr"
       ],
       "rewrites": [],
@@ -2534,7 +2691,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.",
+      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path.",
       "operations": [
         {
           "artifact_roles": [
@@ -2672,6 +2829,7 @@
           ],
           "rebase_income_to_build_period": true,
           "recipient_minimum_age": 16,
+          "recipient_role_column": "is_uc_claimant",
           "require_all_outputs": true,
           "require_all_predictors": true,
           "sample_size": 64,
@@ -2784,10 +2942,13 @@
             2000000
           ],
           "carrier_column": "person_is_spi_income_band_carrier",
+          "draw": "identity_keyed_inverse_cdf: stable_identity_uniforms(draw_key, seed, salt) over the pool's cumulative FACT in tape order",
+          "draw_key": "person_source_id",
           "kind": "resample_band_donor_leaves",
           "outputs": "stage-1 outputs, uprated as the stage-1 draws",
           "pool": "full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's SPI age band where that pool holds the age minimum (composites never age-match), then to the carrier's region where that pool holds the regional minimum",
           "regional_pool_minimum": 20,
+          "salt": "spi_income_band_donor_leaf_draw",
           "seed": 44,
           "weighting": "FACT",
           "with_replacement": true
@@ -2869,7 +3030,7 @@
             "other_investment_income": "This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build's frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column."
           },
           "seed": 43,
-          "target_population": "spi_synthetic_support_channel",
+          "target_population": "spi_synthetic_support_channel claimants and partners (is_uc_claimant) aged 16 and over",
           "training_population": "uk_frs_raw_spine_base_support_channel",
           "weight": "household_weight",
           "weight_mapping": "household_to_person"
@@ -2887,14 +3048,6 @@
           ],
           "spi_state_pension_leaf": "hmrc_spi_state_pension_income",
           "state_pension_age": "policyengine-uk gov.dwp.state_pension.age at the build instant"
-        },
-        {
-          "columns": [
-            "dividend_income"
-          ],
-          "fit": "stage1",
-          "kind": "redraw_columns_from_fitted_qrf",
-          "rows": "base_support_channel"
         },
         {
           "amount_unit_multiplier": 1000000,
@@ -3322,7 +3475,7 @@
         "gas_consumption",
         "has_fuel_consumption"
       ],
-      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (Mar\u00eda's rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain's raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting gas-positive households in an identity-keyed uniform order, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the prior-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. The disconnection walk's seed-0 uniform order makes every group of households (dwelling type, income band, support channel) lose the same expected share of its drawn connected mass, so only the level of the drawn connection moves; the smallest-drawn-gas-first order it replaces piled the disconnections onto low-draw flats once the SPI support households drew gas from their own incomes, and NEED's Scottish property-type means then implied a level 2.6 % above the Scottish all-dwellings mean, a margin conflict the rake could not close. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person's annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household's non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys), per area; bus-in-London trips take the London area's price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England's trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame's eligible trip share beside the publisher's concessionary boarding share, so the prior-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the",
+      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (Mar\u00eda's rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain's raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting gas-positive households in an identity-keyed uniform order, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the prior-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. The disconnection walk's seed-0 uniform order makes every group of households (dwelling type, income band, support channel) lose the same expected share of its drawn connected mass, so only the level of the drawn connection moves; the smallest-drawn-gas-first order it replaces piled the disconnections onto low-draw flats once the SPI support households drew gas from their own incomes, and NEED's Scottish property-type means then implied a level 2.6 % above the Scottish all-dwellings mean, a margin conflict the rake could not close. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person's annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household's non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys), per area; bus-in-London trips take the London area's price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England's trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame's eligible trip share beside the publisher's concessionary boarding share, so the prior-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the #890 incidence draw and fare rake are retired. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns and bus fares uprated by the engine's CPI index (the fare factor survives only where no fare cell levels the column, i.e. Wales), income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED 2024 shape at the DESNZ level and the QEP average prices paid set their level. The household adult and child counts (LCFS G018 and G019, the survey's age-18 split) predict on both sides; the recipient counts its members by age, not through the engine's is_adult and is_child flags, which policyengine-uk#1896 deprecates (uk-data#486, microcosm#1095).",
       "operations": [
         {
           "annualization_weeks": 52.17857142857143,
@@ -3333,6 +3486,7 @@
             ]
           },
           "donor_weight": "weighta * 1000",
+          "floor": 0,
           "kind": "derive",
           "logged_dropna_row_count": true,
           "lossy_mappings": [
@@ -3475,8 +3629,6 @@
         {
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
-            "is_adult",
-            "is_child",
             "employment_income",
             "self_employment_income",
             "private_pension_income",
@@ -3492,8 +3644,8 @@
           "kind": "fit_weighted_qrf_chain",
           "n_estimators": 4,
           "predictors": [
-            "is_adult",
-            "is_child",
+            "household_adult_count",
+            "household_child_count",
             "region",
             "employment_income",
             "self_employment_income",
@@ -4217,8 +4369,14 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [],
-      "notes": "Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible.",
+      "notes": "Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). It first stores the engine's own default for the SI 2019/37 mixed-age couple saving (has_mixed_age_couple_pension_credit_saving, pe-uk#1940), evaluated once at the survey-year period on the post-SPI receipts, so later model years do not re-derive it from a birth year that moves with the model year (uk-data#519). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible.",
       "operations": [
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "has_mixed_age_couple_pension_credit_saving"
+          ]
+        },
         {
           "consumed_only": true,
           "kind": "materialize_rules_engine_predictors",
@@ -4258,7 +4416,9 @@
           "weight_mapping": "household_to_benunit"
         }
       ],
-      "outputs": [],
+      "outputs": [
+        "has_mixed_age_couple_pension_credit_saving"
+      ],
       "rewrites": [
         "would_claim_pc"
       ],
@@ -4277,7 +4437,7 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior.",
+      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor is read off the main residence and has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.",
       "operations": [
         {
           "factor": "avg_house_price / unweighted_mean(main_residence_value | region, >0)",
@@ -4297,7 +4457,10 @@
       "outputs": [],
       "rewrites": [
         "main_residence_value",
-        "property_wealth"
+        "property_wealth",
+        "owned_land",
+        "other_residential_property_value",
+        "non_residential_property_value"
       ],
       "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
       "stage": "regional_property_uprating",
@@ -4317,7 +4480,8 @@
       "nonnegative_outputs": [
         "pension_contributions_via_salary_sacrifice",
         "employee_pension_contributions",
-        "employment_income"
+        "employment_income",
+        "salary_sacrifice_pre_conversion_pay"
       ],
       "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief.",
       "operations": [
@@ -4332,7 +4496,7 @@
           ],
           "preserve_asked_rows": true,
           "seed": 42,
-          "target_population": "salary_sacrifice_asked != 1 frame-wide",
+          "target_population": "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people not asked who have no employment income are set to zero",
           "targets": [
             "pension_contributions_via_salary_sacrifice"
           ],
@@ -4343,7 +4507,7 @@
         {
           "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
           "kind": "convert_donors_to_target_stock",
-          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed",
+          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed; the converted record's pay before the conversion kept on salary_sacrifice_pre_conversion_pay (zero elsewhere)",
           "rate_cap": 0.5,
           "reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved.",
           "receipt": "weighted_headcount",
@@ -4356,7 +4520,8 @@
       "outputs": [
         "pension_contributions_via_salary_sacrifice",
         "employee_pension_contributions",
-        "employment_income"
+        "employment_income",
+        "salary_sacrifice_pre_conversion_pay"
       ],
       "rewrites": [
         "pension_contributions_via_salary_sacrifice",
@@ -4366,6 +4531,97 @@
       "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
       "stage": "salary_sacrifice",
       "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
+    },
+    "spi_benefit_coherence": {
+      "artifacts": [],
+      "grain": "person+benunit",
+      "nonnegative_outputs": [],
+      "notes": "Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit and Child Benefit take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult's benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit's entitlement or claim history. This stage zeroes the SPI rows' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in the Universal Credit age population claim as the residual of the contract's universal_credit rate on draws keyed on the SPI unit's own identity. Contributory ESA, PIP, DLA, AA, Carer's Allowance, State Pension and Winter Fuel Payment keep their draws, and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps.",
+      "operations": [
+        {
+          "columns": [
+            "jsa_contrib_reported",
+            "jsa_income_reported",
+            "esa_income_reported",
+            "income_support_reported",
+            "working_tax_credit_reported",
+            "child_tax_credit_reported",
+            "sda_reported",
+            "ssmg_reported"
+          ],
+          "kind": "zero_spi_channel_reports",
+          "reason": "award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry",
+          "rows": "spi_synthetic_support_channel"
+        },
+        {
+          "columns": [
+            "iidb_reported",
+            "afcs_reported",
+            "bsp_reported"
+          ],
+          "kind": "restore_spi_channel_reports_from_source",
+          "linkage": "person_source_id -> FRS-channel person_id",
+          "reason": "follows an injury, service or a death, not income",
+          "rows": "spi_synthetic_support_channel"
+        },
+        {
+          "kind": "derive",
+          "scope": "disability categories and flags re-derived on SPI-channel rows from the final reports with the frs_disability rule at its declared year; the categories, which read only AA, DLA and PIP, asserted unchanged"
+        },
+        {
+          "formula": "universal_credit_reported + jsa_contrib_reported + jsa_income_reported + esa_contrib_reported + esa_income_reported > 0 (frs_education), SPI-channel rows; FRS rows asserted unchanged",
+          "kind": "derive",
+          "output": "receives_benefits_in_own_right"
+        },
+        {
+          "aggregates": {
+            "universal_credit_reported_anchor": "universal_credit_reported"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_positive"
+        },
+        {
+          "aggregates": {
+            "uc_age_eligible": "age"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_adult_under_state_pension_age"
+        },
+        {
+          "anchor": "universal_credit_reported_anchor",
+          "draw": "would_claim_uc",
+          "kind": "assign_binary_with_anchored_residual",
+          "output": "would_claim_uc",
+          "population": "uc_age_eligible",
+          "rate_key": "universal_credit",
+          "rows": "spi_synthetic_support_channel",
+          "seed": 0
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_income_reported",
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "sda_reported",
+        "ssmg_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "is_disabled_for_benefits",
+        "is_enhanced_disabled_for_benefits",
+        "is_severely_disabled_for_benefits",
+        "receives_benefits_in_own_right",
+        "would_claim_uc"
+      ],
+      "source": "Family Resources Survey 2024-25 benefit reports carried through the SPI support channel, with the UK take-up contract's Universal Credit rate.",
+      "stage": "spi_benefit_coherence",
+      "survey": "Family Resources Survey 2024-25"
     },
     "spi_housing_shell": {
       "artifacts": [],
@@ -4490,7 +4746,7 @@
       "nonnegative_outputs": [
         "spi_income_band_donor_lower_bound"
       ],
-      "notes": "Reserves 120 SPI-channel households per Table 2.5 band from GBP 200,000 (480 in all) so the top of the income distribution has support before calibration. Carriers are FRS adults drawn by the tape's own band propensity given region, sex and age band, their households are copied whole at clone index 2 with the synthetic flag, and each starts at the build tax year's published taxpayers over 120. The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves).",
+      "notes": "Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves).",
       "operations": [
         {
           "band_column": "spi_income_band_donor_lower_bound",
@@ -4500,25 +4756,39 @@
             1000000,
             2000000
           ],
-          "candidate_order": "person_id ascending",
-          "candidate_population": "raw FRS base channel adults aged 16 and over",
+          "candidate_order": "person_id ascending breaks equal draw keys",
+          "candidate_population": "raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over",
           "carrier_column": "person_is_spi_income_band_carrier",
           "clone_index": 2,
-          "donors_per_band": 120,
-          "draw": "weighted_without_replacement",
+          "conservation": "exact_total",
+          "count_rule": "max(minimum_donors_per_band, ceil(published band taxpayers / maximum_donor_weight))",
+          "declared_factor": 1,
+          "draw": "weighted_without_replacement_identity_keyed: Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first",
           "expected_band_count": 4,
-          "expected_donor_count": 480,
           "flag_column": "household_is_spi_income_band_donor",
-          "initial_weight": "published band taxpayers / donors_per_band",
+          "funding": "stratum reallocation: every incumbent household of the stratum a donor's source household belongs to is scaled by 1 - donor mass / stratum mass",
+          "funding_strata": [
+            "region"
+          ],
           "kind": "stack_income_band_donor_households",
+          "mass_scale": "min(1, min over funding strata of maximum_reallocation_share x stratum mass / seated donor mass); every band's weight scaled alike",
+          "maximum_donor_household_share": 0.15,
+          "maximum_donor_weight": 250,
+          "maximum_reallocation_share": 0.5,
+          "minimum_donors_per_band": 120,
           "never_zero_weight": true,
           "propensity": "SPI 2022-23 FACT-weighted band share by region, sex and age band",
-          "reason": "SPI income band donors stack positive-weight support households per HMRC Table 2.5 total-income band from GBP 200,000, one carrier adult each; the published band taxpayer mass is added explicitly and the base and synthetic channels keep their weights.",
+          "reason": "Reallocate the published HMRC Table 2.5 taxpayer mass of each total-income band from GBP 200,000 from the households of each donor's region to its income band donor support rows; every region's household mass and the total national mass are conserved.",
+          "salt": "spi_income_band_donor_draw",
+          "seating_scale": "min(1, maximum_donor_household_share x eligible base households / expected donor count); band counts floored, at least one per band",
           "seed": 3,
+          "tape_preparation": "as hmrc_spi_income_spine prepares the tape: its stage-1 seed and draw_spi_donor_ages_by_population",
+          "tape_preparation_seed": 42,
           "taxpayer_count_measure": "total_taxpayer_count",
           "taxpayer_count_period": "build_period_tax_year",
           "taxpayer_count_resource": "hmrc_itl_taxpayer_counts.json",
-          "weight_kind_out": "importance"
+          "weight_kind_out": "importance",
+          "weight_rule": "published band taxpayers / band donor count, equal within a band"
         }
       ],
       "outputs": [
@@ -4710,7 +4980,7 @@
       "artifacts": [],
       "grain": "benunit",
       "nonnegative_outputs": [],
-      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh.",
+      "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh.",
       "operations": [
         {
           "aggregates": {
@@ -4721,6 +4991,12 @@
           "method": "any_positive"
         },
         {
+          "coarsening": [
+            "merge dependent-children bands",
+            "drop couple status",
+            "merge adjacent investment-income bands",
+            "reporter status only"
+          ],
           "couple_status": "is_uc_couple",
           "dependent_children_bands": [
             "0",
@@ -4728,18 +5004,29 @@
             "2",
             "3+"
           ],
-          "donor_rows": "base_frs_reporters_with_available_capital",
+          "donor_rows": "base_frs_with_available_capital",
           "draw": "weighted_empirical",
           "identity": "benunit_id",
+          "investment_income": "savings_interest_income + dividend_income + other_investment_income, summed over benefit-unit members",
+          "investment_income_band_edges": [
+            0,
+            240,
+            640,
+            2000,
+            8000
+          ],
           "kind": "redraw_spi_reporter_capital",
+          "minimum_cell_donors": 20,
           "output": "frs_benunit_capital",
-          "rows": "spi_channel_post_fill_reporters",
+          "reporter_status": "universal_credit_reported_anchor",
+          "rows": "spi_channel",
           "salt": "frs_benunit_capital",
           "seed": 0,
           "weight_mapping": "household_to_benunit"
         },
         {
           "derived": {
+            "pension_credit_reported_capital": "frs_benunit_capital",
             "uc_reported_capital": "frs_benunit_capital",
             "would_claim_uc": "would_claim_uc OR universal_credit_reported_anchor"
           },
@@ -4747,7 +5034,8 @@
         }
       ],
       "outputs": [
-        "uc_reported_capital"
+        "uc_reported_capital",
+        "pension_credit_reported_capital"
       ],
       "rewrites": [
         "frs_benunit_capital",
@@ -5005,8 +5293,7 @@
             "private_pension_income",
             "employment_income",
             "self_employment_income",
-            "capital_income",
-            "is_renting"
+            "capital_income"
           ]
         },
         {
@@ -5136,31 +5423,40 @@
         "mortgage_debt",
         "consumer_debt"
       ],
-      "notes": "Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. The debt segment (fourth chain segment, fourth child seed) reads WAS round-8 derived variables HMortGR8 (total outstanding mortgage debt), HFINWNTR8_exSLC_Sum (net financial wealth excluding student loans; gross less it is the non-student-loan financial liabilities) and Ten1R8 (tenure; codes 2 and 3 are buying with a mortgage and part own/part rent, confirmed by the I1 audit of the pinned tab); UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent's dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8's -9 is structural not-applicable so the is_renting mapping is unchanged; genuinely negative domains are never recoded.",
+      "notes": "Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. Tenure enters every chain segment as one four-way category built the same way on both sides (microcosm#1063): the donor's from Ten1R8 and DVPriRntR8 (owned outright; buying with a mortgage or part rent, part mortgage; rented or rent-free from a private landlord; rented from a council or housing association), the recipient's from the frame's tenure_type (council and housing association together), so the stage reads no engine tenure formula. Two columns are structural in tenure and are fitted and drawn inside their stratum only, zero by rule elsewhere: main_residence_value on the owner tenures (every WAS owner has a positive value and no renter has one) and main_residence_mortgage (TotMortR8) on the mortgaged tenure. mortgage_debt is HMortGR8, all of the household's mortgages, and is derived as the main-residence mortgage plus the mortgages on other property (other_mortgage, HMortGR8 less TotMortR8 on the donor: buy-to-let, second homes and the rest), which are held on every tenure and drawn without a stratum, so an outright owner's or a renter's buy-to-let keeps its mortgage beside the property it is secured on (OthMortR8_sum is read for the receipt only); the donor's conditioning copy carries the same rule, so consumer_debt is fitted on values recipients can hold. Totals are not drawn: property_wealth is the sum of land, the main residence, other houses, buildings and a drawn remainder (buy-to-let, overseas and other property), gross_financial_wealth is savings, the cash ISA, the share-like holdings and a drawn remainder, and net_financial_wealth is gross less consumer debt and the student loan balance - identities the pinned tab satisfies on every row and the cleaning step refuses a donor that breaks. A sum of donor-valued components that leaves the donor's range for the total gives up the excess from the remainder first, and the receipt counts the rows. Eight chain segments, each with its own child seed: land; the main residence; the other property components; pension and share-like wealth; the financial components, vehicles and the student loan balance; the main-residence mortgage; the other mortgages; consumer debt. HFINWNTR8_exSLC_Sum is net financial wealth excluding student loans, so gross less it is the non-student-loan financial liabilities; UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent's dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8's -9 is structural not-applicable so the private-renter reading is unchanged; genuinely negative domains are never recoded. The recipient council_tax predictor is the bill the household pays, council_tax less council_tax_rebate, the quantity the WAS donor records, since the spine's council_tax is the liability before council tax reduction (uk-data#496/#499, microcosm#1095). The donor council_tax is DVCTaxAmtAnnualR8, the annual amount paid (CTAmtR8 is one instalment), its children are NumChildR8 (NumCh18R8 overlaps NumAdultR8), and the recipient adults and children are the household's FRS claimants and partners and its other members (is_uc_claimant), which together make the household size on both sides; rental_income is the donor's net rent DVNetRentAmtAnnualR8_aggr against the household's property_income (uk-data#486/#495, microcosm#1095).",
       "operations": [
         {
           "derived": {
             "cash_isa": "DVCISAVR8_aggr",
             "consumer_debt": "max(HFINWR8_SUM - HFINWNTR8_exSLC_Sum, 0)",
             "corporate_wealth_excl_isa": "DVFESHARESR8_aggr + DVFShUKVR8_aggr + DVFCollVR8_aggr",
-            "has_mortgage_tenure": "Ten1R8 in {2, 3}",
             "is_renting": "DVPriRntR8 == 1",
+            "other_financial_assets": "HFINWR8_SUM - (DVSaValR8_aggr + DVCISAVR8_aggr + corporate_wealth), refused when negative",
+            "other_property_value": "DVPropertyR8 - (DVhvalueR8 + DVHseValR8_sum + DVBltValR8_sum + DVBlDValR8_sum + DVLUKValR8_sum), refused when negative",
+            "other_residential_property_value": "DVHseValR8_sum + DVBltValR8_sum (houses other than the main residence plus buy-to-let property)",
             "private_pension_wealth": "totalpenr8_aggr - dvvaldbt_scaper8_aggr",
             "region": "GORR8 via incumbent REGIONS map",
             "stocks_and_shares_isa": "DVIISAVR8_aggr",
-            "student_loan_balance": "Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr"
+            "student_loan_balance": "Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr",
+            "tenure_category": "Ten1R8 1 owned_outright; 2 or 3 owned_with_mortgage; 4 or 5 private_rent when DVPriRntR8 == 1, otherwise social_rent; any other code private_rent, counted in the receipt"
           },
           "direct_maps": {
+            "council_tax": "DVCTaxAmtAnnualR8",
             "gross_financial_wealth": "HFINWR8_SUM",
+            "main_residence_mortgage": "TotMortR8",
             "main_residence_value": "DVhvalueR8",
             "mortgage_debt": "HMortGR8",
             "net_financial_wealth": "HFINWNTR8_Sum",
             "net_financial_wealth_exsl": "HFINWNTR8_exSLC_Sum",
             "non_residential_property_value": "DVBlDValR8_sum",
+            "num_adults": "NumAdultR8",
+            "num_children": "NumChildR8",
             "num_vehicles": "vcarnr8",
-            "other_residential_property_value": "DVHseValR8_sum",
+            "other_property_mortgage": "OthMortR8_sum",
             "owned_land": "DVLUKValR8_sum",
+            "private_rent_code": "DVPriRntR8",
             "property_wealth": "DVPropertyR8",
+            "rental_income": "DVNetRentAmtAnnualR8_aggr",
             "savings": "DVSaValR8_aggr",
             "tenure_code": "Ten1R8",
             "weight": "R8xshhwgt"
@@ -5174,44 +5470,77 @@
           "kind": "materialize_rules_engine_predictors",
           "predictors": [
             "household_net_income",
-            "num_adults",
-            "num_children",
             "private_pension_income",
             "employment_income",
             "self_employment_income",
-            "capital_income",
-            "is_renting"
+            "capital_income"
           ]
         },
         {
           "categorical_predictors": [
             "region",
-            "is_renting"
+            "tenure_owned_with_mortgage",
+            "tenure_private_rent",
+            "tenure_social_rent"
           ],
           "chain_order": [
             "owned_land",
+            "main_residence_value",
+            "other_residential_property_value",
+            "non_residential_property_value",
+            "other_property_value",
             "property_wealth",
             "private_pension_wealth",
             "corporate_wealth_excl_isa",
             "stocks_and_shares_isa",
             "corporate_wealth",
-            "gross_financial_wealth",
-            "net_financial_wealth",
-            "main_residence_value",
-            "other_residential_property_value",
-            "non_residential_property_value",
             "savings",
+            "cash_isa",
+            "other_financial_assets",
             "num_vehicles",
             "student_loan_balance",
-            "cash_isa",
+            "gross_financial_wealth",
+            "main_residence_mortgage",
+            "other_mortgage",
             "mortgage_debt",
-            "consumer_debt"
+            "consumer_debt",
+            "net_financial_wealth"
           ],
-          "debt_segment_predictors": [
-            "has_mortgage_tenure"
-          ],
+          "derived_totals": {
+            "corporate_wealth": [
+              "corporate_wealth_excl_isa",
+              "stocks_and_shares_isa"
+            ],
+            "gross_financial_wealth": [
+              "savings",
+              "cash_isa",
+              "corporate_wealth",
+              "other_financial_assets"
+            ],
+            "mortgage_debt": [
+              "main_residence_mortgage",
+              "other_mortgage"
+            ],
+            "net_financial_wealth": [
+              "gross_financial_wealth",
+              "-consumer_debt",
+              "-student_loan_balance"
+            ],
+            "property_wealth": [
+              "owned_land",
+              "main_residence_value",
+              "other_residential_property_value",
+              "non_residential_property_value",
+              "other_property_value"
+            ]
+          },
           "integer_outputs": [
             "num_vehicles"
+          ],
+          "internal_components": [
+            "other_property_value",
+            "other_financial_assets",
+            "other_mortgage"
           ],
           "kind": "fit_weighted_qrf_chain",
           "n_estimators": 4,
@@ -5223,15 +5552,27 @@
             "employment_income",
             "self_employment_income",
             "capital_income",
+            "rental_income",
             "num_bedrooms",
             "council_tax",
-            "is_renting",
+            "tenure_owned_with_mortgage",
+            "tenure_private_rent",
+            "tenure_social_rent",
             "region"
           ],
           "region_remap": {
             "NORTHERN_IRELAND": "WALES"
           },
           "seed": 0,
+          "stratified_targets": {
+            "main_residence_mortgage": [
+              "owned_with_mortgage"
+            ],
+            "main_residence_value": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ]
+          },
           "weights": "explicit"
         },
         {

@@ -44,16 +44,23 @@ until you restart the kernel, load it by path with
 `load_country_spec(Path(...))` (always re-read), or call
 `microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
 
-## Staging build telemetry
+## Build progress and staging run files
 
-US fiscal refresh builds emit pre-release staging telemetry **by default**:
-progress JSON is uploaded to `policyengine/populace-us-staging` while the build
-runs (best-effort — a missing token or failed upload never fails the build), so
-every candidate shows up on the staging dashboard before it is published.
-Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
-`POPULACE_STAGING_REPO_ID`. An *empty* `POPULACE_STAGING_REPO_ID` is ignored
-rather than read as off, and staging with no destination at all is an argparse
-error — `--no-staging` is the only way a build produces no telemetry.
+Supported US and UK build commands always start the local telemetry emitter
+service. It reports live progress to the hosted collector when the operator's
+existing Hugging Face login is accepted; otherwise it retains the events
+locally and the build continues. This live event path is independent of the
+staging run files described below.
+
+US fiscal refresh builds also write pre-release staging run files **by
+default**. Progress JSON is uploaded to `policyengine/populace-us-staging`
+while the build runs (best-effort — a missing token or failed upload never
+fails the build), so every candidate shows up on the staging dashboard before
+it is published. Disable these files with `--no-staging`, or point them
+elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
+`POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
+no destination at all is an argparse error. `--no-staging` does not disable
+the local telemetry emitter service.
 
 The build manifest records what staging did: the run id, the destination, and
 how many files actually reached it, or an explicit `enabled: false` for a
@@ -75,8 +82,8 @@ The UK commands (`tools/build_uk_frs_spine.py`, a shim over the package's
 `uk_runtime.spine_build`, and `microcosm-build-uk` / `tools/build_uk_full.py`,
 whose `--release-role` builds either the national or the dense line;
 `tools/build_uk_rowwise_candidate.py` is a stub over the same driver) stage
-version 2 telemetry to `policyengine/populace-uk-staging` under the same
-switch. The build command also **stages the finished dataset bundle** it built,
+version 2 staging run files to `policyengine/populace-uk-staging` under the
+same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
 it without publishing it: `releases/` and `latest.json` are untouched, the
@@ -203,7 +210,8 @@ weights, calling the release tool's own gate functions (none is
 re-implemented), and exits `1` on any certain failure, `2` on AT-RISK only,
 and `0` when clean. An argparse error also exits `2` but writes no report, so
 the wrapper returns `64` whenever no report was written. It writes only its
-report: nothing under `--out`, no staging telemetry, no receipts. A base or
+report: nothing under `--out`, no staging run files, no receipts. The local
+telemetry emitter service still reports dry-run progress. A base or
 donor that the config does not name locally is still downloaded, into the same
 caches the release uses. A refusal before the stop point becomes the report's
 certain failure. A crash while grading is reported as the dry run's own error,
@@ -334,7 +342,11 @@ calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
 opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
-for what each mode contains and where the build records it.
+for what each mode contains and where the build records it. Its
+`--l2-basis chi_square` and `--mass-parametrization softmax` options (defaults:
+the historical `record` and `projection`) penalize distance from the design
+weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
+for the algebra, the evidence and the measured frontier.
 
 National and ACS local-area builds now use the same typed schema-8 calibration
 diagnostics writer. The local builder adds its Census population marginals to a

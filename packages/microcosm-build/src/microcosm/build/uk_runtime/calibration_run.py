@@ -89,6 +89,7 @@ UK_LOCAL_GATE_SCOPE = (
 
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
+    "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",
@@ -102,9 +103,12 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_frs_hmrc_spine_leaves_signal",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
+    "uk_stage_spi_benefit_coherence",
     "uk_stage_pension_credit_take_up",
+    "uk_stage_child_benefit_take_up",
     "uk_stage_cgt_incidence_clone_mass",
     "uk_stage_cgt_support_split_mass",
+    "uk_stage_cgt_residential_split_mass",
     "uk_stage_spi_income_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
     "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -313,8 +317,15 @@ def load_bound_spine_checkpoint(
     frame: Frame,
     *,
     gate_report_path: Path | None = None,
+    input_sha256: str | None = None,
 ) -> dict[str, object]:
-    """Authenticate a canonical graph checkpoint, without historical bypasses."""
+    """Authenticate a canonical graph checkpoint, without historical bypasses.
+
+    ``input_sha256`` is the measured digest of the H5 being bound. A sidecar
+    that records its spine's file digest (``output.sha256``) must name that
+    same file; older sidecars carry no such key and are bound by content
+    identity alone.
+    """
     from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 
     path = Path(path)
@@ -327,6 +338,17 @@ def load_bound_spine_checkpoint(
     if not isinstance(sidecar, dict):
         raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
     _assert_spine_sidecar_binds_frame(sidecar, frame)
+    recorded = sidecar.get("output")
+    if (
+        input_sha256 is not None
+        and isinstance(recorded, Mapping)
+        and recorded.get("sha256")
+        and recorded["sha256"] != input_sha256
+    ):
+        raise ValueError(
+            "Spine checkpoint sidecar records another H5 file: its output.sha256 "
+            f"{recorded['sha256']} is not the input's {input_sha256}."
+        )
     identity = sidecar.get("uk_frame_content_identity")
     if not isinstance(identity, str) or not identity:
         raise ValueError("Unbound spine checkpoint: no uk_frame_content_identity.")
@@ -880,20 +902,24 @@ def finalize_uk_scoped_gate_report(
     posture: str,
     scope_exclusions: Mapping[str, str],
     aggregate_admin_measurement: object,
+    resign: bool = True,
 ) -> None:
     """Graft the scoped-report trio onto a battery payload and re-sign it.
 
     Every scoped UK producer (the calibration seam, the release-cut
-    certification) declares its posture, the rationale for each gate it
-    does not run, and its admin-anchor measurement receipt, then signs the
-    augmented bytes. One implementation, shared, so the parts the
-    certification composes over cannot drift apart in shape.
+    certification, the dense line's local battery) declares its posture,
+    the rationale for each gate it does not run, and its admin-anchor
+    measurement receipt, then signs the augmented bytes. One
+    implementation, shared, so the parts the certification composes over
+    cannot drift apart in shape. ``resign=False`` grafts the trio onto a
+    report that stays unsigned (its attestation keeps ``signing_error``).
     """
 
     payload["posture"] = posture
     payload["scope_exclusions"] = dict(scope_exclusions)
     payload["aggregate_admin_measurement"] = aggregate_admin_measurement
-    resign_uk_gate_report(payload)
+    if resign:
+        resign_uk_gate_report(payload)
 
 
 def resign_uk_gate_report(payload: dict[str, object]) -> None:
