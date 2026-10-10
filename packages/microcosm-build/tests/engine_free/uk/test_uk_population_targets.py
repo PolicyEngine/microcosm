@@ -598,6 +598,7 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
         "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
         "dimensions": ["number_of_children"],
+        "dimension_values": {"number_of_children": [3, 4, "5 or more"]},
         "period_type": "month",
         "period_value": [f"2025-{month:02d}" for month in range(1, 13)],
     }

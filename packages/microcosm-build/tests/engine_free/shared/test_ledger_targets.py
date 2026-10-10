@@ -5334,3 +5334,29 @@ def test__given_one_month_keeps_an_established_spec_id__then_the_window_is_one_s
         rows, [_window_reference()], country="us"
     ).specs
     assert target.value == 5.5
+
+
+def test__given_each_summed_cell_is_its_own_record_set__then_the_window_sums_them():
+    # DWP publishes each UC child-count cell as its own record set inside one
+    # release, file and table (PolicyEngine/chronicle#314): the window sums
+    # the cells and averages the months (#1123).
+    rows = _window_cell_rows()
+    for row in rows:
+        category = row["dimensions"]["entitlement"]
+        month = row["period"]["value"]
+        row["layout"]["record_set_id"] = f"cms_medicaid.{category}.month{month}"
+    (target,) = compile_ledger_target_references(
+        rows, [_sum_window_reference()], country="us"
+    ).specs
+    assert target.value == 31
+
+
+def test__given_a_summed_cell_changes_record_set_mid_window__then_it_refuses():
+    rows = _window_cell_rows()
+    for row in rows:
+        category = row["dimensions"]["entitlement"]
+        month = row["period"]["value"]
+        row["layout"]["record_set_id"] = f"cms_medicaid.{category}.month{month}"
+    rows[0]["layout"]["record_set_id"] = "cms_medicaid.Other.month2025-04"
+    with pytest.raises(ValueError, match="multiple semantic series"):
+        compile_ledger_target_references(rows, [_sum_window_reference()], country="us")
