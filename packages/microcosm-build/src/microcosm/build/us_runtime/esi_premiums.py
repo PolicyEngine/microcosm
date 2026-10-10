@@ -70,6 +70,24 @@ so they understate the enrollee-weighted rate and the column is a lower
 estimate.
 The draw is a seeded blake2b uniform keyed by stable source identity, so
 support clones agree. Others carry zero.
+
+Stacked pools
+-------------
+A stacked pool gives each household source a share of one population's
+household mass, and only its CPS-source rows carry the raw ASEC fields. Two
+rules keep the pool on the stage's scale:
+
+* the stage scales the CPS-source rows to ``anchor x share``, where ``share``
+  is the fraction of the pool's household mass those rows carry
+  (:func:`us_esi_premiums_household_mass_share`), so each person carries the
+  dollars a single-source build gives them; and
+* once the cross-source transfer has filled every other row,
+  :func:`with_us_esi_premium_pool_anchor` clears the premiums where the
+  person's source record reports no wages and scales the transferred employer
+  premiums to the same weighted total per unit of household mass.
+
+The pool-wide weighted employer premium then equals the CPS-source total
+divided by ``share``: what the stage assigns the whole population.
 """
 
 from __future__ import annotations
@@ -102,19 +120,23 @@ from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
     "US_ESI_EMPLOYER_PREMIUM_COLUMN",
+    "US_ESI_PREMIUMS_ANCHOR_SHARE_KEY",
     "US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS",
     "US_ESI_PREMIUMS_OUTPUT_COLUMNS",
     "US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS",
     "US_ESI_PREMIUMS_STAGE_NAME",
+    "US_ESI_PREMIUMS_WAGE_COLUMN",
     "US_ESI_PRE_TAX_PREMIUM_COLUMN",
     "derive_us_employer_esi_premiums_from_manifest",
     "derive_us_pre_tax_health_insurance_premiums_from_manifest",
     "load_meps_ic_esi_premium_cells",
     "us_esi_premiums_anchor_gate",
+    "us_esi_premiums_household_mass_share",
     "us_esi_premiums_signal_gate",
     "us_esi_premiums_stage_spec",
     "us_esi_premiums_summary",
     "with_us_esi_premium_inputs",
+    "with_us_esi_premium_pool_anchor",
 ]
 
 US_ESI_PREMIUMS_STAGE_NAME = "meps_esi_premiums"
@@ -184,6 +206,27 @@ _SIZE_BY_NOEMP: Mapping[int, str] = MappingProxyType(
 _FEDERAL, _STATE_GOVERNMENT, _LOCAL_GOVERNMENT = 1, 2, 3
 _PRIVATE_EMPLOYER_CODES = (4, 5, 6)
 _EMPLOYER_SECTOR_CODES = (_FEDERAL, _STATE_GOVERNMENT, _LOCAL_GOVERNMENT, 4, 5, 6)
+
+#: ``SourceRuntimeConfig.extra`` key for the share of the national anchor the
+#: frame's rows carry: 1 for a single-source frame, the CPS-source rows' share
+#: of household mass in a stacked pool.
+US_ESI_PREMIUMS_ANCHOR_SHARE_KEY = "esi_premiums_anchor_share"
+#: Wages of a person without raw ASEC fields: the canonical input ACS maps
+#: natively from ``WAGP`` (:mod:`.acs_inputs`).
+US_ESI_PREMIUMS_WAGE_COLUMN = "employment_income_before_lsr"
+#: The raw ASEC person fields whose presence marks a row the stage derived
+#: itself. ``state_fips`` is on the household of every source.
+_RAW_EVIDENCE_COLUMNS: tuple[str, ...] = tuple(
+    column
+    for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS
+    if column != "state_fips"
+)
+_PERSON_SOURCE_ID_COLUMN = "person_source_id"
+_PERSON_CLONE_INDEX_COLUMN = "person_support_clone_index"
+#: Relative tolerance of a pool's weighted employer total around the
+#: CPS-source total divided by its mass share, straight after
+#: :func:`with_us_esi_premium_pool_anchor`.
+_POOL_ANCHOR_RTOL = 1e-9
 
 _CELLS_RESOURCE = "meps_ic_esi_premium_cells.json"
 _CELLS_SHA256 = "fb07b8c27ff94fd1423623f7385868fb26e0fce7ad99f80c7cf0d205364e77f8"
@@ -558,6 +601,19 @@ def _anchor(year: int) -> float:
     return float(values[str(year)])
 
 
+def _validated_anchor_share(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float, np.floating)):
+        raise SourceRuntimeError(
+            f"US ESI premium anchor share must be a number in (0, 1], got {value!r}."
+        )
+    share = float(value)
+    if not (np.isfinite(share) and 0.0 < share <= 1.0):
+        raise SourceRuntimeError(
+            f"US ESI premium anchor share must be in (0, 1], got {share!r}."
+        )
+    return share
+
+
 def _check_parameters(
     operation: SourceOperationSpec, expected: Mapping[str, Any]
 ) -> None:
@@ -584,7 +640,12 @@ def derive_us_employer_esi_premiums_from_manifest(
     operation: SourceOperationSpec,
     context: SourceRuntimeContext,
 ) -> pd.DataFrame:
-    """Assign MEPS-IC employer shares and scale them to the BEA anchor."""
+    """Assign MEPS-IC employer shares and scale them to the BEA anchor.
+
+    The weighted total equals the anchor times
+    ``config.extra[US_ESI_PREMIUMS_ANCHOR_SHARE_KEY]`` (default 1): the share
+    of the national anchor the frame's rows carry.
+    """
 
     if operation.kind != "derive_employer_sponsored_insurance_premiums":
         raise SourceRuntimeError(
@@ -603,7 +664,10 @@ def derive_us_employer_esi_premiums_from_manifest(
             "US ESI premium stage found no weighted employer-paid premium mass to "
             "scale: no employed policyholder with an employer share."
         )
-    scale = _anchor(context.config.target_year) / raw_total
+    share = _validated_anchor_share(
+        context.config.extra.get(US_ESI_PREMIUMS_ANCHOR_SHARE_KEY, 1.0)
+    )
+    scale = _anchor(context.config.target_year) * share / raw_total
     result = frame.copy(deep=True)
     result[US_ESI_EMPLOYER_PREMIUM_COLUMN] = raw * scale
     return result
@@ -737,12 +801,24 @@ def _outputs_carry_signal(person: pd.DataFrame) -> bool:
     )
 
 
-def with_us_esi_premium_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
+def with_us_esi_premium_inputs(
+    frame: Frame,
+    *,
+    seed: int,
+    time_period: int,
+    anchor_share: float = 1.0,
+) -> Frame:
     """Run the ``meps_esi_premiums`` stage over a US frame.
 
     A frame that already carries both outputs with signal and passes the
     signal gate is returned unchanged (idempotent). Otherwise the person table
     must still carry the raw ASEC columns; the stage never defaults them.
+
+    ``anchor_share`` is the share of the national anchor these rows carry, so
+    the weighted employer premium totals ``anchor x anchor_share``. A
+    single-source frame holds the whole population (1). A stacked pool passes
+    the CPS-source rows' share of the pool's household mass
+    (:func:`us_esi_premiums_household_mass_share`).
     """
 
     if frame.schema != US_SCHEMA:
@@ -769,7 +845,13 @@ def with_us_esi_premium_inputs(frame: Frame, *, seed: int, time_period: int) -> 
                 derive_us_pre_tax_health_insurance_premiums_from_manifest
             ),
         },
-        config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        config=SourceRuntimeConfig(
+            seed=int(seed),
+            target_year=int(time_period),
+            extra={
+                US_ESI_PREMIUMS_ANCHOR_SHARE_KEY: _validated_anchor_share(anchor_share)
+            },
+        ),
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
@@ -786,6 +868,239 @@ def with_us_esi_premium_inputs(frame: Frame, *, seed: int, time_period: int) -> 
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _raw_evidence_mask(person: pd.DataFrame) -> np.ndarray:
+    """Rows whose premiums the stage derived from measured ASEC fields.
+
+    A single-source frame carries the raw fields on every row. A stacked pool
+    carries them on its CPS-source rows only; every other row holds
+    transferred premiums and nulls in all of the fields. A row with some of
+    the fields is neither, and is refused.
+    """
+
+    present = person[list(_RAW_EVIDENCE_COLUMNS)].notna().to_numpy(dtype=bool)
+    complete = present.all(axis=1)
+    partial = present.any(axis=1) & ~complete
+    if partial.any():
+        raise SourceRuntimeError(
+            f"US ESI premium stage: {int(partial.sum())} row(s) carry only some "
+            f"of the raw ASEC fields {list(_RAW_EVIDENCE_COLUMNS)}; a row is "
+            "either source-derived (all present) or transferred (all null)."
+        )
+    return complete
+
+
+def us_esi_premiums_household_mass_share(
+    frame: Frame, person_rows: np.ndarray | pd.Series
+) -> float:
+    """Share of the frame's household mass in the households of ``person_rows``.
+
+    This is the share of the national anchor those rows carry: a stacked pool
+    represents one population, split across its household sources in
+    proportion to household weight. A household whose members fall on both
+    sides of the selection is refused.
+    """
+
+    rows = np.asarray(person_rows, dtype=bool)
+    person = frame.table("person")
+    if rows.shape != (len(person),):
+        raise SourceRuntimeError(
+            "US ESI premium household mass share needs one flag per person."
+        )
+    membership = person[frame.schema.membership_column("household")]
+    household_ids = frame.table("household")[frame.schema.entity_id_column("household")]
+    selected = household_ids.isin(membership[rows]).to_numpy(dtype=bool)
+    unselected = household_ids.isin(membership[~rows]).to_numpy(dtype=bool)
+    if (selected & unselected).any():
+        raise SourceRuntimeError(
+            f"US ESI premium stage: {int((selected & unselected).sum())} "
+            "household(s) mix source-derived and transferred people."
+        )
+    weights = np.asarray(frame.resolve_weights("household").values, dtype=np.float64)
+    total = float(weights.sum())
+    if not (np.isfinite(weights).all() and (weights >= 0).all() and total > 0):
+        raise SourceRuntimeError(
+            "US ESI premium stage requires finite nonnegative household weights "
+            "with positive mass."
+        )
+    return float(weights[selected].sum()) / total
+
+
+def _source_record_wages(person: pd.DataFrame) -> np.ndarray:
+    """Wages each person's source record reports, for every support clone.
+
+    A support clone is the same surveyed person with another tax-detail
+    vector, so it takes the survey-side wages of its clone-0 record, as the
+    source-derived rows take one premium per source person. Frames without
+    clone provenance hold source records only.
+    """
+
+    if US_ESI_PREMIUMS_WAGE_COLUMN not in person.columns:
+        raise SourceRuntimeError(
+            "US ESI premium stage: transferred rows need "
+            f"{US_ESI_PREMIUMS_WAGE_COLUMN!r} to place the premiums' structural "
+            "zeros."
+        )
+    wages = pd.to_numeric(
+        person[US_ESI_PREMIUMS_WAGE_COLUMN], errors="coerce"
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    if not {_PERSON_SOURCE_ID_COLUMN, _PERSON_CLONE_INDEX_COLUMN} <= set(
+        person.columns
+    ):
+        return wages
+    native = (
+        pd.to_numeric(person[_PERSON_CLONE_INDEX_COLUMN], errors="coerce")
+        .eq(0)
+        .to_numpy(dtype=bool)
+    )
+    source_id = person[_PERSON_SOURCE_ID_COLUMN]
+    by_source = pd.Series(wages[native], index=source_id[native].to_numpy())
+    if not by_source.index.is_unique:
+        raise SourceRuntimeError(
+            "US ESI premium stage: source records repeat a "
+            f"{_PERSON_SOURCE_ID_COLUMN!r}."
+        )
+    orphan = ~source_id.isin(by_source.index).to_numpy(dtype=bool)
+    if orphan.any():
+        raise SourceRuntimeError(
+            f"US ESI premium stage: {int(orphan.sum())} support clone(s) have no "
+            "clone-0 source record."
+        )
+    return source_id.map(by_source).to_numpy(dtype=np.float64, na_value=np.nan)
+
+
+def with_us_esi_premium_pool_anchor(frame: Frame) -> tuple[Frame, dict[str, object]]:
+    """Hold a stacked pool's transferred employer premiums to the stage's scale.
+
+    Runs once every row carries the stage's outputs: the stage derived them on
+    the rows with raw ASEC fields, scaled to their share of the pool's
+    household mass, and a cross-source transfer filled the rest. The
+    source-derived rows are never rewritten. On the transferred rows it
+
+    1. clears the outputs where the person's source record reports no wages
+       (the stage's universe is people employed by an employer); and
+    2. scales the employer premiums by one factor so those rows carry the same
+       weighted total per unit of household mass as the source-derived rows:
+       ``source total x (1 - share) / share``.
+
+    The pool-wide weighted employer premium then equals ``source total /
+    share``, what the stage assigns the whole population, and each side
+    carries it in proportion to household mass, so reweighting across sources
+    downstream does not move the total. A frame with no transferred row is
+    returned unchanged. Returns the frame and a receipt.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("US ESI premium pool anchor requires the US schema.")
+    person = frame.table("person")
+    missing = [
+        column
+        for column in (*US_ESI_PREMIUMS_OUTPUT_COLUMNS, *_RAW_EVIDENCE_COLUMNS)
+        if column not in person.columns
+    ]
+    if missing:
+        raise SourceRuntimeError(
+            f"US ESI premium pool anchor: the person table lacks {missing}; it "
+            "needs the stage outputs on every row and the raw ASEC fields that "
+            "mark the source-derived rows."
+        )
+    outputs = {
+        column: person[column].to_numpy(dtype=np.float64)
+        for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS
+    }
+    for column, values in outputs.items():
+        if not np.isfinite(values).all() or (values < 0).any():
+            raise SourceRuntimeError(
+                f"US ESI premium pool anchor: {column} must be finite and "
+                "nonnegative on every row; the transfer left a gap."
+            )
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    if not np.isfinite(weights).all() or (weights < 0).any():
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor requires finite nonnegative weights."
+        )
+    source = _raw_evidence_mask(person)
+    transferred = ~source
+    if not source.any():
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor: no row carries the raw ASEC fields."
+        )
+    employer = outputs[US_ESI_EMPLOYER_PREMIUM_COLUMN]
+    share = us_esi_premiums_household_mass_share(frame, source)
+    source_total = _weighted(weights, employer, source)
+    if not source_total > 0:
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor: the source-derived rows hold no "
+            "employer premium mass."
+        )
+    receipt: dict[str, object] = {
+        "source_household_mass_share": share,
+        "source_rows": int(source.sum()),
+        "transferred_rows": int(transferred.sum()),
+        "source_employer_premium_total": source_total,
+        "pool_employer_premium_target": source_total / share,
+        "wage_column": US_ESI_PREMIUMS_WAGE_COLUMN,
+    }
+    if not transferred.any():
+        return frame, receipt | {
+            "status": "no_transferred_rows",
+            "employer_premium_total": source_total,
+        }
+
+    no_wages = transferred & ~(_source_record_wages(person) > 0)
+    cleared = {column: no_wages & (values > 0) for column, values in outputs.items()}
+    target = source_total * (1.0 - share) / share
+    before = _weighted(weights, employer, transferred & ~no_wages)
+    if not before > 0:
+        raise SourceRuntimeError(
+            "US ESI premium pool anchor: the transferred rows hold no employer "
+            "premium mass on people with wages, so there is nothing to scale."
+        )
+    factor = target / before
+    receipt |= {
+        "transferred_rows_without_source_wages": int(no_wages.sum()),
+        "cleared_rows": {column: int(rows.sum()) for column, rows in cleared.items()},
+        "cleared_weighted_total": {
+            column: _weighted(weights, outputs[column], rows)
+            for column, rows in cleared.items()
+        },
+        "transferred_employer_premium_total_before": before,
+        "transferred_employer_premium_target": target,
+        "scale_factor": factor,
+    }
+    settled = not any(rows.any() for rows in cleared.values()) and np.isclose(
+        factor, 1.0, rtol=1e-12, atol=0.0
+    )
+    if settled:
+        # Already on the stage's scale: rerunning must not move a byte.
+        return frame, receipt | {
+            "status": "already_on_anchor",
+            "employer_premium_total": _weighted(weights, employer),
+        }
+    outputs = {column: values.copy() for column, values in outputs.items()}
+    for values in outputs.values():
+        values[no_wages] = 0.0
+    outputs[US_ESI_EMPLOYER_PREMIUM_COLUMN][transferred] *= factor
+    total = _weighted(weights, outputs[US_ESI_EMPLOYER_PREMIUM_COLUMN])
+    if not np.isclose(total, source_total / share, rtol=_POOL_ANCHOR_RTOL, atol=0.0):
+        raise SourceRuntimeError(
+            f"US ESI premium pool anchor: the pool totals ${total / 1e9:,.6f}B "
+            f"after scaling, not ${source_total / share / 1e9:,.6f}B."
+        )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables.update({name: frame.link(name) for name in frame.links})
+    for column, values in outputs.items():
+        tables["person"][column] = values
+    result = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return result, receipt | {"status": "scaled", "employer_premium_total": total}
 
 
 def _weighted(

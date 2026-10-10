@@ -8001,6 +8001,40 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     assert component["digest_matches_declared"] is True
 
 
+def test_legacy_v11_authority_reconstruction_is_frozen_against_later_families() -> None:
+    # Attested schema-9 pools are scored against this reconstruction. It is
+    # rebuilt from the live surfaces, so a target family added after v11 must
+    # be left out of it or those sealed pools stop authenticating. The
+    # digests were recorded before the pool gained the ESI premium family.
+    receipt = stacked_spine_module._legacy_stacked_authority_receipt()
+
+    assert receipt["version"] == 11
+    assert receipt["sha256"] == (
+        "e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2"
+    )
+    assert {
+        name: component["sha256"]
+        for name, component in receipt["components"].items()
+        if name in {"declared_surface", "gap_fill_plan", "metric_registry"}
+    } == {
+        "declared_surface": (
+            "5b5a4470e2612365f253e933833bb08b8f9c857ea0bc175b958ead9a74abee01"
+        ),
+        "gap_fill_plan": (
+            "f41319a95750a441676bc6599b1de6bb49a87b45d83b9263d627c402cfe8e750"
+        ),
+        "metric_registry": (
+            "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
+        ),
+    }
+    assert stacked_spine_module.legacy_us_late_producer_schedule_receipt()[
+        "payload_sha256"
+    ] == ("02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086")
+    assert stacked_spine_module._POST_V11_AUTHORITY_TARGET_FAMILIES == {
+        ("person", "source_operator_esi_premiums")
+    }
+
+
 def test_stacked_authority_binds_post_transfer_calibration_policy() -> None:
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["post_transfer_calibration"]
