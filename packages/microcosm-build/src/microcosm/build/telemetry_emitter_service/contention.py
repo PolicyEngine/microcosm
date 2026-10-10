@@ -10,6 +10,7 @@ from collections.abc import Callable
 from sqlalchemy.exc import DBAPIError
 
 from microcosm.build.telemetry_emitter_service.constants import (
+    SPOOL_BUSY_ERROR,
     SPOOL_RETRY_INITIAL_SECONDS,
     SPOOL_RETRY_MAX_SECONDS,
 )
@@ -17,6 +18,19 @@ from microcosm.build.telemetry_emitter_service.constants import (
 # SQLite reports extended result codes; the low byte is the primary code.
 _PRIMARY_RESULT_CODE_MASK = 0xFF
 _TRANSIENT_RESULT_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+
+
+class SpoolBusyError(sqlite3.OperationalError):
+    """Another thread of this process kept the spool past the caller's wait.
+
+    It carries SQLite's busy code, so it is retried like a lock another
+    process holds.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(SPOOL_BUSY_ERROR)
+        self.sqlite_errorcode = sqlite3.SQLITE_BUSY
+        self.sqlite_errorname = "SQLITE_BUSY"
 
 
 def is_transient_spool_error(error: BaseException) -> bool:

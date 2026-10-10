@@ -1041,8 +1041,9 @@ def test_worker_survives_any_step_failure(
         def is_set(self):
             return self.flag
 
-    def append_many(registration, pairs, *, busy_timeout_seconds=None):
+    def append_many(registration, pairs, *, before_write=None, **waits):
         # The worker only queues events; the drain's writer stores them.
+        before_write()
         appended.extend(
             event["event_type"] + ":" + event["status"] for event, _ in pairs
         )
@@ -1226,7 +1227,8 @@ def test_unexpected_exit_waits_out_lock_contention(monkeypatch) -> None:
     attempts: list[float] = []
     stored: list[str] = []
 
-    def append_many(registration, pairs, *, busy_timeout_seconds=None):
+    def append_many(registration, pairs, *, before_write=None, **waits):
+        before_write()
         attempts.append(clock.now)
         clock.now += 0.2
         if len(attempts) < 4:

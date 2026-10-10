@@ -6,12 +6,14 @@ import math
 import threading
 import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Integer, delete, func, select
+from sqlalchemy.orm import Session
 
 from microcosm.build.telemetry_emitter_service.constants import (
     BATCH_SIZE,
@@ -25,6 +27,7 @@ from microcosm.build.telemetry_emitter_service.constants import (
     UPLOAD_STATE_LOCAL_ONLY,
     UPLOAD_STATE_PENDING,
 )
+from microcosm.build.telemetry_emitter_service.contention import SpoolBusyError
 from microcosm.build.telemetry_emitter_service.database import (
     create_spool_engine,
     create_spool_session_factory,
@@ -38,6 +41,29 @@ from microcosm.build.telemetry_emitter_service.models import (
 )
 from microcosm.build.telemetry_emitter_service.timestamps import utc_now
 from microcosm.build.telemetry_protocol import TELEMETRY_SCHEMA_VERSION
+
+
+class _LockWaitBudget:
+    """Caps the time one transaction's statements together wait for locks.
+
+    SQLite's busy timeout applies to each lock a statement needs, so a
+    transaction that waits for the write lock and then again at COMMIT can
+    wait twice as long as the timeout. ``apply``, called before each statement
+    that can wait, sets the timeout to what is left of ``seconds``. The next
+    checkout of the connection restores the spool's own timeout.
+    """
+
+    def __init__(self, session: Session, seconds: float | None) -> None:
+        self._session = session
+        self._deadline = None if seconds is None else time.monotonic() + seconds
+
+    def apply(self) -> None:
+        if self._deadline is None:
+            return
+        milliseconds = max(0, round((self._deadline - time.monotonic()) * 1000))
+        self._session.connection().exec_driver_sql(
+            f"PRAGMA busy_timeout = {milliseconds}"
+        )
 
 
 class EventSpool:
@@ -59,12 +85,9 @@ class EventSpool:
         # lowers it so its own retry loop decides when to give up; it applies
         # from each connection's next checkout.
         self.busy_timeout_seconds = busy_timeout_seconds
-        # One call's own wait, set by append_many while it holds _lock, which
-        # every connection checkout here happens under.
-        self._busy_timeout_override: float | None = None
         self._engine = create_spool_engine(
             self.path,
-            busy_timeout_seconds=self._statement_busy_timeout,
+            busy_timeout_seconds=lambda: self.busy_timeout_seconds,
         )
         try:
             upgrade_spool_database(
@@ -126,64 +149,91 @@ class EventSpool:
         events: Sequence[tuple[Mapping[str, Any], Mapping[str, Any] | None]],
         *,
         busy_timeout_seconds: float | None = None,
+        lock_timeout_seconds: float | None = None,
+        before_write: Callable[[], None] | None = None,
     ) -> list[dict[str, Any]]:
         """Append ``(event, resources)`` pairs in one transaction, in order.
 
         The events take consecutive producer sequences in the order given, or,
         when the transaction fails, none of them is stored and the producer's
         next sequence is unchanged, so a failed call can simply be repeated.
-        ``busy_timeout_seconds``, when given, caps how long this call's
-        statements wait for another process's lock instead of
-        ``busy_timeout_seconds`` on the spool.
+
+        Three controls bound how long the call can take, for a caller with a
+        deadline:
+
+        - ``lock_timeout_seconds`` caps the wait for another thread of this
+          process to finish its own spool operation. Past it the call raises
+          ``SpoolBusyError``, which counts as lock contention.
+        - ``before_write`` runs once this call holds the spool, before it
+          touches the database. Raising from it abandons the call.
+        - ``busy_timeout_seconds`` caps the time all of this call's statements
+          together wait for another process's lock: reading the producer's
+          row, taking the write lock, and committing past other processes'
+          readers. Without it each statement waits ``busy_timeout_seconds`` on
+          the spool.
         """
 
         run_id = str(registration["run_id"])
         producer_id = str(registration["producer_id"])
         payloads: list[dict[str, Any]] = []
-        with self._lock:
-            self._busy_timeout_override = busy_timeout_seconds
-            try:
-                with self._session_factory.begin() as session:
-                    run = session.get(TelemetryRunRecord, (run_id, producer_id))
-                    if run is None:
-                        raise KeyError(run_id)
-                    for event, resources in events:
-                        sequence = run.next_sequence
-                        event_id = uuid.uuid4().hex
-                        payload = {
-                            "schema_version": TELEMETRY_SCHEMA_VERSION,
-                            "event_id": event_id,
-                            "run_id": run_id,
-                            "producer_id": producer_id,
-                            "sequence": sequence,
-                            "timestamp": event.get("timestamp") or utc_now(),
-                            "event_type": event["event_type"],
-                            "stage_id": event.get("stage_id"),
-                            "status": event["status"],
-                            "message": event.get("message"),
-                            "details": event.get("details") or {},
-                            "resources": resources,
-                        }
-                        session.add(
-                            TelemetryEventRecord(
-                                event_id=event_id,
-                                run_id=run_id,
-                                producer_id=producer_id,
-                                sequence=sequence,
-                                payload=payload,
-                                created_at=utc_now(),
-                            )
+        with self._held(lock_timeout_seconds):
+            if before_write is not None:
+                before_write()
+            with self._session_factory.begin() as session:
+                lock_waits = _LockWaitBudget(session, busy_timeout_seconds)
+                lock_waits.apply()
+                run = session.get(TelemetryRunRecord, (run_id, producer_id))
+                if run is None:
+                    raise KeyError(run_id)
+                for event, resources in events:
+                    sequence = run.next_sequence
+                    event_id = uuid.uuid4().hex
+                    payload = {
+                        "schema_version": TELEMETRY_SCHEMA_VERSION,
+                        "event_id": event_id,
+                        "run_id": run_id,
+                        "producer_id": producer_id,
+                        "sequence": sequence,
+                        "timestamp": event.get("timestamp") or utc_now(),
+                        "event_type": event["event_type"],
+                        "stage_id": event.get("stage_id"),
+                        "status": event["status"],
+                        "message": event.get("message"),
+                        "details": event.get("details") or {},
+                        "resources": resources,
+                    }
+                    session.add(
+                        TelemetryEventRecord(
+                            event_id=event_id,
+                            run_id=run_id,
+                            producer_id=producer_id,
+                            sequence=sequence,
+                            payload=payload,
+                            created_at=utc_now(),
                         )
-                        run.next_sequence = sequence + 1
-                        payloads.append(payload)
-                    run.updated_at = utc_now()
-            finally:
-                self._busy_timeout_override = None
+                    )
+                    run.next_sequence = sequence + 1
+                    payloads.append(payload)
+                run.updated_at = utc_now()
+                # The inserts take the write lock; the commit that follows
+                # waits for other processes' readers.
+                lock_waits.apply()
+                session.flush()
+                lock_waits.apply()
         return payloads
 
-    def _statement_busy_timeout(self) -> float:
-        override = self._busy_timeout_override
-        return self.busy_timeout_seconds if override is None else override
+    @contextmanager
+    def _held(self, timeout_seconds: float | None) -> Iterator[None]:
+        """Hold this process's spool lock, waiting at most ``timeout_seconds``."""
+
+        if timeout_seconds is None:
+            self._lock.acquire()
+        elif not self._lock.acquire(timeout=max(0.0, timeout_seconds)):
+            raise SpoolBusyError()
+        try:
+            yield
+        finally:
+            self._lock.release()
 
     def pending_runs(self) -> list[dict[str, Any]]:
         """Return registrations that have events eligible for delivery."""

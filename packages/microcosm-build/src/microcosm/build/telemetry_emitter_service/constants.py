@@ -90,9 +90,11 @@ QUEUE_MAX_BYTES: Final = 16 * 1024 * 1024
 QUEUE_RESERVED_EVENTS: Final = 16
 QUEUE_RESERVED_BYTES: Final = 256 * 1024
 # The writer appends up to WRITER_BATCH_EVENTS queued events per transaction.
-# Each of its statements waits at most WRITER_BUSY_TIMEOUT_SECONDS for another
-# process's lock, so its retry loop decides how long to keep trying and it
-# holds the spool's in-process lock only briefly.
+# One append's statements together wait at most WRITER_BUSY_TIMEOUT_SECONDS
+# for other processes' locks, and the append waits no longer than that for
+# another thread of this process to release the spool. So the writer's retry
+# loop decides how long to keep trying, and during a shutdown drain no append
+# touches the database after the deadline less that wait.
 WRITER_BATCH_EVENTS: Final = 100
 WRITER_BUSY_TIMEOUT_SECONDS: Final = 0.25
 
@@ -109,6 +111,7 @@ EVENT_OBJECT_ERROR: Final = "event must be an object"
 EVENT_FIELDS_ERROR: Final = "event must have an event_type and a status"
 QUEUE_FULL_ERROR: Final = "local telemetry queue is full"
 QUEUE_CLOSED_ERROR: Final = "local telemetry queue is closed"
+SPOOL_BUSY_ERROR: Final = "the spool is busy in this process"
 UNSUPPORTED_ACTION_ERROR: Final = "unsupported local telemetry action"
 LOCAL_MESSAGE_TOO_LARGE_ERROR: Final = "local telemetry message exceeds 1 MiB"
 FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT: Final = "unexpected_process_exit"

@@ -60,6 +60,7 @@ from microcosm.build.telemetry_protocol import (
     LOCAL_MESSAGE_DELIMITER,
     LOCAL_SOCKET_READ_BYTES,
     MAX_LOCAL_MESSAGE_BYTES,
+    MAX_TELEMETRY_TEXT_CHARS,
     STAGE_BLOCKED,
     STAGE_COMPLETE,
     STAGE_CREATED,
@@ -153,8 +154,13 @@ class EmitterService:
         self._reported_error_types: set[str] = set()
         self._dropped_error_types: set[str] = set()
         self._warned_queue_full = False
-        self._drain_lock = threading.Lock()
-        self._drain_started = False
+        # One shutdown window, opened by the first stop signal and shared by
+        # the writer's drain, delivery and every thread that waits for them.
+        self._shutdown_lock = threading.Lock()
+        self._shutdown_deadline: float | None = None
+        self._delivery_drain_started = False
+        self._writing_lock = threading.Lock()
+        self._writing_finished = False
         self.event_queue = event_queue if event_queue is not None else EventQueue()
         # The writer reads this module's clock when it runs, so a test that
         # replaces the module's time drives the writer too.
@@ -170,9 +176,13 @@ class EmitterService:
     def run(self) -> None:
         """Serve local messages until the client closes or exits.
 
-        The spool must already hold this producer's registration. Queued
-        events are written to the spool before this returns, within
-        ``drain_seconds`` of the stop.
+        The spool must already hold this producer's registration. One
+        shutdown window of ``drain_seconds`` opens at the first stop signal:
+        the build's close, the build's death, or a thread of this service
+        dying. This returns once the writer has emptied the queue or the
+        window has closed on it, at most ``WORKER_INTERVAL_SECONDS`` and one
+        statement wait after the window ends. Events still queued then are
+        reported in one line.
         """
 
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,11 +197,20 @@ class EmitterService:
                 worker = threading.Thread(target=self._worker, daemon=True)
                 worker.start()
                 self._serve(server, worker)
+                deadline = self._begin_shutdown()
                 self._stop.set()
-                worker.join(timeout=self.drain_seconds + WORKER_INTERVAL_SECONDS)
-                # The worker drains on its way out. One that died or hung
-                # before then leaves the queue to this thread.
-                self._drain()
+                # The worker waits for the writer, then delivers, inside the
+                # window that just opened.
+                worker.join(
+                    timeout=max(0.0, deadline - time.monotonic())
+                    + WORKER_INTERVAL_SECONDS
+                )
+                # A worker held up in a step has not waited for the writer, so
+                # this thread does, and reports what the writer left.
+                self._finish_writing()
+                if not worker.is_alive():
+                    # A worker that died before draining leaves delivery here.
+                    self._drain()
         finally:
             self.socket_path.unlink(missing_ok=True)
             try:
@@ -261,12 +280,17 @@ class EmitterService:
                 STAGE_COMPLETE,
                 STAGE_FAILED,
             }:
-                self._last_stage = stage_id
+                # The client does not limit a stage id's length. This copy
+                # goes into heartbeats and the killed-build record, which must
+                # fit the queue's reserved room, so it is cut to the client's
+                # own text limit.
+                self._last_stage = stage_id[:MAX_TELEMETRY_TEXT_CHARS]
             self._enqueue(event)
         elif action == ACTION_CLOSE:
             # Nothing, not even a heartbeat, is queued behind the build's last
-            # event.
-            self.event_queue.close()
+            # event, and the writer's drain starts now, not when the worker
+            # next looks.
+            self._begin_shutdown()
             self._stop.set()
         elif action == ACTION_PING:
             return
@@ -311,9 +335,9 @@ class EmitterService:
             # cleanly; only a build that never closed died unexpectedly.
             if not self._stop.is_set() and not self._parent_alive():
                 self._attempt(self._queue_unexpected_exit)
-                # Closed even when the record could not be queued: nothing
-                # arrives from a dead build.
-                self.event_queue.close()
+                # The queue closes even when the record could not be queued:
+                # nothing arrives from a dead build.
+                self._begin_shutdown()
                 self._stop.set()
                 break
         self._drain()
@@ -380,19 +404,34 @@ class EmitterService:
             )
         )
 
-    def _drain(self) -> None:
-        """Write the queue to the spool, then deliver, within ``drain_seconds``.
+    def _begin_shutdown(self) -> float:
+        """Open the shutdown window at the first stop signal; return its deadline.
 
-        Runs once: from the worker on its way out, or from ``run`` when the
-        worker stopped without draining.
+        The queue closes and the writer gets the deadline at once, so the
+        queue drains from this moment whatever the worker is doing. Every
+        later call returns the same deadline. Stopping the serving loops is
+        the caller's business.
         """
 
-        with self._drain_lock:
-            if self._drain_started:
+        with self._shutdown_lock:
+            if self._shutdown_deadline is None:
+                self._shutdown_deadline = time.monotonic() + self.drain_seconds
+                self.writer.begin_drain(self._shutdown_deadline)
+            return self._shutdown_deadline
+
+    def _finish_writing(self) -> None:
+        """Wait for the writer's drain and report what it left, exactly once.
+
+        Any thread may call this. A second caller waits for the first, so no
+        caller returns while the writer may still be writing in the window.
+        """
+
+        self._begin_shutdown()
+        with self._writing_lock:
+            if self._writing_finished:
                 return
-            self._drain_started = True
-        deadline = time.monotonic() + self.drain_seconds
-        unwritten = self.writer.finish(deadline)
+            unwritten = self.writer.wait_drained()
+            self._writing_finished = True
         if unwritten:
             stopped_by = self.writer.stopped_by
             write_warning(
@@ -407,6 +446,20 @@ class EmitterService:
                     ),
                 )
             )
+
+    def _drain(self) -> None:
+        """Write the queue to the spool, then deliver, in the shutdown window.
+
+        The worker runs this on its way out, and ``run`` runs it when the
+        worker died first. Delivery is drained once.
+        """
+
+        deadline = self._begin_shutdown()
+        self._finish_writing()
+        with self._shutdown_lock:
+            if self._delivery_drain_started:
+                return
+            self._delivery_drain_started = True
         while time.monotonic() < deadline:
             progressed = False
             try:

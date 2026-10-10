@@ -41,6 +41,7 @@ from microcosm.build.telemetry_emitter_service.constants import (
     WRITER_BUSY_TIMEOUT_SECONDS,
 )
 from microcosm.build.telemetry_emitter_service.contention import (
+    SpoolBusyError,
     is_transient_spool_error,
     retry_spool_contention,
 )
@@ -60,6 +61,7 @@ from microcosm.build.telemetry_protocol import (
     LOCAL_ACKNOWLEDGEMENT_OK,
     MAX_TELEMETRY_DETAILS_BYTES,
     MAX_TELEMETRY_MESSAGE_CHARS,
+    MAX_TELEMETRY_TEXT_CHARS,
     UNEXPECTED_PROCESS_EXIT_MESSAGE,
 )
 from microcosm.build.telemetry_sanitization import sanitize_details, sanitize_text
@@ -135,10 +137,11 @@ def _stored_events(path: Path, run_id: str, producer_id: str) -> list[dict]:
 
 
 class _Clock:
-    """A fake monotonic clock; sleeping advances it."""
+    """A fake monotonic clock; sleeping advances it, by ``oversleep`` too long."""
 
-    def __init__(self, now: float = 1_000.0) -> None:
+    def __init__(self, now: float = 1_000.0, oversleep: float = 0.0) -> None:
         self.now = now
+        self.oversleep = oversleep
         self.sleeps: list[tuple[float, float]] = []
 
     def monotonic(self) -> float:
@@ -146,7 +149,7 @@ class _Clock:
 
     def sleep(self, seconds: float) -> None:
         self.sleeps.append((self.now, seconds))
-        self.now += seconds
+        self.now += seconds + self.oversleep
 
 
 def _service(spool, **overrides) -> EmitterService:
@@ -269,10 +272,51 @@ def test_the_reserve_holds_every_run_event_of_a_build_at_the_clients_limits() ->
     }
     largest = QueuedEvent.encode(run_event, sample).size
     assert largest > MAX_TELEMETRY_DETAILS_BYTES
+    # The service writes the killed-build record itself, around the longest
+    # stage id it keeps.
+    killed = runtime_module._unexpected_exit_event(
+        "\U0001f600" * MAX_TELEMETRY_TEXT_CHARS
+    )
+    largest_killed = QueuedEvent.encode(killed, sample).size
     assert QUEUE_RESERVED_EVENTS >= 3
-    assert QUEUE_RESERVED_BYTES >= 3 * largest
+    assert QUEUE_RESERVED_BYTES >= 2 * largest + largest_killed
     assert QUEUE_RESERVED_EVENTS < QUEUE_MAX_EVENTS
     assert QUEUE_RESERVED_BYTES < QUEUE_MAX_BYTES
+
+
+def test_a_long_stage_id_cannot_crowd_out_the_killed_build_record() -> None:
+    """The client does not limit a stage id; the service's copy of it is cut.
+
+    Progress events with a 300,000-character stage id, each under the 1 MiB
+    message limit, fill the room outside the reserve. The killed-build record
+    names the last stage, and must still fit the reserve.
+    """
+
+    service = _service(SimpleNamespace())
+    stage = "s" * 300_000
+    accepted = 0
+    error_output = io.StringIO()
+    with contextlib.redirect_stderr(error_output):
+        while _send(service, _event(stage + str(accepted))):
+            accepted += 1
+        assert accepted > 0
+        ordinary_room = (
+            service.event_queue.max_bytes
+            - service.event_queue.reserved_bytes
+            - service.event_queue.queued_bytes
+        )
+        assert ordinary_room < len(stage)
+
+        assert service._attempt(service._queue_unexpected_exit)
+
+    assert service.event_queue.closed
+    record, _ = service.event_queue.oldest(accepted + 1)[-1].decode()
+    assert record["message"] == UNEXPECTED_PROCESS_EXIT_MESSAGE
+    assert record["details"]["failed_during"] == stage[:MAX_TELEMETRY_TEXT_CHARS]
+    # A heartbeat carries the same bounded copy.
+    assert len(runtime_module._heartbeat_event(service._last_stage)["stage_id"]) == (
+        MAX_TELEMETRY_TEXT_CHARS
+    )
 
 
 def test_queued_bytes_count_the_encoded_event_and_its_sample() -> None:
@@ -369,7 +413,17 @@ class _ScriptedSpool:
         self.locked_attempts = 0
         self.busy_timeouts: set[float | None] = set()
 
-    def append_many(self, registration, pairs, *, busy_timeout_seconds=None):
+    def append_many(
+        self,
+        registration,
+        pairs,
+        *,
+        busy_timeout_seconds=None,
+        lock_timeout_seconds=None,
+        before_write=None,
+    ):
+        if before_write is not None:
+            before_write()
         self.busy_timeouts.add(busy_timeout_seconds)
         if next(self._lock_errors, False):
             self.locked_attempts += 1
@@ -469,8 +523,10 @@ def test_every_acknowledged_event_is_stored_once_in_acknowledgement_order(
 class _LockedUntil:
     """A spool another process keeps locked until ``lock_until`` on a fake clock.
 
-    An attempt waits in SQLite's busy handler for up to its statement wait and
-    succeeds as soon as the lock is released within it.
+    Like the real spool, an attempt runs ``before_write`` once it holds the
+    spool, then its statements together wait up to ``busy_timeout_seconds``
+    for the lock and succeed as soon as it is released within that. Only
+    attempts that reach the database are recorded.
     """
 
     def __init__(self, clock: _Clock, lock_until: float, insert_seconds: float):
@@ -478,15 +534,28 @@ class _LockedUntil:
         self.lock_until = lock_until
         self.insert_seconds = insert_seconds
         self.attempt_starts: list[float] = []
+        self.attempt_ends: list[float] = []
         self.stored: list[str] = []
 
-    def append_many(self, registration, pairs, *, busy_timeout_seconds=None):
+    def append_many(
+        self,
+        registration,
+        pairs,
+        *,
+        busy_timeout_seconds=None,
+        lock_timeout_seconds=None,
+        before_write=None,
+    ):
+        if before_write is not None:
+            before_write()
         started = self.clock.now
         self.attempt_starts.append(started)
         if self.lock_until > started + busy_timeout_seconds:
             self.clock.now = started + busy_timeout_seconds
+            self.attempt_ends.append(self.clock.now)
             raise _lock_error()
         self.clock.now = max(started, self.lock_until) + self.insert_seconds
+        self.attempt_ends.append(self.clock.now)
         self.stored.extend(event["stage_id"] for event, _ in pairs)
 
     def has_deliverable(self) -> bool:
@@ -503,13 +572,22 @@ class _LockedUntil:
     locked_for=st.one_of(st.just(0.0), st.floats(0, 25)),
     drain_seconds=st.one_of(st.just(0.0), st.floats(0, 20)),
     insert_seconds=st.floats(0, 0.05),
+    oversleep=st.one_of(st.just(0.0), st.floats(0, 1.0)),
 )
-@example(events=450, locked_for=3.0, drain_seconds=15.0, insert_seconds=0.05)
-@example(events=10, locked_for=30.0, drain_seconds=15.0, insert_seconds=0.0)
+@example(
+    events=450, locked_for=3.0, drain_seconds=15.0, insert_seconds=0.05, oversleep=0.0
+)
+@example(
+    events=10, locked_for=30.0, drain_seconds=15.0, insert_seconds=0.0, oversleep=0.0
+)
+# A backoff that overruns its plan by more than the margin before the deadline.
+@example(
+    events=10, locked_for=30.0, drain_seconds=1.0, insert_seconds=0.0, oversleep=0.9
+)
 def test_the_drain_writes_in_order_until_its_deadline_and_reports_the_rest(
-    monkeypatch, events, locked_for, drain_seconds, insert_seconds
+    monkeypatch, events, locked_for, drain_seconds, insert_seconds, oversleep
 ) -> None:
-    clock = _Clock()
+    clock = _Clock(oversleep=oversleep)
     monkeypatch.setattr(runtime_module, "time", clock)
     spool = _LockedUntil(clock, clock.now + locked_for, insert_seconds)
     service = _service(spool, drain_seconds=drain_seconds)
@@ -525,10 +603,11 @@ def test_the_drain_writes_in_order_until_its_deadline_and_reports_the_rest(
         service._drain()
 
     last_start = deadline - WRITER_BUSY_TIMEOUT_SECONDS
-    # No append starts within one statement wait of the deadline, so the last
-    # ends by the deadline plus its own inserts.
+    # No append touches the database within one lock-wait budget of the
+    # deadline, however late a backoff wakes, so every append ends by the
+    # deadline plus its own inserts.
     assert all(start < last_start for start in spool.attempt_starts)
-    assert clock.now <= deadline + insert_seconds + 1e-9
+    assert all(end <= deadline + insert_seconds + 1e-9 for end in spool.attempt_ends)
     # What was written is the oldest events, in order.
     assert spool.stored == sent[: len(spool.stored)]
     unwritten = events - len(spool.stored)
@@ -539,18 +618,26 @@ def test_the_drain_writes_in_order_until_its_deadline_and_reports_the_rest(
     else:
         assert lines == []
     # Contention that clears with room to spare loses nothing: an attempt in
-    # its busy wait succeeds at the release, a sleeping one within a backoff.
+    # its busy wait succeeds at the release, a sleeping one within a backoff
+    # and its overrun.
     batches = math.ceil(events / WRITER_BATCH_EVENTS)
     release = started + locked_for
-    if release + SPOOL_RETRY_MAX_SECONDS + batches * insert_seconds < last_start:
+    wakes_by = release + SPOOL_RETRY_MAX_SECONDS + oversleep
+    if wakes_by + batches * insert_seconds < last_start:
         assert unwritten == 0
     # A lock held through the whole drain writes nothing and loses all.
     if release >= deadline:
         assert spool.stored == []
 
 
-def test_a_writer_stops_at_the_drain_deadline_even_mid_retry() -> None:
-    """The deadline is read after every lock error, so finish reaches a retry."""
+@pytest.mark.parametrize("window", [2.0, 0.1, 0.0])
+def test_a_deadline_that_arrives_mid_retry_stops_every_later_attempt(window) -> None:
+    """The cutoff is checked in every attempt, not once before the first.
+
+    ``window`` is how far ahead the deadline is when it arrives, during a
+    backoff sleep of a writer retrying with no deadline. At 0.1 s and 0 s the
+    cutoff has already passed, so no further attempt may touch the database.
+    """
 
     clock = _Clock()
     queue = EventQueue()
@@ -564,23 +651,26 @@ def test_a_writer_stops_at_the_drain_deadline_even_mid_retry() -> None:
         clock=clock.monotonic,
         sleep=clock.sleep,
     )
-    finish_at = clock.now + 30.0
-    real_sleep = clock.sleep
+    arrives_at = clock.now + 30.0
+    advance = clock.sleep
 
     def sleep(seconds):
-        real_sleep(seconds)
-        # The service stops while the writer is retrying an unbounded wait.
-        if clock.now >= finish_at and writer._drain_deadline == math.inf:
-            writer._drain_deadline = clock.now + 2.0
-        assert clock.now < finish_at + 60, "the writer ignored the drain deadline"
+        advance(seconds)
+        # The service stops while the writer sleeps between attempts.
+        if clock.now >= arrives_at and writer._drain_deadline == math.inf:
+            writer.begin_drain(clock.now + window)
+        assert clock.now < arrives_at + 60, "the writer ignored the drain deadline"
 
     writer._sleep = sleep
     assert not writer.write_queued()
     assert is_transient_spool_error(writer.stopped_by)
     assert len(queue) == 1
-    assert (
-        spool.attempt_starts[-1] < writer._drain_deadline - WRITER_BUSY_TIMEOUT_SECONDS
-    )
+    cutoff = writer._drain_deadline - WRITER_BUSY_TIMEOUT_SECONDS
+    assert spool.attempt_starts, "the writer never reached the spool"
+    assert all(start < cutoff for start in spool.attempt_starts[-3:])
+    if window < WRITER_BUSY_TIMEOUT_SECONDS:
+        # The cutoff had passed when the deadline arrived: nothing ran after.
+        assert spool.attempt_starts[-1] < arrives_at
 
 
 # --- The retry helper with a deadline that moves ------------------------------
@@ -788,6 +878,133 @@ def test_a_commit_a_reader_blocks_stores_nothing_so_a_retry_cannot_duplicate(
         spool._engine.dispose()
 
 
+def test_an_appends_lock_waits_share_one_budget(tmp_path) -> None:
+    """Waiting for the write lock and again at COMMIT must not add up.
+
+    Another connection holds the write lock for 1.5 s while a reader holds a
+    SHARED lock throughout. With a 2 s budget the append gets the write lock
+    after 1.5 s and then has 0.5 s, not another 2 s, to wait at COMMIT.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    reader = sqlite3.connect(spool_path, isolation_level=None)
+    holding = threading.Event()
+
+    def hold_write_lock() -> None:
+        with _write_lock(spool_path):
+            holding.set()
+            time.sleep(1.5)
+
+    holder = threading.Thread(target=hold_write_lock, daemon=True)
+    try:
+        reader.execute("BEGIN")
+        reader.execute("SELECT count(*) FROM telemetry_events").fetchone()
+        holder.start()
+        assert holding.wait(10)
+        started = time.monotonic()
+        with pytest.raises(OperationalError) as locked:
+            spool.append_many(
+                registration, [(_event("a"), None)], busy_timeout_seconds=2.0
+            )
+        waited = time.monotonic() - started
+        assert is_transient_spool_error(locked.value)
+        # Past the other writer's 1.5 s, so the wait at COMMIT happened, and
+        # well short of the 3.5 s that a full second wait would take.
+        assert 1.5 <= waited < 2.9
+        reader.execute("COMMIT")
+        assert _stored_stages(spool_path) == []
+    finally:
+        holder.join(timeout=10)
+        reader.close()
+        spool._engine.dispose()
+
+
+def test_this_processes_own_spool_lock_cannot_carry_a_write_past_the_cutoff(
+    tmp_path,
+) -> None:
+    """The worker can hold the spool's in-process lock for a whole busy wait.
+
+    Another thread holds it for 3 s; the drain deadline is 1 s away. The
+    writer must give up at the cutoff, not write when the lock comes free.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    queue = EventQueue()
+    for stage in ("a", "b"):
+        queue.offer(QueuedEvent.encode(_event(stage), None))
+    writer = SpoolWriter(spool, registration, queue, report_dropped=pytest.fail)
+    holding = threading.Event()
+
+    def hold_spool_lock() -> None:
+        with spool._lock:
+            holding.set()
+            time.sleep(3.0)
+
+    holder = threading.Thread(target=hold_spool_lock, daemon=True)
+    try:
+        holder.start()
+        assert holding.wait(10)
+        started = time.monotonic()
+        writer.begin_drain(started + 1.0)
+        assert not writer.write_queued()
+        gave_up_after = time.monotonic() - started
+        assert isinstance(writer.stopped_by, SpoolBusyError)
+        assert is_transient_spool_error(writer.stopped_by)
+        # At the cutoff, well before the other thread lets go.
+        assert gave_up_after < 2.5
+        holder.join(timeout=10)
+        assert len(queue) == 2
+        assert _stored_stages(spool_path) == []
+        # Asked directly, the spool refuses within the caller's wait.
+        with spool._lock:
+            refused = []
+
+            def ask() -> None:
+                try:
+                    spool.append_many(
+                        registration, [(_event("c"), None)], lock_timeout_seconds=0.1
+                    )
+                except Exception as error:
+                    refused.append(error)
+
+            asking = threading.Thread(target=ask, daemon=True)
+            asking.start()
+            asking.join(timeout=10)
+        assert [type(error) for error in refused] == [SpoolBusyError]
+    finally:
+        holder.join(timeout=10)
+        spool._engine.dispose()
+
+
+def test_before_write_runs_with_the_spool_held_and_can_abandon_the_append(
+    tmp_path,
+) -> None:
+    spool = EventSpool(tmp_path / "events.sqlite3")
+    registration = _registration()
+    spool.register(registration)
+    held: list[bool] = []
+
+    def refuse() -> None:
+        # RLock._is_owned is true only for the thread that holds it.
+        held.append(spool._lock._is_owned())
+        raise RuntimeError("too late")
+
+    try:
+        with pytest.raises(RuntimeError, match="too late"):
+            spool.append_many(registration, [(_event("a"), None)], before_write=refuse)
+        assert held == [True]
+        assert _stored_stages(spool.path) == []
+        assert not spool._lock._is_owned()
+    finally:
+        spool._engine.dispose()
+
+
 # --- Real lock contention -----------------------------------------------------
 
 
@@ -959,6 +1176,67 @@ def test_a_lock_held_through_the_drain_loses_only_the_queue_and_says_so(
     assert len(lines) == 1
     assert "could not write 5 queued update(s)" in lines[0]
     assert "(database is locked)" in lines[0]
+
+
+class _HeldDelivery:
+    """A delivery step that blocks, as a collector request or a busy wait does."""
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def flush_once(self) -> bool:
+        self.entered.set()
+        self.release.wait(60)
+        return False
+
+
+@pytest.mark.parametrize("worker", ["returns after the window", "never returns"])
+def test_run_does_not_return_while_the_writer_may_still_write(
+    tmp_path, capsys, worker
+) -> None:
+    """One shutdown window, opened at the close, whatever the worker is doing.
+
+    The worker is inside a delivery step when the build closes, and the spool
+    stays locked. The writer must still get its deadline at the close, and
+    ``run`` must not return before the writer has stopped and the events it
+    left are reported: not earlier with the writer still retrying, and not a
+    second window later.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    drain_seconds = 2.0
+    delivery = _HeldDelivery()
+    service, serving, client = _start_service(
+        spool_path, drain_seconds=drain_seconds, delivery=delivery
+    )
+    try:
+        assert delivery.entered.wait(15), "the worker never reached delivery"
+        with _write_lock(spool_path):
+            for index in range(3):
+                client.stage(f"stage-{index}")
+            client.close()
+            closed_at = time.monotonic()
+            if worker == "returns after the window":
+                threading.Timer(drain_seconds + 0.5, delivery.release.set).start()
+            serving.join(timeout=30)
+            returned_after = time.monotonic() - closed_at
+            # Read at the moment run returned, with the spool still locked.
+            writer_alive = service.writer.is_alive()
+            lines = capsys.readouterr().err.splitlines()
+    finally:
+        delivery.release.set()
+        _stop(service, serving, client)
+
+    assert not serving.is_alive()
+    assert not writer_alive
+    assert len(lines) == 1
+    assert "could not write 3 queued update(s)" in lines[0]
+    assert "(database is locked)" in lines[0]
+    # The window, the worker's interval, a statement wait and the accept wait;
+    # a second window would add drain_seconds.
+    assert returned_after < drain_seconds + 1.0 + 0.25 + 0.5 + 0.75
+    assert _stored_stages(spool_path) == []
 
 
 def test_a_killed_build_is_recorded_after_every_event_it_sent(tmp_path) -> None:

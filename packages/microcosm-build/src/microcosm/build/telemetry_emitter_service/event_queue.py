@@ -202,11 +202,15 @@ class SpoolWriter:
 
     While the service serves, a lock error is retried for as long as it lasts:
     an event leaves the queue only once the spool has stored it, or once the
-    spool has refused it for another reason. ``finish`` sets a drain deadline
-    and closes the queue; the writer then starts no append after
-    ``deadline - WRITER_BUSY_TIMEOUT_SECONDS``, and since each statement waits
-    at most that long for a lock, its last append ends by the deadline plus the
-    time its own inserts take.
+    spool has refused it for another reason.
+
+    ``begin_drain`` closes the queue and sets a deadline. From then on no
+    append touches the database after ``deadline -
+    WRITER_BUSY_TIMEOUT_SECONDS``: every attempt checks that once it holds the
+    spool, having waited no longer than that for another thread to release it.
+    An append's statements together wait at most
+    ``WRITER_BUSY_TIMEOUT_SECONDS`` for other processes' locks, so the last
+    append ends by the deadline plus the time its own inserts take.
     """
 
     def __init__(
@@ -233,7 +237,7 @@ class SpoolWriter:
         self.dropped = 0
 
     def start(self) -> None:
-        """Write queued events on a daemon thread until ``finish``."""
+        """Write queued events on a daemon thread until the drain ends."""
 
         self._thread = threading.Thread(
             target=self._run, name="telemetry-spool-writer", daemon=True
@@ -243,26 +247,41 @@ class SpoolWriter:
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def finish(self, deadline: float) -> int:
-        """Close the queue and write what it holds, until ``deadline``.
+    def begin_drain(self, deadline: float) -> None:
+        """Close the queue and give the writer until ``deadline`` to empty it.
 
-        ``deadline`` is a reading of this writer's clock. Returns how many
-        events were left unwritten. A writer whose thread was never started,
-        such as one a test drives step by step, writes on the calling thread.
+        ``deadline`` is a reading of this writer's clock. Returns at once; a
+        writer that is retrying a lock error picks the deadline up at its next
+        attempt.
         """
 
         self._drain_deadline = deadline
         self.queue.close()
+
+    def wait_drained(self) -> int:
+        """Wait for the drain to end and return how many events are unwritten.
+
+        The writer's last append ends by the deadline plus its inserts; this
+        waits one statement wait past the deadline for it. A writer whose
+        thread was never started, such as one a test drives step by step,
+        writes on the calling thread.
+        """
+
         if self._thread is None:
             if len(self.queue):
                 self.write_queued()
         else:
-            # The thread's last append ends by the deadline plus its inserts;
-            # this waits for that and gives up a statement wait later.
             self._thread.join(
-                timeout=max(0.0, deadline - self._clock()) + WRITER_BUSY_TIMEOUT_SECONDS
+                timeout=max(0.0, self._drain_deadline - self._clock())
+                + WRITER_BUSY_TIMEOUT_SECONDS
             )
         return len(self.queue)
+
+    def finish(self, deadline: float) -> int:
+        """Drain until ``deadline`` and return how many events are unwritten."""
+
+        self.begin_drain(deadline)
+        return self.wait_drained()
 
     def _run(self) -> None:
         try:
@@ -294,7 +313,10 @@ class SpoolWriter:
                     or is_transient_spool_error(error)
                 ):
                     raise
-                self.stopped_by = error
+                # A deadline that passed between attempts ends the drain with
+                # no error of its own; keep the lock error that explains it.
+                if self.stopped_by is None or is_transient_spool_error(error):
+                    self.stopped_by = error
                 return False
         return True
 
@@ -321,20 +343,44 @@ class SpoolWriter:
         self.queue.remove(len(events))
 
     def _append(self, events: list[QueuedEvent]) -> None:
-        if self._clock() >= self._last_attempt_start():
-            raise DrainDeadlineError()
         pairs = [event.decode() for event in events]
+
+        def attempt() -> None:
+            # Checked at the start of every attempt, not once before the first:
+            # a backoff can outlast its plan, and the deadline can arrive
+            # while the writer sleeps.
+            left = self._last_start() - self._clock()
+            if left <= 0:
+                raise DrainDeadlineError()
+            try:
+                self.spool.append_many(
+                    self.registration,
+                    pairs,
+                    busy_timeout_seconds=WRITER_BUSY_TIMEOUT_SECONDS,
+                    lock_timeout_seconds=min(left, WRITER_BUSY_TIMEOUT_SECONDS),
+                    before_write=self._check_may_write,
+                )
+            except Exception as error:
+                if is_transient_spool_error(error):
+                    self.stopped_by = error
+                raise
+
         retry_spool_contention(
-            lambda: self.spool.append_many(
-                self.registration,
-                pairs,
-                busy_timeout_seconds=WRITER_BUSY_TIMEOUT_SECONDS,
-            ),
-            deadline=self._last_attempt_start,
+            attempt,
+            deadline=self._last_start,
             clock=self._clock,
             sleep=self._sleep,
         )
+        # Written: an earlier lock error no longer explains anything.
+        self.stopped_by = None
 
-    def _last_attempt_start(self) -> float:
-        # Infinite until finish sets a drain deadline.
+    def _check_may_write(self) -> None:
+        # Runs once the spool is held, so time spent waiting for another
+        # thread to release it cannot carry database work past the deadline.
+        if self._clock() >= self._last_start():
+            raise DrainDeadlineError()
+
+    def _last_start(self) -> float:
+        # The latest an append may begin its database work. Infinite until
+        # begin_drain sets a deadline.
         return self._drain_deadline - WRITER_BUSY_TIMEOUT_SECONDS
