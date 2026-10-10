@@ -282,6 +282,78 @@ def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> No
     assert any("unreviewed_extra" in failure for failure in unrelated.failures)
 
 
+def test_export_candidate_columns_and_release_frame_carry_consumer_area_code_names() -> (
+    None
+):
+    """microcosm#1114: the surface the export gate compares, and the frame the
+    national boundary writes, name the three area codes as consumers read them."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "SOUTH_EAST"],
+                "constituency_code": ["E14000001", "E14000002"],
+                "local_authority_code": ["E09000001", "E07000008"],
+                "region_code": ["E12000007", "E12000008"],
+                "ward_code": ["E05000001", "E05000002"],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    surface = uk_export_candidate_columns(frame)
+    assert {
+        "household.constituency_code_oa",
+        "household.la_code_oa",
+        "household.region_code_oa",
+        "household.ward_code",
+    } <= surface
+    assert (
+        not {
+            "household.constituency_code",
+            "household.local_authority_code",
+            "household.region_code",
+        }
+        & surface
+    )
+    for export in UK_EXPORT_AREA_CODE_COLUMNS.values():
+        assert f"household.{export}" in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    for ladder in UK_EXPORT_AREA_CODE_COLUMNS:
+        assert f"household.{ladder}" not in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    exported = uk_release_export_frame(frame)
+    household = exported.table("household")
+    assert household["constituency_code_oa"].tolist() == ["E14000001", "E14000002"]
+    assert household["la_code_oa"].tolist() == ["E09000001", "E07000008"]
+    assert household["region_code_oa"].tolist() == ["E12000007", "E12000008"]
+    assert "constituency_code" not in household.columns
+    assert "constituency_code" in frame.table("household").columns
+    assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
+
+
 def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     """microcosm#1063 c9: the certifier rehearsal listed every id column as an
     unreviewed extra and the frame's weights as a missing reference column."""
@@ -473,8 +545,22 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # is retired with the microcosm#1095 ports: with FRS respondents keeping
     # their reported dividends and SPI draws going to claimants and partners
     # only, the cell fits at +11.7 % on the rebased head, and the gate fails
-    # the deferral as stale.
-    assert register == {}
+    # the deferral as stale. The West Midlands 12,570-15,000 cell is deferred
+    # on the second microcosm#1095 ports (2026-10-06, four weeks): the
+    # regional cells slice on the engine's total_income, which leaves out the
+    # other investment income that income tax charges, and on policyengine-uk
+    # 2.122.2 the solver's pull on the cell stops at +27.4 %. The fix is
+    # upstream in policyengine-uk's total_income (pe-uk#2174).
+    assert set(register) == {
+        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
+    }
+    deferral = register[
+        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
+    ]
+    assert deferral.approved_on == "2026-10-06"
+    assert deferral.expires_on == "2026-11-03"
+    assert "microcosm#1095" in deferral.adjudication
+    assert "pe-uk#2174" in deferral.reason
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -499,7 +585,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **empty_tail,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 10, 2),
+        now=date(2026, 10, 6),
     )
 
     assert not fit.passed
@@ -521,7 +607,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     fit = uk_target_fit_gate(
         {name: relative_error},
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 10, 2),
+        now=date(2026, 10, 6),
     )
 
     assert fit.passed is passes
@@ -536,7 +622,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
         reviewed_exclusions=register,
-        now=date(2026, 10, 2),
+        now=date(2026, 10, 6),
     )
     assert not fit.passed
     assert fit.details["failing_targets"] == {"hmrc.cgt.liability_total@2025": 0.30}
@@ -844,3 +930,24 @@ def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside()
     assert plain.details["evaluated_on"] == "row_weights"
     assert "family_folded" not in plain.details
     assert not plain.passed
+
+
+def test_degenerate_gate_skips_columns_the_release_boundary_drops() -> None:
+    """A gate fed the pre-export frame must not report a column the exported
+    H5 never carries: the skipped names are recorded, nothing else changes."""
+    dataset = _dataset(signal=0.0)  # person.employment_income is all-zero
+    reported = uk_degenerate_release_surface_gate(dataset)
+    assert reported.passed is False
+    assert any("person.employment_income" in line for line in reported.failures)
+
+    skipped = uk_degenerate_release_surface_gate(
+        dataset, dropped_at_export={"person": ("employment_income",)}
+    )
+    assert skipped.passed is True
+    assert skipped.details["dropped_at_export"] == ["person.employment_income"]
+    assert skipped.details["columns_checked"] == reported.details["columns_checked"] - 1
+    # a drop list naming an absent column is inert
+    inert = uk_degenerate_release_surface_gate(
+        _dataset(), dropped_at_export={"household": ("not_a_column",)}
+    )
+    assert inert.passed is True and inert.details["dropped_at_export"] == []

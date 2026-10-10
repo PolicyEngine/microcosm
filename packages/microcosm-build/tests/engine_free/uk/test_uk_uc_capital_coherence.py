@@ -24,7 +24,7 @@ def test_manifest_declares_exact_redraw_seed_and_output() -> None:
     assert redraw.parameters["investment_income_band_edges"] == list(
         UC_CAPITAL_INCOME_BAND_EDGES
     )
-    assert stage.outputs == ("uc_reported_capital",)
+    assert stage.outputs == ("uc_reported_capital", "pension_credit_reported_capital")
     assert stage.rewrites == ("frs_benunit_capital", "would_claim_uc")
 
 
@@ -87,6 +87,11 @@ def test_or_refresh_truth_table_and_same_capital_source() -> None:
     assert benunit.loc[1007, "would_claim_uc"]
     np.testing.assert_array_equal(
         benunit["uc_reported_capital"], benunit["frs_benunit_capital"]
+    )
+    # Pension Credit reads the same recorded capital, the unavailable
+    # sentinel included (pe-uk#2018, uk-data#513).
+    np.testing.assert_array_equal(
+        benunit["pension_credit_reported_capital"], benunit["frs_benunit_capital"]
     )
     assert result.refreshed_would_claim_count == 4
 

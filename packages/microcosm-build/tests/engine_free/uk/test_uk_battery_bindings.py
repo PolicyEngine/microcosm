@@ -60,8 +60,11 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: 2026-10-21, the same entries) so the suite never drifts across an approval
 #: or expiry boundary. Move it forward when a register gains a later approval.
 # The committed registers are evaluated as of this date; the microcosm#1063
-# c9 input-mass and QRF-tail entries take force on 2026-10-02.
-CLOCK = date(2026, 10, 4)
+# c9 input-mass and QRF-tail entries take force on 2026-10-02, the
+# microcosm#1095 West Midlands target-fit deferral on 2026-10-06 and its two
+# UC payment-band measure exclusions on 2026-10-07. The earliest expiry is
+# 2026-10-15.
+CLOCK = date(2026, 10, 7)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -1057,18 +1060,24 @@ class TestTerminalCoverageBinding:
             family_coverage={},
         )
         binding = UK_GATE_REGISTRY["release_input_coverage"]
+        # The binding needs the spine build state (microcosm#1115 review);
+        # here the spine frame is the frame itself.
         result = binding.evaluate(
             EvidenceContext(
                 frame=frame,
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "spine_frame": frame,
                 },
             ),
             {},
         )
         direct = uk_release_input_coverage_gate(
-            _uk_gate_surface(frame), engine, manifest=manifest
+            _uk_gate_surface(frame),
+            engine,
+            manifest=manifest,
+            build_state_frame=_uk_gate_surface(frame),
         )
 
         assert direct.name == "uk_release_input_coverage"

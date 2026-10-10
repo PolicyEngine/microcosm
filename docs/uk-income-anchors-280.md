@@ -35,6 +35,16 @@ opening in Y. That is the `calendar_year_window` value operation
 with either year absent, and writes each member's year, weight, value and
 assertion on the spec.
 
+Some publishers give each year its own measure: DWP's benefit expenditure and
+caseload tables carry `expenditure_2024` and `expenditure_2025`, which the
+series identity reads as two series of one year each. A window over such a
+table declares `source_measure_id_by_opening_year` in its selector, mapping each
+of the two years to its measure. A fact matches only the measure its own year
+declares, and the two declared measures form the window's one series. The map
+names exactly the two years of the window, and a selector that declares it
+cannot also declare `source_measure_id` (microcosm#1095: the Great Britain
+pension-age Housing Benefit spending row).
+
 Facts already at a calendar-year period (the DWP monthly cubes) keep their
 calendar-2025 windows; the ESA rows join them below.
 
@@ -351,7 +361,10 @@ after the reorder were still falling 0.11 to 0.75 points).
 ## Not done here
 
 - The property-income amount rows stay signed out: the spine's
-  `property_income` is the FRS rent received (sub-lets, lodgers, royalties)
-  while the SPI concept is landlords' net income after expenses.
+  `property_income` is FRS rent from other property (before tax, after the
+  expenses on show card K6, which include mortgage payments and loan
+  interest) plus sub-letting rent as reported, which SUBALLOW records as
+  before or after expenses, while the SPI concept is landlords' profit after
+  allowable expenses and before residential finance costs.
 - The ESA rows' migration residual and the SPI support channel's benefit fill
   (microcosm#840, #867, #869) are spine items.

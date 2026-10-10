@@ -33,7 +33,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 COUNTRY_PACKAGE_ROOT = _TEST_PATHS.package / "src/microcosm/build"
 GOLDEN_ROOT = _TEST_PATHS.tests / "golden"
-GOLDEN_COUNTRIES = ("am", "be")
+GOLDEN_COUNTRIES = ("am", "be", "nz")
 FORBIDDEN_TARGET_VALUE_KEYS = {"value", "values", "observed", "observed_value"}
 
 
@@ -926,7 +926,7 @@ class TestUKCountryPackage:
             "frs_release.json",
             "chronicle_feed.json",
             "gates.json",
-            "brma_rent_counts.json",
+            "brma_private_rented_households.json",
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
@@ -1051,7 +1051,7 @@ class TestExistingPackagesGeneralize:
             "frs_release.json",
             "chronicle_feed.json",
             "gates.json",
-            "brma_rent_counts.json",
+            "brma_private_rented_households.json",
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
@@ -1132,7 +1132,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1230
+            len(references) == 1231
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1150,7 +1150,8 @@ class TestExistingPackagesGeneralize:
         # the DWP employer contribution total, less the salary-sacrifice users
         # total (the Table 3.8 rows and the DWP employee total left the fit); two
         # Attendance Allowance and three pension-age Housing Benefit rows; the
-        # income-tax relief total on salary sacrifice in place of the amount row
+        # income-tax relief total on salary sacrifice in place of the amount row;
+        # microcosm#1095: Great Britain pension-age Housing Benefit spending
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

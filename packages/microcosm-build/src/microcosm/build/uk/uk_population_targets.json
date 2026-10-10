@@ -830,6 +830,7 @@
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
+      "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
       "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
     },
     "suppressed_ancestors": {
@@ -1203,6 +1204,7 @@
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
       "dwp.hb.households_pension_age_private_rented",
+      "dwp.hb.amount_pension_age",
       "hmrc.salary_sacrifice.it_relief_total"
     ]
   },
@@ -3389,8 +3391,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national earnings index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -3477,8 +3479,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.mixed_income between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national mixed-income index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -3741,8 +3743,8 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.private_pension_index between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to calendar 2025 by HMRC's projected total income in the band (Income Tax Liabilities Table 2.5, hmrc.itl_2026), the index the count, total-income and tax rows by band already use: an amount held in a fixed nominal band moves with the band's membership, which a flat national private pension index ignores (microcosm#1063, 2026-10-02). The calibration binds at calendar 2025 under María's ruling of 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -26788,6 +26790,91 @@
       "label": "Housing Benefit benefit units, pension age, private rented sector",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.hb.amount_pension_age",
+      "family": "dwp_benefit_expenditure",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefits.housing_benefit.amount",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/amount_pension_age",
+          "value_variable": "housing_benefit",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 66
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP benefit expenditure and caseload tables, Spring Forecast 2026 (PolicyEngine/chronicle#280 / #282): the Housing_benefits worksheet line 'Housing Benefit over Pension Credit qualifying age', nominal GBP, which DWP publishes for Great Britain plus residents overseas (Notes tab), so the model column sums Great Britain households only (microcosm#1095, uk-data#490). Bound at the calendar-2025 window of the fiscal years (three twelfths of the FY2024-25 outturn, nine twelfths of the FY2025-26 forecast; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year. DWP gives each year its own measure (expenditure_2024, expenditure_2025), so the selector names each year's measure in source_measure_id_by_opening_year. DWP splits Housing Benefit at Pension Credit qualifying age; the engine reads the age of the benefit unit's eldest adult against 66, the State Pension age of everyone who reaches it in 2025, as the pension-age caseload rows do (microcosm#1069 c10, #867)."
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/amount_pension_age",
+          "status": "pending",
+          "value_rule": "uk.benefits.housing_benefit.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_expenditure_amount",
+        "entity_name": "government",
+        "dimension_values": {
+          "benefit_forecast_line": "housing_benefits__housing_benefitover_pension_credit_qualifying_age"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "expenditure_2024",
+          "2025": "expenditure_2025"
+        }
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Housing Benefit spending, pension age",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "hmrc.salary_sacrifice.it_relief_total",

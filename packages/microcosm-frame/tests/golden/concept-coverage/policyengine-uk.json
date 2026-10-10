@@ -393,9 +393,9 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.100.0",
- "input_count": 233,
- "schema_sha256": "d4cb09218a9757642af016e795e900ae9091a552694d37a954e6a70fffa2b6a1",
+ "engine_version": "2.122.2",
+ "input_count": 285,
+ "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
  "structural_inputs": [
   {
    "entity": "benunit",
@@ -516,6 +516,14 @@
    "name": "baseline_pension_credit_entitlement"
   },
   {
+   "entity": "household",
+   "name": "beer_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "beer_litres"
+  },
+  {
    "entity": "person",
    "name": "blind_persons_allowance"
   },
@@ -541,7 +549,15 @@
   },
   {
    "entity": "household",
-   "name": "bus_fare_spending"
+   "name": "bus_fare_spending_reported"
+  },
+  {
+   "entity": "person",
+   "name": "bus_in_london_trips"
+  },
+  {
+   "entity": "person",
+   "name": "bus_pass_eligible"
   },
   {
    "entity": "household",
@@ -565,11 +581,39 @@
   },
   {
    "entity": "person",
+   "name": "car_co2_emissions"
+  },
+  {
+   "entity": "person",
+   "name": "car_engine_size"
+  },
+  {
+   "entity": "person",
+   "name": "car_first_registration_date"
+  },
+  {
+   "entity": "person",
+   "name": "car_fuel_type"
+  },
+  {
+   "entity": "person",
+   "name": "car_is_ved_exempt"
+  },
+  {
+   "entity": "person",
+   "name": "car_list_price"
+  },
+  {
+   "entity": "person",
    "name": "care_hours"
   },
   {
    "entity": "person",
    "name": "carers_allowance_reported"
+  },
+  {
+   "entity": "household",
+   "name": "cash_isa"
   },
   {
    "entity": "person",
@@ -609,11 +653,31 @@
   },
   {
    "entity": "household",
+   "name": "cider_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "cider_litres"
+  },
+  {
+   "entity": "household",
+   "name": "cigarettes_per_week"
+  },
+  {
+   "entity": "household",
+   "name": "cigars_grams_per_week"
+  },
+  {
+   "entity": "household",
    "name": "clothing_and_footwear_consumption"
   },
   {
    "entity": "household",
    "name": "communication_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "consumer_debt"
   },
   {
    "entity": "household",
@@ -753,6 +817,10 @@
   },
   {
    "entity": "household",
+   "name": "hand_rolling_tobacco_grams_per_week"
+  },
+  {
+   "entity": "household",
    "name": "health_consumption"
   },
   {
@@ -761,11 +829,19 @@
   },
   {
    "entity": "household",
+   "name": "heated_tobacco_grams_per_week"
+  },
+  {
+   "entity": "household",
    "name": "household_furnishings_consumption"
   },
   {
    "entity": "household",
    "name": "household_owns_tv"
+  },
+  {
+   "entity": "benunit",
+   "name": "housing_benefit_board_and_attendance_determination"
   },
   {
    "entity": "person",
@@ -794,6 +870,10 @@
   {
    "entity": "household",
    "name": "in_rural_fuel_duty_relief_area"
+  },
+  {
+   "entity": "benunit",
+   "name": "in_specified_or_temporary_accommodation"
   },
   {
    "entity": "person",
@@ -844,8 +924,20 @@
    "name": "jsa_income_reported"
   },
   {
+   "entity": "benunit",
+   "name": "liable_for_share_of_household_rent"
+  },
+  {
+   "entity": "person",
+   "name": "lifetime_isa_balance"
+  },
+  {
    "entity": "household",
    "name": "local_authority"
+  },
+  {
+   "entity": "household",
+   "name": "lpg_kg"
   },
   {
    "entity": "person",
@@ -884,12 +976,24 @@
    "name": "maximum_extended_childcare_hours_usage"
   },
   {
+   "entity": "benunit",
+   "name": "meals_included_in_rent"
+  },
+  {
    "entity": "household",
    "name": "miscellaneous_consumption"
   },
   {
    "entity": "person",
    "name": "miscellaneous_income"
+  },
+  {
+   "entity": "household",
+   "name": "mortgage_debt"
+  },
+  {
+   "entity": "household",
+   "name": "natural_gas_kg"
   },
   {
    "entity": "household",
@@ -932,8 +1036,20 @@
    "name": "other_deductions"
   },
   {
+   "entity": "household",
+   "name": "other_fermented_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "other_fermented_litres"
+  },
+  {
    "entity": "person",
    "name": "other_investment_income"
+  },
+  {
+   "entity": "person",
+   "name": "other_local_bus_trips"
   },
   {
    "entity": "household",
@@ -942,6 +1058,10 @@
   {
    "entity": "person",
    "name": "other_tax_credits"
+  },
+  {
+   "entity": "household",
+   "name": "other_tobacco_grams_per_week"
   },
   {
    "entity": "person",
@@ -958,6 +1078,10 @@
   {
    "entity": "person",
    "name": "pension_credit_reported"
+  },
+  {
+   "entity": "benunit",
+   "name": "pension_credit_reported_capital"
   },
   {
    "entity": "person",
@@ -1008,12 +1132,24 @@
    "name": "receives_benefits_in_own_right"
   },
   {
+   "entity": "person",
+   "name": "receives_limited_capability_for_work_credits"
+  },
+  {
    "entity": "household",
    "name": "recreation_consumption"
   },
   {
    "entity": "household",
    "name": "region"
+  },
+  {
+   "entity": "person",
+   "name": "rent_paid_as_boarder"
+  },
+  {
+   "entity": "person",
+   "name": "rent_paid_as_lodger"
   },
   {
    "entity": "household",
@@ -1037,11 +1173,31 @@
   },
   {
    "entity": "person",
+   "name": "self_employment_gross_receipts"
+  },
+  {
+   "entity": "person",
    "name": "sic_industry_division"
   },
   {
    "entity": "household",
+   "name": "sparkling_cider_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "sparkling_cider_litres"
+  },
+  {
+   "entity": "household",
    "name": "spi_imputed"
+  },
+  {
+   "entity": "household",
+   "name": "spirits_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "spirits_litres"
   },
   {
    "entity": "person",
@@ -1058,6 +1214,10 @@
   {
    "entity": "person",
    "name": "statutory_sick_pay"
+  },
+  {
+   "entity": "household",
+   "name": "stocks_and_shares_isa"
   },
   {
    "entity": "household",
@@ -1086,6 +1246,10 @@
   {
    "entity": "person",
    "name": "tax_free_childcare_on_adoption_leave"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_on_carers_leave"
   },
   {
    "entity": "person",
@@ -1137,7 +1301,43 @@
   },
   {
    "entity": "person",
+   "name": "uc_has_limited_capability_for_work"
+  },
+  {
+   "entity": "person",
+   "name": "uc_has_offer_of_paid_work_starting_by_end_of_next_assessment_period"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_adopter_in_first_year"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_foster_parent_or_new_friend_or_family_carer"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_in_pregnancy_or_post_confinement_period"
+  },
+  {
+   "entity": "person",
    "name": "uc_is_in_startup_period"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_ineligible_partner"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_responsible_foster_parent_of_child_under_one"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_student_with_no_work_related_requirements"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_temporarily_absent_from_claimant_household"
   },
   {
    "entity": "household",
@@ -1154,6 +1354,14 @@
   {
    "entity": "household",
    "name": "water_and_sewerage_charges"
+  },
+  {
+   "entity": "household",
+   "name": "wine_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "wine_litres"
   },
   {
    "entity": "person",
@@ -1176,6 +1384,7 @@
  "unmapped_concepts": {
   "fact:household.reference_person_id": "is_household_head is formula-owned (the oldest member). The UK build overrides it with the FRS household reference person (frs_spine.py), an override the loader accepts, but it is not an input, so the mapping does not target it. Every housing input is household-level, so nothing is allocated to the reference person.",
   "fact:person.legal_marital_status": "policyengine-uk derives marital status from benefit-unit composition; marital_status and is_married are formula-owned.",
+  "fact:person.liquid_financial_assets": "policyengine-uk holds financial wealth on the household: savings ('Household liquid savings'), corporate_wealth ('Wealth held in corporations directly or through investment funds'), gross_financial_wealth and net_financial_wealth are household inputs, and no transform puts a person amount on a household input. Its person-level GBP stock inputs are student_loan_balance, a debt; car_list_price, the price vehicle excise duty's expensive-car supplement tests; and lifetime_isa_balance ('Current value of the person's Lifetime ISAs, cash and stocks and shares together'), one savings wrapper, which the engine documents as already inside gross_financial_wealth and net_financial_wealth. savings and corporate_wealth are two of Universal Credit's capital sources (gov.dwp.universal_credit.means_test.capital.sources), and lifetime_isa_countable_capital, the Lifetime ISA at its surrender value, is its one person-level source (capital.person_sources). uc_reported_capital (benefit unit; 'Claimant-level capital for Universal Credit when household-level asset data cannot be attributed across multiple benefit units', default -1) is Universal Credit capital: when it is zero or more, uc_assessable_capital takes it in place of both the household-capital proxy it otherwise sums from the household sources, net of capital other benefit units report, and apportions by claimant and partner count, and the person-level sources of the unit's claimant and partner, so feeding it would be a modelling choice for a UK build, not a mapping of this concept.",
   "fact:person.partner_person_id": "Partnerships reach policyengine-uk only through benefit-unit membership, a structure the bundle must already carry (the adapter builds no units); is_benunit_head and is_married are formula-owned.",
   "fact:person.public_pension_income": "The State Pension is computed from state_pension_reported, which is formula-owned: the loader accepts it as an override, but it is not an input."
  }

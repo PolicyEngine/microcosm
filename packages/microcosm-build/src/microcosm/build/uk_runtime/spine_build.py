@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
+from microcosm.build.artifact_files import file_artifact
 from microcosm.build.country_spec import (
     GatesManifest,
     load_country_spec,
@@ -49,14 +52,20 @@ from microcosm.build.observation import (
     StageObserver,
 )
 from microcosm.build.plan import StageRecord
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
 )
 from microcosm.build.staging_v2 import (
-    StagingTelemetryV2,
+    StagingRunBundleWriterV2,
     disabled_staging_delivery,
 )
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
@@ -131,12 +140,17 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.orrery_contract import (
+    UK_SUMMARY_PROVIDERS,
+    save_uk_graph_schema,
+)
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
+from microcosm.build.uk_runtime.rowwise_staging import close_run_blocked
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
@@ -168,9 +182,15 @@ from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
-from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph import (
+    ContentStore,
+    compile_graph,
+    run_graph,
+    save_run_evidence,
+)
 
 _PIPELINE = "uk-frs-spine"
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 _REPOSITORY = next(
     (
         parent
@@ -893,8 +913,53 @@ def _structural_columns(frame) -> frozenset[str]:
     return frozenset(columns)
 
 
+def _write_sha256_file(path: Path, sha256: str) -> Path:
+    """Write ``<path>.sha256`` in the ``sha256sum`` format, atomically."""
+    target = path.with_name(path.name + ".sha256")
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(f"{sha256}  {path.name}\n", encoding="utf-8")
+    temporary.replace(target)
+    return target
+
+
 def _new_build_id(timestamp: datetime) -> str:
     return f"uk-frs-spine-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
+
+
+def _close_failed_telemetry(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    error: BaseException,
+    *,
+    rung_abort: bool = False,
+) -> None:
+    """Close both telemetry destinations for a spine build that raised.
+
+    A spine gate refusal closes the run as ``blocked`` at its gate phase; a rung
+    abort and every other error close it ``failed`` with a classified code.
+    """
+    classified = classify_failure(error)
+    if classified.block is not None and not rung_abort:
+        close_run_blocked(staging_bundle, emitter, classified.block)
+        return
+    error_code, failure_class = (
+        ("RUNG_ABORTED", "aborted")
+        if rung_abort
+        else (
+            classified.error_code or "BUILD_FAILED",
+            classified.failure_class or "error",
+        )
+    )
+    if staging_bundle is not None and staging_bundle.status == "running":
+        try:
+            staging_bundle.fail(
+                error, error_code=error_code, failure_class=failure_class
+            )
+            staging_bundle.validate_local_bundle()
+        except Exception:
+            pass
+    if emitter is not None and emitter.available:
+        emitter.fail(error, failure_class=failure_class, error_code=error_code)
 
 
 def _record_attempt(
@@ -1019,17 +1084,65 @@ class _SampledGraphRootTransform:
         return dict(hook())
 
 
-def _staging_stage_observer(telemetry: StagingTelemetryV2) -> StageObserver:
-    """Translate a shared stage observation into staging telemetry."""
+def _stage_observer(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+) -> StageObserver:
+    """Report a stage independently to the emitter and staging bundle."""
 
     def observe(observation: StageObservation) -> None:
-        telemetry.stage(
+        _record_stage(
+            staging_bundle,
+            emitter,
             observation.stage_id,
-            event_status=observation.status,
+            observation.status,
             elapsed_seconds=observation.elapsed_seconds,
             entity_row_counts=dict(observation.entity_row_counts),
             produced_column_count=observation.produced_column_count,
         )
+
+    return observe
+
+
+def _record_stage(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    stage_id: str,
+    status: str,
+    **details: object,
+) -> None:
+    """Send one stage update to two independent destinations."""
+
+    if emitter is not None:
+        emitter.transition_stage(stage_id, status=status, **details)
+    if staging_bundle is not None:
+        staging_bundle.stage(stage_id, event_status=status, **details)
+
+
+def _graph_progress_observer(emitter: LocalTelemetryEmitter | None, *, total: int):
+    """Report graph-node completion without copying the observed population."""
+
+    completed = 0
+    previous = time.monotonic()
+
+    def observe(node_id, _population) -> None:
+        nonlocal completed, previous
+        if emitter is None:
+            return
+        now = time.monotonic()
+        completed += 1
+        emitter.emit(
+            event_type="progress",
+            stage_id=node_id,
+            status="completed",
+            details={
+                "done": completed,
+                "total": total,
+                "unit": "graph_nodes",
+                "elapsed_seconds": now - previous,
+            },
+        )
+        previous = now
 
     return observe
 
@@ -1210,15 +1323,18 @@ def _exception_chain_contains(error: BaseException, text: str) -> bool:
     return False
 
 
-def _create_staging_telemetry(
-    args: argparse.Namespace, *, state: AttemptState
-) -> StagingTelemetryV2 | None:
+def _create_staging_run_bundle(
+    args: argparse.Namespace,
+    *,
+    state: AttemptState,
+) -> StagingRunBundleWriterV2 | None:
+    run_id = args.staging_run_id or state.build_id
     if args.no_staging:
         return None
     local_dir = args.staging_dir or args.spine_h5.parent / "staging"
     local_only = args.staging_local_only
-    return StagingTelemetryV2(
-        run_id=args.staging_run_id or state.build_id,
+    return StagingRunBundleWriterV2(
+        run_id=run_id,
         country_code="GB",
         operation_id="uk_frs_spine",
         pipeline_id=_PIPELINE,
@@ -1232,6 +1348,29 @@ def _create_staging_telemetry(
     )
 
 
+def _start_telemetry_emitter(
+    args: argparse.Namespace, *, state: AttemptState
+) -> LocalTelemetryEmitter:
+    global _ACTIVE_EMITTER
+    run_id = args.staging_run_id or state.build_id
+    if (
+        _ACTIVE_EMITTER is not None
+        and _ACTIVE_EMITTER.available
+        and _ACTIVE_EMITTER.run.run_id == run_id
+    ):
+        return _ACTIVE_EMITTER
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.close()
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=_PIPELINE,
+        candidate_id=args.staging_candidate_id or state.build_id,
+        run_kind="smoke" if args.smoke else "spine",
+    )
+    return _ACTIVE_EMITTER
+
+
 def _telemetry_sample(
     args: argparse.Namespace, sampling: Mapping[str, object] | None
 ) -> dict[str, object] | None:
@@ -1241,11 +1380,11 @@ def _telemetry_sample(
 
 
 def _staging_delivery(
-    args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
+    args: argparse.Namespace, staging_bundle: StagingRunBundleWriterV2 | None
 ) -> dict[str, object]:
-    if telemetry is None:
+    if staging_bundle is None:
         return disabled_staging_delivery("--no-staging")
-    return telemetry.delivery_summary
+    return staging_bundle.delivery_summary
 
 
 @dataclass(frozen=True)
@@ -1283,7 +1422,7 @@ def prepare_uk_spine_execution(
     roster, the private-input checks, the stage implementations (licensed or
     synthetic fixture), the sampling root, the optional observation wrap, the
     declared graph sources, and the gate nodes bound to the rules engine.
-    ``observer`` is the staging telemetry's stage observer when telemetry is
+    ``observer`` is the staging run bundle's stage observer when that bundle is
     enabled; ``main`` supplies it, and a caller without telemetry passes none.
     """
 
@@ -1683,16 +1822,24 @@ def prepare_uk_spine_execution(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Build the spine; a SIGTERM is recorded like Ctrl-C, then exits 143."""
+    with raise_on_sigterm():
+        try:
+            return _main(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    digest = preflight_digest(_PIPELINE)
+    predecessor = None
     state = AttemptState(
         build_id=_new_build_id(started_ts),
-        identity_digest=digest,
-        input_pins_digest=digest,
+        identity_digest="unresolved-preflight-digest",
+        input_pins_digest="unresolved-preflight-digest",
         phases_reached=["attempt_started"],
         gate_verdicts={
             "pipeline": {
@@ -1703,9 +1850,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     code_pin = "unresolved-local-git-code-pin"
     spool_dir = args.spine_h5.parent / "logbook-spool"
-    telemetry: StagingTelemetryV2 | None = None
+    staging_bundle: StagingRunBundleWriterV2 | None = None
     spine_battery: GateBatteryRun | None = None
+    emitter = _start_telemetry_emitter(args, state=state)
     try:
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        digest = preflight_digest(_PIPELINE)
+        state.identity_digest = digest
+        state.input_pins_digest = digest
         _validate_args(args)
         # A crash between the H5 write and the sidecar writes must never
         # leave a stale sidecar beside a fresh H5 (adversarial-review
@@ -1723,24 +1875,24 @@ def main(argv: list[str] | None = None) -> int:
             stale_outputs.append(args.emit_nonzero_shares)
         for stale in stale_outputs:
             stale.unlink(missing_ok=True)
-        telemetry = _create_staging_telemetry(args, state=state)
-        if telemetry is not None:
+        staging_bundle = _create_staging_run_bundle(args, state=state)
+        if staging_bundle is not None:
             initial_sample = _telemetry_sample(args, None)
             if initial_sample is not None:
-                telemetry.set_sample(initial_sample)
-            telemetry.stage(
-                "configuration",
-                event_status="completed",
-                smoke=args.smoke,
-                sample_mode=("fraction" if args.sample_fraction != 1.0 else "full"),
-            )
+                staging_bundle.set_sample(initial_sample)
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "configuration",
+            "completed",
+            smoke=args.smoke,
+            sample_mode=("fraction" if args.sample_fraction != 1.0 else "full"),
+        )
         code_pin = git_code_pin(_REPOSITORY)
         append_phase(state, "configured")
         prepared = prepare_uk_spine_execution(
             args,
-            observer=(
-                _staging_stage_observer(telemetry) if telemetry is not None else None
-            ),
+            observer=_stage_observer(staging_bundle, emitter),
         )
         spec = prepared.spec
         graph = prepared.graph
@@ -1770,13 +1922,14 @@ def main(argv: list[str] | None = None) -> int:
             canonical_json_bytes(run_config)
         ).hexdigest()
         append_phase(state, "inputs_pinned")
-        if telemetry is not None:
-            telemetry.stage(
-                "input_verification",
-                event_status="completed",
-                stage_count=len(stage_names),
-                input_artifact_count=len(artifact_pins) + len(input_artifact_pins),
-            )
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "input_verification",
+            "completed",
+            stage_count=len(stage_names),
+            input_artifact_count=len(artifact_pins) + len(input_artifact_pins),
+        )
         stochastic_contract = prepared.stochastic_contract
         frs_release = prepared.frs_release
         spine_gate_path = _spine_gate_report_path(args.spine_h5)
@@ -1807,8 +1960,54 @@ def main(argv: list[str] | None = None) -> int:
             kernels=prepared.kernels,
             resume="auto",
             decisions=(),
+            _population_observer=_graph_progress_observer(
+                _ACTIVE_EMITTER, total=len(compiled_graph.order)
+            ),
+            _population_observer_detach=False,
         )
         graph_manifest.save(checkpoint_root / "spine.graph.json")
+        save_uk_graph_schema(graph, checkpoint_root, scope="raw_spine", spec=spec)
+        import resource
+
+        capture_started = time.perf_counter()
+        capture_rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        graph_evidence_path = save_run_evidence(
+            compiled_graph,
+            graph_manifest,
+            store=graph_store,
+            directory=checkpoint_root
+            / "graph-evidence"
+            / (graph_attempt_id := uuid.uuid4().hex),
+            attempt_id=graph_attempt_id,
+            phase="spine",
+            artifact_summaries=UK_SUMMARY_PROVIDERS,
+        )
+        capture_record = {
+            "phase": "spine",
+            "wall_s": round(time.perf_counter() - capture_started, 3),
+            "maxrss_before_bytes": capture_rss_before,
+            "maxrss_after_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        }
+        with (checkpoint_root / "evidence-capture-timing.jsonl").open(
+            "a", encoding="utf-8"
+        ) as sink:
+            sink.write(json.dumps(capture_record, sort_keys=True) + "\n")
+        print(
+            f"evidence capture spine: {capture_record['wall_s']:.1f}s, peak RSS "
+            f"{capture_record['maxrss_after_bytes'] / 2**30:.2f} GiB",
+            file=sys.stderr,
+            flush=True,
+        )
+        graph_run_reference = json.loads(graph_evidence_path.read_text())["runs"][-1]
+        graph_declaration_path = (
+            graph_evidence_path.parent / graph_run_reference["graph"]["path"]
+        )
+        graph_manifest_path = (
+            graph_evidence_path.parent / graph_run_reference["manifest"]["path"]
+        )
+        graph_schema_path = save_uk_graph_schema(
+            graph, graph_evidence_path.parent, scope="raw_spine", spec=spec
+        )
         final_version = compiled_graph.versions[stage_names[-1]]
         frame = graph_manifest.population(final_version)
         records = _graph_stage_records(
@@ -1822,23 +2021,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         stored_evidence = spine_sidecar_evidence(stored_stages)
         sampling = stored_evidence["sampling"]
-        if telemetry is not None:
-            sample = _telemetry_sample(args, sampling)
-            if sample is not None:
-                telemetry.set_sample(sample)
-            telemetry.stage(
-                "sampling",
-                event_status="completed",
-                realized_household_rows=(
-                    len(frame.table("household"))
-                    if sampling is None
-                    else sampling.get(
-                        "realized_household_rows",
-                        sampling.get("post_household_count"),
-                    )
-                ),
-            )
-            telemetry.stage("validation", event_status="started")
+        sample = _telemetry_sample(args, sampling)
+        if staging_bundle is not None and sample is not None:
+            staging_bundle.set_sample(sample)
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "sampling",
+            "completed",
+            realized_household_rows=(
+                len(frame.table("household"))
+                if sampling is None
+                else sampling.get(
+                    "realized_household_rows",
+                    sampling.get("post_household_count"),
+                )
+            ),
+        )
+        _record_stage(staging_bundle, emitter, "validation", "started")
         if spine_battery is not None:
             materialize_spine_gate_reports(
                 graph_manifest,
@@ -1848,24 +2048,32 @@ def main(argv: list[str] | None = None) -> int:
             )
         if spine_battery is not None:
             append_phase(state, "spine_gates_evaluated")
-        if telemetry is not None:
-            telemetry.stage(
-                "validation",
-                event_status="completed",
-                entity_row_counts=_entity_row_counts(frame),
-            )
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "validation",
+            "completed",
+            entity_row_counts=_entity_row_counts(frame),
+        )
         append_phase(state, "spine_built")
-        if telemetry is not None:
-            telemetry.stage("spine_h5_creation", event_status="started")
+        _record_stage(staging_bundle, emitter, "spine_h5_creation", "started")
         output = write_uk_national_frame(frame, args.spine_h5)
         if args.smoke:
             _mark_non_release_h5(output, build_id=state.build_id)
-        if telemetry is not None:
-            telemetry.stage(
-                "spine_h5_creation",
-                event_status="completed",
-                size_bytes=output.stat().st_size,
-            )
+        # The output's file digest, measured once its last byte is written
+        # (smoke marking included). The sidecar, the stage event, a
+        # ``<h5>.sha256`` file and the Logbook pipeline verdict carry it, so a
+        # downstream build pins exactly this file.
+        output_file = file_artifact(output)
+        _write_sha256_file(output, str(output_file["sha256"]))
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "spine_h5_creation",
+            "completed",
+            size_bytes=int(output_file["size_bytes"]),
+            sha256=output_file["sha256"],
+        )
         append_phase(state, "spine_written")
         if args.checkpoint_dir is not None:
             args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -1887,8 +2095,7 @@ def main(argv: list[str] | None = None) -> int:
             "report_kind": str(json.loads(replay_bytes).get("report_kind", "")),
             "sha256": hashlib.sha256(replay_bytes).hexdigest(),
         }
-        if telemetry is not None:
-            telemetry.stage("sidecar_creation", event_status="started")
+        _record_stage(staging_bundle, emitter, "sidecar_creation", "started")
         sidecar = _build_sidecar(
             frame=frame,
             stages=stages,
@@ -1909,7 +2116,7 @@ def main(argv: list[str] | None = None) -> int:
                 else "development"
             ),
             synthetic_fixture=synthetic_fixture,
-            staging_delivery=_staging_delivery(args, telemetry),
+            staging_delivery=_staging_delivery(args, staging_bundle),
             spine_gate_report=(
                 {
                     "path": str(spine_gate_path),
@@ -1920,10 +2127,32 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
+
+        # Relative to the sidecar, so a checkpoint moved with its evidence
+        # directory keeps resolvable links and records no machine-local paths.
+        def _checkpoint_link(path: Path) -> str:
+            return Path(
+                os.path.relpath(path.resolve(), sidecar_path.parent.resolve())
+            ).as_posix()
+
         sidecar["graph_manifest"] = {
-            "path": str(checkpoint_root / "spine.graph.json"),
+            "path": _checkpoint_link(graph_manifest_path),
             "key": graph_manifest.key,
+            "sha256": hashlib.sha256(graph_manifest_path.read_bytes()).hexdigest(),
         }
+        sidecar["graph_declaration"] = {
+            "path": _checkpoint_link(graph_declaration_path),
+            "sha256": hashlib.sha256(graph_declaration_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_schema"] = {
+            "path": _checkpoint_link(graph_schema_path),
+            "sha256": hashlib.sha256(graph_schema_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_execution_evidence"] = {
+            "path": _checkpoint_link(graph_evidence_path),
+            "sha256": hashlib.sha256(graph_evidence_path.read_bytes()).hexdigest(),
+        }
+        sidecar["output"] = dict(output_file)
         stage_evidence = stored_evidence["stage_evidence"]
         if stage_evidence:
             sidecar["stage_evidence"] = stage_evidence
@@ -1931,12 +2160,13 @@ def main(argv: list[str] | None = None) -> int:
         if fit_weight_records:
             sidecar["fit_weight_records"] = fit_weight_records
         atomic_write_json(sidecar_path, sidecar)
-        if telemetry is not None:
-            telemetry.stage(
-                "sidecar_creation",
-                event_status="completed",
-                size_bytes=sidecar_path.stat().st_size,
-            )
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "sidecar_creation",
+            "completed",
+            size_bytes=sidecar_path.stat().st_size,
+        )
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
             final_columns = list(
@@ -1955,8 +2185,8 @@ def main(argv: list[str] | None = None) -> int:
                 },
             )
             append_phase(state, "nonzero_shares_written")
-        if telemetry is not None:
-            telemetry.complete(
+        if staging_bundle is not None:
+            staging_bundle.complete(
                 message=(
                     "Non-release smoke verification completed."
                     if args.smoke
@@ -1964,9 +2194,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             if args.staging_read_back:
-                telemetry.verify_remote()
-            telemetry.validate_local_bundle()
-            sidecar["staging_delivery"] = telemetry.delivery_summary
+                staging_bundle.verify_remote()
+            staging_bundle.validate_local_bundle()
+            sidecar["staging_delivery"] = staging_bundle.delivery_summary
             atomic_write_json(sidecar_path, sidecar)
         state.artifact_location = local_artifact_reference(
             output,
@@ -1978,6 +2208,7 @@ def main(argv: list[str] | None = None) -> int:
                 "receipt": local_artifact_reference(
                     sidecar_path, repository_hint=_REPOSITORY
                 ),
+                "artifact_sha256": output_file["sha256"],
             }
         }
         if spine_gate_path.is_file():
@@ -2002,7 +2233,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
-        return 0
+    except KeyboardInterrupt as interrupt:
+        # An operator's Ctrl-C or a SIGTERM (BuildTerminatedError) discards the
+        # attempt: the telemetry closes failed (INTERRUPTED or TERMINATED), the
+        # row is recorded, and the interrupt propagates.
+        _close_failed_telemetry(staging_bundle, emitter, interrupt)
+        try:
+            receipt_path = write_error_receipt(
+                error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
+                state=state,
+                pipeline=_PIPELINE,
+                error=interrupt,
+            )
+            apply_error_verdict(
+                state,
+                local_artifact_reference(receipt_path, repository_hint=_REPOSITORY),
+            )
+            _record_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                disposition=classify_failure(interrupt).disposition,
+                predecessor=predecessor,
+                rung=rung,
+                spool_dir=spool_dir,
+            )
+        except Exception:
+            pass
+        raise
     except Exception as error:
         if spine_battery is not None:
             # A run the assembled gate blocked never returned a manifest for
@@ -2014,15 +2273,11 @@ def main(argv: list[str] | None = None) -> int:
                 materialize_blocked_spine_gate_report(error, battery=spine_battery)
             except GateBatteryBlockedError as blocked:
                 error = blocked
-        if telemetry is not None and telemetry.status == "running":
-            try:
-                telemetry.fail(error)
-                telemetry.validate_local_bundle()
-            except Exception:
-                pass
-        if _is_sampled(args) and _exception_chain_contains(
+        rung_abort = _is_sampled(args) and _exception_chain_contains(
             error, _RUNG_NAMED_EDGE_SIGNATURE
-        ):
+        )
+        _close_failed_telemetry(staging_bundle, emitter, error, rung_abort=rung_abort)
+        if rung_abort:
             rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
             receipt = _rung_abort_receipt(args, error=error)
             atomic_write_json(rung_abort_path, receipt)
@@ -2073,6 +2328,17 @@ def main(argv: list[str] | None = None) -> int:
             pass
         print(f"UK FRS spine build failed: {error}", file=sys.stderr)
         return 1
+    except BaseException as error:
+        # Preserve operator interrupts and system exits after recording failure.
+        if emitter.available:
+            emitter.fail(error)
+        raise
+    else:
+        if emitter.available:
+            emitter.complete()
+        return 0
+    finally:
+        emitter.close()
 
 
 if __name__ == "__main__":

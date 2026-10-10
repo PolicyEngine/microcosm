@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     PENSION_CREDIT_ENTITLEMENT_VARIABLES,
+    PENSION_CREDIT_MIXED_AGE_SAVING,
     PENSION_CREDIT_TAKE_UP_STAGE_NAME,
     UKPensionCreditTakeUpStageTransform,
     _assert_stage_parameters,
@@ -129,7 +130,9 @@ class _StubEngine:
         benunit = frame.table("benunit")
         ids = benunit["benunit_id"].to_numpy()
         # 1: Guarantee Credit; 2: Savings Credit only; 3: not entitled.
+        # Unit 2 is a mixed-age couple keeping the SI 2019/37 saving.
         return {
+            PENSION_CREDIT_MIXED_AGE_SAVING: ids == 2,
             "guarantee_credit": np.where(ids == 1, 40.0, 0.0),
             "savings_credit": np.where(ids == 2, 15.0, 0.0),
             "is_pension_credit_eligible": ids != 3,
@@ -170,7 +173,13 @@ def test_redraw_reads_engine_entitlement_once_and_rewrites_only_would_claim_pc()
         frame, engine=engine, contract=load_uk_take_up_contract()
     )
 
-    assert engine.calls == [(PENSION_CREDIT_ENTITLEMENT_VARIABLES, "2024")]
+    # One materialization at the frame's survey-year period, the saving first.
+    assert engine.calls == [
+        (
+            (PENSION_CREDIT_MIXED_AGE_SAVING, *PENSION_CREDIT_ENTITLEMENT_VARIABLES),
+            "2024",
+        )
+    ]
     after = result.frame.table("benunit")
     # Unit 3 reports Pension Credit the engine finds it is not entitled to: it
     # keeps claiming, and the receipt counts it.
@@ -184,9 +193,13 @@ def test_redraw_reads_engine_entitlement_once_and_rewrites_only_would_claim_pc()
             result.frame.table(entity), frame.table(entity), check_exact=True
         )
     pd.testing.assert_frame_equal(
-        after.drop(columns=["would_claim_pc"]),
+        after.drop(columns=["would_claim_pc", PENSION_CREDIT_MIXED_AGE_SAVING]),
         frame.table("benunit").drop(columns=["would_claim_pc"]),
     )
+    # The saving is stored as the engine's survey-year default; the
+    # entitlement it fed stays consumed.
+    assert after[PENSION_CREDIT_MIXED_AGE_SAVING].tolist() == [False, True, False]
+    assert after[PENSION_CREDIT_MIXED_AGE_SAVING].dtype == bool
     for name in PENSION_CREDIT_ENTITLEMENT_VARIABLES:
         assert name not in after
     evidence = result.evidence()
@@ -201,7 +214,7 @@ def test_committed_manifest_declares_the_stage_and_its_rewrite() -> None:
     stage = _stage()
 
     assert stage.grain == "benunit"
-    assert stage.outputs == ()
+    assert stage.outputs == (PENSION_CREDIT_MIXED_AGE_SAVING,)
     assert stage.rewrites == ("would_claim_pc",)
     _assert_stage_parameters(stage)
     transform = UKPensionCreditTakeUpStageTransform(stage=stage, engine=_StubEngine())

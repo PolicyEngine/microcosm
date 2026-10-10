@@ -6,6 +6,7 @@ satisfy, and that the frame validator catches each planted violation.
 """
 
 import json
+import re
 from dataclasses import replace
 
 import numpy as np
@@ -24,7 +25,10 @@ from microcosm.frame.concepts import (
     ConceptAlignment,
     ConceptFrameDeclaration,
     ContentBasis,
+    IndexFamily,
+    MonetaryHandling,
     ProvenanceClass,
+    TemporalBasis,
     TransportRule,
     Unit,
     canonical_concept_kind,
@@ -37,6 +41,13 @@ from microcosm.frame.concepts import (
     validate_concept_tables,
 )
 from test_support.microcosm_frame.concept_frames import concept_frames
+from test_support.microcosm_frame.concept_id_dtypes import (
+    UNSIGNED_64,
+    WIDE_CASES,
+    id_typed_frames,
+    typed,
+    wide_id_frame,
+)
 from test_support.paths import paths_for
 
 PROPERTY = settings(max_examples=150, deadline=None)
@@ -72,7 +83,7 @@ CHRONICLE_FEED = (
 
 #: Pinned schema digest. A change to any concept's declared contract moves it:
 #: bump CONCEPT_SCHEMA_VERSION when the change is deliberate, then re-pin.
-SCHEMA_SHA256 = "d4cb09218a9757642af016e795e900ae9091a552694d37a954e6a70fffa2b6a1"
+SCHEMA_SHA256 = "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e"
 
 
 class TestDeclaredSchema:
@@ -90,6 +101,7 @@ class TestDeclaredSchema:
             "fact:person.dividend_income",
             "fact:person.rental_income",
             "fact:person.realized_capital_gains",
+            "fact:person.liquid_financial_assets",
             "fact:person.private_pension_income",
             "fact:person.public_pension_income",
             "fact:person.usual_weekly_hours",
@@ -153,6 +165,37 @@ class TestDeclaredSchema:
             if item.provenance is ProvenanceClass.GENERATED:
                 assert item.transport is TransportRule.CARRY
 
+    def test_liquid_financial_assets_are_a_quantile_mapped_person_stock(
+        self,
+    ) -> None:
+        item = concept("fact:person.liquid_financial_assets")
+        assert (item.entity, item.dtype, item.unit) == (
+            "person",
+            "float",
+            Unit.BASE_CURRENCY,
+        )
+        assert (item.period, item.temporal_basis) == (
+            "point",
+            TemporalBasis.REFERENCE_STATE,
+        )
+        assert item.provenance is ProvenanceClass.OBSERVED
+        assert item.transport is TransportRule.QUANTILE_MAP
+        assert item.monetary == MonetaryHandling(
+            index_family=IndexFamily.CONSUMER_PRICES
+        )
+        assert (item.lower, item.upper, item.nullable) == (0.0, None, False)
+
+    def test_liquid_financial_assets_are_the_only_amount_held_as_a_stock(
+        self,
+    ) -> None:
+        stocks = {
+            item.id
+            for item in CONCEPTS
+            if item.monetary is not None
+            and item.temporal_basis is not TemporalBasis.ANNUAL_FLOW
+        }
+        assert stocks == {"fact:person.liquid_financial_assets"}
+
     def test_the_take_up_seed_is_generated_persistent_state(self) -> None:
         seed = concept("fact:person.take_up_seed")
         assert seed.provenance is ProvenanceClass.GENERATED
@@ -171,7 +214,7 @@ class TestDeclaredSchema:
             concepts_for_entity("tax_unit")
 
     def test_schema_digest_is_pinned(self) -> None:
-        assert CONCEPT_SCHEMA_VERSION == 1
+        assert CONCEPT_SCHEMA_VERSION == 2
         assert concept_schema_sha256() == SCHEMA_SHA256
 
     def test_schema_digest_ignores_alignments(self) -> None:
@@ -445,6 +488,7 @@ class TestFrameValidation:
                     ("weeks_worked", 54),
                     ("take_up_seed", 1.0),
                     ("employment_income", -0.01),
+                    ("liquid_financial_assets", -0.01),
                 ]
             )
         )
@@ -718,6 +762,162 @@ class TestParentCycles:
         assert rows == _cycle_reference(parents, n)
 
 
+def _validation(tables) -> object:
+    """What validation returns, or the ValueError it raises, as plain data."""
+
+    try:
+        return validate_concept_tables(tables)
+    except ValueError as error:
+        return ("ValueError", str(error))
+
+
+class TestIdDtypes:
+    """Ids and pointers of any accepted integer dtype are matched exactly.
+
+    Ids are matched as int64. An unsigned id above ``2**63 - 1`` would wrap
+    (``2**64 - 1`` onto -1) and so is refused, by name, before anything
+    converts; every other id must validate exactly as the same values typed
+    int64.
+    """
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    @pytest.mark.parametrize("value", [2**63, 2**64 - 1])
+    @pytest.mark.parametrize("case", sorted(WIDE_CASES))
+    def test_an_id_int64_cannot_hold_is_refused_by_column(
+        self, case, value, dtype
+    ) -> None:
+        tables, wide = wide_id_frame(case, value, dtype)
+        with pytest.raises(
+            ValueError, match=re.escape(f"{wide} hold unsigned ids above {2**63 - 1}")
+        ):
+            validate_concept_tables(tables)
+
+    def test_a_wide_id_is_refused_by_name_before_the_structure_checks(self) -> None:
+        # Uniqueness and household membership compare ids too, so the
+        # refusal comes first: here two persons share the id 2**63 and one
+        # names no household, and the refusal still names the column.
+        tables, wide = wide_id_frame("person_id", 2**63, pd.UInt64Dtype())
+        tables["person"]["person_id"] = typed([10, 2**63, 2**63], pd.UInt64Dtype())
+        tables["person"]["person_household_id"] = np.array([1, 1, 2], dtype=np.int64)
+        with pytest.raises(ValueError, match=re.escape(f"{wide} hold unsigned ids")):
+            validate_concept_tables(tables)
+
+    def test_a_dangling_pointer_cannot_wrap_onto_person_minus_one(self) -> None:
+        # The microcosm#1122 review probe: read as int64, 2**64 - 1 is -1, so
+        # person 11's dangling partner pointer named person -1, who names 11
+        # back, and the frame validated clean.
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([-1, 11, 12, 13], dtype=np.int64),
+                "person_household_id": [1, 1, 1, 1],
+                "partner_person_id": typed(
+                    [11, 2**64 - 1, None, None], pd.UInt64Dtype()
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": [1], "reference_person_id": pd.array([-1], dtype="Int64")}
+        )
+        with pytest.raises(ValueError, match=re.escape("['person.partner_person_id']")):
+            validate_concept_tables({"person": person, "household": household})
+
+    @pytest.mark.parametrize(
+        "dtype", ["uint8", "uint16", "uint32", "UInt8", "UInt16", "UInt32"]
+    )
+    def test_a_narrow_unsigned_id_cannot_catch_a_pointer_past_its_range(
+        self, dtype
+    ) -> None:
+        # pandas matched pointers against a narrower unsigned index by casting
+        # them down to it, so 5 + 2**8 named person 5 under uint8; the
+        # nullable dtypes raised a TypeError instead.
+        dtype = pd.api.types.pandas_dtype(dtype)
+        past = 5 + 2 ** (8 * dtype.itemsize)
+        person = pd.DataFrame(
+            {
+                "person_id": typed([5, 6], dtype),
+                "person_household_id": [1, 1],
+                "partner_person_id": pd.array([6, past], dtype="Int64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": [1],
+                "reference_person_id": pd.array([past], dtype="Int64"),
+            }
+        )
+        assert _violations({"person": person, "household": household}) == {
+            ("partner_person_id", "dangling"),
+            ("partner_person_id", "asymmetric"),
+            ("reference_person_id", "not_member"),
+        }
+
+    @pytest.mark.parametrize(
+        ("persons", "households"),
+        [
+            ("int64", "uint64"),
+            ("uint64", "int64"),
+            ("Int64", "UInt64"),
+            ("UInt64", "Int64"),
+        ],
+    )
+    def test_a_household_float64_would_merge_with_another_is_still_unknown(
+        self, persons, households
+    ) -> None:
+        # pandas compared int64 with uint64 household ids through float64,
+        # where 2**62 + 256 rounds to 2**62, so a person naming no household
+        # passed as a member of household 2**62.
+        base = 2**62
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([10, 20], dtype=np.int64),
+                "person_household_id": typed(
+                    [base, base + 256], pd.api.types.pandas_dtype(persons)
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": typed([base], pd.api.types.pandas_dtype(households))}
+        )
+        with pytest.raises(ValueError, match=re.escape("1 person(s) name an unknown")):
+            validate_concept_tables({"person": person, "household": household})
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    def test_ids_up_to_int64_max_are_kept_exactly(self, dtype) -> None:
+        top = 2**63 - 1
+        pointers = pd.UInt64Dtype()
+        person = pd.DataFrame(
+            {
+                "person_id": typed([top, top - 1, top - 2], dtype),
+                "person_household_id": typed([top, top, top], dtype),
+                "partner_person_id": typed([top - 1, top, None], pointers),
+                "parent_1_person_id": typed([None, None, top], pointers),
+                "parent_2_person_id": typed([None, None, top - 1], pointers),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": typed([top], dtype),
+                "reference_person_id": typed([top], pointers),
+            }
+        )
+        tables = {"person": person, "household": household}
+        assert validate_concept_tables(tables) == ()
+        # Within float rounding of the others, top - 3 is still nobody.
+        person["partner_person_id"] = typed([top - 1, top, top - 3], pointers)
+        assert _violations(tables) == {("partner_person_id", "dangling")}
+
+    @settings(max_examples=300, deadline=None)
+    @given(case=id_typed_frames())
+    def test_every_frame_is_refused_or_validates_as_its_int64_twin(self, case) -> None:
+        if case.wide:
+            with pytest.raises(
+                ValueError, match=re.escape(f"{case.wide} hold unsigned ids above")
+            ):
+                validate_concept_tables(case.tables)
+        else:
+            assert _validation(case.tables) == _validation(case.twin)
+
+
 class TestTransportSplit:
     @PROPERTY
     @given(tables=concept_frames())
@@ -729,6 +929,7 @@ class TestTransportSplit:
         kept, dropped = split_for_transport(tables)
         assert "public_pension_income" in dropped["person"]
         assert "receives_snap" in dropped["person"]
+        assert "liquid_financial_assets" in kept["person"].columns
         assert dropped["household"] == ("state_fips",)
         for entity in CONCEPT_ENTITIES:
             for column in kept[entity].columns:

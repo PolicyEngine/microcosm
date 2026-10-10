@@ -166,6 +166,9 @@ UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
 UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.child_benefit_opts_out",
     "benunit.frs_benunit_capital",
+    "benunit.has_mixed_age_couple_pension_credit_saving",
+    "benunit.liable_for_share_of_household_rent",
+    "benunit.pension_credit_reported_capital",
     "benunit.uc_deduction_combination",
     "benunit.uc_deduction_random_draw",
     "benunit.uc_deduction_type_random_draw",
@@ -184,7 +187,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # #1063: the residential split's arm flag and index.
     "household.household_is_cgt_residential_clone",
     "household.cgt_residential_clone_index",
-    "household.clone_index",
+    "household.household_clone_index",
+    # microcosm#1114: the three area codes leave every artifact under the
+    # consumers' names (geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS); the
+    # ladder names never reach an artifact and uk_export_candidate_columns
+    # translates them before this list is compared.
     "household.constituency_code_oa",
     "household.consumer_debt",
     # microcosm#932: the five nation-native aliases of the atomic assignment
@@ -253,6 +260,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.has_lifetime_isa",
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
+    "person.is_blind",
+    "person.is_claimant_or_partner",
+    "person.is_hbai_dependent_child",
     "person.is_in_non_advanced_education",
     "person.is_parent",
     "person.is_uc_claimant",
@@ -269,6 +279,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.pip_dl_category",
     "person.pip_m_category",
     "person.receives_benefits_in_own_right",
+    "person.rent_paid_as_boarder",
+    "person.rent_paid_as_lodger",
     "person.relationship_to_head",
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
@@ -276,6 +288,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
+    "person.uc_is_in_startup_period",
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
@@ -331,6 +344,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.person_support_channel",
     "person.person_support_clone_index",
     "person.srp_regular_code5",
+    "benunit.benunit_clone_index",
+    "person.person_clone_index",
+    "household.itl1_code",
+    "household.itl2_code",
+    "household.itl3_code",
+    "household.ward_code",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -384,12 +403,20 @@ def uk_export_candidate_columns(frame: Any) -> set[str]:
     does.
     """
 
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+
     columns: set[str] = set()
     for entity in frame.entities:
         structural = _STRUCTURAL_COLUMNS.get(str(entity), frozenset())
         for column in frame.table(entity).columns:
             if column in structural:
                 continue
+            # microcosm#1114: the frame holds the ladder names; the artifact
+            # carries the consumers' names, which is what the surface compares.
+            if str(entity) == "household":
+                column = UK_EXPORT_AREA_CODE_COLUMNS.get(str(column), column)
             columns.add(f"{entity}.{column}")
     columns.add(f"household.{_WEIGHT_COLUMN}")
     return columns
@@ -457,6 +484,7 @@ def uk_degenerate_release_surface_gate(
     *,
     reviewed_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     now: date | None = None,
+    dropped_at_export: Mapping[str, Iterable[str]] | None = None,
 ) -> GateResult:
     """Reject every all-null, all-zero, or constant nonstructural column.
 
@@ -471,6 +499,14 @@ def uk_degenerate_release_surface_gate(
     exclusions = coerce_reviewed_exclusions(
         reviewed_exclusions, label="UK degenerate-surface"
     )
+    # Columns the release boundary drops before writing: a gate fed the
+    # pre-export frame skips them, exactly as the certifier never sees them
+    # on the exported H5; the skipped names are recorded in the details.
+    dropped = {
+        entity: frozenset(str(column) for column in columns)
+        for entity, columns in (dropped_at_export or {}).items()
+    }
+    skipped_at_export: list[str] = []
     present: set[str] = set()
     live: dict[str, dict[str, object]] = {}
     excluded: dict[str, dict[str, object]] = {}
@@ -480,6 +516,9 @@ def uk_degenerate_release_surface_gate(
         structural = _STRUCTURAL_COLUMNS[entity]
         for column in table.columns:
             if column in structural:
+                continue
+            if column in dropped.get(entity, frozenset()):
+                skipped_at_export.append(f"{entity}.{column}")
                 continue
             checked += 1
             name = f"{entity}.{column}"
@@ -580,6 +619,7 @@ def uk_degenerate_release_surface_gate(
         failures=tuple(failures),
         details={
             "columns_checked": checked,
+            "dropped_at_export": sorted(skipped_at_export),
             "findings": dict(sorted(live.items())),
             "all_null_columns": by_kind["all_null"],
             "all_zero_columns": by_kind["all_zero"],

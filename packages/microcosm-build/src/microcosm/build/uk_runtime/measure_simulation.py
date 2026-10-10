@@ -14,6 +14,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.atomic_area_support import (
+    without_uk_native_alias_columns,
+)
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
@@ -35,6 +38,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
 )
 from microcosm.calibrate import TargetRegistry
+from microcosm.frame import Frame, MassChangeRecord, Weights
 from microcosm.frame.adapters.policyengine_uk import validate_uc_claimant_input
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
@@ -342,6 +346,78 @@ def compute_uc_paid_diagnostic_masks(
     return masks
 
 
+ENGINE_WEIGHT_SCALE_REASON = (
+    "engine population representation: household weights scaled from the "
+    "engine block's mass to the pool's so weight-share formulas (a national "
+    "total allocated by x*w / sum(x*w)) see the pool's denominator; engine "
+    "scratch only, discarded after resolution"
+)
+
+
+def _engine_scratch_frame(
+    frame: Any, *, engine_weight_scale: float | None = None
+) -> tuple[Any, tuple[str, ...]]:
+    """The frame a scratch-mode engine loads, and the columns it leaves behind.
+
+    The nation-native alias codes of the derived geography layers
+    (microcosm#931) are NA outside their own nation by design and are never
+    engine inputs; the single-year dataset policyengine-uk loads refuses any
+    NaN column, so they leave here exactly as they leave at the export
+    boundary.
+
+    ``engine_weight_scale`` multiplies the household weights the engine sees
+    (and only those: the resolver's own frame keeps the block's true mass).
+    A per-clone engine block carries a K-th of the pool, so a formula that
+    allocates a national total by weighted share would hand every block the
+    whole total; scaled to the pool's mass the block's weighted sums equal
+    the pool's and the formula is exact for identical clone copies. The
+    scaling is declared on the engine frame's mass log.
+
+    A frame carrying no alias columns and no scale is returned as is.
+    """
+
+    household = frame.table("household")
+    kept = without_uk_native_alias_columns(household)
+    scale = None if engine_weight_scale is None else float(engine_weight_scale)
+    if scale is not None and not (np.isfinite(scale) and scale > 0.0):
+        raise ValueError("engine weight scale must be a positive finite factor.")
+    if kept is household and (scale is None or scale == 1.0):
+        return frame, ()
+    dropped = tuple(c for c in household.columns if c not in kept.columns)
+    tables = {name: frame.table(name) for name in frame.entities}
+    tables["household"] = kept
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    mass_log = frame.mass_log
+    if scale is not None and scale != 1.0:
+        if "household" not in weights:
+            raise ValueError("engine weight scaling needs explicit household weights.")
+        household_weights = weights["household"]
+        scaled = Weights(
+            np.asarray(household_weights.values, dtype=np.float64) * scale,
+            kind=household_weights.kind,
+        )
+        mass_log = (
+            *mass_log,
+            MassChangeRecord(
+                entity="household",
+                old_total=float(household_weights.total),
+                new_total=float(scaled.total),
+                declared_factor=scale,
+                reason=ENGINE_WEIGHT_SCALE_REASON,
+            ),
+        )
+        weights["household"] = scaled
+    engine_frame = Frame(
+        {**tables, **{name: frame.link(name) for name in frame.links}},
+        frame.schema,
+        weights,
+        frame.strata,
+        mass_log=mass_log,
+        metadata=frame.metadata,
+    )
+    return engine_frame, dropped
+
+
 class UKMeasureResolver:
     """B2 measure provider backed by a policyengine-uk Microsimulation."""
 
@@ -353,8 +429,12 @@ class UKMeasureResolver:
         year: int,
         frame: Any,
         microsimulation_factory: Any | None = None,
+        engine_weight_scale: float | None = None,
     ):
         self.year = int(year)
+        self._engine_weight_scale = (
+            None if engine_weight_scale is None else float(engine_weight_scale)
+        )
         policyengine_uk = _policyengine_uk_module()
         factory = (
             microsimulation_factory
@@ -366,14 +446,24 @@ class UKMeasureResolver:
                 raise ValueError("scratch-mode UKMeasureResolver requires a frame.")
             scratch_dir.mkdir(parents=True, exist_ok=True)
             source_path = scratch_dir / "simulation-input.h5"
-            write_uk_national_frame(frame, source_path)
+            engine_frame, dropped = _engine_scratch_frame(
+                frame, engine_weight_scale=self._engine_weight_scale
+            )
+            write_uk_national_frame(engine_frame, source_path)
             mode = "scratch_frame_export"
         else:
+            if self._engine_weight_scale is not None:
+                raise ValueError(
+                    "engine weight scaling needs scratch-mode resolution; a direct "
+                    "H5 source carries its own weights."
+                )
+            dropped = ()
             source_path = Path(simulation_source)
             mode = "direct_h5"
             if frame is None:
                 frame, _provenance = load_uk_national_frame(source_path)
         self.frame = frame
+        self._engine_scratch_dropped_columns = tuple(dropped)
         self._factory = factory
         self._source_path = source_path
         self._counterfactuals: dict[tuple[str, str | None], Any] = {}
@@ -596,6 +686,12 @@ class UKMeasureResolver:
 
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        if getattr(self, "_engine_weight_scale", None) is not None:
+            receipt["engine_weight_scale"] = float(self._engine_weight_scale)
+        if getattr(self, "_engine_scratch_dropped_columns", ()):
+            receipt["engine_scratch_dropped_columns"] = list(
+                self._engine_scratch_dropped_columns
+            )
         counterfactual_measures = getattr(self, "_counterfactual_measures", None)
         if counterfactual_measures:
             receipt["counterfactual_measures"] = {

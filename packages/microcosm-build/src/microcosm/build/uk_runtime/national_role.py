@@ -34,7 +34,7 @@ from microcosm.build.staging_dataset import (
     parse_sha256sums,
     refresh_sha256sums_entry,
 )
-from microcosm.build.staging_v2 import StagingTelemetryV2
+from microcosm.build.staging_v2 import StagingRunBundleWriterV2
 from microcosm.build.uk_runtime.calibration_run import runtime_provenance
 from microcosm.build.uk_runtime.diagnostics import uk_fit_by_family
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
@@ -480,7 +480,7 @@ def evaluate_against_incumbent(
     incumbent: Mapping[str, Any] | None,
     inputs: Mapping[str, Any],
     output_paths: Mapping[str, Path],
-    telemetry: StagingTelemetryV2 | None,
+    telemetry: StagingRunBundleWriterV2 | None,
     calibration_year: int,
     out_dir: Path,
 ) -> dict[str, Any]:

@@ -16,12 +16,14 @@ from collections.abc import Mapping
 from dataclasses import asdict, replace
 from importlib import metadata
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.calibrate import TargetRegistry
-from microcosm.frame import Frame, engine_tables
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -45,8 +47,12 @@ from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
 from . import geography_ladder, national_frame
-from .atomic_area_support import UK_NATIVE_ALIAS_COLUMNS
-from .geography_ladder import uk_geography_ladder_gate
+from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
+from .geography_ladder import (
+    UK_EXPORT_AREA_CODE_COLUMNS,
+    export_area_code_columns,
+    uk_geography_ladder_gate,
+)
 from .graph_population import context_frame, population_columns, population_slices
 from .national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
@@ -68,7 +74,12 @@ PACKAGE_INVENTORY_TYPE = ArtifactType("microcosm.full-package-inventory", 1)
 EXPORT_SOURCE_CODEC = "uk-single-year-h5@1"
 
 
-def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
+def _ladder_tables(frame: Frame) -> dict[str, pd.DataFrame]:
+    """The export tables before the area codes take their consumer names.
+
+    The geography ladder gate reads the ladder names, so it runs on these;
+    :func:`_tables` is what the artifact carries.
+    """
     tables = engine_tables(frame, weighted_entities=("household",))
     renamed = {}
     for entity in ("person", "benunit", "household"):
@@ -81,17 +92,67 @@ def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
             columns={column: ARTIFACT_CLONE_INDEX_COLUMN}
         )
     # Nation-native aliases of derived layers are NA outside their own nation;
-    # the single-year artifact carries the ten ladder columns plus the
+    # the single-year artifact carries the ladder columns plus the
     # identity-keyed assignment columns, never the aliases.
-    aliases = [c for c in UK_NATIVE_ALIAS_COLUMNS if c in renamed["household"]]
-    if aliases:
-        renamed["household"] = renamed["household"].drop(columns=aliases)
+    renamed["household"] = without_uk_native_alias_columns(renamed["household"])
     # The reviewed export exclusions leave at the same boundary (microcosm#1063 c9).
     for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items():
         dropped = [c for c in columns if c in renamed[entity]]
         if dropped:
             renamed[entity] = renamed[entity].drop(columns=dropped)
     return renamed
+
+
+def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
+    tables = _ladder_tables(frame)
+    # The three area codes leave under the consumers' names (microcosm#1114).
+    tables["household"] = export_area_code_columns(tables["household"])
+    return tables
+
+
+def _area_codes_block(household: pd.DataFrame) -> dict[str, object]:
+    """The exported area-code columns and the code frames behind them."""
+    columns = {
+        ladder: export
+        for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items()
+        if export in household.columns
+    }
+    if not columns:
+        return {"columns": {}, "frames": {}}
+    frames = uk_area_code_frames()
+    return {
+        "columns": columns,
+        "frames": {export: dict(frames[export]) for export in columns.values()},
+    }
+
+
+def _area_code_failures(
+    household: pd.DataFrame, descriptor: Mapping[str, object]
+) -> list[str]:
+    """microcosm#1114: the written table carries the consumer names, filled, and no ladder name."""
+    failures = []
+    for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        if ladder in household.columns:
+            failures.append(
+                f"Exported household table carries the ladder area code {ladder!r}; "
+                f"the artifact name is {export!r}."
+            )
+    declared = dict(descriptor.get("area_codes", {}).get("columns", {}))
+    for export in declared.values():
+        if export not in household.columns:
+            failures.append(
+                f"Exported household table lacks the declared area code {export!r}."
+            )
+            continue
+        values = household[export]
+        empty = int(values.isna().sum()) + int(
+            (values.astype(str).str.len() == 0).sum()
+        )
+        if empty:
+            failures.append(
+                f"Exported area code {export!r} is empty on {empty} household(s)."
+            )
+    return failures
 
 
 def _table_description(table: pd.DataFrame) -> dict[str, object]:
@@ -137,14 +198,15 @@ def describe_uk_export(
 ) -> dict[str, object]:
     """Validate and describe the maintained H5 layout without serializing it."""
     validate_uk_national_frame(frame)
-    tables = _tables(frame)
+    ladder = _ladder_tables(frame)
     gate = uk_geography_ladder_gate(
-        tables["household"], frame.weights_for("household").values
+        ladder["household"], frame.weights_for("household").values
     )
     if not gate.passed:
         raise ValueError(
             "UK export geography integrity failed: " + "; ".join(gate.failures)
         )
+    tables = {**ladder, "household": export_area_code_columns(ladder["household"])}
     return {
         "schema_version": 1,
         "kind": "uk_full_build_export",
@@ -156,6 +218,7 @@ def describe_uk_export(
         ),
         "bindings": dict(bindings),
         "geography_integrity": {"passed": gate.passed, "failures": list(gate.failures)},
+        "area_codes": _area_codes_block(tables["household"]),
         "graph_only_metadata": [
             "strata",
             "metadata_other_than_time_period",
@@ -226,6 +289,7 @@ def validate_uk_export(
     for key in ("time_period", "weight_kind", "mass_log", "hash_environment"):
         if actual[key] != descriptor[key]:
             failures.append(f"Exported {key} differs from its graph descriptor.")
+    failures.extend(_area_code_failures(payload["household"], descriptor))
     if file_artifact(path) != dataset:
         raise ValueError("UK exported file changed during graph readback validation.")
     return {
@@ -659,6 +723,15 @@ class UKFullGateKernel(KernelBase):
             raise ValueError("UK full gate manifest differs from its declared binding.")
         stage_evidence, fit_weight_records = _spine_gate_evidence(context)
         supporting = _source_gate_evidence(context, self.engine)
+        if "spine_build_state" in context.artifacts:
+            state = json.loads(context.artifacts["spine_build_state"].payload)
+            supporting["spine_build_state"] = SimpleNamespace(
+                household_weight_kind=WeightKind(str(state["household_weight_kind"])),
+                time_period=str(state["time_period"]),
+                mass_log=tuple(
+                    MassChangeRecord(**record) for record in state["mass_log"]
+                ),
+            )
         phase = str(context.params["phase"])
         diagnostics = []
         support = []
@@ -776,7 +849,7 @@ class UKFullGateKernel(KernelBase):
                 },
                 target_registry=target_registry,
                 local_area_support=support_frame,
-                rotated_holdout=holdout,
+                rotated_holdout=diagnostics_rotated_holdout(holdout),
                 build={
                     "build_kind": "uk_full_build",
                     "target_scope": selection["selector"],
@@ -843,7 +916,7 @@ def append_uk_full_gate_nodes(
     from ..gate_battery import _gates_manifest_payload
     from ..stage_evidence import STAGE_EVIDENCE_TYPE
     from .full_gates import uk_full_gate_manifest
-    from .graph_evidence import SPINE_GATE_REPORT_TYPE
+    from .graph_evidence import SPINE_BUILD_STATE_TYPE, SPINE_GATE_REPORT_TYPE
     from .graph_targets import TARGET_SELECTION_TYPE, TARGET_SURFACE_TYPE
 
     if not engine_identity:
@@ -915,6 +988,26 @@ def append_uk_full_gate_nodes(
         if any(source.name == "uk_input_mass_reference" for source in graph.sources)
         else ()
     )
+    # The spine checkpoint's build state, when the bound checkpoint publishes
+    # it: the input-coverage gate reads the stages' importance weights and
+    # mass receipts from it rather than from the calibrated release frame.
+    build_state: tuple[ArtifactInput, ...] = ()
+    if spine_provenance is not None:
+        producer = next(
+            (node for node in graph.nodes if node.id == spine_provenance.producer),
+            None,
+        )
+        if producer is not None and any(
+            output.name == "spine_build_state" for output in producer.artifact_outputs
+        ):
+            build_state = (
+                ArtifactInput(
+                    "spine_build_state",
+                    spine_provenance.producer,
+                    "spine_build_state",
+                    SPINE_BUILD_STATE_TYPE,
+                ),
+            )
     final = Node(
         "uk.full.gates.calibrated",
         UKFullGateKernel.ref,
@@ -924,6 +1017,7 @@ def append_uk_full_gate_nodes(
         params={**params, "phase": "terminal"},
         artifact_inputs=(
             *common,
+            *build_state,
             prerequisite,
             ArtifactInput(
                 "problem", calibration.problem_producer, "problem", PROBLEM_TYPE
@@ -1109,6 +1203,23 @@ def uk_full_holdout_node(
     )
 
 
+def diagnostics_rotated_holdout(report: Mapping[str, Any]) -> dict[str, Any]:
+    """The graph's holdout report as the diagnostics schema declares it.
+
+    The ``uk.full.holdout`` artifact carries the kernel's own binding
+    (``graph_binding``) and, when the holdout was skipped, the reason. The
+    diagnostics records forbid undeclared fields and state a skipped holdout
+    as the bare marker, so the first K=25 build (2026-10-06) reached its
+    terminal gates after 28 hours and the battery refused the marker with
+    nineteen validation errors. The holdout artifact keeps the full report;
+    the diagnostics receive the schema's shape.
+    """
+
+    if report.get("skipped") is True:
+        return {"skipped": True}
+    return {key: value for key, value in report.items() if key != "graph_binding"}
+
+
 def materialize_uk_terminal_artifacts(
     manifest, store, *, directory: str | Path, stem: str
 ) -> dict[str, dict[str, object]]:
@@ -1217,13 +1328,14 @@ def rowwise_candidate_manifest_from_graph(
     pins: Mapping[str, Mapping[str, object]],
     terminal_files: Mapping[str, Mapping[str, object]],
     frame: Frame,
-    outputs: Mapping[str, Mapping[str, object]],
+    outputs: Mapping[str, Mapping[str, object] | None],
     source_year: int,
     inputs: Mapping[str, Mapping[str, object]],
     ladder_provenance: Mapping[str, object],
     code: Mapping[str, object],
     runtime: Mapping[str, str],
     created_at: str,
+    local_gate_report_absence: str | None = None,
 ) -> dict:
     """Project the schema-4 rowwise candidate manifest from stored artifacts.
 
@@ -1326,11 +1438,17 @@ def rowwise_candidate_manifest_from_graph(
     unenforced_failures = [
         line for line in blocking_lines if line[1:].split("]")[0] in unenforced
     ]
+    representation = dict(bindings.get("measure_resolution", {})).get(
+        "engine_population_representation"
+    )
     releasable, release_posture = release_verdict(
         sample_fraction=args.sample_fraction,
         engine_blocks=args.engine_blocks,
         release_blocking_gates_passed=bool(
             enforcement["release_blocking_gates_passed"]
+        ),
+        engine_population_exact=bool(
+            isinstance(representation, Mapping) and representation.get("exact")
         ),
     )
     materialization = {
@@ -1411,6 +1529,16 @@ def rowwise_candidate_manifest_from_graph(
         "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
         "cross_grain": dict(bindings.get("cross_geography", {})),
         "ladder_assignment_provenance": dict(ladder_provenance),
+        # microcosm#1114: the area-code columns the artifact carries and the
+        # code frames behind them, from the export descriptor.
+        "area_codes": dict(
+            (
+                _optional_graph_json(
+                    final_manifest, store, "uk.full.export.prepare", "export_descriptor"
+                )
+                or {}
+            ).get("area_codes", {"columns": {}, "frames": {}})
+        ),
         "household_dispersion": dict(surface.get("household_dispersion", {})),
         "parameters": rowwise_parameters(args, source_year=source_year),
         "inputs": {
@@ -1441,7 +1569,17 @@ def rowwise_candidate_manifest_from_graph(
             "fraction": float(args.sample_fraction),
             "unreachable_check": "completed",
         },
-        "outputs": {key: dict(value) for key, value in outputs.items()},
+        "outputs": {
+            key: None if value is None else dict(value)
+            for key, value in outputs.items()
+        },
+        # A filtered build that drops the local fit claim writes no local
+        # gate report (``outputs.local_gate_report`` is null); this says why.
+        **(
+            {}
+            if local_gate_report_absence is None
+            else {"local_gate_report_absence": local_gate_report_absence}
+        ),
         "geography": {
             "constituencies_assigned": int(
                 support.loc[
