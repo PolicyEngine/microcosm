@@ -1,11 +1,11 @@
 {
- "compiled_count": 1231,
+ "compiled_count": 1267,
  "counts_by_kind": {
   "calibration_drift": 556,
   "fixture_only": 55,
-  "ledger_only": 649
+  "ledger_only": 685
  },
- "difference_count": 1260,
+ "difference_count": 1296,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1833,6 +1833,174 @@
    "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_50000_to_99999",
    "period": 2025,
    "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a), the Business Asset Disposal Relief and Investors' Relief claimants and qualifying gains by band of qualifying gain (Table 4.1), and the all-gains taxpayers and gains by band of the engine's CGT taxable income (Table 3). The frozen incumbent fixture has no equivalent row (microcosm#725, #467, #1014)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 63250.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41000.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 43750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 48750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 122250.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 345500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232250.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 62750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@N92000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 184500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@S92000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@W92000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 197000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000001",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 645500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 434500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 436750.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 518500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 766000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1305000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1255000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 574250.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@N92000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 593250.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@S92000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 238750.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@W92000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
@@ -4853,8 +5021,22 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 794887.0879380013,
+   "name": "nisra.households.northern_ireland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 111700000.0,
    "name": "nithc.public_transport_support",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2570799.0,
+   "name": "nrs.households.scotland",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -4883,6 +5065,69 @@
    "kind": "ledger_only",
    "ledger_value": 15339000000.0,
    "name": "ons.household_gas_expenditure",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1185000.0,
+   "name": "ons.households.english_regions@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3261000.0,
+   "name": "ons.households.english_regions@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2356000.0,
+   "name": "ons.households.english_regions@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2129000.0,
+   "name": "ons.households.english_regions@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2518000.0,
+   "name": "ons.households.english_regions@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2691000.0,
+   "name": "ons.households.english_regions@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3683000.0,
+   "name": "ons.households.english_regions@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3941000.0,
+   "name": "ons.households.english_regions@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2565000.0,
+   "name": "ons.households.english_regions@E12000009",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -4934,6 +5179,13 @@
    "name": "welshgov.council_tax_stock.band_i",
    "period": 2025,
    "reason": "No incumbent counterpart: Wales alone has a council tax band I and the incumbent's VOA rows stop at band H; Microcosm binds welshgov.council_tax_stock.band_i from the StatsWales CT1 return (microcosm#929)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1387333.6411848539,
+   "name": "welshgov.households.wales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "fixture_value": 999000.0,

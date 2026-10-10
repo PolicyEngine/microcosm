@@ -38,7 +38,10 @@ this order:
    (`uk/ledger_fact_vendor_selections.json` names them; each records the feed
    identity it was taken from);
 6. the signed compile parity receipts with
-   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`.
+   `tools/build_uk_ledger_compile_parity_signed_differences.py --surface all`;
+7. the release input coverage manifest with
+   `tools/build_uk_release_input_coverage_manifest.py`: it hashes the CGT
+   conditioning resource, whose vendored header records the feed identity.
 
 Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog

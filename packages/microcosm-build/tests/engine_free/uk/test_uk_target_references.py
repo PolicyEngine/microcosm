@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1231
+ACTIVE_REFERENCE_COUNT = 1267
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -231,6 +231,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "monthly_window_average",
         "monthly_window_count_x_mean",
         "monthly_window_sum_average",
+        "rolled_forward_by_ratio",
         "scaled_by_ratio",
     ]
     assert len(names) == len(set(names))
@@ -239,7 +240,15 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         contract_target_id = reference["metadata"]["contract_target_id"]
         target = targets_by_id[contract_target_id]
         binding = target["bindings"]["policyengine"]
-        fanout_cell = reference["metadata"].get("geography_id")
+        # A country row may compose its base from a lower grain (the NI
+        # census households, microcosm#1123): it carries its geography but is
+        # no fan-out cell.
+        country_composed = list(target.get("geography_levels") or ()) == [
+            "country"
+        ] and bool(reference["metadata"].get("composed_from_level"))
+        fanout_cell = (
+            None if country_composed else reference["metadata"].get("geography_id")
+        )
 
         for key, value in target["ledger_selector"].items():
             if key == "dimension_values":
@@ -335,6 +344,14 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
                         separators=(",", ":"),
                     ),
                     "cross_grain_grain": "region",
+                }
+            )
+        if country_composed:
+            expected_metadata.update(
+                {
+                    "composed_from_level": "local_authority",
+                    "geography_level": "country",
+                    "geography_id": reference["ledger_selector"]["geography_id"],
                 }
             )
         assert reference["metadata"] == expected_metadata
@@ -753,7 +770,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1231,
+        "active": 1267,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 16,
     }
@@ -797,6 +814,20 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_itl_marginal_rate",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": 24,
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "higher and additional rate Income Tax payers (Table 2.2, July "
+                "2026) fan out over the twelve-area region tier (microcosm#905) "
+                "and bind at the calendar-2025 window of HMRC's 2024-25 and "
+                "2025-26 projections, measured on the engine's tax_band. Each "
+                "region or nation row controls its higher rate area cells "
+                "(microcosm#1123)."
             ),
         },
         {
@@ -1527,8 +1558,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    # microcosm#1123 adds the LFS household estimates for England's regions.
-    assert len(two_level) == 53
+    # microcosm#1123 adds the LFS household estimates for England's regions
+    # and ITL Table 2.2's higher and additional rate taxpayers.
+    assert len(two_level) == 55
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1539,6 +1571,10 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     ]
     assert len(ons) == 10 and len(mhclg) == 9 and len(hmrc) == 2
     assert len(spi_region) == 30
+    itl_rate = [
+        target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
+    ]
+    assert len(itl_rate) == 2
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:
         by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
@@ -1551,11 +1587,15 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         cells = [row["metadata"]["geography_id"] for row in rows]
         # The retired single country row is gone: every row is a tier cell.
         assert all("@" in row["name"] for row in rows), target_id
-        assert cells == (
-            tier_codes
-            if target_id in ons or target_id in hmrc or target_id in spi_region
-            else english
-        ), target_id
+        # LFS household estimates cover England's regions only: their binding
+        # pins the country, like the MHCLG dwelling stock.
+        uk_wide = (
+            target_id in ons
+            or target_id in hmrc
+            or target_id in spi_region
+            or target_id in itl_rate
+        ) and target_id != "ons.households.english_regions"
+        assert cells == (tier_codes if uk_wide else english), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
         assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
         for row in rows:
@@ -1605,9 +1645,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         candidates = membership["targets"][target_id]["candidates"]
         assert [entry["geography_id"] for entry in candidates] == cells
         assert {entry["status"] for entry in candidates} == {"active"}
-    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows, and
-    # 18 English-region State Pension cells (microcosm#1069).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 591
+    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows,
+    # 18 English-region State Pension cells (microcosm#1069), the 9 LFS
+    # English-region household cells and 24 ITL Table 2.2 marginal-rate
+    # cells (microcosm#1123).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 624
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]

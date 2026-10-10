@@ -1,12 +1,12 @@
 {
- "compiled_count": 916,
+ "compiled_count": 925,
  "counts_by_kind": {
   "calibration_drift": 118,
   "fixture_only": 17,
   "ledger_absent": 3,
-  "ledger_only": 787
+  "ledger_only": 796
  },
- "difference_count": 925,
+ "difference_count": 934,
  "differences": [
   {
    "kind": "ledger_absent",
@@ -5227,6 +5227,69 @@
    "kind": "ledger_only",
    "ledger_value": 20085000000.0,
    "name": "ons.household_gas_expenditure",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1215000.0,
+   "name": "ons.households.english_regions@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3216000.0,
+   "name": "ons.households.english_regions@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2375000.0,
+   "name": "ons.households.english_regions@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2004000.0,
+   "name": "ons.households.english_regions@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2499000.0,
+   "name": "ons.households.english_regions@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2659000.0,
+   "name": "ons.households.english_regions@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3577000.0,
+   "name": "ons.households.english_regions@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3787000.0,
+   "name": "ons.households.english_regions@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2386000.0,
+   "name": "ons.households.english_regions@E12000009",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

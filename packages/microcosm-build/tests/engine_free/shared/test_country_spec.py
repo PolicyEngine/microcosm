@@ -1140,7 +1140,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1231
+            len(references) == 1267
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1159,7 +1159,9 @@ class TestExistingPackagesGeneralize:
         # total (the Table 3.8 rows and the DWP employee total left the fit); two
         # Attendance Allowance and three pension-age Housing Benefit rows; the
         # income-tax relief total on salary sacrifice in place of the amount row;
-        # microcosm#1095: Great Britain pension-age Housing Benefit spending
+        # microcosm#1095: Great Britain pension-age Housing Benefit spending;
+        # microcosm#1123: the 12 nation household control cells and the 24
+        # ITL Table 2.2 marginal-rate cells
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

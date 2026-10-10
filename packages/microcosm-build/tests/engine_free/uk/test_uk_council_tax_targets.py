@@ -227,11 +227,14 @@ def test_national_ons_region_cells_count_only_their_region_at_person_grain() -> 
 
 def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:
     membership = _membership()
+    # Cells below the small-cell floor (uk/local_small_cell_rule.json,
+    # microcosm#1123 item 7) defer by rule: Barking and Dagenham band G, two
+    # Welsh band H and six band I cells, two Scottish band G and five band H.
     expected = {
-        "mhclg": ("abcdefgh", 296, {"h": 0}, 294),
-        "welshgov": ("abcdefghi", 22, {}, 22),
+        "mhclg": ("abcdefgh", 296, {"g": 293, "h": 0}, 294),
+        "welshgov": ("abcdefghi", 22, {"h": 20, "i": 16}, 22),
         # Shetland band H has no band-H clone at K=15 (support deferral).
-        "scotgov": ("abcdefgh", 32, {"h": 31}, 32),
+        "scotgov": ("abcdefgh", 32, {"g": 30, "h": 26}, 32),
     }
     for source, (bands, roster, overrides, active_default) in expected.items():
         for band in bands:
@@ -267,7 +270,32 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     # the taxbase basis (microcosm#929): Scotland and Wales bind their own
     # returns, Northern Ireland is outside every family's roster, and MHCLG
     # publishes the City's band A.
-    assert set(by_reason) == {"council_tax_band_h_spine_support_absent"}
+    assert set(by_reason) == {
+        "council_tax_band_h_spine_support_absent",
+        "council_tax_band_household_floor",
+    }
+    floor = by_reason["council_tax_band_household_floor"]
+    assert [(row["target_id"], row["area_ids"]) for row in floor] == [
+        ("mhclg.council_tax_stock.by_area.band_g", ["E09000002"]),
+        ("scotgov.council_tax_stock.by_area.band_g", ["S12000013", "S12000023"]),
+        (
+            "scotgov.council_tax_stock.by_area.band_h",
+            ["S12000005", "S12000008", "S12000013", "S12000023", "S12000042"],
+        ),
+        ("welshgov.council_tax_stock.by_area.band_h", ["W06000019", "W06000024"]),
+        (
+            "welshgov.council_tax_stock.by_area.band_i",
+            [
+                "W06000001",
+                "W06000008",
+                "W06000012",
+                "W06000019",
+                "W06000020",
+                "W06000024",
+            ],
+        ),
+    ]
+    assert {row["expires_on"] for row in floor} == {"2027-04-01"}
     band_h = by_reason["council_tax_band_h_spine_support_absent"]
     expected_english = tuple(
         area_id
@@ -293,7 +321,7 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     assert "84 of 296 at K=10" in band_h[0]["rationale"]
 
 
-def test_council_tax_activation_binds_2511_references() -> None:
+def test_council_tax_activation_binds_2495_references() -> None:
     membership = _membership()
     active = 0
     for target_id, payload in membership["targets"].items():
@@ -303,8 +331,9 @@ def test_council_tax_activation_binds_2511_references() -> None:
         active += sum(row["status"] == "active" for row in candidates)
     # 2,058 English A-G cells (microcosm#762) + 198 Welsh A-I + 255 Scottish
     # A-H (microcosm#929; Shetland band H is a support deferral); the 296
-    # English band-H cells stay deferred.
-    assert active == 2_511
+    # English band-H cells stay deferred, and the 16 cells below the
+    # small-cell floor defer by rule (microcosm#1123 item 7).
+    assert active == 2_495
 
 
 def test_barnsley_and_sheffield_bind_their_2025_rows_through_the_code_aliases() -> None:

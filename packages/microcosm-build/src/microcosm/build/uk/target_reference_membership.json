@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-942a1fa0-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1254,
-  "contract_target_count": 341,
-  "active_reference_count": 1231,
+  "candidate_count": 1290,
+  "contract_target_count": 347,
+  "active_reference_count": 1267,
   "status_counts": {
-    "active": 1231,
+    "active": 1267,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -1025,6 +1025,58 @@
     "ons.household_composition.multi_family_households": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "ons.households.english_regions": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
+    },
+    "nrs.households.scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "welshgov.households.wales": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "nisra.households.northern_ireland": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
     },
     "mhclg.council_tax_stock.band_a": {
       "geography_fanout": [
@@ -2247,6 +2299,110 @@
     "hmrc.itl.income_tax_by_total_income_band": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "hmrc.itl.higher_rate_taxpayers": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "hmrc.itl.additional_rate_taxpayers": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "hmrc.spi.savings_interest_income.amount_by_total_income_band": {
       "geography_level": "country",
@@ -6023,6 +6179,16 @@
     {
       "name": "dwp.uc.two_child_limit.children_disabled_child_element",
       "from": "2025-04",
+      "to": "2025"
+    },
+    {
+      "name": "welshgov.households.wales",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "nisra.households.northern_ireland",
+      "from": "2021",
       "to": "2025"
     },
     {
@@ -16632,6 +16798,166 @@
         }
       ]
     },
+    "ons.households.english_regions": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.households.english_regions@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 1185000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a65a119c76098f26fd9b20ec"
+        },
+        {
+          "name": "ons.households.english_regions@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 3261000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_14fd9f364fe320a8372bfcaf"
+        },
+        {
+          "name": "ons.households.english_regions@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 2356000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_50e6352b447543378251a481"
+        },
+        {
+          "name": "ons.households.english_regions@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 2129000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_14fcd87d826658dc67b3d4e0"
+        },
+        {
+          "name": "ons.households.english_regions@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 2518000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1fb8fbd58f0cdb6e418b45fc"
+        },
+        {
+          "name": "ons.households.english_regions@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 2691000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_44ebd017801a3d18a8dd72b5"
+        },
+        {
+          "name": "ons.households.english_regions@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 3683000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6c7a3d7f8ce22978496b3312"
+        },
+        {
+          "name": "ons.households.english_regions@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 3941000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2867b15c82b7eb4ba6dad368"
+        },
+        {
+          "name": "ons.households.english_regions@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 11,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 2565000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5541d336ef1d40a8ccac2d32"
+        }
+      ]
+    },
+    "nrs.households.scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "nrs.households.scotland",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 2570799.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fde92049087772f2fb24578e"
+        }
+      ]
+    },
+    "welshgov.households.wales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.households.wales",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 1387333.6411848539,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_96a55a48e141d2d05b6f6be6"
+        }
+      ]
+    },
+    "nisra.households.northern_ireland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "nisra.households.northern_ireland",
+          "status": "active",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 794887.0879380013,
+          "resolved_fact_period": "2021",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7abe292ea7aa0edc88cd67ac"
+        }
+      ]
+    },
     "mhclg.council_tax_stock.band_a": {
       "status": "active",
       "candidates": [
@@ -20555,6 +20881,304 @@
           "resolved_value": 18100000000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_76841022d640a76385d5a2e7"
+        }
+      ]
+    },
+    "hmrc.itl.higher_rate_taxpayers": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 197000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_986ab1ca38f8f15f1a0e23cd"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 645500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a29ea4f026688d0b9c4a35c4"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 434500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_247e8f5ce3d8bd0b148762ac"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 436750.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5fb398af3b1325582240db88"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 518500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a95f7dcc575be188da1fe97b"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 766000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4dda30c598f2752274c46180"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1305000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d91d966a9c0977767e078990"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1255000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_75d120ef1122df4721db2c6d"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 574250.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a0353f514771d283b2008e09"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 238750.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_711adcb97cfcb1dd623eeeda"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 593250.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_15f8fc36787238340817ce96"
+        },
+        {
+          "name": "hmrc.itl.higher_rate_taxpayers@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 121500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_229ec10ad9884ec73f50ef19"
+        }
+      ]
+    },
+    "hmrc.itl.additional_rate_taxpayers": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 15500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e4082440150ae559a086d13d"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 63250.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_40b10f4491ec8b92b9ee06b0"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 41000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d3b59ce58fe1f8d654925de0"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 43750.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6ec6b95ff6329c4a6ca1449d"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 48750.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fceb41c92b2d3107f37ff2bd"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 122250.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_84bcabe6c606ec83f07a0ba3"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 345500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5342c1e35e3b8223ddfe1791"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 232250.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2a7b8ff84b6caad53ac452f"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 62750.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_62bb153da80afc08cd024c91"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 17500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_625aae4ead476227cb71a447"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 184500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_69a0bd64ae97b81f974f6916"
+        },
+        {
+          "name": "hmrc.itl.additional_rate_taxpayers@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 3,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 10750.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d43e036ecbd2a2367bafc2b"
         }
       ]
     },
@@ -28426,6 +29050,12 @@
       "status": "active_calendar_year_window_anchors",
       "active_reference_count": 33,
       "signed_rationale": "The three HMRC Income Tax liabilities statistics targets (Income Tax payers, total income and Income Tax liabilities by eleven total-income bands, Table 2.5, July 2026) fan out by strict total-income-band pins and bind at the calendar-2025 window of HMRC's 2024-25 and 2025-26 source projections (three twelfths and nine twelfths; PolicyEngine/chronicle#280 lane, Mar\u00eda's ruling of 2026-09-22). They are the calibration-year anchors the SPI component bands lack; the OBR fiscal-year receipts row stays bound beside them."
+    },
+    {
+      "family": "hmrc_itl_marginal_rate",
+      "status": "active_region_tier_calendar_year_window",
+      "active_reference_count": 24,
+      "signed_rationale": "The two HMRC Income Tax liabilities statistics targets for higher and additional rate Income Tax payers (Table 2.2, July 2026) fan out over the twelve-area region tier (microcosm#905) and bind at the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections, measured on the engine's tax_band. Each region or nation row controls its higher rate area cells (microcosm#1123)."
     },
     {
       "family": "hmrc_spi_region",
