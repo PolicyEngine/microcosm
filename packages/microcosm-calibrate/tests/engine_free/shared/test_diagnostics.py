@@ -63,6 +63,7 @@ def test_shared_geography_constant_views_are_consistent() -> None:
     assert dict(UK_GEOGRAPHY_ID_TO_LABEL) == {
         "K02000001": "United Kingdom",
         "K03000001": "Great Britain",
+        "K04000001": "England and Wales",
         "E92000001": "England",
         "W92000004": "Wales",
         "S92000003": "Scotland",

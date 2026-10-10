@@ -1,0 +1,1391 @@
+{
+ "concept_inputs": {
+  "fact:household.mortgage_interest": [
+   {
+    "entity": "household",
+    "name": "mortgage_interest_repayment"
+   }
+  ],
+  "fact:household.mortgage_principal": [
+   {
+    "entity": "household",
+    "name": "mortgage_capital_repayment"
+   }
+  ],
+  "fact:household.property_tax": [
+   {
+    "entity": "household",
+    "name": "council_tax"
+   }
+  ],
+  "fact:household.rent": [
+   {
+    "entity": "household",
+    "name": "rent"
+   }
+  ],
+  "fact:household.tenure": [
+   {
+    "entity": "household",
+    "name": "tenure_type"
+   }
+  ],
+  "fact:person.age": [
+   {
+    "entity": "person",
+    "name": "age"
+   },
+   {
+    "entity": "person",
+    "name": "is_parent"
+   }
+  ],
+  "fact:person.dividend_income": [
+   {
+    "entity": "person",
+    "name": "dividend_income"
+   }
+  ],
+  "fact:person.education_enrollment": [
+   {
+    "entity": "person",
+    "name": "childcare_grant_full_time_student"
+   },
+   {
+    "entity": "person",
+    "name": "in_HE"
+   }
+  ],
+  "fact:person.educational_attainment": [
+   {
+    "entity": "person",
+    "name": "highest_education"
+   }
+  ],
+  "fact:person.employment_income": [
+   {
+    "entity": "person",
+    "name": "employment_income_before_lsr"
+   }
+  ],
+  "fact:person.enrolled_full_time": [
+   {
+    "entity": "person",
+    "name": "childcare_grant_full_time_student"
+   }
+  ],
+  "fact:person.farm_self_employment_income": [
+   {
+    "entity": "person",
+    "name": "self_employment_income"
+   }
+  ],
+  "fact:person.has_disability": [
+   {
+    "entity": "person",
+    "name": "is_disabled_for_benefits"
+   }
+  ],
+  "fact:person.interest_income": [
+   {
+    "entity": "person",
+    "name": "individual_savings_account_interest_income"
+   },
+   {
+    "entity": "person",
+    "name": "savings_interest_income"
+   }
+  ],
+  "fact:person.nonfarm_self_employment_income": [
+   {
+    "entity": "person",
+    "name": "self_employment_income"
+   }
+  ],
+  "fact:person.parent_1_person_id": [
+   {
+    "entity": "person",
+    "name": "is_parent"
+   }
+  ],
+  "fact:person.parent_2_person_id": [
+   {
+    "entity": "person",
+    "name": "is_parent"
+   }
+  ],
+  "fact:person.private_pension_income": [
+   {
+    "entity": "person",
+    "name": "private_pension_income"
+   }
+  ],
+  "fact:person.realized_capital_gains": [
+   {
+    "entity": "person",
+    "name": "capital_gains_before_response"
+   }
+  ],
+  "fact:person.rental_income": [
+   {
+    "entity": "person",
+    "name": "property_income"
+   }
+  ],
+  "fact:person.sex": [
+   {
+    "entity": "person",
+    "name": "gender"
+   }
+  ],
+  "fact:person.take_up_seed": [
+   {
+    "entity": "benunit",
+    "name": "child_benefit_opts_out"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_adult_dependants_grant"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_bursary_fund_16_to_19"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_care_to_learn"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_carers_allowance"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_child_benefit"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_childcare_grant"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_disabled_students_allowance"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_extended_childcare"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_marriage_allowance"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_parents_learning_allowance"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_pc"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_scp"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_targeted_childcare"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_tfc"
+   },
+   {
+    "entity": "person",
+    "name": "would_claim_travel_grant"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_uc"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_uc_childcare"
+   },
+   {
+    "entity": "benunit",
+    "name": "would_claim_universal_childcare"
+   }
+  ],
+  "fact:person.usual_weekly_hours": [
+   {
+    "entity": "person",
+    "name": "hours_worked"
+   }
+  ],
+  "fact:person.weeks_worked": [
+   {
+    "entity": "person",
+    "name": "hours_worked"
+   }
+  ]
+ },
+ "covered_count": 40,
+ "covered_inputs": [
+  {
+   "entity": "person",
+   "name": "age"
+  },
+  {
+   "entity": "person",
+   "name": "capital_gains_before_response"
+  },
+  {
+   "entity": "benunit",
+   "name": "child_benefit_opts_out"
+  },
+  {
+   "entity": "person",
+   "name": "childcare_grant_full_time_student"
+  },
+  {
+   "entity": "household",
+   "name": "council_tax"
+  },
+  {
+   "entity": "person",
+   "name": "dividend_income"
+  },
+  {
+   "entity": "person",
+   "name": "employment_income_before_lsr"
+  },
+  {
+   "entity": "person",
+   "name": "gender"
+  },
+  {
+   "entity": "person",
+   "name": "highest_education"
+  },
+  {
+   "entity": "person",
+   "name": "hours_worked"
+  },
+  {
+   "entity": "person",
+   "name": "in_HE"
+  },
+  {
+   "entity": "person",
+   "name": "individual_savings_account_interest_income"
+  },
+  {
+   "entity": "person",
+   "name": "is_disabled_for_benefits"
+  },
+  {
+   "entity": "person",
+   "name": "is_parent"
+  },
+  {
+   "entity": "household",
+   "name": "mortgage_capital_repayment"
+  },
+  {
+   "entity": "household",
+   "name": "mortgage_interest_repayment"
+  },
+  {
+   "entity": "person",
+   "name": "private_pension_income"
+  },
+  {
+   "entity": "person",
+   "name": "property_income"
+  },
+  {
+   "entity": "household",
+   "name": "rent"
+  },
+  {
+   "entity": "person",
+   "name": "savings_interest_income"
+  },
+  {
+   "entity": "person",
+   "name": "self_employment_income"
+  },
+  {
+   "entity": "household",
+   "name": "tenure_type"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_adult_dependants_grant"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_bursary_fund_16_to_19"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_care_to_learn"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_carers_allowance"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_child_benefit"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_childcare_grant"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_disabled_students_allowance"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_extended_childcare"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_marriage_allowance"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_parents_learning_allowance"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_pc"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_scp"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_targeted_childcare"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_tfc"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_travel_grant"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_uc"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_uc_childcare"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_universal_childcare"
+  }
+ ],
+ "engine": "policyengine-uk",
+ "engine_version": "2.122.2",
+ "input_count": 285,
+ "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
+ "structural_inputs": [
+  {
+   "entity": "benunit",
+   "name": "benunit_id"
+  },
+  {
+   "entity": "benunit",
+   "name": "families"
+  },
+  {
+   "entity": "household",
+   "name": "household_id"
+  },
+  {
+   "entity": "household",
+   "name": "household_weight"
+  },
+  {
+   "entity": "household",
+   "name": "households"
+  },
+  {
+   "entity": "household",
+   "name": "original_weight"
+  },
+  {
+   "entity": "person",
+   "name": "people"
+  },
+  {
+   "entity": "person",
+   "name": "person_benunit_id"
+  },
+  {
+   "entity": "person",
+   "name": "person_household_id"
+  },
+  {
+   "entity": "person",
+   "name": "person_id"
+  },
+  {
+   "entity": "person",
+   "name": "raw_person_weight"
+  }
+ ],
+ "uncovered_inputs": [
+  {
+   "entity": "person",
+   "name": "a_and_e_visits"
+  },
+  {
+   "entity": "person",
+   "name": "aa_category"
+  },
+  {
+   "entity": "person",
+   "name": "access_fund"
+  },
+  {
+   "entity": "household",
+   "name": "accommodation_type"
+  },
+  {
+   "entity": "person",
+   "name": "admitted_patient_visits"
+  },
+  {
+   "entity": "person",
+   "name": "adult_dependants_grant_has_other_adult_dependant"
+  },
+  {
+   "entity": "person",
+   "name": "adult_dependants_grant_other_adult_income"
+  },
+  {
+   "entity": "person",
+   "name": "adult_dependants_grant_receives_postgraduate_loan"
+  },
+  {
+   "entity": "person",
+   "name": "adult_ema"
+  },
+  {
+   "entity": "person",
+   "name": "afcs_reported"
+  },
+  {
+   "entity": "person",
+   "name": "age_started_or_accepted_current_education_or_training"
+  },
+  {
+   "entity": "household",
+   "name": "alcohol_and_tobacco_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "armed_forces_independence_payment"
+  },
+  {
+   "entity": "person",
+   "name": "attends_private_school_random_draw"
+  },
+  {
+   "entity": "person",
+   "name": "base_net_income"
+  },
+  {
+   "entity": "benunit",
+   "name": "baseline_child_benefit_entitlement"
+  },
+  {
+   "entity": "benunit",
+   "name": "baseline_income_support_entitlement"
+  },
+  {
+   "entity": "benunit",
+   "name": "baseline_pension_credit_entitlement"
+  },
+  {
+   "entity": "household",
+   "name": "beer_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "beer_litres"
+  },
+  {
+   "entity": "person",
+   "name": "blind_persons_allowance"
+  },
+  {
+   "entity": "household",
+   "name": "brma"
+  },
+  {
+   "entity": "person",
+   "name": "bsp_reported"
+  },
+  {
+   "entity": "person",
+   "name": "bursary_fund_16_to_19_in_care_or_care_leaver"
+  },
+  {
+   "entity": "person",
+   "name": "bursary_fund_16_to_19_participation_costs"
+  },
+  {
+   "entity": "person",
+   "name": "bursary_fund_16_to_19_self_supporting"
+  },
+  {
+   "entity": "household",
+   "name": "bus_fare_spending_reported"
+  },
+  {
+   "entity": "person",
+   "name": "bus_in_london_trips"
+  },
+  {
+   "entity": "person",
+   "name": "bus_pass_eligible"
+  },
+  {
+   "entity": "household",
+   "name": "bus_subsidy_spending"
+  },
+  {
+   "entity": "person",
+   "name": "capital_allowances"
+  },
+  {
+   "entity": "person",
+   "name": "capital_gains_badr"
+  },
+  {
+   "entity": "person",
+   "name": "capital_gains_carried_interest"
+  },
+  {
+   "entity": "person",
+   "name": "capital_gains_residential_property"
+  },
+  {
+   "entity": "person",
+   "name": "car_co2_emissions"
+  },
+  {
+   "entity": "person",
+   "name": "car_engine_size"
+  },
+  {
+   "entity": "person",
+   "name": "car_first_registration_date"
+  },
+  {
+   "entity": "person",
+   "name": "car_fuel_type"
+  },
+  {
+   "entity": "person",
+   "name": "car_is_ved_exempt"
+  },
+  {
+   "entity": "person",
+   "name": "car_list_price"
+  },
+  {
+   "entity": "person",
+   "name": "care_hours"
+  },
+  {
+   "entity": "person",
+   "name": "carers_allowance_reported"
+  },
+  {
+   "entity": "household",
+   "name": "cash_isa"
+  },
+  {
+   "entity": "person",
+   "name": "charitable_investment_gifts"
+  },
+  {
+   "entity": "person",
+   "name": "child_benefit_reported"
+  },
+  {
+   "entity": "person",
+   "name": "child_ema"
+  },
+  {
+   "entity": "person",
+   "name": "child_tax_credit_reported"
+  },
+  {
+   "entity": "person",
+   "name": "childcare_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "childcare_grant_child_has_special_educational_needs"
+  },
+  {
+   "entity": "person",
+   "name": "childcare_grant_provider_is_nanny"
+  },
+  {
+   "entity": "person",
+   "name": "childcare_grant_receives_nhs_childcare_support"
+  },
+  {
+   "entity": "person",
+   "name": "childcare_grant_receives_postgraduate_loan"
+  },
+  {
+   "entity": "household",
+   "name": "cider_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "cider_litres"
+  },
+  {
+   "entity": "household",
+   "name": "cigarettes_per_week"
+  },
+  {
+   "entity": "household",
+   "name": "cigars_grams_per_week"
+  },
+  {
+   "entity": "household",
+   "name": "clothing_and_footwear_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "communication_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "consumer_debt"
+  },
+  {
+   "entity": "household",
+   "name": "corporate_wealth"
+  },
+  {
+   "entity": "household",
+   "name": "council_tax_band"
+  },
+  {
+   "entity": "person",
+   "name": "council_tax_benefit_reported"
+  },
+  {
+   "entity": "person",
+   "name": "covenanted_payments"
+  },
+  {
+   "entity": "household",
+   "name": "cumulative_non_residential_rent"
+  },
+  {
+   "entity": "household",
+   "name": "cumulative_residential_rent"
+  },
+  {
+   "entity": "person",
+   "name": "deficiency_relief"
+  },
+  {
+   "entity": "household",
+   "name": "dfe_education_spending"
+  },
+  {
+   "entity": "household",
+   "name": "diesel_spending"
+  },
+  {
+   "entity": "person",
+   "name": "disabled_students_allowance_eligible_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "disabled_students_allowance_receives_equivalent_support"
+  },
+  {
+   "entity": "person",
+   "name": "dla_m_category"
+  },
+  {
+   "entity": "person",
+   "name": "dla_sc_category"
+  },
+  {
+   "entity": "household",
+   "name": "domestic_energy_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "domestic_rates"
+  },
+  {
+   "entity": "household",
+   "name": "education_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "education_grants"
+  },
+  {
+   "entity": "household",
+   "name": "electricity_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "employee_pension_contributions_reported"
+  },
+  {
+   "entity": "person",
+   "name": "employer_pension_contributions"
+  },
+  {
+   "entity": "person",
+   "name": "employment_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "employment_sector"
+  },
+  {
+   "entity": "person",
+   "name": "employment_status"
+  },
+  {
+   "entity": "person",
+   "name": "esa_contrib_reported"
+  },
+  {
+   "entity": "person",
+   "name": "esa_income_reported"
+  },
+  {
+   "entity": "household",
+   "name": "external_child_payments"
+  },
+  {
+   "entity": "household",
+   "name": "food_and_non_alcoholic_beverages_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "free_school_fruit_veg"
+  },
+  {
+   "entity": "person",
+   "name": "free_school_meals"
+  },
+  {
+   "entity": "person",
+   "name": "free_school_milk"
+  },
+  {
+   "entity": "household",
+   "name": "full_rate_vat_expenditure_rate"
+  },
+  {
+   "entity": "household",
+   "name": "gas_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "gift_aid"
+  },
+  {
+   "entity": "household",
+   "name": "gross_financial_wealth"
+  },
+  {
+   "entity": "household",
+   "name": "hand_rolling_tobacco_grams_per_week"
+  },
+  {
+   "entity": "household",
+   "name": "health_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "healthy_start_vouchers"
+  },
+  {
+   "entity": "household",
+   "name": "heated_tobacco_grams_per_week"
+  },
+  {
+   "entity": "household",
+   "name": "household_furnishings_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "household_owns_tv"
+  },
+  {
+   "entity": "benunit",
+   "name": "housing_benefit_board_and_attendance_determination"
+  },
+  {
+   "entity": "person",
+   "name": "housing_benefit_reported"
+  },
+  {
+   "entity": "household",
+   "name": "housing_service_charges"
+  },
+  {
+   "entity": "household",
+   "name": "housing_water_and_electricity_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "iidb_reported"
+  },
+  {
+   "entity": "person",
+   "name": "in_FE"
+  },
+  {
+   "entity": "household",
+   "name": "in_original_frs"
+  },
+  {
+   "entity": "household",
+   "name": "in_rural_fuel_duty_relief_area"
+  },
+  {
+   "entity": "benunit",
+   "name": "in_specified_or_temporary_accommodation"
+  },
+  {
+   "entity": "person",
+   "name": "incapacity_benefit_reported"
+  },
+  {
+   "entity": "person",
+   "name": "income_support_reported"
+  },
+  {
+   "entity": "person",
+   "name": "is_about_to_start_paid_work"
+  },
+  {
+   "entity": "person",
+   "name": "is_apprentice"
+  },
+  {
+   "entity": "person",
+   "name": "is_before_universal_credit_qualifying_young_person_terminal_date"
+  },
+  {
+   "entity": "person",
+   "name": "is_blind"
+  },
+  {
+   "entity": "person",
+   "name": "is_in_approved_training"
+  },
+  {
+   "entity": "person",
+   "name": "is_looked_after_by_local_authority"
+  },
+  {
+   "entity": "person",
+   "name": "is_newly_self_employed"
+  },
+  {
+   "entity": "household",
+   "name": "is_shared_accommodation"
+  },
+  {
+   "entity": "person",
+   "name": "jsa_contrib_reported"
+  },
+  {
+   "entity": "person",
+   "name": "jsa_income_reported"
+  },
+  {
+   "entity": "benunit",
+   "name": "liable_for_share_of_household_rent"
+  },
+  {
+   "entity": "person",
+   "name": "lifetime_isa_balance"
+  },
+  {
+   "entity": "household",
+   "name": "local_authority"
+  },
+  {
+   "entity": "household",
+   "name": "lpg_kg"
+  },
+  {
+   "entity": "person",
+   "name": "lump_sum_income"
+  },
+  {
+   "entity": "household",
+   "name": "main_residence_value"
+  },
+  {
+   "entity": "household",
+   "name": "main_residential_property_purchased_is_first_home"
+  },
+  {
+   "entity": "person",
+   "name": "maintenance_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "maintenance_income"
+  },
+  {
+   "entity": "person",
+   "name": "married_couples_allowance"
+  },
+  {
+   "entity": "person",
+   "name": "maternity_allowance_reported"
+  },
+  {
+   "entity": "person",
+   "name": "max_free_entitlement_hours_used"
+  },
+  {
+   "entity": "benunit",
+   "name": "maximum_extended_childcare_hours_usage"
+  },
+  {
+   "entity": "benunit",
+   "name": "meals_included_in_rent"
+  },
+  {
+   "entity": "household",
+   "name": "miscellaneous_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "miscellaneous_income"
+  },
+  {
+   "entity": "household",
+   "name": "mortgage_debt"
+  },
+  {
+   "entity": "household",
+   "name": "natural_gas_kg"
+  },
+  {
+   "entity": "household",
+   "name": "net_financial_wealth"
+  },
+  {
+   "entity": "person",
+   "name": "nhs_a_and_e_spending"
+  },
+  {
+   "entity": "person",
+   "name": "nhs_admitted_patient_spending"
+  },
+  {
+   "entity": "person",
+   "name": "nhs_outpatient_spending"
+  },
+  {
+   "entity": "person",
+   "name": "ni_class_3"
+  },
+  {
+   "entity": "household",
+   "name": "non_residential_property_value"
+  },
+  {
+   "entity": "household",
+   "name": "non_residential_rent"
+  },
+  {
+   "entity": "household",
+   "name": "num_bedrooms"
+  },
+  {
+   "entity": "household",
+   "name": "num_vehicles"
+  },
+  {
+   "entity": "person",
+   "name": "other_deductions"
+  },
+  {
+   "entity": "household",
+   "name": "other_fermented_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "other_fermented_litres"
+  },
+  {
+   "entity": "person",
+   "name": "other_investment_income"
+  },
+  {
+   "entity": "person",
+   "name": "other_local_bus_trips"
+  },
+  {
+   "entity": "household",
+   "name": "other_residential_property_value"
+  },
+  {
+   "entity": "person",
+   "name": "other_tax_credits"
+  },
+  {
+   "entity": "household",
+   "name": "other_tobacco_grams_per_week"
+  },
+  {
+   "entity": "person",
+   "name": "outpatient_visits"
+  },
+  {
+   "entity": "household",
+   "name": "owned_land"
+  },
+  {
+   "entity": "person",
+   "name": "pension_contributions_via_salary_sacrifice"
+  },
+  {
+   "entity": "person",
+   "name": "pension_credit_reported"
+  },
+  {
+   "entity": "benunit",
+   "name": "pension_credit_reported_capital"
+  },
+  {
+   "entity": "person",
+   "name": "pension_income"
+  },
+  {
+   "entity": "person",
+   "name": "person_benunit_role"
+  },
+  {
+   "entity": "person",
+   "name": "person_household_role"
+  },
+  {
+   "entity": "person",
+   "name": "personal_pension_contributions"
+  },
+  {
+   "entity": "household",
+   "name": "petrol_spending"
+  },
+  {
+   "entity": "person",
+   "name": "pip_dl_category"
+  },
+  {
+   "entity": "person",
+   "name": "pip_m_category"
+  },
+  {
+   "entity": "household",
+   "name": "private_pension_wealth"
+  },
+  {
+   "entity": "person",
+   "name": "private_transfer_income"
+  },
+  {
+   "entity": "household",
+   "name": "property_purchased"
+  },
+  {
+   "entity": "household",
+   "name": "rail_usage"
+  },
+  {
+   "entity": "person",
+   "name": "receives_benefits_in_own_right"
+  },
+  {
+   "entity": "person",
+   "name": "receives_limited_capability_for_work_credits"
+  },
+  {
+   "entity": "household",
+   "name": "recreation_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "region"
+  },
+  {
+   "entity": "person",
+   "name": "rent_paid_as_boarder"
+  },
+  {
+   "entity": "person",
+   "name": "rent_paid_as_lodger"
+  },
+  {
+   "entity": "household",
+   "name": "restaurants_and_hotels_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "role"
+  },
+  {
+   "entity": "household",
+   "name": "savings"
+  },
+  {
+   "entity": "person",
+   "name": "scottish_funded_early_learning_childcare_start_date_reached"
+  },
+  {
+   "entity": "person",
+   "name": "sda_reported"
+  },
+  {
+   "entity": "person",
+   "name": "self_employment_gross_receipts"
+  },
+  {
+   "entity": "person",
+   "name": "sic_industry_division"
+  },
+  {
+   "entity": "household",
+   "name": "sparkling_cider_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "sparkling_cider_litres"
+  },
+  {
+   "entity": "household",
+   "name": "spi_imputed"
+  },
+  {
+   "entity": "household",
+   "name": "spirits_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "spirits_litres"
+  },
+  {
+   "entity": "person",
+   "name": "ssmg_reported"
+  },
+  {
+   "entity": "person",
+   "name": "statutory_maternity_pay"
+  },
+  {
+   "entity": "person",
+   "name": "statutory_paternity_pay"
+  },
+  {
+   "entity": "person",
+   "name": "statutory_sick_pay"
+  },
+  {
+   "entity": "household",
+   "name": "stocks_and_shares_isa"
+  },
+  {
+   "entity": "household",
+   "name": "structural_insurance_payments"
+  },
+  {
+   "entity": "person",
+   "name": "student_loan_balance"
+  },
+  {
+   "entity": "person",
+   "name": "student_loan_plan"
+  },
+  {
+   "entity": "person",
+   "name": "student_loans"
+  },
+  {
+   "entity": "person",
+   "name": "sublet_income"
+  },
+  {
+   "entity": "benunit",
+   "name": "tax_free_childcare_meets_uk_connection"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_on_adoption_leave"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_on_carers_leave"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_on_qualifying_leave"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_on_shared_parental_leave"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_self_employment_start_up_period"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_spend_routed_share"
+  },
+  {
+   "entity": "person",
+   "name": "tax_free_childcare_uses_qualifying_provider"
+  },
+  {
+   "entity": "person",
+   "name": "tax_reported"
+  },
+  {
+   "entity": "person",
+   "name": "trading_loss"
+  },
+  {
+   "entity": "household",
+   "name": "transport_consumption"
+  },
+  {
+   "entity": "person",
+   "name": "travel_grant_abroad_placement"
+  },
+  {
+   "entity": "person",
+   "name": "travel_grant_clinical_placement"
+  },
+  {
+   "entity": "person",
+   "name": "travel_grant_eligible_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "travel_grant_receives_means_tested_nhs_bursary"
+  },
+  {
+   "entity": "person",
+   "name": "uc_has_limited_capability_for_work"
+  },
+  {
+   "entity": "person",
+   "name": "uc_has_offer_of_paid_work_starting_by_end_of_next_assessment_period"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_adopter_in_first_year"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_foster_parent_or_new_friend_or_family_carer"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_in_pregnancy_or_post_confinement_period"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_in_startup_period"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_ineligible_partner"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_responsible_foster_parent_of_child_under_one"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_student_with_no_work_related_requirements"
+  },
+  {
+   "entity": "person",
+   "name": "uc_is_temporarily_absent_from_claimant_household"
+  },
+  {
+   "entity": "household",
+   "name": "uc_migrated"
+  },
+  {
+   "entity": "benunit",
+   "name": "uc_reported_capital"
+  },
+  {
+   "entity": "person",
+   "name": "universal_credit_reported"
+  },
+  {
+   "entity": "household",
+   "name": "water_and_sewerage_charges"
+  },
+  {
+   "entity": "household",
+   "name": "wine_draught_share"
+  },
+  {
+   "entity": "household",
+   "name": "wine_litres"
+  },
+  {
+   "entity": "person",
+   "name": "winter_fuel_allowance_reported"
+  },
+  {
+   "entity": "person",
+   "name": "working_tax_credit_reported"
+  },
+  {
+   "entity": "benunit",
+   "name": "working_tax_credit_run_on"
+  },
+  {
+   "entity": "household",
+   "name": "would_evade_tv_licence_fee"
+  }
+ ],
+ "unknown_inputs": [],
+ "unmapped_concepts": {
+  "fact:household.reference_person_id": "is_household_head is formula-owned (the oldest member). The UK build overrides it with the FRS household reference person (frs_spine.py), an override the loader accepts, but it is not an input, so the mapping does not target it. Every housing input is household-level, so nothing is allocated to the reference person.",
+  "fact:person.legal_marital_status": "policyengine-uk derives marital status from benefit-unit composition; marital_status and is_married are formula-owned.",
+  "fact:person.liquid_financial_assets": "policyengine-uk holds financial wealth on the household: savings ('Household liquid savings'), corporate_wealth ('Wealth held in corporations directly or through investment funds'), gross_financial_wealth and net_financial_wealth are household inputs, and no transform puts a person amount on a household input. Its person-level GBP stock inputs are student_loan_balance, a debt; car_list_price, the price vehicle excise duty's expensive-car supplement tests; and lifetime_isa_balance ('Current value of the person's Lifetime ISAs, cash and stocks and shares together'), one savings wrapper, which the engine documents as already inside gross_financial_wealth and net_financial_wealth. savings and corporate_wealth are two of Universal Credit's capital sources (gov.dwp.universal_credit.means_test.capital.sources), and lifetime_isa_countable_capital, the Lifetime ISA at its surrender value, is its one person-level source (capital.person_sources). uc_reported_capital (benefit unit; 'Claimant-level capital for Universal Credit when household-level asset data cannot be attributed across multiple benefit units', default -1) is Universal Credit capital: when it is zero or more, uc_assessable_capital takes it in place of both the household-capital proxy it otherwise sums from the household sources, net of capital other benefit units report, and apportions by claimant and partner count, and the person-level sources of the unit's claimant and partner, so feeding it would be a modelling choice for a UK build, not a mapping of this concept.",
+  "fact:person.partner_person_id": "Partnerships reach policyengine-uk only through benefit-unit membership, a structure the bundle must already carry (the adapter builds no units); is_benunit_head and is_married are formula-owned.",
+  "fact:person.public_pension_income": "The State Pension is computed from state_pension_reported, which is formula-owned: the loader accepts it as an override, but it is not an input."
+ }
+}

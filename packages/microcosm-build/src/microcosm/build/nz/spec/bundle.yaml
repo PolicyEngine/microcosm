@@ -1,0 +1,16 @@
+country: nz
+identity_generation: 1
+seed_protocol: legacy-v1
+dataset_run:
+  target_period: 2026
+status: >-
+  New Zealand public-donor transport package for tax year 2026-27, laid out
+  for the graph build described in docs/nz-take-up-engine-plan.md. The exact
+  Microcosm US Build P donor is pinned. The rules bindings name rulespec-nz
+  modules at a commit on its main branch. Execution still requires
+  cell-expanded Chronicle facts with a reviewed 2026 basis, the shared
+  transport, unit-construction and group-encode operators, harvested
+  territorial-authority to Accommodation Supplement area shares, and the
+  ex-ante calibration thresholds of the D1 method card. Every target
+  reference is an unactivated placeholder. No runtime or release may
+  substitute stubs.

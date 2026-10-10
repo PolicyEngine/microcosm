@@ -100,38 +100,126 @@ def test_realization_gate_target_and_deviation_parameters_are_live() -> None:
     ).passed
 
 
-def test_student_loan_stock_parameter_is_live() -> None:
-    evidence = {
-        "stage": "student_loans",
-        "plans": {
-            "PLAN_2": {
-                "stock": 100.0,
-                "final_england_count": 98.0,
-                "realization_deviation": -0.02,
-            }
-        },
+def _student_loan_receipt(**overrides):
+    """A PLAN_2 receipt the walk produced: 3 of 6 eligible rows taken, 2 skipped."""
+    receipt = {
+        "stock": 100.0,
+        "reported_count": 70.0,
+        "reported_england_count": 60.0,
+        "shortfall": 40.0,
+        "eligible_rows": 6,
+        "eligible_mass": 60.0,
+        "topped_up_rows": 3,
+        "topped_up_mass": 39.0,
+        "rows_skipped_for_weight": 2,
+        "lightest_skipped_weight": 5.0,
+        "realization_gap": -1.0,
+        "pool_exhausted": False,
+        "final_england_count": 99.0,
+        "stock_attainment": 0.99,
     }
+    receipt.update(overrides)
+    return receipt
+
+
+def test_student_loan_gate_holds_the_walk_bound_and_the_stock() -> None:
+    """The gate checks what the walk controls and fails closed (microcosm#1049)."""
     parameters = {
         "stage": "student_loans",
         "check": "student_loan_plans",
         "stocks": {"PLAN_2": 100.0},
-        "maximum_abs_realization_deviation": 0.02,
+        "maximum_stock_relative_deviation": 0.02,
     }
 
-    assert _passed(
-        uk_stage_health_gate(
-            evidence=evidence,
+    def run(receipt, params=parameters):
+        return uk_stage_health_gate(
+            evidence={"stage": "student_loans", "plans": {"PLAN_2": receipt}},
             stage="student_loans",
             check="student_loan_plans",
-            parameters=parameters,
+            parameters=params,
         )
-    )
-    assert not uk_stage_health_gate(
-        evidence=evidence,
-        stage="student_loans",
-        check="student_loan_plans",
-        parameters={**parameters, "stocks": {"PLAN_2": 99.0}},
+
+    passed = run(_student_loan_receipt())
+    assert _passed(passed)
+    assert passed.details["plans"]["PLAN_2"]["regime"] == "walked_to_stock"
+    assert passed.details["worst_abs_realization_gap"] == 1.0
+    # The declared stock is live.
+    assert not run(
+        _student_loan_receipt(), {**parameters, "stocks": {"PLAN_2": 99.0}}
     ).passed
+    # The walk bound: a gap at or beyond the lightest skipped weight.
+    assert not run(_student_loan_receipt(lightest_skipped_weight=1.0)).passed
+    # A fit claimed without a skipped person to bound it.
+    assert not run(
+        _student_loan_receipt(rows_skipped_for_weight=0, lightest_skipped_weight=None)
+    ).passed
+    # The final count against the stock, at the declared tolerance.
+    assert not run(
+        _student_loan_receipt(),
+        {**parameters, "maximum_stock_relative_deviation": 0.005},
+    ).passed
+    # Self-consistency: a tampered gap or final count.
+    assert not run(_student_loan_receipt(realization_gap=-2.0)).passed
+    assert not run(_student_loan_receipt(final_england_count=98.0)).passed
+    # A pool receipted as exhausted must have been taken whole ...
+    exhausted = _student_loan_receipt(
+        shortfall=140.0,
+        stock=200.0,
+        eligible_rows=6,
+        eligible_mass=60.0,
+        topped_up_rows=6,
+        topped_up_mass=60.0,
+        rows_skipped_for_weight=0,
+        lightest_skipped_weight=None,
+        realization_gap=-80.0,
+        pool_exhausted=True,
+        final_england_count=120.0,
+        stock_attainment=0.6,
+    )
+    whole = run(exhausted, {**parameters, "stocks": {"PLAN_2": 200.0}})
+    assert _passed(whole)
+    assert whole.details["plans"]["PLAN_2"]["regime"] == "pool_exhausted"
+    assert whole.details["plans"]["PLAN_2"]["stock_attainment"] == 0.6
+    # ... and fails when it was not.
+    assert not run(
+        {
+            **exhausted,
+            "topped_up_rows": 5,
+            "topped_up_mass": 55.0,
+            "realization_gap": -85.0,
+            "final_england_count": 115.0,
+        },
+        {**parameters, "stocks": {"PLAN_2": 200.0}},
+    ).passed
+    # A plan at or above its stock is left alone; topping it up fails.
+    reported = _student_loan_receipt(
+        shortfall=0.0,
+        reported_england_count=105.0,
+        topped_up_rows=0,
+        topped_up_mass=0.0,
+        rows_skipped_for_weight=0,
+        lightest_skipped_weight=None,
+        realization_gap=0.0,
+        final_england_count=105.0,
+        stock_attainment=1.05,
+    )
+    above = run(reported)
+    assert _passed(above)
+    assert above.details["plans"]["PLAN_2"]["regime"] == "reported_at_or_above_stock"
+    assert not run(
+        {
+            **reported,
+            "topped_up_rows": 1,
+            "topped_up_mass": 2.0,
+            "realization_gap": 2.0,
+            "final_england_count": 107.0,
+        }
+    ).passed
+    # A partial receipt fails closed.
+    with pytest.raises(ValueError, match="pool_exhausted"):
+        run({k: v for k, v in _student_loan_receipt().items() if k != "pool_exhausted"})
+    with pytest.raises(ValueError, match="eligible_rows"):
+        run(_student_loan_receipt(eligible_rows=-1))
 
 
 def test_cgt_incidence_mass_threshold_is_live() -> None:
@@ -279,44 +367,155 @@ def test_source_signal_structural_zero_parameter_is_live() -> None:
     ).passed
 
 
-def test_cgt_band_donor_support_handles_open_upper_bound() -> None:
-    evidence = {
-        "stage": "cgt_band_donors",
-        "bands": [
+def _support_split_receipt() -> dict[str, object]:
+    """A licensed-scale support split receipt: every column met its rule."""
+
+    published = {0: 17_000.0, 37_700: 5_000.0, 50_000: 11_000.0, 100_000: 3_000.0}
+    rows = []
+    for lower, count in published.items():
+        support = 2 * 2.0 * count
+        rows.append(
             {
-                "lower_limit": 12300.0,
-                "donor_count": 1,
-                "realized_min_gain": 12300.0,
-                "realized_max_gain": 1_000_000_000.0,
+                "income_lower_bound": float(lower),
+                "published_top_band_taxpayers": count,
+                "suppressed_cells": 1 if lower == 100_000 else 0,
+                "support_mass": support,
+                "pool_households": 4_000,
+                "pool_mass": 4_000_000.0,
+                "households_selected": 70,
+                "copies_created": 1_120,
+                "selected_mass": support + 500.0,
+                "wealth_threshold": 2_500_000.0,
+                "heaviest_selected_weight": 1_900.0,
+                "heaviest_copy_weight": 59.4,
+                "pool_exhausted": False,
             }
-        ],
-    }
-    parameters = {
-        "stage": "cgt_band_donors",
-        "check": "cgt_band_donor_support",
-        "support_bounds_resource": "cgt_band_donor_support_bounds.json",
-    }
-
-    assert _passed(
-        uk_stage_health_gate(
-            evidence=evidence,
-            stage="cgt_band_donors",
-            check="cgt_band_donor_support",
-            parameters=parameters,
         )
+    return {
+        "stage": "cgt_support_split",
+        "bands": rows,
+        "totals": {
+            "published_top_band_taxpayers": sum(published.values()),
+            "suppressed_cells": 1,
+            "support_mass": sum(row["support_mass"] for row in rows),
+            "households_selected": 280,
+            "copies_created": 4_480,
+            "selected_mass": sum(row["selected_mass"] for row in rows),
+            "households_before": 26_768,
+            "households_after": 31_248,
+            "zero_weight_excluded": 0,
+        },
+        "mass": {"old_total": 29_422_433.0, "new_total": 29_422_433.0},
+        "parameters": {
+            "clone_split_factor": 2,
+            "headroom": 2.0,
+            "maximum_copy_weight": 60.0,
+        },
+    }
+
+
+_SUPPORT_SPLIT_PARAMETERS = {
+    "stage": "cgt_support_split",
+    "check": "cgt_support_split",
+    "clone_split_factor": 2,
+    "headroom": 2.0,
+    "maximum_copy_weight": 60.0,
+    "maximum_relative_mass_deviation": 1e-9,
+}
+
+
+def _support_split_gate(evidence: dict[str, object]):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="cgt_support_split",
+        check="cgt_support_split",
+        parameters=_SUPPORT_SPLIT_PARAMETERS,
     )
 
-    failed = uk_stage_health_gate(
-        evidence={
-            **evidence,
-            "bands": [{**evidence["bands"][0], "realized_min_gain": 12_299.0}],
-        },
-        stage="cgt_band_donors",
-        check="cgt_band_donor_support",
-        parameters=parameters,
+
+def test_cgt_support_split_gate_passes_a_conforming_receipt() -> None:
+    result = _support_split_gate(_support_split_receipt())
+
+    assert _passed(result)
+    assert result.details["exhausted_columns"] == []
+    assert result.details["copies_created"] == 4_480
+
+
+def test_cgt_support_split_gate_tolerates_a_recorded_exhausted_column() -> None:
+    """A column lighter than its support mass selects its whole pool and says so."""
+
+    evidence = _support_split_receipt()
+    rows = [dict(row) for row in evidence["bands"]]
+    rows[-1].update(
+        {
+            "pool_households": 3,
+            "pool_mass": 4.5,
+            "households_selected": 3,
+            "copies_created": 0,
+            "selected_mass": 4.5,
+            "heaviest_selected_weight": 1.7,
+            "heaviest_copy_weight": 1.7,
+            "pool_exhausted": True,
+        }
     )
-    assert failed.passed is False
-    assert "falls below" in failed.failures[0]
+    totals = dict(evidence["totals"])
+    totals["households_selected"] = 210 + 3
+    totals["copies_created"] = 3_360
+    totals["selected_mass"] = sum(row["selected_mass"] for row in rows)
+    result = _support_split_gate({**evidence, "bands": rows, "totals": totals})
+
+    assert _passed(result)
+    assert result.details["exhausted_columns"] == [100_000.0]
+
+
+@pytest.mark.parametrize(
+    "mutate,fragment",
+    [
+        (
+            lambda e: e["mass"].__setitem__("new_total", 29_422_433.0 * (1 + 1e-6)),
+            "mass deviation",
+        ),
+        (
+            lambda e: e["bands"][0].__setitem__("heaviest_copy_weight", 60.5),
+            "exceeds the maximum",
+        ),
+        (
+            lambda e: e["bands"][0].__setitem__("support_mass", 68_001.0),
+            "differs from",
+        ),
+        (
+            lambda e: e["bands"][1].__setitem__("selected_mass", 19_000.0),
+            "falls short",
+        ),
+        (
+            lambda e: e["bands"][2].__setitem__("pool_exhausted", True),
+            "did not select its whole pool",
+        ),
+        (
+            lambda e: e["totals"].__setitem__("copies_created", 4_481),
+            "differs from the column sum",
+        ),
+        (
+            lambda e: e["parameters"].__setitem__("headroom", 1.5),
+            "differs from the gate's",
+        ),
+    ],
+)
+def test_cgt_support_split_gate_fails_closed(mutate, fragment: str) -> None:
+    evidence = _support_split_receipt()
+    mutate(evidence)
+    result = _support_split_gate(evidence)
+
+    assert result.passed is False
+    assert fragment in " ".join(result.failures)
+
+
+def test_cgt_support_split_gate_refuses_a_missing_field() -> None:
+    evidence = _support_split_receipt()
+    del evidence["bands"][0]["heaviest_copy_weight"]
+
+    with pytest.raises(ValueError, match="heaviest_copy_weight"):
+        _support_split_gate(evidence)
 
 
 def test_age_tail_relative_deviation_parameter_is_live() -> None:
@@ -498,6 +697,90 @@ def test_cgt_summary_minimum_rows_parameter_is_live() -> None:
     ).passed
 
 
+def test_support_clip_gate_holds_the_declared_donor_floor() -> None:
+    """microcosm#1063 c9: where the gate declares a donor floor, the receipt
+    must show it applied, no negative donor row left and no clip range below it."""
+
+    def evidence(**floor_changes):
+        return {
+            "stage": "lcfs_consumption",
+            "support_clip": {
+                "columns": {
+                    "housing_water_and_electricity_consumption": {
+                        "donor_min": 0.0,
+                        "donor_max": 9_000.0,
+                        "clipped_low_rows": 0,
+                        "clipped_high_rows": 0,
+                        "rows_considered": 2,
+                    }
+                }
+            },
+            "donor_floor": {
+                "floor": 0.0,
+                "rows_raised": 250,
+                "remaining_negative_rows": 0,
+                "columns": {
+                    "housing_water_and_electricity_consumption": {
+                        "rows_raised": 250,
+                        "negative_mass": -1.0e6,
+                        "minimum_before": -14_165.0,
+                    }
+                },
+                **floor_changes,
+            },
+        }
+
+    parameters = {
+        "stage": "lcfs_consumption",
+        "check": "support_clip",
+        "columns": ["housing_water_and_electricity_consumption"],
+        "max_clipped_low_rows_by_column": {
+            "housing_water_and_electricity_consumption": 0
+        },
+        "max_clipped_high_rows_by_column": {
+            "housing_water_and_electricity_consumption": 0
+        },
+        "donor_floor": 0.0,
+    }
+
+    def gate(evidence_payload, **parameter_changes):
+        return uk_stage_health_gate(
+            evidence=evidence_payload,
+            stage="lcfs_consumption",
+            check="support_clip",
+            parameters={**parameters, **parameter_changes},
+        )
+
+    passed = gate(evidence())
+    assert _passed(passed)
+    assert passed.details["donor_floor_rows_raised"] == 250
+    assert any(
+        "donor_floor receipt" in f
+        for f in gate({**evidence(), "donor_floor": None}).failures
+    )
+    assert any(
+        "negative consumption row" in f
+        for f in gate(evidence(remaining_negative_rows=3)).failures
+    )
+    assert any("not the declared" in f for f in gate(evidence(floor=-1.0)).failures)
+    below = evidence()
+    below["support_clip"]["columns"]["housing_water_and_electricity_consumption"][
+        "donor_min"
+    ] = -14_165.0
+    assert any("below the donor floor" in f for f in gate(below).failures)
+    # Without a declared floor (the WAS clip gate) the receipt is not required.
+    undeclared = {**parameters}
+    del undeclared["donor_floor"]
+    assert _passed(
+        uk_stage_health_gate(
+            evidence={**evidence(), "donor_floor": None},
+            stage="lcfs_consumption",
+            check="support_clip",
+            parameters=undeclared,
+        )
+    )
+
+
 def test_support_clip_gate_fails_closed_on_a_missing_allowance() -> None:
     """An undeclared allowance skipped the comparison entirely, so a stage
     clipping every row passed a release-blocking gate — the green-by-absence
@@ -534,6 +817,100 @@ def test_support_clip_gate_fails_closed_on_a_missing_allowance() -> None:
     assert not _passed(result)
     assert any("no clipped_low_rows allowance" in f for f in result.failures)
     assert any("no clipped_high_rows allowance" in f for f in result.failures)
+
+
+def _wealth_coherence_evidence() -> dict:
+    return {
+        "stage": "was_wealth",
+        "tenure_coherence": {
+            "main_residence_mortgage_off_mortgaged_tenure_rows": 0,
+            "main_residence_value_off_owner_tenure_rows": 0,
+            "owner_share_without_main_residence_value": 0.001,
+            "donor_owner_share_without_main_residence_value": 0.0,
+        },
+        "identities": {
+            "property_wealth_violation_rows": 0,
+            "corporate_wealth_violation_rows": 0,
+            "gross_financial_wealth_violation_rows": 0,
+            "net_financial_wealth_violation_rows": 0,
+            "mortgage_debt_violation_rows": 0,
+            "property_wealth_capped_rows": 3,
+        },
+    }
+
+
+_WEALTH_COHERENCE_PARAMETERS = {
+    "stage": "was_wealth",
+    "check": "wealth_coherence",
+    "maximum_owner_share_without_main_residence_excess": 0.005,
+}
+
+
+def _wealth_coherence(evidence: dict):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="was_wealth",
+        check="wealth_coherence",
+        parameters=_WEALTH_COHERENCE_PARAMETERS,
+    )
+
+
+def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
+    result = _wealth_coherence(_wealth_coherence_evidence())
+
+    assert _passed(result)
+    assert result.details["main_residence_mortgage_off_mortgaged_tenure_rows"] == 0
+    # The donor-range cap is recorded, never a failure.
+    assert result.details["capped_rows"] == {"property_wealth_capped_rows": 3}
+
+
+@pytest.mark.parametrize(
+    ("block", "key"),
+    [
+        ("tenure_coherence", "main_residence_mortgage_off_mortgaged_tenure_rows"),
+        ("tenure_coherence", "main_residence_value_off_owner_tenure_rows"),
+        ("identities", "property_wealth_violation_rows"),
+        ("identities", "corporate_wealth_violation_rows"),
+        ("identities", "gross_financial_wealth_violation_rows"),
+        ("identities", "net_financial_wealth_violation_rows"),
+        ("identities", "mortgage_debt_violation_rows"),
+    ],
+)
+def test_wealth_coherence_gate_requires_every_count_and_requires_it_zero(
+    block: str, key: str
+) -> None:
+    evidence = _wealth_coherence_evidence()
+    evidence[block][key] = 2
+    failed = _wealth_coherence(evidence)
+    assert not _passed(failed)
+    assert f"{key} is 2, expected 0" in failed.failures[0]
+
+    del evidence[block][key]
+    missing = _wealth_coherence(evidence)
+    assert not _passed(missing)
+    assert f"receipt is missing {key}" in missing.failures[0]
+
+
+def test_wealth_coherence_gate_bounds_owners_without_a_main_residence() -> None:
+    evidence = _wealth_coherence_evidence()
+    evidence["tenure_coherence"]["owner_share_without_main_residence_value"] = 0.084
+    failed = _wealth_coherence(evidence)
+    assert not _passed(failed)
+    assert "no main-residence value" in failed.failures[0]
+
+    # The bound is on the excess over the donor's own share.
+    evidence["tenure_coherence"]["donor_owner_share_without_main_residence_value"] = (
+        0.08
+    )
+    assert _passed(_wealth_coherence(evidence))
+
+
+def test_wealth_coherence_gate_fails_closed_without_its_receipt_blocks() -> None:
+    result = _wealth_coherence({"stage": "was_wealth", "support_clip": {}})
+
+    assert not _passed(result)
+    assert any("missing tenure_coherence" in f for f in result.failures)
+    assert any("missing identities" in f for f in result.failures)
 
 
 def _latent_receipt() -> dict:
@@ -609,20 +986,43 @@ def test_latent_attribute_realization_fails_on_empty_blocks_and_zero_rows() -> N
     assert not _latent_gate(zero_rows).passed
 
 
+def _residential_bands() -> list[dict[str, object]]:
+    """Two gain bands whose achieved masses sum to the residential receipt's."""
+
+    return [
+        {
+            "gain_lower_bound": 0.0,
+            "gain_upper_bound": 250_000.0,
+            "liable_rows": 2_900,
+            "achieved_rows": 2_600,
+            "achieved_count": 190_000.0,
+            "achieved_gains": 8.0e9,
+        },
+        {
+            "gain_lower_bound": 250_000.0,
+            "gain_upper_bound": None,
+            "liable_rows": 900,
+            "achieved_rows": 777,
+            "achieved_count": 12_630.0,
+            "achieved_gains": 4.24e9,
+        },
+    ]
+
+
 def _asset_type_evidence(**overrides: object) -> dict[str, object]:
     evidence: dict[str, object] = {
         "stage": "hmrc_cgt_asset_type_spine",
         "residential": {
+            "source_stage": "cgt_residential_split",
             "count_target_individuals_basis": 202_630.0,
             "gains_target_individuals_basis": 12.24e9,
-            "expected_count": 202_630.0,
-            "expected_gains": 12.24e9,
-            "achieved_count": 202_620.0,
-            "achieved_gains": 11.9e9,
+            "achieved_count": 202_630.0,
+            "achieved_gains": 12.24e9,
             "achieved_rows": 3_377,
+            "count_relative_error": 0.0,
+            "gains_relative_error": 0.0,
             "max_liable_weight": 60.0,
-            "count_bernoulli_sigma": 2_000.0,
-            "gains_bernoulli_sigma": 0.15e9,
+            "bands": _residential_bands(),
         },
         "asset_type": {
             "achieved_gains_share": {
@@ -631,8 +1031,10 @@ def _asset_type_evidence(**overrides: object) -> dict[str, object]:
                 "other_financial_assets": 0.282,
                 "agricultural_commercial_industrial_land_buildings": 0.044,
                 "other_non_financial_assets": 0.052,
-            }
+            },
+            "share_fit_converged": True,
         },
+        "badr": _badr_receipt(),
         "value_counts": {
             "none": 4_043,
             "sub_aea": 1_309,
@@ -643,80 +1045,112 @@ def _asset_type_evidence(**overrides: object) -> dict[str, object]:
     return evidence
 
 
-def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
+def _badr_receipt(**overrides: object) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "lifetime_limit": 1_000_000.0,
+        "bands": [
+            {"lower_bound": 0, "upper_bound": 10_000, "skipped": True},
+            {
+                "lower_bound": 100_000,
+                "upper_bound": 250_000,
+                "skipped": False,
+                "qualifying_amount": "net_gain",
+                "count_target": 11_000.0,
+                "gains_target": 1.866e9,
+                "expected_count": 11_000.0,
+                "expected_gains": 1.866e9,
+                "achieved_count": 11_050.0,
+                "achieved_gains": 1.87e9,
+                "max_pool_weight": 1_496.0,
+                "pool_min_gain": 101_000.0,
+                "pool_max_gain": 249_000.0,
+            },
+            {
+                "lower_bound": 1_000_000,
+                "upper_bound": None,
+                "skipped": False,
+                "qualifying_amount": "lifetime_limit",
+                "count_target": 6_787.0,
+                "gains_target": 6.787e9,
+                "expected_count": 6_787.0,
+                "expected_gains": 6.787e9,
+                "achieved_count": 6_800.0,
+                "achieved_gains": 6.8e9,
+                "max_pool_weight": 873.0,
+                "pool_min_gain": 1_000_000.0,
+                "pool_max_gain": 169.0e6,
+            },
+        ],
+        "totals": {
+            "achieved_count": 17_850.0,
+            "achieved_gains": 8.67e9,
+            "relief_rate_tax": 0.86e9,
+        },
+        "invariants": {
+            "claimants_outside_pool": 0,
+            "qualifying_above_gain": 0,
+            "qualifying_above_limit": 0,
+            "qualifying_outside_band": 0,
+            "residential_overlap": 0,
+            "sub_aea_claimants": 0,
+        },
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def test_cgt_asset_type_summary_holds_the_residential_identities() -> None:
     parameters = {
         "stage": "hmrc_cgt_asset_type_spine",
         "check": "cgt_asset_type_summary",
-        "maximum_relative_deviation": 0.05,
-        "maximum_gains_sigma": 3.0,
         "maximum_solve_relative_error": 1e-6,
     }
 
-    passed = uk_stage_health_gate(
-        stage="hmrc_cgt_asset_type_spine",
-        check="cgt_asset_type_summary",
-        evidence=_asset_type_evidence(),
-        parameters=parameters,
-    )
+    def gate(evidence: dict[str, object]):
+        return uk_stage_health_gate(
+            stage="hmrc_cgt_asset_type_spine",
+            check="cgt_asset_type_summary",
+            evidence=evidence,
+            parameters=parameters,
+        )
+
+    def with_residential(**changes: object) -> dict[str, object]:
+        return _asset_type_evidence(
+            residential={**_asset_type_evidence()["residential"], **changes}
+        )
+
+    passed = gate(_asset_type_evidence())
     assert passed.passed
-    assert passed.details["residential_count_gap"] == 10.0
-    assert passed.details["residential_gains_bound"] == 0.05 * 12.24e9
+    assert passed.details["residential_count_relative_error"] == 0.0
+    assert passed.details["residential_gains_relative_error"] == 0.0
+    assert passed.details["residential_gain_bands"] == 2
 
-    # A small frame: the noise floor is wider than the band and governs.
-    noisy = _asset_type_evidence(
-        residential={
-            **_asset_type_evidence()["residential"],
-            "achieved_gains": 9.0e9,
-            "gains_bernoulli_sigma": 1.5e9,
-        }
-    )
-    assert uk_stage_health_gate(
-        stage="hmrc_cgt_asset_type_spine",
-        check="cgt_asset_type_summary",
-        evidence=noisy,
-        parameters=parameters,
-    ).passed
-
-    # A count more than one person off the expectation is a broken draw.
-    off_count = _asset_type_evidence(
-        residential={
-            **_asset_type_evidence()["residential"],
-            "achieved_count": 202_500.0,
-        }
-    )
-    failed = uk_stage_health_gate(
-        stage="hmrc_cgt_asset_type_spine",
-        check="cgt_asset_type_summary",
-        evidence=off_count,
-        parameters=parameters,
-    )
+    # The arms carry Table 8a at design weights: a departure beyond the solve
+    # tolerance is not a realisation gap but a broken split.
+    failed = gate(with_residential(achieved_count=202_500.0))
     assert not failed.passed
-    assert any("count gap" in failure for failure in failed.failures)
-
-    drifted = _asset_type_evidence(
-        residential={
-            **_asset_type_evidence()["residential"],
-            "achieved_gains": 10.0e9,
-        }
-    )
-    failed = uk_stage_health_gate(
-        stage="hmrc_cgt_asset_type_spine",
-        check="cgt_asset_type_summary",
-        evidence=drifted,
-        parameters=parameters,
-    )
+    assert any("on the arms" in failure for failure in failed.failures)
+    failed = gate(with_residential(achieved_gains=11.9e9))
     assert not failed.passed
-    assert any("gains gap" in failure for failure in failed.failures)
+    assert any("gains on the arms" in failure for failure in failed.failures)
+
+    # The receipt must come from the split stage and restate it by band.
+    failed = gate(with_residential(source_stage="hmrc_cgt_asset_type_spine"))
+    assert not failed.passed
+    assert any("cgt_residential_split" in failure for failure in failed.failures)
+    bands = _residential_bands()
+    bands[0]["achieved_gains"] = 7.0e9
+    failed = gate(with_residential(bands=bands))
+    assert not failed.passed
+    assert any("sums to" in failure for failure in failed.failures)
+    failed = gate(with_residential(bands=[]))
+    assert not failed.passed
+    assert any("no gain bands" in failure for failure in failed.failures)
 
     bad_share = _asset_type_evidence(
         asset_type={"achieved_gains_share": {"listed_shares": 1.5}}
     )
-    failed = uk_stage_health_gate(
-        stage="hmrc_cgt_asset_type_spine",
-        check="cgt_asset_type_summary",
-        evidence=bad_share,
-        parameters=parameters,
-    )
+    failed = gate(bad_share)
     assert not failed.passed
 
     with pytest.raises(ValueError, match="residential"):
@@ -726,6 +1160,190 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
             evidence={"stage": "hmrc_cgt_asset_type_spine"},
             parameters=parameters,
         )
+
+
+def _residential_split_evidence(**overrides: object) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "stage": "cgt_residential_split",
+        "mass": {"old_total": 28_600_000.0, "new_total": 28_600_000.0},
+        "households_before": 58_288,
+        "households_after": 60_600,
+        "arms_created": 2_312,
+        "households_by_liable_gainers": {"1": 2_300, "2": 4},
+        "arm_weights_exact": True,
+        "identities": {
+            "count_target_individuals_basis": 202_630.0,
+            "gains_target_individuals_basis": 12.24e9,
+            "expected_count": 202_630.0,
+            "expected_gains": 12.24e9,
+            "achieved_count": 202_630.0,
+            "achieved_gains": 12.24e9,
+            "count_solve_relative_error": 1e-15,
+            "gains_solve_relative_error": 7e-10,
+            "count_identity_relative_error": 0.0,
+            "gains_identity_relative_error": 0.0,
+        },
+        "bands": [
+            {
+                "gain_lower_bound": 0.0,
+                "gain_upper_bound": 250_000.0,
+                "expected_count": 190_000.0,
+                "expected_gains": 8.0e9,
+                "achieved_count": 190_000.0,
+                "achieved_gains": 8.0e9,
+            },
+            {
+                "gain_lower_bound": 250_000.0,
+                "gain_upper_bound": None,
+                "expected_count": 12_630.0,
+                "expected_gains": 4.24e9,
+                "achieved_count": 12_630.0,
+                "achieved_gains": 4.24e9,
+            },
+        ],
+        "arm_weights": {
+            "residential_arms": 2_312,
+            "minimum": 0.04,
+            "maximum": 700.0,
+            "below_one_household": 300,
+            "below_one_tenth": 12,
+        },
+        "concentration": {
+            "top_arms_share_of_achieved_gains": 0.12,
+            "largest_liable_stake_share_of_gains_target": 0.89,
+        },
+    }
+    evidence.update(overrides)
+    return evidence
+
+
+def test_cgt_residential_split_holds_the_identities_and_the_arm_structure() -> None:
+    parameters = {
+        "stage": "cgt_residential_split",
+        "check": "cgt_residential_split",
+        "maximum_relative_mass_deviation": 1e-9,
+        "maximum_solve_relative_error": 1e-6,
+        "maximum_identity_relative_error": 1e-9,
+        "maximum_liable_gainers_per_household": 3,
+    }
+
+    def gate(evidence: dict[str, object]):
+        return uk_stage_health_gate(
+            stage="cgt_residential_split",
+            check="cgt_residential_split",
+            evidence=evidence,
+            parameters=parameters,
+        )
+
+    def with_identities(**changes: object) -> dict[str, object]:
+        return _residential_split_evidence(
+            identities={**_residential_split_evidence()["identities"], **changes}
+        )
+
+    passed = gate(_residential_split_evidence())
+    assert _passed(passed)
+    assert passed.details["arms_created"] == 2_312
+    assert passed.details["arm_below_one_household"] == 300
+    assert passed.details["top_arms_share_of_achieved_gains"] == 0.12
+
+    # Mass created or lost, arms not the declared products, or an arm count
+    # that does not follow from the households by liable gainers.
+    failed = gate(
+        _residential_split_evidence(
+            mass={"old_total": 28_600_000.0, "new_total": 28_600_100.0}
+        )
+    )
+    assert not failed.passed and "mass deviation" in " ".join(failed.failures)
+    failed = gate(_residential_split_evidence(arm_weights_exact=False))
+    assert not failed.passed and "declared products" in " ".join(failed.failures)
+    failed = gate(_residential_split_evidence(arms_created=2_311))
+    assert not failed.passed and "imply 2312" in " ".join(failed.failures)
+    failed = gate(
+        _residential_split_evidence(households_by_liable_gainers={"1": 2_300, "4": 1})
+    )
+    assert not failed.passed and "above the declared maximum" in " ".join(
+        failed.failures
+    )
+    # The solve must reach the targets and the arms must realise it exactly.
+    failed = gate(with_identities(count_solve_relative_error=1e-3))
+    assert not failed.passed and "solve error" in " ".join(failed.failures)
+    failed = gate(with_identities(gains_identity_relative_error=1e-6))
+    assert not failed.passed and "departs from its expectation" in " ".join(
+        failed.failures
+    )
+    bands = _residential_split_evidence()["bands"]
+    bands[1] = {**bands[1], "achieved_gains": 4.0e9}
+    failed = gate(_residential_split_evidence(bands=bands))
+    assert not failed.passed and "gain band from 250000.0" in " ".join(failed.failures)
+    failed = gate(_residential_split_evidence(bands=[]))
+    assert not failed.passed and "no gain bands" in " ".join(failed.failures)
+
+
+def test_cgt_asset_type_summary_holds_every_badr_band_to_the_walk_bound() -> None:
+    parameters = {
+        "stage": "hmrc_cgt_asset_type_spine",
+        "check": "cgt_asset_type_summary",
+        "maximum_solve_relative_error": 1e-6,
+    }
+
+    def gate(evidence: dict[str, object]):
+        return uk_stage_health_gate(
+            stage="hmrc_cgt_asset_type_spine",
+            check="cgt_asset_type_summary",
+            evidence=evidence,
+            parameters=parameters,
+        )
+
+    passed = gate(_asset_type_evidence())
+    assert passed.passed
+    assert passed.details["badr_bands_checked"] == 2
+
+    def with_band(index: int, **changes: object) -> dict[str, object]:
+        receipt = _badr_receipt()
+        bands = [dict(band) for band in receipt["bands"]]  # type: ignore[union-attr]
+        bands[index].update(changes)
+        return _asset_type_evidence(badr=_badr_receipt(bands=bands))
+
+    # More than the band pool's largest weight off the expected count.
+    failed = gate(with_band(1, achieved_count=11_000.0 + 1_500.0))
+    assert not failed.passed
+    assert any("count gap" in failure for failure in failed.failures)
+    # Qualifying gains beyond max weight x (2 max gain - min gain).
+    failed = gate(with_band(1, achieved_gains=1.866e9 + 0.6e9))
+    assert not failed.passed
+    assert any("walk's bound" in failure for failure in failed.failures)
+    # The top band's gains must be exactly the limit times the realised count.
+    failed = gate(with_band(2, achieved_gains=6.8e9 + 1.0e6))
+    assert not failed.passed
+    assert any("lifetime limit" in failure for failure in failed.failures)
+    # A solve that missed its published target.
+    failed = gate(with_band(1, expected_gains=1.9e9))
+    assert not failed.passed
+    assert any("solve error" in failure for failure in failed.failures)
+    # A skipped band is not held to anything.
+    assert gate(with_band(0, achieved_count=1.0e9)).passed
+
+    broken = _badr_receipt()
+    broken["invariants"] = {**broken["invariants"], "residential_overlap": 2}  # type: ignore[dict-item]
+    failed = gate(_asset_type_evidence(badr=broken))
+    assert not failed.passed
+    assert any("residential_overlap" in failure for failure in failed.failures)
+
+    unconverged = _asset_type_evidence()
+    unconverged["asset_type"] = {
+        **unconverged["asset_type"],  # type: ignore[dict-item]
+        "share_fit_converged": False,
+    }
+    failed = gate(unconverged)
+    assert not failed.passed
+    assert any("did not converge" in failure for failure in failed.failures)
+
+    no_bands = gate(_asset_type_evidence(badr=_badr_receipt(bands=[])))
+    assert not no_bands.passed
+    missing = _asset_type_evidence()
+    del missing["badr"]
+    with pytest.raises(ValueError, match="badr"):
+        gate(missing)
 
 
 def _anchor_evidence(**overrides: object) -> dict[str, object]:
@@ -824,6 +1442,8 @@ def test_cgt_incidence_anchor_gate_holds_the_composition_and_the_pairs() -> None
         )
     with pytest.raises(ValueError, match="pair_count"):
         _anchor_gate(_anchor_evidence(pair_count=1.5))
+
+
 def _gate_parameters(gate_id: str) -> dict:
     gates = json.loads(
         (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")
@@ -1021,81 +1641,397 @@ def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows(
         run(None)
 
 
-def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
-    bands = [200_000, 500_000, 1_000_000, 2_000_000]
-    taxpayers = {
-        200_000: 359_000.0,
-        500_000: 61_000.0,
-        1_000_000: 20_000.0,
-        2_000_000: 10_000.0,
+def _spi_income_band_donor_evidence() -> dict[str, object]:
+    plan = {
+        200_000: (1_436, 359_000.0),
+        500_000: (244, 61_000.0),
+        1_000_000: (120, 20_000.0),
+        2_000_000: (120, 10_000.0),
     }
     rows = [
         {
             "lower_bound": lower,
-            "donor_households": 120,
-            "carriers": 120,
-            "donor_weight": taxpayers[lower] / 120,
-            "weighted_taxpayers": taxpayers[lower],
-            "published_taxpayers": taxpayers[lower],
+            "expected_donor_households": count,
+            "donor_households": count,
+            "carriers": count,
+            "planned_donor_weight": taxpayers / count,
+            "donor_weight": taxpayers / count,
+            "weighted_taxpayers": taxpayers,
+            "published_taxpayers": taxpayers,
         }
-        for lower in bands
+        for lower, (count, taxpayers) in plan.items()
     ]
-    evidence = {
+    return {
         "stage": "spi_income_band_donors",
-        "donors_per_band": 120,
+        "minimum_donors_per_band": 120,
+        "maximum_donor_weight": 250.0,
+        "seating_scale": 1.0,
+        "mass_scale": 1.0,
+        "sample_fraction": 1.0,
+        "donor_count": 1_920,
+        "reallocated_mass": 450_000.0,
+        "mass": {"old_total": 28_600_000.0, "new_total": 28_600_000.0},
         "bands": rows,
+        "funding": [
+            {
+                "stratum": "LONDON",
+                "donor_households": 1_200,
+                "incumbent_mass": 3_700_000.0,
+                "donor_mass": 300_000.0,
+                "factor": 1.0 - 300_000.0 / 3_700_000.0,
+            },
+            {
+                "stratum": "SOUTH_EAST",
+                "donor_households": 720,
+                "incumbent_mass": 3_900_000.0,
+                "donor_mass": 150_000.0,
+                "factor": 1.0 - 150_000.0 / 3_900_000.0,
+            },
+            {
+                "stratum": "WALES",
+                "donor_households": 0,
+                "incumbent_mass": 1_400_000.0,
+                "donor_mass": 0.0,
+                "factor": 1.0,
+            },
+        ],
     }
-    parameters = {
-        "stage": "spi_income_band_donors",
-        "check": "spi_income_band_donor_support",
-        "donors_per_band": 120,
-        "band_lower_bounds": bands,
-    }
-    assert _passed(
-        uk_stage_health_gate(
-            evidence=evidence,
-            stage="spi_income_band_donors",
-            check="spi_income_band_donor_support",
-            parameters=parameters,
-        )
+
+
+_SPI_INCOME_BAND_DONOR_GATE_PARAMETERS = {
+    "stage": "spi_income_band_donors",
+    "check": "spi_income_band_donor_support",
+    "minimum_donors_per_band": 120,
+    "maximum_donor_weight": 250.0,
+    "minimum_funding_factor": 0.5,
+    "maximum_band_taxpayer_deviation": 0.5,
+    "maximum_relative_mass_deviation": 1e-9,
+    "band_lower_bounds": [200_000, 500_000, 1_000_000, 2_000_000],
+}
+
+
+def _spi_income_band_donor_gate(evidence: dict[str, object]):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=_SPI_INCOME_BAND_DONOR_GATE_PARAMETERS,
     )
+
+
+def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
+    evidence = _spi_income_band_donor_evidence()
+    result = _spi_income_band_donor_gate(evidence)
+    assert _passed(result)
+    assert result.details["donor_count"] == 1_920
+    assert result.details["heaviest_donor_weight"] == 250.0
+    rows = evidence["bands"]
     # A band whose copy lost its carrier fails.
     broken = [dict(row) for row in rows]
     broken[-1]["carriers"] = 119
-    result = uk_stage_health_gate(
-        evidence={**evidence, "bands": broken},
-        stage="spi_income_band_donors",
-        check="spi_income_band_donor_support",
-        parameters=parameters,
-    )
+    result = _spi_income_band_donor_gate({**evidence, "bands": broken})
     assert not result.passed and "119 carriers" in " ".join(result.failures)
     # A missing band fails against the declared four.
-    result = uk_stage_health_gate(
-        evidence={**evidence, "bands": rows[:-1]},
-        stage="spi_income_band_donors",
-        check="spi_income_band_donor_support",
-        parameters=parameters,
-    )
+    result = _spi_income_band_donor_gate({**evidence, "bands": rows[:-1]})
     assert not result.passed and "differ from the declared" in " ".join(result.failures)
-    # A scaled rung (fewer donors than declared) is not held to the published
-    # mass, but a full stack whose weights do not sum to it is.
-    scaled = [{**row, "donor_households": 2, "carriers": 2} for row in rows]
-    assert _passed(
-        uk_stage_health_gate(
-            evidence={**evidence, "donors_per_band": 2, "bands": scaled},
-            stage="spi_income_band_donors",
-            check="spi_income_band_donor_support",
-            parameters=parameters,
-        )
-    )
+    # A full stack whose weights do not sum to the published mass fails.
     off = [dict(row) for row in rows]
     off[0]["donor_weight"] = 1.0
-    result = uk_stage_health_gate(
-        evidence={**evidence, "bands": off},
-        stage="spi_income_band_donors",
-        check="spi_income_band_donor_support",
-        parameters=parameters,
-    )
+    result = _spi_income_band_donor_gate({**evidence, "bands": off})
     assert not result.passed and "differ from the published" in " ".join(
         result.failures
     )
+    # A donor above the maximum weight fails, as does a band seated below the
+    # minimum at full scale.
+    heavy = [dict(row) for row in rows]
+    heavy[0].update(donor_households=718, carriers=718, donor_weight=500.0)
+    failures = " ".join(
+        _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
+    )
+    assert "exceeds the maximum 250.0" in failures
+    assert "the plan seats 1436" in failures
+
+
+def test_spi_income_band_donor_support_gate_holds_the_mass_conserved() -> None:
+    evidence = _spi_income_band_donor_evidence()
+    # Given donors added on top of the incoming mass (the pre-#1063 stage),
+    # the gate refuses.
+    added = {**evidence, "mass": {"old_total": 28_600_000.0, "new_total": 29_050_000.0}}
+    result = _spi_income_band_donor_gate(added)
+    assert not result.passed and "funded from the incumbent households" in " ".join(
+        result.failures
+    )
+    # A stratum scaled below the funding floor fails.
+    funding = [dict(row) for row in evidence["funding"]]
+    funding[0]["factor"] = 0.49
+    result = _spi_income_band_donor_gate({**evidence, "funding": funding})
+    assert not result.passed and "outside [0.5, 1]" in " ".join(result.failures)
+    # Funding rows that do not account for the reallocated mass fail.
+    funding = [dict(row) for row in evidence["funding"]]
+    funding[1]["donor_mass"] = 100_000.0
+    result = _spi_income_band_donor_gate({**evidence, "funding": funding})
+    assert not result.passed and "funding strata carry donor mass" in " ".join(
+        result.failures
+    )
+    # The receipt must be the reviewed rule's.
+    result = _spi_income_band_donor_gate({**evidence, "maximum_donor_weight": 500.0})
+    assert not result.passed and "differs from the gate's 250.0" in " ".join(
+        result.failures
+    )
+    with pytest.raises(ValueError, match="funding must be a non-empty list"):
+        _spi_income_band_donor_gate({**evidence, "funding": []})
+
+
+def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() -> None:
+    evidence = _spi_income_band_donor_evidence()
+    # Given a small frame: fewer, lighter donors. The bands fall short of the
+    # published mass by construction and the gate passes on the receipt.
+    scale = 0.5
+    rows = [
+        {
+            **row,
+            "donor_households": 2,
+            "carriers": 2,
+            "donor_weight": row["planned_donor_weight"] * scale,
+        }
+        for row in evidence["bands"]
+    ]
+    donor_mass = sum(row["donor_weight"] * 2 for row in rows)
+    scaled = {
+        **evidence,
+        "seating_scale": 8 / 1_920,
+        "mass_scale": scale,
+        "sample_fraction": 0.01,
+        "donor_count": 8,
+        "reallocated_mass": donor_mass,
+        "bands": rows,
+        "funding": [
+            {
+                "stratum": "LONDON",
+                "donor_households": 8,
+                "incumbent_mass": 2.0 * donor_mass,
+                "donor_mass": donor_mass,
+                "factor": 0.5,
+            }
+        ],
+    }
+    assert _passed(_spi_income_band_donor_gate(scaled))
+    # The same receipt on a full-sample build fails: a full build seats and
+    # funds the donors at full scale.
+    result = _spi_income_band_donor_gate({**scaled, "sample_fraction": 1.0})
+    assert not result.passed and "at full scale" in " ".join(result.failures)
+    result = _spi_income_band_donor_gate({**scaled, "mass_scale": 0.0})
+    assert not result.passed and "outside (0, 1]" in " ".join(result.failures)
+
+
+def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:
+    evidence = {
+        "stage": "spi_support_channel",
+        "spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.25,
+        "household_weight_kind": "importance",
+        "spi_households": 10,
+    }
+    parameters = {
+        "stage": "spi_support_channel",
+        "check": "spi_support_channel",
+        "spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.25,
+        "absolute_tolerance": 0.0,
+        "household_weight_kind": "importance",
+        "minimum_spi_households": 10,
+    }
+
+    def gate(evidence, parameters):
+        return uk_stage_health_gate(
+            evidence=evidence,
+            stage="spi_support_channel",
+            check="spi_support_channel",
+            parameters=parameters,
+        )
+
+    passed = gate(evidence, parameters)
+    assert _passed(passed)
+    assert passed.details["pension_age_spi_prior_mass_share"] == 0.25
+    drifted = gate(evidence, {**parameters, "pension_age_spi_prior_mass_share": 0.5})
+    assert not drifted.passed
+    assert "pension_age_spi_prior_mass_share 0.25 != declared 0.5" in str(
+        drifted.failures
+    )
+    missing = gate(
+        {k: v for k, v in evidence.items() if k != "pension_age_spi_prior_mass_share"},
+        parameters,
+    )
+    assert not missing.passed
+
+
+def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
+    def band(name, rate, realized, *, exceed=False, units=10):
+        return {
+            "band": name,
+            "rate": rate,
+            "realized_take_up": realized,
+            "reporters_exceed_rate": exceed,
+            "entitled_units": units,
+        }
+
+    parameters = {
+        "stage": "pension_credit_take_up",
+        "check": "pension_credit_take_up",
+        "maximum_take_up_deviation": 0.05,
+        "minimum_entitled_units": 1,
+    }
+
+    def gate(*bands):
+        return uk_stage_health_gate(
+            evidence={"stage": "pension_credit_take_up", "bands": list(bands)},
+            stage="pension_credit_take_up",
+            check="pension_credit_take_up",
+            parameters=parameters,
+        )
+
+    assert _passed(
+        gate(
+            band("guarantee_credit", 0.69, 0.70),
+            band("savings_credit_only", 0.37, 0.36),
+        )
+    )
+    assert not gate(band("guarantee_credit", 0.69, 0.60)).passed
+    assert _passed(gate(band("guarantee_credit", 0.69, 0.80, exceed=True)))
+    assert not gate(band("guarantee_credit", 0.69, 0.50, exceed=True)).passed
+    assert not gate(band("guarantee_credit", 0.69, None, units=0)).passed
+    assert not gate().passed
+    # The realised rates are population facts: a synthetic smoke fixture records
+    # the failure without blocking, every other posture blocks on it.
+    committed = _gate_parameters("uk_stage_pension_credit_take_up")
+    assert committed["check"] == "pension_credit_take_up"
+
+
+def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
+    gates = json.loads(
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")
+    )
+    entry = next(
+        g for g in gates["gates"] if g["id"] == "uk_stage_spi_benefit_coherence"
+    )
+    assert entry["criticality"] == "release_blocking"
+    assert entry["evidence_absent_blocks"] is True
+    parameters = dict(entry["parameters"])
+
+    def evidence():
+        return {
+            "stage": "spi_benefit_coherence",
+            "zeroed": {
+                column: {"rows_reporting_before": 3, "rows_reporting_after": 0}
+                for column in parameters["zeroed_columns"]
+            },
+            "restored": {
+                column: {"rows_differing_from_twin_after": 0}
+                for column in parameters["restored_columns"]
+            },
+            "benefits_in_own_right": {"mismatches_after": 0, "spi_rows_changed": 2},
+            "universal_credit_take_up": {
+                "reporters_not_claiming": 0,
+                "outside_population_non_reporters_claiming": 0,
+                "spi_claiming_before": 5,
+                "spi_claiming_after": 4,
+            },
+            "base_rows_unchanged": True,
+        }
+
+    def gate(payload):
+        return uk_stage_health_gate(
+            evidence=payload,
+            stage="spi_benefit_coherence",
+            check="spi_benefit_coherence",
+            parameters=parameters,
+        )
+
+    assert _passed(gate(evidence()))
+    broken = []
+    payload = evidence()
+    payload["zeroed"]["sda_reported"]["rows_reporting_after"] = 1
+    broken.append(payload)
+    payload = evidence()
+    del payload["zeroed"]["ssmg_reported"]
+    broken.append(payload)
+    payload = evidence()
+    payload["restored"]["iidb_reported"]["rows_differing_from_twin_after"] = 2
+    broken.append(payload)
+    payload = evidence()
+    payload["benefits_in_own_right"]["mismatches_after"] = 1
+    broken.append(payload)
+    payload = evidence()
+    payload["base_rows_unchanged"] = False
+    broken.append(payload)
+    for key in ("reporters_not_claiming", "outside_population_non_reporters_claiming"):
+        payload = evidence()
+        payload["universal_credit_take_up"][key] = 1
+        broken.append(payload)
+    for payload in broken:
+        assert not gate(payload).passed
+
+
+def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> None:
+    parameters = {
+        "stage": "child_benefit_take_up",
+        "check": "child_benefit_take_up",
+        "maximum_claim_rate_deviation": 0.02,
+        "maximum_age_claim_rate_deviation": 0.05,
+        "minimum_age_child_rows": 200,
+        "maximum_opt_out_share_deviation": 0.01,
+        "minimum_eligible_family_units": 1,
+    }
+
+    def age(value, published, realized, *, rows=1_000, clipped=False):
+        return {
+            "age": value,
+            "published_rate": published,
+            "realized_rate": realized,
+            "eligible_child_rows": rows,
+            "clipped": clipped,
+        }
+
+    def gate(*, realized=0.868, ages=None, share=0.0905, exhausted=False, units=100):
+        evidence = {
+            "stage": "child_benefit_take_up",
+            "claims": {
+                "eligible_family_units": units,
+                "target_rate": 0.871,
+                "realized_rate": realized,
+                "ages": ages
+                if ages is not None
+                else [age(0, 0.688, 0.69), age(1, 0.768, 0.75)],
+            },
+            "opt_outs": {
+                "target_share": 0.0907,
+                "realized_share": share,
+                "pool_exhausted": exhausted,
+            },
+        }
+        return uk_stage_health_gate(
+            evidence=evidence,
+            stage="child_benefit_take_up",
+            check="child_benefit_take_up",
+            parameters=parameters,
+        )
+
+    result = gate()
+    assert _passed(result)
+    assert result.details["ages_measured"] == 2
+    assert result.details["largest_age_deviation"]["age"] == 1
+    # The overall claimed share is held to the published rates at the frame's
+    # age mix.
+    assert "against 0.8710" in " ".join(gate(realized=0.90).failures)
+    # An age is held where it has the rows to measure and was not clipped.
+    assert "at age 1" in " ".join(gate(ages=[age(1, 0.768, 0.70)]).failures)
+    assert _passed(gate(ages=[age(1, 0.768, 0.70, rows=50)]))
+    clipped = gate(ages=[age(19, 0.497, 0.60, clipped=True)])
+    assert _passed(clipped) and clipped.details["clipped_ages"] == [19]
+    # The opted-out share may fall short only where the charged families ran
+    # out, and never exceeds the published share.
+    assert "opted out against" in " ".join(gate(share=0.05).failures)
+    assert _passed(gate(share=0.05, exhausted=True))
+    assert not gate(share=0.12, exhausted=True).passed
+    assert not gate(units=0).passed
+    assert not gate(ages=[]).passed

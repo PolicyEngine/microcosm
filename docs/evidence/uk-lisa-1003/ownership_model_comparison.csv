@@ -1,0 +1,12 @@
+group,donor_pct,stage_logistic_pct,house_gate_boosting_defaults_pct,boosting_tuned_rare_events_pct,age_group_rates_pct
+all adults,0.890,0.873,0.582,0.718,0.884
+16-24,2.092,2.032,1.284,1.528,2.092
+25-34,2.388,2.328,1.322,1.855,2.357
+35-44,1.700,1.665,1.074,1.481,1.693
+45-54,0.000,0.006,0.098,0.015,0.000
+55+,0.000,0.009,0.096,0.015,0.000
+private renters,2.736,2.691,1.347,1.870,1.263
+other tenures,0.537,0.525,0.435,0.497,0.811
+household net income tertiles 1-2,0.446,0.528,0.346,0.406,0.804
+household net income tertile 3,1.776,1.561,1.052,1.339,1.044
+held-out weighted log loss x1000,,39.41,53.26,41.42,44.00

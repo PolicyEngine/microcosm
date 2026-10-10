@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "country": "nz",
+  "description": "Axiom rules bindings for the New Zealand v0 graph build. Each binding names one rulespec-nz module by repository-relative rulespec_path and SHA-256 at the pinned commit, the Frame entity it runs on, the period label it is evaluated for, and the variables the graph requests. No code interprets these bindings yet. The planned shared composer (package G6) will build one AxiomEngine per binding and register every binding in one simulate.rules_by_ref@1 kernel (to be added by package G1), because a run's kernel registry holds one kernel per ref. The Axiom adapter raises when a module declares relations; every bound module declares none at the pin. No kernel implementation hash is to bind the whole NZ spec.",
+  "rulespec": {
+    "repository": "TheAxiomFoundation/rulespec-nz",
+    "commit": "8dc2507d5f10a0467c285fed54d018ee37246798",
+    "branch": "main",
+    "verified_on": "2026-10-07",
+    "verification": "The commit is the merge of rulespec-nz PR #122 and is contained in origin/main (git branch -r --contains). The tree is exported with git archive, so the graph source carries no .git directory.",
+    "method_card_row": "MC1"
+  },
+  "engine": {
+    "repository": "TheAxiomFoundation/axiom-rules-engine",
+    "commit": null,
+    "wheel_sha256": null,
+    "status": "awaiting the hub engine pin at M0 (D1 method card MC1); the composer (package G6, not yet written) is to refuse to run until both pins are set"
+  },
+  "entity_names": {
+    "person": "Person",
+    "household": "Household",
+    "family": "Family"
+  },
+  "periods": {
+    "2026-27": {
+      "kind": "tax_year",
+      "start": "2026-04-01",
+      "end": "2027-03-31"
+    }
+  },
+  "input_surface": {
+    "fixture": "packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/nz.json",
+    "notes": "The committed input surface was generated at rulespec-nz 6fe181fc (the fixture records the full commit), an ancestor of the pinned commit on main; git diff 6fe181fc 8dc2507 is empty for every bound module, so the SHA-256 values agree. root_input_count is the size of each module's canonical input surface."
+  },
+  "bindings": [
+    {
+      "id": "main_benefits_entitlement",
+      "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+      "sha256": "94332c778b3b5324798f67cb1b30f59c2af4131be8159455814f453bc814f8d0",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-27",
+      "role": "receipt_layer_eligibility",
+      "variables": [
+        "entitled_to_jobseeker_support",
+        "entitled_to_sole_parent_support",
+        "entitled_to_supported_living_payment_restricted_or_blind",
+        "entitled_to_supported_living_payment_caring"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 60,
+      "notes": "Entitlement predicates only; the weekly rates and income-test reductions live in the rates module. Undetermined judgments feed take-up through the G4 input-closure table."
+    },
+    {
+      "id": "main_benefits_rates",
+      "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+      "sha256": "7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-27",
+      "role": "receipt_layer_rates_and_as_rate_bridge",
+      "variables": [
+        "jobseeker_support_net_weekly_payment",
+        "sole_parent_support_net_weekly_payment",
+        "supported_living_payment_net_weekly_payment",
+        "jobseeker_support_gross_weekly_rate",
+        "jobseeker_support_weekly_income_test_reduction"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 28,
+      "notes": "Also evaluated by the reg 17/18 bridge (as_rate_bridge.json) under declared input overrides."
+    },
+    {
+      "id": "nz_super",
+      "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+      "sha256": "d8ea0d15d97081031dcba242e66704c800bcf295e19d73bd173c56bd92d497b4",
+      "entity": "person",
+      "engine_entity": "Person",
+      "period": "2026-27",
+      "role": "receipt_layer_eligibility",
+      "variables": [
+        "entitled_to_new_zealand_superannuation",
+        "nz_super_weekly_amount_before_tax"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 13,
+      "notes": "NZ Superannuation eligibility for the O4-calibrated receipt layer (MC6)."
+    },
+    {
+      "id": "accommodation_supplement",
+      "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+      "sha256": "f2feca3c2f1de71623ccd577cd2aed20e8822614aac0ccfc767b5faf4eaa83cc",
+      "entity": "family",
+      "engine_entity": "Family",
+      "period": "2026-27",
+      "role": "entitlement",
+      "variables": [
+        "accommodation_supplement_rounded_weekly_payment",
+        "accommodation_supplement_weekly_amount_before_rounding",
+        "accommodation_supplement_non_rate_entitlement_requirements",
+        "accommodation_supplement_cash_assets_within_limit",
+        "accommodation_supplement_social_housing_exclusion_not_applies",
+        "accommodation_supplement_other_funding_exclusion_not_applies",
+        "accommodation_supplement_non_beneficiary_income_reduction",
+        "accommodation_supplement_weekly_qualifying_accommodation_costs",
+        "accommodation_supplement_maximum_weekly_rate"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 39,
+      "notes": "The module takes the reg 17 base rate and reg 18 non-beneficiary cutout as inputs (its summary: \"for later cross-module wiring\"); as_rate_bridge.json supplies them until rulespec-nz encodes regs 17 and 18. Calibration-tier variants add their own AS nodes."
+    },
+    {
+      "id": "family_tax_credits",
+      "rulespec_path": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+      "sha256": "d4bde4b4a72ec495dc516af1c95c9f438c0778d4f07cc02f64f242532a6efe05",
+      "entity": "family",
+      "engine_entity": "Family",
+      "period": "2026-27",
+      "role": "as_rate_bridge_only",
+      "variables": [
+        "family_tax_credit_prescribed_amount"
+      ],
+      "relations_declared": false,
+      "imports_declared": false,
+      "root_input_count": 21,
+      "notes": "Used only for the eldest-child family tax credit amount in the reg 17 base rate. The module also declares 4 rules on an engine Child entity that the NZ schema does not map; the bridge requests none of them, and G1/G7 must show the adapter compiles the module under that condition or stop."
+    }
+  ],
+  "keying_note": "Each Axiom-bound node is to carry its own binding entry, the rulespec and engine pin blocks, the entity names and its period, plus a digest of exactly those values, never this file's SHA-256. Otherwise an Accommodation Supplement edit would re-key the main-benefit and NZ Super nodes, which sit upstream of calibration. Which graph nodes consume which binding is the composer's business, not this resource's."
+}

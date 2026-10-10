@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "country": "nz",
+  "method_card_row": "MC4",
+  "description": "The declared USD to NZD bridge for donor money concepts outside the quantile-map set (MC4 quantile-maps earnings, rent and liquid assets onto New Zealand distributions instead). It is exactly one multiplication with two-decimal rounding, to be applied before calibration and recorded in the build receipt. Aging from the donor dollar year to tax year 2026-27 is a separate declared index (MC1, MC5), not part of this bridge.",
+  "status": "awaiting D1 (MC4)",
+  "from_currency": "USD",
+  "to_currency": "NZD",
+  "operation": "multiply",
+  "rate": 1.654,
+  "rate_unit": "NZD per USD",
+  "rounding": {
+    "decimal_places": 2
+  },
+  "rate_year": 2024,
+  "rate_year_basis": "The donor dollar year: the pinned populace-us support artifact has survey period 2024 (source_stages.json artifact vintage \"2024\"; spec/vintages.yaml nz_support_pool_2024_buildp).",
+  "source": {
+    "publisher": "Internal Revenue Service",
+    "title": "Yearly average currency exchange rates",
+    "url": "https://www.irs.gov/individuals/international-taxpayers/yearly-average-currency-exchange-rates",
+    "table": "Yearly average exchange rates for converting foreign currencies into U.S. dollars",
+    "row": "New Zealand, Dollar",
+    "column": "2024",
+    "conversion_rule": "\"To convert from U.S. dollars to foreign currency, multiply the U.S. dollar amount by the applicable yearly average exchange rate in the table below.\"",
+    "page_last_reviewed": "2026-09-17",
+    "retrieved_on": "2026-10-07",
+    "retrieved_sha256": "8c765c8c88a6a6ad4fe325a0344ff69d2fa2ab174dcac2e8c13e1a5ea747fff8",
+    "retrieved_note": "SHA-256 of the HTML bytes fetched on the retrieval date; the page is re-rendered by the publisher, so it is a receipt, not a stable content key."
+  }
+}

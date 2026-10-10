@@ -1,4 +1,6 @@
-"""Synthetic end-to-end contract for the first UK rowwise candidate."""
+"""Shared support for the UK rowwise command-surface tests: the synthetic
+ladder and staging inputs, the fixture hierarchy, the driver loader over
+both dense drivers, the fake Hub and the role argument builders."""
 
 # ruff: noqa: F401
 
@@ -8,8 +10,6 @@ import base64
 import hashlib
 import importlib.util
 import json
-import shutil
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,17 +17,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.uk_runtime import (
     assemble_uk_oa_ladder,
-    ladder_target_provenance,
     load_uk_oa_ladder,
-    read_uk_single_year_weight_metadata,
+    rowwise_cli,
+    rowwise_staging,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
-    validate_uk_national_frame,
 )
 from microcosm.calibrate import (
     CalibrationHierarchy,
@@ -83,17 +81,6 @@ def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _spool_rows(output_dir: Path):
-    rows = load_spool_rows(output_dir / "logbook-spool")
-    for row in rows:
-        assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
-    return rows
-
-
-def _local_ref(path: Path) -> str:
-    return f"local://{path.resolve().as_posix().lstrip('/')}"
-
-
 def _fixture_hierarchy(
     name: str,
     *,
@@ -120,16 +107,15 @@ def _fixture_hierarchy(
 
 
 def _load_builder_module():
-    root = _TEST_PATHS.repository
-    path = root / "tools" / "build_uk_rowwise_candidate.py"
-    spec = importlib.util.spec_from_file_location(
-        "build_uk_rowwise_candidate",
-        path,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    """The one UK rowwise driver: the graph full build (microcosm#901 phase 4).
+
+    ``tools/build_uk_rowwise_candidate.py`` is a stub over its ``main``, so
+    the role and pure-CLI tests run against the package module.
+    """
+
+    from microcosm.build.uk_runtime import full_build_cli
+
+    return full_build_cli
 
 
 def _ladder_metadata() -> dict[str, object]:
@@ -284,10 +270,20 @@ def _write_staging_h5(
                 f"2023:{source_id}" for source_id in source_household_ids
             ],
             "household_source_id": source_household_ids,
+            # The support channel the identity kernel keys on (microcosm#932)
+            # agrees with the support clone index: a non-zero index is an
+            # SPI support copy.
+            "household_support_channel": pd.array(
+                ["spi" if index else "frs" for index in support_clone_indices],
+                dtype="string",
+            ),
             "household_support_clone_index": support_clone_indices,
             "household_is_spi_synthetic": spi_flags,
             "household_is_capital_gains_clone": [False] * len(household_ids),
-            "household_is_cgt_band_donor": [False] * len(household_ids),
+            "household_is_cgt_support_copy": [False] * len(household_ids),
+            "cgt_support_copy_index": [0] * len(household_ids),
+            "household_is_cgt_residential_clone": [False] * len(household_ids),
+            "cgt_residential_clone_index": [0] * len(household_ids),
         }
     )
     person_ids = [10_000 + household_id for household_id in household_ids]
@@ -408,53 +404,18 @@ def _configure_households_only_inputs(
         "measure_exclusions": {},
         "reviewed_unbound_higher_targets": {},
     }
+    # The graph driver compiles its targets in a graph node and has no
+    # in-process loader to patch; the tool's seam is patched when present.
     monkeypatch.setattr(
-        builder, "_load_joint_target_inputs", lambda _args: joint_inputs
+        builder,
+        "_load_joint_target_inputs",
+        lambda _args: joint_inputs,
+        raising=False,
     )
     return [
         *_mandatory_input_flags(input_h5, ladder_path),
         "--households-only",
     ]
-
-
-def _failing_gate_evaluator(builder, name: str, message: str):
-    def evaluator(*_args, **_kwargs):
-        return builder.GateResult(
-            name=name, passed=False, failures=(message,), details={"minimum": 0}
-        )
-
-    return evaluator
-
-
-def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> list[str]:
-    return [
-        "--input-h5",
-        str(input_h5),
-        "--release-role",
-        "dense",
-        "--ladder",
-        str(ladder_path),
-        "--out",
-        str(output_dir),
-        "--n-clones",
-        "2",
-        "--seed",
-        "7",
-        "--epochs",
-        "2",
-        "--skip-holdout",
-        *_mandatory_input_flags(input_h5, ladder_path),
-        "--households-only",
-    ]
-
-
-def _load_tool(name: str):
-    root = _TEST_PATHS.repository
-    spec = importlib.util.spec_from_file_location(name, root / "tools" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
 
 
 class _FakeHub:
@@ -574,6 +535,40 @@ def _staging_run_setup(builder, monkeypatch, tmp_path, *, remote: bool = False):
     return input_h5, ladder_path, flags
 
 
+#: Unread stand-in atomic-area supports (microcosm#932): every dense request
+#: names the three, and these runs refuse or stub before the supports are read.
+_SUPPORT_FLAGS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
+_SUPPORT_PINS = (
+    "--atomic-support-sha256-ew",
+    "c" * 64,
+    "--atomic-support-sha256-scotland",
+    "d" * 64,
+    "--atomic-support-sha256-ni",
+    "e" * 64,
+)
+
+
+def _toy_support_flags(tmp_path: Path) -> list[str]:
+    """The three toy supports written to disk, for a preparation that reads them."""
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        write_toy_supports,
+    )
+
+    _, paths = write_toy_supports(tmp_path / "supports")
+    flags = []
+    # ``write_toy_supports`` keeps ``SYSTEMS`` order: E&W, Scotland, NI.
+    for system, label in zip(paths, ("ew", "scotland", "ni"), strict=True):
+        flags += [f"--atomic-support-{label}", str(paths[system])]
+    return flags
+
+
 def _build_args(input_h5, ladder_path, flags, out, *extra):
     return [
         "--input-h5",
@@ -582,6 +577,7 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "dense",
         "--ladder",
         str(ladder_path),
+        *_SUPPORT_FLAGS,
         *flags,
         "--out",
         str(out),
@@ -594,12 +590,6 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "--skip-holdout",
         *extra,
     ]
-
-
-def _single_run_id(out: Path) -> str:
-    runs = sorted(path.name for path in (out / "staging" / "runs").iterdir())
-    assert len(runs) == 1, runs
-    return runs[0]
 
 
 def _role_argv(tmp_path: Path, role: str, *extra: str) -> list[str]:
@@ -630,6 +620,7 @@ def _dense_argv(tmp_path: Path, *extra: str) -> list[str]:
         str(tmp_path / "ladder.npz"),
         "--ladder-sha256",
         "3" * 64,
+        *_SUPPORT_FLAGS,
         *extra,
     )
 

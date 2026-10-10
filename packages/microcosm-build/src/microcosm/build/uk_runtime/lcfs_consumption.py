@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -114,8 +115,8 @@ LCFS_ACCOMM_MAP: Mapping[int, str] = {
     8: "OTHER",
 }
 HOUSEHOLD_LCFS_RENAMES = {
-    "g018": "is_adult",
-    "g019": "is_child",
+    "g018": "household_adult_count",
+    "g019": "household_child_count",
     "gorx": "region",
     "a124": "num_vehicles",
     "p389p": "hbai_household_net_income",
@@ -195,17 +196,21 @@ UK_OBR_TOTAL_CATEGORY = "total"
 UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT = frozenset(
     {"electricity_consumption", "gas_consumption", "domestic_energy_consumption"}
 )
+#: The LCFS household's adults (G018) and children (G019), by the age-18 split
+#: the survey counts them with. The recipient counts the same split from
+#: ``age`` rather than the engine's person flags ``is_adult`` and ``is_child``,
+#: which policyengine-uk#1896 deprecates (uk-data#486, microcosm#1095).
+UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE = 18
+UK_LCFS_HOUSEHOLD_COUNT_PREDICTORS = ("household_adult_count", "household_child_count")
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
-    "is_adult",
-    "is_child",
     "employment_income",
     "self_employment_income",
     "private_pension_income",
     "hbai_household_net_income",
 )
 UK_LCFS_CONSUMPTION_PREDICTORS = (
-    "is_adult",
-    "is_child",
+    "household_adult_count",
+    "household_child_count",
     "region",
     "employment_income",
     "self_employment_income",
@@ -256,6 +261,7 @@ class UKLCFSConsumptionResult:
     energy_pricing: Mapping[str, Any] | None = None
     energy_rake: Mapping[str, Any] | None = None
     fuel_litres_audit: Mapping[str, Any] | None = None
+    donor_floor: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -274,6 +280,8 @@ class UKLCFSConsumptionResult:
             evidence["energy_rake"] = dict(self.energy_rake)
         if self.fuel_litres_audit is not None:
             evidence["fuel_litres_audit"] = dict(self.fuel_litres_audit)
+        if self.donor_floor is not None:
+            evidence["donor_floor"] = dict(self.donor_floor)
         return evidence
 
 
@@ -332,6 +340,9 @@ class UKLCFSConsumptionStageTransform:
             uprating=uprating_factors,
             energy=energy,
             donor_rake_iterations=_donor_energy_rake_iterations(self.stage),
+        )
+        donor, donor_floor_receipt = floor_negative_donor_consumption(
+            donor, floor=_donor_consumption_floor(self.stage)
         )
         ice_share, ice_share_receipt = lcfs_ice_share(self.stage)
         recipient = recipient_predictors(frame, self.engine)
@@ -415,6 +426,7 @@ class UKLCFSConsumptionStageTransform:
             energy_pricing=None if energy is None else energy.receipt,
             energy_rake=energy_rake_receipt,
             fuel_litres_audit=litres_audit,
+            donor_floor=donor_floor_receipt,
         )
         return result
 
@@ -734,10 +746,20 @@ def _donor_energy_rake_iterations(stage: SourceStageSpec) -> int:
 
 
 def _recipient_energy_rake_iterations(stage: SourceStageSpec) -> int:
-    """The declared post-imputation energy IPF (the one with the region margin)."""
+    """The declared post-imputation energy IPF (the one with the region margin).
+
+    Refuses a stage without that IPF or its declared sweep count instead of
+    falling back to a default: the energy_rake gate reads the residual's
+    convergence over the last sweeps of exactly the declared count.
+    """
 
     operation = _energy_rake_operation(stage, margin="region")
-    return 50 if operation is None else int(operation.parameters.get("iterations", 50))
+    if operation is None or "iterations" not in operation.parameters:
+        raise ValueError(
+            f"{stage.stage}: the post-imputation energy IPF (the one with the "
+            "region margin) and its declared iterations are required."
+        )
+    return int(operation.parameters["iterations"])
 
 
 def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
@@ -1038,6 +1060,69 @@ def clean_lcfs_consumption_table(
     ].dropna()
 
 
+def _donor_consumption_floor(stage: SourceStageSpec) -> float:
+    """The declared floor of the donor's diary consumption columns."""
+
+    parameters = _operation_parameters(stage, "derive")
+    floor = parameters.get("floor")
+    if floor is None:
+        raise ValueError(
+            f"{stage.stage}: the derive operation must declare 'floor', the "
+            "value negative diary consumption is raised to on the donor."
+        )
+    value = float(floor)
+    if not math.isfinite(value) or value != 0.0:
+        raise ValueError(
+            f"{stage.stage}: the declared donor consumption floor must be 0, "
+            f"got {floor!r}."
+        )
+    return value
+
+
+def floor_negative_donor_consumption(
+    donor: pd.DataFrame, *, floor: float = 0.0
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Raise negative diary consumption on the donor to ``floor`` (microcosm#1063 c9).
+
+    An LCFS diary spend nets refunds against purchases, so a handful of donor
+    rows carry a negative annual total (250 release rows inherited a minimum
+    of -14,165 in ``housing_water_and_electricity_consumption`` on the
+    2026-09-30 build, because the support clip takes its floor from the
+    donor's realised range). The release surface declares these columns
+    non-negative, so the donor is floored before the imputation, the clip
+    ranges and the rake see it. The receipt records, per consumption column,
+    the rows raised and the (negative) mass they carried; columns without a
+    negative row are listed with zeros so the receipt names the whole surface.
+    """
+
+    floored = donor.copy()
+    columns: dict[str, dict[str, float | int]] = {}
+    for column in CONSUMPTION_VARIABLE_RENAMES.values():
+        if column not in floored.columns:
+            raise ValueError(f"LCFS donor is missing consumption column {column!r}.")
+        values = _numeric(floored[column]).to_numpy(dtype=float)
+        negative = np.isfinite(values) & (values < floor)
+        columns[column] = {
+            "rows_raised": int(negative.sum()),
+            "negative_mass": float(values[negative].sum()),
+            "minimum_before": float(np.nanmin(values)) if values.size else 0.0,
+        }
+        if negative.any():
+            floored[column] = np.where(negative, floor, values)
+    receipt = {
+        "floor": float(floor),
+        "columns": columns,
+        "rows_raised": int(sum(entry["rows_raised"] for entry in columns.values())),
+        "remaining_negative_rows": int(
+            sum(
+                int((_numeric(floored[column]).to_numpy(dtype=float) < floor).sum())
+                for column in columns
+            )
+        ),
+    }
+    return floored, receipt
+
+
 def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
     """Split LCFS domestic energy into electricity and gas weekly amounts."""
 
@@ -1111,6 +1196,19 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             )
         else:
             raise ValueError(f"unsupported LCFS predictor entity {declared!r}.")
+    age = pd.to_numeric(person["age"], errors="raise").to_numpy(dtype=float)
+    adult = age >= UK_LCFS_HOUSEHOLD_COUNT_ADULT_AGE
+    for predictor, members in zip(
+        UK_LCFS_HOUSEHOLD_COUNT_PREDICTORS, (adult, ~adult), strict=True
+    ):
+        counted = (
+            pd.Series(members.astype(float))
+            .groupby(person["person_household_id"].to_numpy())
+            .sum()
+        )
+        result[predictor] = (
+            counted.reindex(household["household_id"]).fillna(0.0).to_numpy()
+        )
     for predictor in ("region", "tenure_type", "accommodation_type"):
         if predictor in household:
             result[predictor] = household[predictor].map(_enum_name).to_numpy()

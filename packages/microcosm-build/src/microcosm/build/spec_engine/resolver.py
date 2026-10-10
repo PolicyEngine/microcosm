@@ -150,22 +150,30 @@ F0_IMPLEMENTED_KERNEL_IDS = frozenset(
     }
 )
 
-# UK, BE, and AM use these reviewed ids to prove that their shared-core bundle
-# shapes resolve through the same compiler.  F0 does not yet bind them into the
-# generic executor: the Belgian and Armenian implementations are absent, and
-# the existing UK functions have no compiler-owned producer binding or
-# per-kernel implementation attestation.  They therefore close references but
-# must never be presented as executable producer kernels.
+# UK, BE, AM, and NZ use these reviewed ids to prove that their shared-core
+# bundle shapes resolve through the same compiler.  F0 does not yet bind them
+# into the generic executor: the Belgian, Armenian, and New Zealand
+# implementations are absent, and the existing UK functions have no
+# compiler-owned producer binding or per-kernel implementation attestation.
+# They therefore close references but must never be presented as executable
+# producer kernels.
 F0_CONTRACT_ONLY_KERNEL_IDS = frozenset(
     {
         "am_community_geography_gate",
         "assign_am_marz",
+        "assign_nz_regions",
         "assign_uk_geography_ladder",
         "be_commune_geography_gate",
+        # microcosm#901: the UK spec projects the raw FRS tables through the
+        # canonical spine build; load_uk_national_frame stays registered for
+        # the seam's candidate projection until the national role moves over.
+        "build_uk_frs_spine",
         "clone_assign_communities",
         "clone_assign_communes",
         "load_populace_us_support_pool",
+        "load_uk_atomic_area_support",
         "load_uk_national_frame",
+        "nz_region_geography_gate",
         "silc_load",
         "uk_geography_ladder_gate",
     }

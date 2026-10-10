@@ -1,0 +1,6 @@
+owners,p10_gbp,p25_gbp,p50_gbp,p75_gbp,p90_gbp,weighted_mean_gbp
+donor credible holders,500,1500,6000,10000,10000,6100
+"donor credible holders, held-out draws (5-fold)",500,950,5000,8800,15000,5700
+spine owners (stage evidence),1000,2400,6500,10000,15000,6700
+"spine owners, arm B (stage evidence)",500,1400,5000,9000,10000,5600
+"spine owners, arm D (stage evidence)",1300,3000,6500,10000,15000,6700

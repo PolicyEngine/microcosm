@@ -30,6 +30,7 @@ def test_batched_scoring_matches_the_unbatched_path(
         assert payload == reference_payload
         assert demographics == reference_demographics
 
+
 def test_batched_engines_partition_release_and_order_their_work(
     builder, fake_reforms, tmp_path
 ) -> None:
@@ -107,6 +108,7 @@ def test_batched_engines_partition_release_and_order_their_work(
     assert payload["out_of_sample_simulated"] is True
     assert gate.details["probes"] == probes
 
+
 def test_engine_guard_refuses_an_earlier_period(builder) -> None:
     """(g) The guard refuses a key earlier than one the engine computed."""
     calls = []
@@ -129,6 +131,7 @@ def test_engine_guard_refuses_an_earlier_period(builder) -> None:
         ("ga_income_tax", 2026, {}),
     ]
 
+
 def test_ascending_plan_is_stable_and_consumers_refuse_other_orders(
     builder, tmp_path
 ) -> None:
@@ -149,6 +152,7 @@ def test_ascending_plan_is_stable_and_consumers_refuse_other_orders(
     with pytest.raises(ValueError, match="ascending period order"):
         scorer.open_consumer("fixture", tuple(dict.fromkeys(keys)))
 
+
 def test_served_baseline_refuses_a_key_outside_its_plan(builder, tmp_path) -> None:
     log = _EngineLog()
     scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path)
@@ -159,6 +163,7 @@ def test_served_baseline_refuses_a_key_outside_its_plan(builder, tmp_path) -> No
         baseline.calculate("income_tax", 2026)
     # The served baseline answered from the plan: one pass, no new engines.
     assert len(log.constructions) == scorer.n_batches
+
 
 def test_a_failing_key_still_releases_its_batch_engine(builder, tmp_path) -> None:
     """(c) The engine that raised is released before the error propagates, so
@@ -173,6 +178,7 @@ def test_a_failing_key_still_releases_its_batch_engine(builder, tmp_path) -> Non
         )
     assert len(log.constructions) == 1
     assert log.constructions[0].dataset is None
+
 
 def test_post_export_values_sum_matches_microseries_sum(builder) -> None:
     """``.sum()`` equals policyengine-core's ``MicroSeries.sum`` (NaN skipped)
@@ -190,6 +196,7 @@ def test_post_export_values_sum_matches_microseries_sum(builder) -> None:
         np.asarray(result)[0] = 9.0
     with pytest.raises(ValueError, match="one weight per value"):
         builder._PostExportValues(values, weights[:2])
+
 
 def test_a_multi_batch_pass_refuses_a_population_aggregate(builder, tmp_path) -> None:
     """A measure that reaches a formula aggregating over its whole simulation
@@ -226,6 +233,7 @@ def test_a_multi_batch_pass_refuses_a_population_aggregate(builder, tmp_path) ->
     with pytest.raises(RuntimeError, match="household_income_decile@2025"):
         scorer.open_consumer("fixture", (("household_income_decile", 2025, None),))
 
+
 def test_known_periods_include_live_branches(builder) -> None:
     def engine(known):
         return SimpleNamespace(
@@ -245,6 +253,7 @@ def test_known_periods_include_live_branches(builder) -> None:
         ("medicaid_slcsp_state_denominator", "2024"),
         ("household_income_decile", "2025"),
     }
+
 
 def test_known_period_walker_matches_a_reference_traversal(builder) -> None:
     """The shared walker returns exactly the known (variable, period) pairs of
@@ -317,6 +326,7 @@ def test_known_period_walker_matches_a_reference_traversal(builder) -> None:
 
     check()
 
+
 def test_batch_invariance_check_reads_a_value_held_only_on_baseline(
     builder,
 ) -> None:
@@ -352,6 +362,7 @@ def test_batch_invariance_check_reads_a_value_held_only_on_baseline(
             reform=False,
         )
 
+
 def test_a_reform_engine_refuses_a_baseline_branch_reader(builder, tmp_path) -> None:
     """A batch reform engine is built from the reform's system alone, so it
     has no baseline branch: a reform pass refuses a formula that reads one,
@@ -380,6 +391,7 @@ def test_a_reform_engine_refuses_a_baseline_branch_reader(builder, tmp_path) -> 
         *builder.US_POPULATION_AGGREGATE_VARIABLES,
         *builder.POST_EXPORT_BASELINE_BRANCH_READERS,
     }
+
 
 def test_a_reform_that_moves_a_behavioral_parameter_is_refused(
     builder, tmp_path
@@ -412,6 +424,7 @@ def test_a_reform_that_moves_a_behavioral_parameter_is_refused(
     )
     assert consumer.simulate(static).calculate("income_tax", 2024).sum() > 0
     assert len(log.constructions) == scorer.n_batches
+
 
 def test_recording_dry_runs_construct_no_engine(
     builder, fake_reforms, monkeypatch
@@ -478,6 +491,7 @@ def test_recording_dry_runs_construct_no_engine(
     )
     assert list(skipped) == ["demographics"]
 
+
 def test_reform_validation_sweeps_only_released_engines(
     builder, fake_reforms, monkeypatch
 ) -> None:
@@ -521,6 +535,7 @@ def test_reform_validation_sweeps_only_released_engines(
         (spec,), period=2024, simulate=lambda reform: EngineLike()
     )
     assert len(collections) == 2
+
 
 def test_an_unbuildable_plan_is_recorded_and_refused_not_raised(
     builder, fake_reforms, monkeypatch, tmp_path
@@ -572,6 +587,7 @@ def test_an_unbuildable_plan_is_recorded_and_refused_not_raised(
         n_households=7, maximum_batch_size=3, baseline_plans={}
     )
     assert builder._open_post_export_scorer(empty, _written_h5(tmp_path)) is None
+
 
 def test_calibration_diagnostics_carry_the_post_export_plan(
     builder, monkeypatch, tmp_path
@@ -632,6 +648,7 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
     }
     builder._write_release_calibration_diagnostics(**common)
     assert "post_export_scoring" not in captured["build"]
+
 
 def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     """(i) Neither _main nor the reform-validation and demographics writers
@@ -763,6 +780,7 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert recorded < source.index("_write_release_calibration_diagnostics(") < joined
     assert joined < source.index("release_engine.write_dataset(")
 
+
 def test_main_opens_the_scorer_its_plan_recorded(
     builder, fake_reforms, engine_free_loader, tmp_path
 ) -> None:
@@ -821,6 +839,7 @@ def test_main_opens_the_scorer_its_plan_recorded(
     )
     with pytest.raises(ValueError, match="post-export scoring plan was built for 8"):
         builder._open_post_export_scorer(other, path)
+
 
 def test_writers_score_through_the_shared_scorer(
     builder, fake_reforms, monkeypatch, tmp_path
@@ -917,6 +936,7 @@ def test_writers_score_through_the_shared_scorer(
     written = json.loads((release_dir / "demographics.json").read_text())
     assert written == json.loads(json.dumps(expected, allow_nan=False))
 
+
 def test_a_direct_writer_call_opens_and_closes_its_own_scorer(
     builder, fake_reforms, engine_free_loader, monkeypatch, tmp_path
 ) -> None:
@@ -945,6 +965,7 @@ def test_a_direct_writer_call_opens_and_closes_its_own_scorer(
     written = json.loads((release_dir / "demographics.json").read_text())
     assert written["period"] == builder.PERIOD
     assert written["total_population"] > 0
+
 
 def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     """``del target_frame`` follows its last reader and precedes the export
@@ -978,6 +999,7 @@ def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     ]
     assert reads and max(reads) < deleted_at
 
+
 def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
     """The premise of ``del target_frame``: ``calibrate`` keeps no reference
     to its input frame, and ``result.frame`` shares no memory with it."""
@@ -998,6 +1020,7 @@ def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
                 frame.table(entity)[column].to_numpy(),
                 result.frame.table(entity)[column].to_numpy(),
             )
+
 
 def test_calibration_results_drop_their_frames_and_keep_everything_else(
     builder, monkeypatch
@@ -1062,6 +1085,7 @@ def test_calibration_results_drop_their_frames_and_keep_everything_else(
     double = _empty_calibration_result()
     assert builder._without_calibrated_frames(double) is double
 
+
 def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     """Cleanup follows export construction and precedes the H5 write."""
     _, tree = _function_source(builder, "_main")
@@ -1109,6 +1133,7 @@ def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     ]
     assert export_bindings and max(export_bindings) < later_bindings[0][0]
     assert "dataclasses.replace(ladder_outcome, result=result)" in ast.unparse(tree)
+
 
 @pytest.mark.parametrize("full_pool", [True, False])
 @pytest.mark.parametrize("exact_k", [True, False])
@@ -1208,6 +1233,7 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
     exec(compile(module, "<main export statements>", "exec"), namespace)
     assert len(writes) == 1
 
+
 def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     builder, tmp_path
 ) -> None:
@@ -1262,6 +1288,7 @@ def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     keywords = {kw.arg: ast.unparse(kw.value) for kw in manifest_call.keywords}
     assert keywords["scored_dataset_sha256"] == "scored_dataset_sha256"
 
+
 def test_writers_register_their_consumer_with_the_shared_scorer(
     builder, tmp_path
 ) -> None:
@@ -1282,6 +1309,7 @@ def test_writers_register_their_consumer_with_the_shared_scorer(
     block = builder._post_export_scoring_manifest_block(scorer)
     assert list(block["consumers"]) == ["reform_validation"]
     assert block["consumers"]["reform_validation"]["reform_passes"] == 0
+
 
 def test_scorer_refuses_a_unit_that_spans_households(builder, tmp_path) -> None:
     """(k) Frame.select does not check that group units nest in households,
@@ -1331,6 +1359,7 @@ def test_scorer_refuses_a_unit_that_spans_households(builder, tmp_path) -> None:
     with pytest.raises(ValueError, match="household weights"):
         builder._assert_post_export_batching_premises(frame, [batches[0], reweighted])
 
+
 def test_scorer_refuses_a_household_count_other_than_planned(builder, tmp_path) -> None:
     with pytest.raises(ValueError, match="built for 8"):
         builder._HouseholdBatchedPostExportScorer(
@@ -1341,6 +1370,7 @@ def test_scorer_refuses_a_household_count_other_than_planned(builder, tmp_path) 
             dataset_from_frame=lambda batch_frame: batch_frame,
             load_frame=lambda path, *, expected_sha256: _nested_frame(),
         )
+
 
 def test_guard_sweep_records_and_scores_shipped_reform_passes(
     builder, fake_reforms, monkeypatch, tmp_path
@@ -1412,6 +1442,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert sum(len(record["whole_file_comparisons"]) for record in records) == 4
     assert len(log.systems) == len(requests)
     scorer.close()
+
 
 def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) -> None:
     import subprocess

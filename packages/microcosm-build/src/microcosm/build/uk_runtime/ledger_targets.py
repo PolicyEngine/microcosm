@@ -516,11 +516,13 @@ def compile_uk_target_registry(
             registry = validate_uc_source_month_coverage(
                 restamped, registry, candidate_facts
             )
-            if reference.name == "hmrc.cgt.liability_total":
-                cash_metadata = _cgt_cash_diagnostic_metadata(fact_rows)
+            if reference.name in UK_REQUIRED_TARGET_DIAGNOSTICS:
+                diagnostic_metadata = _attached_diagnostic_metadata(
+                    fact_rows, reference.name
+                )
                 registry = TargetRegistry(
                     (
-                        replace(row, metadata={**row.metadata, **cash_metadata})
+                        replace(row, metadata={**row.metadata, **diagnostic_metadata})
                         for row in registry.specs
                     ),
                     country="uk",
@@ -762,43 +764,104 @@ def _assert_region_facts_resolved_at_region(
     return registry
 
 
-def _cgt_cash_diagnostic_metadata(
-    facts: tuple[Mapping[str, Any], ...],
-) -> dict[str, str]:
-    """Retain the original forecast without adding a cash row to fitting.
+#: Bound targets that carry publisher figures they replaced or sit beside, as
+#: diagnostics compiled in isolation and never fitted. Each named declaration
+#: in the contract's ``diagnostic_references`` must exist and attach to the
+#: target that requires it; a missing or misdirected one refuses the target.
+UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "hmrc.cgt.liability_total": ("obr.capital_gains_tax",),
+        # microcosm#1069 R2, R4: the resident level is bound; OBR's forecast and
+        # DWP's forecast-table lines are kept beside it.
+        "dwp.state_pension.amount": (
+            "obr.state_pension",
+            "dwp.state_pension.forecast_expenditure",
+            "dwp.state_pension.forecast_expenditure_paid_abroad",
+        ),
+        "dwp.state_pension.recipients": (
+            "dwp.state_pension.forecast_caseload",
+            "dwp.state_pension.forecast_caseload_paid_abroad",
+        ),
+        # microcosm#1069 c10: DWP pays Winter Fuel to everyone and HMRC recovers
+        # it above GBP 35,000, where the engine withholds it; the recipient count
+        # sits beside the bound OBR line until payment and recovery separate.
+        "obr.winter_fuel_allowance": ("dwp.winter_fuel_payment.recipients",),
+    }
+)
+_DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))
+_DIAGNOSTIC_ASSERTION_POLICIES = MappingProxyType(
+    {"source_projection": "allow_source_projection", "observation": "observed_only"}
+)
 
-    The cash period and exact Chronicle fact identity are consumer declarations,
-    independent of the calibration period. The normal TargetSpec metadata path
-    carries this receipt into both national and local registries. Unavailable
-    diagnostic data must not disable independently observed HMRC targets.
-    """
+
+def _attached_diagnostic_metadata(
+    facts: tuple[Mapping[str, Any], ...],
+    target_name: str,
+) -> dict[str, str]:
+    """Every diagnostic ``target_name`` requires, compiled beside it."""
+
     contract = json.loads(
         importlib_resources.files("microcosm.build.uk")
         .joinpath(UK_POPULATION_TARGETS_RESOURCE)
         .read_text(encoding="utf-8")
     )
-    try:
-        declaration = contract["diagnostic_references"]["obr.capital_gains_tax"]
-        if declaration["attach_to_target"] != "hmrc.cgt.liability_total":
-            raise ValueError("unexpected receiving target")
-        reference = LedgerTargetReference(**declaration["reference"])
-        if not reference.ledger_fact_key:
-            raise ValueError("the original forecast must have an exact fact pin")
-        if (
-            reference.name != "obr.capital_gains_tax"
-            or reference.period_match_policy != "exact"
-            or reference.assertion_policy != "allow_source_projection"
-            or declaration["required_period_type"] != "fiscal_year"
-            or declaration["required_assertion"] != "source_projection"
-        ):
-            raise ValueError("expected an exactly dated OBR cash forecast declaration")
-    except (KeyError, TypeError, ValueError) as error:
-        raise ValueError(f"Invalid CGT cash diagnostic declaration: {error}") from error
+    declarations = contract.get("diagnostic_references") or {}
+    metadata: dict[str, str] = {}
+    for key in UK_REQUIRED_TARGET_DIAGNOSTICS[target_name]:
+        declaration = declarations.get(key)
+        if declaration is None:
+            raise ValueError(
+                f"Invalid diagnostic declaration {key!r}: missing from the "
+                f"contract, which {target_name!r} requires."
+            )
+        if declaration.get("attach_to_target") != target_name:
+            raise ValueError(
+                f"Invalid diagnostic declaration {key!r}: unexpected receiving "
+                f"target {declaration.get('attach_to_target')!r}."
+            )
+        metadata.update(_diagnostic_reference_metadata(facts, key, declaration))
+    return metadata
 
-    metadata = {
-        "cgt_cash_diagnostic_role": "diagnostic_only_not_in_fit",
-        "cgt_cash_reconciliation_status": "unresolved",
-    }
+
+def _diagnostic_reference_metadata(
+    facts: tuple[Mapping[str, Any], ...],
+    key: str,
+    declaration: Mapping[str, Any],
+) -> dict[str, str]:
+    """Retain an original publisher figure without adding a row to fitting.
+
+    The figure's period and exact Chronicle fact identity are consumer
+    declarations, independent of the calibration period. The normal TargetSpec
+    metadata path carries the receipt into both national and local registries,
+    under the declaration's ``metadata_prefix``. Unavailable diagnostic data
+    must not disable the independently observed target it sits beside; a
+    malformed declaration is a compile error.
+    """
+
+    try:
+        prefix = str(declaration["metadata_prefix"])
+        unit = str(declaration["value_unit"])
+        reference = LedgerTargetReference(**declaration["reference"])
+        if not prefix.isidentifier() or not unit.isidentifier():
+            raise ValueError("metadata_prefix and value_unit must be plain keys")
+        if not reference.ledger_fact_key:
+            raise ValueError("the publisher figure must have an exact fact pin")
+        if (
+            reference.name != key
+            or reference.period_match_policy != "exact"
+            or declaration["required_period_type"] not in _DIAGNOSTIC_PERIOD_TYPES
+            or _DIAGNOSTIC_ASSERTION_POLICIES.get(declaration["required_assertion"])
+            != reference.assertion_policy
+        ):
+            raise ValueError("expected an exactly dated publisher-figure declaration")
+        receipt = {
+            str(name): str(value)
+            for name, value in (declaration.get("receipt_metadata") or {}).items()
+        }
+    except (AttributeError, KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"Invalid diagnostic declaration {key!r}: {error}") from error
+
+    metadata = {f"{prefix}_role": "diagnostic_only_not_in_fit", **receipt}
     try:
         candidates = tuple(
             fact
@@ -808,30 +871,28 @@ def _cgt_cash_diagnostic_metadata(
             == declaration["required_period_type"]
             and fact.get("assertion") == declaration["required_assertion"]
         )
-        (cash,) = compile_ledger_target_references(
+        (figure,) = compile_ledger_target_references(
             candidates, [reference], country="uk"
         ).specs
-        if cash.metadata["ledger_fact_period"] != str(reference.period):
-            raise ValueError("forecast period does not match its declaration")
+        if figure.metadata["ledger_fact_period"] != str(reference.period):
+            raise ValueError("diagnostic period does not match its declaration")
     except ValueError as error:
         return {
             **metadata,
-            "cgt_cash_diagnostic_status": "unavailable",
-            "cgt_cash_diagnostic_unavailable_reason": str(error),
-            "cgt_cash_diagnostic_expected_fact_key": reference.ledger_fact_key,
-            "cgt_cash_diagnostic_expected_period": str(reference.period),
-            "cgt_cash_diagnostic_expected_period_type": declaration[
-                "required_period_type"
-            ],
-            "cgt_cash_diagnostic_expected_assertion": declaration["required_assertion"],
+            f"{prefix}_status": "unavailable",
+            f"{prefix}_unavailable_reason": str(error),
+            f"{prefix}_expected_fact_key": reference.ledger_fact_key,
+            f"{prefix}_expected_period": str(reference.period),
+            f"{prefix}_expected_period_type": declaration["required_period_type"],
+            f"{prefix}_expected_assertion": declaration["required_assertion"],
         }
     return {
         **metadata,
-        "cgt_cash_diagnostic_status": "available",
-        "cgt_cash_diagnostic_value_gbp": str(cash.value),
-        "cgt_cash_diagnostic_period": str(cash.period),
-        "cgt_cash_diagnostic_source": cash.source,
-        **{f"cgt_cash_diagnostic_{key}": value for key, value in cash.metadata.items()},
+        f"{prefix}_status": "available",
+        f"{prefix}_value_{unit}": str(figure.value),
+        f"{prefix}_period": str(figure.period),
+        f"{prefix}_source": figure.source,
+        **{f"{prefix}_{name}": value for name, value in figure.metadata.items()},
     }
 
 
@@ -1382,10 +1443,16 @@ class UKFrameTargetAdapter:
         period: int | str,
     ) -> np.ndarray:
         del period
+        from microcosm.build.target_materialization import counterfactual_column
+
         entity = str(binding.get("from_entity") or "person")
         metric_name = str(binding.get("metric_name") or "")
-        if metric_name and metric_name in self.tables[entity]:
-            return np.asarray(self.tables[entity][metric_name], dtype=float)
+        # The measure resolver injects a resolved delta under the slash-free
+        # counterfactual column (microcosm#1069 c11); a precomputed column
+        # under the metric name itself is the legacy route.
+        for name in (counterfactual_column(binding), metric_name):
+            if name and name in self.tables[entity]:
+                return np.asarray(self.tables[entity][name], dtype=float)
         raise ValueError(
             f"frame does not carry precomputed counterfactual delta {metric_name!r}"
         )

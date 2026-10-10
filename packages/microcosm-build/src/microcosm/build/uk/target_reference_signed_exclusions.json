@@ -129,6 +129,45 @@
         "dimension": "cgt_gain_band",
         "value": "gain_0_to_2999"
       }
+    },
+    {
+      "target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+      "reason_id": "individuals_total_restates_the_bands",
+      "rationale": "HMRC Table 4.1's individuals total row (61,000 claimants, GBP 18,443m of qualifying gains and GBP 1,821m of tax in 2024-25) is the sum of the eight published bands and carries no band edge, so it cannot be measured as a band row. Signed out of the band fan-out; the eight bands stay bound.",
+      "tracking": "microcosm#1014",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-26",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014",
+      "row": {
+        "dimension": "cgt_badr_ir_gain_band",
+        "value": "total"
+      }
+    },
+    {
+      "target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+      "reason_id": "individuals_total_restates_the_bands",
+      "rationale": "HMRC Table 4.1's individuals total row (61,000 claimants, GBP 18,443m of qualifying gains and GBP 1,821m of tax in 2024-25) is the sum of the eight published bands and carries no band edge, so it cannot be measured as a band row. Signed out of the band fan-out; the eight bands stay bound.",
+      "tracking": "microcosm#1014",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-26",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014",
+      "row": {
+        "dimension": "cgt_badr_ir_gain_band",
+        "value": "total"
+      }
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+      "reason_id": "no_frame_support",
+      "rationale": "DWP's new State Pension £40.00 to under £60.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under £100 a week in FRS 2024-25, and the nearest of them restate above £60 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound.",
+      "tracking": "microcosm#1069",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-01",
+      "adjudication": "María in session, 2026-10-01: remove the empty band (microcosm#1069 c4 measurement arm, the row fitted at -100%)",
+      "row": {
+        "dimension": "grouped_amount_of_benefit",
+        "value": "£40.00 to under £60.00"
+      }
     }
   ]
 }

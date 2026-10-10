@@ -43,6 +43,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
@@ -59,6 +60,7 @@ from microcosm.build.gates import (
     default_valued_columns_gate,
     input_mass_parity_gate,
     nonconstant_columns_gate,
+    observed_value_counts,
     parity_gate,
     tail_concentration_gate,
     target_fit_gate,
@@ -66,7 +68,11 @@ from microcosm.build.gates import (
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
+from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -274,18 +280,59 @@ from microcosm.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from microcosm.build.us_runtime.release_gate_dry_run import (
+    DEFAULT_L0_TAIL_SHARE_MARGIN,
+    DEFAULT_MASS_DRIFT_MARGIN,
+    DEFAULT_SUPPORT_CARRIER_RETENTION,
+    DEFAULT_SUPPORT_NONZERO_SHARE_MARGIN,
+    DEFAULT_TAIL_SHARE_FALL_MARGIN,
+    DEFAULT_TAIL_SHARE_RISE_MARGIN,
+    DryRunMargins,
+    ReleaseDryRunReport,
+    apply_evidence_ownership,
+    bound_zero_support_on_l0,
+    certain_lines_check,
+    degenerate_input_register_check,
+    ecps_parity_register_check,
+    export_input_mass_check,
+    export_signal_regrades_check,
+    input_coverage_register_check,
+    not_previewable_check,
+    post_stop_error_report,
+    pre_solve_refusal_report,
+    qrf_tail_register_check,
+    qrf_tail_register_unloadable_check,
+)
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
     CheckResult,
+    check_zero_support_preview,
 )
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
     project_ecps_parity_known_gap_names,
+    us_release_input_coverage_signal_counts,
 )
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
+)
+
+# The target-loss weights live in one shared module, which the ACS local
+# release calls too. These names stay importable from this tool for the
+# scorers and the bundle contract that read them off it.
+from microcosm.build.us_runtime.target_loss_weights import (  # noqa: F401
+    US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS,
+    US_FISCAL_TARGET_LOSS_WEIGHTING,
+    US_FISCAL_TARGET_VALUE_WEIGHT_POWER,
+    parse_target_family_loss_multipliers,
+)
+from microcosm.build.us_runtime.target_loss_weights import (
+    fiscal_target_loss_weights as _fiscal_target_loss_weights,
+)
+from microcosm.build.us_runtime.target_loss_weights import (  # noqa: F401
+    fiscal_target_value_basis as _fiscal_target_value_basis,
 )
 from microcosm.build.us_runtime.warm_start_selection import (
     DEFAULT_SELECTION_JOIN_KEY,
@@ -344,6 +391,58 @@ from microcosm.frame.units import US_SCHEMA
 PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
 STAGING_REPO_ID = "policyengine/populace-us-staging"
+#: The dry-run flag (see ``_ReleaseDryRun``), and each margin override with its
+#: default and meaning, paired with the ``DryRunMargins`` field it sets.
+_DRY_RUN_REPORT_FLAG = "--dry-run-gates-report"
+_DRY_RUN_MARGIN_FLAGS: tuple[tuple[str, float, str], ...] = (
+    (
+        "--dry-run-tail-share-rise-margin",
+        DEFAULT_TAIL_SHARE_RISE_MARGIN,
+        "how far calibration may raise a QRF column's top-k share",
+    ),
+    (
+        "--dry-run-tail-share-fall-margin",
+        DEFAULT_TAIL_SHARE_FALL_MARGIN,
+        "how far calibration may lower a QRF column's top-k share",
+    ),
+    (
+        "--dry-run-mass-drift-margin",
+        DEFAULT_MASS_DRIFT_MARGIN,
+        "distance from the export input-mass band edge inside which an "
+        "in-band column is flagged",
+    ),
+    (
+        "--dry-run-support-nonzero-share-margin",
+        DEFAULT_SUPPORT_NONZERO_SHARE_MARGIN,
+        "L0 path: how far a column's record nonzero share may move",
+    ),
+    (
+        "--dry-run-support-carrier-retention",
+        DEFAULT_SUPPORT_CARRIER_RETENTION,
+        "L0 path: the smallest kept fraction of the records carrying one signal",
+    ),
+    (
+        "--dry-run-l0-tail-share-rise-margin",
+        DEFAULT_L0_TAIL_SHARE_MARGIN,
+        "L0 path: how far an L0 selection and refit may raise a top-k share "
+        "(unmeasured; the default admits any share)",
+    ),
+    (
+        "--dry-run-l0-tail-share-fall-margin",
+        DEFAULT_L0_TAIL_SHARE_MARGIN,
+        "L0 path: how far an L0 selection and refit may lower a top-k share "
+        "(unmeasured; the default admits any share)",
+    ),
+)
+_DRY_RUN_MARGIN_FIELDS = (
+    "tail_share_rise",
+    "tail_share_fall",
+    "mass_drift",
+    "support_nonzero_share",
+    "support_carrier_retention",
+    "l0_tail_share_rise",
+    "l0_tail_share_fall",
+)
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
@@ -393,10 +492,6 @@ assert set(US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES) == set(
     "on the dense arm too."
 )
 
-US_FISCAL_TARGET_LOSS_WEIGHTING = (
-    "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
-)
-US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
 US_FISCAL_TARGET_LOSS_CAP = 1.0
 RATIFIED_EXACT_K_COUNTS = frozenset({57_240, 20_000})
 
@@ -536,42 +631,6 @@ US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON = (
     "US fiscal refresh rescaled Social Security component leaf inputs to SSA "
     "component payment targets from the active fiscal target registry before "
     "mass='conserve' calibration."
-)
-US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS = frozenset(
-    {
-        "congressional_district_geoid",
-        "geography_scope",
-        "hierarchy_child_ids",
-        "hierarchy_child_sum_raw",
-        "hierarchy_coverage_ratio",
-        "hierarchy_expected_child_count",
-        "hierarchy_observed_child_count",
-        "hierarchy_parent_geography_id",
-        "hierarchy_parent_geography_level",
-        "hierarchy_parent_key",
-        "hierarchy_parent_target_name",
-        "hierarchy_parent_target_period",
-        "hierarchy_parent_value",
-        "hierarchy_raw_value",
-        "hierarchy_reconciliation_factor",
-        "hierarchy_reconciliation_method",
-        "hierarchy_reconciliation_rule",
-        "ledger_aggregate_fact_key",
-        "ledger_dimension_set_key",
-        "ledger_fact_key",
-        "ledger_geography_id",
-        "ledger_geography_level",
-        "ledger_geography_name",
-        "ledger_geography_vintage",
-        "ledger_legacy_fact_key",
-        "ledger_layout_groupby_dimension",
-        "ledger_layout_groupby_value_id",
-        "ledger_layout_record_set_id",
-        "ledger_observed_measure_key",
-        "ledger_semantic_fact_key",
-        "ledger_source_record_id",
-        "state_fips",
-    }
 )
 US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
     "ssa_retirement_total": "social_security_retirement",
@@ -1695,7 +1754,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-dir",
         type=Path,
         help=(
-            "Optional local directory for staging telemetry artifacts. Defaults "
+            "Optional local directory for staging run files. Defaults "
             "to <out>/staging/runs/<run_id> when --staging-repo-id is set."
         ),
     )
@@ -1703,7 +1762,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-repo-id",
         default=_env_default("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
-            "Hugging Face dataset repo to upload staging telemetry to while "
+            "Hugging Face dataset repo to upload staging run files to while "
             "the build runs. On by default (uploads are best-effort and never "
             "fail the build); override with POPULACE_STAGING_REPO_ID or "
             "disable with --no-staging. An empty POPULACE_STAGING_REPO_ID is "
@@ -1732,7 +1791,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-staging",
         action="store_true",
-        help="Disable staging telemetry (local staging dir and uploads) for this build.",
+        help=(
+            "Disable staging run files and their uploads for this build; hosted "
+            "telemetry remains active."
+        ),
     )
     parser.add_argument(
         "--staging-prefix",
@@ -1752,7 +1814,58 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=30.0,
         help="Minimum seconds between progress uploads to the staging repo.",
     )
+    parser.add_argument(
+        _DRY_RUN_REPORT_FLAG,
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Dry run: run this exact release through its base load, input "
+            "stages and pre-solve gates, stop where the staged frame goes to "
+            "target materialization, grade every data-dependent register and "
+            "base-computable pre-export gate on the staged frame at base "
+            "weights with this tool's own gate functions, write the JSON "
+            "report here and exit 1 on any certain failure, 2 on AT-RISK "
+            "only, 0 clean. It creates nothing under --out, starts no staging "
+            "telemetry and writes no receipt; a base or donor the config does "
+            "not name locally is downloaded into the same caches the release "
+            "uses. See microcosm.build.us_runtime.release_gate_dry_run."
+        ),
+    )
+    for flag, default, meaning in _DRY_RUN_MARGIN_FLAGS:
+        parser.add_argument(
+            flag,
+            type=float,
+            default=None,
+            help=f"Dry run only: {meaning} (default {default}).",
+        )
     args = parser.parse_args(argv)
+    margin_overrides = {
+        flag: getattr(args, flag.removeprefix("--").replace("-", "_"))
+        for flag, _default, _meaning in _DRY_RUN_MARGIN_FLAGS
+    }
+    given_margins = [
+        flag for flag, value in margin_overrides.items() if value is not None
+    ]
+    if args.dry_run_gates_report is None:
+        if given_margins:
+            parser.error(
+                f"{', '.join(given_margins)}: dry-run margins apply only with "
+                f"{_DRY_RUN_REPORT_FLAG}."
+            )
+        args.dry_run_margins = None
+    else:
+        try:
+            args.dry_run_margins = DryRunMargins(
+                **{
+                    field_name: value
+                    for (flag, _default, _meaning), field_name in zip(
+                        _DRY_RUN_MARGIN_FLAGS, _DRY_RUN_MARGIN_FIELDS, strict=True
+                    )
+                    if (value := margin_overrides[flag]) is not None
+                }
+            )
+        except ValueError as error:
+            parser.error(str(error))
     if args.congressional_district_vintage_crosswalk is None:
         # Every build compiles the same national + state + CD target surface,
         # translated through the canonical packaged vintage crosswalk unless
@@ -1778,7 +1891,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         # effect of a blank repo id.
         parser.error(
             "--staging-repo-id is empty and no --staging-dir is set, so staging "
-            "telemetry would silently do nothing. Pass --no-staging to skip "
+            "run files would have no destination. Pass --no-staging to skip "
             "staging deliberately, or --staging-dir for a local-only run."
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
@@ -1897,22 +2010,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     elif args.seed is None:
         # Preserve the pre-exact-k default for every legacy lane.
         args.seed = 0
-    multipliers: dict[str, float] = {}
-    for entry in args.target_family_loss_multiplier:
-        family, separator, raw_value = entry.partition("=")
-        try:
-            value = float(raw_value)
-        except ValueError:
-            value = math.nan
-        if not separator or not family or not math.isfinite(value) or value <= 0.0:
-            parser.error(
-                "--target-family-loss-multiplier expects FAMILY=MULTIPLIER "
-                f"with a positive finite multiplier, got {entry!r}."
-            )
-        if family in multipliers:
-            parser.error(f"--target-family-loss-multiplier repeats family {family!r}.")
-        multipliers[family] = value
-    args.target_family_loss_multipliers = multipliers
+    try:
+        args.target_family_loss_multipliers = parse_target_family_loss_multipliers(
+            args.target_family_loss_multiplier
+        )
+    except ValueError as error:
+        parser.error(str(error))
     return args
 
 
@@ -5039,7 +5142,12 @@ class _HouseholdBatchedPostExportScorer:
         parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
             key: [] for key in keys
         }
-        for batch_frame in batches:
+        sweep = _WorkCounter(
+            stage_id="post_export_scoring",
+            unit="scoring_batch",
+            total=len(batches),
+        )
+        for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
                 try:
@@ -5065,6 +5173,7 @@ class _HouseholdBatchedPostExportScorer:
                     release_engine_simulation(simulation)
                 del simulation, engine
             _collect_batch_garbage()
+            sweep.advance(pass_name=label, batch=batch, batches=len(batches))
         _collect_family_garbage()
         return {
             key: _concatenate_post_export_parts(key_parts)
@@ -5294,6 +5403,7 @@ def _reform_household_income_tax(
             reform_income_tax[household_positions] = batch_income_tax
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name=reform_spec.measure, batch=batch, batches=len(batches))
     del reform_system
     _collect_family_garbage()
     return reform_income_tax
@@ -6654,6 +6764,7 @@ def _materialize_base_simulation_columns(
                 columns[column] = pool_values
             del batch_columns, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name="base", batch=batch, batches=len(batches))
     _collect_family_garbage()
 
     assert column_order is not None
@@ -6701,6 +6812,20 @@ def _materialize_target_frame(
     _assert_no_formula_owned_columns(base_frame)
     system = CountryTaxBenefitSystem()
     n_households = base_frame.n("household")
+    requested_reform_measures = {spec.measure for spec in target_specs}
+    global _ACTIVE_WORK
+    passes = 1 + sum(
+        spec.measure in requested_reform_measures
+        for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+    )
+    batch_count = len(
+        tuple(_household_position_batches(n_households, maximum_microsim_batch_size))
+    )
+    _ACTIVE_WORK = _WorkCounter(
+        stage_id="target_compilation",
+        unit="engine_batch",
+        total=passes * batch_count,
+    )
     # The base simulation uses the JCT reform loop's household partition.
     base_columns, base_simulation_batching = _materialize_base_simulation_columns(
         base_frame,
@@ -6720,7 +6845,6 @@ def _materialize_target_frame(
     del base_columns
 
     base_income_tax_household = hh["income_tax"].to_numpy(dtype=np.float64)
-    requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
         if target_materialization_cache_context is not None
@@ -6759,6 +6883,11 @@ def _materialize_target_frame(
             if cached is not None:
                 reform_income_tax, cache_digest, cache_path = cached
                 cache_stats["hits"] = int(cache_stats["hits"]) + 1
+                _advance_work(
+                    batch_count,
+                    pass_name=reform_spec.measure,
+                    cached=True,
+                )
                 cache_entry = {
                     "measure": reform_spec.measure,
                     "neutralized_variable": reform_spec.neutralized_variable,
@@ -6858,6 +6987,21 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
     measure_ready = spec.measure is None or spec.measure in household_table.columns
     filter_ready = spec.filter is None or spec.filter in household_table.columns
     return measure_ready and filter_ready
+
+
+def _full_pool_calibration(args: argparse.Namespace, candidate_households: int) -> bool:
+    """Whether the solve weights every staged household (no L0 selection).
+
+    True for ``--dense-default-dataset`` and for an exact-k ladder whose ``k`` is
+    the whole pool. The export is then the staged frame with calibrated
+    household weights, so its records, columns and values are the staged
+    frame's; otherwise the solve's L0 selection picks which households ship.
+    """
+
+    return bool(
+        args.dense_default_dataset
+        or (args.exact_k is not None and args.exact_k == candidate_households)
+    )
 
 
 def _with_calibrated_weights(
@@ -7730,7 +7874,9 @@ def _qrf_tail_concentration_gate(
     (nonzero share at most :data:`US_QRF_SPARSE_NONZERO_SHARE_MAX` of its
     entity's records), at the export's calibrated weights. Returns the gate
     result plus the surface metadata (which QRF outputs were checked, dense,
-    absent, or non-numeric) for the release artifact.
+    absent, or non-numeric, and each numeric output's record nonzero share and
+    finite nonzero record count, the numbers behind the dense/sparse split) for
+    the release artifact and the ``--dry-run-gates-report`` certainty model.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -7738,6 +7884,8 @@ def _qrf_tail_concentration_gate(
     absent: list[str] = []
     dense: list[str] = []
     non_numeric: list[str] = []
+    nonzero_shares: dict[str, float] = {}
+    nonzero_records: dict[str, int] = {}
     entity_weights: dict[str, np.ndarray] = {}
     for column in qrf_outputs:
         try:
@@ -7752,6 +7900,8 @@ def _qrf_tail_concentration_gate(
         column_values = pd.to_numeric(series, errors="coerce").fillna(0.0)
         array = column_values.to_numpy(dtype=np.float64)
         nonzero_share = float((array != 0.0).mean()) if array.size else 0.0
+        nonzero_shares[column] = nonzero_share
+        nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
             continue
@@ -7776,6 +7926,8 @@ def _qrf_tail_concentration_gate(
         "absent_columns": absent,
         "non_numeric_columns": non_numeric,
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
+        "nonzero_shares": nonzero_shares,
+        "nonzero_records": nonzero_records,
     }
     return gate, surface
 
@@ -7839,6 +7991,28 @@ def _qrf_tail_register_evidence_refusal(
     )
 
 
+def _qrf_tail_gate_lines(
+    gate: GateResult,
+    mismatch: Mapping[str, Sequence[str]],
+    *,
+    allow_concentration: bool,
+) -> tuple[list[str], list[str]]:
+    """The terminal lines one tail-gate evaluation contributes.
+
+    Returns ``(gate_lines, register_lines)``. Gate lines carry the standing
+    ``QRF tail concentration failed:`` owner prefix, and
+    ``--allow-qrf-tail-concentration`` suppresses them. Register lines are the
+    mismatch refusal, appended whatever that flag says.
+    """
+
+    gate_lines = (
+        [f"QRF tail concentration failed: {failure}" for failure in gate.failures]
+        if not gate.passed and not allow_concentration
+        else []
+    )
+    return gate_lines, _qrf_tail_register_failures(mismatch)
+
+
 def _record_qrf_tail_concentration_gate(
     export_frame: Frame,
     *,
@@ -7846,7 +8020,7 @@ def _record_qrf_tail_concentration_gate(
     allow_concentration: bool,
     terminal_gate_failures: list[str],
     release_dir: Path,
-    telemetry: _TerminalBatchTelemetry,
+    telemetry: _TerminalBatchProgress,
 ) -> list[str]:
     """Evaluate the terminal QRF tail gate and record everything it measured.
 
@@ -7894,12 +8068,9 @@ def _record_qrf_tail_concentration_gate(
             f"gate failures: {type(exc).__name__}: {exc}"
         )
         return []
-    gate_failures = (
-        [f"QRF tail concentration failed: {failure}" for failure in gate.failures]
-        if not gate.passed and not allow_concentration
-        else []
+    gate_failures, register_failures = _qrf_tail_gate_lines(
+        gate, mismatch, allow_concentration=allow_concentration
     )
-    register_failures = _qrf_tail_register_failures(mismatch)
     terminal_gate_failures.extend(gate_failures)
     terminal_gate_failures.extend(register_failures)
     qrf_tail_path = release_dir / "qrf_tail_concentration.json"
@@ -8290,42 +8461,6 @@ def _load_warm_start_calibration_npz(
     return weights, payload
 
 
-def _fiscal_target_loss_weights(
-    registry: TargetRegistry,
-    family_multipliers: Mapping[str, float] | None = None,
-) -> np.ndarray:
-    weights = _fiscal_target_concept_budget_weights(registry)
-    bases = np.asarray(
-        [_fiscal_target_value_basis(spec) for spec in registry.specs],
-        dtype=object,
-    )
-    unique_bases = sorted(set(bases.tolist()))
-    if not unique_bases:
-        return weights
-    basis_total = len(weights) / len(unique_bases)
-    for basis in unique_bases:
-        mask = bases == basis
-        current_total = weights[mask].sum()
-        if current_total > 0:
-            weights[mask] *= basis_total / current_total
-    weights = weights / weights.mean()
-    if not family_multipliers:
-        return weights
-    families = np.asarray(
-        [spec.family for spec in registry.specs],
-        dtype=object,
-    )
-    for family, multiplier in sorted(family_multipliers.items()):
-        mask = families == family
-        if not mask.any():
-            raise ValueError(
-                f"--target-family-loss-multiplier family {family!r} matches "
-                "no compiled target."
-            )
-        weights[mask] *= multiplier
-    return weights / weights.mean()
-
-
 def _fiscal_target_loss_basis(
     registry: TargetRegistry,
     target_loss_weights: np.ndarray,
@@ -8612,7 +8747,7 @@ def _enforce_ssi_take_up_delivery(
     *,
     targets: Mapping[str, float],
     release_dir: Path,
-    telemetry: StagingTelemetry | None,
+    telemetry: _BuildProgress | None,
     enforcement_fences: Mapping[str, str] | None = None,
 ) -> tuple[list[str], GateResult]:
     """Fail the release on an enforced-band delivery miss, via the batch.
@@ -8721,85 +8856,6 @@ def _ssi_assignment_priors_from_diagnostics(
             )
         priors[key] = prior
     return priors
-
-
-def _fiscal_target_concept_budget_weights(registry: TargetRegistry) -> np.ndarray:
-    weights = _fiscal_target_value_basis_weights(registry)
-    group_indices: dict[tuple[object, ...], list[int]] = {}
-    for index, spec in enumerate(registry.specs):
-        group_indices.setdefault(_fiscal_target_concept_budget_key(spec), []).append(
-            index
-        )
-    for indices in group_indices.values():
-        group_weights = weights[indices]
-        group_total = float(group_weights.sum())
-        group_budget = float(group_weights.max(initial=0.0))
-        if group_total > 0 and group_budget > 0:
-            weights[indices] *= group_budget / group_total
-    return weights
-
-
-def _fiscal_target_concept_budget_key(spec) -> tuple[object, ...]:
-    metadata = spec.metadata
-    if metadata.get("ledger_geography_level") != "congressional_district":
-        return (
-            _fiscal_target_value_basis(spec),
-            spec.entity,
-            spec.period,
-            spec.family,
-            spec.name,
-        )
-    semantic_metadata = tuple(
-        sorted(
-            (key, value)
-            for key, value in metadata.items()
-            if key not in US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS
-        )
-    )
-    return (
-        _fiscal_target_value_basis(spec),
-        spec.entity,
-        spec.period,
-        spec.family,
-        spec.filter or "",
-        metadata.get("state_fips", ""),
-        semantic_metadata,
-    )
-
-
-def _fiscal_target_value_basis_weights(registry: TargetRegistry) -> np.ndarray:
-    weights = np.ones(len(registry.specs), dtype=np.float64)
-    bases = np.asarray(
-        [_fiscal_target_value_basis(spec) for spec in registry.specs],
-        dtype=object,
-    )
-    values = np.asarray(
-        [max(abs(float(spec.value)), 1.0) for spec in registry.specs],
-        dtype=np.float64,
-    )
-    raw_weights = values**US_FISCAL_TARGET_VALUE_WEIGHT_POWER
-    for basis in sorted(set(bases.tolist())):
-        mask = bases == basis
-        mean_value = raw_weights[mask].mean()
-        if mean_value > 0:
-            weights[mask] = raw_weights[mask] / mean_value
-    return weights
-
-
-def _fiscal_target_value_basis(spec) -> str:
-    metadata = spec.metadata
-    measure_mode = metadata.get("measure_mode", "")
-    source_measure_id = metadata.get("source_measure_id", "")
-    if measure_mode in {
-        "indicator_sum",
-        "less_than_indicator_sum",
-    }:
-        return "count"
-    if "enrollment" in source_measure_id or "recipients" in source_measure_id:
-        return "count"
-    if "return" in source_measure_id and "count" in source_measure_id:
-        return "count"
-    return "amount"
 
 
 def _target_metadata(target: object | None) -> Mapping[str, object]:
@@ -8953,25 +9009,30 @@ def _congressional_district_release_gates_enabled(
     return bool(compilation.get("gate_congressional_district_targets", True))
 
 
-def _release_gate_failures(
-    result,
-    compilation: Mapping[str, object],
+def _pre_solve_gate_failures(
+    *,
     target_profile_gate: GateResult | None = None,
-    health_input_gate: GateResult | None = None,
     base_population_gate: GateResult | None = None,
-    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    health_input_gate: GateResult | None = None,
     immigration_gate: GateResult | None = None,
-    input_mass_reference_gate: GateResult | None = None,
-    degenerate_input_gate: GateResult | None = None,
-    ecps_parity_gate: GateResult | None = None,
     hours_worked_gate: GateResult | None = None,
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
     reported_coverage_vintage_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
-    target_registry: TargetRegistry | None = None,
+    input_mass_reference_gate: GateResult | None = None,
+    degenerate_input_gate: GateResult | None = None,
+    ecps_parity_gate: GateResult | None = None,
 ) -> list[str]:
+    """The release failure lines of the gates graded before the solve.
+
+    The frame-signal, input-mass-reference, degenerate-input and eCPS
+    parity groups of :func:`_release_gate_failures`, in its order and
+    wording. They depend on the staged frame alone, so
+    ``--dry-run-gates-report`` reports them from the same function. Pass
+    ``None`` for a gate the caller does not enforce.
+    """
     failures: list[str] = []
     if target_profile_gate is not None and not target_profile_gate.passed:
         failures.extend(
@@ -9042,6 +9103,43 @@ def _release_gate_failures(
         failures.extend(
             f"eCPS parity failed: {failure}" for failure in ecps_parity_gate.failures
         )
+    return failures
+
+
+def _release_gate_failures(
+    result,
+    compilation: Mapping[str, object],
+    target_profile_gate: GateResult | None = None,
+    health_input_gate: GateResult | None = None,
+    base_population_gate: GateResult | None = None,
+    incumbent_diagnostics: Mapping[str, Mapping[str, object]] | None = None,
+    immigration_gate: GateResult | None = None,
+    input_mass_reference_gate: GateResult | None = None,
+    degenerate_input_gate: GateResult | None = None,
+    ecps_parity_gate: GateResult | None = None,
+    hours_worked_gate: GateResult | None = None,
+    snap_take_up_gate: GateResult | None = None,
+    eligibility_inputs_gate: GateResult | None = None,
+    pregnancy_gate: GateResult | None = None,
+    reported_coverage_vintage_gate: GateResult | None = None,
+    snap_discretionary_exemption_gate: GateResult | None = None,
+    target_registry: TargetRegistry | None = None,
+) -> list[str]:
+    failures: list[str] = _pre_solve_gate_failures(
+        target_profile_gate=target_profile_gate,
+        base_population_gate=base_population_gate,
+        health_input_gate=health_input_gate,
+        immigration_gate=immigration_gate,
+        hours_worked_gate=hours_worked_gate,
+        snap_take_up_gate=snap_take_up_gate,
+        eligibility_inputs_gate=eligibility_inputs_gate,
+        pregnancy_gate=pregnancy_gate,
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+        input_mass_reference_gate=input_mass_reference_gate,
+        degenerate_input_gate=degenerate_input_gate,
+        ecps_parity_gate=ecps_parity_gate,
+    )
     gate_congressional_district_targets = _congressional_district_release_gates_enabled(
         compilation
     )
@@ -10909,6 +11007,18 @@ def _load_evidence_failure_owner_patterns(
     return (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
 
 
+def _evidence_owner(
+    failure: str,
+    owner_patterns: Sequence[tuple[str, str]],
+) -> str | None:
+    """The owner of one recorded failure line: the first pattern it contains."""
+
+    return next(
+        (owner for pattern, owner in owner_patterns if pattern in failure),
+        None,
+    )
+
+
 def _evidence_known_failures(
     failures: Sequence[str],
     owner_patterns: Sequence[tuple[str, str]],
@@ -10922,10 +11032,7 @@ def _evidence_known_failures(
     entries: list[dict[str, str]] = []
     unowned: list[str] = []
     for failure in failures:
-        owner = next(
-            (owner for pattern, owner in owner_patterns if pattern in failure),
-            None,
-        )
+        owner = _evidence_owner(failure, owner_patterns)
         if owner is None:
             unowned.append(failure)
         else:
@@ -10987,6 +11094,25 @@ def _default_release_id(
             f"{build_timestamp:%Y%m%dT%H%M%SZ}"
         )
     return f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
+
+
+def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
+    """Choose an attempt id before release inputs have been loaded.
+
+    An explicit staging id remains authoritative, and an explicit release id
+    is already stable enough to identify the attempt. Builds that derive their
+    release id from the input digest need a separate attempt id so telemetry can
+    start before downloading or hashing that input.
+    """
+
+    if args.staging_run_id:
+        return str(args.staging_run_id)
+    if args.release_id:
+        return str(args.release_id)
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"populace-us-build-{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
 
 
 def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
@@ -11182,22 +11308,733 @@ def _assert_exact_k_original_pool_alignment(
         )
 
 
-#: The staging run for the build in flight, so the entry point can mark it
-#: failed on the way out. The build body hands its telemetry object down a
-#: large call stack; a module-level handle avoids threading a second copy back
-#: up purely for the failure path.
-_ACTIVE_TELEMETRY: StagingTelemetry | None = None
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
-def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
+class _BuildProgress:
+    """Report progress to an emitter and, independently, a staging bundle."""
+
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        emitter: LocalTelemetryEmitter,
+        staging_bundle: StagingRunBundleWriter | None,
+        staging_opt_out_reason: str | None = None,
+    ) -> None:
+        self.run_id = run_id
+        self.emitter = emitter
+        self.staging_bundle = staging_bundle
+        self.staging_opt_out_reason = staging_opt_out_reason
+
+    @property
+    def repo_id(self) -> str | None:
+        if self.staging_bundle is None:
+            return None
+        return self.staging_bundle.repo_id
+
+    @property
+    def uploads_succeeded(self) -> int:
+        if self.staging_bundle is None:
+            return 0
+        return self.staging_bundle.uploads_succeeded
+
+    def stage(
+        self,
+        stage: str,
+        *,
+        message: str | None = None,
+        status: str = "running",
+        force_upload: bool = False,
+        **details: Any,
+    ) -> None:
+        self.emitter.transition_stage(
+            stage,
+            status=status,
+            message=message,
+            **details,
+        )
+        if self.staging_bundle is not None:
+            self.staging_bundle.stage(
+                stage,
+                message=message,
+                status=status,
+                force_upload=force_upload,
+                **details,
+            )
+
+    def calibration_progress(self, event: dict[str, object]) -> None:
+        self.emitter.transition_calibration_progress(event)
+        if self.staging_bundle is not None:
+            self.staging_bundle.calibration_progress(event)
+
+    def attach_artifact(
+        self,
+        name: str,
+        path: Path | str,
+        **details: Any,
+    ) -> None:
+        if self.staging_bundle is not None:
+            self.staging_bundle.attach_artifact(name, path, **details)
+
+    def fail(self, error: BaseException) -> None:
+        self.emitter.fail(error)
+        if self.staging_bundle is not None:
+            self.staging_bundle.fail(error)
+
+    def complete(self) -> None:
+        if self.staging_bundle is not None:
+            self.staging_bundle.complete()
+        self.emitter.complete()
+
+
+#: The progress coordinator for the build in flight, so the entry point can
+#: report failure without threading another handle back through the call stack.
+_ACTIVE_PROGRESS: _BuildProgress | None = None
+
+
+class _WorkCounter:
+    """Report completed independent work units through the emitter service."""
+
+    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+        self.stage_id = stage_id
+        self.unit = unit
+        self.total = max(0, int(total))
+        self.done = 0
+        self.started = time.monotonic()
+
+    def advance(self, units: int = 1, **details: object) -> None:
+        self.done = min(self.total, self.done + max(0, int(units)))
+        if _ACTIVE_EMITTER is None:
+            return
+        _ACTIVE_EMITTER.progress(
+            self.stage_id,
+            done=self.done,
+            total=self.total,
+            unit=self.unit,
+            elapsed_seconds=time.monotonic() - self.started,
+            **details,
+        )
+
+
+_ACTIVE_WORK: _WorkCounter | None = None
+
+
+def _advance_work(units: int = 1, **details: object) -> None:
+    if _ACTIVE_WORK is not None:
+        _ACTIVE_WORK.advance(units, **details)
+
+
+class _ReleaseDryRun:
+    """One ``--dry-run-gates-report`` run.
+
+    ``_main`` runs the release as it would build it, up to the point where the
+    staged frame goes to target materialization. It differs in four ways:
+
+    * Nothing is written under ``--out`` and staging run files stay off;
+      hosted progress reporting remains active.
+    * The input-mass, degenerate-input and eCPS parity gates take their
+      degraded-mode branch and batch instead of raising, so one report
+      carries them with every register.
+    * A dirty worktree is recorded, not refused.
+    * At the stop point :meth:`finish` grades the staged frame and returns
+      the exit code.
+
+    A refusal earlier in ``_main`` reaches :meth:`refused` through
+    :func:`main`, so the operator gets a report either way.
+
+    A plain class, not a dataclass: tests load this tool from its file without
+    registering it in ``sys.modules``, which dataclass field processing needs.
+    """
+
+    def __init__(
+        self,
+        *,
+        args: argparse.Namespace,
+        argv: tuple[str, ...],
+        report_path: Path,
+        margins: DryRunMargins,
+        git_dirty: bool,
+        started: float,
+    ) -> None:
+        self.args = args
+        self.argv = argv
+        self.report_path = report_path
+        self.margins = margins
+        self.git_dirty = git_dirty
+        self.started = started
+        # Set once _main reaches the stop point. An error after it is the dry
+        # run's own crash, never a refusal the release would share.
+        self.stopped = False
+        self.seconds_to_stop_point: float | None = None
+
+    @classmethod
+    def start(
+        cls,
+        args: argparse.Namespace,
+        argv: Sequence[str] | None,
+    ) -> _ReleaseDryRun | None:
+        global _ACTIVE_DRY_RUN
+        _ACTIVE_DRY_RUN = None
+        if args.dry_run_gates_report is None:
+            return None
+        _ACTIVE_DRY_RUN = cls(
+            args=args,
+            argv=tuple(sys.argv[1:] if argv is None else argv),
+            report_path=Path(args.dry_run_gates_report),
+            margins=args.dry_run_margins,
+            git_dirty=_git_dirty(),
+            started=time.perf_counter(),
+        )
+        return _ACTIVE_DRY_RUN
+
+    def inputs(self) -> dict[str, object]:
+        args = self.args
+        return {
+            "release_argv": list(self.argv),
+            "git_dirty": self.git_dirty,
+            "evidence_release": bool(args.evidence_release),
+            "waivers": {
+                "allow_qrf_tail_concentration": bool(args.allow_qrf_tail_concentration),
+                "allow_input_mass_drift": bool(args.allow_input_mass_drift),
+                "allow_ecps_parity_gaps": bool(args.allow_ecps_parity_gaps),
+                "allow_input_coverage_gaps": bool(args.allow_input_coverage_gaps),
+            },
+            "margins": self.margins.to_dict(),
+            # Taken when _main reached the stop point, before any grading;
+            # None when the release refused earlier.
+            "seconds_to_stop_point": self.seconds_to_stop_point,
+            "seconds_elapsed": round(time.perf_counter() - self.started, 1),
+        }
+
+    def refused(self, error: BaseException) -> int:
+        """Report an error that ended the run: exit 1 either way.
+
+        Before the stop point it is the release's own refusal, which the release
+        would meet at the same place. After it, the dry run crashed while
+        grading, and the report says it certifies nothing.
+        """
+
+        report = (
+            post_stop_error_report(error, inputs=self.inputs())
+            if self.stopped
+            else pre_solve_refusal_report(error, inputs=self.inputs())
+        )
+        return self._write(report)
+
+    def finish(
+        self,
+        *,
+        base_frame: Frame,
+        target_specs: Sequence[TargetSpec],
+        early_terminal_gate_failures: Sequence[str],
+        pre_solve_gates: Mapping[str, GateResult | None],
+        input_mass_reference_gate: GateResult | None,
+        degenerate_input_gate: GateResult,
+        ecps_parity_gate: GateResult,
+        binding: Mapping[str, object],
+        evidence_owner_patterns: Sequence[tuple[str, str]] = (),
+    ) -> int:
+        """Grade the staged frame at its base weights and write the report."""
+
+        self.stopped = True
+        self.seconds_to_stop_point = round(time.perf_counter() - self.started, 1)
+        support_fixed = _full_pool_calibration(
+            self.args, int(base_frame.n("household"))
+        )
+        checks = _release_dry_run_checks(
+            self.args,
+            margins=self.margins,
+            support_fixed=support_fixed,
+            base_frame=base_frame,
+            target_specs=target_specs,
+            early_terminal_gate_failures=early_terminal_gate_failures,
+            pre_solve_gates=pre_solve_gates,
+            input_mass_reference_gate=input_mass_reference_gate,
+            degenerate_input_gate=degenerate_input_gate,
+            ecps_parity_gate=ecps_parity_gate,
+            evidence_owner_patterns=evidence_owner_patterns,
+        )
+        registers = {
+            "qrf_tail_concentration": _dry_run_register_source(
+                self.args.qrf_tail_concentration_exclusions, guarded=True
+            ),
+            "export_input_mass": _dry_run_constant_register(
+                "US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS",
+                US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+            ),
+            "degenerate_input": _dry_run_constant_register(
+                "US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS",
+                US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+            ),
+        }
+        inputs = {
+            **self.inputs(),
+            **dict(binding),
+            "calibration_path": "full_pool" if support_fixed else "l0_selection",
+            "registers": registers,
+        }
+        inputs["grading_seconds"] = round(
+            float(inputs["seconds_elapsed"]) - self.seconds_to_stop_point, 1
+        )
+        return self._write(ReleaseDryRunReport(checks=tuple(checks), inputs=inputs))
+
+    def _write(self, report: ReleaseDryRunReport) -> int:
+        global _ACTIVE_DRY_RUN
+        _ACTIVE_DRY_RUN = None
+        self.report_path.parent.mkdir(parents=True, exist_ok=True)
+        self.report_path.write_text(
+            json.dumps(report.to_dict(), indent=2, allow_nan=False, default=str) + "\n"
+        )
+        print(report.human_table())
+        if self.args.evidence_release:
+            print(
+                "\n--evidence-release: a certain failure whose every release line "
+                "an owner pattern matches is reported AT-RISK (OWNED), since the "
+                "evidence tier ships it as a known failure; any unowned line "
+                "refuses the export."
+            )
+        print(f"\nWrote the dry-run report to {self.report_path}")
+        return report.exit_code
+
+
+#: The dry run in flight, so :func:`main` can turn a refusal before the stop
+#: point into that run's report. Like :data:`_ACTIVE_PROGRESS`, a module-level
+#: handle rather than a second object threaded back up the build's call stack.
+_ACTIVE_DRY_RUN: _ReleaseDryRun | None = None
+
+
+def _dry_run_register_source(
+    path: Path | None, *, guarded: bool = False
+) -> dict[str, object]:
+    """The register's path, sha256 and entry count for the report.
+
+    ``guarded`` records a file that does not read or load instead of raising:
+    the ``qrf_tail_register`` check reports that failure, and the rest of the
+    report must survive it.
+    """
+
+    if path is None:
+        return {"path": None, "sha256": None, "entries": 0}
+    source: dict[str, object] = {"path": str(path), "sha256": None, "entries": None}
+    try:
+        source["sha256"] = _sha256(path)
+        source["entries"] = len(_load_qrf_tail_concentration_exclusions(path))
+    except Exception as error:
+        if not guarded:
+            raise
+        source["error"] = f"{type(error).__name__}: {error}"
+    return source
+
+
+def _dry_run_constant_register(name: str, register: Mapping[str, str]) -> dict:
+    return {
+        "source": f"tools/build_us_fiscal_refresh_release.py {name}",
+        "sha256": hashlib.sha256(_strict_json_bytes(dict(register))).hexdigest(),
+        "entries": len(register),
+    }
+
+
+def _dry_run_checkpoint_status(
+    path: Path | None,
+    identity_sha256: str,
+) -> dict[str, object]:
+    """Whether the release would reuse an existing target-frame checkpoint.
+
+    Reads only the checkpoint's ``identity_sha256`` attribute (the release
+    writes it beside the frame), never the frame.
+    """
+
+    if path is None:
+        return {"enabled": False}
+    status: dict[str, object] = {
+        "enabled": True,
+        "path": str(path),
+        "exists": path.exists(),
+        "identity_sha256": identity_sha256,
+    }
+    if not path.exists():
+        return status
+    # Never raises: it is evaluated at the stop point, before finish() marks
+    # the run stopped, so an error here must not read as a pre-solve refusal.
+    try:
+        import h5py
+
+        with h5py.File(path, "r") as h5:
+            stored = h5.attrs.get("identity_sha256")
+    except Exception as error:
+        return {
+            **status,
+            "identity_matches": False,
+            "read_error": f"{type(error).__name__}: {error}",
+        }
+    if isinstance(stored, bytes):
+        stored = stored.decode("utf-8")
+    return {**status, "identity_matches": stored == identity_sha256}
+
+
+def _dry_run_evaluation_error(name: str, error: Exception) -> CheckResult:
+    """A check the dry run could not evaluate: nothing about it is certified."""
+
+    return CheckResult(
+        name=name,
+        status="FAIL",
+        summary=(
+            "the dry run could not evaluate this check, so it certifies nothing "
+            "about it"
+        ),
+        failures=(f"{type(error).__name__}: {error}",),
+        details={"evaluation_error": True},
+    )
+
+
+def _release_dry_run_checks(
+    args: argparse.Namespace,
+    *,
+    margins: DryRunMargins,
+    support_fixed: bool,
+    base_frame: Frame,
+    target_specs: Sequence[TargetSpec],
+    early_terminal_gate_failures: Sequence[str],
+    pre_solve_gates: Mapping[str, GateResult | None],
+    input_mass_reference_gate: GateResult | None,
+    degenerate_input_gate: GateResult,
+    ecps_parity_gate: GateResult,
+    evidence_owner_patterns: Sequence[tuple[str, str]] = (),
+) -> list[CheckResult]:
+    """Every dry-run check, each through this tool's own gate function.
+
+    The staged frame stands in for the export: on the full-pool path the
+    export is this frame with calibrated household weights; on the L0 path it
+    is a household selection of it. See
+    :mod:`microcosm.build.us_runtime.release_gate_dry_run` for what is certain.
+    Under ``--evidence-release`` each certain failure is graded against the
+    owner patterns with the terminal batch's own rule (:func:`_evidence_owner`).
+    """
+
+    checks: list[CheckResult] = []
+    # The exact lines the release would append for each check's certain
+    # failures, for the evidence tier's owner check.
+    release_lines: dict[str, list[str]] = {}
+
+    def owner_of(line: str) -> str | None:
+        return _evidence_owner(line, evidence_owner_patterns)
+
+    def run(name: str, build: Callable[[], CheckResult]) -> None:
+        try:
+            checks.append(build())
+        except Exception as error:
+            checks.append(_dry_run_evaluation_error(name, error))
+
+    def pre_solve_battery() -> CheckResult:
+        lines = [
+            *early_terminal_gate_failures,
+            *_pre_solve_gate_failures(
+                **pre_solve_gates,
+                input_mass_reference_gate=(
+                    None if args.allow_input_mass_drift else input_mass_reference_gate
+                ),
+            ),
+        ]
+        release_lines["pre_solve_battery"] = lines
+        return certain_lines_check(
+            "pre_solve_battery",
+            lines=lines,
+            passed_summary=(
+                "every signal, take-up, input-mass-reference and early terminal "
+                "gate the release grades before the solve passes on the staged "
+                "frame"
+            ),
+            failed_summary=(
+                f"{len(lines)} line(s) the release has already decided before "
+                "the solve and will refuse in its terminal batch"
+            ),
+            details={"early_terminal_gate_failures": len(early_terminal_gate_failures)},
+        )
+
+    def qrf_tail() -> CheckResult:
+        path = args.qrf_tail_concentration_exclusions
+        try:
+            register = _load_qrf_tail_concentration_exclusions(path)
+        except Exception as error:
+            # The release reads this file only at its terminal gates; under
+            # earlier failures it records this owned-prefix line instead.
+            return qrf_tail_register_unloadable_check(
+                _dry_run_register_source(path, guarded=True),
+                error,
+                evidence_owner=(
+                    owner_of(
+                        "QRF tail concentration failed: evaluation error under "
+                        f"earlier gate failures: {type(error).__name__}: {error}"
+                    )
+                    if args.evidence_release
+                    else None
+                ),
+            )
+        gate, surface = _qrf_tail_concentration_gate(
+            base_frame, reviewed_exclusions=register
+        )
+        mismatch = _qrf_tail_register_mismatch(register, gate)
+        gate_lines, register_lines = _qrf_tail_gate_lines(
+            gate,
+            mismatch,
+            allow_concentration=args.allow_qrf_tail_concentration,
+        )
+
+        def tail_owner(column: str) -> str | None:
+            # The release's line for a concentrated column; its share is only
+            # known at calibrated weights, so match on the fixed prefix.
+            return owner_of(
+                f"QRF tail concentration failed: {column}: top "
+                f"{US_QRF_TAIL_CONCENTRATION_TOP_K} weighted records carry"
+            )
+
+        return qrf_tail_register_check(
+            qrf_outputs=sorted(_qrf_imputed_source_outputs()),
+            register=register,
+            surface=surface,
+            gate_details=gate.details,
+            release_lines_at_base_weights=[*gate_lines, *register_lines],
+            support_fixed=support_fixed,
+            margins=margins,
+            allow_concentration=args.allow_qrf_tail_concentration,
+            register_source=_dry_run_register_source(path),
+            evidence_owner=tail_owner if args.evidence_release else None,
+        )
+
+    def export_input_mass() -> CheckResult:
+        reference_h5 = args.export_input_mass_reference_h5
+        reference_frame = load_us_frame(reference_h5) if reference_h5 else None
+        reference_name = reference_h5.name if reference_h5 else "base_frame"
+        gate = _export_input_mass_gate(
+            base_frame,
+            base_frame,
+            relative_tolerance=args.input_mass_relative_tolerance,
+            minimum_reference_total=args.input_mass_minimum_reference_total,
+            reference_frame=reference_frame,
+            reference_name=reference_name,
+            reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+        )
+        input_variables = _engine_input_variables()
+        candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
+        check = export_input_mass_check(
+            gate_failures=gate.failures,
+            gate_details=gate.details,
+            candidate_totals=candidate_totals,
+            reference_totals=(
+                candidate_totals
+                if reference_frame is None
+                else us_input_mass_totals(reference_frame, columns=input_variables)
+            ),
+            candidate_nonzero_shares=us_nonzero_shares(
+                base_frame, columns=input_variables
+            ),
+            reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+            relative_tolerance=args.input_mass_relative_tolerance,
+            minimum_reference_total=args.input_mass_minimum_reference_total,
+            margin=margins.mass_drift,
+            allow_drift=args.allow_input_mass_drift,
+            reference_is_candidate=reference_frame is None,
+            reference_label=reference_name,
+        )
+        certain = {row["column"] for row in check.rows if row.get("status") == "FAIL"}
+        release_lines["export_input_mass"] = [
+            f"Input mass parity failed: {failure}"
+            for failure in gate.failures
+            if failure.split(":", 1)[0] in certain
+        ]
+        return check
+
+    def degenerate_input() -> CheckResult:
+        lines = _pre_solve_gate_failures(degenerate_input_gate=degenerate_input_gate)
+        release_lines["degenerate_input_register"] = lines
+        return degenerate_input_register_check(
+            gate_passed=degenerate_input_gate.passed,
+            gate_details=degenerate_input_gate.details,
+            register=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+            release_lines=lines,
+        )
+
+    def ecps_parity() -> CheckResult:
+        lines = _pre_solve_gate_failures(ecps_parity_gate=ecps_parity_gate)
+        release_lines["ecps_parity_register"] = lines
+        return ecps_parity_register_check(
+            gate_passed=ecps_parity_gate.passed,
+            gate_details=ecps_parity_gate.details,
+            release_lines=lines,
+            waived=args.allow_ecps_parity_gaps,
+        )
+
+    def input_coverage() -> CheckResult:
+        engine = PolicyEngineUSEngine()
+        gate = us_release_input_coverage_gate(base_frame, engine)
+        check = input_coverage_register_check(
+            gate_passed=gate.passed,
+            gate_failures=gate.failures,
+            gate_details=gate.details,
+            support_fixed=support_fixed,
+            waived=args.allow_input_coverage_gaps,
+            signal_counts=(
+                None
+                if support_fixed
+                else us_release_input_coverage_signal_counts(base_frame, engine)
+            ),
+            margins=margins,
+        )
+        release_lines["input_coverage_register"] = [
+            f"Input coverage failed: {failure}" for failure in check.failures
+        ]
+        return check
+
+    def export_signal_regrades() -> CheckResult:
+        tax_unit = base_frame.table("tax_unit")
+        reported = pre_solve_gates.get("reported_coverage_vintage_gate")
+        if reported is None:
+            reported = us_reported_coverage_vintage_signal_gate(base_frame)
+        return export_signal_regrades_check(
+            health_value_counts={
+                column: observed_value_counts(tax_unit[column].to_numpy())
+                for column in US_HEALTH_INPUT_NONCONSTANT_COLUMNS
+                if column in tax_unit.columns
+            },
+            reported_coverage_details=reported.details,
+            support_fixed=support_fixed,
+            margins=margins,
+        )
+
+    def stored_inputs() -> CheckResult:
+        # The export keeps every staged column (with_weights and select both
+        # preserve them), so the release's verdict on the export is this one.
+        lines, details = _stored_input_gate_failures(base_frame, stage="export frame")
+        release_lines["stored_inputs"] = list(lines)
+        return certain_lines_check(
+            "stored_inputs",
+            lines=lines,
+            passed_summary=(
+                "every stored model-named column is a variable of the installed "
+                "policyengine-us or in the reviewed non-variable register"
+            ),
+            failed_summary=f"{len(lines)} stored column(s) the engine would ignore",
+            details=details,
+        )
+
+    def spm_composition() -> CheckResult:
+        lines, details = _spm_composition_gate_failures(
+            base_frame, stage="export frame"
+        )
+        release_lines["spm_composition"] = list(lines)
+        return certain_lines_check(
+            "spm_composition",
+            lines=lines,
+            passed_summary="every SPM unit has a classified adult",
+            failed_summary=(
+                "SPM units without a classified adult"
+                + (
+                    ""
+                    if support_fixed
+                    else " (L0 path: the solve's selection may drop them)"
+                )
+            ),
+            certain=support_fixed,
+            details=details,
+        )
+
+    def zero_support() -> CheckResult:
+        gated = [
+            spec
+            for spec in target_specs
+            if args.gate_congressional_district_targets
+            or not _target_is_congressional_district(spec)
+        ]
+        check = check_zero_support_preview(base_frame, gated)
+        zeros = [
+            str(row["target"])
+            for row in check.rows
+            if row.get("verdict") == "zero_support"
+        ]
+        if zeros:
+            # The release's own line for these targets (_release_gate_failures).
+            examples = ", ".join(zeros[:5]) + ("" if len(zeros) <= 5 else ", ...")
+            release_lines["zero_support_preview"] = [
+                f"{len(zeros)} positive fiscal targets have zero materialized "
+                f"support (examples: {examples})."
+            ]
+        check = dataclasses.replace(
+            check,
+            details={
+                **dict(check.details),
+                "congressional_district_targets_not_gated": len(target_specs)
+                - len(gated),
+                "graded_frame": "staged frame (before target materialization)",
+            },
+        )
+        return bound_zero_support_on_l0(
+            check, support_fixed=support_fixed, margins=margins
+        )
+
+    run("pre_solve_battery", pre_solve_battery)
+    run("qrf_tail_register", qrf_tail)
+    run("export_input_mass", export_input_mass)
+    run("degenerate_input_register", degenerate_input)
+    run("ecps_parity_register", ecps_parity)
+    run("input_coverage_register", input_coverage)
+    run("export_signal_regrades", export_signal_regrades)
+    run("stored_inputs", stored_inputs)
+    run("spm_composition", spm_composition)
+    run("zero_support_preview", zero_support)
+    if args.evidence_release:
+        # With no earlier terminal failure on record, the release raises at the
+        # first failing one of these gates before the solve, outside the
+        # evidence batch, so no owner converts that refusal.
+        refused_before_solve: set[str] = set()
+        if not early_terminal_gate_failures:
+            if (
+                input_mass_reference_gate is not None
+                and not input_mass_reference_gate.passed
+                and not args.allow_input_mass_drift
+            ):
+                refused_before_solve.add("pre_solve_battery")
+            if not degenerate_input_gate.passed:
+                refused_before_solve.add("degenerate_input_register")
+            if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
+                refused_before_solve.add("ecps_parity_register")
+        checks = [
+            dataclasses.replace(
+                check,
+                details={
+                    **dict(check.details),
+                    "evidence_ownership": (
+                        "not ownable: the release refuses it before the solve, "
+                        "outside the evidence batch"
+                    ),
+                },
+            )
+            if check.name in refused_before_solve
+            else apply_evidence_ownership(
+                check,
+                release_lines=release_lines.get(check.name, ()),
+                owner_of=owner_of,
+            )
+            for check in checks
+        ]
+    checks.append(not_previewable_check())
+    return checks
+
+
+def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, object]:
     """Record what staging did and distinguish an opt-out from non-delivery.
 
     Uploads are best-effort and self-disable after repeated failures, so a
     configured destination is not evidence that anything reached it.
     """
 
-    if telemetry is None:
-        return {"enabled": False, "reason": "--no-staging"}
+    if telemetry is None or telemetry.staging_bundle is None:
+        reason = (
+            "--no-staging"
+            if telemetry is None
+            else telemetry.staging_opt_out_reason or "--no-staging"
+        )
+        return {"enabled": False, "reason": reason}
     return {
         "enabled": True,
         "run_id": telemetry.run_id,
@@ -11206,18 +12043,27 @@ def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, obj
     }
 
 
-def _staging_telemetry(
+def _build_progress(
     args: argparse.Namespace,
     *,
     release_root: Path,
     release_id: str,
-) -> StagingTelemetry | None:
-    global _ACTIVE_TELEMETRY
+    run_id: str | None = None,
+    emitter: LocalTelemetryEmitter,
+) -> _BuildProgress:
+    global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
-    _ACTIVE_TELEMETRY = None
+    _ACTIVE_PROGRESS = None
+    run_id = run_id or args.staging_run_id or release_id
     if args.no_staging:
-        return None
+        _ACTIVE_PROGRESS = _BuildProgress(
+            run_id=run_id,
+            emitter=emitter,
+            staging_bundle=None,
+            staging_opt_out_reason="--no-staging",
+        )
+        return _ACTIVE_PROGRESS
     if not args.staging_dir and not args.staging_repo_id:
         # The parser rejects this combination, so reaching it means a caller
         # built the namespace directly. Returning None here would reinstate
@@ -11227,9 +12073,8 @@ def _staging_telemetry(
             "empty and staging_dir is unset. Set no_staging to skip staging, "
             "or give a staging_dir for a local-only run."
         )
-    run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    _ACTIVE_TELEMETRY = StagingTelemetry(
+    staging_bundle = StagingRunBundleWriter(
         run_id=run_id,
         candidate_release_id=release_id,
         run_dir=run_dir,
@@ -11237,10 +12082,15 @@ def _staging_telemetry(
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
-    return _ACTIVE_TELEMETRY
+    _ACTIVE_PROGRESS = _BuildProgress(
+        run_id=run_id,
+        emitter=emitter,
+        staging_bundle=staging_bundle,
+    )
+    return _ACTIVE_PROGRESS
 
 
-class _TerminalBatchTelemetry:
+class _TerminalBatchProgress:
     """Turn terminal-batch telemetry crashes into release-gate failures.
 
     The proxy is deliberately scoped to the post-diagnostics terminal batch.
@@ -11251,7 +12101,7 @@ class _TerminalBatchTelemetry:
 
     def __init__(
         self,
-        telemetry: StagingTelemetry | None,
+        telemetry: _BuildProgress | None,
         terminal_gate_failures: list[str],
     ) -> None:
         self._telemetry = telemetry
@@ -11309,20 +12159,49 @@ def _print_build_result(
     )
 
 
+def _is_release_refusal(error: BaseException) -> bool:
+    """Whether ``error`` is the release refusing, rather than being stopped.
+
+    An exception, or a ``SystemExit`` carrying a message (the dirty-worktree and
+    feed-pin refusals), is a refusal. An interrupt, or argparse's integer exit,
+    is not.
+    """
+
+    if isinstance(error, SystemExit):
+        return not isinstance(error.code, int) and error.code is not None
+    return isinstance(error, Exception)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run the build and mark its staging run failed if it does not finish.
 
     An uncaught build error previously left the dashboard status at ``running``
     forever. SIGKILL remains outside the reach of an in-process handler; this
     closes the ordinary exception and termination half of the gap.
+
+    A build returns ``None``. ``--dry-run-gates-report`` leaves through
+    ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
+    AT-RISK only, 0 clean.
     """
 
+    global _ACTIVE_DRY_RUN
+    _ACTIVE_DRY_RUN = None
     try:
-        _main(argv)
+        dry_run_exit = _main(argv)
     except BaseException as error:
-        if _ACTIVE_TELEMETRY is not None:
+        dry_run = _ACTIVE_DRY_RUN
+        if dry_run is not None and _is_release_refusal(error):
+            # A dry run the release refuses before its stop point: the
+            # refusal is the report's certain failure (exit 1), not a crash.
+            if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+                _ACTIVE_EMITTER.fail(
+                    error,
+                    failure_class="dry_run_refusal",
+                )
+            raise SystemExit(dry_run.refused(error)) from error
+        if _ACTIVE_PROGRESS is not None:
             try:
-                _ACTIVE_TELEMETRY.fail(error)
+                _ACTIVE_PROGRESS.fail(error)
             except Exception as telemetry_error:  # pragma: no cover - defensive
                 # A failing failure-report must not replace the real traceback.
                 print(
@@ -11330,7 +12209,20 @@ def main(argv: Sequence[str] | None = None) -> None:
                     f"{type(telemetry_error).__name__}: {telemetry_error}",
                     file=sys.stderr,
                 )
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
         raise
+    if dry_run_exit is not None:
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            if dry_run_exit == 0:
+                _ACTIVE_EMITTER.complete()
+            else:
+                _ACTIVE_EMITTER.fail(
+                    RuntimeError(f"US dry run returned exit status {dry_run_exit}.")
+                )
+        raise SystemExit(dry_run_exit)
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.complete()
 
 
 def _check_committed_us_ledger_feed_pin(
@@ -11371,9 +12263,31 @@ def _check_committed_us_ledger_feed_pin(
         )
 
 
-def _main(argv: Sequence[str] | None = None) -> None:
+def _main(argv: Sequence[str] | None = None) -> int | None:
+    global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
+    _ACTIVE_EMITTER = None
+    _ACTIVE_PROGRESS = None
     args = _parse_args(argv)
-    if _git_dirty():
+    build_started = time.perf_counter()
+    attempt_started_at = datetime.now(UTC)
+    run_id = _telemetry_run_id(args, timestamp=attempt_started_at)
+    is_dry_run = args.dry_run_gates_report is not None
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="US",
+        pipeline="us_fiscal_refresh",
+        candidate_id=args.release_id,
+        release_id=args.release_id if not is_dry_run else None,
+        run_kind="dry_run" if is_dry_run else "release",
+    )
+    _ACTIVE_EMITTER.transition_stage(
+        "preflight",
+        message="Validating release inputs and configuration.",
+    )
+    # --dry-run-gates-report: runs this build up to target materialization and
+    # returns the report's exit code from the stop point below (_ReleaseDryRun).
+    dry_run = _ReleaseDryRun.start(args, argv)
+    if dry_run is None and _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
     # Loaded (and validated) up front so a malformed owners file dies in
     # seconds, not after the multi-hour build. The flag-combination rules
@@ -11384,7 +12298,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
         if args.evidence_release
         else ()
     )
-    build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
     if args.release_id:
@@ -11663,15 +12576,29 @@ def _main(argv: Sequence[str] | None = None) -> None:
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
-    if checkpoint_root is not None:
-        checkpoint_root.mkdir(parents=True, exist_ok=True)
-    artifact_root.mkdir(parents=True, exist_ok=True)
-    release_dir.mkdir(parents=True, exist_ok=True)
-    telemetry = _staging_telemetry(
-        args,
-        release_root=release_root,
-        release_id=release_id,
-    )
+    if dry_run is None:
+        if checkpoint_root is not None:
+            checkpoint_root.mkdir(parents=True, exist_ok=True)
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        release_dir.mkdir(parents=True, exist_ok=True)
+    # A dry run writes only its report under --out and creates no staging
+    # artifacts. Hosted telemetry identifies it separately from a release.
+    if dry_run is None:
+        telemetry = _build_progress(
+            args,
+            release_root=release_root,
+            release_id=release_id,
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
+        )
+    else:
+        telemetry = _BuildProgress(
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
+            staging_bundle=None,
+            staging_opt_out_reason="dry run",
+        )
+        _ACTIVE_PROGRESS = telemetry
     if telemetry is not None:
         telemetry.stage(
             "target_registry",
@@ -12569,8 +13496,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
         base_frame
     )
     if not reported_coverage_vintage_gate.passed:
-        receipt_path = _write_reported_coverage_vintage_gate_receipt(
-            release_dir, reported_coverage_vintage_gate
+        receipt_path = (
+            _write_reported_coverage_vintage_gate_receipt(
+                release_dir, reported_coverage_vintage_gate
+            )
+            if dry_run is None
+            else "not written by a dry run"
         )
         if telemetry is not None:
             telemetry.stage(
@@ -13210,7 +14141,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         # its telemetry is guarded so a reporting crash cannot mask the
         # pending diagnosis (the #547 secure-before-report pattern). A green
         # run keeps today's fail-fast raise.
-        if early_terminal_gate_failures:
+        if early_terminal_gate_failures or dry_run is not None:
             try:
                 if telemetry is not None:
                     telemetry.stage(
@@ -13248,7 +14179,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         # Same degraded contract as the input-mass gate above: the gate
         # object rides _release_gate_failures to the batch; no raise, no
         # duplicate append, guarded telemetry.
-        if early_terminal_gate_failures:
+        if early_terminal_gate_failures or dry_run is not None:
             try:
                 if telemetry is not None:
                     telemetry.stage(
@@ -13299,7 +14230,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         # before the solve. The gate object rides _release_gate_failures
         # (as enforced_ecps_parity_gate) into the terminal batch; degraded
         # runs continue, green runs keep the fail-fast raise.
-        if early_terminal_gate_failures:
+        if early_terminal_gate_failures or dry_run is not None:
             try:
                 if telemetry is not None:
                     telemetry.stage(
@@ -13433,6 +14364,48 @@ def _main(argv: Sequence[str] | None = None) -> None:
     target_frame_materializer_identity_sha256 = _target_frame_checkpoint_digest(
         target_frame_checkpoint_identity
     )
+    if dry_run is not None:
+        # The dry run's stop point. Everything above ran as the release runs
+        # it, so base_frame is the staged frame the release would calibrate
+        # and export. Grade it here instead of materializing targets.
+        return dry_run.finish(
+            base_frame=base_frame,
+            target_specs=target_specs,
+            early_terminal_gate_failures=early_terminal_gate_failures,
+            pre_solve_gates={
+                "target_profile_gate": target_profile_gate,
+                "base_population_gate": base_population_gate,
+                "health_input_gate": health_input_gate,
+                "immigration_gate": immigration_gate,
+                "hours_worked_gate": hours_worked_gate,
+                "snap_take_up_gate": snap_take_up_gate,
+                "eligibility_inputs_gate": eligibility_inputs_gate,
+                "pregnancy_gate": pregnancy_gate,
+                "reported_coverage_vintage_gate": reported_coverage_vintage_gate,
+                "snap_discretionary_exemption_gate": (
+                    snap_discretionary_exemption_gate
+                ),
+            },
+            input_mass_reference_gate=input_mass_reference_gate,
+            degenerate_input_gate=degenerate_input_gate,
+            ecps_parity_gate=ecps_parity_gate,
+            evidence_owner_patterns=evidence_failure_owner_patterns,
+            binding={
+                "build_commit": full_commit,
+                "release_id": release_id,
+                "policyengine_us_version": policyengine_us_version,
+                "base_h5": {"path": str(base_h5), "sha256": base_dataset_sha256},
+                "base_pool": base_pool_receipt,
+                "staged_frame_sha256": staged_frame_sha256,
+                "target_frame_materializer_identity_sha256": (
+                    target_frame_materializer_identity_sha256
+                ),
+                "target_frame_checkpoint": _dry_run_checkpoint_status(
+                    target_frame_checkpoint_path,
+                    target_frame_materializer_identity_sha256,
+                ),
+            },
+        )
     target_frame, registry, compilation = _load_or_materialize_target_frame(
         base_frame,
         target_specs,
@@ -13496,10 +14469,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             f"k={args.exact_k} exceeds the pool size {candidate_households}; "
             "ladder selection never clamps the requested cardinality."
         )
-    full_pool_calibration = bool(
-        args.dense_default_dataset
-        or (args.exact_k is not None and args.exact_k == candidate_households)
-    )
+    full_pool_calibration = _full_pool_calibration(args, candidate_households)
     l0_refit_lambda = (
         None
         if full_pool_calibration
@@ -14152,7 +15122,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # An unbuildable post-export plan refuses here, before the export write,
     # with every other terminal group still evaluated (microcosm#956).
     terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())
-    terminal_batch_telemetry = _TerminalBatchTelemetry(
+    terminal_batch_telemetry = _TerminalBatchProgress(
         telemetry,
         terminal_gate_failures,
     )
@@ -14511,7 +15481,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         # The owned failures ride into the release manifest's known_failures
         # block instead of aborting the export; the H5 written below carries
         # the calibrated weights, so the sidecar is not written on this path.
-        # Failures appended AFTER this point (a _TerminalBatchTelemetry crash
+        # Failures appended AFTER this point (a _TerminalBatchProgress crash
         # line, the smoke/take-up/coverage recordings) are owner-checked at
         # their own append sites and again before the manifest write; if one
         # is unowned the run dies post-H5 — weights retained in the written

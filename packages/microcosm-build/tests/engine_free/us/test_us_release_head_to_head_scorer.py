@@ -1,6 +1,16 @@
 """Tests split from packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py."""
 
 # ruff: noqa: F403, F405
+import json
+import multiprocessing
+import signal
+import time
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
+
+from hypothesis import HealthCheck, example, given, settings
+from hypothesis import strategies as st
+
 from test_support.microcosm_build.us_release_head_to_head_scorer import *
 
 
@@ -15,9 +25,521 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "allow_unaged_dollar_targets",
         "congressional_district_vintage_crosswalk",
         "maximum_microsim_batch_size",
+        "workers",
+        "worker_max_slices",
         "candidate_manifest_sha256",
         "candidate_worker_identity_attestation",
     }
+
+
+@pytest.mark.parametrize(
+    ("version", "supported"),
+    [
+        ((3, 13, 9), False),
+        ((3, 13, 14), False),
+        ((3, 13, 15), True),
+        ((3, 14, 0), False),
+        ((3, 14, 6), False),
+        ((3, 14, 7), True),
+        ((3, 15, 0), True),
+        ((3, 12, 11), False),
+        # 3.15 prereleases: the fix landed in beta 4.
+        ((3, 15, 0, "alpha", 7), False),
+        ((3, 15, 0, "beta", 3), False),
+        ((3, 15, 0, "beta", 4), True),
+        ((3, 15, 0, "candidate", 1), True),
+        ((3, 15, 0, "final", 0), True),
+        # A prerelease of a fixed patch is not yet the fixed release.
+        ((3, 14, 7, "candidate", 1), False),
+        ((3, 14, 7, "final", 0), True),
+        ((3, 16, 0, "alpha", 1), True),
+    ],
+)
+def test_worker_recycling_refuses_interpreters_that_can_deadlock(
+    version: tuple, supported: bool
+) -> None:
+    module = _load_head_to_head_module()
+
+    if supported:
+        module._assert_worker_recycling_supported(version)
+    else:
+        with pytest.raises(RuntimeError, match="--worker-max-slices needs Python"):
+            module._assert_worker_recycling_supported(version)
+
+
+def test_scoring_checks_the_interpreter_only_when_recycling_is_requested(
+    monkeypatch,
+) -> None:
+    module = _load_head_to_head_module()
+    calls: list[str] = []
+
+    def refuse(version_info=None) -> None:
+        calls.append("checked")
+        raise RuntimeError("--worker-max-slices needs Python 3.13.15 or later")
+
+    monkeypatch.setattr(module, "_assert_worker_recycling_supported", refuse)
+
+    with pytest.raises(RuntimeError, match="--worker-max-slices needs Python"):
+        module.score_loaded_artifact(
+            artifact=None,
+            artifact_name="incumbent",
+            yardstick=None,
+            maximum_microsim_batch_size=2,
+            workers=2,
+            worker_max_slices=1,
+        )
+    assert calls == ["checked"]
+
+
+def _parallel_fixture(module, monkeypatch):
+    # Use the production repair, including its changed household weights and
+    # mass log. Sending the unrepaired artifact frame would fail comparison.
+    mass_repair = module.release._with_base_population_mass_repair
+    _patch_release_seams(module, monkeypatch)
+    monkeypatch.setattr(
+        module.release, "_with_base_population_mass_repair", mass_repair
+    )
+    monkeypatch.setattr(module, "MATERIALIZE_SCORE_CHUNK_SPECS", 1)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_fixture_slice_worker
+    )
+    artifacts = {
+        Path("/fixture/incumbent.h5"): _three_household_fixture_artifact(
+            module, sha256="a" * 64, measure_values=(100.0, 300.0)
+        ),
+        Path("/fixture/candidate.h5"): _three_household_fixture_artifact(
+            module, sha256="b" * 64, measure_values=(200.0, 290.0)
+        ),
+    }
+    monkeypatch.setattr(module, "load_artifact", lambda path, **kwargs: artifacts[path])
+    monkeypatch.setattr(
+        module, "compile_yardstick", lambda **kwargs: _fixture_yardstick(module)
+    )
+    return artifacts
+
+
+def test_spawned_workers_score_identically_to_sequential_cli(
+    monkeypatch, tmp_path
+) -> None:
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    original_aggregate = module._fiscal_rows_and_aggregate
+    estimate_vectors = []
+
+    def capture_estimates(**kwargs):
+        estimate_vectors.append(kwargs["estimates"].copy())
+        return original_aggregate(**kwargs)
+
+    monkeypatch.setattr(module, "_fiscal_rows_and_aggregate", capture_estimates)
+    payloads = []
+    markdown_bytes = []
+    # Six tasks per artifact force a replacement even for two workers with K=2.
+    # The single-worker recycling case also verifies K opts into spawn by itself.
+    configurations = [(1, None), (3, None), (2, 1), (2, 2), (1, 2)]
+    for workers, worker_max_slices in configurations:
+        prefix = tmp_path / f"workers-{workers}-max-slices-{worker_max_slices}"
+        worker_log_dir = tmp_path / f"{prefix.name}-slice-logs"
+        worker_log_dir.mkdir()
+        monkeypatch.setenv("MICROCOSM_TEST_H2H_SLICE_LOG_DIR", str(worker_log_dir))
+        start = time.perf_counter()
+        recycling_args = (
+            ["--worker-max-slices", str(worker_max_slices)]
+            if worker_max_slices is not None
+            else []
+        )
+        assert (
+            module.main(
+                [
+                    "--incumbent",
+                    "/fixture/incumbent.h5",
+                    "--candidate",
+                    "/fixture/candidate.h5",
+                    "--ledger-facts",
+                    "/fixture/facts.jsonl",
+                    "--congressional-district-vintage-crosswalk",
+                    "/fixture/crosswalk.parquet",
+                    "--maximum-microsim-batch-size",
+                    "1",
+                    "--workers",
+                    str(workers),
+                    "--out-prefix",
+                    str(prefix),
+                    *recycling_args,
+                ]
+            )
+            == 0
+        )
+        print(
+            f"h2h fixture timing: workers={workers} "
+            f"worker_max_slices={worker_max_slices} "
+            f"elapsed_seconds={time.perf_counter() - start:.6f}"
+        )
+        payload = json.loads(prefix.with_suffix(".json").read_text())
+        assert payload["run_metadata"].pop("workers") == workers
+        assert (
+            payload["run_metadata"].pop("worker_max_slices", None) == worker_max_slices
+        )
+        payloads.append(payload)
+        markdown_bytes.append(prefix.with_suffix(".md").read_bytes())
+        if worker_max_slices is not None:
+            worker_slice_counts = [
+                len(log.read_text().splitlines()) for log in worker_log_dir.iterdir()
+            ]
+            assert sum(worker_slice_counts) == 12  # Six slices for each artifact.
+            assert max(worker_slice_counts) <= worker_max_slices
+
+    assert all(payload == payloads[0] for payload in payloads[1:])
+    assert all(rendered == markdown_bytes[0] for rendered in markdown_bytes[1:])
+    assert len(estimate_vectors) == 2 * len(configurations)
+    for offset in range(2, len(estimate_vectors), 2):
+        for sequential, parallel in zip(
+            estimate_vectors[:2], estimate_vectors[offset : offset + 2], strict=True
+        ):
+            assert np.array_equal(sequential, parallel)
+            assert np.array_equal(sequential.view(np.uint64), parallel.view(np.uint64))
+    for artifact in payloads[0]["artifacts"].values():
+        repair = artifact["normalization_receipts"]["base_population_mass_repair"]
+        assert repair["applied"] is True
+        assert repair["factor"] != 1.0
+        chunks = artifact["normalization_receipts"]["materialize_score_chunking"][
+            "chunks"
+        ]
+        assert [chunk["spec_range"] for chunk in chunks] == [[0, 1], [1, 2]]
+        assert all(
+            chunk["target_compilation"]["household_slice_row_counts"] == [1, 1, 1]
+            for chunk in chunks
+        )
+        digests = [
+            digest
+            for chunk in chunks
+            for digest in chunk["target_compilation"]["slice_compilation_sha256s"]
+        ]
+        assert len(set(digests)) == len(digests)
+
+
+def test_spawned_worker_failure_includes_chunk_and_slice_label(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_failing_fixture_slice_worker
+    )
+    with pytest.raises(
+        RuntimeError,
+        match=r"incumbent chunk 1/2 slice 2/2.*fixture materialization failed",
+    ):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=2,
+            workers=3,
+        )
+
+
+def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> None:
+    from test_support.microcosm_build.us_release_head_to_head_worker_death import (
+        OneHouseholdFrame,
+        exit_slice_worker,
+        initialize_slice_worker,
+    )
+
+    module = _load_head_to_head_module()
+    executors = []
+
+    class TrackingExecutor(ProcessPoolExecutor):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.children = {}
+            self.shutdown_completed = False
+            self.shutdown_waited = False
+            executors.append(self)
+
+        def submit(self, *args, **kwargs):
+            try:
+                return super().submit(*args, **kwargs)
+            finally:
+                self.children.update(self._processes or {})
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            self.children.update(self._processes or {})
+            self.shutdown_waited = wait
+            super().shutdown(wait=wait, cancel_futures=cancel_futures)
+            self.shutdown_completed = True
+
+    monkeypatch.setattr(module, "MATERIALIZE_SCORE_CHUNK_SPECS", 1)
+    monkeypatch.setattr(module, "ProcessPoolExecutor", TrackingExecutor)
+    monkeypatch.setattr(module, "_initialize_slice_worker", initialize_slice_worker)
+    monkeypatch.setattr(module, "_score_slice_worker", exit_slice_worker)
+
+    def kill_alive_workers() -> None:
+        for executor in executors:
+            for process in executor.children.values():
+                try:
+                    if process.is_alive():
+                        process.kill()
+                except ProcessLookupError:
+                    pass
+
+    timed_out = False
+
+    def timeout_handler(signum, frame) -> None:
+        nonlocal timed_out
+        timed_out = True
+        kill_alive_workers()
+        raise TimeoutError("worker death pool did not shut down within 60 seconds")
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+    old_timer = signal.setitimer(signal.ITIMER_REAL, 0)
+    try:
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.setitimer(signal.ITIMER_REAL, 60)
+        with pytest.raises(
+            RuntimeError,
+            match=r"fixture chunk [12]/2 slice 1/1 worker (?:submission )?failed:",
+        ) as failure:
+            list(
+                module._score_chunks_parallel(
+                    OneHouseholdFrame(),
+                    ("first", "second"),
+                    loss_weights=(1.0, 1.0),
+                    artifact_name="fixture",
+                    maximum_microsim_batch_size=None,
+                    workers=2,
+                )
+            )
+
+        # Check production shutdown before our defensive cleanup can run.
+        assert timed_out is False
+        assert isinstance(failure.value.__cause__, BrokenProcessPool)
+        assert len(executors) == 1
+        executor = executors[0]
+        assert executor.shutdown_completed is True
+        assert executor.shutdown_waited is True
+        children = list(executor.children.values())
+        assert children
+        assert any(process.exitcode == 97 for process in children)
+        assert all(
+            not process.is_alive() and process.exitcode is not None
+            for process in children
+        )
+        assert multiprocessing.active_children() == []
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        try:
+            kill_alive_workers()
+            for executor in executors:
+                for process in executor.children.values():
+                    process.join(timeout=5)
+        finally:
+            signal.signal(signal.SIGALRM, old_handler)
+            signal.setitimer(signal.ITIMER_REAL, *old_timer)
+
+
+@pytest.mark.parametrize("workers", [0, -1])
+def test_workers_must_be_positive(workers) -> None:
+    module = _load_head_to_head_module()
+    with pytest.raises(ValueError, match="workers"):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            workers=workers,
+        )
+
+
+def test_workers_cli_defaults_to_one() -> None:
+    module = _load_head_to_head_module()
+    args = module._parse_args(
+        [
+            "--incumbent",
+            "/fixture/incumbent.h5",
+            "--ledger-facts",
+            "/fixture/facts.jsonl",
+            "--out-prefix",
+            "/fixture/scorecard",
+        ]
+    )
+    assert args.workers == 1
+    assert args.worker_max_slices is None
+
+
+@pytest.mark.parametrize("worker_max_slices", [0, -1])
+def test_worker_max_slices_must_be_positive(worker_max_slices) -> None:
+    module = _load_head_to_head_module()
+    with pytest.raises(ValueError, match="worker_max_slices"):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            worker_max_slices=worker_max_slices,
+        )
+    with pytest.raises(SystemExit):
+        module._parse_args(
+            [
+                "--incumbent",
+                "/fixture/incumbent.h5",
+                "--ledger-facts",
+                "/fixture/facts.jsonl",
+                "--out-prefix",
+                "/fixture/scorecard",
+                "--worker-max-slices",
+                str(worker_max_slices),
+            ]
+        )
+
+
+def test_worker_full_household_slice_matches_sequential(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    frame = _tiny_frame(measure_values=(100.0, 300.0))
+    yardstick = _fixture_yardstick(module)
+    materialize = module.release._materialize_target_frame
+
+    def assert_full_slice_guard(frame, specs, **kwargs):
+        assert kwargs["refuse_population_aggregates"] is None
+        assert kwargs["target_materialization_cache_dir"] is None
+        assert kwargs["target_materialization_cache_context"] is None
+        return materialize(frame, specs, **kwargs)
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", assert_full_slice_guard
+    )
+    monkeypatch.setattr(module, "_SLICE_WORKER_STATE", None)
+    module._initialize_slice_worker(
+        frame, yardstick.registry.specs, yardstick.loss_weights, "fixture", 2, None
+    )
+    worker_result = module._score_slice_worker((0, 0))
+    parallel = module._reduce_scored_slices(
+        [worker_result],
+        slice_count=1,
+        artifact_name="fixture",
+        chunk_label="chunk 1/1",
+        maximum_microsim_batch_size=None,
+    )
+    sequential = module._score_chunk_household_sliced(
+        frame,
+        yardstick.registry.specs,
+        chunk_loss_weights=yardstick.loss_weights,
+        artifact_name="fixture",
+        chunk_label="chunk 1/1",
+        maximum_microsim_batch_size=None,
+    )
+    for field in ("estimates", "targets", "scales"):
+        assert np.array_equal(
+            getattr(parallel, field).view(np.uint64),
+            getattr(sequential, field).view(np.uint64),
+        )
+    for field in ("diagnostic_names", "scored_contract", "compilation"):
+        assert getattr(parallel, field) == getattr(sequential, field)
+
+
+@st.composite
+def _slice_arrays_and_completion_order(draw):
+    slice_count = draw(st.integers(min_value=1, max_value=8))
+    width = draw(st.integers(min_value=1, max_value=8))
+    rows = draw(
+        st.lists(
+            st.lists(
+                st.floats(
+                    min_value=-1e200,
+                    max_value=1e200,
+                    allow_nan=False,
+                    allow_infinity=False,
+                    width=64,
+                ),
+                min_size=width,
+                max_size=width,
+            ),
+            min_size=slice_count,
+            max_size=slice_count,
+        )
+    )
+    completion_order = draw(st.permutations(tuple(range(slice_count))))
+    return rows, completion_order
+
+
+def _scored_slice(module, row, slice_index):
+    estimates = np.asarray(row, dtype=np.float64)
+    width = len(estimates)
+    compilation = {
+        "declared_targets": width,
+        "compiled_candidate_targets": width,
+        "dropped_target_names": [],
+        "fixture_slice_index": slice_index,
+    }
+    return module.ScoredSlice(
+        slice_index=slice_index,
+        estimates=estimates,
+        targets=np.ones(width),
+        scales=np.ones(width),
+        diagnostic_names=tuple(f"target-{index}" for index in range(width)),
+        scored_contract=(("household", "m_income", "measure"),),
+        compilation=compilation,
+        compilation_digest=module._canonical_sha256(compilation),
+        slice_size=slice_index + 1,
+    )
+
+
+# Shared machines can stall input generation without a slow strategy.
+@settings(
+    max_examples=60,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(case=_slice_arrays_and_completion_order())
+@example(case=([[1e16], [1.0], [-1e16]], (2, 0, 1)))
+@example(case=([[-0.0]], (0,)))
+def test_parallel_reduction_preserves_sequential_float64_bits(case) -> None:
+    module = _load_head_to_head_module()
+    rows, completion_order = case
+    slices = [_scored_slice(module, row, index) for index, row in enumerate(rows)]
+    assert len({result.compilation_digest for result in slices}) == len(slices)
+    expected = slices[0].estimates.copy()
+    for result in slices[1:]:
+        np.add(expected, result.estimates, out=expected)
+    for order in (range(len(slices)), completion_order):
+        actual = module._reduce_scored_slices(
+            (slices[index] for index in order),
+            slice_count=len(slices),
+            artifact_name="fixture",
+            chunk_label="chunk 1/1",
+            maximum_microsim_batch_size=len(slices),
+        )
+        assert np.array_equal(actual.estimates, expected)
+        assert np.array_equal(
+            actual.estimates.view(np.uint64), expected.view(np.uint64)
+        )
+        assert actual.compilation["household_slice_row_counts"] == [
+            result.slice_size for result in slices
+        ]
+        assert actual.compilation["slice_compilation_sha256s"] == [
+            result.compilation_digest for result in slices
+        ]
+
+
+@pytest.mark.parametrize(
+    ("field", "changed", "message"),
+    [
+        ("targets", np.asarray([2.0]), "target vector"),
+        ("scales", np.asarray([2.0]), "loss-scale vector"),
+        ("diagnostic_names", ("changed",), "diagnostic names"),
+        ("scored_contract", (), "scored-column contract"),
+    ],
+)
+def test_parallel_reduction_checks_every_cross_slice_contract(field, changed, message):
+    module = _load_head_to_head_module()
+    first = _scored_slice(module, [1.0], 0)
+    second = replace(_scored_slice(module, [2.0], 1), **{field: changed})
+    with pytest.raises(RuntimeError, match=message):
+        module._reduce_scored_slices(
+            [second, first],
+            slice_count=2,
+            artifact_name="fixture",
+            chunk_label="chunk 1/1",
+            maximum_microsim_batch_size=1,
+        )
+
 
 def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
     monkeypatch: pytest.MonkeyPatch,
@@ -88,6 +610,7 @@ def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
         (candidate, pin, attestation),
     ]
 
+
 def test_pool_scorecard_preserves_worker_authentication_receipts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -150,6 +673,7 @@ def test_pool_scorecard_preserves_worker_authentication_receipts(
     assert loaded.identity["worker_execution_authentication"] == authentication
     assert loaded.loader["worker_execution_authentication"] == authentication
 
+
 def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> None:
     module = _load_head_to_head_module()
     dense_25pct_households = 918_350
@@ -168,6 +692,7 @@ def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> N
     assert planned < 1024**3
     assert planned < module.MAX_RSS_BYTES
     assert one_dense_copy > module.MAX_RSS_BYTES
+
 
 def test_canonical_battery_contract_matches_production_registries() -> None:
     module = _load_head_to_head_module()
@@ -192,6 +717,7 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
     )
     for row in contract.values():
         assert row["metric_legs"] == list(module._metric_legs(row["metric"]))
+
 
 def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     module = _load_head_to_head_module()
@@ -240,6 +766,7 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
             row["status"] == "inapplicable" for row in payload["comparisons"].values()
         )
 
+
 def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
     module = _load_head_to_head_module()
     comparisons = _complete_battery_comparisons(module)
@@ -261,6 +788,7 @@ def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
 
     with pytest.raises(ValueError, match="omits computed leg"):
         module._battery_payload_from_pool_receipt(terminal_gates)
+
 
 def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
     module = _load_head_to_head_module()
@@ -295,6 +823,7 @@ def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
             assert receipt["raw_origin_row_counts"] == {"acs": 1, "asec": 1}
             assert receipt["origin_row_counts"] == {"asec": 1}
 
+
 def test_scored_column_contract_refuses_silently_missing_columns() -> None:
     module = _load_head_to_head_module()
     registry = _tiny_registry()
@@ -321,6 +850,7 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
         module._assert_identical_scored_contracts(
             {"incumbent": contract, "candidate": contract[:-1]}
         )
+
 
 def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     monkeypatch, tmp_path
@@ -393,6 +923,7 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     markdown = first[1].read_text()
     assert "US release replacement scorecard" in markdown
     assert "empty ACS side" in markdown
+
 
 def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
     """Chunked materialize-and-score must reproduce a one-shot score_targets
@@ -499,6 +1030,7 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
             == attribution_row["final_loss_contribution"]
         )
 
+
 def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> None:
     """A shorter tail changes counts without changing the compiled contract."""
 
@@ -515,6 +1047,7 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
     def _materialize_with_receipt(frame, specs, **kwargs):
         assert kwargs["refuse_population_aggregates"] is True
         target_frame, registry, compilation = stub_materialize(frame, specs, **kwargs)
+        compilation.pop("fixture_materialization")
         return (
             target_frame,
             registry,
@@ -532,27 +1065,8 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
         module.release, "_materialize_target_frame", _materialize_with_receipt
     )
 
-    artifact = _fixture_artifact(module, sha256="e" * 64, measure_values=(1.0, 2.0))
-    tables = {}
-    for entity in artifact.frame.entities:
-        table = artifact.frame.table(entity)
-        third_row = table.iloc[[-1]].copy()
-        for column in table.columns:
-            if column.endswith("_id"):
-                third_row[column] = 3
-        tables[entity] = pd.concat([table, third_row], ignore_index=True)
-    artifact = replace(
-        artifact,
-        frame=Frame(
-            tables,
-            US_SCHEMA,
-            {
-                "household": Weights(
-                    np.asarray([10.0, 20.0, 30.0]),
-                    WeightKind.CALIBRATED,
-                )
-            },
-        ),
+    artifact = _three_household_fixture_artifact(
+        module, sha256="e" * 64, measure_values=(1.0, 2.0)
     )
     payload, _ = module.score_loaded_artifact(
         artifact=artifact,
@@ -593,6 +1107,7 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
             digested_compilation
         )
 
+
 def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
     module = _load_head_to_head_module()
     fixture_spec = importlib.util.spec_from_file_location(
@@ -626,6 +1141,7 @@ def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
     assert len(ledger.simulations) == 1
     assert ledger.simulations[0].dataset is None
 
+
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
     module = _load_head_to_head_module()
     _patch_release_seams(module, monkeypatch)
@@ -656,6 +1172,7 @@ def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
             maximum_microsim_batch_size=None,
         )
 
+
 def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
     """A Hugging Face cache snapshot is an .h5-named symlink to an
     extensionless blob; the scorer must keep the snapshot name so the
@@ -677,6 +1194,7 @@ def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
     with pytest.raises(FileNotFoundError):
         module._resolved_artifact_path(tmp_path / "missing.h5")
 
+
 def test_live_incumbent_identity_annotation() -> None:
     module = _load_head_to_head_module()
 
@@ -694,3 +1212,116 @@ def test_live_incumbent_identity_annotation() -> None:
         resolved["revision"]
         == "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
     )
+
+
+@pytest.mark.parametrize("batch_size", [1, 2, 3])
+def test_sequential_cli_matches_origin_main_household_scoring(
+    monkeypatch, tmp_path, batch_size
+) -> None:
+    """Compare the refactor with main's frozen loop, including all JSON receipts."""
+    module = _load_head_to_head_module()
+    from test_support.microcosm_build.us_release_head_to_head_main_baseline import (
+        _score_chunk_household_sliced as origin_main_scorer,
+    )
+
+    _parallel_fixture(module, monkeypatch)
+    branch_scorer = module._score_chunk_household_sliced
+    original_aggregate = module._fiscal_rows_and_aggregate
+    estimate_vectors = []
+
+    def capture_estimates(**kwargs):
+        estimate_vectors.append(kwargs["estimates"].copy())
+        return original_aggregate(**kwargs)
+
+    monkeypatch.setattr(module, "_fiscal_rows_and_aggregate", capture_estimates)
+    json_documents = []
+    markdown_documents = []
+    for label, scorer in (
+        ("origin-main", origin_main_scorer),
+        ("branch", branch_scorer),
+    ):
+        monkeypatch.setattr(module, "_score_chunk_household_sliced", scorer)
+        prefix = tmp_path / label
+        argv = [
+            "--incumbent",
+            "/fixture/incumbent.h5",
+            "--candidate",
+            "/fixture/candidate.h5",
+            "--ledger-facts",
+            "/fixture/facts.jsonl",
+            "--congressional-district-vintage-crosswalk",
+            "/fixture/crosswalk.parquet",
+            "--workers",
+            "1",
+            "--out-prefix",
+            str(prefix),
+        ]
+        argv.extend(["--maximum-microsim-batch-size", str(batch_size)])
+        assert module.main(argv) == 0
+        payload = json.loads(prefix.with_suffix(".json").read_text())
+        # Main did not have worker metadata; remove only that documented addition.
+        assert payload["run_metadata"].pop("workers") == 1
+        json_documents.append(
+            json.dumps(payload, allow_nan=False, indent=2, sort_keys=True) + "\n"
+        )
+        markdown_documents.append(prefix.with_suffix(".md").read_bytes())
+
+    assert json_documents[0] == json_documents[1]
+    assert markdown_documents[0] == markdown_documents[1]
+    assert len(estimate_vectors) == 4
+    for original, refactored in zip(
+        estimate_vectors[:2], estimate_vectors[2:], strict=True
+    ):
+        assert original.tobytes() == refactored.tobytes()
+
+
+@pytest.mark.parametrize(
+    ("corruption", "expected_type"),
+    [
+        ("dropped_target", ValueError),
+        ("registry_contract", ValueError),
+        ("household_row_count", RuntimeError),
+    ],
+)
+def test_sequential_slice_errors_match_origin_main(
+    monkeypatch, corruption, expected_type
+) -> None:
+    module = _load_head_to_head_module()
+    from test_support.microcosm_build.us_release_head_to_head_main_baseline import (
+        _score_chunk_household_sliced as origin_main_scorer,
+    )
+
+    _patch_release_seams(module, monkeypatch)
+    materialize = module.release._materialize_target_frame
+    frame = _tiny_frame(measure_values=(1.0, 2.0))
+    registry = _tiny_registry()
+
+    def corrupt_materialize(slice_frame, specs, **kwargs):
+        target_frame, compiled_registry, compilation = materialize(
+            slice_frame, specs, **kwargs
+        )
+        if corruption == "dropped_target":
+            compilation["dropped_target_names"] = [specs[0].name]
+        elif corruption == "registry_contract":
+            compiled_registry = TargetRegistry(list(reversed(specs)), country="us")
+        else:
+            target_frame = frame
+        return target_frame, compiled_registry, compilation
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", corrupt_materialize
+    )
+    errors = []
+    for scorer in (origin_main_scorer, module._score_chunk_household_sliced):
+        with pytest.raises(expected_type) as caught:
+            scorer(
+                frame,
+                registry.specs,
+                chunk_loss_weights=np.ones(len(registry.specs)),
+                artifact_name="fixture",
+                chunk_label="chunk 1/1",
+                maximum_microsim_batch_size=1,
+            )
+        assert type(caught.value) is expected_type
+        errors.append((type(caught.value), str(caught.value).encode("utf-8")))
+    assert errors[0] == errors[1]

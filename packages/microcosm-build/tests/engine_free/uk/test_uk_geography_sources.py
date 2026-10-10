@@ -822,3 +822,51 @@ def test_build_complete_crosswalk_drops_noncanonical_stale_ni_rows() -> None:
         "N20000001",
         "N20000002",
     }
+
+
+def test_ew_lad_lookup_accepts_only_the_april_2023_code_columns() -> None:
+    """``LAD23CD`` and ``LAD24CD`` carry the April 2023 code set; a later
+    vintage (``LAD25CD``, the recode follow-up) is refused rather than
+    relabelled, and two accepted names are refused rather than guessed
+    (microcosm#932 round 1)."""
+    normalise = geography_sources._normalise_ew_lad_lookup
+    accepted = normalise(pd.DataFrame({"OA21CD": ["E0001"], "LAD24CD": ["E06000063"]}))
+    assert accepted["lad23_code"].tolist() == ["E06000063"]
+    with pytest.raises(ValueError, match="missing column"):
+        normalise(pd.DataFrame({"OA21CD": ["E0001"], "LAD25CD": ["E08000038"]}))
+    with pytest.raises(ValueError, match="more than one LAD code column"):
+        normalise(
+            pd.DataFrame(
+                {
+                    "OA21CD": ["E0001"],
+                    "LAD22CD": ["E06000063"],
+                    "LAD23CD": ["E06000063"],
+                    "LAD24CD": ["E06000063"],
+                }
+            )
+        )
+    # An older, unaccepted name beside the accepted one is simply ignored.
+    ignored = normalise(
+        pd.DataFrame(
+            {"OA21CD": ["E0001"], "LAD22CD": ["E06000001"], "LAD23CD": ["E06000063"]}
+        )
+    )
+    assert ignored["lad23_code"].tolist() == ["E06000063"]
+
+
+def test_ew_oa_lad_region_lookup_refuses_a_later_lad_vintage(monkeypatch) -> None:
+    rows = "OA21CD,LAD25CD,RGN24CD\nE00000001,E08000038,E12000003\n"
+    monkeypatch.setattr(
+        geography_sources, "_read_url_bytes", lambda url: rows.encode("utf-8")
+    )
+    with pytest.raises(ValueError, match="missing OA, LAD or region"):
+        geography_sources.load_ew_oa_lad_region_lookup("https://example.invalid/oa")
+    accepted = "OA21CD,LAD24CD,RGN24CD\nE00000001,E08000038,E12000003\n"
+    monkeypatch.setattr(
+        geography_sources, "_read_url_bytes", lambda url: accepted.encode("utf-8")
+    )
+    monkeypatch.setattr(geography_sources, "ENGLAND_WALES_OA2021_COUNT", 1)
+    lookup = geography_sources.load_ew_oa_lad_region_lookup(
+        "https://example.invalid/oa"
+    )
+    assert lookup["la_code"].tolist() == ["E08000038"]

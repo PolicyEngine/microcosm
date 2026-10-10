@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
@@ -307,13 +308,10 @@ def _round_trip_acs_lean(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip
         },
         "weights": np.asarray([1.0, 2.0, 3.0]),
     }
-    path, _targets = tool.write_lean_checkpoint(
+    path, _registry, _digests = tool.write_lean_checkpoint(
         struct,
-        np.empty((3, 0), dtype=np.float64),
-        [],
-        [],
-        [],
-        [],
+        sparse.csr_array((0, 3), dtype=np.float32),
+        (),
         [],
         tmp_path / "acs-lean",
     )
