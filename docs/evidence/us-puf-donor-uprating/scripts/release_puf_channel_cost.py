@@ -16,7 +16,7 @@ channel, the PUF clone (clone index 1) and the capital-gains tail clone
 (clone index 2), at initial and at final weights, and checks that the parts
 add up to the estimates the build recorded. It reports aggregates only: the
 JSON receipt holds the national rows and the summaries, and a CSV beside it
-holds one line per target.
+holds one line per target, gzipped.
 
 The npz holds object arrays (target names), so it is loaded with
 allow_pickle=True; it is this build's own output, not a downloaded file.
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import hashlib
 import json
 from collections import defaultdict
@@ -219,8 +220,8 @@ def main() -> None:
             and row["agi_upper_bound"] in ("inf", None)
             and row["filing_status"] in ("All", None)
         }
-        csv_path = args.out.with_name(args.out.stem + "_targets.csv")
-        with open(csv_path, "w", newline="") as handle:
+        csv_path = args.out.with_name(args.out.stem + "_targets.csv.gz")
+        with gzip.open(csv_path, "wt", newline="") as handle:
             writer = csv.writer(handle)
             scalar = [k for k in next(iter(decomposition.values())) if k != "channels"]
             parts = [

@@ -33,6 +33,7 @@ at the build commit), which is called here on the same files.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import importlib.util
 import json
@@ -317,7 +318,7 @@ def load_archived_uprate(archived_dir: Path):
 
     calibration = Path(tempfile.mkdtemp(prefix="soi_"))
     (calibration / "soi_targets.csv").write_bytes(
-        (archived_dir / "soi_targets_42ed5d45.csv").read_bytes()
+        gzip.decompress((archived_dir / "soi_targets_42ed5d45.csv.gz").read_bytes())
     )
     storage = types.ModuleType("policyengine_us_data.storage")
     storage.CALIBRATION_FOLDER = calibration
@@ -577,6 +578,11 @@ def main() -> None:
         "archived": {
             path.name: sha256(path) for path in sorted(args.archived_dir.iterdir())
         },
+        "archived_soi_targets_uncompressed_sha256": hashlib.sha256(
+            gzip.decompress(
+                (args.archived_dir / "soi_targets_42ed5d45.csv.gz").read_bytes()
+            )
+        ).hexdigest(),
         "tolerance": {"float64": 1e-9, "float32": 1e-6},
     }
 

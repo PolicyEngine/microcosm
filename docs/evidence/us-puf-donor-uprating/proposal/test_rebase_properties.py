@@ -14,6 +14,7 @@ The last test states the source-aging invariant for the ``uprate`` that
 expected to fail and is marked xfail(strict=True) to record the counterexample.
 """
 
+import gzip
 import sys
 import tempfile
 import types
@@ -247,7 +248,7 @@ ARCHIVED = HERE.parent / "archived"
 def _archived_uprate_namespace():
     calibration = Path(tempfile.mkdtemp(prefix="soi_"))
     (calibration / "soi_targets.csv").write_bytes(
-        (ARCHIVED / "soi_targets_42ed5d45.csv").read_bytes()
+        gzip.decompress((ARCHIVED / "soi_targets_42ed5d45.csv.gz").read_bytes())
     )
     storage = types.ModuleType("policyengine_us_data.storage")
     storage.CALIBRATION_FOLDER = calibration

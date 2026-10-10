@@ -22,10 +22,11 @@
   }
  },
  "archived": {
-  "soi_targets_42ed5d45.csv": "0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb",
+  "soi_targets_42ed5d45.csv.gz": "3d401450b11547d834743772d55b40c9301e85d91fe3db584ba905013270231b",
   "uprate_puf_42ed5d45.py.txt": "ab806fdd9f4c05366e1859150b082b71ece9d1666e2d292c2266a335df105e9b",
   "utils_uprating_42ed5d45.py.txt": "688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a"
  },
+ "archived_soi_targets_uncompressed_sha256": "0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb",
  "tolerance": {
   "float64": 1e-09,
   "float32": 1e-06

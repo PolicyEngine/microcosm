@@ -184,6 +184,13 @@ RELEASE_ROWS = [
         "",
     ),
     (
+        "Rent and royalty net income",
+        "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount@2024",
+        "own series (rent_and_royalty_net_income)",
+        [AGI],
+        "g",
+    ),
+    (
         "Real estate taxes (itemizers)",
         "irs_soi.ty2023.table_2_1.itemized_all_returns.all.real_estate_taxes_amount@2024",
         ITEMIZED,

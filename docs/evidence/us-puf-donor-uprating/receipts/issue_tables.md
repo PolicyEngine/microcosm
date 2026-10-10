@@ -93,6 +93,7 @@
 | Net capital gains (d) | 1,270.9 | 1.756 | 0.190 | 0.973 | 0.980 | 1.017 | 0.923 | 0.936 |
 | Capital gain distributions (e) | 10.2 | 2.000 | 0.000 | 1.000 | 1.000 | 1.000 | n/a | 0.392 |
 | Estate and trust net income | 52.1 | 2.895 | 0.000 | 1.447 | 1.001 | 0.691 | n/a | 1.020 |
+| Rent and royalty net income (g) | 95.9 | 2.049 | 2.521 | 2.285 | 2.640 | 1.174 | 1.140 | 0.929 |
 | Real estate taxes (itemizers) (f) | 118.1 | 1.109 | 0.000 | 0.555 | 1.007 | 1.817 | n/a | 1.040 |
 | Mortgage interest (itemizers) (f) | 186.3 | 1.204 | 0.000 | 0.602 | 1.034 | 1.719 | n/a | 1.040 |
 | Charitable (itemizers) (f) | 230.5 | 0.966 | 0.000 | 0.483 | 1.137 | 2.354 | n/a | 1.040 |

@@ -3026,7 +3026,7 @@
    }
   }
  },
- "all_targets_csv": "release_puf_channel_cost_targets.csv",
+ "all_targets_csv": "release_puf_channel_cost_targets.csv.gz",
  "by_variable": {
   "adjusted_gross_income|usd": {
    "rows": 57,
