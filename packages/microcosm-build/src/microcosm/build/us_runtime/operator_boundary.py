@@ -44,6 +44,7 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.esi_premiums import US_ESI_PREMIUMS_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.geography_ladder import US_GEOGRAPHY_LADDER_COLUMNS
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
@@ -289,6 +290,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "eligibility_inputs": {
         "person": frozenset(US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS),
+    },
+    "esi_premiums": {
+        "person": frozenset(US_ESI_PREMIUMS_OUTPUT_COLUMNS),
     },
     "pregnancy": {
         "person": frozenset({US_PREGNANCY_OUTPUT_COLUMN}),

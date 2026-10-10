@@ -123,6 +123,7 @@ __all__ = [
     "US_ESI_PREMIUMS_ANCHOR_SHARE_KEY",
     "US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS",
     "US_ESI_PREMIUMS_OUTPUT_COLUMNS",
+    "US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS",
     "US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS",
     "US_ESI_PREMIUMS_STAGE_NAME",
     "US_ESI_PREMIUMS_WAGE_COLUMN",
@@ -223,6 +224,17 @@ _RAW_EVIDENCE_COLUMNS: tuple[str, ...] = tuple(
 )
 _PERSON_SOURCE_ID_COLUMN = "person_source_id"
 _PERSON_CLONE_INDEX_COLUMN = "person_support_clone_index"
+#: Every assembled person column :func:`with_us_esi_premium_pool_anchor` reads
+#: besides the stage outputs, with the provision that supplies it, for the
+#: pool's remaining-stage input manifest.
+US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS: Mapping[str, str] = MappingProxyType(
+    {
+        **dict.fromkeys(_RAW_EVIDENCE_COLUMNS, "assembled_raw_asec_source_evidence"),
+        US_ESI_PREMIUMS_WAGE_COLUMN: "assembled_native_person_input",
+        _PERSON_SOURCE_ID_COLUMN: "assembly_support_source_identity",
+        _PERSON_CLONE_INDEX_COLUMN: "assembly_support_provenance",
+    }
+)
 #: Relative tolerance of a pool's weighted employer total around the
 #: CPS-source total divided by its mass share, straight after
 #: :func:`with_us_esi_premium_pool_anchor`.
