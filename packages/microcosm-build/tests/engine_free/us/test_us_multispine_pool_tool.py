@@ -574,7 +574,7 @@ def test_legacy_cps_social_security_finalization_rebuilds_pre_fix_checkpoints(
     with monkeypatch.context() as pre_fix:
         pre_fix.setattr(
             pool_tool,
-            "_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
+            "US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION",
             3,
         )
         old_store = pool_tool._PoolStageCheckpointStore(
@@ -604,7 +604,7 @@ def test_legacy_cps_social_security_finalization_rebuilds_pre_fix_checkpoints(
             verified,
             policyengine_us_version="fixture-engine",
         ),
-        materializer_version=pool_tool._LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+        materializer_version=pool_tool.US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION,
     )
     resume = current_store.load_deepest()
     assert resume is None
@@ -3407,15 +3407,42 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     assert "materializer_version" not in metadata
 
 
+@pytest.mark.parametrize("materializer_version", (3, 4))
+@pytest.mark.parametrize("checkpointed", (False, True))
 def test_ready_reader_binds_manifest_h5_and_diagnostics_to_one_run(
     pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    materializer_version: int,
+    checkpointed: bool,
 ) -> None:
     pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    # Replay both published and current writers. Checkpoint compatibility here
+    # authenticates a finished pool; it does not authorize a version-3 resume.
+    monkeypatch.setattr(
+        pool_tool,
+        "US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION",
+        materializer_version,
+    )
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
     )
+    checkpoint_provenance = None
+    if checkpointed:
+        store = pool_tool._PoolStageCheckpointStore(
+            outputs.checkpoint_root,
+            base_identity=pool_tool._legacy_pool_checkpoint_base_identity(
+                verified_inputs,
+                policyengine_us_version="fixture-engine",
+            ),
+            materializer_version=materializer_version,
+        )
+        store.bind_input_receipts(pool_tool._loaded_input_receipts(loaded))
+        result, _order = _run_checkpoint_fixture(pool_tool, tmp_path, store=store)
+        checkpoint_provenance = store.provenance(
+            primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+        )
     ready = replace(
         result,
         agreement_gate=GateResult("us_spine_agreement", True),
@@ -3426,6 +3453,7 @@ def test_ready_reader_binds_manifest_h5_and_diagnostics_to_one_run(
         verified_inputs=verified_inputs,
         acs_source_manifest=source_manifest,
         loaded=loaded,
+        checkpoint_provenance=checkpoint_provenance,
     )
 
     manifest = pool_tool.load_simulation_ready_us_multispine_pool_manifest(
@@ -3433,6 +3461,11 @@ def test_ready_reader_binds_manifest_h5_and_diagnostics_to_one_run(
     )
 
     assert manifest["simulation_ready"] is True
+    assert manifest["stage_checkpoints"]["materializer_version"] == materializer_version
+    if checkpointed:
+        assert set(manifest["stage_checkpoints"]["stages"]) == set(
+            pool_tool.POOL_CHECKPOINT_STAGE_ORDER
+        )
     assert (
         manifest["agreement_diagnostics"]["publication_run_id"]
         == manifest["publication_run_id"]
