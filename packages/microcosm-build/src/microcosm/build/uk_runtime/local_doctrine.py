@@ -34,10 +34,12 @@ import numpy as np
 __all__ = [
     "UK_LOCAL_CLONE_COUNT",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
+    "UK_LOCAL_ROW_METADATA_RULES",
     "UK_LOCAL_SOLVE_DOCTRINE",
     "UK_LOCAL_SOLVE_EPOCHS",
     "UK_LOCAL_TARGET_LOSS_CAP",
     "UK_LOCAL_TARGET_WEIGHT_RULE",
+    "UK_LOCAL_TARGET_WEIGHT_RULES",
     "UKLocalSolveDoctrine",
     "uk_local_doctrine_with_overrides",
     "uk_local_target_loss_weights",
@@ -92,8 +94,23 @@ UK_LOCAL_SOLVE_EPOCHS = 1500
 #: floor (min constituency ESS 54.1) at unchanged fit and flat memory.
 UK_LOCAL_CLONE_COUNT = 15
 
+#: Target-weighting rules that read more row metadata than the grain
+#: (microcosm#1124): the row's target family, its geography and its value
+#: basis. They are computed in :mod:`microcosm.build.uk_runtime.target_weights`
+#: from one row-aligned carrier, and each is a declared function of that
+#: metadata, never a per-target vector. They are candidate-only receipted
+#: overrides: a release candidate still refuses any rule but the default.
+UK_LOCAL_ROW_METADATA_RULES = (
+    "grain_family_equal",
+    "grain_family_equal_sqrt_count",
+    "nation_grain_family_equal",
+    "nation_grain_family_equal_sqrt_count",
+)
+#: The closed target-weighting vocabulary of the UK local solve.
+UK_LOCAL_TARGET_WEIGHT_RULES = ("uniform", "grain_equal", *UK_LOCAL_ROW_METADATA_RULES)
+
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
-_ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "grain_equal")
+_ALLOWED_TARGET_WEIGHT_RULES = UK_LOCAL_TARGET_WEIGHT_RULES
 _OVERRIDABLE_FIELDS = frozenset({"target_weight_rule"})
 
 
@@ -104,8 +121,10 @@ class UKLocalSolveDoctrine:
     ``scale_rule`` and ``target_weight_rule`` are closed vocabularies: the
     only admissible scale rule is the canonical target-defined default, and
     the admissible target weightings are ``grain_equal`` (the reviewed
-    default) and ``uniform`` (a receipted override). Any other weighting
-    would be a new reviewed rule name here — never a per-target vector.
+    default), ``uniform`` and the row-metadata rules of
+    :data:`UK_LOCAL_ROW_METADATA_RULES` (receipted overrides). Any other
+    weighting would be a new reviewed rule name here — never a per-target
+    vector.
     """
 
     target_loss_cap: float = UK_LOCAL_TARGET_LOSS_CAP
@@ -156,12 +175,24 @@ def uk_local_target_loss_weights(
     *,
     rule: str,
 ) -> np.ndarray | None:
-    """Derive doctrine weights from row-grain labels, never target knobs."""
+    """Derive doctrine weights from row-grain labels, never target knobs.
+
+    Only the grain rules (``uniform``, ``grain_equal``) are computable from
+    grain labels alone; a row-metadata rule refuses here and is computed by
+    :func:`microcosm.build.uk_runtime.target_weights.uk_target_loss_weights_for_rows`.
+    """
 
     if rule not in _ALLOWED_TARGET_WEIGHT_RULES:
         raise ValueError(
             f"target_weight_rule must be one of {_ALLOWED_TARGET_WEIGHT_RULES}, "
             f"got {rule!r}."
+        )
+    if rule in UK_LOCAL_ROW_METADATA_RULES:
+        raise ValueError(
+            f"target_weight_rule {rule!r} derives from row metadata (grain, "
+            "family, geography and value basis), not grain labels alone; compute "
+            "it with microcosm.build.uk_runtime.target_weights."
+            "uk_target_loss_weights_for_rows."
         )
     if rule == "uniform":
         return None

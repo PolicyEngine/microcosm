@@ -34,6 +34,7 @@ from scipy import sparse as sp
 from microcosm.build.holdout import rotated_folds, summarize_rotations
 from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
+    UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_TARGET_LOSS_CAP,
     uk_local_target_loss_weights,
@@ -43,6 +44,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.target_weights import (
+    UKTargetRows,
+    uk_target_loss_weights_for_rows,
+    uk_target_rows_from_targets,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
@@ -1123,6 +1129,9 @@ class UKPreparedFullSolve:
     target_loss_weights: np.ndarray
     binding_adjudications: Mapping[str, Any]
     mass_reason: str
+    #: The row carrier a row-metadata weighting rule was computed from
+    #: (microcosm#1124); ``None`` under the grain rules.
+    target_rows: UKTargetRows | None = None
 
 
 def prepare_uk_full_solve(
@@ -1243,10 +1252,27 @@ def prepare_uk_full_solve(
         *problem.target_frame["area_type"].astype(str).tolist(),
         *(["national"] * national_count),
     ]
-    target_loss_weights = uk_local_target_loss_weights(
-        grain_labels,
-        rule=target_weight_rule,
-    )
+    target_rows = None
+    if target_weight_rule in UK_LOCAL_ROW_METADATA_RULES:
+        # microcosm#1124: the rule reads each row's family, geography and
+        # value basis, carried in the solve's own row order.
+        target_rows = uk_target_rows_from_targets(
+            local_target_set.targets,
+            () if national_rows is None else national_rows.registry.specs,
+        )
+        if target_rows.grain != tuple(grain_labels):
+            raise ValueError(
+                "the target-weight row carrier disagrees with the solve's grain "
+                "labels; the rule cannot be computed on this surface."
+            )
+        target_loss_weights = uk_target_loss_weights_for_rows(
+            target_rows, rule=target_weight_rule
+        )
+    else:
+        target_loss_weights = uk_local_target_loss_weights(
+            grain_labels,
+            rule=target_weight_rule,
+        )
     return UKPreparedFullSolve(
         frame=frame,
         problem=problem,
@@ -1255,6 +1281,7 @@ def prepare_uk_full_solve(
         target_loss_weights=target_loss_weights,
         binding_adjudications=binding_adjudications,
         mass_reason=mass_reason,
+        target_rows=target_rows,
     )
 
 
@@ -1311,6 +1338,12 @@ def solve_uk_rowwise_weights_under_doctrine(
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
     baseline_pi_floor: float = 0.0,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
     size_checkpoint_dir: Path | None = None,
     resume_size_checkpoint: Path | None = None,
     checkpoint_identity: Mapping[str, Any] | None = None,
@@ -1375,6 +1408,20 @@ def solve_uk_rowwise_weights_under_doctrine(
         dataset_households is None
     ):
         raise ValueError("size checkpoints apply to a dataset_households solve.")
+    if dataset_households is None and (
+        selection_l2_lambda
+        or refit_l2_lambda
+        or any(
+            value is not None
+            for value in (
+                selection_l2_anchor,
+                selection_l2_basis,
+                refit_l2_anchor,
+                refit_l2_basis,
+            )
+        )
+    ):
+        raise ValueError("size-stage L2 penalties apply to a dataset_households solve.")
     if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
         raise ValueError("a resumed solve does not write a second checkpoint.")
     progress_callback = _progress_fan_out(progress, progress_events)
@@ -1450,6 +1497,9 @@ def solve_uk_rowwise_weights_under_doctrine(
                 learning_rate=learning_rate,
                 seed=size_seed,
                 pi_hi=selection_pi_hi,
+                selection_l2_lambda=selection_l2_lambda,
+                selection_l2_anchor=selection_l2_anchor,
+                selection_l2_basis=selection_l2_basis,
                 progress_callback=progress_callback,
             )
             if size_checkpoint_dir is not None:
@@ -1478,6 +1528,12 @@ def solve_uk_rowwise_weights_under_doctrine(
             seed=size_seed,
             pi_hi=selection_pi_hi,
             baseline_pi_floor=baseline_pi_floor,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            refit_l2_lambda=refit_l2_lambda,
+            refit_l2_anchor=refit_l2_anchor,
+            refit_l2_basis=refit_l2_basis,
             selection=size_selection,
             progress_callback=progress_callback,
         )
@@ -1867,6 +1923,12 @@ def rotated_uk_local_holdout(
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
     baseline_pi_floor: float = 0.0,
+    selection_l2_lambda: float = 0.0,
+    selection_l2_anchor: str | None = None,
+    selection_l2_basis: str | None = None,
+    refit_l2_lambda: float = 0.0,
+    refit_l2_anchor: str | None = None,
+    refit_l2_basis: str | None = None,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training."""
 
@@ -1888,6 +1950,13 @@ def rotated_uk_local_holdout(
         seed=UK_LOCAL_HOLDOUT_SEED,
     )
     all_indices = np.arange(len(problem.targets), dtype=np.int64)
+    # A row-metadata rule weights the held rows from their own row carrier
+    # (microcosm#1124); the grain rules keep the grain-label path.
+    local_rows = (
+        uk_target_rows_from_targets(_rowwise_target_set(problem).targets)
+        if target_weight_rule in UK_LOCAL_ROW_METADATA_RULES
+        else None
+    )
     fold_rows: list[dict[str, object]] = []
     declared_national = []
     if bound_families is not None:
@@ -1927,6 +1996,12 @@ def rotated_uk_local_holdout(
             selection_seed=selection_seed,
             selection_pi_hi=selection_pi_hi,
             baseline_pi_floor=baseline_pi_floor,
+            selection_l2_lambda=selection_l2_lambda,
+            selection_l2_anchor=selection_l2_anchor,
+            selection_l2_basis=selection_l2_basis,
+            refit_l2_lambda=refit_l2_lambda,
+            refit_l2_anchor=refit_l2_anchor,
+            refit_l2_basis=refit_l2_basis,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(
@@ -1939,10 +2014,15 @@ def rotated_uk_local_holdout(
             @ train_solve.weights,
             dtype=np.float64,
         ).reshape(-1)
-        held_weights = uk_local_target_loss_weights(
-            problem.target_frame.iloc[holdout_indices]["area_type"].astype(str),
-            rule=target_weight_rule,
-        )
+        if local_rows is not None:
+            held_weights = uk_target_loss_weights_for_rows(
+                local_rows.take(holdout_indices), rule=target_weight_rule
+            )
+        else:
+            held_weights = uk_local_target_loss_weights(
+                problem.target_frame.iloc[holdout_indices]["area_type"].astype(str),
+                rule=target_weight_rule,
+            )
         loss = relative_error_loss(
             held_estimates,
             held_targets,

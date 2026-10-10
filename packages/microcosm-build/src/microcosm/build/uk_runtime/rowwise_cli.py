@@ -38,6 +38,7 @@ from microcosm.build.logbook_adoption import (
     record_terminal_attempt,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.dataset_size import UKSizeL2, uk_size_l2
 from microcosm.build.uk_runtime.ledger_targets import _spec_geography
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
@@ -213,6 +214,35 @@ def doctrine_bounds(posture: UKRowwisePosture) -> dict[str, Any]:
 _doctrine_bounds = doctrine_bounds
 
 
+def _size_l2_flags(args: argparse.Namespace, stage: str) -> dict[str, object]:
+    return {
+        field: getattr(args, f"{stage}_l2_{field}", None)
+        for field in ("lambda", "anchor", "basis")
+    }
+
+
+def cli_size_l2(args: argparse.Namespace, stage: str) -> UKSizeL2 | None:
+    """One size stage's L2 penalty from the CLI flags (``None``: off)."""
+
+    flags = _size_l2_flags(args, stage)
+    return uk_size_l2(
+        stage,
+        l2_lambda=0.0 if flags["lambda"] is None else flags["lambda"],
+        anchor=flags["anchor"],
+        basis=flags["basis"],
+    )
+
+
+def _size_l2_parameters(args: argparse.Namespace) -> dict[str, Any]:
+    # microcosm#1124: recorded only when a penalty is on, so a default run's
+    # parameters and identity digest are unchanged.
+    return {
+        f"{stage}_l2": l2.as_dict()
+        for stage in ("selection", "refit")
+        if (l2 := cli_size_l2(args, stage)) is not None
+    }
+
+
 def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
     """The run parameters a rowwise manifest, plan and identity digest record."""
 
@@ -265,6 +295,7 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
             "l0_lambda": L0_LAMBDA,
             "budget_iters": BUDGET_ITERS,
         },
+        **_size_l2_parameters(args),
     }
 
 
@@ -456,6 +487,15 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--baseline-pi-floor requires --dataset-households.")
     if args.no_size_checkpoint and args.dataset_households is None:
         raise ValueError("--no-size-checkpoint requires --dataset-households.")
+    for stage in ("selection", "refit"):
+        given = [
+            f"--{stage}-l2-{field}"
+            for field, value in _size_l2_flags(args, stage).items()
+            if value is not None
+        ]
+        if given and args.dataset_households is None:
+            raise ValueError(f"{', '.join(given)} requires --dataset-households.")
+        cli_size_l2(args, stage)
     if args.resume_size_checkpoint is not None:
         if args.dataset_households is None:
             raise ValueError("--resume-size-checkpoint requires --dataset-households.")
@@ -682,6 +722,12 @@ def refuse_dense_role_arguments(
         refused.append("--no-size-checkpoint")
     if args.resume_size_checkpoint is not None:
         refused.append("--resume-size-checkpoint")
+    for stage in ("selection", "refit"):
+        refused.extend(
+            f"--{stage}-l2-{field}"
+            for field, value in _size_l2_flags(args, stage).items()
+            if value is not None
+        )
     if args.sample_fraction != 1.0:
         refused.append("--sample-fraction")
     if "sample_seed" in explicit:
