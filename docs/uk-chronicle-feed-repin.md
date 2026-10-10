@@ -121,3 +121,16 @@ match two facts each (the new 2023-24 Table 6.2 rows beside the bound 2024-25 on
 resolve to the 2024-25 fact. For the same reason the 2023 production compile-parity receipt gains
 five ledger-only rows (the relief targets now compile at that comparison period from the 2023-24
 facts); the two 2025 incumbent receipts are unchanged.
+The `1ee7dfe` re-pin (microcosm#1113, PolicyEngine/chronicle#322 via #323, on top of `825406f`)
+brought ONS Consumer Trends household final consumption expenditure, annual for 2020 to 2025 and
+quarterly to 2026 Q1: the national and domestic totals, the twelve domestic COICOP divisions and net
+tourism (sheet 0CN), their classes (sheets 01CN to 12CN) and the tourism detail (TOURCN). It also
+brought DESNZ road transport energy consumption by vehicle type and fuel for 2005 to 2024, for the
+UK, Great Britain, the four countries and the English regions (352,549 rows). #323 also restates the
+seven Consumer Trends series already in the feed as domestic household spending: the 217 rows keep
+their concepts and values under new keys, with the territory role and the price-basis,
+seasonal-adjustment, unit, sheet and concept dimensions. Every other `825406f` row is
+byte-identical. The national and local reference files are byte-identical; the electricity, gas and
+road-fuel targets resolve to the same values through the new keys. The vendored resources carry the
+same rows under the new feed identity, the Consumer Trends resource's 42 under their new keys, and
+the three compile-parity receipts are unchanged.

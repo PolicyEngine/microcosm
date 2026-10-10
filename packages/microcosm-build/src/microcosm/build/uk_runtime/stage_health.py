@@ -77,6 +77,14 @@ def uk_stage_health_gate(
         return _bus_travel_facts_gate(stage, evidence, parameters)
     if check == "bus_pricing":
         return _bus_pricing_gate(stage, evidence, parameters)
+    if check == "consumption_basis":
+        return _consumption_basis_gate(stage, evidence, parameters)
+    if check == "recomposed_totals":
+        return _recomposed_totals_gate(stage, evidence, parameters)
+    if check == "road_fuel_incidence":
+        return _road_fuel_incidence_gate(stage, evidence, parameters)
+    if check == "road_fuel_level":
+        return _road_fuel_level_gate(stage, evidence, parameters)
     if check == "bus_support_pricing":
         return _bus_support_pricing_gate(stage, evidence, parameters)
     return GateResult(
@@ -2530,9 +2538,10 @@ def _bus_pricing_gate(
     from the receipt): for every declared area the receipts, boardings,
     concessionary journeys, trips per person and population, and the
     boardings-per-trip and yield factors derived from them, must equal the
-    receipt's to ``maximum_relative_deviation``; the unpriced regions must be
-    the declared ones; and the receipt must state that the chain conditioned
-    on the raw draw. The frame-implied boardings against the published ones
+    receipt's to ``maximum_relative_deviation``, as must the fares-index factor
+    that re-prices each fiscal-year yield to the declared calendar year
+    (microcosm#1113); the unpriced regions must be the declared ones; and the
+    receipt must state that the chain conditioned on the raw draw. The frame-implied boardings against the published ones
     are reported, not fenced: that ratio is the survey-versus-admin reading
     the calibration targets then act on (microcosm#930).
     """
@@ -2588,6 +2597,7 @@ def _bus_pricing_gate(
         for key, value in (
             ("boardings_per_trip", area.boardings_per_trip),
             ("yield_per_fare_paying_boarding", area.yield_per_fare_paying_boarding),
+            ("calendar_price_factor", area.calendar_price_factor),
             ("fare_per_trip", area.fare_per_trip),
             ("concessionary_boarding_share", area.concessionary_boarding_share),
         ):
@@ -2623,6 +2633,383 @@ def _bus_pricing_gate(
                 details["frame_implied_over_published_boardings"][str(label)] = (
                     entry.get("frame_implied_over_published_boardings")
                 )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _consumption_basis_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every LCFS spend column is on the declared base year's prices.
+
+    Checks on the receipts of the steps that set the spend levels
+    (microcosm#1113): the donor uprating's target year, the energy prices'
+    and the DESNZ level's periods, the bus prices' re-pricing year and the
+    road-fuel level's period must all be the declared calendar year, so
+    policyengine-uk can project every column from the H5's year with no
+    per-column bases. A step whose receipt is absent fails the check.
+    """
+
+    check = "consumption_basis"
+    period_type = str(parameters.get("period_type") or "")
+    if period_type != "calendar_year":
+        raise ValueError(f"{stage}: the spend basis must be a calendar year.")
+    period_value = parameters.get("period_value")
+    if isinstance(period_value, bool) or not isinstance(period_value, int):
+        raise ValueError(f"{stage}: period_value must be an integer year.")
+    expected = (period_type, period_value)
+    failures: list[str] = []
+    found: dict[str, object] = {}
+
+    def receipt(key: str) -> Mapping[str, object] | None:
+        value = evidence.get(key)
+        if not isinstance(value, Mapping):
+            failures.append(f"{stage}: the stage recorded no {key} receipt.")
+            return None
+        return value
+
+    def period_of(block: Mapping[str, object]) -> tuple[object, object]:
+        return (block.get("period_type"), block.get("period_value"))
+
+    uprating = receipt("donor_uprating")
+    if uprating is not None:
+        found["donor_uprating"] = ("calendar_year", uprating.get("to_period"))
+        if uprating.get("to_period") != period_value:
+            failures.append(
+                f"{stage}: the donor uprating moves the diary to "
+                f"{uprating.get('to_period')!r}, not {period_value}."
+            )
+    energy = receipt("energy_pricing")
+    if energy is not None:
+        level = energy.get("level")
+        level = level if isinstance(level, Mapping) else {}
+        found["energy_prices"] = period_of(energy)
+        found["energy_level"] = period_of(level)
+        for label, observed in (
+            ("energy prices", found["energy_prices"]),
+            ("DESNZ energy level", found["energy_level"]),
+        ):
+            if observed != expected:
+                failures.append(
+                    f"{stage}: the {label} are for {observed}, not {expected}."
+                )
+    bus = receipt("bus_pricing")
+    if bus is not None:
+        found["bus_prices"] = bus.get("price_year")
+        if bus.get("price_year") != period_value:
+            failures.append(
+                f"{stage}: bus fares are priced for {bus.get('price_year')!r}, not "
+                f"{period_value}."
+            )
+    fuel = receipt("road_fuel_level")
+    if fuel is not None:
+        found["road_fuel_level"] = period_of(fuel)
+        if period_of(fuel) != expected:
+            failures.append(
+                f"{stage}: the road-fuel level is for {period_of(fuel)}, not {expected}."
+            )
+    details = {"period": list(expected), "steps": found}
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _recomposed_totals_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every recomposed COICOP total contains its levelled components.
+
+    Checks on the ``recomposed_totals`` receipt (microcosm#1113): each total
+    the stage declares keeps its own draw less the declared drawn parts and
+    adds the declared levelled parts back; no remainder is negative and no
+    household's total is below its components; to
+    ``maximum_relative_deviation``, the weighted remainder equals the drawn
+    total less the drawn parts plus the floored mass, and the weighted total
+    the remainder plus the components; and the uncarried ONS spend is
+    recomputed from the vendored rows through the stage's own declaration.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        recompose_from_remainder_operation,
+        uncarried_spend,
+    )
+
+    check = "recomposed_totals"
+    receipt = _mapping(
+        evidence.get("recomposed_totals"), label=f"{stage}.recomposed_totals"
+    )
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    declared = recompose_from_remainder_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no recompose_from_remainder operation.")
+    parents = _mapping(
+        receipt.get("parents"), label=f"{stage}.recomposed_totals.parents"
+    )
+    declared_parents = declared["parents"]
+    failures: list[str] = []
+    if set(parents) != set(declared_parents):
+        failures.append(
+            f"{stage}: recomposed {sorted(parents)}, not the declared "
+            f"{sorted(declared_parents)}."
+        )
+    for parent in sorted(set(parents) & set(declared_parents)):
+        entry = _mapping(parents[parent], label=f"{stage}.recomposed_totals.{parent}")
+        spec = declared_parents[parent]
+        for key in ("drawn_subtracts", "components"):
+            observed = entry.get(key)
+            expected = spec[key]
+            if (list(observed) if isinstance(observed, list | tuple) else observed) != (
+                list(expected) if isinstance(expected, list | tuple) else expected
+            ):
+                failures.append(
+                    f"{stage}: {parent} {key} {observed!r} is not the declared "
+                    f"{expected!r}."
+                )
+        minimum = _finite_number(
+            entry.get("minimum_remainder"), label=f"{stage}.{parent}.minimum_remainder"
+        )
+        if minimum < 0:
+            failures.append(f"{stage}: {parent} has a negative remainder ({minimum}).")
+        below = entry.get("rows_below_components")
+        if isinstance(below, bool) or not isinstance(below, int) or below != 0:
+            failures.append(
+                f"{stage}: {below!r} households have {parent} below its components."
+            )
+
+        def number(key: str, parent: str = parent, entry=entry) -> float:
+            return _finite_number(entry.get(key), label=f"{stage}.{parent}.{key}")
+
+        remainder = number("weighted_remainder")
+        split = (
+            number("weighted_drawn_total")
+            - number("weighted_drawn_subtracts")
+            + number("weighted_floored_mass")
+        )
+        if abs(remainder - split) > tolerance * max(1.0, abs(remainder)):
+            failures.append(
+                f"{stage}: {parent} remainder {remainder} is not its draw less the "
+                f"drawn parts plus the floored mass ({split})."
+            )
+        total = number("weighted_total")
+        parts = remainder + number("weighted_components")
+        if abs(total - parts) > tolerance * max(1.0, abs(total)):
+            failures.append(
+                f"{stage}: {parent} weighted total {total} is not its remainder plus "
+                f"components {parts}."
+            )
+    uncarried = uncarried_spend(declared)
+    observed = _mapping(receipt.get("uncarried"), label=f"{stage}.uncarried")
+    if (
+        observed.get("classes") != uncarried["classes"]
+        or observed.get("total") != uncarried["total"]
+    ):
+        failures.append(
+            f"{stage}: the uncarried spend {observed.get('total')!r} is not the vendored "
+            f"{uncarried['total']}."
+        )
+    details = {
+        "maximum_relative_deviation": tolerance,
+        "parents": sorted(parents),
+        "uncarried_total": uncarried["total"],
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _road_fuel_incidence_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every household the fuel flag marks carries road fuel after the redraw.
+
+    Checks on the ``road_fuel_incidence`` receipt (microcosm#1113): the redraw
+    ran with the stage's declared rule, seed, salt and trees; no flagged
+    household is left at zero and no unflagged household carries fuel; the
+    total model fitted the positive-only regime; and the chain's zero share
+    among flagged households, the diary artefact the step corrects, is at most
+    ``maximum_flagged_zero_share`` (a larger share would mean the chain, not
+    the two-week diary, is at fault).
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ROAD_FUEL_TOTAL,
+        road_fuel_incidence_operation,
+    )
+
+    check = "road_fuel_incidence"
+    receipt = _mapping(
+        evidence.get("road_fuel_incidence"), label=f"{stage}.road_fuel_incidence"
+    )
+    maximum_zero_share = _finite_number(
+        parameters.get("maximum_flagged_zero_share"),
+        label=f"{stage}.maximum_flagged_zero_share",
+    )
+    declared = road_fuel_incidence_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no redraw_zero_road_fuel operation.")
+    failures: list[str] = []
+    for key in ("rule", "seed", "salt", "n_estimators"):
+        if receipt.get(key) != declared.get(key):
+            failures.append(
+                f"{stage}: the redraw ran with {key} {receipt.get(key)!r}, not the "
+                f"declared {declared.get(key)!r}."
+            )
+    for key in ("flagged_zero_after", "unflagged_with_fuel"):
+        value = receipt.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+            failures.append(f"{stage}: {key} is {value!r}, not 0.")
+    zero_before = receipt.get("flagged_zero_before")
+    if isinstance(zero_before, bool) or not isinstance(zero_before, int):
+        failures.append(f"{stage}: flagged_zero_before {zero_before!r} is not a count.")
+    elif zero_before > 0:
+        regimes = receipt.get("regimes")
+        regime = (
+            regimes.get(UK_LCFS_ROAD_FUEL_TOTAL)
+            if isinstance(regimes, Mapping)
+            else None
+        )
+        if regime != "positive_only":
+            failures.append(
+                f"{stage}: the road-fuel total fitted regime {regime!r}, not "
+                "'positive_only'."
+            )
+    share = _finite_number(
+        receipt.get("flagged_zero_share_before"),
+        label=f"{stage}.flagged_zero_share_before",
+    )
+    if not 0.0 <= share <= maximum_zero_share:
+        failures.append(
+            f"{stage}: the chain left {share:.4f} of flagged households at zero road "
+            f"fuel, outside [0, {maximum_zero_share}]."
+        )
+    details = {
+        "maximum_flagged_zero_share": maximum_zero_share,
+        "flagged_households": receipt.get("flagged_households"),
+        "flagged_zero_before": zero_before,
+        "flagged_zero_share_before": share,
+        "mean_positive_before": receipt.get("mean_positive_before"),
+        "mean_redrawn": receipt.get("mean_redrawn"),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _road_fuel_level_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The road-fuel step levelled petrol plus diesel to the published ONS spend.
+
+    Fact checks on the ``road_fuel_level`` receipt (microcosm#1113): the ONS
+    COICOP 07.2.2 level is recomputed here from the vendored row through the
+    stage's own declaration (never taken from the receipt) and must equal the
+    receipt's; the levelled prior-weighted total must equal the published
+    spend less the donor's other-fuels share, and the factor must reproduce it
+    from the drawn total, to ``maximum_relative_deviation``. The other-fuels
+    share comes from the licensed LCFS donor, so it is bounded, not recomputed:
+    it must lie in [0, ``maximum_other_fuels_share``].
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    check = "road_fuel_level"
+    receipt = _mapping(
+        evidence.get("road_fuel_level"), label=f"{stage}.road_fuel_level"
+    )
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    maximum_other = _finite_number(
+        parameters.get("maximum_other_fuels_share"),
+        label=f"{stage}.maximum_other_fuels_share",
+    )
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no level_road_fuel operation.")
+    share = _finite_number(
+        receipt.get("other_fuels_share"), label=f"{stage}.other_fuels_share"
+    )
+    failures: list[str] = []
+    if not 0.0 <= share <= maximum_other:
+        failures.append(
+            f"{stage}: other-fuels share {share} is outside [0, {maximum_other}]."
+        )
+        share = min(max(share, 0.0), maximum_other)
+    level = road_fuel_level(declared, other_fuels_share=share)
+
+    def _close(observed: object, value: float) -> bool:
+        return isinstance(observed, int | float) and abs(float(observed) - value) <= (
+            tolerance * max(1.0, abs(value))
+        )
+
+    for key, value in (("published", level.published), ("level", level.level)):
+        if not _close(receipt.get(key), value):
+            failures.append(
+                f"{stage}: road-fuel {key} {receipt.get(key)!r} is not the vendored "
+                f"{value}."
+            )
+    if receipt.get("source_record_id") != level.receipt["source_record_id"]:
+        failures.append(
+            f"{stage}: the receipt names {receipt.get('source_record_id')!r}, not the "
+            f"declared row {level.receipt['source_record_id']!r}."
+        )
+    if not _close(receipt.get("frame_after"), level.level):
+        failures.append(
+            f"{stage}: the levelled road-fuel total {receipt.get('frame_after')!r} is "
+            f"not the level {level.level}."
+        )
+    before = receipt.get("frame_before")
+    factor = receipt.get("factor")
+    if not (
+        isinstance(before, int | float)
+        and isinstance(factor, int | float)
+        and _close(float(before) * float(factor), level.level)
+    ):
+        failures.append(
+            f"{stage}: factor {factor!r} times the drawn total {before!r} does not "
+            f"reproduce the level {level.level}."
+        )
+    details = {
+        "maximum_relative_deviation": tolerance,
+        "published": level.published,
+        "other_fuels_share": share,
+        "level": level.level,
+        "factor": factor,
+        "petrol_share_of_level": receipt.get("petrol_share_of_level"),
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

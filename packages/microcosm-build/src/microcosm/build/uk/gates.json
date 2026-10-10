@@ -347,6 +347,64 @@
       "notes": "Stage-time fact check on the lcfs bus_pricing receipt (microcosm#930): every area's receipts, boardings, concessionary journeys, trips per resident and population, and the boardings-per-trip and yield factors derived from them, are recomputed from the vendored rows the stage declares and must equal the receipt's; the unpriced regions must be the declared ones (Wales, which keeps the chain's raw draw by María's ruling of 2026-09-17) and the chain must have conditioned on the raw draw. The frame-implied boardings over the published ones are reported per area, not fenced: that ratio is the survey-versus-admin reading the bound receipts targets then act on. A population fact check: the synthetic smoke records it without blocking."
     },
     {
+      "id": "uk_stage_lcfs_consumption_road_fuel_incidence",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "road_fuel_incidence",
+        "maximum_flagged_zero_share": 0.5
+      },
+      "notes": "Stage-time check on the lcfs road_fuel_incidence receipt (microcosm#1113): the redraw ran with the declared rule, seed, salt and trees; after it no household the fuel flag marks as buying petrol or diesel carries zero road fuel and no unflagged household carries any; the total model fitted the positive-only regime. The chain's zero share among flagged households is the two-week diary's artefact the step corrects (about a third at prior weights on the 2026-10-08 spine); above one half the chain itself would be at fault, so the gate fails there instead of redrawing it away. María's ruling of 2026-10-08 set every fuel-car household to a positive annual spend. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_road_fuel_level",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "road_fuel_level",
+        "maximum_relative_deviation": 1e-09,
+        "maximum_other_fuels_share": 0.05
+      },
+      "notes": "Stage-time fact check on the lcfs road_fuel_level receipt (microcosm#1113): the ONS Consumer Trends COICOP 07.2.2 household spend the stage declares is recomputed from the vendored row and must equal the receipt's, and the prior-weighted petrol plus diesel after the step must equal it less the donor's other-fuels share, with the factor reproducing that from the drawn total. The other-fuels share is the LCFS donor's own c72213 share of 07.2.2, licensed microdata the gate cannot recompute, so it is bounded at five percent instead (0.37 percent on the 2023-24 diary). María's ruling of 2026-10-08 set the stage, not the weights, as what levels household road fuel. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_recomposed_totals",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "recomposed_totals",
+        "maximum_relative_deviation": 1e-09
+      },
+      "notes": "Stage-time check on the lcfs recomposed_totals receipt (microcosm#1113): housing_water_and_electricity_consumption and transport_consumption each keep their own chain draw less the chain's draws of the parts the stage re-levels (the drawn electricity and gas, or petrol and diesel; floored at zero where the parts outgrow the total) and add the levelled parts back, so no household's total is below its electricity and gas or its petrol and diesel and no remainder is negative. The declared parts must be the receipt's, the weighted remainder must equal the drawn total less the drawn parts plus the floored mass, and the weighted total the remainder plus the levelled parts, to the declared tolerance. The ONS 04.5.3 and 04.5.4 liquid and solid fuel spend, which stays inside the housing remainder because no frame column carries it, is recomputed from the vendored rows and must equal the receipt's. The two totals carry no committed support bound; this check holds them instead. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_basis",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "consumption_basis",
+        "period_type": "calendar_year",
+        "period_value": 2024
+      },
+      "notes": "Stage-time check that every household spend column lcfs_consumption emits is at calendar-2024 prices as households paid them (microcosm#1113): the H5's year, which policyengine-uk projects every column from with calendar-year growth and the calibration uprates to the calendar-2025 window, so no column needs a basis of its own. The donor uprating must move the diary to 2024, the QEP energy prices and the DESNZ volume level must be for calendar 2024, bus fares must be re-priced to 2024 by the fares indices, and the road-fuel level must be ONS 07.2.2 for calendar 2024; a step whose receipt is absent fails. A population fact check: the synthetic smoke records it without blocking."
+    },
+    {
       "id": "uk_stage_etb_vat_support",
       "gate": "stage_health",
       "phase": "transferred",

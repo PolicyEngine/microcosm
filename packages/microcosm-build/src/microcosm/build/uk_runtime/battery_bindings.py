@@ -1787,6 +1787,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1063 wealth_coherence check: the reviewed excess of owner
                 # households without a main-residence value over the donor's.
                 "maximum_owner_share_without_main_residence_excess",
+                # #1113 road_fuel_level check: the ceiling on the LCFS donor
+                # share of other personal-transport fuels netted off 07.2.2.
+                "maximum_other_fuels_share",
+                # #1113 road_fuel_incidence check: the ceiling on the chain's
+                # zero share among flagged fuel-car households.
+                "maximum_flagged_zero_share",
+                # #1113 consumption_basis check: the one base year of every
+                # LCFS spend column.
+                "period_type",
+                "period_value",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

@@ -208,6 +208,16 @@ def fiscal_year_quarters(fiscal_start: str) -> tuple[str, ...]:
     )
 
 
+def period_quarters(period_type: str, period_value: int) -> tuple[str, ...]:
+    """The four quarterly coverage start dates of a calendar or fiscal year."""
+
+    if period_type == "calendar_year":
+        return tuple(f"{int(period_value)}-{month:02d}-01" for month in (1, 4, 7, 10))
+    if period_type == "fiscal_year":
+        return fiscal_year_quarters(f"{int(period_value)}-04-01")
+    raise ValueError("period_type must be calendar_year or fiscal_year.")
+
+
 def _one_row(rows: Sequence[Mapping[str, Any]], *, what: str) -> Mapping[str, Any]:
     if len(rows) != 1:
         raise ValueError(f"{what}: expected one vendored row, found {len(rows)}.")
@@ -649,7 +659,12 @@ def impose_gas_connection(
 def published_energy_level(
     parameters: Mapping[str, Any],
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """Fiscal-year domestic consumption per fuel (kWh) from the Energy Trends rows."""
+    """Domestic consumption per fuel (kWh) over the declared year.
+
+    The four Energy Trends quarters of the declared calendar or fiscal year
+    are summed; the stage declares calendar 2024, the base year of every LCFS
+    spend column (microcosm#1113).
+    """
 
     resource = str(parameters.get("level_resource") or "")
     if resource != UK_DESNZ_DOMESTIC_ENERGY_RESOURCE:
@@ -657,8 +672,9 @@ def published_energy_level(
             f"level_resource must be {UK_DESNZ_DOMESTIC_ENERGY_RESOURCE!r}, "
             f"not {resource!r}."
         )
-    fiscal_start = str(parameters["level_fiscal_start"])
-    quarters = fiscal_year_quarters(fiscal_start)
+    period_type = str(parameters.get("level_period_type") or "")
+    period_value = int(parameters["level_period_value"])
+    quarters = period_quarters(period_type, period_value)
     temperature = str(parameters.get("level_temperature_adjustment") or "")
     if temperature != "actual_temperature":
         raise ValueError(
@@ -707,7 +723,8 @@ def published_energy_level(
         }
     receipt = {
         "resource": resource,
-        "fiscal_start": fiscal_start,
+        "period_type": period_type,
+        "period_value": period_value,
         "quarters": list(quarters),
         "temperature_adjustment": temperature,
         "geography_ids": sorted(geographies),

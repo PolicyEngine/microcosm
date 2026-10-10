@@ -145,6 +145,11 @@ CONSUMPTION_VARIABLE_RENAMES = {
     "c72212": "diesel_spending",
     "p537": "domestic_energy_consumption",
 }
+#: The twelve COICOP division totals (LCFS p601-p612), in division order: the
+#: columns policyengine-uk's ``consumption`` sums and its VAT base reads.
+UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
+    CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
+)
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
 #: Cars and vans available to the household: LCFS ``a124`` on the donor, the
 #: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
@@ -160,6 +165,13 @@ UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
 # the register names.
 UK_LCFS_DFT_BUS_JOURNEYS_RESOURCE = UK_DFT_BUS_JOURNEYS_RESOURCE
 UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
+#: ONS Consumer Trends household spending, the road-fuel level (COICOP 07.2.2)
+#: and the division totals the capture diagnostic compares against.
+UK_LCFS_ONS_EXPENDITURE_RESOURCE = "ons_household_expenditure_facts.json"
+UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE = UK_LCFS_ONS_EXPENDITURE_RESOURCE
+#: DESNZ sub-national road transport fuel consumption by vehicle and fuel (ktoe),
+#: the litres audit's per-fuel cars share.
+UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE = "desnz_road_fuel_by_vehicle.json"
 UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_ROAD_FUEL_RESOURCE,
     UK_LCFS_LICENSED_CARS_RESOURCE,
@@ -169,19 +181,42 @@ UK_LCFS_VENDORED_RESOURCES = (
     UK_NEED_ENERGY_FACTS_RESOURCE,
     UK_DESNZ_DOMESTIC_ENERGY_RESOURCE,
     UK_QEP_ENERGY_PRICES_RESOURCE,
+    UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE,
+    UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
 )
+#: The household road-fuel columns the ``level_road_fuel`` step scales.
+UK_LCFS_ROAD_FUEL_COLUMNS = ("petrol_spending", "diesel_spending")
 #: Columns a declared rake or pricing step levels (energy in kWh to the NEED
 #: shape at the DESNZ level; bus fares as journeys times the published
-#: yield, microcosm#930); the committed support bounds leave them alone.
+#: yield, microcosm#930; road fuel to ONS household spending, microcosm#1113);
+#: the committed support bounds leave them alone.
 UK_LCFS_RAKED_COLUMNS = frozenset(
     {
         "electricity_consumption",
         "gas_consumption",
         "domestic_energy_consumption",
         "bus_fare_spending",
+        *UK_LCFS_ROAD_FUEL_COLUMNS,
     }
 )
+LEVEL_ROAD_FUEL_KIND = "level_road_fuel"
+#: The LCFS diary lines inside COICOP 07.2.2 beside petrol (c72211) and diesel
+#: (c72212): other motor fuels and oils, which ONS's 07.2.2 also carries.
+UK_LCFS_OTHER_ROAD_FUEL_CODES = ("c72213",)
+UK_LCFS_ROAD_FUEL_OTHER_SHARE_RULE = "lcfs_donor_other_fuels_share"
+REDRAW_ZERO_ROAD_FUEL_KIND = "redraw_zero_road_fuel"
+UK_LCFS_ROAD_FUEL_REDRAW_RULE = "positive_total_then_petrol_share"
+#: The redraw's chain targets: the household's road-fuel total, positive by
+#: construction of the training set, then the petrol share of it (zero for a
+#: diesel-only household).
+UK_LCFS_ROAD_FUEL_TOTAL = "road_fuel_total"
+UK_LCFS_PETROL_SHARE = "petrol_share_of_road_fuel"
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
+#: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
+#: the cars share of that fuel's road use (PolicyEngine/chronicle#322).
+UK_LITRES_AUDIT_PER_FUEL_BASIS = "desnz cars share of each fuel's road use"
+UK_DESNZ_ROAD_FUEL_CONCEPT = "desnz.road_transport.fuel_consumption"
+UK_LITRES_AUDIT_FUELS = {"petrol_spending": "petrol", "diesel_spending": "diesel"}
 #: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
 #: declared litre-proxy price concepts: HMRC clearances are all road users, the
 #: OBR receipts split names the cars share of them.
@@ -240,6 +275,33 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "electricity_consumption",
     "gas_consumption",
 )
+RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
+#: The COICOP totals that contain columns the stage levels (microcosm#1113):
+#: each maps to the chain draws subtracted from its own draw to leave its
+#: remainder, and the levelled columns added back. The chain draws each part
+#: after its total, so the split is the chain's own. Housing (p604) nets the
+#: drawn electricity and gas (the chain's domestic-energy target is the diary's
+#: electricity plus gas), so the liquid and solid fuels no column carries stay
+#: in its remainder; transport (p607) nets the drawn petrol and diesel (c72211,
+#: c72212) and keeps other motor fuels.
+UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "housing_water_and_electricity_consumption": (
+        ("domestic_energy_consumption",),
+        ("electricity_consumption", "gas_consumption"),
+    ),
+    "transport_consumption": (
+        ("petrol_spending", "diesel_spending"),
+        ("petrol_spending", "diesel_spending"),
+    ),
+}
+#: The chain draws a recomposition subtracts, kept before any step re-levels them.
+UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
+    dict.fromkeys(
+        column
+        for subtracted, _ in UK_LCFS_RECOMPOSED_PARENTS.values()
+        for column in subtracted
+    )
+)
 UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     "has_fuel_consumption",
@@ -262,6 +324,10 @@ class UKLCFSConsumptionResult:
     energy_rake: Mapping[str, Any] | None = None
     fuel_litres_audit: Mapping[str, Any] | None = None
     donor_floor: Mapping[str, Any] | None = None
+    road_fuel_incidence: Mapping[str, Any] | None = None
+    road_fuel_level: Mapping[str, Any] | None = None
+    recomposed_totals: Mapping[str, Any] | None = None
+    division_capture: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -282,6 +348,14 @@ class UKLCFSConsumptionResult:
             evidence["fuel_litres_audit"] = dict(self.fuel_litres_audit)
         if self.donor_floor is not None:
             evidence["donor_floor"] = dict(self.donor_floor)
+        if self.road_fuel_incidence is not None:
+            evidence["road_fuel_incidence"] = dict(self.road_fuel_incidence)
+        if self.road_fuel_level is not None:
+            evidence["road_fuel_level"] = dict(self.road_fuel_level)
+        if self.recomposed_totals is not None:
+            evidence["recomposed_totals"] = dict(self.recomposed_totals)
+        if self.division_capture is not None:
+            evidence["division_capture"] = dict(self.division_capture)
         return evidence
 
 
@@ -368,6 +442,9 @@ class UKLCFSConsumptionStageTransform:
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
         )
         household_draws = clip_result.clipped
+        # The chain's own draws of the parts later steps re-level, for the
+        # recomposed totals (microcosm#1113).
+        drawn_parts = household_draws[list(UK_LCFS_RECOMPOSED_DRAWN_COLUMNS)].copy()
         energy_rake_receipt = None
         if energy is not None:
             household_draws, energy_rake_receipt = rake_recipient_energy(
@@ -392,6 +469,31 @@ class UKLCFSConsumptionStageTransform:
             ~recipient["has_fuel_consumption"].astype(bool),
             ["petrol_spending", "diesel_spending"],
         ] = 0.0
+        incidence = lcfs_road_fuel_incidence(
+            self.stage,
+            household_draws,
+            donor=donor,
+            recipient=recipient,
+            household_ids=frame.table("household")["household_id"].to_numpy(),
+            weights=weights,
+        )
+        household_draws = incidence.draws
+        household_draws, road_fuel_level_receipt = lcfs_road_fuel_level(
+            self.stage, household_draws, weights=weights, lcfs_household=lcfs_household
+        )
+        household_draws, recomposed_totals_receipt = lcfs_recompose_from_remainder(
+            self.stage, household_draws, drawn=drawn_parts, weights=weights
+        )
+        uprating = uprating_operation(self.stage)
+        capture = (
+            None
+            if uprating is None
+            else division_capture(
+                household_draws,
+                weights=weights,
+                period_value=int(uprating["to_period"]),
+            )
+        )
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
         )
@@ -416,7 +518,10 @@ class UKLCFSConsumptionStageTransform:
             ),
         )
         validate_uk_national_frame(result)
-        self.last_fit_weight_records = imputation.fit_weight_records
+        self.last_fit_weight_records = (
+            *imputation.fit_weight_records,
+            *incidence.fit_weight_records,
+        )
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
             support_clip=clip_result.receipt,
@@ -427,6 +532,10 @@ class UKLCFSConsumptionStageTransform:
             energy_rake=energy_rake_receipt,
             fuel_litres_audit=litres_audit,
             donor_floor=donor_floor_receipt,
+            road_fuel_incidence=incidence.receipt,
+            road_fuel_level=road_fuel_level_receipt,
+            recomposed_totals=recomposed_totals_receipt,
+            division_capture=capture,
         )
         return result
 
@@ -446,20 +555,183 @@ class UKLCFSConsumptionImputationResult:
     fit_weight_records: tuple[FitWeightRecord, ...]
 
 
+#: ONS Consumer Trends' generic concept for the divisions and classes.
+UK_ONS_HFCE_CONCEPT = "ons.household_final_consumption_expenditure"
+#: Each LCFS division column and its COICOP division.
+UK_LCFS_DIVISION_COICOP = {
+    column: f"{division:02d}"
+    for division, column in enumerate(UK_LCFS_COICOP_DIVISION_COLUMNS, start=1)
+}
+#: The classes national accounts count that a household diary does not:
+#: narcotics, owner-occupiers' imputed rent and FISIM, each with its sheet.
+UK_LCFS_SURVEY_OUT_OF_SCOPE_CLASSES = {
+    "02": (("02.3", "02CN"),),
+    "04": (("04.2", "04CN"),),
+    "12": (("12.6.1", "12CN"),),
+}
+
+
+def _ons_annual_value(
+    coicop: str, *, source_sheet: str, consumption_concept: str, period_value: int
+) -> tuple[float, str]:
+    rows = vendored_rows(
+        UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        concept=UK_ONS_HFCE_CONCEPT,
+        period_type="calendar_year",
+        period_value=int(period_value),
+        dimensions={
+            "coicop": coicop,
+            "source_sheet": source_sheet,
+            "consumption_concept": consumption_concept,
+        },
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"{UK_LCFS_ONS_EXPENDITURE_RESOURCE}: expected one {coicop} "
+            f"({source_sheet}, {consumption_concept}) row for {period_value}, "
+            f"found {len(rows)}."
+        )
+    return float(rows[0]["value"]), str(rows[0].get("source_record_id", ""))
+
+
+def division_capture(
+    household_draws: pd.DataFrame, *, weights: Sequence[float], period_value: int
+) -> dict[str, Any]:
+    """How much of ONS household spending each LCFS division captures.
+
+    Diagnostic only (microcosm#1113): each division's prior-weighted frame
+    total against ONS Consumer Trends for the same calendar year, less the
+    classes a household diary does not record (narcotics, imputed rent,
+    FISIM). The divisions are ONS's domestic concept: they include
+    non-residents' spending in the UK and exclude residents' spending abroad,
+    and the tourism adjustment is published for the total only, so only the
+    total is also compared on the national concept. Nothing is gated on it.
+    """
+
+    weight = np.asarray(weights, dtype=float)
+    divisions: dict[str, Any] = {}
+    frame_total = 0.0
+    out_of_scope_total = 0.0
+    for column, coicop in UK_LCFS_DIVISION_COICOP.items():
+        published, record_id = _ons_annual_value(
+            coicop,
+            source_sheet="0CN",
+            consumption_concept="domestic",
+            period_value=period_value,
+        )
+        out_of_scope = {}
+        for code, sheet in UK_LCFS_SURVEY_OUT_OF_SCOPE_CLASSES.get(coicop, ()):
+            out_of_scope[code], _ = _ons_annual_value(
+                code,
+                source_sheet=sheet,
+                consumption_concept="domestic",
+                period_value=period_value,
+            )
+        survey_scope = published - sum(out_of_scope.values())
+        frame = float(np.dot(weight, household_draws[column].to_numpy(dtype=float)))
+        frame_total += frame
+        out_of_scope_total += sum(out_of_scope.values())
+        divisions[column] = {
+            "coicop": coicop,
+            "published_domestic": published,
+            "source_record_id": record_id,
+            "out_of_scope": out_of_scope,
+            "survey_scope": survey_scope,
+            "frame": frame,
+            "capture": frame / survey_scope if survey_scope > 0 else None,
+        }
+    domestic, _ = _ons_annual_value(
+        "0",
+        source_sheet="0CN",
+        consumption_concept="domestic",
+        period_value=period_value,
+    )
+    national, _ = _ons_annual_value(
+        "NAT0",
+        source_sheet="0CN",
+        consumption_concept="national",
+        period_value=period_value,
+    )
+    return {
+        "resource": UK_LCFS_ONS_EXPENDITURE_RESOURCE,
+        "concept": UK_ONS_HFCE_CONCEPT,
+        "period_type": "calendar_year",
+        "period_value": int(period_value),
+        "divisions": divisions,
+        "total": {
+            "frame": frame_total,
+            "published_domestic": domestic,
+            "published_national": national,
+            "out_of_scope": out_of_scope_total,
+            "capture_domestic": frame_total / (domestic - out_of_scope_total),
+            "capture_national": frame_total / (national - out_of_scope_total),
+        },
+        "gated": False,
+    }
+
+
+def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
+    """The cars share of each fuel's UK road use, from DESNZ's vehicle/fuel ktoe.
+
+    Within one fuel the units cancel, so no ktoe-to-litres factor is needed:
+    cars over every vehicle type burning that fuel (petrol: cars, motorcycles
+    and LGVs; diesel: cars, buses and coaches, LGVs and HGVs).
+    """
+
+    rows = vendored_rows(
+        UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
+        concept=UK_DESNZ_ROAD_FUEL_CONCEPT,
+        period_type="calendar_year",
+        period_value=int(period_value),
+        geography_id="K02000001",
+    )
+    shares: dict[str, dict[str, Any]] = {}
+    for fuel in UK_LITRES_AUDIT_FUELS.values():
+        by_vehicle: dict[str, float] = {}
+        record_ids: list[str] = []
+        for row in rows:
+            dims = row.get("dimensions") or {}
+            if dims.get("fuel") != fuel:
+                continue
+            vehicle = str(dims.get("vehicle_type"))
+            if vehicle in by_vehicle:
+                raise ValueError(
+                    f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: duplicate {vehicle} {fuel} "
+                    f"row for {period_value}."
+                )
+            by_vehicle[vehicle] = float(row["value"])
+            record_ids.append(str(row.get("source_record_id", "")))
+        total = sum(by_vehicle.values())
+        if "cars" not in by_vehicle or total <= 0:
+            raise ValueError(
+                f"{UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE}: no {fuel} cars row for "
+                f"{period_value}."
+            )
+        shares[fuel] = {
+            "ktoe_by_vehicle": dict(sorted(by_vehicle.items())),
+            "cars_share": by_vehicle["cars"] / total,
+            "source_record_ids": record_ids,
+        }
+    return shares
+
+
 def fuel_litres_audit(
     household_draws: pd.DataFrame,
     *,
     weights: Sequence[float],
     stage: SourceStageSpec,
 ) -> dict[str, Any] | None:
-    """Frame road-fuel litres against HMRC clearances times the OBR cars share.
+    """Frame road-fuel litres against the cars' share of HMRC clearances.
 
-    Diagnostic only (microcosm#890 C7): for each fuel column the declared
-    uprating moves by the vendored litre proxy, the frame's prior-weighted
-    spend is divided by the DESNZ pump price of the uprating's target year and
-    compared with the HMRC fiscal-year litres scaled by the OBR cars share of
-    fuel duty receipts (the household frame carries cars, not lorries or
-    vans). Recorded in the stage evidence; nothing is gated on it.
+    Diagnostic only (microcosm#890 C7, #1113): for each fuel column the
+    declared uprating moves by the vendored litre proxy, the frame's
+    prior-weighted spend is divided by the DESNZ pump price of the uprating's
+    target year and compared with the HMRC fiscal-year litres of that fuel
+    scaled by the cars share of its road use (DESNZ sub-national road fuel by
+    vehicle, the uprating's target year; the household frame carries cars, not
+    lorries or vans). The OBR cars share of fuel duty receipts, uniform across
+    fuels, stays on the receipt beside the total. Recorded in the stage
+    evidence; nothing is gated on it.
     """
 
     parameters = uprating_operation(stage)
@@ -520,9 +792,13 @@ def fuel_litres_audit(
 
     cars, total = receipts(UK_OBR_CARS_CATEGORY), receipts(UK_OBR_TOTAL_CATEGORY)
     cars_share = cars / total
-    for entry in fuels.values():
+    desnz = desnz_cars_share_by_fuel(to_period)
+    for column, entry in fuels.items():
+        fuel = UK_LITRES_AUDIT_FUELS[column]
+        entry["desnz_cars_share"] = desnz[fuel]["cars_share"]
+        entry["desnz_ktoe_by_vehicle"] = desnz[fuel]["ktoe_by_vehicle"]
         entry["cars_litres_benchmark"] = (
-            entry["hmrc_litres_all_road_users"] * cars_share
+            entry["hmrc_litres_all_road_users"] * desnz[fuel]["cars_share"]
         )
         entry["frame_over_cars_benchmark"] = (
             entry["frame_litres"] / entry["cars_litres_benchmark"]
@@ -531,10 +807,14 @@ def fuel_litres_audit(
         )
     frame_total = sum(entry["frame_litres"] for entry in fuels.values())
     benchmark_total = sum(entry["cars_litres_benchmark"] for entry in fuels.values())
+    obr_benchmark_total = cars_share * sum(
+        entry["hmrc_litres_all_road_users"] for entry in fuels.values()
+    )
     return {
         "resource": resource,
         "period_value": to_period,
         "fiscal_start": f"{to_period}-04-01",
+        "cars_share_resource": UK_LCFS_ROAD_FUEL_BY_VEHICLE_RESOURCE,
         "obr_fuel_duty_receipts": {
             "cars_gbp": cars,
             "total_gbp": total,
@@ -546,8 +826,532 @@ def fuel_litres_audit(
         "frame_over_cars_benchmark": (
             frame_total / benchmark_total if benchmark_total > 0 else None
         ),
+        "frame_over_obr_uniform_cars_benchmark": (
+            frame_total / obr_benchmark_total if obr_benchmark_total > 0 else None
+        ),
+        "per_fuel_ratio_basis": UK_LITRES_AUDIT_PER_FUEL_BASIS,
         "gated": False,
     }
+
+
+@dataclass(frozen=True)
+class RoadFuelIncidence:
+    """Road-fuel draws after the incidence redraw, its receipt and fit records."""
+
+    draws: pd.DataFrame
+    receipt: Mapping[str, Any] | None
+    fit_weight_records: tuple[FitWeightRecord, ...] = ()
+
+
+def road_fuel_incidence_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``redraw_zero_road_fuel`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == REDRAW_ZERO_ROAD_FUEL_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def redraw_zero_road_fuel(
+    household_draws: pd.DataFrame,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    flagged: np.ndarray,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+    parameters: Mapping[str, Any],
+) -> RoadFuelIncidence:
+    """Give every household the fuel flag marks a positive road-fuel spend.
+
+    The LCFS diary covers two weeks, so about a third of car-owning donors
+    record no fuel purchase and the chain reproduces that zero share among the
+    households the fuel flag marks as buying petrol or diesel; over a year
+    such a car is refuelled. For a flagged household whose chain draw is zero,
+    petrol plus diesel is redrawn from the donor's conditional distribution
+    among households with positive road fuel, on the chain's predictors: a
+    weighted regime-gated QRF draws the total, positive by construction, then
+    the petrol share of it (which keeps diesel-only and mixed households), at
+    quantiles keyed on the household id. Positive draws are kept; the level
+    step then rescales the total (microcosm#1113).
+    """
+
+    from microcosm.fit.qrf import Regime, RegimeGatedQRF
+
+    columns = tuple(str(column) for column in parameters.get("columns", ()))
+    if columns != UK_LCFS_ROAD_FUEL_COLUMNS:
+        raise ValueError(
+            f"{REDRAW_ZERO_ROAD_FUEL_KIND} must redraw {UK_LCFS_ROAD_FUEL_COLUMNS}, "
+            f"not {columns}."
+        )
+    if parameters.get("flag") != "has_fuel_consumption":
+        raise ValueError(
+            f"{REDRAW_ZERO_ROAD_FUEL_KIND} must redraw the has_fuel_consumption "
+            "households."
+        )
+    rule = str(parameters.get("rule") or "")
+    if rule != UK_LCFS_ROAD_FUEL_REDRAW_RULE:
+        raise ValueError(f"unsupported {REDRAW_ZERO_ROAD_FUEL_KIND} rule {rule!r}.")
+    seed = parameters.get("seed")
+    n_estimators = parameters.get("n_estimators")
+    salt = parameters.get("salt")
+    if not isinstance(seed, int) or not isinstance(n_estimators, int):
+        raise ValueError(f"{REDRAW_ZERO_ROAD_FUEL_KIND} needs integer seed and trees.")
+    if not isinstance(salt, str) or not salt:
+        raise ValueError(f"{REDRAW_ZERO_ROAD_FUEL_KIND} needs a declared salt.")
+    flagged = np.asarray(flagged, dtype=bool)
+    weight = np.asarray(weights, dtype=float)
+    spend = household_draws[list(columns)].to_numpy(dtype=float)
+    before = spend.sum(axis=1)
+    zero = flagged & ~(before > 0)
+    redrawn = household_draws.copy()
+    regimes: dict[str, str] | None = None
+    training_rows = 0
+    records: tuple[FitWeightRecord, ...] = ()
+    if zero.any():
+        donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
+            donor, recipient
+        )
+        donor_total = donor_encoded["petrol_spending"].to_numpy(
+            dtype=float
+        ) + donor_encoded["diesel_spending"].to_numpy(dtype=float)
+        positive = donor_total > 0
+        training_rows = int(positive.sum())
+        if training_rows == 0:
+            raise ValueError("LCFS donor records no positive road-fuel spend.")
+        train = donor_encoded.loc[positive, [*predictors, "household_weight"]]
+        train = train.reset_index(drop=True)
+        train[UK_LCFS_ROAD_FUEL_TOTAL] = donor_total[positive]
+        train[UK_LCFS_PETROL_SHARE] = (
+            donor_encoded.loc[positive, "petrol_spending"].to_numpy(dtype=float)
+            / donor_total[positive]
+        )
+        targets = [UK_LCFS_ROAD_FUEL_TOTAL, UK_LCFS_PETROL_SHARE]
+        fitted = RegimeGatedQRF(n_estimators=n_estimators, seed=seed).fit(
+            train, list(predictors), targets, weights="household_weight"
+        )
+        regimes = {target: str(regime) for target, regime in fitted.regimes().items()}
+        if regimes[UK_LCFS_ROAD_FUEL_TOTAL] != Regime.POSITIVE_ONLY:
+            raise ValueError(
+                f"the road-fuel total fitted regime {regimes[UK_LCFS_ROAD_FUEL_TOTAL]!r}"
+                f", not {Regime.POSITIVE_ONLY!r}."
+            )
+        ids = np.asarray(household_ids)[zero]
+        drawn = fitted.predict_from_uniforms(
+            recipient_encoded.loc[zero, list(predictors)].reset_index(drop=True),
+            quantiles={
+                target: stable_identity_uniforms(
+                    ids, seed=seed, salt=f"{salt}:{target}"
+                )
+                for target in targets
+            },
+            sign_uniforms={
+                target: stable_identity_uniforms(
+                    ids, seed=seed, salt=f"{salt}:{target}:sign"
+                )
+                for target in targets
+            },
+        )
+        total = drawn[UK_LCFS_ROAD_FUEL_TOTAL].to_numpy(dtype=float)
+        share = np.clip(drawn[UK_LCFS_PETROL_SHARE].to_numpy(dtype=float), 0.0, 1.0)
+        rows = np.flatnonzero(zero)
+        redrawn.iloc[rows, redrawn.columns.get_loc("petrol_spending")] = share * total
+        redrawn.iloc[rows, redrawn.columns.get_loc("diesel_spending")] = (
+            1.0 - share
+        ) * total
+        records = tuple(
+            FitWeightRecord(
+                f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", fitted.weight_kind
+            )
+            for target in targets
+        )
+    after_spend = redrawn[list(columns)].to_numpy(dtype=float)
+    after = after_spend.sum(axis=1)
+
+    def weighted_mean(values: np.ndarray, mask: np.ndarray) -> float | None:
+        mass = float(weight[mask].sum())
+        return float(np.dot(weight[mask], values[mask]) / mass) if mass > 0 else None
+
+    flagged_mass = float(weight[flagged].sum())
+    redrawn_total = float(np.dot(weight[zero], after[zero]))
+    receipt = {
+        "operation": REDRAW_ZERO_ROAD_FUEL_KIND,
+        "rule": rule,
+        "seed": seed,
+        "salt": salt,
+        "n_estimators": n_estimators,
+        "columns": list(columns),
+        "regimes": regimes,
+        "training_rows": training_rows,
+        "flagged_households": int(flagged.sum()),
+        "flagged_zero_before": int(zero.sum()),
+        "flagged_zero_share_before": (
+            float(weight[zero].sum()) / flagged_mass if flagged_mass > 0 else 0.0
+        ),
+        "flagged_zero_after": int((flagged & ~(after > 0)).sum()),
+        "unflagged_with_fuel": int((~flagged & (after > 0)).sum()),
+        "mean_positive_before": weighted_mean(before, flagged & (before > 0)),
+        "mean_redrawn": weighted_mean(after, zero),
+        "mean_flagged_after": weighted_mean(after, flagged),
+        "redrawn_petrol_share": (
+            float(np.dot(weight[zero], after_spend[zero, 0])) / redrawn_total
+            if redrawn_total > 0
+            else None
+        ),
+        "weighted_total_before": float(np.dot(weight, before)),
+        "weighted_total_after": float(np.dot(weight, after)),
+    }
+    return RoadFuelIncidence(redrawn, receipt, records)
+
+
+def lcfs_road_fuel_incidence(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    household_ids: np.ndarray,
+    weights: Sequence[float],
+) -> RoadFuelIncidence:
+    """Apply the declared ``redraw_zero_road_fuel`` step (none if undeclared)."""
+
+    parameters = road_fuel_incidence_operation(stage)
+    if parameters is None:
+        return RoadFuelIncidence(household_draws, None)
+    return redraw_zero_road_fuel(
+        household_draws,
+        donor=donor,
+        recipient=recipient,
+        flagged=recipient["has_fuel_consumption"].to_numpy(dtype=bool),
+        household_ids=household_ids,
+        weights=weights,
+        parameters=parameters,
+    )
+
+
+@dataclass(frozen=True)
+class RoadFuelLevel:
+    """The household road-fuel level the ``level_road_fuel`` step scales to.
+
+    ``published`` is the ONS Consumer Trends COICOP 07.2.2 spend (fuels and
+    lubricants for personal transport equipment); ``other_fuels_share`` the
+    part of it that is neither petrol nor diesel, taken from the LCFS donor's
+    own split of 07.2.2. ``level`` is what the frame's petrol plus diesel
+    totals at prior weights after the step.
+    """
+
+    published: float
+    other_fuels_share: float
+    receipt: Mapping[str, Any]
+
+    @property
+    def level(self) -> float:
+        return self.published * (1.0 - self.other_fuels_share)
+
+
+def road_fuel_level_operation(stage: SourceStageSpec) -> Mapping[str, Any] | None:
+    """The stage's declared ``level_road_fuel`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == LEVEL_ROAD_FUEL_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def lcfs_other_road_fuel_share(lcfs_household: pd.DataFrame) -> float:
+    """The donor's weighted share of COICOP 07.2.2 that is neither petrol nor diesel."""
+
+    household = _lowercase(lcfs_household)
+    _require_columns(
+        household, ("weighta", "c72211", "c72212", *UK_LCFS_OTHER_ROAD_FUEL_CODES)
+    )
+    weight = _numeric(household["weighta"]).to_numpy(dtype=float)
+    other = sum(
+        _numeric(household[code]).to_numpy(dtype=float)
+        for code in UK_LCFS_OTHER_ROAD_FUEL_CODES
+    )
+    total = (
+        _numeric(household["c72211"]).to_numpy(dtype=float)
+        + _numeric(household["c72212"]).to_numpy(dtype=float)
+        + other
+    )
+    denominator = float(np.dot(weight, total))
+    if not np.isfinite(denominator) or denominator <= 0:
+        raise ValueError("LCFS donor records no COICOP 07.2.2 road-fuel spend.")
+    return float(np.dot(weight, other)) / denominator
+
+
+def road_fuel_level(
+    parameters: Mapping[str, Any], *, other_fuels_share: float
+) -> RoadFuelLevel:
+    """Resolve the declared ONS road-fuel level from the vendored rows."""
+
+    columns = tuple(str(column) for column in parameters.get("columns", ()))
+    if columns != UK_LCFS_ROAD_FUEL_COLUMNS:
+        raise ValueError(
+            f"{LEVEL_ROAD_FUEL_KIND} must level {UK_LCFS_ROAD_FUEL_COLUMNS}, "
+            f"not {columns}."
+        )
+    resource = str(parameters.get("resource") or "")
+    if resource != UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE:
+        raise ValueError(
+            f"{LEVEL_ROAD_FUEL_KIND} must read {UK_LCFS_ROAD_FUEL_LEVEL_RESOURCE!r}, "
+            f"not {resource!r}."
+        )
+    rule = str(parameters.get("other_fuels_rule") or "")
+    if rule != UK_LCFS_ROAD_FUEL_OTHER_SHARE_RULE:
+        raise ValueError(
+            f"unsupported {LEVEL_ROAD_FUEL_KIND} other_fuels_rule {rule!r}."
+        )
+    codes = tuple(str(code) for code in parameters.get("other_fuels_codes", ()))
+    if codes != UK_LCFS_OTHER_ROAD_FUEL_CODES:
+        raise ValueError(
+            f"{LEVEL_ROAD_FUEL_KIND} other_fuels_codes must be "
+            f"{UK_LCFS_OTHER_ROAD_FUEL_CODES}, not {codes}."
+        )
+    if str(parameters.get("period_type")) != "calendar_year":
+        raise ValueError(f"{LEVEL_ROAD_FUEL_KIND} binds a calendar-year ONS level.")
+    if not 0.0 <= other_fuels_share < 1.0:
+        raise ValueError(f"other-fuels share {other_fuels_share} is outside [0, 1).")
+    period_value = int(parameters["period_value"])
+    rows = vendored_rows(
+        resource,
+        concept=str(parameters["concept"]),
+        period_type="calendar_year",
+        period_value=period_value,
+        geography_id="K02000001",
+        dimensions={"coicop": str(parameters["coicop"]), "frequency": "annual"},
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"{resource}: expected one {parameters['coicop']} row for "
+            f"{period_value}, found {len(rows)}."
+        )
+    published = float(rows[0]["value"])
+    if not np.isfinite(published) or published <= 0:
+        raise ValueError(f"{resource}: the road-fuel level must be positive.")
+    receipt = {
+        "operation": LEVEL_ROAD_FUEL_KIND,
+        "resource": resource,
+        "concept": str(parameters["concept"]),
+        "coicop": str(parameters["coicop"]),
+        "period_type": "calendar_year",
+        "period_value": period_value,
+        "source_record_id": str(rows[0].get("source_record_id", "")),
+        "published": published,
+        "other_fuels_rule": rule,
+        "other_fuels_codes": list(UK_LCFS_OTHER_ROAD_FUEL_CODES),
+        "other_fuels_share": float(other_fuels_share),
+        "level": published * (1.0 - other_fuels_share),
+        "columns": list(UK_LCFS_ROAD_FUEL_COLUMNS),
+    }
+    return RoadFuelLevel(published, float(other_fuels_share), receipt)
+
+
+def level_road_fuel(
+    household_draws: pd.DataFrame,
+    *,
+    level: RoadFuelLevel,
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Scale petrol and diesel by one factor so the prior-weighted total is the level.
+
+    One factor keeps the drawn petrol/diesel mix and every household's
+    relative spend; only the level moves (microcosm#1113: the LCFS diary
+    records about a quarter less road fuel than ONS household spending).
+    """
+
+    columns = list(UK_LCFS_ROAD_FUEL_COLUMNS)
+    weight_values = np.asarray(weights, dtype=float)
+    spend = household_draws[columns].to_numpy(dtype=float)
+    before = float(np.dot(weight_values, spend.sum(axis=1)))
+    if not np.isfinite(before) or before <= 0:
+        raise ValueError("the frame draws no road-fuel spend to level.")
+    factor = level.level / before
+    result = household_draws.copy()
+    result[columns] = spend * factor
+    after = result[columns].to_numpy(dtype=float)
+    petrol = float(np.dot(weight_values, after[:, 0]))
+    receipt = {
+        **dict(level.receipt),
+        "frame_before": before,
+        "factor": float(factor),
+        "frame_after": float(np.dot(weight_values, after.sum(axis=1))),
+        "petrol_share_of_level": petrol / level.level,
+    }
+    return result, receipt
+
+
+def lcfs_road_fuel_level(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    lcfs_household: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Apply the declared ``level_road_fuel`` step (none if undeclared)."""
+
+    parameters = road_fuel_level_operation(stage)
+    if parameters is None:
+        return household_draws, None
+    level = road_fuel_level(
+        parameters, other_fuels_share=lcfs_other_road_fuel_share(lcfs_household)
+    )
+    return level_road_fuel(household_draws, level=level, weights=weights)
+
+
+def recompose_from_remainder_operation(
+    stage: SourceStageSpec,
+) -> Mapping[str, Any] | None:
+    """The stage's declared ``recompose_from_remainder`` parameters, if any."""
+
+    for operation in stage.operations:
+        if operation.kind == RECOMPOSE_FROM_REMAINDER_KIND:
+            return {"kind": operation.kind, **operation.parameters}
+    return None
+
+
+def check_recomposed_parents(parameters: Mapping[str, Any]) -> None:
+    """Refuse a declaration that differs from the totals the stage recomposes."""
+
+    parents = parameters.get("parents")
+    if not isinstance(parents, Mapping) or set(parents) != set(
+        UK_LCFS_RECOMPOSED_PARENTS
+    ):
+        raise ValueError(
+            f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare "
+            f"{sorted(UK_LCFS_RECOMPOSED_PARENTS)}."
+        )
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        declared = parents[parent]
+        if (
+            not isinstance(declared, Mapping)
+            or tuple(declared.get("drawn_subtracts", ())) != subtracted
+            or tuple(declared.get("components", ())) != components
+        ):
+            raise ValueError(
+                f"{RECOMPOSE_FROM_REMAINDER_KIND} declares {parent!r} as "
+                f"{declared!r}, not its draw less {subtracted} plus {components}."
+            )
+
+
+def uncarried_spend(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """The published spend inside a recomposed total that no column carries.
+
+    ONS Consumer Trends classes read from the vendored rows the declaration
+    names: the liquid and solid fuels of COICOP 04.5, which have no column of
+    their own and stay inside the housing remainder at the diary's level.
+    """
+
+    spec = parameters.get("uncarried")
+    if not isinstance(spec, Mapping):
+        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} must declare uncarried.")
+    resource = str(spec.get("resource") or "")
+    if resource not in UK_LCFS_VENDORED_RESOURCES:
+        raise ValueError(f"{resource!r} is not a vendored lcfs_consumption resource.")
+    period_value = int(spec["period_value"])
+    classes = []
+    for entry in spec.get("classes", ()):
+        coicop, concept = str(entry["coicop"]), str(entry["concept"])
+        rows = vendored_rows(
+            resource,
+            concept=concept,
+            period_type="calendar_year",
+            period_value=period_value,
+            geography_id="K02000001",
+            dimensions={"coicop": coicop, "frequency": "annual"},
+        )
+        if len(rows) != 1:
+            raise ValueError(
+                f"{resource}: expected one {coicop} row for {period_value}, "
+                f"found {len(rows)}."
+            )
+        classes.append(
+            {
+                "coicop": coicop,
+                "concept": concept,
+                "source_record_id": str(rows[0].get("source_record_id", "")),
+                "value": float(rows[0]["value"]),
+            }
+        )
+    if not classes:
+        raise ValueError(f"{RECOMPOSE_FROM_REMAINDER_KIND} declares no classes.")
+    return {
+        "resource": resource,
+        "period_value": period_value,
+        "classes": classes,
+        "total": float(sum(entry["value"] for entry in classes)),
+    }
+
+
+def recompose_parent_totals(
+    household_draws: pd.DataFrame,
+    *,
+    drawn: pd.DataFrame,
+    parameters: Mapping[str, Any],
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Write each recomposed total around the levelled parts the stage set.
+
+    A total keeps its own chain draw less the chain's draws of the parts the
+    stage re-levels (``drawn``, kept before any step touched them; floored at
+    zero where the parts outgrow the total), and adds the levelled parts back,
+    so it always contains the electricity, gas, petrol and diesel at their
+    published scale (microcosm#1113). The chain draws each part after, and
+    conditional on, its total, so the remainder is the chain's own split; a
+    remainder drawn as a chain target of its own over-drew the vehicle-purchase
+    tail of transport (10 to 13 percent above the donor in-sample).
+    """
+
+    check_recomposed_parents(parameters)
+    weight = np.asarray(weights, dtype=float)
+    result = household_draws.copy()
+    parents: dict[str, Any] = {}
+    for parent, (subtracted, components) in UK_LCFS_RECOMPOSED_PARENTS.items():
+        drawn_total = result[parent].to_numpy(dtype=float)
+        drawn_parts = sum(drawn[column].to_numpy(dtype=float) for column in subtracted)
+        rest = np.maximum(drawn_total - drawn_parts, 0.0)
+        parts = sum(result[column].to_numpy(dtype=float) for column in components)
+        total = rest + parts
+        result[parent] = total
+        parents[parent] = {
+            "drawn_subtracts": list(subtracted),
+            "components": list(components),
+            "weighted_drawn_total": float(np.dot(weight, drawn_total)),
+            "weighted_drawn_subtracts": float(np.dot(weight, drawn_parts)),
+            "rows_floored": int((drawn_parts > drawn_total).sum()),
+            "weighted_floored_mass": float(
+                np.dot(weight, np.maximum(drawn_parts - drawn_total, 0.0))
+            ),
+            "weighted_remainder": float(np.dot(weight, rest)),
+            "weighted_components": float(np.dot(weight, parts)),
+            "weighted_total": float(np.dot(weight, total)),
+            "minimum_remainder": float(rest.min()) if rest.size else 0.0,
+            "rows_below_components": int((total < parts).sum()),
+        }
+    receipt = {
+        "operation": RECOMPOSE_FROM_REMAINDER_KIND,
+        "parents": parents,
+        "uncarried": uncarried_spend(parameters),
+    }
+    return result, receipt
+
+
+def lcfs_recompose_from_remainder(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    *,
+    drawn: pd.DataFrame,
+    weights: Sequence[float],
+) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Apply the declared ``recompose_from_remainder`` step (none if undeclared)."""
+
+    parameters = recompose_from_remainder_operation(stage)
+    if parameters is None:
+        return household_draws, None
+    return recompose_parent_totals(
+        household_draws, drawn=drawn, parameters=parameters, weights=weights
+    )
 
 
 @dataclass(frozen=True)
@@ -1292,11 +2096,16 @@ def support_clip_to_donor(
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """Donor support per clipped column; raked columns carry no bounds."""
+    """Donor support per clipped column.
+
+    Levelled columns carry no bounds, nor do the totals written back around
+    their levelled components, whose coherence the stage's recomposed-totals
+    check holds instead (microcosm#1113).
+    """
 
     ranges: dict[str, tuple[float, float]] = {}
     for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
-        if column in UK_LCFS_RAKED_COLUMNS:
+        if column in UK_LCFS_RAKED_COLUMNS or column in UK_LCFS_RECOMPOSED_PARENTS:
             continue
         values = pd.to_numeric(donor[column], errors="coerce")
         finite = values[np.isfinite(values)]

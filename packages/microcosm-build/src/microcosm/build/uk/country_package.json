@@ -423,6 +423,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "desnz_road_fuel_by_vehicle.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dft_bus_journeys.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

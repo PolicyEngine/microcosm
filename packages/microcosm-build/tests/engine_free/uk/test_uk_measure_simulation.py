@@ -612,6 +612,13 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # Two amount bands (200.01-300, 400.01-500) retired 2026-09-21 on the
     # v20 measurement (-10.1 % and -3.8 % unbound); the tail bands stay out.
     "dwp.benefit_cap.capped_households_": 11,
+    # microcosm#1113 and #1123 item 3 (2026-10-08): rows whose level the
+    # engine, a published-source residual or a scope the frame doesn't hold
+    # sets, held out and measured with tools/diagnose_uk_consumption_taxes.py.
+    "obr.vat": 1,
+    "obr.fuel_duties_cars": 1,
+    "ons.household_electricity_expenditure": 1,
+    "ons.household_gas_expenditure": 1,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -637,7 +644,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 64
+    assert len(names) == len(set(names)) == 68
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -733,6 +740,36 @@ def test_packaged_exclusions_load():
         assert entry["expires_on"] == "2026-11-26"
         assert "microcosm#1095" in entry["adjudication"]
         assert "policyengine-uk 2.122.2" in entry["reason"]
+    # The 2026-10-08 consumption-tax tranche (microcosm#1113, #1123 item 3):
+    # VAT's level is an engine factor (policyengine-uk#1996) and the two ONS
+    # energy rows are a published-source residual against the stage's DESNZ
+    # volume at QEP prices. The OBR cars receipts include business-paid car
+    # fuel, so household road fuel is bound on ONS 07.2.2 in their place. A
+    # masked re-solve changed no other row's fit, so they are held out of the
+    # objective and measured by the diagnose tool.
+    consumption_taxes = [e for e in exclusions if e["approved_on"] == "2026-10-08"]
+    assert sorted(e["name"] for e in consumption_taxes) == [
+        "obr.fuel_duties_cars",
+        "obr.vat",
+        "ons.household_electricity_expenditure",
+        "ons.household_gas_expenditure",
+    ]
+    for entry in consumption_taxes:
+        assert entry["expires_on"] == "2027-01-08", entry["name"]
+        assert "tools/diagnose_uk_consumption_taxes.py" in entry["reason"], entry[
+            "name"
+        ]
+        assert (
+            "experiments/1113-consumption-tax-levels-receipts.md"
+            in entry["adjudication"]
+        ), entry["name"]
+    trackings = {e["name"]: e["tracking"] for e in consumption_taxes}
+    assert trackings == {
+        "obr.vat": "policyengine-uk#1996",
+        "obr.fuel_duties_cars": "microcosm#1113",
+        "ons.household_electricity_expenditure": "microcosm#1113",
+        "ons.household_gas_expenditure": "microcosm#1113",
+    }
     for entry in renewed:
         assert entry["expires_on"] == "2026-11-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]

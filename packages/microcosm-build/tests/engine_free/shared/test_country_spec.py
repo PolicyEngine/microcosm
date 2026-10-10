@@ -997,6 +997,7 @@ class TestUKCountryPackage:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "desnz_road_fuel_by_vehicle.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
@@ -1122,6 +1123,7 @@ class TestExistingPackagesGeneralize:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "desnz_road_fuel_by_vehicle.json",
             "dft_bus_journeys.json",
             "nts_trip_rates.json",
             "nts_car_availability.json",
@@ -1132,8 +1134,8 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1231
-        )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+            len(references) == 1232
+        )  # microcosm#1113: + 1 ONS 07.2.2 household road fuel; PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
@@ -1393,6 +1395,10 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_bus_pricing",
+            "uk_stage_lcfs_consumption_road_fuel_incidence",
+            "uk_stage_lcfs_consumption_road_fuel_level",
+            "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
@@ -1500,6 +1506,10 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_bus_pricing",
+            "uk_stage_lcfs_consumption_road_fuel_incidence",
+            "uk_stage_lcfs_consumption_road_fuel_level",
+            "uk_stage_lcfs_consumption_recomposed_totals",
+            "uk_stage_lcfs_consumption_basis",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",

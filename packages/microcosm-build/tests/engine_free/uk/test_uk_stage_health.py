@@ -1539,6 +1539,12 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
         "boardings" in f and "not the vendored" in f for f in result.failures
     ), result.failures
     tampered = copy.deepcopy(receipt)
+    tampered["prices"]["england_outside_london"]["calendar_price_factor"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any(
+        "calendar_price_factor" in f for f in result.failures
+    ), result.failures
+    tampered = copy.deepcopy(receipt)
     tampered["chain_conditioned_on"] = "priced"
     result = run(tampered)
     assert not result.passed and any("raw draw" in f for f in result.failures)
@@ -1547,6 +1553,294 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
     result = run(tampered)
     assert not result.passed and any("unpriced regions" in f for f in result.failures)
     with pytest.raises(ValueError, match="bus_pricing must be an object"):
+        run(None)
+
+
+def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> None:
+    """The lcfs road_fuel_level receipt is fact-checked at stage time (microcosm#1113)."""
+
+    import pandas as pd
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        level_road_fuel,
+        road_fuel_level,
+        road_fuel_level_operation,
+    )
+
+    gate_id = "uk_stage_lcfs_consumption_road_fuel_level"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters["check"] == "road_fuel_level"
+    declared = road_fuel_level_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    draws = pd.DataFrame(
+        {"petrol_spending": [900.0, 0.0, 400.0], "diesel_spending": [0.0, 700.0, 0.0]}
+    )
+    _, receipt = level_road_fuel(
+        draws,
+        level=road_fuel_level(declared, other_fuels_share=0.004),
+        weights=np.array([1.0e7, 1.5e7, 2.0e7]),
+    )
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "road_fuel_level": ev},
+            stage="lcfs_consumption",
+            check="road_fuel_level",
+            parameters=parameters,
+        )
+
+    def failing(ev, fragment: str) -> None:
+        result = run(ev)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["level"] == pytest.approx(receipt["level"])
+    failing(
+        {**receipt, "published": receipt["published"] * 1.01}, "road-fuel published"
+    )
+    failing({**receipt, "level": receipt["level"] * 1.01}, "road-fuel level")
+    failing({**receipt, "frame_after": receipt["frame_after"] * 0.99}, "levelled")
+    failing({**receipt, "factor": receipt["factor"] * 1.01}, "does not reproduce")
+    failing({**receipt, "source_record_id": "elsewhere"}, "declared row")
+    failing({**receipt, "other_fuels_share": 0.2}, "other-fuels share")
+    with pytest.raises(ValueError, match="road_fuel_level must be an object"):
+        run(None)
+
+
+def test_consumption_basis_gate_holds_every_spend_level_to_calendar_2024() -> None:
+    """Every LCFS spend column is on the H5's year, calendar 2024 (#1113)."""
+
+    import copy
+
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+
+    gate_id = "uk_stage_lcfs_consumption_basis"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters == {
+        "stage": "lcfs_consumption",
+        "check": "consumption_basis",
+        "period_type": "calendar_year",
+        "period_value": 2024,
+    }
+    evidence = {
+        "stage": "lcfs_consumption",
+        "donor_uprating": {"from_period": 2023, "to_period": 2024},
+        "energy_pricing": {
+            "period_type": "calendar_year",
+            "period_value": 2024,
+            "level": {"period_type": "calendar_year", "period_value": 2024},
+        },
+        "bus_pricing": {"price_year": 2024},
+        "road_fuel_level": {"period_type": "calendar_year", "period_value": 2024},
+    }
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence=ev,
+            stage="lcfs_consumption",
+            check="consumption_basis",
+            parameters=parameters,
+        )
+
+    def failing(mutate, fragment: str) -> None:
+        tampered = copy.deepcopy(evidence)
+        mutate(tampered)
+        result = run(tampered)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(evidence)
+    assert passed.passed, passed.failures
+    assert passed.details["steps"]["energy_level"] == ("calendar_year", 2024)
+    failing(lambda e: e["donor_uprating"].update(to_period=2025), "donor uprating")
+    failing(
+        lambda e: e["energy_pricing"].update(period_type="fiscal_year"), "energy prices"
+    )
+    failing(
+        lambda e: e["energy_pricing"]["level"].update(period_type="fiscal_year"),
+        "DESNZ energy level",
+    )
+    failing(lambda e: e["bus_pricing"].update(price_year=None), "bus fares")
+    failing(lambda e: e["road_fuel_level"].update(period_value=2025), "road-fuel level")
+    failing(lambda e: e.pop("bus_pricing"), "no bus_pricing receipt")
+    with pytest.raises(ValueError, match="calendar year"):
+        uk_stage_health_gate(
+            evidence=evidence,
+            stage="lcfs_consumption",
+            check="consumption_basis",
+            parameters={**parameters, "period_type": "fiscal_year"},
+        )
+
+
+def test_road_fuel_incidence_gate_holds_every_flagged_household_positive() -> None:
+    """The lcfs road_fuel_incidence receipt is checked at stage time (microcosm#1113)."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        road_fuel_incidence_operation,
+    )
+
+    gate_id = "uk_stage_lcfs_consumption_road_fuel_incidence"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters["check"] == "road_fuel_incidence"
+    declared = road_fuel_incidence_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    receipt = {
+        **{key: declared[key] for key in ("rule", "seed", "salt", "n_estimators")},
+        "regimes": {
+            "road_fuel_total": "positive_only",
+            "petrol_share_of_road_fuel": "zero_inflated_positive",
+        },
+        "flagged_households": 100,
+        "flagged_zero_before": 34,
+        "flagged_zero_share_before": 0.343,
+        "flagged_zero_after": 0,
+        "unflagged_with_fuel": 0,
+        "mean_positive_before": 1500.0,
+        "mean_redrawn": 900.0,
+    }
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "road_fuel_incidence": ev},
+            stage="lcfs_consumption",
+            check="road_fuel_incidence",
+            parameters=parameters,
+        )
+
+    def failing(ev, fragment: str) -> None:
+        result = run(ev)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["flagged_zero_share_before"] == 0.343
+    failing({**receipt, "flagged_zero_after": 1}, "flagged_zero_after is 1")
+    failing({**receipt, "unflagged_with_fuel": 2}, "unflagged_with_fuel is 2")
+    failing({**receipt, "salt": "other"}, "the redraw ran with salt")
+    failing({**receipt, "n_estimators": 4}, "the redraw ran with n_estimators")
+    failing(
+        {**receipt, "regimes": {"road_fuel_total": "zero_inflated_positive"}},
+        "fitted regime",
+    )
+    failing({**receipt, "flagged_zero_share_before": 0.6}, "outside [0, 0.5]")
+    failing({**receipt, "flagged_zero_before": 3.0}, "is not a count")
+    # Nothing to redraw needs no fitted model.
+    nothing = {**receipt, "flagged_zero_before": 0, "regimes": None}
+    assert run({**nothing, "flagged_zero_share_before": 0.0}).passed
+    with pytest.raises(ValueError, match="road_fuel_incidence must be an object"):
+        run(None)
+
+
+def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
+    """The lcfs recomposed_totals receipt is checked at stage time (microcosm#1113)."""
+
+    import copy
+
+    import pandas as pd
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        recompose_from_remainder_operation,
+        recompose_parent_totals,
+    )
+
+    gate_id = "uk_stage_lcfs_consumption_recomposed_totals"
+    assert gate_id in UK_SPINE_GATE_SCOPE
+    parameters = _gate_parameters(gate_id)
+    assert parameters["check"] == "recomposed_totals"
+    declared = recompose_from_remainder_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    drawn = pd.DataFrame(
+        {
+            "domestic_energy_consumption": [2000.0, 900.0],
+            "petrol_spending": [800.0, 0.0],
+            "diesel_spending": [0.0, 700.0],
+        }
+    )
+    draws = pd.DataFrame(
+        {
+            "housing_water_and_electricity_consumption": [7000.0, 600.0],
+            "electricity_consumption": [900.0, 600.0],
+            "gas_consumption": [700.0, 0.0],
+            "transport_consumption": [2000.0, 1000.0],
+            "petrol_spending": [1500.0, 0.0],
+            "diesel_spending": [0.0, 900.0],
+        }
+    )
+    _, receipt = recompose_parent_totals(
+        draws, drawn=drawn, parameters=declared, weights=np.array([2.0, 1.0])
+    )
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "recomposed_totals": ev},
+            stage="lcfs_consumption",
+            check="recomposed_totals",
+            parameters=parameters,
+        )
+
+    def failing(mutate, fragment: str) -> None:
+        tampered = copy.deepcopy(receipt)
+        mutate(tampered)
+        result = run(tampered)
+        assert not result.passed and any(fragment in f for f in result.failures), (
+            fragment,
+            result.failures,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["uncarried_total"] == receipt["uncarried"]["total"]
+    housing = "housing_water_and_electricity_consumption"
+    failing(
+        lambda r: r["parents"][housing].update(minimum_remainder=-1.0),
+        "negative remainder",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(rows_below_components=1),
+        "below its components",
+    )
+    failing(
+        lambda r: r["parents"]["transport_consumption"].update(weighted_total=1.0),
+        "is not its remainder plus components",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(weighted_floored_mass=0.0),
+        "is not its draw less the drawn parts",
+    )
+    failing(
+        lambda r: r["parents"][housing].update(components=["electricity_consumption"]),
+        "components",
+    )
+    failing(
+        lambda r: r["parents"]["transport_consumption"].update(
+            drawn_subtracts=["petrol_spending"]
+        ),
+        "drawn_subtracts",
+    )
+    failing(lambda r: r["parents"].pop("transport_consumption"), "not the declared")
+    failing(lambda r: r["uncarried"].update(total=0.0), "uncarried spend")
+    with pytest.raises(ValueError, match="recomposed_totals must be an object"):
         run(None)
 
 

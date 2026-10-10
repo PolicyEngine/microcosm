@@ -86,9 +86,13 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     assert lcfs["source"]["person_tab_sha256"] == (
         "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
     )
-    # Raked columns (energy and, since microcosm#890, bus fares) carry no bounds.
-    assert len(lcfs["bounds"]) == 14
+    # Raked or levelled columns carry no bounds: energy, bus fares since
+    # microcosm#890, and since microcosm#1113 petrol, diesel and the housing and
+    # transport totals recomposed around the levelled parts.
+    assert len(lcfs["bounds"]) == 10
     assert "bus_fare_spending" not in lcfs["bounds"]
+    assert "petrol_spending" not in lcfs["bounds"]
+    assert "transport_consumption" not in lcfs["bounds"]
     assert vat["source"]["tab_sha256"] == (
         "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
     )

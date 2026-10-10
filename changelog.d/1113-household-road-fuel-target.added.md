@@ -1,0 +1,1 @@
+The UK contract binds `ons.household_road_fuel_expenditure`, ONS Consumer Trends COICOP 07.2.2 (fuels and lubricants for personal transport) for the calendar year, measured as petrol plus diesel spend (microcosm#1113).
