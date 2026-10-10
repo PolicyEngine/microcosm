@@ -25,6 +25,7 @@ from microcosm.build.cross_grain import (
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     _fact_matches_selector,
+    _source_name,
     compile_ledger_target_references,
     reference_fact_selectors,
 )
@@ -441,6 +442,7 @@ def compile_uk_target_registry(
     """Compile packaged UK Ledger references against consumer fact rows."""
 
     fact_rows = tuple(facts)
+    fact_indices_by_source = _fact_indices_by_source(fact_rows)
     spec = load_country_spec("uk")
     _assert_household_type_bindings_declared(_uk_contract_targets())
     compiled = []
@@ -449,7 +451,9 @@ def compile_uk_target_registry(
         restamped = LedgerTargetReference(
             **{**reference.__dict__, "period": target_period}
         )
-        candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
+        candidate_facts = _candidate_facts_for_reference(
+            fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
+        )
         if restamped.uprating_index is not None and (
             str(restamped.uprating_index) not in UK_UPRATING_APPLIERS
         ):
@@ -1228,16 +1232,53 @@ def _assert_local_fact_vintages(
             )
 
 
+def _fact_indices_by_source(
+    facts: tuple[Mapping[str, Any], ...],
+) -> dict[str, tuple[int, ...]]:
+    buckets: dict[str, list[int]] = {}
+    for index, fact in enumerate(facts):
+        buckets.setdefault(_source_name(fact), []).append(index)
+    return {source: tuple(indices) for source, indices in buckets.items()}
+
+
+def _selector_source_names(selector: Mapping[str, Any]) -> tuple[str, ...]:
+    expected = selector.get("source_name")
+    if expected is None or expected == "":
+        return ()
+    if isinstance(expected, (list, tuple)):
+        return tuple(str(item) for item in expected)
+    return (str(expected),)
+
+
 def _candidate_facts_for_reference(
     facts: tuple[Mapping[str, Any], ...],
     reference: LedgerTargetReference,
+    *,
+    fact_indices_by_source: Mapping[str, tuple[int, ...]] | None = None,
 ) -> tuple[Mapping[str, Any], ...]:
     selectors = reference_fact_selectors(reference)
     if not selectors:
         return facts
+    pool = facts
+    source_names = [_selector_source_names(selector) for selector in selectors]
+    if fact_indices_by_source is not None and all(source_names):
+        # A selector that pins source_name matches only that source's facts,
+        # so only those are scanned, in feed order (the national compile
+        # otherwise scans the whole feed once per reference, #1123).
+        pool = tuple(
+            facts[index]
+            for index in sorted(
+                {
+                    index
+                    for names in source_names
+                    for name in names
+                    for index in fact_indices_by_source.get(name, ())
+                }
+            )
+        )
     return tuple(
         fact
-        for fact in facts
+        for fact in pool
         if any(_fact_matches_selector(fact, selector) for selector in selectors)
     )
 
