@@ -96,6 +96,30 @@ commit that built the release, loads the base with the builder's
    weeks-unemployed, childcare and energy-subsidy differences in point 4 were
    not.
 
+6. The divergence is in growing the trees, at tied splits
+   (`platform_forest_probe.*.json`). The production QRF was fingerprinted step
+   by step on both platforms. The five sign gates' training probabilities agree
+   to 1.1e-16, the weighted bootstrap sample each forest is grown on is
+   bit-identical, and the sign draws, quantile uniforms and features of the
+   first target are identical. The forests differ: all 100 trees differ in
+   structure in each of the first four forests (27 of 100 in the fifth). In
+   every diverging tree, the first node split differently is reached by
+   identical splits, holds the same number of samples on both platforms and is
+   split on a different feature, never the same feature at another threshold,
+   and the two splits' weighted impurity decreases agree to rounding (median
+   relative difference 6.6e-15 in the first forest, 93 of 100 within 1e-12). The chain makes such ties structural: each
+   later leaf is conditioned on the earlier ones, and
+   `derive_us_retirement_contributions_from_manifest` sets traditional and
+   Roth 401(k) to fixed shares of one pool and the two IRA leaves to fixed
+   shares of another, so on the ASEC training rows those predictors are exact
+   multiples of each other. In the traditional-IRA forest 87 of 100 trees
+   first diverge on a tie between the traditional and Roth 401(k) predictors,
+   and in the Roth-IRA forest 86 of 100 on a tie between two of the three
+   earlier leaves, at the root or just below it (median depth 1 and 2, median
+   node 139 and 155 samples). In the first forest, which has no chained
+   predictor, the ties are in small nodes (median 4 samples). Which
+   platform-specific operation rounds differently was not identified.
+
 **Why about 6% of PUF rows.** 30,442 of 475,340 PUF persons is 6.4%, but most
 PUF persons draw no deferral in either pass: 77,713 hold a nonzero traditional
 401(k) in the base, and 26,478 of those changed (34%); 3,964 more went from
@@ -136,6 +160,7 @@ release's platform.
 | `scripts/replay_release_reimputation.py`, `scripts/run_replays.sh` | The four stages replayed under the variants above, each output compared with both files | `receipts/replay.{release_order,isolated,attribution}.json` |
 | `scripts/second_pass_effect.py` | Weighted base and release totals on the same rows, by channel and clone | `receipts/second_pass_effect.base_0fb05b67.release_417d23ae.json` |
 | `scripts/platform_stage_input.py` | Exports the retirement stage's exact input table (restricted microdata: kept local, not committed) and replays it on any platform, optionally with a weight factor or a thread limit | `receipts/platform_replay.*.json` |
+| `scripts/platform_forest_probe.py` | Fingerprints each QRF step on one platform (bootstrap sample, every tree, gate probabilities, drawn values) and compares two platforms, down to each tree's first divergent split | `receipts/platform_forest_probe.*.json` |
 | `scripts/platform/` | The linux/amd64 harness: a `python:3.14.2-slim-bookworm` image, the stage's third-party imports at the base build's locked versions and hashes (`req.min.txt`, cross-installed on the host with `uv pip install --python-platform x86_64-manylinux_2_36 --target`), and a loader that imports the stage module without the package `__init__` chains | `receipts/platform_replay.linux_amd64.json` |
 
 ## Reproduce
@@ -147,7 +172,28 @@ $RA/.venv/bin/python $S/base_release_column_diff.py BASE.h5 RELEASE.h5 out.json
 $S/run_replays.sh $RA BASE.h5 RELEASE.h5 calibration_diagnostics.json ~/.cache/microcosm/cps/asec_2023/pppub23.csv
 $RA/.venv/bin/python $S/second_pass_effect.py BASE.h5 RELEASE.h5 out.json
 $RA/.venv/bin/python $S/platform_stage_input.py export --builder-root $RA --base-h5 BASE.h5 --release-h5 RELEASE.h5 --out input.pkl
-$RA/.venv/bin/python $S/platform_stage_input.py replay --input input.pkl --out receipt.json
+$RA/.venv/bin/python $S/platform_stage_input.py replay --input input.pkl --out receipt.json --outputs macos.npz
 ```
 
 Each replay group holds about 12 GB; `run_replays.sh` runs them one at a time.
+
+The linux/amd64 replay runs in a work directory `W` holding `input.pkl`, the
+scripts above, `scripts/platform/*`, and `src/` (`git archive 4b57d15a287c`):
+
+```bash
+docker build --platform linux/amd64 -t microcosm-replay:amd64 $S/platform
+uv pip install --python <a non-free-threaded CPython 3.14> --target W/site-amd64 \
+  --python-platform x86_64-manylinux_2_36 --python-version 3.14 --no-deps \
+  --require-hashes --only-binary :all: -r $S/platform/req.min.txt
+docker run --rm --platform linux/amd64 -v W:/work -e PYTHONPATH=/work/site-amd64 \
+  -e PYTHONHASHSEED=0 -e OMP_NUM_THREADS=4 -e OPENBLAS_NUM_THREADS=4 \
+  microcosm-replay:amd64 python3 -B /work/container_replay.py \
+  /work/platform_stage_input.py replay --input /work/input.pkl \
+  --out /work/receipt.json --outputs /work/linux.npz
+$RA/.venv/bin/python $S/platform_stage_input.py compare W/linux.npz macos.npz --out out.json
+```
+
+`req.min.txt` is the subset of the builder commit's `uv.lock` export that the
+stage imports. `uv sync` itself hangs under QEMU, and the full lock pulls in
+torch through `microcosm.calibrate`, which the loader's `GateResult` stand-in
+avoids. `platform_forest_probe.py` runs the same way.

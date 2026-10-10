@@ -1,0 +1,815 @@
+{
+ "left": {
+  "python": "3.14.2 (main, Feb  3 2026, 03:09:04) [GCC 12.2.0]",
+  "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.36",
+  "machine": "x86_64",
+  "numpy": "2.4.6",
+  "sklearn": "1.8.0",
+  "quantile_forest": "1.4.2"
+ },
+ "right": {
+  "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "numpy": "2.4.6",
+  "sklearn": "1.8.0",
+  "quantile_forest": "1.4.2"
+ },
+ "same_step_sequence": true,
+ "steps": [
+  {
+   "index": 0,
+   "step": "gate_fit",
+   "features_identical": true,
+   "rows": 5000,
+   "rows_with_different_probability": 6,
+   "max_abs_probability_difference": 1.1102230246251565e-16,
+   "iterations": [
+    100,
+    100
+   ]
+  },
+  {
+   "index": 1,
+   "step": "bootstrap",
+   "identical": true,
+   "rows": 878
+  },
+  {
+   "index": 2,
+   "step": "forest",
+   "trees": 100,
+   "trees_differing_in_structure": 100,
+   "trees_differing_in_thresholds": 100,
+   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_count": 75,
+   "trees_with_a_divergent_split": 100,
+   "first_divergence": {
+    "depth_min": 2,
+    "depth_median": 4.0,
+    "node_samples_min": 2,
+    "node_samples_median": 4.0,
+    "node_samples_max": 115,
+    "same_node_samples_both_platforms": 100,
+    "same_parent_impurity_bitwise": 49,
+    "different_feature": 100,
+    "feature_pairs": {
+     "0|1": 7,
+     "0|2": 1,
+     "0|3": 8,
+     "0|4": 2,
+     "0|5": 15,
+     "0|6": 4,
+     "0|7": 19,
+     "1|4": 1,
+     "1|5": 4,
+     "1|7": 6,
+     "2|3": 1,
+     "2|4": 1,
+     "2|5": 1,
+     "2|6": 2,
+     "2|7": 5,
+     "3|4": 1,
+     "3|5": 2,
+     "3|6": 1,
+     "3|7": 4,
+     "4|5": 3,
+     "4|7": 3,
+     "5|7": 7,
+     "6|7": 2
+    },
+    "same_feature_different_threshold": 0,
+    "both_split": 100,
+    "impurity_decrease_relative_difference_max": 2.560344539754044e-11,
+    "impurity_decrease_relative_difference_median": 6.6133469154579225e-15,
+    "impurity_decrease_equal_within_1e-12": 93,
+    "examples": [
+     {
+      "depth": 5,
+      "n_node_samples": [
+       3,
+       3
+      ],
+      "parent_impurity": [
+       330930.6888888851,
+       330930.6888889
+      ],
+      "feature": [
+       5,
+       4
+      ],
+      "threshold": [
+       66500.0,
+       3.0
+      ],
+      "weighted_impurity_decrease": [
+       1985584.133333385,
+       1985584.1333334371
+      ]
+     },
+     {
+      "depth": 4,
+      "n_node_samples": [
+       5,
+       5
+      ],
+      "parent_impurity": [
+       2267208.2178945616,
+       2267208.2178945616
+      ],
+      "feature": [
+       1,
+       7
+      ],
+      "threshold": [
+       0.5,
+       30600.0
+      ],
+      "weighted_impurity_decrease": [
+       13262987.69677458,
+       13262987.69677458
+      ]
+     },
+     {
+      "depth": 4,
+      "n_node_samples": [
+       2,
+       2
+      ],
+      "parent_impurity": [
+       638102.2089690007,
+       638102.2089690007
+      ],
+      "feature": [
+       0,
+       7
+      ],
+      "threshold": [
+       57.5,
+       21768.0
+      ],
+      "weighted_impurity_decrease": [
+       3828613.2538140044,
+       3828613.2538140044
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "index": 3,
+   "step": "gate_fit",
+   "features_identical": true,
+   "rows": 5000,
+   "rows_with_different_probability": 0,
+   "max_abs_probability_difference": 0.0,
+   "iterations": [
+    100,
+    100
+   ]
+  },
+  {
+   "index": 4,
+   "step": "bootstrap",
+   "identical": true,
+   "rows": 878
+  },
+  {
+   "index": 5,
+   "step": "forest",
+   "trees": 100,
+   "trees_differing_in_structure": 100,
+   "trees_differing_in_thresholds": 100,
+   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_count": 89,
+   "trees_with_a_divergent_split": 100,
+   "first_divergence": {
+    "depth_min": 3,
+    "depth_median": 4.0,
+    "node_samples_min": 2,
+    "node_samples_median": 8.0,
+    "node_samples_max": 39,
+    "same_node_samples_both_platforms": 100,
+    "same_parent_impurity_bitwise": 21,
+    "different_feature": 100,
+    "feature_pairs": {
+     "-2|0": 1,
+     "0|1": 1,
+     "0|4": 3,
+     "0|5": 6,
+     "0|8": 18,
+     "1|5": 4,
+     "1|8": 14,
+     "3|6": 1,
+     "3|8": 2,
+     "4|5": 5,
+     "4|8": 9,
+     "5|6": 9,
+     "5|8": 18,
+     "6|8": 9
+    },
+    "same_feature_different_threshold": 0,
+    "both_split": 99,
+    "impurity_decrease_relative_difference_max": 0.5,
+    "impurity_decrease_relative_difference_median": 6.679237959233657e-13,
+    "impurity_decrease_equal_within_1e-12": 63,
+    "examples": [
+     {
+      "depth": 4,
+      "n_node_samples": [
+       14,
+       14
+      ],
+      "parent_impurity": [
+       3455.160607257858,
+       3455.1606072541326
+      ],
+      "feature": [
+       8,
+       0
+      ],
+      "threshold": [
+       17429.173828125,
+       32.5
+      ],
+      "weighted_impurity_decrease": [
+       73282.04077905603,
+       73282.04077891819
+      ]
+     },
+     {
+      "depth": 5,
+      "n_node_samples": [
+       10,
+       10
+      ],
+      "parent_impurity": [
+       426.1930644419044,
+       426.1930644409731
+      ],
+      "feature": [
+       8,
+       5
+      ],
+      "threshold": [
+       6869.02001953125,
+       91500.0
+      ],
+      "weighted_impurity_decrease": [
+       8109.034062413033,
+       8109.034062369959
+      ]
+     },
+     {
+      "depth": 4,
+      "n_node_samples": [
+       5,
+       5
+      ],
+      "parent_impurity": [
+       71691.33153125644,
+       71691.33153126389
+      ],
+      "feature": [
+       8,
+       6
+      ],
+      "threshold": [
+       25575.5224609375,
+       6000.0
+      ],
+      "weighted_impurity_decrease": [
+       430147.9891875759,
+       430147.9891876206
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "index": 6,
+   "step": "gate_fit",
+   "features_identical": true,
+   "rows": 5000,
+   "rows_with_different_probability": 2,
+   "max_abs_probability_difference": 3.3881317890172014e-21,
+   "iterations": [
+    100,
+    100
+   ]
+  },
+  {
+   "index": 7,
+   "step": "bootstrap",
+   "identical": true,
+   "rows": 888
+  },
+  {
+   "index": 8,
+   "step": "forest",
+   "trees": 100,
+   "trees_differing_in_structure": 100,
+   "trees_differing_in_thresholds": 100,
+   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_count": 91,
+   "trees_with_a_divergent_split": 100,
+   "first_divergence": {
+    "depth_min": 0,
+    "depth_median": 1.0,
+    "node_samples_min": 3,
+    "node_samples_median": 139.0,
+    "node_samples_max": 576,
+    "same_node_samples_both_platforms": 100,
+    "same_parent_impurity_bitwise": 61,
+    "different_feature": 100,
+    "feature_pairs": {
+     "0|3": 1,
+     "0|4": 1,
+     "2|5": 2,
+     "2|8": 2,
+     "3|5": 1,
+     "3|6": 1,
+     "5|8": 3,
+     "5|9": 2,
+     "8|9": 87
+    },
+    "same_feature_different_threshold": 0,
+    "both_split": 100,
+    "impurity_decrease_relative_difference_max": 3.4172097765511723e-13,
+    "impurity_decrease_relative_difference_median": 3.7855241957249285e-15,
+    "impurity_decrease_equal_within_1e-12": 100,
+    "examples": [
+     {
+      "depth": 1,
+      "n_node_samples": [
+       151,
+       151
+      ],
+      "parent_impurity": [
+       35553.79666540166,
+       35553.79666540166
+      ],
+      "feature": [
+       8,
+       9
+      ],
+      "threshold": [
+       14471.25,
+       2553.75
+      ],
+      "weighted_impurity_decrease": [
+       5527811.651371732,
+       5527811.651371719
+      ]
+     },
+     {
+      "depth": 0,
+      "n_node_samples": [
+       571,
+       571
+      ],
+      "parent_impurity": [
+       107566.83366145055,
+       107566.83366145055
+      ],
+      "feature": [
+       9,
+       8
+      ],
+      "threshold": [
+       1689.7653198242188,
+       9575.3369140625
+      ],
+      "weighted_impurity_decrease": [
+       42643438.3312889,
+       42643438.331288815
+      ]
+     },
+     {
+      "depth": 1,
+      "n_node_samples": [
+       121,
+       121
+      ],
+      "parent_impurity": [
+       24812.8579130196,
+       24812.857913019485
+      ],
+      "feature": [
+       8,
+       9
+      ],
+      "threshold": [
+       16346.33837890625,
+       2884.6478271484375
+      ],
+      "weighted_impurity_decrease": [
+       3449658.7300900077,
+       3449658.7300899667
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "index": 9,
+   "step": "gate_fit",
+   "features_identical": true,
+   "rows": 5000,
+   "rows_with_different_probability": 2,
+   "max_abs_probability_difference": 1.6940658945086007e-21,
+   "iterations": [
+    100,
+    100
+   ]
+  },
+  {
+   "index": 10,
+   "step": "bootstrap",
+   "identical": true,
+   "rows": 888
+  },
+  {
+   "index": 11,
+   "step": "forest",
+   "trees": 100,
+   "trees_differing_in_structure": 100,
+   "trees_differing_in_thresholds": 100,
+   "trees_differing_in_leaf_values": 100,
+   "trees_differing_in_node_count": 91,
+   "trees_with_a_divergent_split": 100,
+   "first_divergence": {
+    "depth_min": 1,
+    "depth_median": 2.0,
+    "node_samples_min": 3,
+    "node_samples_median": 155.0,
+    "node_samples_max": 482,
+    "same_node_samples_both_platforms": 100,
+    "same_parent_impurity_bitwise": 60,
+    "different_feature": 100,
+    "feature_pairs": {
+     "0|2": 1,
+     "1|6": 1,
+     "5|8": 4,
+     "5|9": 6,
+     "5|10": 1,
+     "6|10": 1,
+     "8|9": 28,
+     "8|10": 28,
+     "9|10": 30
+    },
+    "same_feature_different_threshold": 0,
+    "both_split": 100,
+    "impurity_decrease_relative_difference_max": 2.633901754605203e-13,
+    "impurity_decrease_relative_difference_median": 3.0440581961957462e-15,
+    "impurity_decrease_equal_within_1e-12": 100,
+    "examples": [
+     {
+      "depth": 2,
+      "n_node_samples": [
+       262,
+       262
+      ],
+      "parent_impurity": [
+       4264.752880028267,
+       4264.752880028267
+      ],
+      "feature": [
+       9,
+       10
+      ],
+      "threshold": [
+       279.4415283203125,
+       73.99250793457031
+      ],
+      "weighted_impurity_decrease": [
+       1323791.46964523,
+       1323791.46964523
+      ]
+     },
+     {
+      "depth": 2,
+      "n_node_samples": [
+       145,
+       145
+      ],
+      "parent_impurity": [
+       11515.080428460496,
+       11515.080428460438
+      ],
+      "feature": [
+       9,
+       10
+      ],
+      "threshold": [
+       1123.6499633789062,
+       297.5279998779297
+      ],
+      "weighted_impurity_decrease": [
+       2001699.8335761195,
+       2001699.8335761204
+      ]
+     },
+     {
+      "depth": 2,
+      "n_node_samples": [
+       81,
+       81
+      ],
+      "parent_impurity": [
+       64609.419453807874,
+       64609.41945380741
+      ],
+      "feature": [
+       10,
+       8
+      ],
+      "threshold": [
+       775.3760070800781,
+       16593.69970703125
+      ],
+      "weighted_impurity_decrease": [
+       5877144.118948276,
+       5877144.118948341
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "index": 12,
+   "step": "gate_fit",
+   "features_identical": true,
+   "rows": 5000,
+   "rows_with_different_probability": 2,
+   "max_abs_probability_difference": 5.293955920339377e-23,
+   "iterations": [
+    100,
+    100
+   ]
+  },
+  {
+   "index": 13,
+   "step": "bootstrap",
+   "identical": true,
+   "rows": 35
+  },
+  {
+   "index": 14,
+   "step": "forest",
+   "trees": 100,
+   "trees_differing_in_structure": 27,
+   "trees_differing_in_thresholds": 27,
+   "trees_differing_in_leaf_values": 17,
+   "trees_differing_in_node_count": 0,
+   "trees_with_a_divergent_split": 27,
+   "first_divergence": {
+    "depth_min": 0,
+    "depth_median": 1.0,
+    "node_samples_min": 2,
+    "node_samples_median": 4.0,
+    "node_samples_max": 24,
+    "same_node_samples_both_platforms": 27,
+    "same_parent_impurity_bitwise": 19,
+    "different_feature": 27,
+    "feature_pairs": {
+     "0|1": 1,
+     "0|8": 2,
+     "0|9": 2,
+     "1|3": 1,
+     "1|4": 1,
+     "4|9": 2,
+     "4|10": 2,
+     "5|6": 1,
+     "5|8": 3,
+     "5|11": 1,
+     "6|10": 2,
+     "8|9": 2,
+     "8|10": 1,
+     "8|11": 1,
+     "9|10": 2,
+     "9|11": 2,
+     "10|11": 1
+    },
+    "same_feature_different_threshold": 0,
+    "both_split": 27,
+    "impurity_decrease_relative_difference_max": 2.1365923309528746e-14,
+    "impurity_decrease_relative_difference_median": 0.0,
+    "impurity_decrease_equal_within_1e-12": 27,
+    "examples": [
+     {
+      "depth": 0,
+      "n_node_samples": [
+       20,
+       20
+      ],
+      "parent_impurity": [
+       117697.56600620406,
+       117697.56600620406
+      ],
+      "feature": [
+       5,
+       8
+      ],
+      "threshold": [
+       198500.0,
+       15554.2783203125
+      ],
+      "weighted_impurity_decrease": [
+       3446379.351467143,
+       3446379.351467143
+      ]
+     },
+     {
+      "depth": 2,
+      "n_node_samples": [
+       6,
+       6
+      ],
+      "parent_impurity": [
+       3600.162399999972,
+       3600.162399999972
+      ],
+      "feature": [
+       8,
+       0
+      ],
+      "threshold": [
+       8191.306396484375,
+       42.0
+      ],
+      "weighted_impurity_decrease": [
+       33455.37066666683,
+       33455.37066666683
+      ]
+     },
+     {
+      "depth": 1,
+      "n_node_samples": [
+       3,
+       3
+      ],
+      "parent_impurity": [
+       90117.63841599971,
+       90117.63841599971
+      ],
+      "feature": [
+       9,
+       11
+      ],
+      "threshold": [
+       3050.0894775390625,
+       1252.6417541503906
+      ],
+      "weighted_impurity_decrease": [
+       360470.55366399954,
+       360470.55366399954
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "index": 15,
+   "step": "gate_draw",
+   "features_identical": true,
+   "rows": 475340,
+   "rows_with_different_probability": 425,
+   "max_abs_probability_difference": 2.220446049250313e-16,
+   "signs_identical": true,
+   "positive_rows": [
+    77726,
+    77726
+   ]
+  },
+  {
+   "index": 16,
+   "step": "forest_draw",
+   "rows": [
+    77726,
+    77726
+   ],
+   "features_identical": true,
+   "quantiles_identical": true,
+   "rows_differing": 21767,
+   "rows_differing_by_more_than_1e-9": 21758,
+   "rows_differing_by_more_than_1_dollar": 21487,
+   "max_abs_difference": 18523.199999999997
+  },
+  {
+   "index": 17,
+   "step": "gate_draw",
+   "features_identical": false,
+   "rows": 475340,
+   "rows_with_different_probability": 11995,
+   "max_abs_probability_difference": 5.100364575127969e-13,
+   "signs_identical": true,
+   "positive_rows": [
+    77724,
+    77724
+   ]
+  },
+  {
+   "index": 18,
+   "step": "forest_draw",
+   "rows": [
+    77724,
+    77724
+   ],
+   "features_identical": false,
+   "quantiles_identical": true,
+   "rows_differing": 19913,
+   "rows_differing_by_more_than_1e-9": 19912,
+   "rows_differing_by_more_than_1_dollar": 19533,
+   "max_abs_difference": 2539.2173280113348
+  },
+  {
+   "index": 19,
+   "step": "gate_draw",
+   "features_identical": false,
+   "rows": 475340,
+   "rows_with_different_probability": 10550,
+   "max_abs_probability_difference": 7.044476113549081e-12,
+   "signs_identical": true,
+   "positive_rows": [
+    78217,
+    78217
+   ]
+  },
+  {
+   "index": 20,
+   "step": "forest_draw",
+   "rows": [
+    78217,
+    78217
+   ],
+   "features_identical": false,
+   "quantiles_identical": true,
+   "rows_differing": 20080,
+   "rows_differing_by_more_than_1e-9": 20078,
+   "rows_differing_by_more_than_1_dollar": 18854,
+   "max_abs_difference": 2421.2391274895363
+  },
+  {
+   "index": 21,
+   "step": "gate_draw",
+   "features_identical": false,
+   "rows": 475340,
+   "rows_with_different_probability": 10898,
+   "max_abs_probability_difference": 6.086242620995108e-13,
+   "signs_identical": true,
+   "positive_rows": [
+    78217,
+    78217
+   ]
+  },
+  {
+   "index": 22,
+   "step": "forest_draw",
+   "rows": [
+    78217,
+    78217
+   ],
+   "features_identical": false,
+   "quantiles_identical": true,
+   "rows_differing": 20419,
+   "rows_differing_by_more_than_1e-9": 20418,
+   "rows_differing_by_more_than_1_dollar": 19610,
+   "max_abs_difference": 4244.5696
+  },
+  {
+   "index": 23,
+   "step": "gate_draw",
+   "features_identical": false,
+   "rows": 475340,
+   "rows_with_different_probability": 10420,
+   "max_abs_probability_difference": 2.002168782176873e-15,
+   "signs_identical": true,
+   "positive_rows": [
+    3816,
+    3816
+   ]
+  },
+  {
+   "index": 24,
+   "step": "forest_draw",
+   "rows": [
+    3816,
+    3816
+   ],
+   "features_identical": false,
+   "quantiles_identical": true,
+   "rows_differing": 529,
+   "rows_differing_by_more_than_1e-9": 528,
+   "rows_differing_by_more_than_1_dollar": 491,
+   "max_abs_difference": 816.5
+  }
+ ],
+ "outputs_identical": {
+  "traditional_401k_contributions_desired": false,
+  "roth_401k_contributions_desired": false,
+  "traditional_ira_contributions_desired": false,
+  "roth_ira_contributions_desired": false,
+  "self_employed_pension_contributions_desired": false
+ }
+}

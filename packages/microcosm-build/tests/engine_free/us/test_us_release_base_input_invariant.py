@@ -129,6 +129,7 @@ def test_social_security_repair_reorders_the_shared_predictor(
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason=(
         "The release re-imputes PUF-half inputs after rescaling Social "
         "Security, a predictor of these QRFs; ruling pending on the "
