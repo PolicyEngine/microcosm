@@ -6,7 +6,9 @@ import pytest
 
 from microcosm.build.cross_grain import (
     CrossGrainBridge,
+    CrossGrainPartition,
     CrossGrainRule,
+    apply_cross_grain_partitions,
     apply_cross_grain_reconciliation,
     detect_cross_grain_inconsistencies,
 )
@@ -962,6 +964,10 @@ def test_nearest_control_claims_first_and_farther_legs_are_delegated():
 
 
 def test_a_control_split_between_delegated_and_live_legs_is_refused():
+    """A UK row over one region row, with authorities on a leg the region tier
+    does not cover: the partial region tier is refused before the country row
+    could be split across tiers (microcosm#1123)."""
+
     surface = pd.DataFrame(
         [
             ("country", "UK", "national", 200.0),
@@ -971,7 +977,7 @@ def test_a_control_split_between_delegated_and_live_legs_is_refused():
         ],
         columns=["grain", "geography_id", "target_id", "value"],
     )
-    with pytest.raises(ValueError, match="cannot be split across tiers"):
+    with pytest.raises(ValueError, match="partial tier"):
         apply_cross_grain_reconciliation(
             surface, ("national", "regional"), _tiered_signatures(), _tiered_rule()
         )
@@ -1043,4 +1049,209 @@ def test_control_grains_declaration_is_validated():
                 parent_geography_legs={},
                 control_grains=("region",),
             ),
+        )
+
+
+def _nation_rule() -> CrossGrainRule:
+    # Legs are the region tier: two English regions plus Wales. England is a
+    # nation-grain parent spanning its regions; Wales is its own leg.
+    return CrossGrainRule(
+        grain_precedence=("country", "nation", "region", "la"),
+        signature_fields=("concept", "entity", "map_to", "filters"),
+        bridges=(),
+        leg_of_area=_tier_leg,
+        parent_geography_legs={
+            "UK": ("R1", "R2", "W"),
+            "E": ("R1", "R2"),
+            "W": ("W",),
+            "R1": ("R1",),
+            "R2": ("R2",),
+        },
+        control_grains=("country", "nation", "region"),
+    )
+
+
+def _nation_signatures() -> dict[str, dict[str, object]]:
+    return {
+        target_id: _signature()
+        for target_id in ("national", "nations", "regional", "local")
+    }
+
+
+def test_a_nation_row_spans_its_regions_under_a_country_control():
+    """England covers both English legs, so the UK row rescales England and
+    Wales jointly; England then parents its regions and the regions their
+    authorities, each tier closing on the one above."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 300.0),
+            ("nation", "E", "nations", 160.0),
+            ("nation", "W", "nations", 40.0),
+            ("region", "R1", "regional", 50.0),
+            ("region", "R2", "regional", 50.0),
+            ("la", "R1a", "local", 10.0),
+            ("la", "R2a", "local", 10.0),
+            ("la", "Wa", "local", 10.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national", "nations", "regional"),
+        _nation_signatures(),
+        _nation_rule(),
+    )
+    values = reconciled["value"].tolist()
+    assert values == pytest.approx(
+        [300.0, 240.0, 60.0, 120.0, 120.0, 120.0, 120.0, 60.0]
+    )
+    pairs = _pairs(receipt)
+    assert [
+        leg["parent_geography_id"] for leg in pairs["country_over_nation"]["legs"]
+    ] == ["UK"]
+    assert [
+        leg["parent_geography_id"] for leg in pairs["nation_over_region"]["legs"]
+    ] == ["E"]
+
+
+def test_a_lower_row_straddling_two_controls_is_refused():
+    rule = CrossGrainRule(
+        grain_precedence=("country", "nation", "la"),
+        signature_fields=("concept", "entity", "map_to", "filters"),
+        bridges=(),
+        leg_of_area=_tier_leg,
+        parent_geography_legs={
+            "GB": ("R1", "W"),
+            "NI": ("N",),
+            "E": ("R1",),
+            "X": ("W", "N"),
+        },
+        control_grains=("country", "nation"),
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "GB", "national", 100.0),
+            ("country", "NI", "national", 10.0),
+            ("nation", "E", "nations", 60.0),
+            ("nation", "X", "nations", 30.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="outside control"):
+        apply_cross_grain_reconciliation(
+            surface, ("national", "nations"), _nation_signatures(), rule
+        )
+
+
+def test_controls_that_differ_only_by_summation_order_agree():
+    """An exact control and a bridged control summed from two parts agree when
+    they differ in the last bits only (0.1 + 0.2 against 0.3)."""
+
+    bridge = CrossGrainBridge(
+        "summed_parts", "households", ("part_a", "part_b"), "contract:local"
+    )
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "exact_partition", 0.3),
+            ("country", "UK", "part_a", 0.1),
+            ("country", "UK", "part_b", 0.2),
+            ("constituency", "E1", "local", 1.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    signatures = {
+        "exact_partition": _signature(),
+        "local": _signature(),
+        "part_a": _signature("part_a"),
+        "part_b": _signature("part_b"),
+    }
+    reconciled, _ = apply_cross_grain_reconciliation(
+        surface,
+        ("exact_partition", "part_a", "part_b"),
+        signatures,
+        _rule(bridges=(bridge,)),
+        licensed_empty_legs={"local": frozenset({"W", "S", "N"})},
+    )
+    assert reconciled["value"].iloc[3] == pytest.approx(0.3)
+
+
+def _partition_surface(parent_raw: float, parent: float, members: list[float]):
+    rows = [("la", "A1", "total", parent)] + [
+        ("la", "A1", f"band_{index}", value) for index, value in enumerate(members)
+    ]
+    reconciled = pd.DataFrame(
+        rows, columns=["grain", "geography_id", "target_id", "value"]
+    )
+    raw = reconciled.copy()
+    raw.loc[0, "value"] = parent_raw
+    return raw, reconciled
+
+
+def test_exhaustive_partition_members_close_on_their_parent():
+    raw, reconciled = _partition_surface(90.0, 120.0, [30.0, 30.0, 40.0])
+    partition = CrossGrainPartition(
+        "bands_sum_to_total", "total", ("band_0", "band_1", "band_2")
+    )
+    out, receipt = apply_cross_grain_partitions(raw, reconciled, (partition,))
+    assert out["value"].tolist() == pytest.approx([120.0, 36.0, 36.0, 48.0])
+    assert receipt["partitions"][0]["cells"][0]["declared_factor"] == pytest.approx(1.2)
+
+
+def test_share_of_parent_members_move_by_the_parents_factor():
+    raw, reconciled = _partition_surface(90.0, 120.0, [30.0, 30.0])
+    partition = CrossGrainPartition(
+        "tenure_moves_with_households",
+        "total",
+        ("band_0", "band_1"),
+        kind="share_of_parent",
+    )
+    out, _ = apply_cross_grain_partitions(raw, reconciled, (partition,))
+    # The parent grew by 120/90; the members keep their 2/3 share of it.
+    assert out["value"].tolist() == pytest.approx([120.0, 40.0, 40.0])
+
+
+def test_a_partition_with_a_missing_member_is_refused():
+    raw, reconciled = _partition_surface(90.0, 120.0, [30.0])
+    partition = CrossGrainPartition("bands", "total", ("band_0", "band_1"))
+    with pytest.raises(ValueError, match="lacks member"):
+        apply_cross_grain_partitions(raw, reconciled, (partition,))
+
+
+def test_a_parent_without_members_is_receipted_not_refused():
+    raw, reconciled = _partition_surface(90.0, 120.0, [])
+    partition = CrossGrainPartition("bands", "total", ("band_0",))
+    out, receipt = apply_cross_grain_partitions(raw, reconciled, (partition,))
+    assert out["value"].tolist() == [120.0]
+    assert receipt["parents_without_members"] == [
+        {"partition_id": "bands", "grain": "la", "geography_id": "A1"}
+    ]
+
+
+def test_partition_declarations_are_validated():
+    raw, reconciled = _partition_surface(1.0, 1.0, [1.0])
+    with pytest.raises(ValueError, match="unknown kind"):
+        apply_cross_grain_partitions(
+            raw, reconciled, (CrossGrainPartition("p", "total", ("band_0",), kind="x"),)
+        )
+    with pytest.raises(ValueError, match="parent as a member"):
+        apply_cross_grain_partitions(
+            raw, reconciled, (CrossGrainPartition("p", "total", ("total",)),)
+        )
+
+
+def test_a_partial_middle_tier_over_an_unlicensed_empty_leg_is_refused():
+    """A UK row over one Welsh nation row and nothing on the English legs:
+    without the refusal the Welsh row would take the whole UK total."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 300.0),
+            ("nation", "W", "nations", 40.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="partial tier"):
+        apply_cross_grain_reconciliation(
+            surface, ("national", "nations"), _nation_signatures(), _nation_rule()
         )

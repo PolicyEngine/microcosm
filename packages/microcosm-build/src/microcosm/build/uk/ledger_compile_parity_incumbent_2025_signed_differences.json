@@ -1,11 +1,11 @@
 {
- "compiled_count": 1231,
+ "compiled_count": 1267,
  "counts_by_kind": {
-  "calibration_drift": 553,
+  "calibration_drift": 556,
   "fixture_only": 55,
-  "ledger_only": 649
+  "ledger_only": 685
  },
- "difference_count": 1257,
+ "difference_count": 1296,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -436,7 +436,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 150082817.48999995,
+   "ledger_value": 152500000.0,
    "name": "dfi_ni.bus.passenger_receipts",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -1833,6 +1833,174 @@
    "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_50000_to_99999",
    "period": 2025,
    "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a), the Business Asset Disposal Relief and Investors' Relief claimants and qualifying gains by band of qualifying gain (Table 4.1), and the all-gains taxpayers and gains by band of the engine's CGT taxable income (Table 3). The frozen incumbent fixture has no equivalent row (microcosm#725, #467, #1014)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 63250.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41000.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 43750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 48750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 122250.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 345500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232250.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 62750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@E12000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10750.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@N92000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 184500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@S92000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17500.0,
+   "name": "hmrc.itl.additional_rate_taxpayers@W92000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 197000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000001",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 645500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 434500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 436750.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 518500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000005",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 766000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000006",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1305000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000007",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1255000.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000008",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 574250.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@E12000009",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121500.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@N92000002",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 593250.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@S92000003",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 238750.0,
+   "name": "hmrc.itl.higher_rate_taxpayers@W92000004",
+   "period": 2025,
+   "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
   },
   {
    "kind": "ledger_only",
@@ -4853,8 +5021,22 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 794887.0879380013,
+   "name": "nisra.households.northern_ireland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 111700000.0,
    "name": "nithc.public_transport_support",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2570799.0,
+   "name": "nrs.households.scotland",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -4888,14 +5070,77 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 414716.0,
+   "ledger_value": 1185000.0,
+   "name": "ons.households.english_regions@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3261000.0,
+   "name": "ons.households.english_regions@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2356000.0,
+   "name": "ons.households.english_regions@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2129000.0,
+   "name": "ons.households.english_regions@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2518000.0,
+   "name": "ons.households.english_regions@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2691000.0,
+   "name": "ons.households.english_regions@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3683000.0,
+   "name": "ons.households.english_regions@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3941000.0,
+   "name": "ons.households.english_regions@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2565000.0,
+   "name": "ons.households.english_regions@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 425428.0,
    "name": "ons.population.female_90_plus",
    "period": 2025,
    "reason": "María ruling 2026-08-21: new female 90_plus tail constrains ages 90+; the incumbent six-year terminal band left ages 91+ unconstrained."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 210520.0,
+   "ledger_value": 219915.0,
    "name": "ons.population.male_90_plus",
    "period": 2025,
    "reason": "María ruling 2026-08-21: new male 90_plus tail constrains ages 90+; the incumbent six-year terminal band left ages 91+ unconstrained."
@@ -4934,6 +5179,13 @@
    "name": "welshgov.council_tax_stock.band_i",
    "period": 2025,
    "reason": "No incumbent counterpart: Wales alone has a council tax band I and the incumbent's VOA rows stop at band H; Microcosm binds welshgov.council_tax_stock.band_i from the StatsWales CT1 return (microcosm#929)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1387333.6411848539,
+   "name": "welshgov.households.wales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "fixture_value": 999000.0,
@@ -7186,7 +7438,7 @@
   {
    "fixture_value": 557000.0,
    "kind": "calibration_drift",
-   "ledger_value": 556551.0,
+   "ledger_value": 545640.0,
    "name": "isc.private_school_students",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8010,7 +8262,7 @@
   {
    "fixture_value": 2057128451236.5015,
    "kind": "calibration_drift",
-   "ledger_value": 2103053000000.0,
+   "ledger_value": 2063534000000.0,
    "name": "ons.land.corporate_land_value",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8018,7 +8270,7 @@
   {
    "fixture_value": 5042871548763.499,
    "kind": "calibration_drift",
-   "ledger_value": 4559831000000.0,
+   "ledger_value": 4485171000000.0,
    "name": "ons.land.household_land_value",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8026,7 +8278,7 @@
   {
    "fixture_value": 7100000000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 7117771000000.0,
+   "ledger_value": 6872455000000.0,
    "name": "ons.land.land_value",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8034,7 +8286,7 @@
   {
    "fixture_value": 281000.0,
    "kind": "calibration_drift",
-   "ledger_value": 285165.0,
+   "ledger_value": 279456.0,
    "name": "ons.population.age_0_9_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8042,7 +8294,7 @@
   {
    "fixture_value": 847000.0,
    "kind": "calibration_drift",
-   "ledger_value": 865892.0,
+   "ledger_value": 848707.0,
    "name": "ons.population.age_0_9_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8050,7 +8302,7 @@
   {
    "fixture_value": 618000.0,
    "kind": "calibration_drift",
-   "ledger_value": 626938.0,
+   "ledger_value": 611749.0,
    "name": "ons.population.age_0_9_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8058,7 +8310,7 @@
   {
    "fixture_value": 532000.0,
    "kind": "calibration_drift",
-   "ledger_value": 543004.0,
+   "ledger_value": 530178.0,
    "name": "ons.population.age_0_9_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8066,7 +8318,7 @@
   {
    "fixture_value": 700000.0,
    "kind": "calibration_drift",
-   "ledger_value": 718837.0,
+   "ledger_value": 703000.0,
    "name": "ons.population.age_0_9_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8074,7 +8326,7 @@
   {
    "fixture_value": 726000.0,
    "kind": "calibration_drift",
-   "ledger_value": 744698.0,
+   "ledger_value": 731339.0,
    "name": "ons.population.age_0_9_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8082,7 +8334,7 @@
   {
    "fixture_value": 1042000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1054493.0,
+   "ledger_value": 1014089.0,
    "name": "ons.population.age_0_9_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8090,7 +8342,7 @@
   {
    "fixture_value": 1039000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1059434.0,
+   "ledger_value": 1036231.0,
    "name": "ons.population.age_0_9_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8098,7 +8350,7 @@
   {
    "fixture_value": 576000.0,
    "kind": "calibration_drift",
-   "ledger_value": 575506.0,
+   "ledger_value": 560179.0,
    "name": "ons.population.age_0_9_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8106,7 +8358,7 @@
   {
    "fixture_value": 234000.0,
    "kind": "calibration_drift",
-   "ledger_value": 229505.0,
+   "ledger_value": 223939.0,
    "name": "ons.population.age_0_9_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8114,7 +8366,7 @@
   {
    "fixture_value": 526000.0,
    "kind": "calibration_drift",
-   "ledger_value": 527989.0,
+   "ledger_value": 513367.0,
    "name": "ons.population.age_0_9_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8122,7 +8374,7 @@
   {
    "fixture_value": 325000.0,
    "kind": "calibration_drift",
-   "ledger_value": 321552.0,
+   "ledger_value": 312131.0,
    "name": "ons.population.age_0_9_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8130,7 +8382,7 @@
   {
    "fixture_value": 311000.0,
    "kind": "calibration_drift",
-   "ledger_value": 326306.0,
+   "ledger_value": 326135.0,
    "name": "ons.population.age_10_19_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8138,7 +8390,7 @@
   {
    "fixture_value": 901000.0,
    "kind": "calibration_drift",
-   "ledger_value": 952864.0,
+   "ledger_value": 948264.0,
    "name": "ons.population.age_10_19_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8146,7 +8398,7 @@
   {
    "fixture_value": 666000.0,
    "kind": "calibration_drift",
-   "ledger_value": 696780.0,
+   "ledger_value": 689988.0,
    "name": "ons.population.age_10_19_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8154,7 +8406,7 @@
   {
    "fixture_value": 585000.0,
    "kind": "calibration_drift",
-   "ledger_value": 615630.0,
+   "ledger_value": 613290.0,
    "name": "ons.population.age_10_19_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8162,7 +8414,7 @@
   {
    "fixture_value": 743000.0,
    "kind": "calibration_drift",
-   "ledger_value": 785062.0,
+   "ledger_value": 777925.0,
    "name": "ons.population.age_10_19_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8170,7 +8422,7 @@
   {
    "fixture_value": 741000.0,
    "kind": "calibration_drift",
-   "ledger_value": 785091.0,
+   "ledger_value": 782243.0,
    "name": "ons.population.age_10_19_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8178,7 +8430,7 @@
   {
    "fixture_value": 1038000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1068691.0,
+   "ledger_value": 1023090.0,
    "name": "ons.population.age_10_19_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8186,7 +8438,7 @@
   {
    "fixture_value": 1114000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1183235.0,
+   "ledger_value": 1176322.0,
    "name": "ons.population.age_10_19_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8194,7 +8446,7 @@
   {
    "fixture_value": 646000.0,
    "kind": "calibration_drift",
-   "ledger_value": 677228.0,
+   "ledger_value": 673970.0,
    "name": "ons.population.age_10_19_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8202,7 +8454,7 @@
   {
    "fixture_value": 244000.0,
    "kind": "calibration_drift",
-   "ledger_value": 252764.0,
+   "ledger_value": 254084.0,
    "name": "ons.population.age_10_19_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8210,7 +8462,7 @@
   {
    "fixture_value": 597000.0,
    "kind": "calibration_drift",
-   "ledger_value": 612935.0,
+   "ledger_value": 607601.0,
    "name": "ons.population.age_10_19_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8218,7 +8470,7 @@
   {
    "fixture_value": 362000.0,
    "kind": "calibration_drift",
-   "ledger_value": 374851.0,
+   "ledger_value": 366636.0,
    "name": "ons.population.age_10_19_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8226,7 +8478,7 @@
   {
    "fixture_value": 343000.0,
    "kind": "calibration_drift",
-   "ledger_value": 343015.0,
+   "ledger_value": 339077.0,
    "name": "ons.population.age_20_29_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8234,7 +8486,7 @@
   {
    "fixture_value": 986000.0,
    "kind": "calibration_drift",
-   "ledger_value": 986590.0,
+   "ledger_value": 987726.0,
    "name": "ons.population.age_20_29_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8242,7 +8494,7 @@
   {
    "fixture_value": 733000.0,
    "kind": "calibration_drift",
-   "ledger_value": 717479.0,
+   "ledger_value": 708022.0,
    "name": "ons.population.age_20_29_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8250,7 +8502,7 @@
   {
    "fixture_value": 632000.0,
    "kind": "calibration_drift",
-   "ledger_value": 612108.0,
+   "ledger_value": 604999.0,
    "name": "ons.population.age_20_29_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8258,7 +8510,7 @@
   {
    "fixture_value": 774000.0,
    "kind": "calibration_drift",
-   "ledger_value": 766058.0,
+   "ledger_value": 765265.0,
    "name": "ons.population.age_20_29_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8266,7 +8518,7 @@
   {
    "fixture_value": 749000.0,
    "kind": "calibration_drift",
-   "ledger_value": 727218.0,
+   "ledger_value": 717233.0,
    "name": "ons.population.age_20_29_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8274,7 +8526,7 @@
   {
    "fixture_value": 1470000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1508607.0,
+   "ledger_value": 1533954.0,
    "name": "ons.population.age_20_29_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8282,7 +8534,7 @@
   {
    "fixture_value": 1093000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1066121.0,
+   "ledger_value": 1060724.0,
    "name": "ons.population.age_20_29_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8290,7 +8542,7 @@
   {
    "fixture_value": 694000.0,
    "kind": "calibration_drift",
-   "ledger_value": 684393.0,
+   "ledger_value": 678928.0,
    "name": "ons.population.age_20_29_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8298,7 +8550,7 @@
   {
    "fixture_value": 230000.0,
    "kind": "calibration_drift",
-   "ledger_value": 219525.0,
+   "ledger_value": 218575.0,
    "name": "ons.population.age_20_29_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8306,7 +8558,7 @@
   {
    "fixture_value": 709000.0,
    "kind": "calibration_drift",
-   "ledger_value": 703554.0,
+   "ledger_value": 701623.0,
    "name": "ons.population.age_20_29_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8314,7 +8566,7 @@
   {
    "fixture_value": 389000.0,
    "kind": "calibration_drift",
-   "ledger_value": 380557.0,
+   "ledger_value": 376576.0,
    "name": "ons.population.age_20_29_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8322,7 +8574,7 @@
   {
    "fixture_value": 356000.0,
    "kind": "calibration_drift",
-   "ledger_value": 363357.0,
+   "ledger_value": 360166.0,
    "name": "ons.population.age_30_39_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8330,7 +8582,7 @@
   {
    "fixture_value": 1056000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1064968.0,
+   "ledger_value": 1070583.0,
    "name": "ons.population.age_30_39_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8338,7 +8590,7 @@
   {
    "fixture_value": 764000.0,
    "kind": "calibration_drift",
-   "ledger_value": 770809.0,
+   "ledger_value": 768828.0,
    "name": "ons.population.age_30_39_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8346,7 +8598,7 @@
   {
    "fixture_value": 669000.0,
    "kind": "calibration_drift",
-   "ledger_value": 676709.0,
+   "ledger_value": 682492.0,
    "name": "ons.population.age_30_39_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8354,7 +8606,7 @@
   {
    "fixture_value": 834000.0,
    "kind": "calibration_drift",
-   "ledger_value": 839114.0,
+   "ledger_value": 842839.0,
    "name": "ons.population.age_30_39_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8362,7 +8614,7 @@
   {
    "fixture_value": 890000.0,
    "kind": "calibration_drift",
-   "ledger_value": 895639.0,
+   "ledger_value": 902358.0,
    "name": "ons.population.age_30_39_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8370,7 +8622,7 @@
   {
    "fixture_value": 1585000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1537372.0,
+   "ledger_value": 1546691.0,
    "name": "ons.population.age_30_39_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8378,7 +8630,7 @@
   {
    "fixture_value": 1283000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1284552.0,
+   "ledger_value": 1286795.0,
    "name": "ons.population.age_30_39_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8386,7 +8638,7 @@
   {
    "fixture_value": 743000.0,
    "kind": "calibration_drift",
-   "ledger_value": 742082.0,
+   "ledger_value": 741210.0,
    "name": "ons.population.age_30_39_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8394,7 +8646,7 @@
   {
    "fixture_value": 264000.0,
    "kind": "calibration_drift",
-   "ledger_value": 254067.0,
+   "ledger_value": 251999.0,
    "name": "ons.population.age_30_39_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8402,7 +8654,7 @@
   {
    "fixture_value": 736000.0,
    "kind": "calibration_drift",
-   "ledger_value": 733480.0,
+   "ledger_value": 729179.0,
    "name": "ons.population.age_30_39_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8410,7 +8662,7 @@
   {
    "fixture_value": 408000.0,
    "kind": "calibration_drift",
-   "ledger_value": 410248.0,
+   "ledger_value": 406834.0,
    "name": "ons.population.age_30_39_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8418,7 +8670,7 @@
   {
    "fixture_value": 323000.0,
    "kind": "calibration_drift",
-   "ledger_value": 320860.0,
+   "ledger_value": 325882.0,
    "name": "ons.population.age_40_49_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8426,7 +8678,7 @@
   {
    "fixture_value": 938000.0,
    "kind": "calibration_drift",
-   "ledger_value": 930967.0,
+   "ledger_value": 952998.0,
    "name": "ons.population.age_40_49_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8434,7 +8686,7 @@
   {
    "fixture_value": 686000.0,
    "kind": "calibration_drift",
-   "ledger_value": 674349.0,
+   "ledger_value": 686208.0,
    "name": "ons.population.age_40_49_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8442,7 +8694,7 @@
   {
    "fixture_value": 621000.0,
    "kind": "calibration_drift",
-   "ledger_value": 610611.0,
+   "ledger_value": 624432.0,
    "name": "ons.population.age_40_49_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8450,7 +8702,7 @@
   {
    "fixture_value": 758000.0,
    "kind": "calibration_drift",
-   "ledger_value": 746341.0,
+   "ledger_value": 763623.0,
    "name": "ons.population.age_40_49_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8458,7 +8710,7 @@
   {
    "fixture_value": 851000.0,
    "kind": "calibration_drift",
-   "ledger_value": 838578.0,
+   "ledger_value": 856913.0,
    "name": "ons.population.age_40_49_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8466,7 +8718,7 @@
   {
    "fixture_value": 1314000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1268973.0,
+   "ledger_value": 1288929.0,
    "name": "ons.population.age_40_49_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8474,7 +8726,7 @@
   {
    "fixture_value": 1273000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1255951.0,
+   "ledger_value": 1279313.0,
    "name": "ons.population.age_40_49_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8482,7 +8734,7 @@
   {
    "fixture_value": 704000.0,
    "kind": "calibration_drift",
-   "ledger_value": 688417.0,
+   "ledger_value": 700576.0,
    "name": "ons.population.age_40_49_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8490,7 +8742,7 @@
   {
    "fixture_value": 254000.0,
    "kind": "calibration_drift",
-   "ledger_value": 246140.0,
+   "ledger_value": 248860.0,
    "name": "ons.population.age_40_49_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8498,7 +8750,7 @@
   {
    "fixture_value": 691000.0,
    "kind": "calibration_drift",
-   "ledger_value": 675368.0,
+   "ledger_value": 683165.0,
    "name": "ons.population.age_40_49_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8506,7 +8758,7 @@
   {
    "fixture_value": 374000.0,
    "kind": "calibration_drift",
-   "ledger_value": 365951.0,
+   "ledger_value": 370871.0,
    "name": "ons.population.age_40_49_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8514,7 +8766,7 @@
   {
    "fixture_value": 369000.0,
    "kind": "calibration_drift",
-   "ledger_value": 360074.0,
+   "ledger_value": 352336.0,
    "name": "ons.population.age_50_59_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8522,7 +8774,7 @@
   {
    "fixture_value": 1011000.0,
    "kind": "calibration_drift",
-   "ledger_value": 995810.0,
+   "ledger_value": 980650.0,
    "name": "ons.population.age_50_59_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8530,7 +8782,7 @@
   {
    "fixture_value": 745000.0,
    "kind": "calibration_drift",
-   "ledger_value": 736903.0,
+   "ledger_value": 725345.0,
    "name": "ons.population.age_50_59_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8538,7 +8790,7 @@
   {
    "fixture_value": 681000.0,
    "kind": "calibration_drift",
-   "ledger_value": 676307.0,
+   "ledger_value": 668214.0,
    "name": "ons.population.age_50_59_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8546,7 +8798,7 @@
   {
    "fixture_value": 800000.0,
    "kind": "calibration_drift",
-   "ledger_value": 794143.0,
+   "ledger_value": 785103.0,
    "name": "ons.population.age_50_59_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8554,7 +8806,7 @@
   {
    "fixture_value": 867000.0,
    "kind": "calibration_drift",
-   "ledger_value": 866946.0,
+   "ledger_value": 862060.0,
    "name": "ons.population.age_50_59_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8562,7 +8814,7 @@
   {
    "fixture_value": 1078000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1087518.0,
+   "ledger_value": 1100048.0,
    "name": "ons.population.age_50_59_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8570,7 +8822,7 @@
   {
    "fixture_value": 1287000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1287719.0,
+   "ledger_value": 1281037.0,
    "name": "ons.population.age_50_59_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8578,7 +8830,7 @@
   {
    "fixture_value": 794000.0,
    "kind": "calibration_drift",
-   "ledger_value": 784718.0,
+   "ledger_value": 772769.0,
    "name": "ons.population.age_50_59_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8586,7 +8838,7 @@
   {
    "fixture_value": 257000.0,
    "kind": "calibration_drift",
-   "ledger_value": 255269.0,
+   "ledger_value": 250863.0,
    "name": "ons.population.age_50_59_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8594,7 +8846,7 @@
   {
    "fixture_value": 788000.0,
    "kind": "calibration_drift",
-   "ledger_value": 766715.0,
+   "ledger_value": 749563.0,
    "name": "ons.population.age_50_59_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8602,7 +8854,7 @@
   {
    "fixture_value": 432000.0,
    "kind": "calibration_drift",
-   "ledger_value": 424694.0,
+   "ledger_value": 415486.0,
    "name": "ons.population.age_50_59_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8610,7 +8862,7 @@
   {
    "fixture_value": 353000.0,
    "kind": "calibration_drift",
-   "ledger_value": 349719.0,
+   "ledger_value": 358713.0,
    "name": "ons.population.age_60_69_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8618,7 +8870,7 @@
   {
    "fixture_value": 888000.0,
    "kind": "calibration_drift",
-   "ledger_value": 884043.0,
+   "ledger_value": 910717.0,
    "name": "ons.population.age_60_69_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8626,7 +8878,7 @@
   {
    "fixture_value": 658000.0,
    "kind": "calibration_drift",
-   "ledger_value": 652931.0,
+   "ledger_value": 671969.0,
    "name": "ons.population.age_60_69_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8634,7 +8886,7 @@
   {
    "fixture_value": 592000.0,
    "kind": "calibration_drift",
-   "ledger_value": 591429.0,
+   "ledger_value": 611920.0,
    "name": "ons.population.age_60_69_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8642,7 +8894,7 @@
   {
    "fixture_value": 685000.0,
    "kind": "calibration_drift",
-   "ledger_value": 677922.0,
+   "ledger_value": 697195.0,
    "name": "ons.population.age_60_69_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8650,7 +8902,7 @@
   {
    "fixture_value": 746000.0,
    "kind": "calibration_drift",
-   "ledger_value": 744651.0,
+   "ledger_value": 770854.0,
    "name": "ons.population.age_60_69_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8658,7 +8910,7 @@
   {
    "fixture_value": 778000.0,
    "kind": "calibration_drift",
-   "ledger_value": 787666.0,
+   "ledger_value": 818948.0,
    "name": "ons.population.age_60_69_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8666,7 +8918,7 @@
   {
    "fixture_value": 1089000.0,
    "kind": "calibration_drift",
-   "ledger_value": 1089421.0,
+   "ledger_value": 1125764.0,
    "name": "ons.population.age_60_69_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8674,7 +8926,7 @@
   {
    "fixture_value": 741000.0,
    "kind": "calibration_drift",
-   "ledger_value": 736639.0,
+   "ledger_value": 759591.0,
    "name": "ons.population.age_60_69_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8682,7 +8934,7 @@
   {
    "fixture_value": 224000.0,
    "kind": "calibration_drift",
-   "ledger_value": 223111.0,
+   "ledger_value": 228232.0,
    "name": "ons.population.age_60_69_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8690,7 +8942,7 @@
   {
    "fixture_value": 727000.0,
    "kind": "calibration_drift",
-   "ledger_value": 721727.0,
+   "ledger_value": 739039.0,
    "name": "ons.population.age_60_69_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8698,7 +8950,7 @@
   {
    "fixture_value": 407000.0,
    "kind": "calibration_drift",
-   "ledger_value": 401775.0,
+   "ledger_value": 412789.0,
    "name": "ons.population.age_60_69_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8706,7 +8958,7 @@
   {
    "fixture_value": 278000.0,
    "kind": "calibration_drift",
-   "ledger_value": 265573.0,
+   "ledger_value": 269819.0,
    "name": "ons.population.age_70_79_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8714,7 +8966,7 @@
   {
    "fixture_value": 715000.0,
    "kind": "calibration_drift",
-   "ledger_value": 669277.0,
+   "ledger_value": 675208.0,
    "name": "ons.population.age_70_79_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8722,7 +8974,7 @@
   {
    "fixture_value": 536000.0,
    "kind": "calibration_drift",
-   "ledger_value": 504131.0,
+   "ledger_value": 507786.0,
    "name": "ons.population.age_70_79_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8730,7 +8982,7 @@
   {
    "fixture_value": 500000.0,
    "kind": "calibration_drift",
-   "ledger_value": 466530.0,
+   "ledger_value": 468480.0,
    "name": "ons.population.age_70_79_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8738,7 +8990,7 @@
   {
    "fixture_value": 570000.0,
    "kind": "calibration_drift",
-   "ledger_value": 528207.0,
+   "ledger_value": 528891.0,
    "name": "ons.population.age_70_79_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8746,7 +8998,7 @@
   {
    "fixture_value": 643000.0,
    "kind": "calibration_drift",
-   "ledger_value": 599882.0,
+   "ledger_value": 603534.0,
    "name": "ons.population.age_70_79_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8754,7 +9006,7 @@
   {
    "fixture_value": 509000.0,
    "kind": "calibration_drift",
-   "ledger_value": 485057.0,
+   "ledger_value": 498084.0,
    "name": "ons.population.age_70_79_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8762,7 +9014,7 @@
   {
    "fixture_value": 927000.0,
    "kind": "calibration_drift",
-   "ledger_value": 865392.0,
+   "ledger_value": 873028.0,
    "name": "ons.population.age_70_79_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8770,7 +9022,7 @@
   {
    "fixture_value": 662000.0,
    "kind": "calibration_drift",
-   "ledger_value": 618254.0,
+   "ledger_value": 622182.0,
    "name": "ons.population.age_70_79_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8778,7 +9030,7 @@
   {
    "fixture_value": 165000.0,
    "kind": "calibration_drift",
-   "ledger_value": 155382.0,
+   "ledger_value": 156629.0,
    "name": "ons.population.age_70_79_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8786,7 +9038,7 @@
   {
    "fixture_value": 546000.0,
    "kind": "calibration_drift",
-   "ledger_value": 519252.0,
+   "ledger_value": 529933.0,
    "name": "ons.population.age_70_79_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8794,7 +9046,7 @@
   {
    "fixture_value": 343000.0,
    "kind": "calibration_drift",
-   "ledger_value": 321668.0,
+   "ledger_value": 322818.0,
    "name": "ons.population.age_70_79_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8802,7 +9054,7 @@
   {
    "fixture_value": 153000.0,
    "kind": "calibration_drift",
-   "ledger_value": 122118.0,
+   "ledger_value": 125800.0,
    "name": "ons.population.age_80_89_by_region@E12000001",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8810,7 +9062,7 @@
   {
    "fixture_value": 399000.0,
    "kind": "calibration_drift",
-   "ledger_value": 324141.0,
+   "ledger_value": 332900.0,
    "name": "ons.population.age_80_89_by_region@E12000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8818,7 +9070,7 @@
   {
    "fixture_value": 302000.0,
    "kind": "calibration_drift",
-   "ledger_value": 243274.0,
+   "ledger_value": 251139.0,
    "name": "ons.population.age_80_89_by_region@E12000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8826,7 +9078,7 @@
   {
    "fixture_value": 273000.0,
    "kind": "calibration_drift",
-   "ledger_value": 225626.0,
+   "ledger_value": 234889.0,
    "name": "ons.population.age_80_89_by_region@E12000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8834,7 +9086,7 @@
   {
    "fixture_value": 337000.0,
    "kind": "calibration_drift",
-   "ledger_value": 275030.0,
+   "ledger_value": 283777.0,
    "name": "ons.population.age_80_89_by_region@E12000005",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8842,7 +9094,7 @@
   {
    "fixture_value": 379000.0,
    "kind": "calibration_drift",
-   "ledger_value": 305691.0,
+   "ledger_value": 317198.0,
    "name": "ons.population.age_80_89_by_region@E12000006",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8850,7 +9102,7 @@
   {
    "fixture_value": 304000.0,
    "kind": "calibration_drift",
-   "ledger_value": 237061.0,
+   "ledger_value": 242901.0,
    "name": "ons.population.age_80_89_by_region@E12000007",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8858,7 +9110,7 @@
   {
    "fixture_value": 559000.0,
    "kind": "calibration_drift",
-   "ledger_value": 447958.0,
+   "ledger_value": 466197.0,
    "name": "ons.population.age_80_89_by_region@E12000008",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8866,7 +9118,7 @@
   {
    "fixture_value": 388000.0,
    "kind": "calibration_drift",
-   "ledger_value": 313605.0,
+   "ledger_value": 327097.0,
    "name": "ons.population.age_80_89_by_region@E12000009",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8874,7 +9126,7 @@
   {
    "fixture_value": 93000.0,
    "kind": "calibration_drift",
-   "ledger_value": 77441.0,
+   "ledger_value": 79953.0,
    "name": "ons.population.age_80_89_by_region@N92000002",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8882,7 +9134,7 @@
   {
    "fixture_value": 297000.0,
    "kind": "calibration_drift",
-   "ledger_value": 238904.0,
+   "ledger_value": 243413.0,
    "name": "ons.population.age_80_89_by_region@S92000003",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8890,7 +9142,7 @@
   {
    "fixture_value": 190000.0,
    "kind": "calibration_drift",
-   "ledger_value": 154319.0,
+   "ledger_value": 159376.0,
    "name": "ons.population.age_80_89_by_region@W92000004",
    "period": 2025,
    "reason": "Region-tier ONS population cell (microcosm#905): the Ledger row binds the ONS mid-year estimate by single year of age at Chronicle's region or country stamp, held to the comparison period as identity, while the incumbent's regional row is an ONS subnational projection rounded to the nearest thousand. The difference is projection-versus-estimate vintage and rounding, never area or band definition: the nine English regions and three nations sum exactly to the retired UK-wide row of the same publication."
@@ -8898,7 +9150,7 @@
   {
    "fixture_value": 1698816.0,
    "kind": "calibration_drift",
-   "ledger_value": 1744355.0,
+   "ledger_value": 1701788.0,
    "name": "ons.population.female_0_4",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8906,7 +9158,7 @@
   {
    "fixture_value": 2041879.0,
    "kind": "calibration_drift",
-   "ledger_value": 2052052.0,
+   "ledger_value": 2014595.0,
    "name": "ons.population.female_10_14",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8914,7 +9166,7 @@
   {
    "fixture_value": 2036402.0,
    "kind": "calibration_drift",
-   "ledger_value": 2002835.0,
+   "ledger_value": 2002099.0,
    "name": "ons.population.female_15_19",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8922,7 +9174,7 @@
   {
    "fixture_value": 2033478.0,
    "kind": "calibration_drift",
-   "ledger_value": 2034609.0,
+   "ledger_value": 2036764.0,
    "name": "ons.population.female_20_24",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8930,7 +9182,7 @@
   {
    "fixture_value": 2258028.0,
    "kind": "calibration_drift",
-   "ledger_value": 2291610.0,
+   "ledger_value": 2269669.0,
    "name": "ons.population.female_25_29",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8938,7 +9190,7 @@
   {
    "fixture_value": 2443559.0,
    "kind": "calibration_drift",
-   "ledger_value": 2463301.0,
+   "ledger_value": 2439546.0,
    "name": "ons.population.female_30_34",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8946,7 +9198,7 @@
   {
    "fixture_value": 2497122.0,
    "kind": "calibration_drift",
-   "ledger_value": 2472291.0,
+   "ledger_value": 2501726.0,
    "name": "ons.population.female_35_39",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8954,7 +9206,7 @@
   {
    "fixture_value": 2356214.0,
    "kind": "calibration_drift",
-   "ledger_value": 2333109.0,
+   "ledger_value": 2363855.0,
    "name": "ons.population.female_40_44",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8962,7 +9214,7 @@
   {
    "fixture_value": 2135556.0,
    "kind": "calibration_drift",
-   "ledger_value": 2088285.0,
+   "ledger_value": 2140231.0,
    "name": "ons.population.female_45_49",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8970,7 +9222,7 @@
   {
    "fixture_value": 2206473.0,
    "kind": "calibration_drift",
-   "ledger_value": 2255231.0,
+   "ledger_value": 2211381.0,
    "name": "ons.population.female_50_54",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8978,7 +9230,7 @@
   {
    "fixture_value": 2340737.0,
    "kind": "calibration_drift",
-   "ledger_value": 2360202.0,
+   "ledger_value": 2348471.0,
    "name": "ons.population.female_55_59",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8986,7 +9238,7 @@
   {
    "fixture_value": 1918180.0,
    "kind": "calibration_drift",
-   "ledger_value": 1941658.0,
+   "ledger_value": 1886581.0,
    "name": "ons.population.female_5_9",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -8994,7 +9246,7 @@
   {
    "fixture_value": 2248908.0,
    "kind": "calibration_drift",
-   "ledger_value": 2193915.0,
+   "ledger_value": 2258870.0,
    "name": "ons.population.female_60_64",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9002,7 +9254,7 @@
   {
    "fixture_value": 1890892.0,
    "kind": "calibration_drift",
-   "ledger_value": 1838574.0,
+   "ledger_value": 1899277.0,
    "name": "ons.population.female_65_69",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9010,7 +9262,7 @@
   {
    "fixture_value": 1619328.0,
    "kind": "calibration_drift",
-   "ledger_value": 1622996.0,
+   "ledger_value": 1625449.0,
    "name": "ons.population.female_70_74",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9018,7 +9270,7 @@
   {
    "fixture_value": 1575830.0,
    "kind": "calibration_drift",
-   "ledger_value": 1551183.0,
+   "ledger_value": 1578946.0,
    "name": "ons.population.female_75_79",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9026,7 +9278,7 @@
   {
    "fixture_value": 1064043.0,
    "kind": "calibration_drift",
-   "ledger_value": 1024480.0,
+   "ledger_value": 1064928.0,
    "name": "ons.population.female_80_84",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9034,7 +9286,7 @@
   {
    "fixture_value": 766765.0,
    "kind": "calibration_drift",
-   "ledger_value": 665267.0,
+   "ledger_value": 676458.0,
    "name": "ons.population.female_85_89",
    "period": 2025,
    "reason": "María ruling 2026-08-21: incumbent ons/female_85_90 maps to the uniform female 85_89 declaration. The value gap is the single-age-90 share; ages 90+ are constrained separately."
@@ -9042,7 +9294,7 @@
   {
    "fixture_value": 1784490.0,
    "kind": "calibration_drift",
-   "ledger_value": 1829801.0,
+   "ledger_value": 1790962.0,
    "name": "ons.population.male_0_4",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9050,7 +9302,7 @@
   {
    "fixture_value": 2143309.0,
    "kind": "calibration_drift",
-   "ledger_value": 2152800.0,
+   "ledger_value": 2115846.0,
    "name": "ons.population.male_10_14",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9058,7 +9310,7 @@
   {
    "fixture_value": 2149930.0,
    "kind": "calibration_drift",
-   "ledger_value": 2123750.0,
+   "ledger_value": 2107008.0,
    "name": "ons.population.male_15_19",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9066,7 +9318,7 @@
   {
    "fixture_value": 2136737.0,
    "kind": "calibration_drift",
-   "ledger_value": 2131646.0,
+   "ledger_value": 2127062.0,
    "name": "ons.population.male_20_24",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9074,7 +9326,7 @@
   {
    "fixture_value": 2246892.0,
    "kind": "calibration_drift",
-   "ledger_value": 2257360.0,
+   "ledger_value": 2259207.0,
    "name": "ons.population.male_25_29",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9082,7 +9334,7 @@
   {
    "fixture_value": 2323977.0,
    "kind": "calibration_drift",
-   "ledger_value": 2333326.0,
+   "ledger_value": 2315894.0,
    "name": "ons.population.male_30_34",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9090,7 +9342,7 @@
   {
    "fixture_value": 2325815.0,
    "kind": "calibration_drift",
-   "ledger_value": 2303479.0,
+   "ledger_value": 2332808.0,
    "name": "ons.population.male_35_39",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9098,7 +9350,7 @@
   {
    "fixture_value": 2208064.0,
    "kind": "calibration_drift",
-   "ledger_value": 2196013.0,
+   "ledger_value": 2223098.0,
    "name": "ons.population.male_40_44",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9106,7 +9358,7 @@
   {
    "fixture_value": 2040636.0,
    "kind": "calibration_drift",
-   "ledger_value": 2005099.0,
+   "ledger_value": 2054586.0,
    "name": "ons.population.male_45_49",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9114,7 +9366,7 @@
   {
    "fixture_value": 2119462.0,
    "kind": "calibration_drift",
-   "ledger_value": 2164862.0,
+   "ledger_value": 2133309.0,
    "name": "ons.population.male_50_54",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9122,7 +9374,7 @@
   {
    "fixture_value": 2234921.0,
    "kind": "calibration_drift",
-   "ledger_value": 2256521.0,
+   "ledger_value": 2250313.0,
    "name": "ons.population.male_55_59",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9130,7 +9382,7 @@
   {
    "fixture_value": 2011903.0,
    "kind": "calibration_drift",
-   "ledger_value": 2037199.0,
+   "ledger_value": 1985034.0,
    "name": "ons.population.male_5_9",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9138,7 +9390,7 @@
   {
    "fixture_value": 2138720.0,
    "kind": "calibration_drift",
-   "ledger_value": 2094462.0,
+   "ledger_value": 2152532.0,
    "name": "ons.population.male_60_64",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9146,7 +9398,7 @@
   {
    "fixture_value": 1785048.0,
    "kind": "calibration_drift",
-   "ledger_value": 1734083.0,
+   "ledger_value": 1795052.0,
    "name": "ons.population.male_65_69",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9154,7 +9406,7 @@
   {
    "fixture_value": 1472190.0,
    "kind": "calibration_drift",
-   "ledger_value": 1473758.0,
+   "ledger_value": 1478885.0,
    "name": "ons.population.male_70_74",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9162,7 +9414,7 @@
   {
    "fixture_value": 1370172.0,
    "kind": "calibration_drift",
-   "ledger_value": 1350668.0,
+   "ledger_value": 1373112.0,
    "name": "ons.population.male_75_79",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9170,7 +9422,7 @@
   {
    "fixture_value": 853423.0,
    "kind": "calibration_drift",
-   "ledger_value": 815910.0,
+   "ledger_value": 854188.0,
    "name": "ons.population.male_80_84",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9178,7 +9430,7 @@
   {
    "fixture_value": 524918.0,
    "kind": "calibration_drift",
-   "ledger_value": 459511.0,
+   "ledger_value": 469066.0,
    "name": "ons.population.male_85_89",
    "period": 2025,
    "reason": "María ruling 2026-08-21: incumbent ons/male_85_90 maps to the uniform male 85_89 declaration. The value gap is the single-age-90 share; ages 90+ are constrained separately."
@@ -9186,7 +9438,7 @@
   {
    "fixture_value": 46000.0,
    "kind": "calibration_drift",
-   "ledger_value": 46776.0,
+   "ledger_value": 45774.0,
    "name": "ons.population.scotland_babies_under_1",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9194,7 +9446,7 @@
   {
    "fixture_value": 892000.0,
    "kind": "calibration_drift",
-   "ledger_value": 896833.0,
+   "ledger_value": 877999.0,
    "name": "ons.population.scotland_children_under_16",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9202,7 +9454,7 @@
   {
    "fixture_value": 69502341.0,
    "kind": "calibration_drift",
-   "ledger_value": 69281437.0,
+   "ledger_value": 69483939.0,
    "name": "ons.population.uk_total",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9210,7 +9462,7 @@
   {
    "fixture_value": 5940000.0,
    "kind": "calibration_drift",
-   "ledger_value": 6146000.0,
+   "ledger_value": 6176000.0,
    "name": "ons.public_sector_employment",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9248,9 +9500,33 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
+   "fixture_value": 1852699178.55,
+   "kind": "calibration_drift",
+   "ledger_value": 1604190700.89,
+   "name": "slc.repayments.england_plan_1",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2778253361.64,
+   "kind": "calibration_drift",
+   "ledger_value": 3234379913.2999997,
+   "name": "slc.repayments.england_plan_2",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 40869580.81,
+   "kind": "calibration_drift",
+   "ledger_value": 73713378.39,
+   "name": "slc.repayments.england_plan_5",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
    "fixture_value": 346409713.95,
    "kind": "calibration_drift",
-   "ledger_value": 346409713.95000005,
+   "ledger_value": 427019983.79,
    "name": "slc.repayments.england_postgraduate",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -9258,7 +9534,7 @@
   {
    "fixture_value": 5018231834.95,
    "kind": "calibration_drift",
-   "ledger_value": 5018231834.949999,
+   "ledger_value": 5339303976.37,
    "name": "slc.repayments.england_total_higher_education",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."

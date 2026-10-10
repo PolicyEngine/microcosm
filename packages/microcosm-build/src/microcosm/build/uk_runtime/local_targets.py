@@ -32,6 +32,10 @@ AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
     "la": "local_authority",
 }
 INCOME_VARIABLES = ("self_employment_income", "employment_income")
+#: SPI higher rate taxpayers by area (microcosm#1123): the engine's tax_band
+#: on adjusted net income less allowances, as HMRC classes a taxpayer by the
+#: highest rate paid on any income.
+HIGHER_RATE_TAXPAYERS_METRIC = "hmrc/higher_rate_taxpayers/count"
 AGE_BANDS = tuple((lower, lower + 10) for lower in range(0, 80, 10))
 CONSTITUENCY_UC_CHILDREN_METRICS = (
     "uc_hh_0_children",
@@ -115,6 +119,7 @@ def metric_names(
     names.append("households")
     if area_type == "la":
         names.extend(f"council_tax/band_{band.lower()}" for band in COUNCIL_TAX_BANDS)
+    names.append(HIGHER_RATE_TAXPAYERS_METRIC)
     return tuple(names)
 
 
@@ -278,6 +283,15 @@ def compute_household_metrics(
             "person",
             "household",
         )
+
+    in_spi_frame = _values(_calculate(sim, "income_tax", period)) > 0
+    higher_rate = _values(_calculate(sim, "tax_band", period)) == "HIGHER"
+    matrix[HIGHER_RATE_TAXPAYERS_METRIC] = _map_result(
+        sim,
+        higher_rate & in_spi_frame,
+        "person",
+        "household",
+    )
 
     age = _values(_calculate(sim, "age", period))
     for lower, upper in AGE_BANDS:

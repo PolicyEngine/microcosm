@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import json
 import math
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import resources as importlib_resources
@@ -19,11 +19,13 @@ from microcosm.build.country_spec import load_country_spec
 from microcosm.build.cross_grain import (
     CrossGrainBridge,
     CrossGrainRule,
+    apply_cross_grain_partitions,
     apply_cross_grain_reconciliation,
 )
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     _fact_matches_selector,
+    _source_name,
     compile_ledger_target_references,
     reference_fact_selectors,
 )
@@ -32,6 +34,14 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.cross_grain_declarations import (
+    assert_uk_cross_grain_coverage,
+    load_uk_cross_grain_declarations,
+    uk_cross_grain_bridges,
+    uk_cross_grain_grain,
+    uk_cross_grain_partitions,
+    uk_fanout_sum_bridges,
+)
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
@@ -41,6 +51,7 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
+from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
 )
@@ -164,105 +175,50 @@ def uk_cross_grain_leg_of_area(
 #: the leg licences derive from.
 _uk_cross_grain_leg_of_area = uk_cross_grain_leg_of_area()
 
-UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "region", "constituency", "la")
+_UK_CROSS_GRAIN_DECLARATIONS = load_uk_cross_grain_declarations()
+#: Country (UK, GB, England and Wales) > nation > region > the two local
+#: grains (microcosm#1123): a nation row on England's code sits between the
+#: UK row and the English regions; Wales, Scotland and Northern Ireland are
+#: one leg each at whichever of the nation or region tier their family binds.
+UK_CROSS_GRAIN_GRAIN_PRECEDENCE: tuple[str, ...] = tuple(
+    _UK_CROSS_GRAIN_DECLARATIONS["grain_precedence"]
+)
 UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS: dict[str, tuple[str, ...]] = {
     **{code: (code,) for code in UK_REGION_TIER_CODES},
     "K02000001": UK_REGION_TIER_CODES,
     "K03000001": (*_UK_ENGLISH_REGION_CODES, "W92000004", "S92000003"),
+    "K04000001": (*_UK_ENGLISH_REGION_CODES, "W92000004"),
     "E92000001": _UK_ENGLISH_REGION_CODES,
 }
-UK_CROSS_GRAIN_BRIDGES = (
-    CrossGrainBridge(
-        bridge_id="national_household_composition_partition_vs_census_households",
-        concept="uk.household.count",
-        higher_target_ids=(
-            "ons.household_composition.lone_households_under_65",
-            "ons.household_composition.lone_households_over_65",
-            "ons.household_composition.unrelated_adult_households",
-            "ons.household_composition.couple_no_children_households",
-            "ons.household_composition.couple_under_3_children_households",
-            "ons.household_composition.couple_3_plus_children_households",
-            "ons.household_composition.couple_non_dependent_children_only_households",
-            "ons.household_composition.lone_parent_dependent_children_households",
-            "ons.household_composition.lone_parent_non_dependent_children_households",
-            "ons.household_composition.multi_family_households",
-        ),
-        lower_side=f"contract:{UK_CENSUS_HOUSEHOLDS_TARGET_ID}",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_uc_caseload_vs_uc_households_by_area",
-        concept="uk.benefit_unit.count",
-        higher_target_ids=("dwp.uc.households",),
-        lower_side="contract:dwp.uc.households_by_area",
-    ),
-    # The ONS controls use inclusive integer-age bands (0--9), while local
-    # targets use equivalent half-open encodings (0--10), so their signatures
-    # cannot match directly. These bridges let the region-tier controls (one
-    # row per English region and per nation, microcosm#905) rescale both
-    # constituency and local-authority bands over their twelve legs.
-    CrossGrainBridge(
-        bridge_id="national_age_0_9_vs_local_age_0_10",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_0_9_by_region",),
-        lower_side="contract:ons.age.0_10",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_10_19_vs_local_age_10_20",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_10_19_by_region",),
-        lower_side="contract:ons.age.10_20",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_20_29_vs_local_age_20_30",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_20_29_by_region",),
-        lower_side="contract:ons.age.20_30",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_30_39_vs_local_age_30_40",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_30_39_by_region",),
-        lower_side="contract:ons.age.30_40",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_40_49_vs_local_age_40_50",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_40_49_by_region",),
-        lower_side="contract:ons.age.40_50",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_50_59_vs_local_age_50_60",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_50_59_by_region",),
-        lower_side="contract:ons.age.50_60",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_60_69_vs_local_age_60_70",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_60_69_by_region",),
-        lower_side="contract:ons.age.60_70",
-    ),
-    CrossGrainBridge(
-        bridge_id="national_age_70_79_vs_local_age_70_80",
-        concept="uk.person.count",
-        higher_target_ids=("ons.population.age_70_79_by_region",),
-        lower_side="contract:ons.age.70_80",
-    ),
-)
-# A future move of these declarations into country-package spec JSON follows
-# the country-owned specification direction established in microcosm#159.
+#: The bridges live in ``uk/cross_grain_declarations.json`` with their
+#: reasons; the country-spec fingerprint covers the file.
+UK_CROSS_GRAIN_BRIDGES = uk_cross_grain_bridges(_UK_CROSS_GRAIN_DECLARATIONS)
+UK_CROSS_GRAIN_PARTITIONS = uk_cross_grain_partitions(_UK_CROSS_GRAIN_DECLARATIONS)
+UK_FANOUT_SUM_BRIDGES = uk_fanout_sum_bridges(_UK_CROSS_GRAIN_DECLARATIONS)
 UK_CROSS_GRAIN_RULE = CrossGrainRule(
     grain_precedence=UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
-    signature_fields=("concept", "entity", "map_to", "filters"),
+    signature_fields=tuple(_UK_CROSS_GRAIN_DECLARATIONS["signature_fields"]),
     bridges=UK_CROSS_GRAIN_BRIDGES,
     leg_of_area=_uk_cross_grain_leg_of_area,
     parent_geography_legs=UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS,
-    # Country and region rows control the grains below them. With no
+    # Country, nation and region rows control the grains below them. With no
     # control-tier row in a group the operator keeps the standing
     # single-winner rule, so a local-only family still reconciles authorities
     # to constituencies over their legs, as it did before the region tier.
-    control_grains=("country", "region"),
+    control_grains=tuple(_UK_CROSS_GRAIN_DECLARATIONS["control_grains"]),
 )
+
+
+@functools.lru_cache(maxsize=1)
+def uk_cross_grain_coverage_receipt() -> dict[str, Any]:
+    """The enforced coverage check over the committed contract (#1123).
+
+    Refuses an undeclared multi-grain overlap or local target without a
+    control; the receipt lists the gaps the doctrine-exception ledger still
+    tolerates.
+    """
+
+    return assert_uk_cross_grain_coverage(_uk_contract_targets(national_only=False))
 
 
 #: The incumbent's regional row spellings: ``ons/<slug>_age_<lo>_<hi>`` uses
@@ -486,6 +442,7 @@ def compile_uk_target_registry(
     """Compile packaged UK Ledger references against consumer fact rows."""
 
     fact_rows = tuple(facts)
+    fact_indices_by_source = _fact_indices_by_source(fact_rows)
     spec = load_country_spec("uk")
     _assert_household_type_bindings_declared(_uk_contract_targets())
     compiled = []
@@ -494,7 +451,9 @@ def compile_uk_target_registry(
         restamped = LedgerTargetReference(
             **{**reference.__dict__, "period": target_period}
         )
-        candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
+        candidate_facts = _candidate_facts_for_reference(
+            fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
+        )
         if restamped.uprating_index is not None and (
             str(restamped.uprating_index) not in UK_UPRATING_APPLIERS
         ):
@@ -701,6 +660,7 @@ def align_dft_bus_fare_receipts_to_period(
 UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
     **hmrc_uprating_appliers(),
+    **tenure_drift_appliers(),
 }
 
 
@@ -916,6 +876,69 @@ def load_uk_local_target_reference_membership() -> dict[str, Any]:
     )
 
 
+UK_LOCAL_SMALL_CELL_RULE_RESOURCE = "local_small_cell_rule.json"
+
+
+def uk_small_cell_deferred_cells(
+    membership: Mapping[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    """The cells the small-cell rule deferred, with their compiled values.
+
+    The joint surface adds them to the reconciliation frame only: they take
+    their share of their leg's control and never reach the solve, so deferring
+    a cell does not inflate its neighbours (microcosm#1123 item 7).
+    """
+
+    rule_ids = {
+        str(rule["rule_id"])
+        for rule in json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(UK_LOCAL_SMALL_CELL_RULE_RESOURCE)
+            .read_text(encoding="utf-8")
+        )["rules"]
+    }
+    cells = []
+    for target_id, target in sorted(membership.get("targets", {}).items()):
+        for level, payload in sorted(target["geography_levels"].items()):
+            for candidate in payload["candidates"]:
+                if (
+                    candidate.get("status") == "signed_deferred"
+                    and candidate.get("signed_reason_id") in rule_ids
+                    and candidate.get("deferred_value") is not None
+                ):
+                    cells.append(
+                        {
+                            "target_id": target_id,
+                            "geography_level": level,
+                            "geography_id": str(candidate["geography_id"]),
+                            "value": float(candidate["deferred_value"]),
+                        }
+                    )
+    return tuple(cells)
+
+
+def assert_uk_local_deferrals_in_force(
+    membership: Mapping[str, Any],
+    evaluated_on: Any,
+) -> None:
+    """Refuse a signed area deferral past its declared expiry."""
+
+    from datetime import date
+
+    expired = sorted(
+        f"{deferral['target_id']}@{deferral['geography_level']}"
+        for deferral in membership.get("signed_deferrals", ())
+        if deferral.get("expires_on")
+        and date.fromisoformat(str(deferral["expires_on"])) < evaluated_on
+    )
+    if expired:
+        raise ValueError(
+            f"UK local signed deferrals expired before {evaluated_on}: {expired}. "
+            "Renew the rule in uk/local_small_cell_rule.json and regenerate the "
+            "local references (microcosm#1123)."
+        )
+
+
 def _uk_licensed_empty_legs_from_membership(
     membership: Mapping[str, Any],
     *,
@@ -1108,12 +1131,20 @@ def compile_uk_local_target_registry(
             restamped,
         )
         _assert_local_fact_vintages(candidate_facts, restamped, rosters)
+        if restamped.uprating_index is not None and (
+            str(restamped.uprating_index) not in UK_UPRATING_APPLIERS
+        ):
+            raise ValueError(
+                f"UK local reference {restamped.name!r} declares uprating_index "
+                f"{restamped.uprating_index!r}, which no UK applier implements."
+            )
         try:
             registry = compile_ledger_target_references(
                 candidate_facts,
                 [restamped],
                 country="uk",
             )
+            registry = apply_declared_uk_uprating(restamped, registry)
         except ValueError as error:
             unsupported.append(
                 {
@@ -1201,16 +1232,53 @@ def _assert_local_fact_vintages(
             )
 
 
+def _fact_indices_by_source(
+    facts: tuple[Mapping[str, Any], ...],
+) -> dict[str, tuple[int, ...]]:
+    buckets: dict[str, list[int]] = {}
+    for index, fact in enumerate(facts):
+        buckets.setdefault(_source_name(fact), []).append(index)
+    return {source: tuple(indices) for source, indices in buckets.items()}
+
+
+def _selector_source_names(selector: Mapping[str, Any]) -> tuple[str, ...]:
+    expected = selector.get("source_name")
+    if expected is None or expected == "":
+        return ()
+    if isinstance(expected, (list, tuple)):
+        return tuple(str(item) for item in expected)
+    return (str(expected),)
+
+
 def _candidate_facts_for_reference(
     facts: tuple[Mapping[str, Any], ...],
     reference: LedgerTargetReference,
+    *,
+    fact_indices_by_source: Mapping[str, tuple[int, ...]] | None = None,
 ) -> tuple[Mapping[str, Any], ...]:
     selectors = reference_fact_selectors(reference)
     if not selectors:
         return facts
+    pool = facts
+    source_names = [_selector_source_names(selector) for selector in selectors]
+    if fact_indices_by_source is not None and all(source_names):
+        # A selector that pins source_name matches only that source's facts,
+        # so only those are scanned, in feed order (the national compile
+        # otherwise scans the whole feed once per reference, #1123).
+        pool = tuple(
+            facts[index]
+            for index in sorted(
+                {
+                    index
+                    for names in source_names
+                    for name in names
+                    for index in fact_indices_by_source.get(name, ())
+                }
+            )
+        )
     return tuple(
         fact
-        for fact in facts
+        for fact in pool
         if any(_fact_matches_selector(fact, selector) for selector in selectors)
     )
 
@@ -1667,6 +1735,37 @@ def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
     return level, geography_id
 
 
+@functools.lru_cache(maxsize=1)
+def uk_cross_grain_contract_signatures() -> Mapping[str, Mapping[str, Any]]:
+    """The contract as the operator groups it (microcosm#1123).
+
+    A target declared ``signature_incomplete`` (its binding's filters or
+    groupby carry the population its measurement block leaves open) gets a
+    measurement of its own, so it never exact-matches another target: the
+    two-child-limit rows and the Scottish under-one UC row would otherwise share
+    one signature, and with the nation grain the Scottish row would sit under
+    the GB rows as if it were their part. Its relations are declared by hand.
+    """
+
+    incomplete = {
+        str(target_id)
+        for group in _UK_CROSS_GRAIN_DECLARATIONS.get("signature_incomplete", ())
+        for target_id in group["targets"]
+    }
+    contract = _uk_contract_targets(national_only=False)
+    signatures: dict[str, Mapping[str, Any]] = {}
+    for target_id, target in contract.items():
+        if target_id in incomplete:
+            measurement = dict(target.get("measurement") or {})
+            measurement["filters"] = [
+                {"concept": "uk.target_identity", "equals": target_id}
+            ]
+            signatures[target_id] = {**target, "measurement": measurement}
+        else:
+            signatures[target_id] = target
+    return MappingProxyType(signatures)
+
+
 def apply_uk_cross_grain_reconciliation(
     local_frame: pd.DataFrame,
     bound_higher_targets: Iterable[str],
@@ -1674,8 +1773,13 @@ def apply_uk_cross_grain_reconciliation(
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     area_region_codes: Mapping[str, str] | None = None,
+    extra_bridges: Sequence[CrossGrainBridge] = (),
+    extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
+
+    ``extra_bridges`` and ``extra_signatures`` carry the summed fan-out
+    controls the joint surface adds for its declared fan-out sum bridges.
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -1699,10 +1803,15 @@ def apply_uk_cross_grain_reconciliation(
         if area_region_codes is None
         else replace(UK_CROSS_GRAIN_RULE, leg_of_area=leg_of_area)
     )
+    if extra_bridges:
+        rule = replace(rule, bridges=(*rule.bridges, *extra_bridges))
+    signatures = uk_cross_grain_contract_signatures()
+    if extra_signatures:
+        signatures = {**signatures, **extra_signatures}
     return apply_cross_grain_reconciliation(
         local_frame,
         bound_higher_targets,
-        _uk_contract_targets(national_only=False),
+        signatures,
         rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
@@ -1779,6 +1888,56 @@ def uk_ledger_households_total(
         "semantic_fact_key": str(fact.get("semantic_fact_key", "")),
         "aggregate_fact_key": str(fact.get("aggregate_fact_key", "")),
         "source_record_id": str(lineage.get("source_record_id", "")),
+    }
+
+
+#: The nations' official household estimates (microcosm#1123, decision
+#: "nations win"): their sum is the UK household level the census household
+#: cells are uprated to, before the nation and region bridge places it.
+UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS = (
+    "ons.households.english_regions",
+    "welshgov.households.wales",
+    "nrs.households.scotland",
+    "nisra.households.northern_ireland",
+)
+
+
+def uk_nation_households_reference(
+    national_registry: TargetRegistry,
+    facts: Iterable[Mapping[str, Any]],
+    *,
+    period: int | str,
+) -> dict[str, Any]:
+    """The UK household level as the sum of the nations' official estimates.
+
+    A15 uprated every census household cell by one UK factor onto the LFS UK
+    total. Since #1123 the nations' own estimates win: the reference is their
+    sum, read from the national register the solve binds, and the LFS UK
+    total stays as a diagnostic with its gap recorded.
+    """
+
+    members: dict[str, float] = {}
+    for spec in national_registry.specs:
+        target_id = str(spec.metadata.get("contract_target_id", spec.name))
+        if target_id in UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS:
+            members[target_id] = members.get(target_id, 0.0) + float(spec.value)
+    missing = sorted(set(UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS) - set(members))
+    if missing:
+        raise ValueError(
+            f"UK census household uprating needs every nation household control; "
+            f"the national register lacks {missing}."
+        )
+    value = math.fsum(members.values())
+    lfs = uk_ledger_households_total(facts, period=period)
+    return {
+        "concept": "uk.nation_household_controls_sum",
+        "geography_id": UK_LEDGER_HOUSEHOLDS_TOTAL_GEOGRAPHY,
+        "period": int(period),
+        "value": value,
+        "members": dict(sorted(members.items())),
+        "lfs_uk_total": lfs,
+        "gap_to_lfs_uk_total": value - float(lfs["value"]),
+        "relative_gap_to_lfs_uk_total": value / float(lfs["value"]) - 1.0,
     }
 
 
@@ -2011,11 +2170,16 @@ def uk_local_target_surface(
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     census_household_uprating: Mapping[str, Any] | None = None,
     area_region_codes: Mapping[str, str] | None = None,
+    fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None = None,
+    deferred_cells: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface.
 
     ``census_household_uprating`` is the #887 per-grain receipt. Eligible
     census-household and tenure holds take their grain's factor.
+    ``fanout_sum_controls`` is the national reconciliation's receipt of each
+    declared fan-out's total over the full register (#1123): a surface that
+    binds a fan-out sum bridge's area cells must carry it.
     """
 
     if census_household_uprating is None:
@@ -2172,7 +2336,7 @@ def uk_local_target_surface(
             # but on the surface those rows are the same ITL1 tier as the
             # nine English regions and must not outrank them (microcosm#905).
             # The selector and ledger metadata keep Chronicle's level.
-            grain = str(spec.metadata.get("cross_grain_grain") or geography_level)
+            grain = uk_cross_grain_grain(spec.metadata, geography_level, geography_id)
             if grain not in UK_CROSS_GRAIN_GRAIN_PRECEDENCE:
                 raise ValueError(
                     f"UK national target cell {spec.name!r} declares "
@@ -2271,18 +2435,50 @@ def uk_local_target_surface(
         if str(target_id) not in fanout_target_ids
     )
 
+    fanout_bridges, fanout_signatures, fanout_rows = _uk_fanout_sum_controls(
+        output_rows, fanout_sum_controls
+    )
+    reconciliation_rows.extend(fanout_rows)
+    # Small-cell deferrals (#1123 item 7) take their share of their leg's
+    # control in the reconciliation and are dropped from the output.
+    reconciliation_rows.extend(
+        {
+            "grain": "la"
+            if cell["geography_level"] == "local_authority"
+            else str(cell["geography_level"]),
+            "geography_id": str(cell["geography_id"]),
+            "target_id": f"contract:{cell['target_id']}",
+            "value": float(cell["value"]),
+            "_output_position": None,
+        }
+        for cell in deferred_cells
+    )
+    bound_control_ids = (
+        *bound_control_ids,
+        *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
+    )
     reconciliation = pd.DataFrame(
         reconciliation_rows,
         columns=["grain", "geography_id", "target_id", "value", "_output_position"],
     )
+    coverage = uk_cross_grain_coverage_receipt()
+    raw_surface = reconciliation[["grain", "geography_id", "target_id", "value"]]
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
-        reconciliation[["grain", "geography_id", "target_id", "value"]],
+        raw_surface,
         bound_control_ids,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licensed_empty_legs,
         area_region_codes=area_region_codes,
+        extra_bridges=fanout_bridges,
+        extra_signatures=fanout_signatures,
+    )
+    receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_factors(receipt)
+    reconciled, partition_receipt = apply_cross_grain_partitions(
+        raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
     )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
+    receipt["partitions"] = partition_receipt
+    receipt["coverage"] = coverage
 
     def cell_receipt(
         holds: list[dict[str, Any]],
@@ -2321,6 +2517,93 @@ def uk_local_target_surface(
     )
     receipt["private_rent_mean_to_total"] = private_rent_receipt
     return surface, receipt
+
+
+def _uk_fanout_sum_controls(
+    output_rows: Sequence[Mapping[str, Any]],
+    fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None,
+) -> tuple[
+    tuple[CrossGrainBridge, ...],
+    dict[str, Mapping[str, Any]],
+    list[dict[str, Any]],
+]:
+    """Summed fan-out control rows for the area targets this surface binds.
+
+    Each declared fan-out sum bridge whose area target has cells here adds one
+    control row (the fan-out's total at its geography, a country-grain row)
+    and a bridge from it to the area cells. The control's synthetic target id
+    gets a signature of its own, so it groups only through its bridge.
+    """
+
+    present = {str(row["contract_target_id"]) for row in output_rows}
+    bridges: list[CrossGrainBridge] = []
+    signatures: dict[str, Mapping[str, Any]] = {}
+    rows: list[dict[str, Any]] = []
+    for fanout in UK_FANOUT_SUM_BRIDGES:
+        if fanout.lower_target_id not in present:
+            continue
+        control = (fanout_sum_controls or {}).get(fanout.bridge_id)
+        if control is None:
+            raise ValueError(
+                f"UK local surface binds {fanout.lower_target_id!r} but has no "
+                f"summed control for fan-out sum bridge {fanout.bridge_id!r}; "
+                "pass the national reconciliation's fanout_sum_controls "
+                "(microcosm#1123)."
+            )
+        synthetic = fanout.control_target_id
+        bridges.append(
+            CrossGrainBridge(
+                bridge_id=fanout.bridge_id,
+                concept=f"fanout_sum:{fanout.higher_target_id}",
+                higher_target_ids=(synthetic,),
+                lower_side=f"contract:{fanout.lower_target_id}",
+            )
+        )
+        signatures[synthetic] = {
+            "measurement": {
+                "filters": [{"concept": "uk.target_identity", "equals": synthetic}]
+            }
+        }
+        rows.append(
+            {
+                "grain": "country",
+                "geography_id": fanout.geography_id,
+                "target_id": f"contract:{synthetic}",
+                "value": float(control["control"]),
+                "_output_position": None,
+            }
+        )
+    return tuple(bridges), signatures, rows
+
+
+def _assert_uk_fanout_sum_factors(receipt: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Refuse a fan-out sum bridge whose factor leaves its declared tolerance."""
+
+    by_id = {bridge.bridge_id: bridge for bridge in UK_FANOUT_SUM_BRIDGES}
+    checked: list[dict[str, Any]] = []
+    for group in receipt.get("groups", ()):
+        bridge = by_id.get(str(group.get("bridge_id")))
+        if bridge is None:
+            continue
+        for leg in group["legs"]:
+            factor = float(leg["declared_factor"])
+            if abs(factor - 1.0) > bridge.max_factor_shift:
+                raise ValueError(
+                    f"UK fan-out sum bridge {bridge.bridge_id!r} rescales its "
+                    f"{group['lower_grain']} cells by {factor!r}, beyond the "
+                    f"declared {bridge.max_factor_shift!r}: the area cells and "
+                    "the national bands no longer measure one quantity "
+                    "(microcosm#1123)."
+                )
+            checked.append(
+                {
+                    "bridge_id": bridge.bridge_id,
+                    "lower_grain": group["lower_grain"],
+                    "declared_factor": factor,
+                    "max_factor_shift": bridge.max_factor_shift,
+                }
+            )
+    return checked
 
 
 def _validate_uk_cross_grain_declarations() -> None:

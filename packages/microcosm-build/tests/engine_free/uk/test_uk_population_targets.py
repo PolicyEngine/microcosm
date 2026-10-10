@@ -45,6 +45,7 @@ PROJECTION_FAMILIES = {
     "slc_borrowers",
     "scotgov_social_security",
     "hmrc_itl",
+    "hmrc_itl_marginal_rate",
     "dwp_benefit_expenditure",
 }
 NATIONAL_SELECTOR_KEYS = {
@@ -62,7 +63,18 @@ NATIONAL_SELECTOR_KEYS = {
     "layout_groupby_value_id",
     "source_measure_id_by_opening_year",
 }
-LOCAL_SELECTOR_KEYS = {"source_name", "source_measure_id", "record_set_spec_id"}
+LOCAL_SELECTOR_KEYS = {
+    "source_name",
+    "source_measure_id",
+    "record_set_spec_id",
+    # microcosm#1123: the UC area rows select DWP's monthly series by concept,
+    # child count and the twelve calendar-2025 months.
+    "source_concept",
+    "dimensions",
+    "dimension_values",
+    "period_type",
+    "period_value",
+}
 POLICYENGINE_BINDING_KEYS = {
     "affected_flag_variable",
     "band",
@@ -187,6 +199,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "linear_combination",
         "scaled_by_ratio",
         "calendar_year_window",
+        "rolled_forward_by_ratio",
     ]
     assert resource["resolution_defaults"] == {
         "base_period_policy": "latest_not_after_build_base_period",
@@ -202,8 +215,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # contribution targets and the DWP employee total leave the fit again (their
     # relief-mechanism and gross definitions do not match the engine's columns;
     # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
-    # pension-age Housing Benefit spending.
-    assert len(resource["targets"]) == 392
+    # pension-age Housing Benefit spending; microcosm#1123 adds the four nation
+    # household controls (LFS English regions, NRS, Welsh Government, NI).
+    assert len(resource["targets"]) == 399
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -217,10 +231,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 341
-    assert len(profile_scope) == 51
-    assert target_ids[:341] == registry_scope
-    assert target_ids[341:] == profile_scope
+    assert len(registry_scope) == 347
+    assert len(profile_scope) == 52
+    assert target_ids[:347] == registry_scope
+    assert target_ids[347:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -234,7 +248,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     assert len(mapped_target_ids) == 192
-    assert len(unmapped_declarations) == 149
+    assert len(unmapped_declarations) == 155
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -253,9 +267,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 51
+    assert parity["contract_target_count"] == 52
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 26
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 27
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -353,7 +367,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 392
+    assert len(target_ids) == 399
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -578,11 +592,20 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
     assert targets["ons.age.70_80"]["ledger_selector"]["record_set_spec_id"] == (
         "uk.local_geography.population.age_70_80.v1"
     )
+    # microcosm#1123: the calendar-2025 mean of DWP's monthly series, the
+    # three-plus band summed from its three published child counts.
     assert targets["dwp.uc.households_by_area_children_3plus"]["ledger_selector"] == {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1",
+        "dimensions": ["number_of_children"],
+        "dimension_values": {"number_of_children": [3, 4, "5 or more"]},
+        "period_type": "month",
+        "period_value": [f"2025-{month:02d}" for month in range(1, 13)],
     }
+    assert targets["dwp.uc.households_by_area_children_3plus"]["value_operation"] == (
+        "monthly_window_sum_average"
+    )
     assert (
         targets["dwp.uc.households_by_area_children_3plus"]["bindings"]["policyengine"][
             "metric_name"
@@ -616,8 +639,8 @@ def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None
         "constituency"
     )
     assert metric_names_from_target_profile(resource, "la") == metric_names("la")
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 18
-    assert len(metric_names_from_target_profile(resource, "la")) == 31
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 19
+    assert len(metric_names_from_target_profile(resource, "la")) == 32
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -821,7 +844,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 392
+    assert len(targets) == 399
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

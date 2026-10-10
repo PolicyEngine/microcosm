@@ -164,6 +164,16 @@ def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None):
         "apply_uk_calibration_measure_exclusions",
         lambda reg, exclusions, now=None: (reg, {}),
     )
+    # The stand-in register carries no geography; the national
+    # reconciliation (#1123) has its own tests and passes it through here.
+    monkeypatch.setattr(
+        full_targets, "reconcile_uk_national_registry", lambda reg: (reg, {})
+    )
+    monkeypatch.setattr(
+        full_targets,
+        "assert_uk_uprating_holds_declared",
+        lambda reg, **kwargs: {"scope": kwargs["scope"]},
+    )
     monkeypatch.setattr(
         full_targets,
         "_ledger_provenance",

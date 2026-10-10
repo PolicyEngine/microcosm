@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -59,7 +60,12 @@ from .ladder_targets import (
     ladder_target_provenance,
     ladder_vs_chronicle_household_dispersion,
 )
-from .ledger_targets import uk_census_household_uprating, uk_ledger_households_total
+from .ledger_targets import (
+    load_uk_local_target_reference_membership,
+    uk_census_household_uprating,
+    uk_nation_households_reference,
+    uk_small_cell_deferred_cells,
+)
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
 
 TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
@@ -201,6 +207,7 @@ class _TargetKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from . import full_targets
+        from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
             type(self),
@@ -211,6 +218,7 @@ class _TargetKernel(KernelBase):
             ladder_targets,
             ledger_targets,
             local_doctrine,
+            *uk_target_compile_modules(),
         )
         return hashlib.sha256(
             canonical_json(
@@ -227,7 +235,6 @@ class UKFullTargetCompilationKernel(_TargetKernel):
 
     def run(self, context: KernelContext) -> KernelResult:
         from .full_targets import load_uk_full_target_inputs
-        from .ledger_targets import uk_local_target_surface
 
         inputs = load_uk_full_target_inputs(
             context.sources["uk_ledger_facts"],
@@ -238,84 +245,108 @@ class UKFullTargetCompilationKernel(_TargetKernel):
                 str(context.params["review_date"])
             ),
         )
-        ladder = load_uk_oa_ladder(context.sources["uk_ladder"])
-        period = int(inputs["calibration_year"])
-        national = inputs["national_registry"]
-        local = inputs["local_registry"]
-        uprating = uk_census_household_uprating(
-            local,
-            uk_ledger_households_total(inputs["artifact"].facts, period=period),
-            period=period,
-        )
-        dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
-        ladder_provenance = ladder_target_provenance(ladder)
-        surface, reconciliation = uk_local_target_surface(
-            full_problem._joint_surface_registry(local, national),
-            bound_national_target_ids=full_problem._national_contract_target_ids(
-                national
-            ),
-            period=period,
-            reviewed_unbound_higher_targets=inputs["reviewed_unbound_higher_targets"],
-            census_household_uprating=uprating,
-            area_region_codes=uk_area_region_codes(ladder),
-        )
-        full = TargetRegistry(
-            [
-                *_local_specs(surface),
-                *[
-                    replace(
-                        spec,
-                        metadata={
-                            **spec.metadata,
-                            "materialization": "uk_national_measure",
-                            "geography_level": target_geography(spec),
-                        },
-                    )
-                    for spec in national.specs
-                ],
-            ],
-            country="uk",
-        )
-        with Path(context.sources["uk_ladder"]).open("rb") as stream:
-            ladder_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
-        payload = {
-            "registry": registry_payload(full),
-            "local_registry": registry_payload(local),
-            "national_registry": registry_payload(national),
-            "band_edge_registry": registry_payload(inputs["band_edge_registry"]),
-            "surface": _surface_records(surface),
-            "surface_columns": surface.columns.tolist(),
-            "cross_geography": reconciliation,
-            "census_household_uprating": reconciliation["census_household_uprating"],
-            "household_dispersion": dispersion,
-            "ladder_provenance": ladder_provenance,
-            "measure_exclusions": inputs["measure_exclusions"],
-            "reviewed_unbound_higher_targets": inputs[
-                "reviewed_unbound_higher_targets"
-            ],
-            "source_validation": {
-                "national_source_pin": inputs["national_source_pin"],
-                "local_source_pin": inputs["local_source_pin"],
-                "register_completeness": inputs["register_completeness"],
-                "ledger_provenance": inputs["ledger_provenance"],
-                "targets": {
-                    "chronicle": inputs["ledger_provenance"],
-                    "paired_ladder_sha256": ladder_sha256,
-                },
-            },
-            "uk_ledger_compiled_registries": {
-                str(period): registry_payload(registry)
-                for period, registry in inputs["uk_ledger_compiled_registries"].items()
-            },
-            "uk_ledger_compiled_local_registries": {
-                str(period): registry_payload(registry)
-                for period, registry in inputs[
-                    "uk_ledger_compiled_local_registries"
-                ].items()
-            },
-            "calibration_year": period,
-        }
+        payload = compile_uk_full_target_surface(inputs, context.sources["uk_ladder"])
         return KernelResult(artifacts={"surface": canonical_json(payload)})
+
+
+def compile_uk_full_target_surface(
+    inputs: Mapping[str, Any], ladder_path: str | Path
+) -> dict[str, Any]:
+    """The target-compilation node's payload from loaded inputs and a ladder.
+
+    Shared with ``tools/uk_target_surface_receipt.py`` so a receipt reads the
+    surface the graph would compile, uprating and reconciliation included.
+    """
+
+    from .ledger_targets import uk_local_target_surface
+    from .national_reconciliation import assert_uk_national_rows_unmoved
+
+    ladder = load_uk_oa_ladder(ladder_path)
+    period = int(inputs["calibration_year"])
+    with Path(ladder_path).open("rb") as stream:
+        ladder_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+    national = inputs["national_registry"]
+    local = inputs["local_registry"]
+    # microcosm#1123: the census household cells are uprated to the nations'
+    # official estimates summed (the nation and region bridge then places the
+    # level per leg); the LFS UK total stays a diagnostic with its gap.
+    uprating = uk_census_household_uprating(
+        local,
+        uk_nation_households_reference(
+            national, inputs["artifact"].facts, period=period
+        ),
+        period=period,
+    )
+    dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
+    ladder_provenance = ladder_target_provenance(ladder)
+    surface, reconciliation = uk_local_target_surface(
+        full_problem._joint_surface_registry(local, national),
+        bound_national_target_ids=full_problem._national_contract_target_ids(national),
+        period=period,
+        reviewed_unbound_higher_targets=inputs["reviewed_unbound_higher_targets"],
+        census_household_uprating=uprating,
+        area_region_codes=uk_area_region_codes(ladder),
+        fanout_sum_controls=(inputs.get("national_reconciliation") or {}).get(
+            "fanout_sum_controls"
+        ),
+        deferred_cells=uk_small_cell_deferred_cells(
+            load_uk_local_target_reference_membership()
+        ),
+    )
+    assert_uk_national_rows_unmoved(reconciliation)
+    full = TargetRegistry(
+        [
+            *_local_specs(surface),
+            *[
+                replace(
+                    spec,
+                    metadata={
+                        **spec.metadata,
+                        "materialization": "uk_national_measure",
+                        "geography_level": target_geography(spec),
+                    },
+                )
+                for spec in national.specs
+            ],
+        ],
+        country="uk",
+    )
+    payload = {
+        "registry": registry_payload(full),
+        "local_registry": registry_payload(local),
+        "national_registry": registry_payload(national),
+        "band_edge_registry": registry_payload(inputs["band_edge_registry"]),
+        "surface": _surface_records(surface),
+        "surface_columns": surface.columns.tolist(),
+        "cross_geography": reconciliation,
+        "census_household_uprating": reconciliation["census_household_uprating"],
+        "household_dispersion": dispersion,
+        "ladder_provenance": ladder_provenance,
+        "measure_exclusions": inputs["measure_exclusions"],
+        "reviewed_unbound_higher_targets": inputs["reviewed_unbound_higher_targets"],
+        "source_validation": {
+            "national_source_pin": inputs["national_source_pin"],
+            "local_source_pin": inputs["local_source_pin"],
+            "register_completeness": inputs["register_completeness"],
+            "ledger_provenance": inputs["ledger_provenance"],
+            "targets": {
+                "chronicle": inputs["ledger_provenance"],
+                "paired_ladder_sha256": ladder_sha256,
+            },
+        },
+        "uk_ledger_compiled_registries": {
+            str(period): registry_payload(registry)
+            for period, registry in inputs["uk_ledger_compiled_registries"].items()
+        },
+        "uk_ledger_compiled_local_registries": {
+            str(period): registry_payload(registry)
+            for period, registry in inputs[
+                "uk_ledger_compiled_local_registries"
+            ].items()
+        },
+        "calibration_year": period,
+    }
+    return payload
 
 
 class UKFullTargetSelectionKernel(_TargetKernel):

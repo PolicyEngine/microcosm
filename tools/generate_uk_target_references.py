@@ -638,6 +638,22 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
                     ),
                 )
             )
+        operands = target.get("value_operands") or ()
+        if (
+            target.get("value_operation") == "rolled_forward_by_ratio"
+            and operands
+            and operands[0].get("geography_level")
+        ):
+            # A roll-forward whose base sits below the row (Northern
+            # Ireland's districts' census cells for its nation row, #1123) is
+            # a composed row: it declares its own geography for the hierarchy.
+            metadata.update(
+                {
+                    "composed_from_level": str(operands[0]["geography_level"]),
+                    "geography_level": "country",
+                    "geography_id": _geography_id_for_target(target),
+                }
+            )
         if metadata:
             result[str(target["target_id"])] = metadata
     return result
@@ -830,6 +846,20 @@ def _add_uk_membership_accounting(
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_itl_marginal_rate",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_marginal_rate", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "higher and additional rate Income Tax payers (Table 2.2, July "
+                "2026) fan out over the twelve-area region tier (microcosm#905) "
+                "and bind at the calendar-2025 window of HMRC's 2024-25 and "
+                "2025-26 projections, measured on the engine's tax_band. Each "
+                "region or nation row controls its higher rate area cells "
+                "(microcosm#1123)."
             ),
         },
         {

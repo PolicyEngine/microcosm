@@ -120,7 +120,12 @@
             "source_name": "ons",
             "source_concept": "ons.mid_year_population_estimate",
             "geography_id": "K02000001",
-            "dimensions": []
+            "dimensions": [],
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 2
         }
@@ -334,7 +339,15 @@
               "dfi_ni.translink_bus.passenger_journeys",
               "dfi_ni.translink_bus.passenger_receipts"
             ],
-            "period_type": "fiscal_year"
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 24
         },
@@ -726,7 +739,11 @@
               "E12000008",
               "E12000009"
             ],
-            "dimensions": []
+            "dimensions": [],
+            "period_value": [
+              "2023",
+              "2024"
+            ]
           },
           "expected_row_count": 26
         }
@@ -1047,6 +1064,36 @@
             ]
           },
           "expected_row_count": 21
+        }
+      ]
+    },
+    {
+      "resource": "ons_spree_tenure_dwellings.json",
+      "purpose": "ONS subnational dwelling stock by tenure (SPREE) for English local authorities, 2022 and 2024: owned outright, owned with a mortgage, private rented, social rented and total dwellings. Consumed by the census tenure share drift (uk_runtime.tenure_drift, microcosm#1123): dwellings move the census tenure shares, never their levels.",
+      "consumers": [
+        "uk_runtime.tenure_drift"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spree_dwellings_by_tenure_2022_2024",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": [
+              "ons.spree.owned_outright_dwellings",
+              "ons.spree.owned_mortgage_dwellings",
+              "ons.spree.private_rent_dwellings",
+              "ons.spree.social_rent_dwellings",
+              "ons.spree.total_dwellings"
+            ],
+            "geography_level": "local_authority",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2022",
+              "2024"
+            ]
+          },
+          "expected_row_count": 2950
         }
       ]
     }

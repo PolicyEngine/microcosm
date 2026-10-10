@@ -366,6 +366,8 @@
       "hmrc.cgt.taxpayers_by_region": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_taxable_income_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_total": "hmrc.capital_gains_tax",
+      "hmrc.itl.additional_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.higher_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
@@ -432,7 +434,9 @@
       "mhclg.council_tax_stock.band_g": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.band_h": "mhclg.council_tax_stock",
       "mhclg.council_tax_stock.total": "mhclg.council_tax_stock",
+      "nisra.households.northern_ireland": "ons.household_composition",
       "nithc.public_transport_support": "nithc.public_transport_finances",
+      "nrs.households.scotland": "ons.household_composition",
       "obr.attendance_allowance": "obr.efo_expenditure",
       "obr.carers_allowance": "obr.efo_expenditure",
       "obr.child_benefit": "obr.efo_expenditure",
@@ -468,6 +472,7 @@
       "ons.household_composition.unrelated_adult_households": "ons.household_composition",
       "ons.household_electricity_expenditure": "ons.consumer_trends",
       "ons.household_gas_expenditure": "ons.consumer_trends",
+      "ons.households.english_regions": "ons.household_composition",
       "ons.land.corporate_land_value": "ons.land",
       "ons.land.household_land_value": "ons.land",
       "ons.land.land_value": "ons.land",
@@ -561,7 +566,8 @@
       "welshgov.council_tax_stock.band_g": "welshgov.council_tax_stock",
       "welshgov.council_tax_stock.band_h": "welshgov.council_tax_stock",
       "welshgov.council_tax_stock.band_i": "welshgov.council_tax_stock",
-      "welshgov.council_tax_stock.total": "welshgov.council_tax_stock"
+      "welshgov.council_tax_stock.total": "welshgov.council_tax_stock",
+      "welshgov.households.wales": "ons.household_composition"
     },
     "target_labels": {
       "dfc_ni.pension_credit.benefit_units": "Pension Credit benefit units, Northern Ireland",
@@ -694,6 +700,8 @@
       "hmrc.cgt.taxpayers_by_region": "Capital Gains Tax taxpayers by region",
       "hmrc.cgt.taxpayers_by_taxable_income_band": "Capital Gains Tax taxpayers by taxable income",
       "hmrc.cgt.taxpayers_total": "Capital Gains Tax taxpayers",
+      "hmrc.itl.additional_rate_taxpayers": "Additional rate Income Tax payers by region and nation",
+      "hmrc.itl.higher_rate_taxpayers": "Higher rate Income Tax payers by region and nation",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
       "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
@@ -760,7 +768,9 @@
       "mhclg.council_tax_stock.band_g": "Band g",
       "mhclg.council_tax_stock.band_h": "Band h",
       "mhclg.council_tax_stock.total": "Total",
+      "nisra.households.northern_ireland": "Households, Northern Ireland (Census 2021, rolled to 2025)",
       "nithc.public_transport_support": "Bus and rail support",
+      "nrs.households.scotland": "Households, Scotland (NRS)",
       "obr.attendance_allowance": "Attendance allowance",
       "obr.carers_allowance": "Carers allowance",
       "obr.child_benefit": "Child benefit",
@@ -796,6 +806,7 @@
       "ons.household_composition.unrelated_adult_households": "Unrelated adult households",
       "ons.household_electricity_expenditure": "Electricity (COICOP 04.5.1)",
       "ons.household_gas_expenditure": "Gas (COICOP 04.5.2)",
+      "ons.households.english_regions": "Households by English region (LFS)",
       "ons.land.corporate_land_value": "Corporate land value",
       "ons.land.household_land_value": "Household land value",
       "ons.land.land_value": "Land value",
@@ -889,7 +900,8 @@
       "welshgov.council_tax_stock.band_g": "Band g",
       "welshgov.council_tax_stock.band_h": "Band h",
       "welshgov.council_tax_stock.band_i": "Band i",
-      "welshgov.council_tax_stock.total": "Total"
+      "welshgov.council_tax_stock.total": "Total",
+      "welshgov.households.wales": "Households, Wales (Welsh Government, rolled to 2025)"
     }
   },
   "allowed_value_operations": [
@@ -904,6 +916,7 @@
     "monthly_window_average",
     "monthly_window_count_x_mean",
     "monthly_window_sum_average",
+    "rolled_forward_by_ratio",
     "scaled_by_ratio"
   ],
   "target_references": [
@@ -1369,7 +1382,7 @@
         "contract_target_id": "isc.private_school_students",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2024-01",
+      "uprating_from_period": "2025-01",
       "uprating_to_period": 2025
     },
     {
@@ -9131,7 +9144,6 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimensions": [],
         "geography_level": "country",
         "geography_id": "K02000001"
@@ -9144,16 +9156,13 @@
         "contract_target_id": "ons.population.uk_total",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9187,16 +9196,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9230,16 +9236,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9273,16 +9276,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9316,16 +9316,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9359,16 +9356,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9402,16 +9396,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9445,16 +9436,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9488,16 +9476,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9531,16 +9516,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9574,16 +9556,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9617,16 +9596,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_0_9_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -9660,16 +9636,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9703,16 +9676,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9746,16 +9716,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9789,16 +9756,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9832,16 +9796,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9875,16 +9836,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9918,16 +9876,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -9961,16 +9916,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10004,16 +9956,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10047,16 +9996,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10090,16 +10036,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10133,16 +10076,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_10_19_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             10,
@@ -10176,16 +10116,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10219,16 +10156,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10262,16 +10196,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10305,16 +10236,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10348,16 +10276,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10391,16 +10316,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10434,16 +10356,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10477,16 +10396,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10520,16 +10436,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10563,16 +10476,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10606,16 +10516,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10649,16 +10556,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_20_29_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             20,
@@ -10692,16 +10596,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10735,16 +10636,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10778,16 +10676,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10821,16 +10716,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10864,16 +10756,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10907,16 +10796,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10950,16 +10836,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -10993,16 +10876,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11036,16 +10916,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11079,16 +10956,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11122,16 +10996,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11165,16 +11036,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_30_39_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             30,
@@ -11208,16 +11076,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11251,16 +11116,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11294,16 +11156,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11337,16 +11196,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11380,16 +11236,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11423,16 +11276,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11466,16 +11316,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11509,16 +11356,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11552,16 +11396,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11595,16 +11436,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11638,16 +11476,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11681,16 +11516,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_40_49_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             40,
@@ -11724,16 +11556,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -11767,16 +11596,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -11810,16 +11636,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -11853,16 +11676,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -11896,16 +11716,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -11939,16 +11756,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -11982,16 +11796,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12025,16 +11836,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12068,16 +11876,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12111,16 +11916,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12154,16 +11956,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12197,16 +11996,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_50_59_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             50,
@@ -12240,16 +12036,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12283,16 +12076,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12326,16 +12116,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12369,16 +12156,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12412,16 +12196,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12455,16 +12236,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12498,16 +12276,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12541,16 +12316,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12584,16 +12356,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12627,16 +12396,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12670,16 +12436,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12713,16 +12476,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_60_69_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             60,
@@ -12756,16 +12516,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -12799,16 +12556,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -12842,16 +12596,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -12885,16 +12636,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -12928,16 +12676,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -12971,16 +12716,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13014,16 +12756,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13057,16 +12796,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13100,16 +12836,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13143,16 +12876,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13186,16 +12916,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13229,16 +12956,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_70_79_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             70,
@@ -13272,16 +12996,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000001",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13315,16 +13036,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13358,16 +13076,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13401,16 +13116,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13444,16 +13156,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000005",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13487,16 +13196,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000006",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13530,16 +13236,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000007",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13573,16 +13276,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000008",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13616,16 +13316,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@E12000009",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13659,16 +13356,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@W92000004",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13702,16 +13396,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@S92000003",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13745,16 +13436,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.age_80_89_by_region@N92000002",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             80,
@@ -13788,16 +13476,13 @@
         "cross_grain_grain": "region"
       },
       "value_operation": "sum",
-      "expected_member_count": 10,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 10
     },
     {
       "name": "ons.population.female_0_4",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -13824,16 +13509,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_10_14",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -13860,16 +13542,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_15_19",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -13896,16 +13575,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_20_24",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -13932,16 +13608,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_25_29",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -13968,16 +13641,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_30_34",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14004,16 +13674,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_35_39",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14040,16 +13707,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_40_44",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14076,16 +13740,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_45_49",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14112,16 +13773,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_50_54",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14148,16 +13806,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_55_59",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14184,16 +13839,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_5_9",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14220,16 +13872,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_60_64",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14256,16 +13905,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_65_69",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14292,16 +13938,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_70_74",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14328,16 +13971,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_75_79",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14364,16 +14004,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_80_84",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14400,16 +14037,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_85_89",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14436,16 +14070,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.female_90_plus",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "female",
           "age": [
@@ -14468,16 +14099,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 1,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 1
     },
     {
       "name": "ons.population.male_0_4",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14504,16 +14132,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_10_14",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14540,16 +14165,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_15_19",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14576,16 +14198,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_20_24",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14612,16 +14231,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_25_29",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14648,16 +14264,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_30_34",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14684,16 +14297,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_35_39",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14720,16 +14330,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_40_44",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14756,16 +14363,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_45_49",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14792,16 +14396,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_50_54",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14828,16 +14429,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_55_59",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14864,16 +14462,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_5_9",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14900,16 +14495,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_60_64",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14936,16 +14528,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_65_69",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -14972,16 +14561,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_70_74",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15008,16 +14594,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_75_79",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15044,16 +14627,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_80_84",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15080,16 +14660,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_85_89",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15116,16 +14693,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 5
     },
     {
       "name": "ons.population.male_90_plus",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "sex": "male",
           "age": [
@@ -15148,16 +14722,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 1,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 1
     },
     {
       "name": "ons.population.scotland_children_under_16",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0,
@@ -15193,16 +14764,13 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 16,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 16
     },
     {
       "name": "ons.population.scotland_babies_under_1",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
-        "groupby_dimension": "age",
         "dimension_values": {
           "age": [
             0
@@ -15223,9 +14791,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 1,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 1
     },
     {
       "name": "ons.household_composition.lone_households_under_65",
@@ -15436,6 +15002,314 @@
         "contract_target_id": "ons.household_composition.multi_family_households",
         "measure_kind": "prepared_column"
       }
+    },
+    {
+      "name": "ons.households.english_regions@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000001",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000002",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000003",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000004",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000005",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000006",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000007",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000008",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.households.english_regions@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "household",
+      "measure": "ons.households.english_regions@E12000009",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.households.english_regions",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"household\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "nrs.households.scotland",
+      "ledger_selector": {
+        "source_name": "nrs",
+        "source_concept": "nrs.households_total",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "household",
+      "measure": "households/scotland",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "nrs.households.scotland",
+        "measure_kind": "prepared_column"
+      }
+    },
+    {
+      "name": "welshgov.households.wales",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "source_concept": "welshgov.households_total",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "household",
+      "measure": "households/wales",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.households.wales",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "ons",
+          "source_concept": "ons.mid_year_population_estimate",
+          "geography_id": "W92000004",
+          "dimensions": [],
+          "period_type": "calendar_year",
+          "period_value": 2025
+        },
+        {
+          "role": "denominator",
+          "source_name": "ons",
+          "source_concept": "ons.mid_year_population_estimate",
+          "geography_id": "W92000004",
+          "dimensions": [],
+          "period_type": "calendar_year",
+          "period_value": 2024
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "nisra.households.northern_ireland",
+      "ledger_selector": {
+        "source_name": "nisra",
+        "source_concept": "nisra.census2021_households",
+        "dimensions": [],
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "household",
+      "measure": "households/northern_ireland",
+      "family": "ons_households",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "nisra.households.northern_ireland",
+        "measure_kind": "prepared_column",
+        "composed_from_level": "local_authority",
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base",
+          "geography_level": "local_authority",
+          "geography_id": [
+            "N09000001",
+            "N09000002",
+            "N09000003",
+            "N09000004",
+            "N09000005",
+            "N09000006",
+            "N09000007",
+            "N09000008",
+            "N09000009",
+            "N09000010",
+            "N09000011"
+          ]
+        },
+        {
+          "role": "numerator",
+          "source_name": "lps",
+          "source_concept": "lps.housing_stock",
+          "geography_id": "N92000002",
+          "period_type": "calendar_year",
+          "period_value": 2025
+        },
+        {
+          "role": "denominator",
+          "source_name": "lps",
+          "source_concept": "lps.housing_stock",
+          "geography_id": "N92000002",
+          "period_type": "calendar_year",
+          "period_value": 2021
+        }
+      ],
+      "uprating_from_period": "2021",
+      "uprating_to_period": 2025
     },
     {
       "name": "mhclg.council_tax_stock.band_a@E12000001",
@@ -22821,6 +22695,13 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_measure_id": "total_public_sector",
+        "period_type": "month",
+        "period_value": [
+          "2025-03",
+          "2025-06",
+          "2025-09",
+          "2025-12"
+        ],
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -22832,8 +22713,8 @@
         "contract_target_id": "ons.public_sector_employment",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2024-12",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     },
     {
       "name": "ons.land.land_value",
@@ -22841,6 +22722,9 @@
         "source_name": "ons",
         "source_concept": "ons.e44r",
         "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -22851,9 +22735,7 @@
       "metadata": {
         "contract_target_id": "ons.land.land_value",
         "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      }
     },
     {
       "name": "ons.land.household_land_value",
@@ -22861,6 +22743,9 @@
         "source_name": "ons",
         "source_concept": "ons.e44n",
         "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -22871,9 +22756,7 @@
       "metadata": {
         "contract_target_id": "ons.land.household_land_value",
         "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      }
     },
     {
       "name": "ons.land.corporate_land_value",
@@ -22881,6 +22764,9 @@
         "source_name": "ons",
         "source_concept": "ons.e43b",
         "entity_name": "institutional_sector",
+        "dimension_values": {
+          "publication_status": "preliminary"
+        },
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -22891,9 +22777,7 @@
       "metadata": {
         "contract_target_id": "ons.land.corporate_land_value",
         "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      }
     },
     {
       "name": "slc.repayments.england_total_higher_education",
@@ -22915,9 +22799,7 @@
         "contract_target_id": "slc.repayments.england_total_higher_education",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_plan_1",
@@ -22939,9 +22821,7 @@
         "contract_target_id": "slc.repayments.england_plan_1",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_plan_2",
@@ -22964,9 +22844,7 @@
         "contract_target_id": "slc.repayments.england_plan_2",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_postgraduate",
@@ -22989,9 +22867,7 @@
         "contract_target_id": "slc.repayments.england_postgraduate",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.repayments.england_plan_5",
@@ -23014,9 +22890,7 @@
         "contract_target_id": "slc.repayments.england_plan_5",
         "measure_kind": "prepared_column"
       },
-      "value_operation": "sum",
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "value_operation": "sum"
     },
     {
       "name": "slc.borrowers.plan_2_above_threshold",
@@ -23805,9 +23679,7 @@
         "observation_basis": "fiscal_year_flow"
       },
       "value_operation": "sum",
-      "expected_member_count": 2,
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
+      "expected_member_count": 2
     },
     {
       "name": "nithc.public_transport_support",
@@ -29171,6 +29043,702 @@
       "metadata": {
         "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
         "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000001",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000001",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000002",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000003",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000004",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000005",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000005",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000006",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000006",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000007",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000007",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000008",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000008",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@E12000009",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@E12000009",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@W92000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@W92000004",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@S92000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@S92000003",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.higher_rate_taxpayers@N92000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "higher_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "higher"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.higher_rate_taxpayers@N92000002",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.higher_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000001",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000002",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000003",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000004",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000005",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000005",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000006",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000006",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000007",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000007",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000008",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000008",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@E12000009",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@E12000009",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@W92000004",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@W92000004",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@S92000003",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@S92000003",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.additional_rate_taxpayers@N92000002",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "additional_rate",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "dimension_values": {
+          "marginal_rate": "additional"
+        },
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.additional_rate_taxpayers@N92000002",
+      "family": "hmrc_itl_marginal_rate",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.additional_rate_taxpayers",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
       },
       "assertion_policy": "allow_source_projection",
       "value_operation": "calendar_year_window"

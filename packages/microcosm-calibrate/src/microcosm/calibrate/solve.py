@@ -829,9 +829,11 @@ def _target_loss_scale_options(
     *,
     kind: str,
     target_loss_cap: float,
+    targets: np.ndarray | None = None,
+    target_loss_weights: np.ndarray | None = None,
 ) -> Mapping[str, object]:
     scales = np.asarray(target_loss_scales, dtype=np.float64)
-    return {
+    options: dict[str, object] = {
         "kind": kind,
         "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
         "cap": float(target_loss_cap),
@@ -839,6 +841,48 @@ def _target_loss_scale_options(
         "min": float(scales.min()),
         "median": float(np.median(scales)),
         "max": float(scales.max()),
+    }
+    if targets is not None:
+        options["zero_targets"] = zero_target_loss_census(
+            targets, scales, target_loss_weights
+        )
+    return options
+
+
+def zero_target_loss_census(
+    targets: np.ndarray,
+    target_loss_scales: np.ndarray,
+    target_loss_weights: np.ndarray | None = None,
+) -> Mapping[str, object]:
+    """How the loss treats the zero-valued targets (microcosm#104).
+
+    A zero target is a real fact (no recipients of a benefit in an area, no
+    dwellings in a band) and must stay in the loss: the default scale
+    ``max(abs(target), 1)`` gives it one unit of its measure basis, so a
+    positive estimate is charged its full miss rather than ignored. The census
+    reports how many rows are zero, the scales they carry and the loss weight
+    each receives (uniform weights are one), so a weighting scheme that
+    silently zeroes them is visible in the diagnostics.
+    """
+
+    values = np.asarray(targets, dtype=np.float64)
+    scales = np.asarray(target_loss_scales, dtype=np.float64)
+    zero = values == 0.0
+    count = int(zero.sum())
+    if not count:
+        return {"n": 0}
+    weights = (
+        np.ones_like(values)
+        if target_loss_weights is None
+        else np.asarray(target_loss_weights, dtype=np.float64)
+    )
+    return {
+        "n": count,
+        "scale_min": float(scales[zero].min()),
+        "scale_max": float(scales[zero].max()),
+        "loss_weight_min": float(weights[zero].min()),
+        "loss_weight_max": float(weights[zero].max()),
+        "zero_weighted": int((weights[zero] == 0.0).sum()),
     }
 
 
@@ -2529,6 +2573,8 @@ def calibrate(
                 target_loss_scales_np,
                 kind=target_loss_scale_kind,
                 target_loss_cap=target_loss_cap,
+                targets=problem.target_vector,
+                target_loss_weights=target_loss_weights_np,
             ),
             "warm_start_weights": {
                 "enabled": warm_start_weights is not None,

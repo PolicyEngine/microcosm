@@ -1,0 +1,1 @@
+UC by area binds the calendar-2025 mean of DWP's monthly series (the window the national UC rows use) and its child bands partition each constituency's caseload; the receipt tool gains a census communal-establishment validation (--communal) (microcosm#1123).

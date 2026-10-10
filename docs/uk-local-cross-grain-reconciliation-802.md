@@ -1,82 +1,168 @@
-# UK local cross-grain reconciliation (#802)
+# UK cross-grain reconciliation (#802, #905, #1123)
 
-The UK local build applies one standing rule before constructing a calibration
-matrix: when the same measurement concept is bound at more than one grain, the
-highest bound grain wins in the order country, constituency, then local
-authority. The shared operator in `microcosm.build.cross_grain` changes only
-the lower-grain target values. It never changes loss weights, scales, caps, or
-the solve signature.
+When the UK target surface binds one quantity at more than one geography
+grain, the higher grain is the control and the lower grain is rescaled to it.
+The shared operator in `microcosm.build.cross_grain` changes only target
+values. It never changes loss weights, scales, caps or the solve signature.
 
-## Detection and bridges
+## Grains and legs
 
-Exact matches use the measurement fields `concept`, `entity`, `map_to`, and
-`filters`. Explicit UK bridges cover relationships that those fields
-cannot express on their own:
+The precedence is country, nation, region, constituency, local authority
+(microcosm#1123 added the nation grain):
 
-- The 10-cell `ons.household_composition.*` partition sums to the national
-  household-count control and bridges to the Chronicle-compiled
-  `ons.census.households` contract target. Since microcosm#791 the ten cells
-  bind on the `frs_relationships` stage's `household.ons_household_type`
-  column, so the bridge is fully bound (it was reviewed-unbound while three
-  cells carried measure exclusions).
-- `dwp.uc.households` bridges to `dwp.uc.households_by_area`. The four
-  `dwp.uc.payment_distribution_*` rows also match the by-area target exactly
-  and form a separate exhaustive national partition.
+- **country**: the UK (`K02000001`), Great Britain (`K03000001`) and England
+  and Wales (`K04000001`);
+- **nation**: England (`E92000001`), Wales, Scotland and Northern Ireland,
+  when a family binds them as nations;
+- **region**: the nine English regions, plus Wales, Scotland and Northern
+  Ireland when a region-tier fan-out binds them beside the regions
+  (`cross_grain_grain: region`, microcosm#905);
+- **constituency** and **local authority**: the two local grains.
 
-Eight age bridges pair the single-cell UK controls
-`ons.population.age_0_9_by_region` through
-`ons.population.age_70_79_by_region` with the corresponding local
-`ons.age.0_10` through `ons.age.70_80` bands. They represent the same
-integer-age populations, but the national inclusive and local half-open filter
-encodings do not signature-match. Each bridge therefore rescales both the
-constituency and local-authority band to the `K02000001` UK total over the
-declared England, Wales, Scotland, and Northern Ireland legs. The national
-80--89 band has no local counterpart and is deliberately not bridged.
+Country, nation and region rows control the grains below them. A **leg** is a
+region-tier code (nine English regions, Wales, Scotland, Northern Ireland).
+Every control covers the legs its geography declares, and a lower row covers
+the legs of its own geography. England spans its nine regional legs, so a UK
+row controls an England row and the three other nations jointly, and the
+England row then controls its regions. A control rescales the unclaimed rows
+on its legs by one factor. The nearest control claims first. A row that would
+straddle two controls is refused.
 
-These declarations live beside the UK Ledger target orchestration in
-`uk_runtime/ledger_targets.py`. Tests pin the precedence and complete bridge
-membership so a rule change requires an explicit doctrine-constants review.
+A control whose legs are only partly covered at a middle grain is refused,
+unless the uncovered legs are licensed empty for every leaf target (no data at
+any grain there). Without this guard, the rows present would take the whole
+control.
 
-## Geography legs and refusals
+With no control-grain row in a group, the top grain present controls the rest
+(a constituency-only family reconciles its authorities to its constituencies
+per leg).
 
-The bound control's geography defines the factor legs. A UK control produces
-one factor over England, Wales, Scotland, and Northern Ireland. A GB control
-covers England, Wales, and Scotland; a surface that also contains Northern
-Ireland then fails as unparented. Country controls produce one factor for each
-declared country. Area codes map to countries using the same ONS-prefix logic
-as the local target runtime.
+## The national register is reconciled first
 
-The pass also refuses a partially bound declared partition, a target covered
-by two bridges, incompatible controls at the same winning grain, an empty or
-unparented leg, a zero lower total with a nonzero control, a sign flip, and any
-non-finite input or result. Every successful factor records the parent,
-constituent target ids, area count, old and new totals, relative shift, and
-declared factor. Dry-run plans and build manifests carry the pass receipt even
-when no inconsistency is in force.
+Before #1123, only the joint local surface was reconciled, and only its local
+cells were written back. A region row rescaled to its country control fed the
+constituencies below it, but the national register the solve binds kept the
+raw region value.
 
-## Census evidence and current effect
+`uk_runtime.national_reconciliation.reconcile_uk_national_registry` now
+reconciles the national register itself, and writes the reconciled values
+back into it. Both target loaders run it before the measure exclusions and
+before the frozen scoring register is compared:
+`load_uk_full_target_inputs` and `load_uk_national_target_inputs`. The
+national-only graph therefore binds the same values as the full graph.
+
+It reconciles two relations:
+
+- **exact measurement signatures** across the country, nation and region
+  grains, for example the CGT regional cells under the UK total;
+- **band bridges** (`band_bridges` in the declarations). A projected UK
+  income-tax-liabilities band from HMRC ITL Table 2.5, or a run of such bands,
+  controls the SPI regional cells from Table 3.11 whose band nests in it. The
+  regional `£200,000 and over` cells take the four ITL bands from £200,000 up.
+
+Every reconciled row keeps `cross_grain_value_before`, `cross_grain_factor`
+and `cross_grain_control`. Fan-out targets, meaning several cells at one
+geography, are distributions, not controls.
+
+The validation-period registers stay as compiled, because compile parity
+measures the facts themselves.
+
+The joint local pass then refuses any factor away from one on a group whose
+lower grain is a control grain
+(`national_reconciliation.assert_uk_national_rows_unmoved`): the two passes
+must agree.
+
+## Household, income and caseload controls (#1123)
+
+Five relations reconcile the families the K=25 audit found out of line.
+
+**Census households.** Each nation's official household estimate controls its
+census cells, through a per-geography bridge (`per_geography`: each control
+covers the legs of the geography it sits at):
+
+- the LFS 2025 rows for England's nine regions;
+- NRS 2025 for Scotland;
+- Welsh Government mid-2024, rolled to 2025 by population growth;
+- Northern Ireland's Census 2021 districts, rolled by LPS dwelling stock.
+
+The UK household-composition partition takes the nations' sum in the
+national pass (`sum_bridges`). A15 uprates the census cells to that sum, and
+the LFS UK total is a diagnostic with its gap recorded.
+
+**Tenure.** The census tenure cells partition their authority's households
+(`share_of_parent`). England's shares are drifted by SPREE's 2022–2024 share
+change before the partition.
+
+**HMRC income by area.** The SPI band partition, summed over every band of
+the full compiled register, controls the Tables 3.14 and 3.15 area cells per
+grain (`fanout_sum_bridges`). A factor more than 2% from one is refused. A
+fan-out is never an exact-signature control: its cells are a distribution.
+
+**UC child bands.** The bands partition each constituency's UC caseload
+(`share_of_parent`).
+
+**Small cells.** A small-cell deferral still counts its value in its leg's
+control, through a reconciliation row that never reaches the solve.
+
+## Declarations and enforcement
+
+Every declaration lives in `uk/cross_grain_declarations.json`, which the
+country-spec fingerprint covers:
+
+- **band_bridges**: projected UK ITL bands that control the SPI regional
+  band cells nesting in them (see above).
+- **bridges**: higher-grain targets whose measurement signature cannot match
+  the lower side's. The household-composition partition controls the census
+  household cells, and the GB UC caseload controls UC households by area.
+  Eight age bridges join the region-tier ONS age bands (inclusive integer
+  ages) to the local bands (half-open). The 80-89 band has no local cell.
+- **partitions**: member targets that divide a parent at one geography,
+  either `exhaustive` (members sum to the parent) or `share_of_parent`
+  (members move by the parent's factor and keep their shares).
+- **local_routes**: local targets with no published higher control, each with
+  its reason.
+- **relations**: overlapping targets at different grains that are not one
+  quantity (`independent`) or are bounded parts of a whole (`subset`).
+- **signature_incomplete**: targets whose measurement block does not express
+  their population (the binding's filters or groupby do), each with its
+  reason.
+
+`uk_runtime.cross_grain_declarations.uk_cross_grain_coverage_violations` turns
+the declarations into an enforced rule (microcosm#1123). It refuses:
+
+- a local target with no route to a higher control;
+- two targets at different grains whose measurements overlap but which are
+  neither reconciled nor declared;
+- a declaration that names an unknown target or no longer applies.
+
+The surface build runs the check once per process
+(`uk_cross_grain_coverage_receipt`), and its receipt travels with the
+reconciliation receipt. Every gap is refused: #1123 closed the last one and
+deleted its transitional exceptions ledger.
+
+## Refusals and receipts
+
+The operator also refuses:
+
+- a partially bound declared bridge (unless the missing members are reviewed
+  exclusions);
+- a target covered by two bridges;
+- incompatible controls over the same legs (beyond summation-order rounding);
+- an empty or unparented leg;
+- a vanishing lower total under a nonzero control;
+- a sign flip;
+- any non-finite value.
+
+Every factor records its parent, legs, area count, old and new totals,
+relative shift and declared factor. Partition receipts record each cell's
+parent value and factor.
+
+## Census households
 
 Published constituency and local-authority household counts compile from the
-pinned Chronicle feed and remain disclosure-controlled. Against the retired
-OA-ladder diagnostic sums, constituency mean/max absolute differences are
-7.4/29 households in England, 6.4/15 in Wales, 49.6/157 in Scotland (net
-−557), and 7/16 in Northern Ireland (net +4). The NI result uses NISRA's
-published DZ2021→PARLCON24 lookup; the retired postcode inference misplaced
-10 Data Zones and reached a maximum difference of 694.
-
-The Chronicle cells total 28,061,271 households at constituency grain and
-28,061,277 at local-authority grain. A15 uprates each grain separately to the
-2025 Ledger control of 29,003,000; A17 applies the corresponding grain factor
-to eligible census-tenure holds. If a same-concept national control is bound
-in the solve, country wins and the standing rule rescales both local grains.
-
-## Rescope from the issue text
-
-Issue #802 originally called for a committed enumeration artifact and a
-per-family ruling register. This implementation deliberately replaces both
-with a live pass and a standing, pinned rule. The receipt enumerates the
-inconsistencies actually present in each assembled surface, avoiding a second
-artifact that could become stale. The precedence and bridges are the ruling,
-while the refreshed `census_disclosure_control_noise` adjudication records the
-specific disclosure-control acceptance. The issue text should be updated to
-reflect this rescope during review.
+pinned Chronicle feed and remain disclosure-controlled. The cells total
+28,061,271 households at constituency grain and 28,061,277 at local-authority
+grain. A15 uprates each grain to the 2025 Ledger control of 29,003,000, and
+A17 applies the grain factor to eligible census-tenure holds (#887). The
+household-composition bridge then rescales both local grains to the
+composition total.
