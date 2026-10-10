@@ -393,8 +393,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.122.2",
- "input_count": 285,
+ "engine_version": "2.123.0",
+ "input_count": 288,
  "schema_sha256": "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e",
  "structural_inputs": [
   {
@@ -1120,8 +1120,20 @@
    "name": "private_transfer_income"
   },
   {
+   "entity": "person",
+   "name": "property_finance_costs"
+  },
+  {
+   "entity": "person",
+   "name": "property_finance_costs_brought_forward"
+  },
+  {
    "entity": "household",
    "name": "property_purchased"
+  },
+  {
+   "entity": "person",
+   "name": "property_rental_income"
   },
   {
    "entity": "household",

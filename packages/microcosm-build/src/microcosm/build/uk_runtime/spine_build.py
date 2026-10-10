@@ -147,6 +147,9 @@ from microcosm.build.uk_runtime.orrery_contract import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.property_components import (
+    UKPropertyComponentsStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -1612,6 +1615,13 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["regional_property_uprating"],
             )
         )
+    if "property_components" in stage_names:
+        implementations["property_components"] = _GraphSourceTransform(
+            lambda sources: UKPropertyComponentsStageTransform(
+                stage=stages_by_name["property_components"],
+                spi_tab_path=sources["spi"],
+            )
+        )
     if "lcfs_consumption" in stage_names:
         implementations["lcfs_consumption"] = _GraphSourceTransform(
             lambda sources: UKLCFSConsumptionStageTransform(
@@ -1787,6 +1797,8 @@ def prepare_uk_spine_execution(
         if "etb_vat" in stage_names or "etb_services" in stage_names:
             graph_sources["etb"] = args.etb_tab
         if "spi_income_band_donors" in stage_names:
+            graph_sources["spi"] = args.spi_tab
+        if "property_components" in stage_names:
             graph_sources["spi"] = args.spi_tab
         if "hmrc_spi_income_spine" in stage_names:
             graph_sources["spi"] = args.spi_tab

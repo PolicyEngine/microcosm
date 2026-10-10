@@ -416,6 +416,7 @@ from microcosm.build.uk_runtime.parity_reference import (
     EfrsParityKnownGap,
     EfrsParityReference,
     EfrsParitySource,
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
 )
@@ -887,6 +888,7 @@ __all__ = [
     "load_england_wales_oa_population",
     "load_england_wales_oa_ward_lookup",
     "load_ew_oa_lad23_lookup",
+    "load_efrs_engine_derived_exclusions",
     "load_efrs_parity_known_gaps",
     "load_efrs_parity_reference",
     "load_lad_itl_lookup",

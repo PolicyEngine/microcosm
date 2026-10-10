@@ -171,6 +171,10 @@ UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    # Restricted residential finance costs: the SPI channel's tape draw; the
+    # FRS channel starts at zero and property_components imputes its
+    # landlords (microcosm#1106).
+    "property_finance_costs",
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
     SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
@@ -326,6 +330,9 @@ class UKSPIIncomeSpineResult:
             "income_uprating": self.imputation.income_uprating,
             "band_donor_resample": self.imputation.band_donor_resample,
             "donor_age_draw": self.imputation.donor_age_draw,
+            "donor_property_finance_costs": (
+                self.imputation.donor_property_finance_costs
+            ),
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "targets": {
                 "count": len(self.source_targets.targets),

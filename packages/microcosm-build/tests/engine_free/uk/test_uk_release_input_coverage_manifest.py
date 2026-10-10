@@ -48,6 +48,18 @@ def test_candidate_evidence_is_sha_pinned_and_covers_reference() -> None:
 def test_known_gap_register_records_post_candidate_restoration_separately() -> None:
     gaps = _resource("efrs_parity_known_gaps.json")
     assert gaps["known_gaps"] == {}
+    # microcosm#1106: property_wealth is formula-owned in policyengine-uk, so
+    # the release leaves it for the engine to derive. It is a declared
+    # exclusion in its own section, never parity debt in known_gaps.
+    assert set(gaps["engine_derived_exclusions"]) == {"property_wealth"}
+    assert gaps["engine_derived_exclusions"]["property_wealth"]["reason"] == (
+        "formula-owned in policyengine-uk and derived from persisted "
+        "components; a persisted copy overrides the formula and is not uprated"
+    )
+    assert (
+        "microcosm#1106"
+        in (gaps["engine_derived_exclusions"]["property_wealth"]["tracking_note"])
+    )
     assert set(gaps["restored_required_columns"]) == {
         "charitable_investment_gifts",
         "gift_aid",
@@ -113,14 +125,26 @@ def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
     assert manifest["counts"] == {
-        "required": 145,
-        "reviewed_exclusion": 0,
+        "required": 144,
+        "reviewed_exclusion": 1,
         "total": 145,
     }
     assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    assert all(
-        entry == {"status": "required"} for entry in manifest["columns"].values()
-    )
+    # Every reference input is required except the engine-derived total; its
+    # three persisted components stay required (microcosm#1106).
+    excluded = {
+        name: entry
+        for name, entry in manifest["columns"].items()
+        if entry != {"status": "required"}
+    }
+    assert set(excluded) == {"property_wealth"}
+    assert excluded["property_wealth"]["status"] == "reviewed_exclusion"
+    for component in (
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+    ):
+        assert manifest["columns"][component] == {"status": "required"}
     assert manifest["restoration_evidence"] == {
         "derived_from": "efrs_parity_known_gaps.json",
         "required_columns": ["charitable_investment_gifts", "gift_aid"],
@@ -238,6 +262,43 @@ def test_generator_never_reintroduces_a_pinned_restoration_as_a_gap() -> None:
         "charitable_investment_gifts",
         "gift_aid",
     }
+
+
+def test_generator_keeps_the_engine_derived_section_on_a_candidate_refresh() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    evidence = _resource("efrs_parity_known_gaps.json")["candidate_evidence"]
+
+    gaps = generator.build_known_gaps(evidence, reference=reference)
+
+    assert gaps["engine_derived_exclusions"] == generator.ENGINE_DERIVED_EXCLUSIONS
+    assert "property_wealth" not in gaps["known_gaps"]
+
+
+def test_manifest_generation_rejects_engine_derived_drift_and_overlap() -> None:
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    drifted = _resource("efrs_parity_known_gaps.json")
+    drifted["engine_derived_exclusions"]["property_wealth"]["reason"] = "edited"
+    with pytest.raises(ValueError, match="engine_derived_exclusions disagrees"):
+        generator.build_manifest(reference=reference, known_gaps_payload=drifted)
+
+    dropped = _resource("efrs_parity_known_gaps.json")
+    del dropped["engine_derived_exclusions"]
+    with pytest.raises(ValueError, match="engine_derived_exclusions disagrees"):
+        generator.build_manifest(reference=reference, known_gaps_payload=dropped)
+
+    # Only a formula-owned input the reference persists can be left to the
+    # engine; an ordinary input never becomes an engine-derived exclusion.
+    unowned = json.loads(json.dumps(reference))
+    unowned["engine"]["formula_owned_persisted_overrides_included"].remove(
+        "property_wealth"
+    )
+    with pytest.raises(ValueError, match="must be formula-owned inputs"):
+        generator.build_manifest(
+            reference=unowned,
+            known_gaps_payload=_resource("efrs_parity_known_gaps.json"),
+        )
 
 
 def test_manifest_generation_rejects_candidate_entity_mismatch() -> None:

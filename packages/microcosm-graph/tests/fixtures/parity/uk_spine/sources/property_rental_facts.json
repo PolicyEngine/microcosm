@@ -1,0 +1,94 @@
+{
+  "expense_landlords_by_type": {
+    "legal_management_and_professional_fees": 68.90865863986222,
+    "non_residential_finance_costs": 68.90865863986222,
+    "other_allowable_expenses": 68.90865863986222,
+    "rent_rates_and_insurance": 68.90865863986222,
+    "repairs_and_maintenance": 68.90865863986222,
+    "residential_finance_costs": 68.90865863986222,
+    "services_including_wages": 68.90865863986222
+  },
+  "expenses": {
+    "all": 34989.53168822626,
+    "individual": 34639.636371344,
+    "partnership": 349.8953168822627
+  },
+  "expenses_by_type": {
+    "legal_management_and_professional_fees": 4188.674872604928,
+    "non_residential_finance_costs": 1339.16768763571,
+    "other_allowable_expenses": 4611.56993185831,
+    "rent_rates_and_insurance": 3836.26232322711,
+    "repairs_and_maintenance": 6454.18411860519,
+    "residential_finance_costs": 12908.36823721038,
+    "services_including_wages": 1651.304517084635
+  },
+  "landlords": {
+    "all": 137.81731727972445,
+    "individual": 136.43914410692722,
+    "partnership": 1.3781731727972328
+  },
+  "receipts": {
+    "all": 55983.250701162026,
+    "individual": 55423.41819415041,
+    "partnership": 559.8325070116189
+  },
+  "receipts_bands": [
+    {
+      "landlords": 62.209205716542286,
+      "lower_bound": 0,
+      "upper_bound": 10000
+    },
+    {
+      "landlords": 41.15378224325105,
+      "lower_bound": 10000,
+      "upper_bound": 20000
+    },
+    {
+      "landlords": 15.791567604968426,
+      "lower_bound": 20000,
+      "upper_bound": 30000
+    },
+    {
+      "landlords": 7.177985274985648,
+      "lower_bound": 30000,
+      "upper_bound": 40000
+    },
+    {
+      "landlords": 3.828258813325679,
+      "lower_bound": 40000,
+      "upper_bound": 50000
+    },
+    {
+      "landlords": 2.3926617583285497,
+      "lower_bound": 50000,
+      "upper_bound": 60000
+    },
+    {
+      "landlords": 1.4355970549971295,
+      "lower_bound": 60000,
+      "upper_bound": 70000
+    },
+    {
+      "landlords": 0.9570647033314198,
+      "lower_bound": 70000,
+      "upper_bound": 80000
+    },
+    {
+      "landlords": 0.4785323516657099,
+      "lower_bound": 80000,
+      "upper_bound": 90000
+    },
+    {
+      "landlords": 0.4785323516657099,
+      "lower_bound": 90000,
+      "upper_bound": 100000
+    },
+    {
+      "landlords": 1.9141294066628396,
+      "lower_bound": 100000,
+      "upper_bound": null
+    }
+  ],
+  "resource_sha256": "synthetic-fixture",
+  "tax_year": 2024
+}

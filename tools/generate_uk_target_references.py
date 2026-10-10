@@ -76,7 +76,6 @@ POLICYENGINE_BINDING_KEYS = frozenset(
     }
 )
 
-_UK_DATA_REPO = "policyengine-" + "uk-data"
 
 DESCRIPTION = (
     "UK active-subset Ledger target references for the FRS 2024-25 line. "
@@ -803,17 +802,19 @@ def _add_uk_membership_accounting(
     report["fanout_family_outcomes"] = [
         {
             "family": "hmrc_spi",
-            "status": "active_with_signed_property_amount_exclusion",
+            "status": "active_strict_band_pins",
             "active_reference_count": fanout_counts.get("hmrc_spi", 0),
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins, except the HMRC property-income amount "
-                "surface. Those 13 rows are signed out because Ledger carries "
-                "the official SPI Table 3.7 net property-income amounts, "
-                "while the incumbent target applies the populace-side x1.9 "
-                "property-income undercount adjustment traced to "
-                f"{_UK_DATA_REPO} PR #311 / issue #230 and HMRC "
-                "Property Rental Income Statistics."
+                "dimension pins. The 13 property-income amount rows bind the "
+                "SPI Table 3.7 net concept unscaled: landlords' profit after "
+                "allowable expenses and before residential finance costs, "
+                "which is what policyengine-uk's property_income means. The "
+                "incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the "
+                "Property Rental Income Statistics' receipts before expenses "
+                "against this net amount, so it is retired; the receipts bind "
+                "on their own variable (microcosm#1106, María's ruling of "
+                "2026-10-05)."
             ),
         },
         {
@@ -944,14 +945,6 @@ def _add_uk_membership_accounting(
         },
     ]
     report["signed_exclusion_rationales"] = [
-        {
-            "family": "hmrc_spi",
-            "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-            "status": "signed_excluded",
-            "signed_rationale": report["targets"][
-                "hmrc.spi.property_income.amount_by_total_income_band"
-            ]["candidates"][0]["signed_rationale"],
-        },
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",

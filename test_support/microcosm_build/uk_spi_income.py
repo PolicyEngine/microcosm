@@ -199,6 +199,10 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
             "OTHERINV": [5.0, 10.0, 15.0, 20.0],
             "GIFTAID": [10.0, 20.0, 30.0, 40.0],
             "GIFTINV": [1.0, 2.0, 3.0, 4.0],
+            # Restricted residential finance costs carrying the tape's 20%
+            # relief in TAX_CRED (microcosm#1106).
+            "LLIR_RESTRICT_AMT_TOT": [0.0, 0.0, 200.0, 300.0],
+            "TAX_CRED": [0.0, 0.0, 40.0, 60.0],
         }
     )
     employment = (

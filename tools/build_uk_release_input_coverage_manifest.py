@@ -65,6 +65,28 @@ EXCLUSION_TRACKING_NOTE = (
     "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-"
     "family restoration milestone before promoting it to required."
 )
+#: Reference inputs the release leaves for the engine to derive (microcosm#1106).
+#: The enhanced FRS persists them, but policyengine-uk computes them from
+#: inputs the candidate persists, and a persisted copy overrides the formula,
+#: so they are reviewed exclusions by declaration, not parity debt: they sit in
+#: their own section of the known-gap ledger, outside the evidence-derived
+#: ``known_gaps``. The release and calibration boundaries drop them
+#: (``national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS``).
+ENGINE_DERIVED_EXCLUSION_REASON = (
+    "formula-owned in policyengine-uk and derived from persisted components; "
+    "a persisted copy overrides the formula and is not uprated"
+)
+ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "property_wealth": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1106 (the uk-data#543 defect): the release and "
+            "calibration boundaries drop the WAS total, and policyengine-uk "
+            "sums main_residence_value, other_residential_property_value and "
+            "non_residential_property_value, which stay required."
+        ),
+    },
+}
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
 EFFECTIVE_MASS_COVERAGE = {
@@ -596,6 +618,7 @@ def build_known_gaps(
         },
         "candidate_evidence": candidate_evidence,
         "restored_required_columns": RESTORED_REQUIRED_COLUMN_EVIDENCE,
+        "engine_derived_exclusions": ENGINE_DERIVED_EXCLUSIONS,
         "known_gaps": {
             name: {
                 "reason": EXCLUSION_REASON,
@@ -722,6 +745,43 @@ def _validate_known_gaps(
             )
         if not str(entry.get("tracking_note", "")).strip():
             raise ValueError(f"UK known gap {name!r} needs a tracking note.")
+    raw_engine_derived = known_gaps_payload.get("engine_derived_exclusions")
+    if raw_engine_derived != ENGINE_DERIVED_EXCLUSIONS:
+        raise ValueError(
+            "efrs_parity_known_gaps.json: engine_derived_exclusions disagrees "
+            "with the reviewed declaration in this tool."
+        )
+    engine_derived = set(ENGINE_DERIVED_EXCLUSIONS)
+    off_surface = sorted(engine_derived - surface)
+    if off_surface:
+        raise ValueError(
+            "Engine-derived exclusions must name populated eFRS reference "
+            f"inputs: {off_surface}."
+        )
+    engine = reference.get("engine")
+    formula_owned = set(
+        engine.get("formula_owned_persisted_overrides_included", ())
+        if isinstance(engine, dict)
+        else ()
+    )
+    not_formula_owned = sorted(engine_derived - formula_owned)
+    if not_formula_owned:
+        raise ValueError(
+            "Engine-derived exclusions must be formula-owned inputs the "
+            f"reference persists: {not_formula_owned}."
+        )
+    restored_engine_derived = sorted(engine_derived & restored)
+    if restored_engine_derived:
+        raise ValueError(
+            "Restored UK reference inputs cannot be engine-derived exclusions: "
+            f"{restored_engine_derived}."
+        )
+    gap_and_engine_derived = sorted(engine_derived & actual)
+    if gap_and_engine_derived:
+        raise ValueError(
+            "A column cannot be both a parity known gap and an engine-derived "
+            f"exclusion: {gap_and_engine_derived}."
+        )
 
 
 def build_manifest(
@@ -740,12 +800,14 @@ def build_manifest(
         if float(share) > 0.0
     }
     columns: dict[str, dict[str, str]] = {}
+    engine_derived = known_gaps_payload["engine_derived_exclusions"]
     for name in sorted(populated_layers):
-        if name in known_gaps:
+        exclusion = known_gaps.get(name) or engine_derived.get(name)
+        if exclusion is not None:
             columns[name] = {
                 "status": "reviewed_exclusion",
-                "reason": str(known_gaps[name]["reason"]),
-                "tracking_note": str(known_gaps[name]["tracking_note"]),
+                "reason": str(exclusion["reason"]),
+                "tracking_note": str(exclusion["tracking_note"]),
             }
         else:
             columns[name] = {"status": "required"}
@@ -850,6 +912,10 @@ def build_manifest(
                 stage_name="regional_property_uprating",
                 candidate_source=candidate_source,
             ),
+            "property_components": _source_stage_family_coverage_contract(
+                stage_name="property_components",
+                candidate_source=candidate_source,
+            ),
             "lcfs_consumption": _source_stage_family_coverage_contract(
                 stage_name="lcfs_consumption",
                 candidate_source=candidate_source,
@@ -870,7 +936,10 @@ def build_manifest(
             "effective-mass share OR the column is pinned in "
             "restored_required_columns after a source-family restoration; all "
             "remaining surface columns are reviewed_exclusion with reason "
-            f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note. "
+            f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note, "
+            "except the engine_derived_exclusions, which are reviewed_exclusion "
+            "with their own reason because the engine computes them from "
+            "persisted inputs. "
             "The final release gate applies the same effective-mass floor, and "
             "distributional restorations must pass it on their required source "
             "channel."

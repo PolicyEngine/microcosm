@@ -107,6 +107,12 @@ SPI_HMRC_DERIVED_AUXILIARY_COLUMNS = (
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
+#: Residential finance costs restricted by ITTOIA 2005 s. 272A: the tape's
+#: LLIR_RESTRICT_AMT_TOT, "restricted land property finance cost (tax relief is
+#: included in TAX_CRED)" (SPI Public Use Tape 2022-23 documentation). Drawn
+#: last, so it conditions on every income leaf and leaves every earlier draw
+#: where it was (microcosm#1106).
+SPI_PROPERTY_FINANCE_COSTS_COLUMN = "property_finance_costs"
 SPI_INCOME_QRF_OUTPUT_COLUMNS = (
     *(
         column
@@ -114,6 +120,7 @@ SPI_INCOME_QRF_OUTPUT_COLUMNS = (
         if column != "employment_income"
     ),
     *SPI_HMRC_QRF_AUXILIARY_COLUMNS,
+    SPI_PROPERTY_FINANCE_COSTS_COLUMN,
 )
 
 # The enhanced-FRS FRS-only stage uses these six income predictors. OTHERINV
@@ -1283,6 +1290,7 @@ __all__ = [
     "SPI_INCOME_QRF_OUTPUT_COLUMNS",
     "SPI_PENSION_AGE_STRATUM_COLUMN",
     "SPI_PRIOR_MASS_CHANGE_REASON",
+    "SPI_PROPERTY_FINANCE_COSTS_COLUMN",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",

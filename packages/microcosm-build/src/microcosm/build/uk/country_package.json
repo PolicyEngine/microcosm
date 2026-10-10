@@ -88,6 +88,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "hmrc_property_rental_income_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_itl_taxpayer_counts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

@@ -64,9 +64,8 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1231
+ACTIVE_REFERENCE_COUNT = 1244
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
-UK_DATA_REPO = "policyengine-" + "uk-data"
 
 
 def test_local_generator_support_floor_scope_comes_from_signed_register() -> None:
@@ -513,15 +512,48 @@ def test_dfe_extended_sum_refuses_the_suppressed_2024_member() -> None:
         )
 
 
-def test_uk_target_references_do_not_bind_known_mismatched_property_amounts() -> None:
-    resource = _load_uk_resource("target_references.json")
+def test_uk_target_references_bind_the_spi_net_property_amounts_unscaled() -> None:
+    """The 13 SPI Table 3.7 net property-income amounts bind as published.
 
-    assert not [
-        reference["name"]
+    microcosm#1106 retired the incumbent's x1.9 scaling: SPI net income from
+    property is landlords' profit after allowable expenses and before
+    residential finance costs, the concept ``property_income`` holds, so no
+    value operation scales it. The only move is the declared uprating to the
+    2025 calibration year.
+    """
+
+    target_id = "hmrc.spi.property_income.amount_by_total_income_band"
+    contract = _load_uk_resource("uk_population_targets.json")
+    resource = _load_uk_resource("target_references.json")
+    references = [
+        reference
         for reference in resource["target_references"]
-        if reference["metadata"]["contract_target_id"]
-        == "hmrc.spi.property_income.amount_by_total_income_band"
+        if reference["metadata"]["contract_target_id"] == target_id
     ]
+
+    assert len(references) == 13
+    assert all(
+        reference["name"].startswith("hmrc/property_income_income_band_")
+        for reference in references
+    )
+    assert {
+        (
+            reference["uprating_index"],
+            reference["uprating_from_period"],
+            reference["uprating_to_period"],
+        )
+        for reference in references
+    } == {
+        (
+            "policyengine_uk_parameter:"
+            "gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "2023",
+            2025,
+        )
+    }
+    assert target_id not in _value_operation_by_target_id(contract)
+    membership = _load_uk_resource("target_reference_membership.json")
+    assert membership["targets"][target_id]["status"] == "active"
 
 
 def test_uk_target_references_do_not_emit_nan_uc_payment_bands() -> None:
@@ -750,9 +782,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1231,
+        "active": 1244,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 16,
+        "signed_excluded": 15,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -767,17 +799,19 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {
             "family": "hmrc_spi",
-            "status": "active_with_signed_property_amount_exclusion",
-            "active_reference_count": 169,
+            "status": "active_strict_band_pins",
+            "active_reference_count": 182,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins, except the HMRC property-income amount "
-                "surface. Those 13 rows are signed out because Ledger carries "
-                "the official SPI Table 3.7 net property-income amounts, "
-                "while the incumbent target applies the populace-side x1.9 "
-                "property-income undercount adjustment traced to "
-                f"{UK_DATA_REPO} PR #311 / issue #230 and HMRC Property Rental "
-                "Income Statistics."
+                "dimension pins. The 13 property-income amount rows bind the "
+                "SPI Table 3.7 net concept unscaled: landlords' profit after "
+                "allowable expenses and before residential finance costs, "
+                "which is what policyengine-uk's property_income means. The "
+                "incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the "
+                "Property Rental Income Statistics' receipts before expenses "
+                "against this net amount, so it is retired; the receipts bind "
+                "on their own variable (microcosm#1106, María's ruling of "
+                "2026-10-05)."
             ),
         },
         {
@@ -913,25 +947,6 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         for entry in rationales
         if entry["family"] not in {"hmrc_cgt", "dwp_state_pension"}
     ] == [
-        {
-            "family": "hmrc_spi",
-            "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-            "status": "signed_excluded",
-            "signed_rationale": (
-                "Signed out pending a first-class value-scaling operation or "
-                "a Chronicle package for HMRC Property Rental Income "
-                "Statistics with declared reconciliation: the Ledger facts "
-                "are official HMRC SPI Table 3.7 net property-income amounts, "
-                "while the incumbent calibration target applies the "
-                "populace-side x1.9 property-income undercount adjustment. "
-                "The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI "
-                "covers only taxpayers with liability, "
-                "and HMRC Property Rental Income Statistics show GBP 46.68bn "
-                "versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI "
-                "facts would knowingly calibrate to 10/19 of the incumbent "
-                "surface."
-            ),
-        },
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",

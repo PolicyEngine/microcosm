@@ -278,6 +278,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.pension_contributions_via_salary_sacrifice",
     "person.pip_dl_category",
     "person.pip_m_category",
+    "person.property_finance_costs",
+    "person.property_rental_income",
     "person.receives_benefits_in_own_right",
     "person.rent_paid_as_boarder",
     "person.rent_paid_as_lodger",
@@ -361,6 +363,12 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
     "person.incapacity_benefit_reported": (
         "The enhanced FRS stores this legacy reported-benefit input as an "
         "all-zero layer; the candidate must drop dead zero layers."
+    ),
+    "household.property_wealth": (
+        "policyengine-uk derives property_wealth from main_residence_value, "
+        "other_residential_property_value and non_residential_property_value; "
+        "a persisted copy overrides that sum and has no uprating index, so the "
+        "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
     ),
 }
 

@@ -101,6 +101,12 @@ from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeSourceProvenance,
     HMRCIncomeTargetSet,
 )
+from microcosm.build.uk_runtime.hmrc_property_rental import (
+    HMRC_PROPERTY_RENTAL_EXPENSE_TYPES,
+    HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS,
+    HMRCPropertyRentalBand,
+    HMRCPropertyRentalFacts,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
@@ -108,6 +114,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.property_components import (
+    UKPropertyComponentsStageTransform,
 )
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
@@ -163,11 +172,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 39
+UK_FIXTURE_STAGE_COUNT = 40
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 39-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 40-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1062,6 +1071,11 @@ def _spi_donor() -> pd.DataFrame:
                 "GIFTINV": 1.0 + index % 3,
             }
         )
+        # Every third landlord carries restricted residential finance costs,
+        # with the tape's 20% relief in TAX_CRED (microcosm#1106).
+        if row["INCPROP"] > 0.0 and index % 3 == 0:
+            row["LLIR_RESTRICT_AMT_TOT"] = row["INCPROP"] * 0.4
+            row["TAX_CRED"] = 0.2 * row["LLIR_RESTRICT_AMT_TOT"]
         employment = (
             max(row["PAY"] + row["EPB"] - row["EXPS"], 0.0)
             + row["INCPBEN"]
@@ -1363,6 +1377,103 @@ def _cgt_asset_type_facts(
     return facts_with(tuple(bands))
 
 
+#: PRIS 2024-25 Table 13 landlord counts (thousands, all tax entities) and
+#: Table 8 expense amounts (GBP m): shares only, spread over the fixture.
+_FIXTURE_PRIS_BAND_COUNTS = (1300, 860, 330, 150, 80, 50, 30, 20, 10, 10, 40)
+_FIXTURE_PRIS_EXPENSE_AMOUNTS = (3810, 6410, 12820, 1330, 4160, 1640, 4580)
+#: Receipts and allowable expenses (residential finance costs included) per
+#: pound of the landlords' profit, near PRIS against the SPI's profit.
+_FIXTURE_PRIS_RECEIPTS_PER_PROFIT = 1.6
+_FIXTURE_PRIS_EXPENSES_PER_PROFIT = 1.0
+_FIXTURE_PRIS_INDIVIDUALS_SHARE = 0.99
+
+
+def _property_rental_facts(frame: Frame) -> HMRCPropertyRentalFacts:
+    """Synthetic PRIS facts sized to the frame ``property_components`` reads.
+
+    Table 13's published band shares spread the fixture's landlord mass
+    (individuals at a fixed share of all tax entities) and receipts are a
+    fixed multiple of the landlords' profit, so the walk fills every band
+    in proportion and the data-only payload the graph side reads is exactly
+    these numbers.
+    """
+
+    person = frame.table("person")
+    household = frame.table("household")
+    weights = pd.Series(
+        frame.weights_for("household").values, index=household["household_id"]
+    )
+    person_weight = person["person_household_id"].map(weights).to_numpy(dtype=float)
+    profit = pd.to_numeric(person["property_income"], errors="raise").to_numpy(
+        dtype=float
+    )
+    landlord = profit > 0.0
+    mass = float(person_weight[landlord].sum())
+    total_profit = float((person_weight[landlord] * profit[landlord]).sum())
+    if mass <= 0.0 or total_profit <= 0.0:
+        raise RuntimeError("The fixture frame has no landlords to give receipts.")
+    share = _FIXTURE_PRIS_INDIVIDUALS_SHARE
+    all_landlords = mass / share
+    total_count = float(sum(_FIXTURE_PRIS_BAND_COUNTS))
+    bounds = HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS
+    bands = tuple(
+        HMRCPropertyRentalBand(
+            lower_bound=lower,
+            upper_bound=bounds[index + 1] if index + 1 < len(bounds) else None,
+            landlords=all_landlords * count / total_count,
+        )
+        for index, (lower, count) in enumerate(
+            zip(bounds, _FIXTURE_PRIS_BAND_COUNTS, strict=True)
+        )
+    )
+    receipts = _FIXTURE_PRIS_RECEIPTS_PER_PROFIT * total_profit
+    expenses = _FIXTURE_PRIS_EXPENSES_PER_PROFIT * total_profit
+    expense_total = float(sum(_FIXTURE_PRIS_EXPENSE_AMOUNTS))
+    expenses_all = expenses / share
+    return HMRCPropertyRentalFacts(
+        tax_year=2024,
+        landlords={
+            "individual": mass,
+            "partnership": all_landlords - mass,
+            "all": all_landlords,
+        },
+        receipts={
+            "individual": receipts,
+            "partnership": receipts / share - receipts,
+            "all": receipts / share,
+        },
+        expenses={
+            "individual": expenses,
+            "partnership": expenses_all - expenses,
+            "all": expenses_all,
+        },
+        expenses_by_type={
+            kind: expenses_all * amount / expense_total
+            for kind, amount in zip(
+                HMRC_PROPERTY_RENTAL_EXPENSE_TYPES,
+                _FIXTURE_PRIS_EXPENSE_AMOUNTS,
+                strict=True,
+            )
+        },
+        expense_landlords_by_type={
+            kind: all_landlords / 2.0 for kind in HMRC_PROPERTY_RENTAL_EXPENSE_TYPES
+        },
+        receipts_bands=bands,
+        resource_sha256="synthetic-fixture",
+    )
+
+
+def _property_rental_facts_payload(facts: HMRCPropertyRentalFacts) -> dict[str, object]:
+    return {
+        **{
+            key: (dict(value) if isinstance(value, Mapping) else value)
+            for key, value in facts.__dict__.items()
+            if key != "receipts_bands"
+        },
+        "receipts_bands": [dict(band.__dict__) for band in facts.receipts_bands],
+    }
+
+
 def _cgt_asset_type_facts_payload(facts: HMRCCGTAssetTypeFacts) -> dict[str, object]:
     return {
         **{
@@ -1587,6 +1698,7 @@ def _build_implementations(
     cgt_parameters: UKCGTPolicyParameters,
     cgt_badr_parameters: UKCGTBADRParameters,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
+    property_rental_facts: HMRCPropertyRentalFacts | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
     engine = PolicyEngineUKEngine()
     contract = load_uk_take_up_contract()
@@ -1663,6 +1775,12 @@ def _build_implementations(
         ),
         "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
             stage=stages["regional_property_uprating"]
+        ),
+        "property_components": UKPropertyComponentsStageTransform(
+            stage=stages["property_components"],
+            spi_tab_path=raw_dir.parent / "spi_donor.csv",
+            donor_table=spi_donor,
+            facts=property_rental_facts,
         ),
         "lcfs_consumption": UKLCFSConsumptionStageTransform(
             stage=stages["lcfs_consumption"],
@@ -1762,7 +1880,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 39-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 40-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1880,11 +1998,25 @@ def generate(output: Path) -> None:
         cgt_parameters=cgt_parameters,
         cgt_badr_parameters=cgt_badr_parameters,
     )
-    # The asset-type facts are sized to the frame the amounts redraw and the
-    # anchor leave, so run the oracle up to the residential split once, derive
-    # them, and only then run the full plan on fresh transforms.
+    # The PRIS facts are sized to the frame property_components reads and the
+    # asset-type facts to the frame the amounts redraw and the anchor leave,
+    # so run the oracle up to each stage once, derive the facts, and only then
+    # run the full plan on fresh transforms.
     implementations, _ = _build_implementations(**build_kwargs)
     stage_names = [stage.stage for stage in stages]
+    prefix = stages[: stage_names.index("property_components")]
+    prefix_names = {stage.stage for stage in prefix}
+    before_receipts = _run_legacy_plan(
+        prefix,
+        {name: impl for name, impl in implementations.items() if name in prefix_names},
+    )
+    property_rental_facts = _property_rental_facts(before_receipts)
+    _write_json(
+        sources / "property_rental_facts.json",
+        _property_rental_facts_payload(property_rental_facts),
+    )
+    build_kwargs["property_rental_facts"] = property_rental_facts
+    implementations, _ = _build_implementations(**build_kwargs)
     prefix = stages[: stage_names.index("cgt_residential_split")]
     prefix_names = {stage.stage for stage in prefix}
     after_redraw = _run_legacy_plan(
@@ -1937,6 +2069,7 @@ def generate(output: Path) -> None:
             "hmrc_income_targets": "hmrc_income_targets.json",
             "cgt_distribution": "cgt_distribution.json",
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
+            "property_rental_facts": "property_rental_facts.json",
         },
         "cgt_parameters": cgt_parameters.__dict__,
         "cgt_badr_parameters": cgt_badr_parameters.__dict__,

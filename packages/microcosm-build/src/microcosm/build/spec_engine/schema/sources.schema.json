@@ -10398,6 +10398,177 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "add_back_to",
+      "population",
+      "tape_preparation",
+      "tape_preparation_seed",
+      "donor_income_period",
+      "income_uprating_variables",
+      "donor",
+      "incidence_cells",
+      "incidence",
+      "incidence_seed",
+      "incidence_salt",
+      "model",
+      "n_estimators",
+      "training_rows",
+      "expected_regime",
+      "predictors",
+      "amount_seed",
+      "amount_salt",
+      "draw",
+      "add_back"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_frs_property_finance_costs"
+      },
+      "output": {
+       "type": "string"
+      },
+      "add_back_to": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "tape_preparation": {
+       "type": "string"
+      },
+      "tape_preparation_seed": {
+       "type": "integer"
+      },
+      "donor_income_period": {
+       "type": "integer"
+      },
+      "income_uprating_variables": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "donor": {
+       "type": "string"
+      },
+      "incidence_cells": {
+       "type": "integer"
+      },
+      "incidence": {
+       "type": "string"
+      },
+      "incidence_seed": {
+       "type": "integer"
+      },
+      "incidence_salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "regime_gated_qrf"
+       ]
+      },
+      "n_estimators": {
+       "type": "integer"
+      },
+      "training_rows": {
+       "type": "string"
+      },
+      "expected_regime": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "amount_seed": {
+       "type": "integer"
+      },
+      "amount_salt": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "add_back": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "resource",
+      "population",
+      "band_lower_bounds",
+      "band_basis",
+      "order",
+      "walk",
+      "walk_seed",
+      "within_band",
+      "top_band",
+      "maximum_top_band_multiplier",
+      "sublet_receipts",
+      "residuals"
+     ],
+     "properties": {
+      "kind": {
+       "const": "allocate_property_rental_income"
+      },
+      "output": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "band_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "band_basis": {
+       "type": "string"
+      },
+      "order": {
+       "type": "string"
+      },
+      "walk": {
+       "type": "string"
+      },
+      "walk_seed": {
+       "type": "integer"
+      },
+      "within_band": {
+       "type": "string"
+      },
+      "top_band": {
+       "type": "string"
+      },
+      "maximum_top_band_multiplier": {
+       "type": "number"
+      },
+      "sublet_receipts": {
+       "type": "string"
+      },
+      "residuals": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "outputs",
       "household_output",
       "annualisation_weeks",

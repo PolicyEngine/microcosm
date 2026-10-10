@@ -179,6 +179,20 @@
       "notes": "Stage-time support-clip health gate over the WAS Lifetime ISA receipt (microcosm#1003): the balance is drawn from the QRF fitted on the credible donor holders, so every draw lies inside their realised range and non-holders are zero; the zero allowances make any clip a signal."
     },
     {
+      "id": "uk_stage_property_components",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "property_components",
+        "check": "property_components",
+        "maximum_rows_receipts_below_profit": 0,
+        "maximum_band_error_in_landlord_weights": 2.0
+      },
+      "notes": "Stage-time gate over the landlords' receipts and finance costs receipt (microcosm#1106). No row may carry property_rental_income below its property_income: the engine reads such receipts as unknown and withholds the property allowance. Every PRIS Table 13 band above the lowest holds its share of the spine's landlord weight (the band's share of the individuals-basis landlords) to within twice the largest landlord weight, the whole-person rounding of the walk (each band boundary is reached within one person; the lowest band takes the remainder). The open top band's profit multiplier must stay below the declared cap, so the band reaches the individuals' Table 2 receipts rather than stopping at the cap. The finance-cost incidence, its realisation by cell, the totals against PRIS, the channel split, the residuals and the coherence share are recorded in the receipt and carry no threshold."
+    },
+    {
       "id": "uk_stage_nts_bus_travel_support",
       "gate": "stage_health",
       "phase": "transferred",
@@ -929,6 +943,8 @@
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
           "person.pip_m_category",
+          "person.property_finance_costs",
+          "person.property_rental_income",
           "person.receives_benefits_in_own_right",
           "person.rent_paid_as_boarder",
           "person.rent_paid_as_lodger",
@@ -990,10 +1006,11 @@
           "household.ward_code"
         ],
         "reviewed_exclusions": {
-          "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."
+          "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers.",
+          "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect)."
         }
       },
-      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the two reviewed reference-side exclusions (the all-zero incapacity benefit layer and the formula-owned property_wealth total, microcosm#1106). The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
     },
     {
       "id": "uk_take_up_signal",

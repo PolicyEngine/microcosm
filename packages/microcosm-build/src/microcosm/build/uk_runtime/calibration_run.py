@@ -91,6 +91,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
+    "uk_stage_property_components",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",
     "uk_stage_uc_deduction_attributes",

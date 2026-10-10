@@ -383,6 +383,7 @@
       "hmrc.spi.employment_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.private_pension_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.private_pension_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.property_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.property_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.savings_interest_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
@@ -711,6 +712,7 @@
       "hmrc.spi.employment_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.private_pension_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.private_pension_income.count_by_total_income_band": "Count by total income band",
+      "hmrc.spi.property_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.property_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.savings_interest_income.count_by_total_income_band": "Count by total income band",
@@ -3416,6 +3418,331 @@
         "measure_kind": "prepared_column"
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_100_000_to_150_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_100_000_to_150_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_1_000_000_to_inf",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 1000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_1_000_000_to_inf",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_12_570_to_15_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 12570
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_12_570_to_15_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_15_000_to_20_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 15000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_15_000_to_20_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_150_000_to_200_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 150000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_150_000_to_200_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_20_000_to_30_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_20_000_to_30_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_200_000_to_300_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 200000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_200_000_to_300_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_30_000_to_40_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_30_000_to_40_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_300_000_to_500_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 300000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_300_000_to_500_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_40_000_to_50_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 40000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_40_000_to_50_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_50_000_to_70_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_50_000_to_70_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 500000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_500_000_to_1_000_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc/property_income_income_band_70_000_to_100_000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_property_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 70000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc/property_income_income_band_70_000_to_100_000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },

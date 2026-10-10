@@ -1662,6 +1662,8 @@
       "OTHERINV",
       "GIFTAID",
       "GIFTINV",
+      "LLIR_RESTRICT_AMT_TOT",
+      "TAX_CRED",
       "TEI",
       "TII",
       "TI"
@@ -1705,7 +1707,8 @@
       "hmrc_spi_unemployment_benefit_income": null,
       "hmrc_spi_miscellaneous_employment_income": "employment_income_before_lsr",
       "hmrc_spi_other_income": "miscellaneous_income",
-      "hmrc_spi_state_pension_income": null
+      "hmrc_spi_state_pension_income": null,
+      "property_finance_costs": "property_finance_costs"
      },
      "predictors": [
       "age",
@@ -1778,6 +1781,9 @@
       ],
       "hmrc_spi_state_pension_income": [
        "SRP"
+      ],
+      "property_finance_costs": [
+       "LLIR_RESTRICT_AMT_TOT"
       ]
      },
      "derived_policyengine_outputs": {
@@ -1809,7 +1815,8 @@
       "hmrc_spi_unemployment_benefit_income",
       "hmrc_spi_miscellaneous_employment_income",
       "hmrc_spi_other_income",
-      "hmrc_spi_state_pension_income"
+      "hmrc_spi_state_pension_income",
+      "property_finance_costs"
      ],
      "joint_draw": true,
      "savings_interest_source_semantics": "INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input",
@@ -2246,6 +2253,7 @@
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    "property_finance_costs",
     "hmrc_spi_employment_benefits",
     "hmrc_spi_employment_expenses",
     "hmrc_spi_other_social_security_income",
@@ -2262,6 +2270,7 @@
     "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    "property_finance_costs",
     "hmrc_spi_employment_benefits",
     "hmrc_spi_employment_expenses",
     "hmrc_spi_other_social_security_income",
@@ -2907,6 +2916,135 @@
     "non_residential_property_value"
    ],
    "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor is read off the main residence and has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated."
+  },
+  {
+   "stage": "property_components",
+   "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Property Rental Income Statistics 2026 (tax year 2024-25)",
+   "source": "https://www.gov.uk/government/statistics/property-rental-income-statistics",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "qrf_donor",
+     "kind": "private_microdata",
+     "format": "tab_delimited",
+     "survey": "Survey of Personal Incomes Public Use Tape 2022-23",
+     "vintage": "2022-23",
+     "tax_year_start": 2022,
+     "ukds_study_number": "SN 9422",
+     "doi": "10.5255/UKDA-SN-9422-1",
+     "filename": "put2223uk.tab",
+     "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+     "size_bytes": 141323762,
+     "reviewed_source": "PolicyEngine licensed UKDS mirror (private Hugging Face repository), spi_2022_23.zip",
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "property_rental_facts",
+     "kind": "public_aggregate_reference",
+     "resource": "hmrc_property_rental_income_facts.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "verify_vendored_fact_resource",
+     "artifact_role": "property_rental_facts",
+     "resource": "hmrc_property_rental_income_facts.json",
+     "feed_pin": "chronicle_feed.json",
+     "record_sets": [
+      "hmrc.property_rental_2026.table_1.ty2024",
+      "hmrc.property_rental_2026.table_2.ty2024",
+      "hmrc.property_rental_2026.table_6.ty2024",
+      "hmrc.property_rental_2026.table_8.ty2024",
+      "hmrc.property_rental_2026.table_13.ty2024"
+     ],
+     "source_vintage": "2024-25",
+     "mapped_build_period": 2024,
+     "period_mapping": "published_tax_year_equals_build_period",
+     "require_before_source_read": true,
+     "runtime_sha256_required": true,
+     "fail_on_mismatch": true
+    },
+    {
+     "kind": "impute_frs_property_finance_costs",
+     "output": "property_finance_costs",
+     "add_back_to": "property_income",
+     "population": "FRS-concept landlords: rows whose income leaves the income stage did not draw from the SPI tape (the FRS base channel, and the SPI channel's dependants on their twin values) with property income other than the household reference person's sub-letting rent above zero",
+     "tape_preparation": "as hmrc_spi_income_spine prepares the tape: its stage-1 seed and draw_spi_donor_ages_by_population",
+     "tape_preparation_seed": 42,
+     "donor_income_period": 2022,
+     "income_uprating_variables": {
+      "property_income": "property_income",
+      "property_finance_costs": "property_finance_costs"
+     },
+     "donor": "SPI 2022-23 landlords (INCPROP above zero) at build-period prices whose profit after restricted finance costs (INCPROP less LLIR_RESTRICT_AMT_TOT) is above zero: the analog of an FRS landlord reporting a profit, since show card K6 nets loan interest from ROYYR1",
+     "incidence_cells": 10,
+     "incidence": "a person-keyed uniform below the tape's FACT-weighted share of analog landlords with finance costs in the landlord's cell of profit after finance costs; the cells are the FACT-weighted deciles of the analog landlords' profit after finance costs, so every cell has tape support",
+     "incidence_seed": 0,
+     "incidence_salt": "property_components:has_finance_costs",
+     "model": "regime_gated_qrf",
+     "n_estimators": 100,
+     "training_rows": "analog tape landlords with finance costs",
+     "expected_regime": "positive_only",
+     "predictors": [
+      "profit_after_finance_costs",
+      "age"
+     ],
+     "amount_seed": 0,
+     "amount_salt": "property_components:finance_costs",
+     "draw": "predict_positive_from_uniforms at the person-keyed quantile",
+     "add_back": "the drawn finance costs are added to the landlord's property_income, so the FRS profit reaches the SPI concept and the engine relieves the interest once, as the s. 274A tax reduction; the mortgage capital show card K6 also nets stays netted"
+    },
+    {
+     "kind": "allocate_property_rental_income",
+     "output": "property_rental_income",
+     "resource": "hmrc_property_rental_income_facts.json",
+     "population": "persons with profit from property other than sub-letting above zero, on both channels, after the finance-cost add-back",
+     "band_lower_bounds": [
+      0,
+      10000,
+      20000,
+      30000,
+      40000,
+      50000,
+      60000,
+      70000,
+      80000,
+      90000,
+      100000
+     ],
+     "band_basis": "PRIS 2024-25 Table 13 (all tax entities) scaled by Table 1's individuals' share of landlords",
+     "order": "profit descending, person_id ascending",
+     "walk": "top band first, each band filled with whole persons to its share of the individuals-basis landlords times the spine's landlord weight (the spine's total before calibration differs from PRIS's, and filling the published counts would push every profit rank into a higher band), at one seeded systematic offset (the CGT Table 3 walk's rule); the lowest band takes every remaining landlord",
+     "walk_seed": 0,
+     "within_band": "linear in the weight-ranked position within the band, from its upper bound for the highest profit to its lower bound; never below the landlord's profit",
+     "top_band": "max(100,000, k x profit) with k at least 1 solved by bisection so the band's weighted mean receipts equal the individuals' Table 2 receipts less the bounded bands' realised mean receipts at their individuals-basis counts, over the top band's count",
+     "maximum_top_band_multiplier": 5.0,
+     "sublet_receipts": "the household reference person's sub-letting rent adds to receipts with no expenses; Rent a Room receipts, which the engine's receipts concept excludes, until PolicyEngine/policyengine-uk#2002 is released",
+     "residuals": "landlords without profit (FRS loss-makers, whose loss counts as zero, and tape landlords at zero) carry no receipts although PRIS counts them; property_finance_costs_brought_forward stays unset"
+    },
+    {
+     "kind": "record_mass_conservation_receipt",
+     "entity": "household",
+     "reason": "Landlords' receipts and finance costs on the source spine: household weights pass through unchanged and total household mass is conserved.",
+     "declared_factor": 1.0,
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+    }
+   ],
+   "outputs": [
+    "property_rental_income"
+   ],
+   "rewrites": [
+    "property_income",
+    "property_finance_costs"
+   ],
+   "nonnegative_outputs": [
+    "property_rental_income"
+   ],
+   "notes": "Fills the two landlord inputs policyengine-uk 2.123.0 adds beside property_income (microcosm#1106; PolicyEngine/policyengine-uk#2172). FRS landlords report ROYYR1 after show card K6, which nets mortgage payments and loan interest, so their profit sits below the SPI concept; the stage draws their restricted finance costs from the SPI 2022-23 tape at build-period prices (incidence by band of profit after finance costs, amount from the regime-gated QRF on the analog landlords with costs, both keyed on person_id) and adds them back to property_income, so the engine relieves the interest once as a tax reduction (decision 6, to be confirmed with Max before merge). The SPI channel keeps the costs the income stage drew. Receipts for every landlord come from PRIS 2024-25: ranked by profit, walked into Table 13's bands at their shares of the individuals-basis landlords times the spine's landlord weight, linear within a band, never below profit, the open top band proportional to profit with the multiplier solved to the individuals' receipts per landlord; receipts less profit are the deductible expenses (PRIS allowable expenses other than residential finance costs). Sub-letting rent keeps equal receipts and no expenses until Rent a Room is released. Household weights are unchanged; the receipt records the tape incidence and its realisation, the band fit, the totals against PRIS, the channel split, the residuals and the share of landlords whose household holds rental property."
   },
   {
    "stage": "nts_bus_travel",
@@ -5292,7 +5430,7 @@
     {
      "role": "policy_parameters",
      "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.122.2 via microcosm-build[uk]",
+     "dependency": "policyengine-uk>=2.123.0 via microcosm-build[uk]",
      "parameters": [
       "gov.hmrc.cgt.annual_exempt_amount"
      ],
@@ -5373,7 +5511,7 @@
     {
      "role": "policy_parameters",
      "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.122.2 via microcosm-build[uk]",
+     "dependency": "policyengine-uk>=2.123.0 via microcosm-build[uk]",
      "parameters": [
       "gov.hmrc.cgt.annual_exempt_amount",
       "gov.hmrc.cgt.badr.lifetime_limit",
