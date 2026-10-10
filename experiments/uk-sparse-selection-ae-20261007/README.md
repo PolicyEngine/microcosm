@@ -163,6 +163,12 @@ receipt with its reason, and the run moves on to the next one.
 | E_unif_f0_1e-2 | -3.94 % | 2.01 % | 22.57 % | 117 | 13 | 101 | 15 | 0.0230 | – |
 | S0 | -3.47 % | 2.01 % | 23.04 % | 170 | 20 | 158 | 15 | 0.0221 | local_family_within_10 |
 | SA | -1.21 % | 2.08 % | 27.08 % | 148 | 21 | 132 | 69 | 0.0382 | – |
+| SAN | -10.19 % | 1.88 % | 25.41 % | 230 | 55 | 253 | 113 | 0.1210 | – |
+| SAN_f0.5 | -0.23 % | 2.59 % | 29.38 % | 609 | 167 | 888 | 9 | 0.0183 | household_total, local_family_within_10, lone_person_share, nation_shares |
+| SAN_f0.5_u0.0065 | 0.01 % | 2.53 % | 28.68 % | 141 | 22 | 179 | 18 | 0.0229 | household_total, local_family_within_10, lone_person_share |
+| SAN_f0.5_u0.022 | -0.40 % | 2.41 % | 27.83 % | 31 | 17 | 83 | 29 | 0.0281 | household_total, lone_person_share |
+| SAN_ge_f0 | -12.61 % | 1.95 % | 25.17 % | 192 | 41 | 198 | 95 | 0.0992 | – |
+| SAN_ge_f0.5_u1e-2 | -0.30 % | 2.44 % | 27.23 % | 82 | 20 | 107 | 5 | 0.0169 | household_total, local_family_within_10, national_past_25 |
 | SA_f0.5 | -0.23 % | 2.66 % | 29.28 % | 610 | 147 | 859 | 14 | 0.0188 | household_total, local_family_within_10, lone_person_share, nation_shares |
 | SA_f0.5_u0.0064 | -0.49 % | 2.62 % | 28.62 % | 152 | 25 | 187 | 28 | 0.0242 | household_total, lone_person_share, nation_shares |
 | SA_f0.5_u0.021 | -0.34 % | 2.57 % | 27.82 % | 33 | 13 | 93 | 35 | 0.0296 | household_total, local_family_within_10, lone_person_share, nation_shares |
@@ -187,6 +193,7 @@ Refit-level holdouts (means over the local folds):
 - H_C0: held loss 0.1146 under its rule, 0.1146 under grain_equal; within 10 % 70.5 %, within 25 % 89.7 %
 - H_C2_f0.5: held loss 0.2024 under its rule, 0.2024 under grain_equal; within 10 % 53.4 %, within 25 % 76.9 %
 - H_E_unif_f0.5_1e-2: held loss 0.1446 under its rule, 0.1446 under grain_equal; within 10 % 63.7 %, within 25 % 84.5 %
+- H_SA_f0.5_u0.021: held loss 0.0954 under its rule, 0.1358 under grain_equal; within 10 % 65.6 %, within 25 % 86.5 %
 
 Step 0 census:
 
