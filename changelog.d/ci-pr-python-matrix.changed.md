@@ -1,0 +1,1 @@
+Run the engine-free, engine-us, and engine-uk jobs on Python 3.14 only for pull requests, and keep the 3.13 and 3.14 matrix for main pushes. In successful pull request runs sampled on 2026-10-07..08, all of which selected both countries, the 3.13 legs this removes used about 98 of 200 runner-minutes.

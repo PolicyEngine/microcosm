@@ -44,10 +44,12 @@ optional timing category. Shell scripts, Python executors, and pytest collection
 must query that module; they must not maintain another directory, job, category,
 or country mapping.
 
-Each ordinary behavioral job has a Python 3.13/3.14 matrix and reports the 25
-slowest tests. The engine-free job installs no country extra, always runs every
-engine-free test, installs its locked JavaScript test dependencies, and
-distributes files across two pytest workers with `--dist loadfile`.
+Each ordinary behavioral job has a Python version matrix: pull requests test
+Python 3.14 (the Modal build image's version) and main pushes test 3.13 and
+3.14. Each job reports the 25 slowest tests. The engine-free job installs no
+country extra, always runs every engine-free test, installs its locked
+JavaScript test dependencies, and distributes files across two pytest workers
+with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
