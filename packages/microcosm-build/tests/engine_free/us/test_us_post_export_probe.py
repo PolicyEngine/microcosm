@@ -801,7 +801,9 @@ def test_the_report_names_the_commit_the_probe_loaded_from(
         probe, _ = fixture_export_probe(
             probe_tool, builder, path, tmp_path / "probe", receipt=receipt
         )
-    assert probe.report["tool_source"]["moved_since_load"] is False
+    # Outside a git checkout there is no state to compare.
+    unmoved = False if probe_tool._TOOL_SOURCE["commit"] is not None else None
+    assert probe.report["tool_source"]["moved_since_load"] is unmoved
 
     move_head_after_load(monkeypatch)
     probe._write_report()

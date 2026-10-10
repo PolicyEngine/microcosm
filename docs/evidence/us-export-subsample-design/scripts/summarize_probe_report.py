@@ -69,40 +69,53 @@ def smoke_table(rows: list[dict]) -> list[str]:
     return lines
 
 
+def _reference(row: dict) -> dict:
+    return row.get("reference") or {}
+
+
 def smoke_summary(rows: list[dict]) -> list[str]:
-    scored = [row for row in rows if (row.get("reference") or {}).get("z") is not None]
-    magnitudes = [abs(row["reference"]["z"]) for row in scored]
+    """Counts and the z distribution; a report in which no probe has a
+    z-score (every standard error zero or missing) says so."""
+    scored = [row for row in rows if _reference(row).get("z") is not None]
+    magnitudes = [abs(_reference(row)["z"]) for row in scored]
     authoritative = [row for row in rows if row["authority"] == "authoritative"]
     disagree = [
-        row["probe"]
-        for row in rows
-        if (row.get("reference") or {}).get("verdict_agrees") is False
+        row["probe"] for row in rows if _reference(row).get("verdict_agrees") is False
     ]
-    worst = max(scored, key=lambda row: abs(row["reference"]["z"]))
     authoritative_z = [
-        abs(row["reference"]["z"])
+        abs(_reference(row)["z"])
         for row in authoritative
-        if row["reference"].get("z") is not None
+        if _reference(row).get("z") is not None
+    ]
+    if scored:
+        worst = max(scored, key=lambda row: abs(_reference(row)["z"]))
+        z_line = (
+            f"- with a z-score: {len(scored)}; median |z| "
+            f"{statistics.median(magnitudes):.2f}; largest |z| "
+            f"{abs(_reference(worst)['z']):.2f} (`{worst['probe']}`, "
+            f"{worst['authority']}); |z| > 3: "
+            f"{sum(value > 3 for value in magnitudes)}; |z| > 4: "
+            f"{sum(value > 4 for value in magnitudes)}"
+        )
+    else:
+        z_line = "- with a z-score: 0 (every standard error is zero or missing)"
+    exact = [
+        row["probe"]
+        for row in authoritative
+        if row["take_all"]
+        and _reference(row).get("effect") is not None
+        and row["effect"] == _reference(row)["effect"]
     ]
     return [
         f"- probes: {len(rows)}; passing: {sum(row['passed'] for row in rows)}; "
         f"authoritative: {len(authoritative)} "
         f"(passing: {sum(row['passed'] for row in authoritative)})",
-        f"- with a z-score: {len(scored)}; median |z| "
-        f"{statistics.median(magnitudes):.2f}; largest |z| "
-        f"{abs(worst['reference']['z']):.2f} (`{worst['probe']}`, "
-        f"{worst['authority']}); |z| > 3: "
-        f"{sum(value > 3 for value in magnitudes)}; |z| > 4: "
-        f"{sum(value > 4 for value in magnitudes)}",
+        z_line,
         f"- largest |z| among authoritative verdicts: {max(authoritative_z):.2f}"
         if authoritative_z
         else "",
         "- authoritative take-all probes equal to the full-size effect exactly: "
-        + ", ".join(
-            f"`{row['probe']}`"
-            for row in authoritative
-            if row["take_all"] and row["effect"] == row["reference"].get("effect")
-        ),
+        + (", ".join(f"`{probe}`" for probe in exact) or "none"),
         "- verdicts that disagree with the full-size build: "
         + (", ".join(f"`{probe}`" for probe in disagree) or "none"),
     ]

@@ -353,7 +353,9 @@ def test_the_receipt_names_the_commit_the_sampler_loaded_from(
     with monkeypatch.context() as unmoved:
         pin_git_state_at_load(unmoved, sampler)
         _, still = sample_synthetic(sampler, tmp_path, frame, fraction=0.25, name="a")
-    assert still["tool_source"]["moved_since_load"] is False
+    # Outside a git checkout there is no state to compare.
+    unmoved = False if sampler._TOOL_SOURCE["commit"] is not None else None
+    assert still["tool_source"]["moved_since_load"] is unmoved
 
     move_head_after_load(monkeypatch)
     _, receipt = sample_synthetic(sampler, tmp_path, frame, fraction=0.25, name="b")

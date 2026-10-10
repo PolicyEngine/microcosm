@@ -8,9 +8,14 @@ probe's verdicts with that release's own full-size outputs.
 `probe_report.json` is the probe's report as written. The only change is that
 local paths are replaced by `<release>` (the release's output folder) and
 `<run>` (this run's folder). `passes.jsonl` is the probe's per-pass timing
-log, unchanged. `scripts/summarize_probe_report.py
-route-a-p005/probe_report.json` prints the verdicts and the smoke table below
-from the report.
+log, unchanged. From the repository root,
+
+```bash
+python docs/evidence/us-export-subsample-design/scripts/summarize_probe_report.py \
+  docs/evidence/us-export-subsample-design/route-a-p005/probe_report.json
+```
+
+prints the verdicts and the smoke table below from the report.
 
 These are probe diagnostics, not release evidence. The release's verdicts are
 its own full-size ones.
@@ -104,7 +109,8 @@ python tools/probe_us_post_export.py \
   --reference-release-dir <release>/releases/<id> --release-id probe-of-<id> \
   --stages reform_coverage_smoke
 python docs/evidence/us-export-subsample-design/scripts/compare_probe_smoke.py \
-  route-a-p005/probe_report.json route-a-p005/merged-smoke/probe_report.json
+  docs/evidence/us-export-subsample-design/route-a-p005/probe_report.json \
+  docs/evidence/us-export-subsample-design/route-a-p005/merged-smoke/probe_report.json
 ```
 
 - **The merged probe reproduces the run's smoke exactly.** For all 41 probes
@@ -124,23 +130,31 @@ python docs/evidence/us-export-subsample-design/scripts/compare_probe_smoke.py \
 
 ### What the tools record now
 
-As they load, both tools record four things:
+Before their heavy imports, both tools record:
+- their own bytes' sha256, and tracebacks from them quote those bytes;
 - HEAD;
 - whether the working tree under `tools/` or `packages/` differs from HEAD's
-  tree in any file's bytes or mode;
-- a sha256 of those differences, untracked files included;
-- the sha256 of their own bytes, read before their heavy imports.
+  tree in any file's bytes or mode, and a sha256 of the differences;
+- an inventory of the installed distributions' names and versions.
 
-They also record a digest of every installed distribution's name and
-version. When they write a receipt or report, they read the state again and
-set `moved_since_load` if it changed, so an edit within an already dirty
-tree counts.
+The working tree is compared with HEAD by reading every watched file and
+recomputing its git object id, not by trusting the index. So staging, a
+same-bytes rewrite, the assume-unchanged and skip-worktree bits and
+`core.filemode` neither add nor hide a change. Untracked files, and a file
+staged while the state is read, are included. When the tools write a
+receipt or report they read the state again and set `moved_since_load` if it
+changed, so an edit within an already dirty tree counts.
 
-The working tree is compared with HEAD by content, not with the index, so
-staging, or rewriting a file with the same bytes, is not a change. The probe
-also records the sha256 of the release tool and sampler it ran, taken from
-the bytes it executed. The comparison is of the two moments only: an edit
-made and undone between them is not seen.
+The probe also records the sha256 of the release tool and sampler it ran,
+taken from the bytes it executed (their tracebacks quote the same bytes).
+
+What the record cannot show:
+- an edit made and undone between the two moments;
+- a change within one filesystem timestamp tick that keeps a file's inode
+  and size;
+- the bytes of a file it cannot read (recorded by error, size and time);
+- edits inside a nested repository (recorded by its checked-out commit);
+- the bytes of installed libraries (recorded by name and version).
 
 ## Result
 
