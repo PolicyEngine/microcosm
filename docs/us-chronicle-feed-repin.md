@@ -171,6 +171,16 @@ compiled register goes from 32,867 to 32,843 targets, and the
 count, the only change: 32,842 compiled targets and 5,694 in
 `national_state` (`d315c75804ef`).
 
+**Erratum (27 September 2026, microcosm#1035).** Row order changed too. The
+new feed is sorted by the re-derived `aggregate_fact_key`s, and the
+capital-gains rebase kept the first of two equal-period controls. The
+congressional-district US row (TY2022 data stamped ty2023) now sorted ahead of
+Table 1.4 ty2023. It took over the returns control and raised the 51 Historic
+Table 2 state return counts from 12,289,836 to 29,599,604. The control is now
+chosen by concept and period alone
+([us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)). The
+counts are unchanged and `national_state` is `65e4dde11c83`.
+
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
 substituted spec by cloning a neighbouring state's spec and kept that state's
