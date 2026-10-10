@@ -15,6 +15,10 @@ import pandas as pd
 import pytest
 
 from microcosm.data import stored_inputs
+from test_support.microcosm_build.us_acs_local_release_tool import (
+    load_staging_builder_module,
+    load_tool_module,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -77,30 +81,8 @@ def _stored_input_contract_passes(monkeypatch):
     )
 
 
-def _load_tool_module():
-    root = _TEST_PATHS.repository
-    path = root / "tools" / "build_us_acs_local_release.py"
-    spec = importlib.util.spec_from_file_location(
-        "build_us_acs_local_release",
-        path,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_staging_builder_module():
-    root = _TEST_PATHS.repository
-    path = root / "tools" / "build_us_acs_multispine_base.py"
-    spec = importlib.util.spec_from_file_location(
-        "build_us_acs_multispine_base",
-        path,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+_load_tool_module = load_tool_module
+_load_staging_builder_module = load_staging_builder_module
 
 
 def _passing_esi_premium_gates(artifact_sha: str) -> dict[str, dict]:
