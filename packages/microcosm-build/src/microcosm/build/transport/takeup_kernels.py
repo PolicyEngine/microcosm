@@ -252,6 +252,7 @@ class TakeupGapKernel(KernelBase):
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
         seed_source=SeedSource.NONE,
+        dependencies=("numpy", "pandas", "scipy"),
     )
     _required = frozenset(
         {
@@ -376,6 +377,7 @@ class TakeupBandsKernel(KernelBase):
     """``takeup.bands@1``: labelled envelopes of matching scenario tables."""
 
     ref = "takeup.bands@1"
+    # Bounds select decoded Python numbers; no numerical library computes them.
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,

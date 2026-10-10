@@ -41,6 +41,10 @@ EXECUTED = settings(
 NONNEGATIVE = st.floats(
     min_value=0, max_value=1500, allow_nan=False, allow_infinity=False
 )
+# A unit increase is representable throughout NONNEGATIVE's float64 range.
+POSITIVE_INCREMENT = st.floats(
+    min_value=1, max_value=1500, allow_nan=False, allow_infinity=False
+)
 
 
 def _case_root(tmp_path):
@@ -240,7 +244,8 @@ def test_as_is_zero_for_excess_assets_and_each_statutory_exclusion(tmp_path, exc
 
 
 @EXECUTED
-@given(income=NONNEGATIVE, increment=NONNEGATIVE)
+@example(income=80, increment=10)
+@given(income=NONNEGATIVE, increment=POSITIVE_INCREMENT)
 def test_nonbeneficiary_as_is_nonincreasing_in_income(tmp_path, income, increment):
     tmp_path = _case_root(tmp_path)
     fixture = make_entitlement_fixture(
@@ -262,7 +267,8 @@ def test_nonbeneficiary_as_is_nonincreasing_in_income(tmp_path, income, incremen
 
 
 @EXECUTED
-@given(costs=NONNEGATIVE, increment=NONNEGATIVE)
+@example(costs=40, increment=20)
+@given(costs=NONNEGATIVE, increment=POSITIVE_INCREMENT)
 def test_as_is_nondecreasing_in_qualifying_costs_until_the_cap(
     tmp_path, costs, increment
 ):

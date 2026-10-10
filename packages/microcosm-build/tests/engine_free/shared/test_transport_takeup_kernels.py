@@ -41,6 +41,7 @@ from microcosm.graph import (
     NumericScope,
     Slice,
 )
+from microcosm.graph import kernel as graph_kernel
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.transport_graph import (
     COUNTRY,
@@ -209,6 +210,57 @@ def test_neutral_kernel_contracts_and_idempotent_registration() -> None:
         assert "nz" not in kernel.ref
         assert kernel.implementation_hash() == kernel.implementation_hash()
         assert kernel.capabilities.consumes_se is False
+
+
+@pytest.mark.parametrize("distribution", ("numpy", "pandas", "scipy"))
+def test_gap_identity_changes_with_numerical_dependency_version(
+    monkeypatch, distribution
+) -> None:
+    before = TAKEUP_GAP.implementation_hash()
+    installed_version = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda name: (
+            installed_version(name) + ".changed"
+            if name == distribution
+            else installed_version(name)
+        ),
+    )
+    assert TAKEUP_GAP.implementation_hash() != before
+
+
+@pytest.mark.parametrize("kernel", (TAKEUP_GAP, TAKEUP_BANDS), ids=lambda k: k.ref)
+def test_takeup_identity_is_unchanged_with_same_dependency_versions(
+    monkeypatch, kernel
+) -> None:
+    before = kernel.implementation_hash()
+    installed_version = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda name: installed_version(name),
+    )
+    assert kernel.implementation_hash() == before
+    assert type(kernel)().implementation_hash() == before
+
+
+@pytest.mark.parametrize("distribution", ("numpy", "pandas", "scipy"))
+def test_bands_identity_ignores_numerical_dependency_versions(
+    monkeypatch, distribution
+) -> None:
+    before = TAKEUP_BANDS.implementation_hash()
+    installed_version = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda name: (
+            installed_version(name) + ".changed"
+            if name == distribution
+            else installed_version(name)
+        ),
+    )
+    assert TAKEUP_BANDS.implementation_hash() == before
 
 
 @settings(
