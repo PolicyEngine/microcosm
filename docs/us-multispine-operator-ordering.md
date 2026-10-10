@@ -108,6 +108,28 @@ the raw artifact kind, stage, frame identity, operator status, and complete
 operator-output absence before loading the peer frames. Measured ACS mappings
 are allowed only when named by the ACS native-input receipt.
 
+Usual weekly hours are the one input the pool takes from both places. ACS asks
+`WKHP` of people aged 16 and over, so the native mapping carries the measured
+value, writes zero where `WKL` confirms no work in the past 12 months, and
+leaves everyone under 16 blank. `weekly_hours_worked_before_lsr` therefore
+stays an early gap-fill target (`POOL_NATIVE_PARTIAL_TRANSFER_TARGETS`): the
+ASEC hours operator writes ASEC rows only, the ASEC-to-ACS direction fills
+only the blank ACS cells, and its receipt counts those cells alone as
+authorized and imputed. Every measured ACS cell reaches the pool unchanged.
+Because the hours operator writes the same column, the boundary does not accept
+this receipt on row counts. It recomputes the mapping from the raw `WKHP`,
+`AGEP`, `WKL` and `FWKHP` columns on the frame and requires the live column and
+the whole receipt to match, so donor-filled or edited hours cannot enter as
+native. The gap fill then proves every observed ACS cell leaves it
+byte-identical. The loader refuses an ACS archive that yields no usual-hours
+mapping, and a stage checkpoint whose ACS arm carries no raw `WKHP` was written
+before the pool kept measured hours and is rebuilt instead of resumed.
+
+The retiring `--legacy-two-spine` entry has no early ASEC-only direction. Its
+single post-clone transfer selects the PUF-detail role of both origins as
+donors, so measured ACS hours (all aged 16 and over) join the donor pool for
+the ACS rows still blank (all under 16).
+
 ### Default sequence
 
 The exact outer `US_STACKED_POOL_OPERATOR_ORDER` is byte-stable and contains
@@ -162,7 +184,8 @@ by_origin_battery
    same frame: ASEC survey fields fill ACS nulls, then ASEC-produced housing
    rent fills ACS housing-unit nulls in a separately banked direction.
    Activation authority is source-and-role exact, observed zero is not
-   absence, and native donor cells must remain byte-identical. Every declared
+   absence, and native donor cells must remain byte-identical, as must every
+   recipient cell observed before the transfer. Every declared
    target resolves through the operator-output registry to a producer channel
    and stage that must strictly precede its direction's check. Only the
    explicit `cps_source` and `whole_pool` execution scopes carry authority;

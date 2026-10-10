@@ -63,6 +63,29 @@ ACS_UNRESOLVED_PARENT_ID_MAPPINGS: tuple[tuple[str, str], ...] = (
     ("parent_2_id", "PEPAR2"),
 )
 
+#: The usual-hours mapping as the operator boundary declares it. ``WKHP`` is
+#: required; the mapping names each of the other raw columns only when the
+#: frame carries it, in this order.
+_ACS_USUAL_HOURS_OUTPUT = "weekly_hours_worked_before_lsr"
+_ACS_USUAL_HOURS_SOURCE_COLUMNS: tuple[str, ...] = ("WKHP", "AGEP", "WKL", "FWKHP")
+_ACS_USUAL_HOURS_REQUIRED_SOURCE_COLUMNS = frozenset({"WKHP"})
+_ACS_USUAL_HOURS_TRANSFORMATION = (
+    "WKHP; zero only for source-confirmed past-year nonwork"
+)
+#: Receipt fields the usual-hours mapping adds to the six every native mapping
+#: emits. The operator boundary requires exactly this set.
+_ACS_USUAL_HOURS_EVIDENCE_KEYS = frozenset(
+    {
+        "source_value_rows",
+        "structural_zero_rows",
+        "source_universe_unavailable_rows",
+        "allocated_value_rows",
+        "allocation_unknown_value_rows",
+        "reference",
+        "allocation_reference_page",
+    }
+)
+
 _FORMULA_OWNED_AGGREGATES = frozenset(
     {
         "employment_income",
@@ -214,6 +237,29 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
     return AcsNativeInputResult(mapped, native)
 
 
+def _acs_usual_hours_native_mapping(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray, Mapping[str, Any]] | None:
+    """Recompute the usual-hours mapping from a person table's raw columns.
+
+    Returns the values and receipt :func:`map_acs_native_inputs` writes for
+    these raw columns, or ``None`` without ``WKHP``. The operator boundary
+    compares both with the live frame, so a usual-hours column passes as
+    native only when it is this mapping of the raw columns beside it.
+    """
+    raw = person.loc[
+        :, [column for column in _ACS_USUAL_HOURS_SOURCE_COLUMNS if column in person]
+    ].copy()
+    register: dict[str, Mapping[str, Any]] = {}
+    _map_usual_hours(raw, register=register)
+    if _ACS_USUAL_HOURS_OUTPUT not in register:
+        return None
+    return (
+        raw[_ACS_USUAL_HOURS_OUTPUT].to_numpy(dtype=np.float64),
+        register[_ACS_USUAL_HOURS_OUTPUT],
+    )
+
+
 def _map_usual_hours(
     person: pd.DataFrame, *, register: dict[str, Mapping[str, Any]]
 ) -> None:
@@ -250,16 +296,16 @@ def _map_usual_hours(
         if "FWKHP" in person
         else pd.Series(np.nan, index=person.index)
     )
-    output = "weekly_hours_worked_before_lsr"
+    output = _ACS_USUAL_HOURS_OUTPUT
     _add_native(
         person,
         output,
         values,
         entity="person",
         source_columns=tuple(
-            column for column in ("WKHP", "AGEP", "WKL", "FWKHP") if column in person
+            column for column in _ACS_USUAL_HOURS_SOURCE_COLUMNS if column in person
         ),
-        transformation="WKHP; zero only for source-confirmed past-year nonwork",
+        transformation=_ACS_USUAL_HOURS_TRANSFORMATION,
         register=register,
     )
     register[output] = {

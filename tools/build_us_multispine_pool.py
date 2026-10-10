@@ -138,6 +138,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_HOUSEHOLD_MASS_SHARES,
+    POOL_NATIVE_PARTIAL_TRANSFER_TARGETS,
     POOL_OPERATOR_ORDER,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
@@ -1101,6 +1102,7 @@ def _load_inputs(
     )
     acs_frame, acs_build = build_acs_pums_unit_frame(acs_source)
     mapped_acs = map_acs_native_inputs(acs_frame)
+    _require_partly_native_acs_inputs(mapped_acs.native_inputs)
     acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
     puf_donor, donor_build = _load_puf_donor(args)
     return _LoadedInputs(
@@ -1113,6 +1115,30 @@ def _load_inputs(
         acs_native_inputs=mapped_acs.native_inputs,
         puf_donor_build=donor_build,
     )
+
+
+def _require_partly_native_acs_inputs(
+    native_inputs: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Require the measured ACS cells the pool keeps and fills around.
+
+    The pinned ACS person archive carries usual hours. If the loader stopped
+    reading them, the transfer would fill every ACS row from ASEC and the pool
+    would drop every measured value without any check failing.
+    """
+
+    missing = sorted(
+        f"{entity}.{column}"
+        for entity, columns in POOL_NATIVE_PARTIAL_TRANSFER_TARGETS.items()
+        for column in columns
+        if native_inputs.get(column, {}).get("entity") != entity
+    )
+    if missing:
+        raise ValueError(
+            "The ACS archives did not yield the native mapping of "
+            f"{missing}; the pool keeps these measured cells and fills only "
+            "the ones the source leaves blank."
+        )
 
 
 def _load_puf_donor(
@@ -2453,10 +2479,12 @@ class _PoolStageCheckpointStore:
                 return None
             missing_outputs = _checkpoint_missing_person_outputs(manifest, stage=stage)
             if missing_outputs:
-                # The retiring pipeline's identity is byte-stable and does not
-                # bind the source-stage outputs, so a checkpoint written before
-                # an output existed still matches it. Reusing it would skip the
-                # stage that adds the column (microcosm#884); recompute instead.
+                # Checkpoint identity does not bind the source-stage outputs,
+                # and the retiring pipeline's identity is byte-stable, so a
+                # checkpoint written before a column existed still matches it.
+                # Reusing it would skip the step that adds the column: the
+                # parent ids (microcosm#884) or measured ACS usual hours.
+                # Recompute instead.
                 self._attempts[stage] = {
                     "load_status": "missing_person_outputs",
                     "ignored_checkpoint": {"missing_person_columns": missing_outputs},
@@ -2940,22 +2968,31 @@ def _frame_schema_payload(frame: Frame) -> dict[str, object]:
 #: Checkpoint stages written after the pre-clone source operators ran, whose
 #: person table must therefore carry every eligibility output.
 _POST_SOURCE_OPERATOR_CHECKPOINT_STAGES = frozenset({"transferred", "simulated"})
+#: A raw column only the ACS arm carries, and the raw usual-hours column the
+#: loader began keeping in the change that mapped it. An ACS arm without the
+#: second was loaded before the pool carried measured usual hours.
+_ACS_ARM_RAW_PERSON_COLUMN = "AGEP"
+_ACS_USUAL_HOURS_RAW_PERSON_COLUMN = "WKHP"
 
 
 def _checkpoint_missing_person_outputs(
     manifest: Mapping[str, object], *, stage: str
 ) -> list[str]:
-    """Parent-id columns a pre-#884 post-operator checkpoint lacks.
+    """Person columns whose absence marks a checkpoint a fresh run would not write.
 
-    A checkpoint written before microcosm#884 carries the other eligibility
-    outputs but not the parent ids; resuming from it would build without
-    them where a fresh run would build with them. Only that shape is stale:
-    a checkpoint with no eligibility outputs at all is left to the existing
-    identity and schema checks.
+    Two shapes are stale, and only these:
+
+    * An ACS arm with no raw ``WKHP``, at any stage. It was loaded before the
+      pool kept measured usual hours, so its ACS hours are absent or wholly
+      donor-filled where a fresh run keeps the measured cells and fills only
+      the blanks. The pinned ACS person archive always carries ``WKHP``.
+    * A post-operator checkpoint written before microcosm#884, which carries
+      the other eligibility outputs but not the parent ids.
+
+    A checkpoint with no ACS arm and no eligibility outputs at all is left to
+    the existing identity and schema checks.
     """
 
-    if stage not in _POST_SOURCE_OPERATOR_CHECKPOINT_STAGES:
-        return []
     schema = manifest.get("frame_schema")
     entities = schema.get("entities") if isinstance(schema, Mapping) else None
     person = entities.get("person") if isinstance(entities, Mapping) else None
@@ -2964,18 +3001,26 @@ def _checkpoint_missing_person_outputs(
     present = {
         str(column.get("name")) for column in person if isinstance(column, Mapping)
     }
+    missing: list[str] = []
+    if (
+        _ACS_ARM_RAW_PERSON_COLUMN in present
+        and _ACS_USUAL_HOURS_RAW_PERSON_COLUMN not in present
+    ):
+        missing.append(_ACS_USUAL_HOURS_RAW_PERSON_COLUMN)
     legacy = [
         column
         for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
         if column not in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
     ]
-    if not all(column in present for column in legacy):
-        return []
-    return [
-        column
-        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
-        if column not in present
-    ]
+    if stage in _POST_SOURCE_OPERATOR_CHECKPOINT_STAGES and all(
+        column in present for column in legacy
+    ):
+        missing.extend(
+            column
+            for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+            if column not in present
+        )
+    return missing
 
 
 def _validate_checkpoint_frame(

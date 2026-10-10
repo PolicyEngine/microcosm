@@ -135,6 +135,7 @@ __all__ = [
     "POOL_CHECKPOINT_STAGE_ORDER",
     "POOL_ENGINE_INPUT_PROJECTION_CONTRACT",
     "POOL_HOUSEHOLD_MASS_SHARES",
+    "POOL_NATIVE_PARTIAL_TRANSFER_TARGETS",
     "POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES",
     "POOL_HOUSING_ASSISTANCE_N_ESTIMATORS",
     "POOL_DERIVE_OPERATOR_ORDER",
@@ -690,6 +691,17 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "household": frozenset({"tenure_type"}),
     "spm_unit": frozenset({"spm_unit_tenure_type"}),
 }
+POOL_NATIVE_PARTIAL_TRANSFER_TARGETS: Mapping[str, frozenset[str]] = {
+    # ACS asks usual hours only of people aged 16 and over, so
+    # ``map_acs_native_inputs`` carries the measured WKHP cells and leaves
+    # the rest blank. The column therefore stays a transfer target: the
+    # source-operator merge and the ACS transfer both write null cells only,
+    # so they keep every measured cell and fill the blanks from ASEC. Moving
+    # it to ``_POOL_NATIVE_COMPLETE_OUTPUTS`` would drop it from the transfer
+    # plan and leave those blanks unfilled.
+    "person": frozenset({"weekly_hours_worked_before_lsr"}),
+}
+"""Inputs ACS maps natively only where its survey universe observes them."""
 _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS: Mapping[
     tuple[str, str], tuple[str, str | None]
 ] = {
@@ -741,10 +753,12 @@ def pool_transfer_target_families() -> TargetFamilies:
 
     The legacy declaration remains unchanged. This pool-local copy excludes
     only the explicitly receipted SCF/SIPP asset deferrals, then adds every
-    persisted historical source-operator output that ACS does not map natively
-    and the legacy plan does not already own. A target appears in exactly one
-    family, so transfer provenance stays unambiguous. Formula-owned outputs are
-    never transfer targets.
+    persisted historical source-operator output that ACS does not map
+    completely and the legacy plan does not already own. A target appears in
+    exactly one family, so transfer provenance stays unambiguous. Formula-owned
+    outputs are never transfer targets. An output ACS maps only inside its
+    survey universe (``POOL_NATIVE_PARTIAL_TRANSFER_TARGETS``) stays a target:
+    the transfer fills its blank cells and leaves the measured ones alone.
 
     The #581 agreement registry supplements this plan with the complete take-up
     inventory and formula-owned SSI. Take-up inputs not owned by QRF remain in
@@ -781,6 +795,18 @@ def pool_transfer_target_families() -> TargetFamilies:
                 declared.update(targets)
         for entity, targets in additions.items():
             plan.setdefault(entity, {})[f"source_operator_{family}"] = targets
+    for entity, partial in POOL_NATIVE_PARTIAL_TRANSFER_TARGETS.items():
+        planned = {
+            column for columns in plan.get(entity, {}).values() for column in columns
+        }
+        unplanned = sorted(partial - planned)
+        complete = sorted(partial & _POOL_NATIVE_COMPLETE_OUTPUTS.get(entity, set()))
+        if unplanned or complete:
+            raise ValueError(
+                f"Partly native {entity} input(s) must stay pool transfer targets "
+                "and out of the native-complete set; "
+                f"unplanned={unplanned}, native_complete={complete}."
+            )
     return plan
 
 

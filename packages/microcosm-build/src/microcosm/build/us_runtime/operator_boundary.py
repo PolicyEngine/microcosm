@@ -5,18 +5,34 @@ must contain none of these canonical outputs.  An ACS frame may carry a
 canonical-looking column only when the exact native-mapping receipt emitted by
 ``map_acs_native_inputs`` accounts for the column, its entity, row counts, and
 raw source columns.
+
+Usual weekly hours are the one native mapping that is also a pool transfer
+target: ACS observes them only inside its survey universe, so the measured
+cells pass this boundary and the declared ASEC-to-ACS transfer later fills the
+cells the source left blank.  Because an operator writes the same column, its
+receipt is not taken on row counts alone.  The boundary recomputes the mapping
+from the raw columns on the frame and requires the live column and the whole
+receipt to match.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.acs_inputs import (
     _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+    _ACS_USUAL_HOURS_EVIDENCE_KEYS,
+    _ACS_USUAL_HOURS_OUTPUT,
+    _ACS_USUAL_HOURS_REQUIRED_SOURCE_COLUMNS,
+    _ACS_USUAL_HOURS_SOURCE_COLUMNS,
+    _ACS_USUAL_HOURS_TRANSFORMATION,
     ACS_UNRESOLVED_PARENT_ID_MAPPINGS,
+    _acs_usual_hours_native_mapping,
 )
 from microcosm.build.us_runtime.acs_transfer import ACS_DERIVED_TRANSFER_INPUTS
 from microcosm.build.us_runtime.adult_care import US_ADULT_CARE_OUTPUT_COLUMNS
@@ -138,6 +154,11 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
     "age": ("person", ("AGEP",), "identity"),
     "is_female": ("person", ("SEX",), "SEX == 2"),
     "is_household_head": ("person", ("RELSHIPP",), "RELSHIPP == 20"),
+    _ACS_USUAL_HOURS_OUTPUT: (
+        "person",
+        _ACS_USUAL_HOURS_SOURCE_COLUMNS,
+        _ACS_USUAL_HOURS_TRANSFORMATION,
+    ),
     "employment_income_before_lsr": (
         "person",
         ("WAGP", "ADJINC"),
@@ -202,6 +223,32 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
         )
         for output, pointer_column in ACS_UNRESOLVED_PARENT_ID_MAPPINGS
     },
+}
+
+
+@dataclass(frozen=True)
+class _RecomputedNativeInput:
+    """A native mapping whose output a pool operator also writes.
+
+    ``required_source_columns`` are the contract's raw columns the mapping
+    always names; it names each of the others only when the output's own
+    entity table carries it. ``evidence_keys`` are the receipt fields beyond
+    ``_NATIVE_INPUT_RECEIPT_KEYS``. ``recompute`` returns the values and
+    receipt the mapping writes for an entity table's raw columns, or ``None``
+    when the table cannot carry the mapping.
+    """
+
+    required_source_columns: frozenset[str]
+    evidence_keys: frozenset[str]
+    recompute: Callable[[pd.DataFrame], tuple[np.ndarray, Mapping[str, Any]] | None]
+
+
+_ACS_RECOMPUTED_NATIVE_INPUTS: Mapping[str, _RecomputedNativeInput] = {
+    _ACS_USUAL_HOURS_OUTPUT: _RecomputedNativeInput(
+        required_source_columns=_ACS_USUAL_HOURS_REQUIRED_SOURCE_COLUMNS,
+        evidence_keys=_ACS_USUAL_HOURS_EVIDENCE_KEYS,
+        recompute=_acs_usual_hours_native_mapping,
+    ),
 }
 _CAPITAL_GAINS_TAIL_PROVENANCE_COLUMNS = frozenset(
     {
@@ -450,8 +497,10 @@ def _validated_native_inputs(
                 f"{label} native_inputs[{output!r}] is not a declared ACS native "
                 "mapping output."
             )
+        recomputed = _ACS_RECOMPUTED_NATIVE_INPUTS.get(output)
         if not isinstance(raw_receipt, Mapping) or frozenset(raw_receipt) != (
             _NATIVE_INPUT_RECEIPT_KEYS
+            | (recomputed.evidence_keys if recomputed is not None else frozenset())
         ):
             raise ValueError(
                 f"{label} native_inputs[{output!r}] is not an exact ACS native "
@@ -468,6 +517,14 @@ def _validated_native_inputs(
             raise ValueError(
                 f"{label} native_inputs[{output!r}].entity must match the declared "
                 f"ACS mapping entity {expected_entity!r}."
+            )
+        if recomputed is not None and expected_entity in frame.entities:
+            entity_columns = frame.table(expected_entity).columns
+            expected_sources = tuple(
+                column
+                for column in expected_sources
+                if column in recomputed.required_source_columns
+                or column in entity_columns
             )
         if (
             not isinstance(source_columns, list)
@@ -504,8 +561,69 @@ def _validated_native_inputs(
                 f"{label} native_inputs[{output!r}] row counts do not match the "
                 "live frame."
             )
+        if recomputed is not None:
+            _require_recomputed_native_input(
+                table,
+                output=output,
+                receipt=raw_receipt,
+                recompute=recomputed.recompute,
+                label=label,
+            )
         allowed.add((entity, output))
     return frozenset(allowed)
+
+
+def _require_recomputed_native_input(
+    table: pd.DataFrame,
+    *,
+    output: str,
+    receipt: Mapping[str, Any],
+    recompute: Callable[[pd.DataFrame], tuple[np.ndarray, Mapping[str, Any]] | None],
+    label: str,
+) -> None:
+    """Require a column and its receipt to be the mapping of its raw columns."""
+
+    try:
+        recomputed = recompute(table)
+    except ValueError as error:
+        raise ValueError(
+            f"{label} native_inputs[{output!r}] cannot be recomputed from the raw "
+            f"ACS columns: {error}"
+        ) from error
+    if recomputed is None:
+        raise ValueError(
+            f"{label} native_inputs[{output!r}] cannot be recomputed from the raw "
+            "ACS columns: the frame does not carry them."
+        )
+    expected_values, expected_receipt = recomputed
+    if dict(receipt) != dict(expected_receipt):
+        raise ValueError(
+            f"{label} native_inputs[{output!r}] does not match the receipt "
+            "recomputed from the raw ACS columns."
+        )
+    live = table[output]
+    if live.dtype != np.dtype(np.float64) or not _same_float_cells(
+        live.to_numpy(), expected_values
+    ):
+        raise ValueError(
+            f"{label} {output!r} is not the native mapping of the raw ACS columns; "
+            "an operator-produced, filled or edited column cannot pass as native."
+        )
+
+
+def _same_float_cells(left: np.ndarray, right: np.ndarray) -> bool:
+    """Compare two float64 vectors cell by cell, nulls and signed zeros included."""
+
+    if left.shape != right.shape:
+        return False
+    missing = np.isnan(left)
+    if not np.array_equal(missing, np.isnan(right)):
+        return False
+    observed = ~missing
+    return bool(
+        np.array_equal(left[observed], right[observed])
+        and np.array_equal(np.signbit(left[observed]), np.signbit(right[observed]))
+    )
 
 
 def _require_row_count(

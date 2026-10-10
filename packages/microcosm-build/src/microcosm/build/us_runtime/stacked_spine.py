@@ -9501,9 +9501,10 @@ def _gap_fill_stacked_spine_evaluate(
        whole-donor fit of that projection.
     3. **Banked transfer** — the reviewed #608 target-at-a-time banking
        machinery is reused unchanged via ``target_banks[direction.name]``.
-    4. **Post-verification** — donor-origin cells must be byte-identical
-       before and after, and no null may remain on authorized rows beyond
-       the transfer's receipted unmodeled rows.
+    4. **Post-verification** — donor-origin cells and every recipient cell
+       observed before the transfer must be byte-identical before and after,
+       and no null may remain on authorized rows beyond the transfer's
+       receipted unmodeled rows.
 
     Returns a :class:`GapFillResult` whose receipt records, per direction and
     target, the authorized-null, imputed, unmodeled, and residual-null
@@ -9568,6 +9569,15 @@ def _gap_fill_stacked_spine_evaluate(
             )
             for entity, targets in _direction_entity_targets(direction).items()
         }
+        observed_recipient_snapshot = {
+            entity: _observed_recipient_targets_snapshot(
+                current,
+                entity=entity,
+                targets=targets,
+                channel=direction.recipient_channel,
+            )
+            for entity, targets in _direction_entity_targets(direction).items()
+        }
         result = transfer_acs_inputs(
             current,
             donor,
@@ -9599,6 +9609,7 @@ def _gap_fill_stacked_spine_evaluate(
             direction=direction,
             pre_counts=pre_counts,
             donor_snapshot=donor_snapshot,
+            observed_recipient_snapshot=observed_recipient_snapshot,
             result=result,
         )
         targets = direction_receipt["targets"]
@@ -9853,6 +9864,31 @@ def _direction_targets_snapshot(
     return table.loc[mask, present].copy(deep=True)
 
 
+def _observed_recipient_targets_snapshot(
+    frame: Frame,
+    *,
+    entity: str,
+    targets: Sequence[str],
+    channel: str,
+) -> dict[str, pd.Series]:
+    """Copy each target's recipient-origin cells that are already observed.
+
+    A recipient can carry a target natively; ACS usual hours are measured for
+    everyone 16 and over. The transfer fills nulls only, so these cells must
+    leave the gap fill byte-identical.
+    """
+
+    table = frame.table(entity)
+    recipient_rows = table[support_channel_column(entity)].astype(str).eq(channel)
+    return {
+        target: table.loc[recipient_rows & table[target].notna(), target].copy(
+            deep=True
+        )
+        for target in targets
+        if target in table.columns
+    }
+
+
 def _canonical_donor_series_payload(
     series: pd.Series,
     *,
@@ -10088,6 +10124,7 @@ def _verify_gap_fill_outcome(
     direction: GapFillDirection,
     pre_counts: Mapping[tuple[str, str], Mapping[str, int]],
     donor_snapshot: Mapping[str, pd.DataFrame],
+    observed_recipient_snapshot: Mapping[str, Mapping[str, pd.Series]],
     result: AcsTransferResult,
 ) -> dict[str, object]:
     """Verify donor invariance and residual nulls; build the direction receipt."""
@@ -10141,6 +10178,22 @@ def _verify_gap_fill_outcome(
                         f"{direction.donor_channel!r}; canonical donor payload "
                         "changed during gap-fill transfer."
                     )
+                observed_before = observed_recipient_snapshot[entity].get(target)
+                if observed_before is not None and len(observed_before):
+                    observed_after = table.loc[observed_before.index, target]
+                    if _canonical_donor_series_payload(
+                        observed_before,
+                        boundary=f"{label} observed recipient identity before transfer",
+                    ) != _canonical_donor_series_payload(
+                        observed_after,
+                        boundary=f"{label} observed recipient identity after transfer",
+                    ):
+                        failures.append(
+                            f"{label}: observed recipient byte identity failed for "
+                            f"origin {direction.recipient_channel!r}; "
+                            f"{len(observed_before)} cell(s) observed before the "
+                            "transfer must leave it unchanged."
+                        )
                 null_mask = table[target].isna()
                 residual_mask = null_mask & recipient_rows
                 residual_nulls = int(residual_mask.sum())

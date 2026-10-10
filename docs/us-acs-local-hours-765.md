@@ -115,3 +115,15 @@ counterfactuals, and comparisons against the live data on the same protected
 national/state/CD evidence. Existing default-filled H5 files require their
 original missingness/source provenance and a separately reviewed repair
 contract. The sparse SPM enrichment parent and certificate are unchanged.
+
+## The stacked pool
+
+`map_acs_native_inputs` is shared with `tools/build_us_multispine_pool.py`, so
+the stacked pool carries the same native `WKHP` mapping on its ACS arm. The
+pool's operator boundary admits it as a declared native input and recomputes
+it from the raw columns. The pool has no under-15 completion policy of its
+own: the cells the mapping leaves blank (everyone under 16) are filled by the
+pool's existing ASEC-to-ACS early gap fill, whose ASEC donors carry zero below
+age 15 and reported hours at 15. See
+[the operator ordering](us-multispine-operator-ordering.md#production-stacked-pool-build).
+
