@@ -24,6 +24,7 @@ from microcosm.frame.rules_kernels import (
     SimulateSolveZeroKernel,
 )
 from microcosm.graph import KernelRegistry, Node, Owned, Slice
+from microcosm.graph import kernel as graph_kernel
 from test_support.microcosm_frame.kernels import _context
 from tools import transport_bridge_differential as differential_tool
 
@@ -472,6 +473,69 @@ def test_adding_same_adapter_binding_does_not_change_bridge_implementation_hash(
         first = cls({RATE_REF: RatesEngine()})
         second = cls({RATE_REF: RatesEngine(), "unused": RatesEngine()})
         assert first.implementation_hash() == second.implementation_hash()
+
+
+@pytest.mark.parametrize("cls", [SimulateCounterfactualKernel, SimulateSolveZeroKernel])
+@pytest.mark.parametrize("distribution", ["numpy", "pandas"])
+def test_bridge_numerical_dependency_version_changes_implementation_hash(
+    monkeypatch, cls, distribution
+):
+    kernel = cls({RATE_REF: RatesEngine()})
+    before = kernel.implementation_hash()
+    installed_version = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda name: (
+            installed_version(name) + (".changed" if name == distribution else "")
+        ),
+    )
+    assert kernel.implementation_hash() != before
+
+
+@pytest.mark.parametrize("cls", [SimulateCounterfactualKernel, SimulateSolveZeroKernel])
+def test_bridge_implementation_hash_is_stable_for_unchanged_dependency_versions(
+    monkeypatch, cls
+):
+    kernel = cls({RATE_REF: RatesEngine()})
+    before = kernel.implementation_hash()
+    versions = {
+        name: graph_kernel.importlib_metadata.version(name)
+        for name in kernel.capabilities.dependencies
+    }
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata, "version", versions.__getitem__
+    )
+    assert kernel.implementation_hash() == before
+    assert cls({RATE_REF: RatesEngine()}).implementation_hash() == before
+
+
+@pytest.mark.parametrize("cls", [SimulateCounterfactualKernel, SimulateSolveZeroKernel])
+def test_bridge_implementation_hash_ignores_unused_scipy_version(monkeypatch, cls):
+    kernel = cls({RATE_REF: RatesEngine()})
+    before = kernel.implementation_hash()
+    installed_version = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda name: installed_version(name) + (".changed" if name == "scipy" else ""),
+    )
+    assert kernel.implementation_hash() == before
+
+
+@pytest.mark.parametrize("cls", [SimulateCounterfactualKernel, SimulateSolveZeroKernel])
+def test_bridge_declared_engine_dependency_version_changes_implementation_hash(
+    monkeypatch, cls
+):
+    kernel = cls({RATE_REF: RatesEngine()}, dependencies=("scipy",))
+    before = kernel.implementation_hash()
+    installed_version = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda name: installed_version(name) + (".changed" if name == "scipy" else ""),
+    )
+    assert kernel.implementation_hash() != before
 
 
 @pytest.mark.parametrize(

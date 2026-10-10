@@ -21,6 +21,7 @@ import hashlib
 import json
 import math
 from collections.abc import Mapping
+from dataclasses import replace
 from types import MappingProxyType
 
 import numpy as np
@@ -204,9 +205,26 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
     contain all policy coefficients and overrides; ``resource_sha256`` may
     bind the declaring spec resource. Neither engine bindings nor spec
     fingerprints enter the implementation hash.
+
+    NumPy and pandas versions enter the implementation hash because bridge
+    arithmetic and person/group reductions use their numerical operations.
+    Caller-supplied dependencies also bind the engines' behavior.
     """
 
     ref = "simulate.counterfactual@1"
+
+    def __init__(
+        self,
+        engines: Mapping[str, RulesEngine],
+        dependencies: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(engines, dependencies)
+        self.capabilities = replace(
+            self.capabilities,
+            dependencies=tuple(
+                dict.fromkeys((*self.capabilities.dependencies, "numpy", "pandas"))
+            ),
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         components, terms, frame = self._prepare(context)
