@@ -70,6 +70,7 @@ __all__ = [
     "refuse_denied_pool_h5_digest",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
+    "US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION",
     "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
@@ -148,7 +149,13 @@ _LEGACY_POOL_CHECKPOINT_ARTIFACT_KIND = (
     "populace_us_multispine_pool_checkpoint_provenance"
 )
 _LEGACY_POOL_CHECKPOINT_SCHEMA_VERSION = 1
-_LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION = 3
+# 4: PUF finalization restores CPS-reported Social Security on tax-detail
+# clones. Earlier transferred and simulated checkpoints must rebuild on resume.
+US_LEGACY_MULTISPINE_POOL_CHECKPOINT_MATERIALIZER_VERSION = 4
+# Finished schema-4 publications retain the same reading contract. Keep this
+# allowlist independent of the current resume version so future producer bumps
+# require an explicit publication-compatibility review.
+_LEGACY_READABLE_CHECKPOINT_MATERIALIZER_VERSIONS = frozenset({3, 4})
 _LEGACY_REQUIRED_STAGE_RECEIPTS = frozenset({"impute", "derive", "seed", "simulate"})
 _STACKED_ONLY_MANIFEST_FIELDS = frozenset(
     {
@@ -214,7 +221,7 @@ def _validate_canonical_legacy_envelope(
     *,
     manifest_path: Path,
 ) -> None:
-    """Require positive identity for the frozen schema-4 publication route."""
+    """Authenticate known schema-4 publications, independently of resume."""
 
     failures: list[str] = []
     if manifest.get("operator_order") != list(_LEGACY_POOL_OPERATOR_ORDER):
@@ -231,18 +238,23 @@ def _validate_canonical_legacy_envelope(
         expected_checkpoint_identity = {
             "artifact_kind": _LEGACY_POOL_CHECKPOINT_ARTIFACT_KIND,
             "schema_version": _LEGACY_POOL_CHECKPOINT_SCHEMA_VERSION,
-            "materializer_version": _LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION,
         }
-        if any(
-            checkpoints.get(key) != value
-            for key, value in expected_checkpoint_identity.items()
+        materializer_version = checkpoints.get("materializer_version")
+        if (
+            type(materializer_version) is not int
+            or materializer_version
+            not in _LEGACY_READABLE_CHECKPOINT_MATERIALIZER_VERSIONS
+            or any(
+                checkpoints.get(key) != value
+                for key, value in expected_checkpoint_identity.items()
+            )
         ):
             failures.append("stage_checkpoints.identity")
         stages = checkpoints.get("stages")
         if isinstance(stages, Mapping) and any(
             not isinstance(receipt, Mapping)
-            or receipt.get("materializer_version")
-            != _LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION
+            or type(receipt.get("materializer_version")) is not int
+            or receipt.get("materializer_version") != materializer_version
             for receipt in stages.values()
         ):
             failures.append("stage_checkpoints.stages")
