@@ -1,1 +1,0 @@
-The SPI employment, self-employment and private-pension amount targets name hmrc.itl_2026.total_income_growth_by_total_income_band in the contract, as their committed references have since #1063, so a regeneration no longer reverts #1063; the committed national references are the generator's exact output again (microcosm#1123).
