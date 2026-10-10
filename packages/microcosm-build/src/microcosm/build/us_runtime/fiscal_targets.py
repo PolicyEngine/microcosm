@@ -350,12 +350,19 @@ _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
 # An IRS SOI table title ends with the tax year it is for ("..., Tax Year
 # 2020"). The span is the year or years that follow "Tax Year(s)", so a title
 # for several years ("Tax Years 2019 and 2020") is told apart from one year.
+# The repetition is possessive, so the span cannot give back years to pass the
+# lookahead: a separator followed by a one- or two-digit fragment ("2020-21",
+# "2020 to 21", "2019 and 2020/21") abbreviates a year the span cannot read,
+# and nothing matches. Any other number after a separator ("2020, 1040
+# Returns", "2020 - 1st Release") is not a year and does not stop the match.
 _TITLE_YEAR = r"(?<!\d)(?:19|20)\d{2}(?!\d)"
+_TITLE_YEAR_SEPARATOR = (
+    r"\s*(?:,|;|/|-|–|—|−|&|\bto\b|\band\b|\bthrough\b|\bthru\b|\bor\b|\bvs\b\.?)"
+    r"\s*(?:and\s+)?"
+)
 _SOURCE_TABLE_TAX_YEAR_SPAN = re.compile(
-    rf"\btax\s+years?\s+({_TITLE_YEAR}"
-    rf"(?:\s*(?:,|-|–|—|&|\bto\b|\band\b|\bthrough\b)\s*(?:and\s+)?{_TITLE_YEAR})*)"
-    # "2020-21" abbreviates a second year the span cannot read: no match.
-    r"(?!\s*[-–—/]\s*\d)",
+    rf"\btax\s+years?\s+({_TITLE_YEAR}(?:{_TITLE_YEAR_SEPARATOR}{_TITLE_YEAR})*+)"
+    rf"(?!{_TITLE_YEAR_SEPARATOR}\d{{1,2}}(?!\w))",
     re.IGNORECASE,
 )
 _TAX_YEAR_VINTAGE = re.compile(r"tax_year_(\d{4})")
@@ -2496,7 +2503,7 @@ def _w2_item_tax_year_mismatches(facts: Iterable[object]) -> tuple[str, ...]:
         stamped = [f"period {_period_value(fact)!r}"]
         agrees = _aging_period_year(_period_value(fact)) == table_year
         vintage = _str_at(fact, "source", "vintage")
-        vintage_year = _TAX_YEAR_VINTAGE.fullmatch(vintage)
+        vintage_year = _TAX_YEAR_VINTAGE.match(vintage)
         if vintage_year is not None:
             stamped.append(f"vintage {vintage!r}")
             agrees = agrees and int(vintage_year.group(1)) == table_year

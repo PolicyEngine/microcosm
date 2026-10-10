@@ -72,6 +72,19 @@ _TIPS_AMOUNT = (
         ("Individual returns, Tax Year 2020 through 2022", None),
         ("Table 1, Tax Year 2019, and Table 2, Tax Year 2020", None),
         ("SPI Tables 3.1 to 3.11, tax year 2023-24", None),
+        ("Individual returns, Tax Years 2019 and 2020/21", None),
+        ("Individual returns, Tax Year 2020 and 2021/22", None),
+        ("Individual returns, Tax Years 2020; 2021", None),
+        ("Individual returns, Tax Year 2020 to 21", None),
+        ("Individual returns, Tax Years 2020; 2020", 2020),
+        ("Tax Year 2020, 1040 Returns", 2020),
+        ("Tax Year 2020 - 1st Release", 2020),
+        ("Tax Year 2020 (Filing Year 2021)", 2020),
+        ("Tax Year 2020: All Returns", 2020),
+        ("Individual returns, Tax Year 2020 or 2021", None),
+        ("Individual returns, Tax Years 2020 vs. 2021", None),
+        ("Individual returns, Tax Years 2020 thru 2021", None),
+        ("Individual returns, Tax Years 2020 − 2021", None),
         ("Tax Year 20201", None),
         ("Estimates of Federal Tax Expenditures for Fiscal Years 2024-2028", None),
         ("Calendar Years 1987-2024", None),
@@ -101,7 +114,25 @@ def test_source_table_tax_year_properties() -> None:
         max_size=30,
     ).filter(lambda text: "tax year" not in " ".join(text.lower().split()))
     connectors = st.sampled_from(
-        [" and ", "-", "–", "—", " to ", " through ", ", ", " & "]
+        [
+            " and ",
+            "-",
+            "–",
+            "—",
+            "−",
+            " to ",
+            " through ",
+            " thru ",
+            " or ",
+            " vs. ",
+            ", ",
+            " & ",
+            "; ",
+            "/",
+        ]
+    )
+    incomplete_tails = st.sampled_from(
+        ["-21", "–21", "/21", " to 21", " and 21", "; 21", ", 21"]
     )
     markers = st.sampled_from(["Tax Year", "tax year", "TAX YEAR", "Tax  Year"])
 
@@ -124,6 +155,21 @@ def test_source_table_tax_year_properties() -> None:
         title = f"{prefix} Tax Years {first}{connector}{second}{suffix}"
         assert reader(title) == (first if first == second else None)
 
+    @settings(max_examples=400, deadline=None)
+    @given(
+        prefix=filler,
+        first=years,
+        second=years,
+        connector=connectors,
+        tail=incomplete_tails,
+    )
+    def an_unreadable_last_year_names_no_tax_year(
+        prefix, first, second, connector, tail
+    ) -> None:
+        # The span may not give back "2020" to pass "2020 and 2021/22".
+        assert reader(f"{prefix} Tax Year {first}{tail}") is None
+        assert reader(f"{prefix} Tax Years {first}{connector}{second}{tail}") is None
+
     @settings(max_examples=200, deadline=None)
     @given(text=filler, year=years)
     def no_marker_means_no_tax_year(text, year) -> None:
@@ -133,6 +179,7 @@ def test_source_table_tax_year_properties() -> None:
 
     single_year_reads_back()
     two_years_never_read_as_one()
+    an_unreadable_last_year_names_no_tax_year()
     no_marker_means_no_tax_year()
 
 
@@ -272,10 +319,13 @@ def test_compile_refuses_a_w2_item_fact_whose_table_names_no_tax_year() -> None:
             )
 
 
-def test_compile_refuses_a_w2_item_vintage_that_disagrees_with_the_table() -> None:
-    fact = _w2_item_fact(2020, source_vintage="tax_year_2023")
+@pytest.mark.parametrize("vintage", ["tax_year_2023", "tax_year_2023_revised"])
+def test_compile_refuses_a_w2_item_vintage_that_disagrees_with_the_table(
+    vintage: str,
+) -> None:
+    fact = _w2_item_fact(2020, source_vintage=vintage)
     with pytest.raises(
-        ValueError, match=re.escape("period 2020 and vintage 'tax_year_2023'")
+        ValueError, match=re.escape(f"period 2020 and vintage {vintage!r}")
     ):
         compile_us_fiscal_target_registry(
             [*packaged_reference_facts(), fact], allow_unaged_dollar_targets=True
