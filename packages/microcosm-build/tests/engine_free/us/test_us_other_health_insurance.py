@@ -561,77 +561,43 @@ def test_legacy_two_column_surface_is_rebuilt_or_refused(
         )
 
 
-def test_esi_exclusion_pins_complete_hermetic_source_unavailability_evidence() -> None:
+def test_esi_employer_premium_is_owned_by_its_own_stage_not_proxied_here() -> None:
+    """microcosm#454 closed the source-unavailability gap this test once pinned.
+
+    The retired derivation's NOW_* fields are restored from the pinned Census
+    person files and the ``meps_esi_premiums`` stage reads them. This stage
+    still never proxies the employer premium, and neither stage may fall back
+    on ``has_esi`` or ``NOW_GRP``.
+    """
+
     payload = json.loads(
         files("microcosm.build.us").joinpath("ecps_parity_known_gaps.json").read_text()
     )
-    entry = payload["known_gaps"]["employer_sponsored_insurance_premiums"]
-    evidence = entry["evidence"]
-
-    assert entry["reason"].startswith("SOURCE UNAVAILABILITY WITH EVIDENCE:")
-    assert evidence["classification"] == "source_unavailability"
-    assert evidence["retired_derivation"] == {
-        "repository_owner": "PolicyEngine",
-        "repository_name_parts": ["policyengine-", "us-data"],
-        "commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
-        "path_parts": ["policyengine_", "us_data", "datasets", "cps", "cps.py"],
-        "lines": "197-271,1575-1581",
-    }
-    assert evidence["optional_source_fields"]["lines"] == "13-55"
-    assert evidence["required_columns"] == [
-        "NOW_OWNGRP",
-        "NOW_HIPAID",
-        "NOW_GRPFTYP",
-        "PHIP_VAL",
-    ]
-    evidence_hashes = {
-        item["filename"]: item["sha256"] for item in evidence["hermetic_inputs"]
-    }
-    build_summary = json.loads(
-        (ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()
-    )
-    recorded_hashes = {
-        Path(item["path"]).name: item["sha256"]
-        for item in build_summary["base_source"]["sources"]
-    }
-    assert evidence_hashes == recorded_hashes
-    assert set(evidence_hashes) == {
-        "census_cps_2022.h5",
-        "census_cps_2023.h5",
-        "census_cps_2024.h5",
-    }
-    for item in evidence["hermetic_inputs"]:
-        assert item["present_columns"] == ["PHIP_VAL"]
-        assert item["missing_columns"] == [
-            "NOW_OWNGRP",
-            "NOW_HIPAID",
-            "NOW_GRPFTYP",
-        ]
-    assert "buildj_base.sh lines 65-69" in evidence["hermetic_build_contract"]
-    assert "base_j.summary.json lines 55-75" in evidence["hermetic_build_contract"]
-    build_script = (ROOT / "experiments/build_j_recert/buildj_base.sh").read_text()
-    for year in (2022, 2023, 2024):
-        assert f'--asec-h5 {year}="$USD/census_cps_{year}.h5"' in build_script
+    assert "employer_sponsored_insurance_premiums" not in payload["known_gaps"]
 
     esi_stage = US_SOURCE_MANIFEST.stage_map()["meps_esi_premiums"]
-    assignment = next(
-        operation
-        for operation in esi_stage.operations
-        if operation.kind == "assign_by_plan_type"
+    assert "employer_sponsored_insurance_premiums" in esi_stage.outputs
+    assert "employer_sponsored_insurance_premiums" not in (
+        us_other_health_insurance_stage_spec().outputs
     )
-    assert assignment.parameters["inputs"] == [
+    microdata = next(
+        artifact
+        for artifact in esi_stage.artifacts
+        if artifact["kind"] == "public_microdata"
+    )
+    source_columns = set(microdata["source_columns"])
+    assert {
         "NOW_OWNGRP",
         "NOW_HIPAID",
         "NOW_GRPFTYP",
+        "NOW_GRPFTYP2",
         "PHIP_VAL",
-    ]
-    assert assignment.parameters["source_unavailable_when_missing"] == [
-        "NOW_OWNGRP",
-        "NOW_HIPAID",
-        "NOW_GRPFTYP",
-    ]
-    forbidden_proxies = {"has_esi", "is_esi_dependent", "tax_unit_size", "state_fips"}
-    assert forbidden_proxies.isdisjoint(assignment.parameters["inputs"])
+    } <= source_columns
+    forbidden_proxies = {"has_esi", "NOW_GRP", "is_esi_dependent", "tax_unit_size"}
+    assert forbidden_proxies.isdisjoint(source_columns)
+    assert not any(
+        operation.kind == "assign_by_plan_type" for operation in esi_stage.operations
+    )
 
 
 def test_shipped_se_health_premium_neutralization_probe() -> None:

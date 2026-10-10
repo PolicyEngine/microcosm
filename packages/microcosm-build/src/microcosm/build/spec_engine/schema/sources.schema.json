@@ -1718,6 +1718,127 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "anchor": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "series": {
+         "type": "string"
+        },
+        "sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        },
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "values": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "number"
+         }
+        }
+       },
+       "required": [
+        "series",
+        "sha256",
+        "source",
+        "values"
+       ]
+      },
+      "cells_resource": {
+       "type": "string"
+      },
+      "cells_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "government_cell_aging": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "kind": {
+       "const": "derive_employer_sponsored_insurance_premiums"
+      },
+      "payment_column": {
+       "type": "string"
+      },
+      "payment_rule": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "sector_column": {
+       "type": "string"
+      },
+      "size_column": {
+       "type": "string"
+      },
+      "suppressed_cell_fallback": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "tier_column": {
+       "type": "string"
+      },
+      "universe": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      }
+     },
+     "required": [
+      "anchor",
+      "cells_resource",
+      "cells_sha256",
+      "government_cell_aging",
+      "kind",
+      "payment_column",
+      "payment_rule",
+      "sector_column",
+      "size_column",
+      "suppressed_cell_fallback",
+      "tier_column",
+      "universe"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "employer_payment_codes": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "kind": {
+       "const": "derive_pre_tax_health_insurance_premiums"
+      },
+      "pre_tax_share": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "premium_column": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "wage_column": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "employer_payment_codes",
+      "kind",
+      "pre_tax_share",
+      "premium_column",
+      "seed_from_build_config",
+      "wage_column"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "employment_allocation_flag": {
        "type": "string"
       },

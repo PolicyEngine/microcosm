@@ -128,7 +128,7 @@ def test_parity_resources_and_generator_restate_the_pin() -> None:
     assert manifest["reference"]["feed"] == generator.DEFAULT_FEED_NAME
     assert generator.DEFAULT_FEED_PATH.name == generator.DEFAULT_FEED_NAME
     assert manifest["reference"]["compiled_families"] == "32"
-    assert manifest["reference"]["reviewed_exclusions"] == "52"
+    assert manifest["reference"]["reviewed_exclusions"] == "53"
 
 
 def test_scope_names_every_pinned_pair_once() -> None:

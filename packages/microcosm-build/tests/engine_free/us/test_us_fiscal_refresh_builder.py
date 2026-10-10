@@ -6403,10 +6403,25 @@ def _run_green_register_release(
         ),
     }
     expected_gate_evidence = {
+        "esi_premiums": "bound",
         "input_coverage": "bound",
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+    }
+    # microcosm#454: the ESI premium signal gate graded the base before the
+    # solve and the export after it; the anchor gate graded the export at the
+    # release period and its verdict is the bound esi_premiums evidence.
+    assert captured["esi_premiums_signal_gate_calls"] == 2
+    assert captured["esi_premiums_anchor_periods"] == [builder.PERIOD]
+    assert json.loads((release_dir / "esi_premiums.json").read_text()) == {
+        "schema_version": 1,
+        "enforced": True,
+        "esi_premiums": {
+            "passed": True,
+            "failures": [],
+            "details": {"checked": True},
+        },
     }
     for block in (build_manifest, release_manifest["build"]):
         assert block["gate_evidence"] == expected_gate_evidence
@@ -8252,6 +8267,32 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder,
         "us_other_health_insurance_signal_gate",
         fake_other_health_insurance_signal_gate,
+    )
+
+    def fake_esi_premiums_signal_gate(frame):
+        # Called on the base before the solve and on the export after it.
+        captured["esi_premiums_signal_gate_calls"] = (
+            captured.get("esi_premiums_signal_gate_calls", 0) + 1
+        )
+        return builder.GateResult(
+            name="esi_premiums_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    def fake_esi_premiums_anchor_gate(frame, *, time_period):
+        captured.setdefault("esi_premiums_anchor_periods", []).append(time_period)
+        return builder.GateResult(
+            name="esi_premiums_anchor",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_signal_gate", fake_esi_premiums_signal_gate
+    )
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_anchor_gate", fake_esi_premiums_anchor_gate
     )
     monkeypatch.setattr(
         builder,
@@ -12357,7 +12398,7 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:
     """Route A remediation PR-3: a certified waiver must ship with the
-    release. The four gate verdicts become release artifacts, and both
+    release. The five gate verdicts become release artifacts, and both
     manifests record the register the tail gate evaluated, the export-mass
     reference, the solve's thread geometry and the exclusion receipt."""
     from microcosm.data.contract import (
@@ -12394,7 +12435,11 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         == []
     )
     assert failures == []
-    for filename in ("input_coverage.json", "input_mass_parity.json"):
+    for filename in (
+        "esi_premiums.json",
+        "input_coverage.json",
+        "input_mass_parity.json",
+    ):
         (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
     (release_dir / "reform_coverage_smoke.json").write_text(
         '{"schema_version": 1, "enforced": true}'
@@ -12520,6 +12565,7 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
     assert build["fiscal_target_exclusion_receipt"]["receipt_sha256"] is None
     # A verdict that was not written is named, never silently missing.
     assert build["gate_evidence"] == {
+        "esi_premiums": "not_evaluated",
         "input_coverage": "not_evaluated",
         "input_mass_parity": "not_evaluated",
         "qrf_tail_concentration": "bound",
@@ -12544,13 +12590,14 @@ def test_build_manifests_without_gate_evidence_binds_none() -> None:
 def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
     """A skipped smoke and a gate that crashed under earlier failures both
     leave no verdict; the status block tells them apart. A gate cannot be
-    both skipped and bound, and only the four bound gates can be skipped."""
+    both skipped and bound, and only the five bound gates can be skipped."""
     builder = _load_builder_module()
     bound = {"input_coverage": {}, "input_mass_parity": {}}
 
     assert builder._gate_evidence_status(
         bound, skipped_gates=("reform_coverage_smoke",)
     ) == {
+        "esi_premiums": "not_evaluated",
         "input_coverage": "bound",
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "not_evaluated",

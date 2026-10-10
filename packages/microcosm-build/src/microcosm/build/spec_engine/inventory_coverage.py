@@ -294,6 +294,7 @@ EXPECTED_SEED_GROUPS: Mapping[str, tuple[str, ...]] = {
         "source_joint_count_calibration",
         "snap_take_up_assignment",
         "pregnancy_assignment",
+        "pre_tax_health_premium_assignment",
         "wic_claim_assignment",
         "snap_discretionary_exemption_assignment",
         "immigration_ead_workers_assignment",
@@ -350,18 +351,18 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007",
+    "full_checkpoint": "69942294839a762738095894b87f6e72ea4faac03ebc020a4406c4f27bbb5c40",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "cc34ba11288d01145fc2dc1a669df3f7c4ef2019d73afb02dd8eeee852b16d20",
+    "late_resource_semantics": "b4f9cbbee81eff7f59304a114ed105910140f0799797c87f26ae9eb5090060f8",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-    "seed_map": "b4d6ec9c11ce323d83319a3d0289e0cf7216a7936d6c6f08cef0a463ad369641",
-    "seed_protocol": "114217a2918329b0601d94deb8ed83f73919584b85ca8aabe45a40665afb6560",
-    "source_manifest": "f4f8bfeb79268a4043a843b47cec1d1c0e58e9f5dd6bc23417ada95446dd7b8e",
+    "seed_map": "bdb924d0b21e55e387a533d179dc6c0f7d239bee79bd9de640729af17c9b2301",
+    "seed_protocol": "9c2eb0d42f0ebd7dab6f0aebad37b3bc6454ec6b3235df0a489e361d3a4f6b8d",
+    "source_manifest": "b7f2650fd828f593bb53c8f6d37cbf1e0318111b8a81d4bc279954ed25e33fcd",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
 }
@@ -434,9 +435,9 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "producer_virtual_resources": 75,
     "release_rungs": 5,
     "resolved_references": 334,
-    "seed_owner_bindings": 112,
-    "seed_owner_rows": 54,
-    "seed_sites": 53,
+    "seed_owner_bindings": 113,
+    "seed_owner_rows": 55,
+    "seed_sites": 54,
     "seed_streams": 14,
     "source_operators": 16,
     "source_stages": 38,
@@ -1778,7 +1779,7 @@ def build_inventory_coverage(
         "seed_site_definitions_exact",
         clauses={
             "seed site definitions differ": site_definitions_exact,
-            "seed site count differs": len(protocol_sites) == 53,
+            "seed site count differs": len(protocol_sites) == 54,
         },
         homes=("/bundle/seed_protocol",),
         consumers=("compiler_ir.seed_stream_map.sites", "compiler_ir.node_slices"),
@@ -1786,7 +1787,7 @@ def build_inventory_coverage(
             "sites": len(protocol_sites),
             "sha256": sha256_json([site.to_wire() for site in protocol.sites]),
         },
-        expected={"sites": 53, "relation": "all site fields preserved exactly"},
+        expected={"sites": 54, "relation": "all site fields preserved exactly"},
     )
     binding_by_site = {binding.site: binding for binding in spec.seed_site_bindings}
     binding_exact = set(binding_by_site) == set(compiled_sites) and all(
@@ -1801,7 +1802,7 @@ def build_inventory_coverage(
             "owner binding count differs": sum(
                 len(site.owners) for site in compiled_sites.values()
             )
-            == 112,
+            == 113,
             "one or more sites have no owner": all(
                 site.owners for site in compiled_sites.values()
             ),
@@ -1811,7 +1812,7 @@ def build_inventory_coverage(
         observed={
             "bindings": sum(len(site.owners) for site in compiled_sites.values())
         },
-        expected={"bindings": 112, "coverage": "all 53 sites"},
+        expected={"bindings": 113, "coverage": "all 54 sites"},
     )
     expected_owner_sites: dict[tuple[str, str], list[str]] = {}
     for site in protocol.sites:
@@ -1835,13 +1836,13 @@ def build_inventory_coverage(
             "seed owner rows differ": _json_equal(
                 compiled_owner_rows, expected_owner_rows
             ),
-            "seed owner row count differs": len(compiled_owner_rows) == 54,
+            "seed owner row count differs": len(compiled_owner_rows) == 55,
         },
         homes=("/spine/seed_site_bindings", "/bundle/seed_protocol"),
         consumers=("compiler_ir.seed_stream_map.owners",),
         observed={"owner_rows": len(compiled_owner_rows)},
         expected={
-            "owner_rows": 54,
+            "owner_rows": 55,
             "relation": "site-order-preserving owner aggregation",
         },
     )
@@ -1855,7 +1856,7 @@ def build_inventory_coverage(
             "seed groups overlap": groups_disjoint,
             "seed groups do not cover the protocol exactly": set(grouped_ids)
             == set(protocol_sites),
-            "seed group cardinality differs": len(grouped_ids) == 53,
+            "seed group cardinality differs": len(grouped_ids) == 54,
         },
         homes=("/bundle/seed_protocol", "/spine/seed_site_bindings"),
         consumers=("compiler_ir.seed_stream_map",),
@@ -1865,7 +1866,7 @@ def build_inventory_coverage(
         },
         expected={
             "groups": len(EXPECTED_SEED_GROUPS),
-            "sites": 53,
+            "sites": 54,
             "partition": "disjoint and exhaustive",
         },
     )

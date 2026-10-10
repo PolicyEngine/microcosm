@@ -42,6 +42,10 @@ from microcosm.build.us_runtime.energy_subsidy import (
     derive_us_energy_subsidy_from_manifest,
     impute_us_energy_subsidy_to_puf_support_from_manifest,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    derive_us_employer_esi_premiums_from_manifest,
+    derive_us_pre_tax_health_insurance_premiums_from_manifest,
+)
 from microcosm.build.us_runtime.hours_worked import (
     derive_us_hours_worked_from_manifest,
 )
@@ -315,10 +319,16 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             derive_us_other_health_insurance_from_manifest
         ),
         "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
+        "derive_employer_sponsored_insurance_premiums": (
+            derive_us_employer_esi_premiums_from_manifest
+        ),
         "derive_education_inputs": derive_us_education_inputs_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_medicare_take_up": derive_us_medicare_take_up_from_manifest,
         "derive_pregnancy": derive_us_pregnancy_from_manifest,
+        "derive_pre_tax_health_insurance_premiums": (
+            derive_us_pre_tax_health_insurance_premiums_from_manifest
+        ),
         "derive_prior_year_income": derive_us_prior_year_income_from_manifest,
         "derive_relationship_inputs": derive_us_relationship_inputs_from_manifest,
         "derive_spm_independence_role": (derive_us_spm_independence_role_from_manifest),

@@ -61,6 +61,27 @@ Column                  Build reader
 
 The other thirteen columns the 2026-08-23 offline fix appended are not
 restored; :data:`ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED` records why.
+
+Microcosm #454 adds six columns that every pinned H5 lacks (2024 included),
+read by the ``meps_esi_premiums`` stage (:mod:`.esi_premiums`):
+
+======================  ======================================================
+Column                  Build reader
+======================  ======================================================
+``NOW_OWNGRP``          ``esi_premiums._esi_person_codes`` -> the current
+                        employment-based policyholder test
+``NOW_HIPAID``          same -> employer paid all / some / none of the premium
+``NOW_GRPFTYP2``        same -> coverage tier (family / self plus one /
+                        self-only)
+``NOW_GRPFTYP``         same -> cross-checked against ``NOW_GRPFTYP2``
+``PEMLR``               same -> employed at interview
+``NOEMP``               same -> employer size band
+======================  ======================================================
+
+Their domains are the codes observed in pppub23/24/25/26 (2026-10-10), equal
+to the Census API codebooks for survey years 2023-2026 except that the data
+also carry ``PEMLR == 0`` (not in universe: children and Armed Forces), which
+the codebooks omit.
 """
 
 from __future__ import annotations
@@ -107,6 +128,8 @@ class AsecCensusPersonColumn:
 
 _NOW_YES_NO = frozenset({1, 2})
 _ENROLLMENT = frozenset({0, 1, 2})
+_ESI_READER = "microcosm.build.us_runtime.esi_premiums._esi_person_codes"
+
 _HEALTH_COVERAGE_READER = (
     "microcosm.build.us_runtime.cps_carried._fill_health_coverage_inputs"
 )
@@ -118,6 +141,7 @@ _MICROUNIT_OPTIONAL_READER = (
 #: the Census codes observed in the pinned person members pppub23/24/25
 #: (2026-09-23); pppub26 (income year 2025) falls inside every one of them
 #: (2026-09-27). ``A_EXPRRP`` has no code 6 in the Census codebook or the data.
+#: The six #454 columns were observed in pppub23/24/25/26 on 2026-10-10.
 ASEC_CENSUS_PERSON_COLUMNS: tuple[AsecCensusPersonColumn, ...] = (
     AsecCensusPersonColumn(
         "NOW_MCAID",
@@ -204,6 +228,38 @@ ASEC_CENSUS_PERSON_COLUMNS: tuple[AsecCensusPersonColumn, ...] = (
             "derive_us_eligibility_inputs_from_manifest "
             "(is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1)",
         ),
+    ),
+    # Microcosm #454: the meps_esi_premiums stage's universe, tier, payment
+    # status, employment and employer-size fields.
+    AsecCensusPersonColumn(
+        "NOW_OWNGRP",
+        frozenset({0, 1, 2}),
+        (f"{_ESI_READER} (current employment-based policyholder, 1 = yes)",),
+    ),
+    AsecCensusPersonColumn(
+        "NOW_HIPAID",
+        frozenset({0, 1, 2, 3}),
+        (f"{_ESI_READER} (employer paid all / some / none of the premium)",),
+    ),
+    AsecCensusPersonColumn(
+        "NOW_GRPFTYP",
+        frozenset({0, 1, 2}),
+        (f"{_ESI_READER} (family / self-only, checked against NOW_GRPFTYP2)",),
+    ),
+    AsecCensusPersonColumn(
+        "NOW_GRPFTYP2",
+        frozenset({0, 1, 2, 3}),
+        (f"{_ESI_READER} (family / self plus one / self-only coverage tier)",),
+    ),
+    AsecCensusPersonColumn(
+        "PEMLR",
+        frozenset(range(8)),
+        (f"{_ESI_READER} (employed at interview: codes 1 and 2)",),
+    ),
+    AsecCensusPersonColumn(
+        "NOEMP",
+        frozenset(range(7)),
+        (f"{_ESI_READER} (employer size: under 50 = codes 1-2, 50+ = 3-6)",),
     ),
 )
 ASEC_CENSUS_PERSON_COLUMN_NAMES: tuple[str, ...] = tuple(
