@@ -549,6 +549,9 @@ US_ACS_LOCAL_RELEASE = ToolSpec(
         "batch": OptionFlag("--batch", int),
         "hh_chunk": OptionFlag("--hh-chunk", int),
         "allow_partial_geography": OptionFlag("--allow-partial-geography", bool),
+        # Diagnostic only (microcosm#454): finalize and package record a red
+        # ESI premium verdict instead of failing on it.
+        "allow_esi_premium_gaps": OptionFlag("--allow-esi-premium-gaps", bool),
     },
     owned_flags=frozenset(
         {
