@@ -88,9 +88,7 @@ WIC_CLAIM_FNS_SOURCE_URL = (
 )
 
 US_WIC_CLAIM_STAGE_NAME = "wic_claim_input"
-US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "takes_up_wic_if_eligible",
-)
+US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = ("takes_up_wic_if_eligible",)
 US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS = US_WIC_CLAIM_OUTPUT_COLUMNS
 
 # These are persisted PolicyEngine-facing columns already carried or derived

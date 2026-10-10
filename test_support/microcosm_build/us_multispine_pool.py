@@ -359,7 +359,6 @@ def _real_pre_clone_source_frame() -> Frame:
             "PEMLR": [1, 0, 1, 0],
             "NOEMP": [6, 0, 2, 0],
             "PEIO1COW": [4, 0, 4, 0],
-            "PHIP_VAL": [2_000.0, 0.0, 1_500.0, 0.0],
         }
     )
     tables = {

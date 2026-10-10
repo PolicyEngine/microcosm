@@ -37,7 +37,10 @@ from microcosm.build.us_runtime.esi_premiums import (
     US_ESI_EMPLOYER_PREMIUM_COLUMN,
     US_ESI_PREMIUMS_OUTPUT_COLUMNS,
     US_ESI_PREMIUMS_WAGE_COLUMN,
+    us_esi_premiums_anchor_gate,
     us_esi_premiums_household_mass_share,
+    us_esi_premiums_signal_gate,
+    us_esi_premiums_summary,
     with_us_esi_premium_inputs,
     with_us_esi_premium_pool_anchor,
 )
@@ -56,6 +59,8 @@ from test_support.microcosm_build.us_stacked_spine import (
 )
 
 EMPLOYER = US_ESI_EMPLOYER_PREMIUM_COLUMN
+#: CMS NHE Table 24 employer contribution, CY2024: the stage's anchor.
+ANCHOR = float(esi.EMPLOYER_PREMIUM_ANCHOR["values"]["2024"])
 WAGES = US_ESI_PREMIUMS_WAGE_COLUMN
 RAW = esi._RAW_EVIDENCE_COLUMNS
 _GROUPS = ("tax_unit", "spm_unit", "family", "marital_unit")
@@ -498,8 +503,6 @@ def _asec_arm(households: int = 320) -> Frame:
     person["PEIO1COW"] = np.where(
         employed, np.asarray([4, 4, 5, 2, 3, 1])[index % 6], 0
     )
-    person["WSAL_VAL"] = wages
-    person["PHIP_VAL"] = np.where(holder, 1_200.0 + 15.0 * (index % 60), 0.0)
     household = frame.table("household").copy()
     household["state_fips"] = np.asarray(_STATES, dtype=np.int64)[index % len(_STATES)]
     return _replace_tables(frame, person=person, household=household)
@@ -711,3 +714,234 @@ def test_any_mass_split_keeps_the_pool_on_the_single_source_total(
     assert _total(anchored) == pytest.approx(_total(alone), rel=1e-9)
     assert _total(anchored, cps) == pytest.approx(share * _total(alone), rel=1e-9)
     assert receipt["source_household_mass_share"] == pytest.approx(share, rel=1e-9)
+    # The anchor counts every policyholder. Held to the pool, that is the
+    # column over the employed share of the anchor universe.
+    summary = us_esi_premiums_summary(anchored)
+    assert summary["anchor_universe_employer_total"] == pytest.approx(ANCHOR, rel=1e-9)
+    assert summary["transferred_to_source_per_household_mass_ratio"] == pytest.approx(
+        1.0, rel=1e-9
+    )
+
+
+# --- The stage at a share of the anchor ---------------------------------------
+
+
+def _reweighted(frame: Frame, factors: np.ndarray | float) -> Frame:
+    return Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {
+            "household": Weights(
+                values=np.asarray(frame.weights_for("household").values) * factors,
+                kind=frame.weights_for("household").kind,
+            )
+        },
+        frame.strata,
+        metadata=frame.metadata,
+    )
+
+
+@given(share=st.floats(min_value=0.02, max_value=1.0))
+@settings(max_examples=25, deadline=None)
+def test_a_share_of_the_weights_at_that_share_of_the_anchor_moves_no_value(
+    share: float,
+) -> None:
+    # Weight homogeneity across the pool boundary: rows at ``share`` of their
+    # weight, held to ``share`` of the anchor, carry single-source dollars.
+    asec = _asec_arm(80)
+    alone = with_us_esi_premium_inputs(asec, seed=0, time_period=2024)
+
+    shared = with_us_esi_premium_inputs(
+        _reweighted(asec, share), seed=0, time_period=2024, anchor_share=share
+    )
+
+    np.testing.assert_allclose(
+        _column(shared, EMPLOYER), _column(alone, EMPLOYER), rtol=1e-12
+    )
+    summary = us_esi_premiums_summary(shared)
+    assert summary["anchor_universe_employer_total"] == pytest.approx(
+        share * ANCHOR, rel=1e-9
+    )
+
+
+def test_the_anchor_share_defaults_to_the_whole_anchor() -> None:
+    asec = _asec_arm(80)
+
+    default = with_us_esi_premium_inputs(asec, seed=0, time_period=2024)
+    explicit = with_us_esi_premium_inputs(
+        asec, seed=0, time_period=2024, anchor_share=1.0
+    )
+
+    np.testing.assert_array_equal(
+        _column(default, EMPLOYER), _column(explicit, EMPLOYER)
+    )
+    assert us_esi_premiums_summary(default)[
+        "anchor_universe_employer_total"
+    ] == pytest.approx(ANCHOR, rel=1e-12)
+
+
+@pytest.mark.parametrize("share", [0.0, -0.5, 1.0000001, np.nan, np.inf, True, "0.5"])
+def test_an_anchor_share_outside_zero_to_one_is_refused(share: object) -> None:
+    with pytest.raises(SourceRuntimeError, match="anchor share must be"):
+        with_us_esi_premium_inputs(
+            _asec_arm(40), seed=0, time_period=2024, anchor_share=share
+        )
+
+
+# --- The gates on a pooled frame ----------------------------------------------
+
+
+def test_both_gates_pass_on_the_stacked_pool(stacked_pool) -> None:
+    anchored = stacked_pool["anchored"]
+
+    signal = us_esi_premiums_signal_gate(anchored)
+    anchor = us_esi_premiums_anchor_gate(anchored, time_period=2024)
+
+    assert signal.passed, signal.failures
+    assert anchor.passed, anchor.failures
+    # The cell proofs ran on the CPS-source rows, and found them one common
+    # multiple of their MEPS-IC shares: the single-source factor.
+    alone = us_esi_premiums_summary(
+        with_us_esi_premium_inputs(stacked_pool["asec"], seed=0, time_period=2024)
+    )
+    assert signal.details["source_rows"] == 320
+    assert signal.details["transferred_rows"] == 280
+    assert signal.details["scale_factor"] == pytest.approx(
+        alone["scale_factor"], rel=1e-9
+    )
+    assert signal.details["employer_premium_outside_universe_rows"] == 0
+    assert signal.details["clone_disagreement_source_persons"] == 0
+    assert signal.details["transferred_source_records_with_premium_and_no_wages"] == 0
+    assert anchor.details["anchor_universe_employer_total"] == pytest.approx(
+        ANCHOR, rel=1e-9
+    )
+    assert anchor.details["relative_error"] == pytest.approx(0.0, abs=1e-9)
+    assert anchor.details["source_household_mass_share"] == 0.5
+    assert anchor.details[
+        "transferred_to_source_per_household_mass_ratio"
+    ] == pytest.approx(1.0, rel=1e-9)
+    assert anchor.details["employed_share_of_anchor_universe"] == pytest.approx(
+        alone["employed_share_of_anchor_universe"], rel=1e-12
+    )
+    assert "employed share" in anchor.details["anchor_universe_assumption"]
+    # Scaled to the population, the private-sector cross-check matches the
+    # single-source one.
+    assert anchor.details["private_active_cross_check"][
+        "employer_premium_private_sector"
+    ] == pytest.approx(alone["employer_premium_by_sector"]["private"], rel=1e-9)
+
+
+def test_both_gates_pass_on_the_pool_after_the_puf_clone(stacked_pool) -> None:
+    cloned = clone_us_frame_for_puf_support(stacked_pool["filled"])
+    anchored, _receipt = with_us_esi_premium_pool_anchor(cloned)
+
+    signal = us_esi_premiums_signal_gate(anchored)
+    anchor = us_esi_premiums_anchor_gate(anchored, time_period=2024)
+
+    assert signal.passed, signal.failures
+    assert anchor.passed, anchor.failures
+    assert signal.details["clone_disagreement_source_persons"] == 0
+    assert anchor.details["anchor_universe_employer_total"] == pytest.approx(
+        ANCHOR, rel=1e-9
+    )
+
+
+def _with_transferred_scaled(frame: Frame, factor: float) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    transferred = ~_source_rows(frame)
+    tables["person"].loc[transferred, EMPLOYER] *= factor
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        metadata=frame.metadata,
+    )
+
+
+def test_transferred_rows_without_the_premium_fail_the_signal_gate(
+    stacked_pool,
+) -> None:
+    flattened = _with_transferred_scaled(stacked_pool["anchored"], 0.0)
+
+    signal = us_esi_premiums_signal_gate(flattened)
+
+    assert not signal.passed
+    assert any(
+        "positive share on the rows without raw ASEC columns" in failure
+        for failure in signal.failures
+    )
+
+
+@pytest.mark.parametrize("factor", [0.7, 1.4])
+def test_transferred_rows_off_the_source_rows_per_mass_total_fail_the_anchor_gate(
+    stacked_pool, factor: float
+) -> None:
+    skewed = _with_transferred_scaled(stacked_pool["anchored"], factor)
+
+    anchor = us_esi_premiums_anchor_gate(skewed, time_period=2024)
+
+    assert not anchor.passed
+    assert anchor.details[
+        "transferred_to_source_per_household_mass_ratio"
+    ] == pytest.approx(factor, rel=1e-9)
+    assert any("per unit of household mass" in failure for failure in anchor.failures)
+    # Half the mass at ``factor`` moves the anchor-universe total by half of it.
+    assert anchor.details["relative_error"] == pytest.approx(
+        (factor - 1.0) / 2.0, rel=1e-6
+    )
+
+
+def test_reweighting_one_side_moves_the_pool_total_but_not_the_per_mass_ratio(
+    stacked_pool,
+) -> None:
+    # What calibration does across sources: more weight on one side.
+    anchored = stacked_pool["anchored"]
+    household = anchored.table("household")
+    transferred_households = household["household_id"].isin(
+        anchored.table("person").loc[~_source_rows(anchored), "person_household_id"]
+    )
+    reweighted = _reweighted(anchored, np.where(transferred_households, 1.06, 1.0))
+
+    anchor = us_esi_premiums_anchor_gate(reweighted, time_period=2024)
+
+    assert anchor.passed, anchor.failures
+    assert anchor.details[
+        "transferred_to_source_per_household_mass_ratio"
+    ] == pytest.approx(1.0, rel=1e-9)
+    assert anchor.details["relative_error"] == pytest.approx(0.03, rel=1e-6)
+    assert anchor.details["source_household_mass_share"] == pytest.approx(
+        1.0 / 2.06, rel=1e-9
+    )
+
+
+def test_a_row_with_only_some_raw_columns_fails_both_gates(stacked_pool) -> None:
+    anchored = stacked_pool["anchored"]
+    tables = {entity: anchored.table(entity).copy() for entity in anchored.entities}
+    transferred = np.flatnonzero(~_source_rows(anchored))
+    tables["person"].loc[tables["person"].index[transferred[0]], RAW[0]] = 2
+    broken = Frame(
+        tables,
+        anchored.schema,
+        {"household": anchored.weights_for("household")},
+        anchored.strata,
+        metadata=anchored.metadata,
+    )
+
+    for gate in (
+        us_esi_premiums_signal_gate(broken),
+        us_esi_premiums_anchor_gate(broken, time_period=2024),
+    ):
+        assert not gate.passed
+        assert "only some of the raw ASEC fields" in gate.failures[0]
+
+
+def test_a_single_source_frame_gets_no_pool_keys(stacked_pool) -> None:
+    alone = with_us_esi_premium_inputs(stacked_pool["asec"], seed=0, time_period=2024)
+
+    summary = us_esi_premiums_summary(alone)
+    anchor = us_esi_premiums_anchor_gate(alone, time_period=2024)
+
+    assert "transferred_rows" not in summary
+    assert "source_household_mass_share" not in anchor.details
+    assert anchor.passed, anchor.failures

@@ -213,11 +213,7 @@ def _previous_year_availability_match_survival_factor(frame: Frame) -> float:
             f"spine manifest version {version!r}."
         )
     factor = manifest.get("sample_fraction")
-    if (
-        type(factor) is not float
-        or not np.isfinite(factor)
-        or not 0.0 < factor <= 1.0
-    ):
+    if type(factor) is not float or not np.isfinite(factor) or not 0.0 < factor <= 1.0:
         raise ValueError(
             "US prior-year-income availability requires a finite production "
             "stacked sample_fraction in (0, 1]."
@@ -895,12 +891,10 @@ def us_prior_year_income_signal_gate(frame: Frame) -> GateResult:
     if match_survival_factor != 1.0:
         authored_lower, authored_upper = summary[availability_band_key]
         applied_floor = float(authored_lower) * match_survival_factor
-        availability_band_key = (
-            "previous_year_income_available_applied_share_band"
+        availability_band_key = "previous_year_income_available_applied_share_band"
+        summary["previous_year_income_available_sampled_match_survival_factor"] = (
+            match_survival_factor
         )
-        summary[
-            "previous_year_income_available_sampled_match_survival_factor"
-        ] = match_survival_factor
         summary["previous_year_income_available_applied_floor"] = applied_floor
         summary[availability_band_key] = [applied_floor, authored_upper]
     failures: list[str] = []

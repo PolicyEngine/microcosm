@@ -2735,11 +2735,6 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
             ),
             (
                 "person",
-                "source_operator_esi_premiums",
-                "pre_tax_health_insurance_premiums",
-            ),
-            (
-                "person",
                 "source_operator_hours_worked",
                 "weekly_hours_worked_before_lsr",
             ),
@@ -9026,9 +9021,9 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 136
-    or len(set(_canonical_surface_keys)) != 136
-    or len(_canonical_early_transfer_keys) != 50
+    len(_canonical_surface_keys) != 135
+    or len(set(_canonical_surface_keys)) != 135
+    or len(_canonical_early_transfer_keys) != 49
     or len(_canonical_late_transfer_keys) != 70
     or len(_canonical_late_puf_producer_keys) != 43
     or len(_canonical_late_source_producer_keys) != 29
@@ -9039,7 +9034,7 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 120
+    or len(_canonical_full_transfer_keys) != 119
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
@@ -9059,9 +9054,9 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 120-target "
-        "transfer surface into 50 early gap-fill and 70 post-PUF targets "
-        "inside an exact 136-target terminal surface and metric registry; "
+        "Canonical stacked authority must partition the exact 119-target "
+        "transfer surface into 49 early gap-fill and 70 post-PUF targets "
+        "inside an exact 135-target terminal surface and metric registry; "
         "the late surface must be exactly covered by 43 PUF-clone and 29 "
         "ASEC-source producer targets with their declared two-target overlap."
     )

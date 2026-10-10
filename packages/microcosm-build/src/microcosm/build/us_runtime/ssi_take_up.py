@@ -536,16 +536,15 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
     reported = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    if source_ids.str.strip().eq("").any() or not np.isfinite(
-        reported[asec_source]
-    ).all():
+    if (
+        source_ids.str.strip().eq("").any()
+        or not np.isfinite(reported[asec_source]).all()
+    ):
         raise ValueError(
             "US SSI take-up reporter lineage requires nonblank identities and "
             "finite SSI_VAL values on physical ASEC source rows."
         )
-    reporter_ids = frozenset(
-        source_ids[asec_source & (reported > 0.0)]
-    )
+    reporter_ids = frozenset(source_ids[asec_source & (reported > 0.0)])
     if not reporter_ids:
         raise ValueError("US SSI take-up found no direct ASEC SSI reporters.")
     return reporter_ids

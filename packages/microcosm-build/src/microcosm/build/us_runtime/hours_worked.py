@@ -319,9 +319,7 @@ def us_hours_worked_signal_gate(
 
     person = frame.table("person")
     failures: list[str] = []
-    missing = [
-        column for column in required_columns if column not in person.columns
-    ]
+    missing = [column for column in required_columns if column not in person.columns]
     if missing:
         return GateResult(
             name="hours_worked_signal",
