@@ -254,11 +254,13 @@ __all__ = [
 POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 """Schema version for the companion pool build manifest."""
 
-# ``--legacy-two-spine`` is a byte-stable compatibility surface.  Stacked
-# publication and checkpoint-envelope versions may advance without rewriting
-# the retiring pipeline's last supported envelope.
+# ``--legacy-two-spine`` retains the retiring publication envelope. Stacked
+# publication and checkpoint-envelope versions may advance independently.
 _LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
-_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
+# 4: PUF finalization restores CPS-reported Social Security on tax-detail
+#    clones. Earlier transferred and simulated checkpoints skip finalization
+#    on resume and can retain erased reported benefits, so they must rebuild.
+_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
 
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""

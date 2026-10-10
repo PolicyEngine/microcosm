@@ -12392,6 +12392,68 @@ def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
     return release_id, release_dir, artifact_root
 
 
+@pytest.mark.parametrize(
+    "scoring_available", (True, False), ids=("available", "unavailable")
+)
+def test_build_manifests_selects_ssi_social_security_holdout_for_publication(
+    monkeypatch, tmp_path, scoring_available
+) -> None:
+    from microcosm.build.us_runtime.ssi_social_security_holdout import (
+        ssi_social_security_holdout_payload,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+
+    def score_holdout(name, consumer, **kwargs):
+        assert name == "ssi_social_security_holdout"
+        if not scoring_available:
+            raise RuntimeError("holdout scoring is unavailable")
+        return ssi_social_security_holdout_payload(
+            np.array([40, 70]),
+            np.array([100.0, 100.0]),
+            np.array([0.0, 200.0]),
+            np.array([1.0, 2.0]),
+            period=builder.PERIOD,
+        )
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", score_holdout)
+    builder._write_ssi_social_security_holdout(
+        release_dir=release_dir,
+        dataset_path=artifact_root / builder.DATASET_FILENAME,
+        release_id=release_id,
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_ssi_social_security_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if scoring_available else "unavailable")
+    assert holdout["release_id"] == release_id
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_ssi_social_security_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
 def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:

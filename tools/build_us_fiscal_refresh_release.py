@@ -10868,6 +10868,18 @@ def _build_manifests(
             ),
             **(
                 {
+                    "us_ssi_social_security_holdout": _artifact_entry(
+                        "us_ssi_social_security_holdout.json",
+                        _sha256(release_dir / "us_ssi_social_security_holdout.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_ssi_social_security_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
                     "reform_validation": _artifact_entry(
                         "reform_validation.json",
                         _sha256(release_dir / "reform_validation.json"),
