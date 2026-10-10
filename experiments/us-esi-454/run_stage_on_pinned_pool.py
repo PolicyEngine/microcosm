@@ -18,7 +18,6 @@ The default pool is income years 2023-2025 (``docs/us-asec-source-pins.md``);
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import hashlib
 import json
 import time
@@ -82,38 +81,47 @@ def _by_vintage(frame, years) -> dict[str, dict[str, float]]:
     return out
 
 
-def _all_policyholder_concept_check(frame) -> dict[str, float]:
-    """Raw MEPS-IC shares over EVERY current policyholder (NHE's concept).
+def _other_policyholder_sensitivity(frame, target_year: int) -> dict[str, object]:
+    """How the employed column moves with the price of non-employed coverage.
 
-    Non-employed policyholders (retirees, COBRA, others) take their State's
-    all-sizes private cell; this is diagnostics only, never the column.
+    No MEPS-IC table prices retiree coverage, so the stage prices every
+    policyholder outside the column as an active employee. This re-scales
+    the anchor universe under two alternatives: the 65-and-over policyholders
+    outside the column priced at half the active cell, and nobody outside the
+    column priced at all (the whole anchor loaded onto employed workers).
     """
 
     person = esi._person_with_state(frame)
-    codes = esi._esi_person_codes(person)
-    holder = codes.owner == 1
-    widened = dataclasses.replace(
-        codes,
-        employed=np.ones(len(codes.owner), dtype=bool),
-        sector=np.where(np.isin(codes.sector, (1, 2, 3, 4, 5, 6)), codes.sector, 4),
-        noemp=np.where(codes.employed, codes.noemp, 0),
-    )
-    premium, contribution = esi._cell_values(
-        widened, esi.load_meps_ic_esi_premium_cells()
-    )
-    raw = esi._raw_employer_share(widened, premium, contribution)
+    codes, raw, _premium, _contribution = esi._person_raw_shares(person)
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
-    employed = codes.universe
-    total = float(weights[holder] @ raw[holder])
-    employed_total = float(weights[employed] @ raw[employed])
-    nhe = float(esi.EMPLOYER_PREMIUM_CROSS_CHECK["employer_contribution"]["2024"])
+    universe = codes.universe
+    other = codes.policyholder & ~universe
+    age = person["A_AGE"].to_numpy(dtype=np.float64)
+    older = other & (age >= 65)
+    anchor = float(esi.EMPLOYER_PREMIUM_ANCHOR["values"][str(target_year)])
+    employed = float(weights[universe] @ raw[universe])
+    everyone = float(weights @ raw)
+    older_raw = float(weights[older] @ raw[older])
+    positive = float(weights[universe & (raw > 0)].sum())
+    pemlr = person["PEMLR"].to_numpy(dtype=np.int64)
+
+    def column(total_raw: float) -> dict[str, float]:
+        total = anchor * employed / total_raw
+        return {
+            "employer_premium_total": total,
+            "mean_per_positive_person": total / positive,
+        }
+
     return {
-        "raw_all_policyholders_total": total,
-        "raw_employed_universe_total": employed_total,
-        "raw_non_employed_or_no_employer_total": total - employed_total,
-        "non_employed_share_of_all": (total - employed_total) / total,
-        "nhe_table_24_employer_contribution_2024": nhe,
-        "raw_all_policyholders_over_nhe": total / nhe,
+        "as_built_other_priced_as_active": column(everyone),
+        "other_65_plus_priced_at_half": column(everyone - 0.5 * older_raw),
+        "other_not_priced_all_anchor_on_employed": column(employed),
+        "weighted_other_policyholders_by_pemlr": {
+            str(code): float(weights[other & (pemlr == code)].sum())
+            for code in sorted(set(pemlr[other].tolist()))
+        },
+        "weighted_other_policyholders_65_plus": float(weights[older].sum()),
+        "raw_other_65_plus_share_of_other": older_raw / (everyone - employed),
     }
 
 
@@ -198,7 +206,9 @@ def main() -> None:
         ],
         "summary": _jsonable(us_esi_premiums_summary(staged)),
         "by_vintage": _by_vintage(staged, years),
-        "nhe_concept_check": _all_policyholder_concept_check(staged),
+        "other_policyholder_sensitivity": _other_policyholder_sensitivity(
+            staged, args.target_year
+        ),
         "signal_gate": {"passed": signal.passed, "failures": list(signal.failures)},
         "anchor_gate": {
             "passed": anchor.passed,
@@ -213,12 +223,14 @@ def main() -> None:
             "anchor_gate": {
                 "passed": cloned_anchor.passed,
                 "failures": list(cloned_anchor.failures),
-                "employer_premium_total": cloned_anchor.details.get(
-                    "employer_premium_total"
-                ),
-                "pre_tax_premium_total": cloned_anchor.details.get(
-                    "pre_tax_premium_total"
-                ),
+                **{
+                    key: cloned_anchor.details.get(key)
+                    for key in (
+                        "employer_premium_total",
+                        "anchor_universe_employer_total",
+                        "pre_tax_premium_total",
+                    )
+                },
             },
             "person_rows": len(cloned.table("person")),
         },

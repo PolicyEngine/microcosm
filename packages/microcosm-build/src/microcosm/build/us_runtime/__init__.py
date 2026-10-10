@@ -2169,11 +2169,12 @@ US_DONORS: Mapping[str, DonorSpec] = {
         survey="MEPS-IC + CPS ASEC current employment-based coverage",
         source="https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
         notes=(
-            "Employed current ESI policyholders take the MEPS-IC employer "
-            "share of their tier x firm-size x State (or government "
-            "census-division) cell, scaled to BEA NIPA 7.8 line 17; reported "
-            "premiums route through payroll at MEPS-IC pretax-offer rates "
-            "(microcosm #454). Shared by support clones."
+            "Current ESI policyholders take the MEPS-IC employer share of "
+            "their tier x firm-size x State (or government census-division) "
+            "cell, scaled over every policyholder to CMS NHE Table 24 and "
+            "written for the employed ones; reported premiums route through "
+            "payroll at MEPS-IC pretax-offer rates (microcosm #454). Shared "
+            "by support clones."
         ),
     ),
     "aca_marketplace_inputs": DonorSpec(

@@ -1775,7 +1775,7 @@
           "locator": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/state/series_2/2025/ic25_iia_f.pdf",
           "sha256": "ebebf083d132e2b5a72ac99d659ee6d46a382280a47d2ff2d20f6e9e25b69330",
           "size_bytes": 12530005,
-          "publication": "MEPS-IC 2025 Series II (private sector, by firm size and State): Tables II.C/D/E.1 (average total premium per enrolled employee) and II.C/D/E.2 (average employee contribution)"
+          "publication": "MEPS-IC 2025 Series II (private sector, by firm size and State): Tables II.C/D/E.1 (average total premium per enrolled employee), II.C/D/E.2 (average employee contribution), II.C/D/E.4.a (percent of enrollees whose coverage required no employee contribution), and the enrollment rows II.B.1, II.B.2, II.B.2.b and II.C/D/E.4"
         },
         {
           "kind": "administrative_table",
@@ -1784,7 +1784,7 @@
           "locator": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/state/series_2/2024/ic24_iia_f.pdf",
           "sha256": "4ae0dada70fac7c147508b946a2d00cf2e8930f5550f6beb9d8a1bf3de71d20b",
           "size_bytes": 10687163,
-          "publication": "MEPS-IC 2024 Series II (private sector, by firm size and State); the United States rows age the 2024 State and local government cells to 2025"
+          "publication": "MEPS-IC 2024 Series II (private sector, by firm size and State); the United States rows age the 2024 State and local government cells to 2025 and carry the 2024 private-sector enrollment"
         },
         {
           "kind": "administrative_table",
@@ -1807,19 +1807,22 @@
         {
           "kind": "administrative_table",
           "format": "xlsx",
+          "vintage": "NHE 2024 release (data through CY2024)",
+          "locator": "https://www.cms.gov/files/zip/nhe-tables.zip!Table 24 Employer-Sponsored Private Health Insurance.xlsx",
+          "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+          "size_bytes": 520391,
+          "measure": "NHE Table 24 Employer Contribution to Private Health Insurance Premiums, CY2023-2024, and the employee contribution row",
+          "publication": "scale anchor: employer contributions for active employees, COBRA enrollees and retirees of private, federal and State and local employers; the employee row caps pre-tax employee premiums"
+        },
+        {
+          "kind": "administrative_table",
+          "format": "xlsx",
           "vintage": "BEA annual update published 2026-09-30",
           "locator": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
           "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
           "size_bytes": 944273,
           "measure": "NIPA Table 7.8 line 17 Private group health insurance (B4923C), CY2023-2025",
-          "publication": "scale anchor: employer contributions for group health insurance as a supplement to wages and salaries"
-        },
-        {
-          "kind": "administrative_validation_only",
-          "format": "xlsx",
-          "vintage": "NHE 2024 release (data through CY2024)",
-          "locator": "https://www.cms.gov/files/zip/nhe-tables.zip!Table 24 Employer-Sponsored Private Health Insurance.xlsx",
-          "measure": "employer and employee contributions to employer-sponsored private health insurance premiums (upper bounds: NHEA includes COBRA and retiree enrollees)"
+          "publication": "cross-check, not gated: a second estimate of employer contributions for active and retired employees, recorded beside the anchor verdict"
         }
       ],
       "operations": [
@@ -1831,23 +1834,27 @@
         {
           "kind": "derive_employer_sponsored_insurance_premiums",
           "cells_resource": "microcosm.build.us_runtime.data/meps_ic_esi_premium_cells.json",
-          "cells_sha256": "fb07b8c27ff94fd1423623f7385868fb26e0fce7ad99f80c7cf0d205364e77f8",
+          "cells_sha256": "0d3a2facb8c161fa6ea0ed43ba09a69253a4b593c7b0d42e5c87c4c4cf5b769c",
+          "anchor_universe": "NOW_OWNGRP == 1",
           "universe": "NOW_OWNGRP == 1 and PEMLR in (1, 2) and PEIO1COW in (1, 2, 3, 4, 5, 6)",
           "tier_column": "NOW_GRPFTYP2",
           "size_column": "NOEMP",
           "sector_column": "PEIO1COW",
           "payment_column": "NOW_HIPAID",
-          "payment_rule": "1 (employer paid all): average total premium; 2 (some): average total premium minus average employee contribution; 3 (none): 0",
+          "payment_rule": "1 (employer paid all): average total premium; 2 (some): average total premium minus average employee contribution / (1 - no-contribution share); 3 (none): 0",
+          "no_contribution_share": "MEPS-IC 2025 Tables II.C/D/E.4.a, United States row by firm size; government cells take the 50-or-more share",
+          "other_policyholder_cell": "PEIO1COW outside 1-6: the State's all-sizes private cell",
           "suppressed_cell_fallback": "national firm-size cell times the State total-to-national ratio",
           "government_cell_aging": "MEPS-IC 2024 Series III x private-sector national 2025/2024 ratio of the same tier and measure",
+          "scaling": "one factor, anchor / weighted raw share of the anchor universe; written to the universe only",
           "anchor": {
-            "source": "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx",
-            "sha256": "de1c34e37da9b8b8d765efc0611cc653102373fe522fe9218c7689067b29b7fd",
-            "series": "B4923C",
+            "source": "https://www.cms.gov/files/zip/nhe-tables.zip",
+            "sha256": "a09ef6d3e84e25d745047a47b6b08a0d96b303085b4c725b67ce67a0eb0c4420",
+            "table": "NHE Table 24 Employer-Sponsored Private Health Insurance",
+            "row": "Employer Contribution to Private Health Insurance Premiums",
             "values": {
-              "2023": 923195000000,
-              "2024": 977034000000,
-              "2025": 1027929000000
+              "2023": 975700000000,
+              "2024": 1047000000000
             }
           }
         },
@@ -1856,6 +1863,7 @@
           "seed_from_build_config": true,
           "premium_column": "PHIP_VAL",
           "wage_column": "WSAL_VAL",
+          "amount": "min(PHIP_VAL, WSAL_VAL)",
           "employer_payment_codes": [
             2,
             3
@@ -1871,7 +1879,7 @@
         "employer_sponsored_insurance_premiums",
         "pre_tax_health_insurance_premiums"
       ],
-      "notes": "Restores the retired eCPS employer-premium input (archived 42ed5d45 datasets/cps/cps.py L197-271/L1575-1581) from source fields the hermetic H5 inputs lacked (microcosm#454). Universe: employed (PEMLR 1-2) current ESI policyholders (NOW_OWNGRP 1) whose current job has an employer (PEIO1COW 1-6); dependents, non-employed policyholders (retiree and COBRA coverage is not compensation of a current job), the unincorporated self-employed and workers without pay carry 0. Cells: MEPS-IC 2025 Series II private-sector average total premium and employee contribution per enrolled employee by State and firm size (NOEMP 1-2 under 50, 3-6 50+, 0 the State all-sizes cell; the finer MEPS-IC bands do not nest the NOEMP bands) and coverage tier (NOW_GRPFTYP2 family / self plus one / self-only, cross-checked against NOW_GRPFTYP); State government and local/federal employers take the MEPS-IC 2024 Series III State-government and all-government census-division cells (latest published), aged to 2025 by the private national 2025/2024 ratio of the same tier and measure. AHRQ suppressed nine small-firm contribution cells; each takes the national small-firm cell times the State total-to-national ratio. Employer paid all (NOW_HIPAID 1): premium; some (2): premium minus contribution; none (3): 0. One factor scales every share so the weighted total equals BEA NIPA 7.8 line 17 for the build year ($977.0B CY2024 in the 2026-09-30 vintage; the retired us-data target was the earlier $1,002.9B vintage). NHE Table 24 ($1,047.0B CY2024, banked as cms_nhe.cy2024.esi_employer_contribution_premiums) counts COBRA and retiree enrollees and is an upper bound; applying the same cells to every current policyholder reproduces it within 2 percent on both pinned pools ($1,031.0B on income years 2023-2025, $1,036.8B on 2022-2024), non-employed and no-employer policyholders carrying 11.5 percent (experiments/us-esi-454). pre_tax_health_insurance_premiums: an employed policyholder with wages (WSAL_VAL > 0), a reported premium (PHIP_VAL > 0) and an employee share (NOW_HIPAID 2-3) pays PHIP_VAL through payroll with the firm-size probability that an insurance-offering employer offers pretax contributions (MEPS-IC 2025 Table I.A.2.j / Table I.A.2: 49.5 percent under 50, 92.6 percent 50+, 72.2 percent all sizes); establishment-weighted, so a lower estimate. Seeded blake2b draws keyed by source identity; support clones agree. PolicyEngine-US 2.2.1 subtracts it from income-tax and FICA wages (gov.irs.gross_income.pre_tax_contributions, fica_pre_tax_contributions). Release gates: us_esi_premiums_signal_gate (structure, clone agreement, cell multiples) and us_esi_premiums_anchor_gate (calibrated total within 5 percent of BEA, at most NHE)."
+      "notes": "Restores the retired eCPS employer-premium input (archived 42ed5d45 datasets/cps/cps.py L197-271/L1575-1581) from source fields the hermetic H5 inputs lacked (microcosm#454). Anchor universe: every current ESI policyholder (NOW_OWNGRP 1), employed or not, because the anchor counts employer contributions for active employees, COBRA enrollees and retirees. Column universe: employed (PEMLR 1-2) policyholders whose current job has an employer (PEIO1COW 1-6); dependents, non-employed policyholders, the unincorporated self-employed and workers without pay carry 0, and their scaled share stays out of the column rather than being loaded onto workers. Cells: MEPS-IC 2025 Series II private-sector average total premium and employee contribution per enrolled employee by State and firm size (NOEMP 1-2 under 50, 3-6 50+, 0 the State all-sizes cell; the finer MEPS-IC bands do not nest the NOEMP bands) and coverage tier (NOW_GRPFTYP2 family / self plus one / self-only, cross-checked against NOW_GRPFTYP); State government and local/federal employers take the MEPS-IC 2024 Series III State-government and all-government census-division cells (latest published; the federal cell is a stand-in), aged to 2025 by the private national 2025/2024 ratio of the same tier and measure; a policyholder with no employer class (PEIO1COW 0, 7, 8) takes the State all-sizes private cell. AHRQ suppressed nine small-firm contribution cells; each takes the national small-firm cell times the State total-to-national ratio. Employer paid all (NOW_HIPAID 1): premium. Some (2): premium minus the contribution of an employee who pays one, which is the published average contribution (taken over every enrollee, including those who pay nothing) divided by one minus the published share of enrollees whose coverage required no contribution (MEPS-IC 2025 Tables II.C/D/E.4.a, United States row by firm size; State cells of those tables are mostly flagged unreliable; Series III publishes none, so government cells take the private 50-or-more share). None (3): 0; MEPS-IC publishes no share of enrollees who pay the whole premium. One factor scales every policyholder's share so the weighted anchor-universe total equals CMS NHE Table 24's employer contribution for the build year ($1,047.0B CY2024, banked as cms_nhe.cy2024.esi_employer_contribution_premiums), the anchor microcosm#454 chose; the column carries the employed policyholders' part. BEA NIPA 7.8 line 17 ($977.0B CY2024 in the 2026-09-30 vintage, revised from $1,002.9B) is a second estimate of the same active-plus-retired concept and is recorded beside the verdict, as is MEPS-IC's own private-sector enrollment total for active employees. No MEPS-IC table prices retiree coverage, so non-employed policyholders are priced as active employees. Measured totals, counts and sensitivities are in experiments/us-esi-454. pre_tax_health_insurance_premiums: an employed policyholder with wages (WSAL_VAL > 0), a reported premium (PHIP_VAL > 0) and an employee share (NOW_HIPAID 2-3) pays min(PHIP_VAL, WSAL_VAL) through payroll with the firm-size probability that an insurance-offering employer offers pretax contributions (MEPS-IC 2025 Table I.A.2.j / Table I.A.2: 49.5 percent under 50, 92.6 percent 50+, 72.2 percent all sizes; establishment-weighted). PHIP_VAL is every premium the person paid, not the ESI premium alone. Seeded blake2b draws keyed by source identity; support clones agree. PolicyEngine-US 2.2.1 subtracts it from income-tax and FICA wages (gov.irs.gross_income.pre_tax_contributions, fica_pre_tax_contributions) and does not remove it from the itemized medical-expense base. Release gates: us_esi_premiums_signal_gate (structure, clone agreement, cell multiples; fails without the raw ASEC columns) and us_esi_premiums_anchor_gate (calibrated anchor-universe total within 5 percent of NHE Table 24; employed share within its band)."
     },
     {
       "stage": "prior_year_income",

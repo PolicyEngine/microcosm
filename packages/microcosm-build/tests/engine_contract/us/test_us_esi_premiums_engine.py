@@ -25,9 +25,13 @@ MEASURES = (
     "employee_social_security_tax",
     "cbo_household_market_income",
 )
+#: The reported premium the base carries for every payer (``PHIP_VAL``).
+REPORTED_PREMIUM_COLUMN = "health_insurance_premiums_without_medicare_part_b"
 
 
-def _totals(**person_inputs: float) -> dict[str, float]:
+def _totals(
+    measures: tuple[str, ...] = MEASURES, **person_inputs: float
+) -> dict[str, float]:
     from policyengine_us import Simulation
 
     person = {"age": {PERIOD: 40}, "employment_income": {PERIOD: WAGES}}
@@ -46,7 +50,7 @@ def _totals(**person_inputs: float) -> dict[str, float]:
     )
     return {
         measure: float(simulation.calculate(measure, PERIOD).sum())
-        for measure in MEASURES
+        for measure in measures
     }
 
 
@@ -112,3 +116,47 @@ def test_an_employer_premium_moves_only_cbo_household_market_income(baseline) ->
     for measure in MEASURES:
         if measure != "cbo_household_market_income":
             assert with_premium[measure] == pytest.approx(baseline[measure]), measure
+
+
+def test_known_engine_defect_a_pre_tax_premium_stays_in_itemized_medical_expenses() -> (
+    None
+):
+    """Pins PolicyEngine/policyengine-us#10064 so its fix cannot land unseen.
+
+    A premium paid by pre-tax salary reduction is excluded from wages and so
+    is not a deductible medical expense (IRC 213(a); IRS Publication 502).
+    PolicyEngine-US 2.2.1 excludes it from wages and still counts it in
+    ``itemized_medical_expenses``: an itemizer above the 7.5% floor deducts it
+    twice. The stage cannot repair this in the data, because the reported
+    premium also feeds SNAP, HUD and Medicaid medical-expense definitions that
+    count it whatever its tax treatment.
+
+    When the pinned engine fixes it, this test fails. Delete it then, and
+    remove the caveat from ``docs/us-esi-employer-premiums.md``.
+    """
+
+    measures = ("adjusted_gross_income", "itemized_medical_expenses", "income_tax")
+    premium, other_medical = 2_000.0, 20_000.0
+    as_built = _totals(
+        measures,
+        other_medical_expenses=other_medical,
+        **{REPORTED_PREMIUM_COLUMN: premium, US_ESI_PRE_TAX_PREMIUM_COLUMN: premium},
+    )
+    # What the law gives: the pre-tax premium out of the medical-expense base.
+    lawful = _totals(
+        measures,
+        other_medical_expenses=other_medical,
+        **{US_ESI_PRE_TAX_PREMIUM_COLUMN: premium},
+    )
+
+    assert as_built["adjusted_gross_income"] == pytest.approx(WAGES - premium)
+    assert lawful["adjusted_gross_income"] == pytest.approx(WAGES - premium)
+    assert lawful["itemized_medical_expenses"] == pytest.approx(other_medical)
+    # The defect: the excluded premium is still a medical expense...
+    assert as_built["itemized_medical_expenses"] == pytest.approx(
+        other_medical + premium
+    )
+    # ...worth 12% of the premium to this filer.
+    assert lawful["income_tax"] - as_built["income_tax"] == pytest.approx(
+        0.12 * premium
+    )

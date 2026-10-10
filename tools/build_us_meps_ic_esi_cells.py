@@ -1,9 +1,9 @@
 """Regenerate the packaged MEPS-IC employer-premium cell table (microcosm#454).
 
-The ``meps_esi_premiums`` source stage assigns each employed ESI policyholder
-the MEPS-IC employer share of the premium for their coverage tier, employer
-size and state (or census division for State and local government
-employers). Those cells are published only as PDF tables, so this tool pins
+The ``meps_esi_premiums`` source stage assigns each ESI policyholder the
+MEPS-IC employer share of the premium for their coverage tier, employer size
+and state (or census division for State and local government employers).
+Those cells are published only as PDF tables, so this tool pins
 the official AHRQ PDFs by URL, byte length and SHA-256, extracts the cells the
 stage reads with ``pdftotext -layout`` (poppler), and writes them, with their
 provenance, to
@@ -12,9 +12,16 @@ meps_ic_esi_premium_cells.json``.
 
 Every value is copied as published. Suppressed cells (``--``) stay ``null``:
 the fallback for them is stage logic, declared in the stage manifest, not
-data. Each table's United States row is checked against the AHRQ national
-figure it must reproduce, and a parse that does not find exactly one row per
-state, division or firm-size label refuses.
+data. The premium tables' United States rows are checked against the AHRQ
+national figures they must reproduce, and a parse that does not find exactly
+one row per state, division or firm-size label refuses.
+
+Three national blocks ride along: the share of enrollees whose coverage
+required no employee contribution (Tables II.C/D/E.4.a), which turns the
+average employee contribution into the contribution of those who pay one; the
+private-sector enrollment rows (Tables II.B.1, II.B.2, II.B.2.b and
+II.C/D/E.4) behind the stage's active-employee cross-check; and the firm-size
+pretax-contribution offer rates.
 
 Run (downloads the four PDFs, about 34 MB, into ``--pdf-dir``)::
 
@@ -73,8 +80,10 @@ PDFS: tuple[PinnedPdf, ...] = (
         survey_year=2025,
         description=(
             "MEPS-IC 2025 Series II (private sector, by firm size and State): "
-            "Tables II.C/D/E.1 (average total premium per enrolled employee) "
-            "and II.C/D/E.2 (average employee contribution)"
+            "Tables II.C/D/E.1 (average total premium per enrolled employee), "
+            "II.C/D/E.2 (average employee contribution), II.C/D/E.4.a (percent "
+            "of enrollees whose coverage required no employee contribution), "
+            "and the enrollment rows II.B.1, II.B.2, II.B.2.b and II.C/D/E.4"
         ),
     ),
     PinnedPdf(
@@ -86,7 +95,7 @@ PDFS: tuple[PinnedPdf, ...] = (
         description=(
             "MEPS-IC 2024 Series II (private sector, by firm size and State); "
             "the United States rows age the 2024 State and local government "
-            "cells to 2025"
+            "cells to 2025 and carry the 2024 private-sector enrollment"
         ),
     ),
     PinnedPdf(
@@ -276,7 +285,7 @@ def pdftotext_version() -> str:
 
 
 def _table_block(lines: list[str], table_id: str) -> tuple[int, list[str]]:
-    head = re.compile(rf"^Table {re.escape(table_id)} (Average|Percent)")
+    head = re.compile(rf"^Table {re.escape(table_id)} (Average|Percent|Number)")
     starts = [
         index
         for index, line in enumerate(lines)
@@ -391,6 +400,68 @@ def _series_iii_table(lines, pin: PinnedPdf, table_id: str) -> dict:
     return {"text_line": start + 1, "title": block[0].strip(), "rows": rows}
 
 
+def _full_title(block: list[str]) -> str:
+    """A table title through its ``United States, <year>`` line (it may wrap)."""
+
+    title = ""
+    for line in block[:4]:
+        title = f"{title} {line.strip()}".strip()
+        if re.search(r"United States, \d{4}$", title):
+            return title
+    raise ExtractionError(f"Table title does not end in a survey year: {block[0]!r}.")
+
+
+def _national_row(lines, pin: PinnedPdf, table_id: str) -> dict:
+    """The United States row of one Series II table, kept firm-size columns."""
+
+    start, block = _table_block(lines, table_id)
+    if _table_year(block, table_id) != pin.survey_year:
+        raise ExtractionError(f"Table {table_id} is not survey year {pin.survey_year}.")
+    values, unreliable = _row_values(
+        block, "United States", len(_SERIES_II_COLUMNS), table_id
+    )
+    by_column = dict(zip(_SERIES_II_COLUMNS, values, strict=True))
+    flags = dict(zip(_SERIES_II_COLUMNS, unreliable, strict=True))
+    kept = {column: by_column[column] for column in _KEPT_SERIES_II_COLUMNS}
+    bad = [
+        column
+        for column in _KEPT_SERIES_II_COLUMNS
+        if kept[column] is None or flags[column]
+    ]
+    if bad:
+        raise ExtractionError(
+            f"Table {table_id}: United States {bad} suppressed or flagged unreliable."
+        )
+    return {"text_line": start + 1, "title": _full_title(block), **kept}
+
+
+def _no_contribution_shares(lines, pin: PinnedPdf) -> dict:
+    """Percent of enrollees, by tier, whose coverage required no contribution.
+
+    National by firm size only: most State cells of these tables are flagged
+    unreliable or suppressed.
+    """
+
+    return {
+        tier: _national_row(lines, pin, f"II.{_TIER_LETTER[tier]}.4.a")
+        for tier in TIERS
+    }
+
+
+def _private_enrollment(lines, pin: PinnedPdf) -> dict:
+    """National private-sector enrollment rows for the active-employee check."""
+
+    return {
+        "employees": _national_row(lines, pin, "II.B.1"),
+        "offer_percent": _national_row(lines, pin, "II.B.2"),
+        "enrolled_percent": _national_row(lines, pin, "II.B.2.b"),
+        "tier_share_percent": {
+            tier: _national_row(lines, pin, f"II.{_TIER_LETTER[tier]}.4")
+            for tier in TIERS
+        },
+    }
+
+
 def _pretax_offer_shares(lines, pin: PinnedPdf) -> dict:
     """Firm-size pretax-contribution and health-insurance offer rates."""
 
@@ -467,7 +538,7 @@ def build_payload(pdf_dir: Path) -> dict:
     _start, division_block = _table_block(texts["private_state_2025"], "II.C.1")
     divisions = _state_divisions(division_block)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "issue": "PolicyEngine/microcosm#454",
         "description": (
             "MEPS-IC average total premium and average employee contribution "
@@ -475,10 +546,13 @@ def build_payload(pdf_dir: Path) -> dict:
             "meps_esi_premiums source stage: private-sector cells by State and "
             "firm size (2025), State and local government cells by census "
             "division (2024, the latest published year), the 2024 private "
-            "national rows that age the government cells, and the 2025 "
-            "firm-size pretax-contribution offer rates. Values are copied as "
-            "published; null marks a cell AHRQ suppressed ('--'). Dollar "
-            "values are annual; percent values are percents."
+            "national rows that age the government cells, the 2025 national "
+            "share of enrollees whose coverage required no employee "
+            "contribution, the 2024 and 2025 national private-sector "
+            "enrollment rows, and the 2025 firm-size pretax-contribution "
+            "offer rates. Values are copied as published; null marks a cell "
+            "AHRQ suppressed ('--'). Dollar values are annual; percent values "
+            "are percents; employee counts are persons."
         ),
         "generator": "tools/build_us_meps_ic_esi_cells.py",
         "extraction": {
@@ -508,6 +582,13 @@ def build_payload(pdf_dir: Path) -> dict:
         "private_state_2025": private_2025,
         "private_national_2024": private_2024_national,
         "public_division_2024": public_2024,
+        "no_contribution_share_2025": _no_contribution_shares(
+            texts["private_state_2025"], PDFS[0]
+        ),
+        "private_enrollment_national": {
+            "2024": _private_enrollment(texts["private_state_2024"], PDFS[1]),
+            "2025": _private_enrollment(texts["private_state_2025"], PDFS[0]),
+        },
         "pretax_contribution_2025": _pretax_offer_shares(
             texts["private_national_2025"], PDFS[3]
         ),

@@ -1722,7 +1722,7 @@
        "type": "object",
        "additionalProperties": false,
        "properties": {
-        "series": {
+        "row": {
          "type": "string"
         },
         "sha256": {
@@ -1732,6 +1732,9 @@
          "type": "string",
          "x-spec-surface": "operational"
         },
+        "table": {
+         "type": "string"
+        },
         "values": {
          "type": "object",
          "additionalProperties": {
@@ -1740,11 +1743,16 @@
         }
        },
        "required": [
-        "series",
+        "row",
         "sha256",
         "source",
+        "table",
         "values"
        ]
+      },
+      "anchor_universe": {
+       "type": "string",
+       "x-spec-surface": "documentation"
       },
       "cells_resource": {
        "type": "string"
@@ -1759,10 +1767,22 @@
       "kind": {
        "const": "derive_employer_sponsored_insurance_premiums"
       },
+      "no_contribution_share": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "other_policyholder_cell": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
       "payment_column": {
        "type": "string"
       },
       "payment_rule": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "scaling": {
        "type": "string",
        "x-spec-surface": "documentation"
       },
@@ -1786,12 +1806,16 @@
      },
      "required": [
       "anchor",
+      "anchor_universe",
       "cells_resource",
       "cells_sha256",
       "government_cell_aging",
       "kind",
+      "no_contribution_share",
+      "other_policyholder_cell",
       "payment_column",
       "payment_rule",
+      "scaling",
       "sector_column",
       "size_column",
       "suppressed_cell_fallback",
@@ -1803,6 +1827,10 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "amount": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
       "employer_payment_codes": {
        "type": "array",
        "items": {
@@ -1827,6 +1855,7 @@
       }
      },
      "required": [
+      "amount",
       "employer_payment_codes",
       "kind",
       "pre_tax_share",

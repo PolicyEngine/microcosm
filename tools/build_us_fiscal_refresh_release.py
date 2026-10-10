@@ -1309,10 +1309,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Diagnostic escape hatch (microcosm#454): record the ESI premium "
             "gates — employer_sponsored_insurance_premiums and "
-            "pre_tax_health_insurance_premiums absent, zero-mass, or off the "
-            "BEA NIPA 7.8 anchor — without failing the build (for example on "
-            "a base built before the meps_esi_premiums stage). Release builds "
-            "must leave this unset."
+            "pre_tax_health_insurance_premiums absent, zero-mass, missing "
+            "their raw ASEC coverage columns, or off the CMS NHE Table 24 "
+            "anchor — without failing the build (for example on a base built "
+            "before the meps_esi_premiums stage). The failures are still "
+            "written to esi_premiums.json. Release builds must leave this "
+            "unset."
         ),
     )
     parser.add_argument(
@@ -7442,6 +7444,22 @@ def _write_reported_coverage_vintage_gate_receipt(
 def _engine_input_variables() -> tuple[str, ...]:
     """Persistable PolicyEngine input variables (formula-owned excluded)."""
     return tuple(PolicyEngineUSEngine().variables())
+
+
+def _esi_premiums_signal_evidence(gate: GateResult | None) -> dict[str, object]:
+    """One ESI premium signal verdict for the release evidence file.
+
+    Failures are kept verbatim so a build that waived them
+    (``--allow-esi-premium-gaps``) still records what was red.
+    """
+
+    if gate is None:
+        return {"evaluated": False}
+    return {
+        "evaluated": True,
+        "passed": gate.passed,
+        "failures": list(gate.failures),
+    }
 
 
 def _input_mass_reference_gate(
@@ -15350,11 +15368,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 failures=list(input_coverage_gate.failures),
                 force_upload=True,
             )
-    # microcosm#454: the calibrated ESI premium totals against their external
-    # anchors (BEA NIPA 7.8 line 17 within tolerance; at most the
-    # retiree-inclusive NHE Table 24), red when either column is absent or
-    # zero-mass. Runs on the calibrated export for BOTH the dense and sparse
-    # default paths; the verdict ships as the esi_premiums gate evidence.
+    # microcosm#454: the calibrated ESI premium total over the anchor's
+    # universe (every policyholder) against CMS NHE Table 24 within tolerance,
+    # red when either column is absent or zero-mass or the raw ASEC coverage
+    # columns are gone. Runs on the calibrated export for BOTH the dense and
+    # sparse default paths; the verdict ships as the esi_premiums gate
+    # evidence, with the base and export signal verdicts beside it so a waived
+    # assignment failure stays on the record.
     try:
         esi_premiums_anchor_gate = us_esi_premiums_anchor_gate(
             export_frame, time_period=PERIOD
@@ -15386,6 +15406,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         "passed": esi_premiums_anchor_gate.passed,
                         "failures": list(esi_premiums_anchor_gate.failures),
                         "details": dict(esi_premiums_anchor_gate.details),
+                    },
+                    "signal": {
+                        "base_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_base_gate
+                        ),
+                        "export_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_export_gate
+                        ),
                     },
                 },
                 indent=2,

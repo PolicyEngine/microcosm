@@ -1,11 +1,34 @@
 {
- "description": "MEPS-IC average total premium and average employee contribution per enrolled employee, by coverage tier, for the meps_esi_premiums source stage: private-sector cells by State and firm size (2025), State and local government cells by census division (2024, the latest published year), the 2024 private national rows that age the government cells, and the 2025 firm-size pretax-contribution offer rates. Values are copied as published; null marks a cell AHRQ suppressed ('--'). Dollar values are annual; percent values are percents.",
+ "description": "MEPS-IC average total premium and average employee contribution per enrolled employee, by coverage tier, for the meps_esi_premiums source stage: private-sector cells by State and firm size (2025), State and local government cells by census division (2024, the latest published year), the 2024 private national rows that age the government cells, the 2025 national share of enrollees whose coverage required no employee contribution, the 2024 and 2025 national private-sector enrollment rows, and the 2025 firm-size pretax-contribution offer rates. Values are copied as published; null marks a cell AHRQ suppressed ('--'). Dollar values are annual; percent values are percents; employee counts are persons.",
  "extraction": {
   "method": "pdftotext -layout, one row per label, refusing any label that does not match exactly one line",
   "pdftotext": "pdftotext version 26.09.0"
  },
  "generator": "tools/build_us_meps_ic_esi_cells.py",
  "issue": "PolicyEngine/microcosm#454",
+ "no_contribution_share_2025": {
+  "employee_plus_one": {
+   "50plus": 3.6,
+   "lt50": 23.1,
+   "text_line": 18025,
+   "title": "Table II.E.4.a Percent of private-sector employees enrolled in a health insurance plan that take employee-plus-one coverage that required no employee contribution by firm size and State: United States, 2025",
+   "total": 6.0
+  },
+  "family": {
+   "50plus": 4.6,
+   "lt50": 28.6,
+   "text_line": 15679,
+   "title": "Table II.D.4.a Percent of private-sector employees enrolled in a health insurance plan that take family coverage that required no employee contribution by firm size and State: United States, 2025",
+   "total": 7.7
+  },
+  "single": {
+   "50plus": 8.7,
+   "lt50": 35.5,
+   "text_line": 11829,
+   "title": "Table II.C.4.a Percent of private-sector employees enrolled in a health insurance plan that take single coverage that required no employee contribution by firm size and State: United States, 2025",
+   "total": 13.0
+  }
+ },
  "pretax_contribution_2025": {
   "offer_title": "Table I.A.2 Percent of private-sector establishments that offer health insurance by firm size and selected characteristics: United States,",
   "rows": {
@@ -24,6 +47,100 @@
   },
   "text_line": 2376,
   "title": "Table I.A.2.j Percent of private-sector establishments that offer tax-advantaged benefits for contributions to health insurance, Flexible"
+ },
+ "private_enrollment_national": {
+  "2024": {
+   "employees": {
+    "50plus": 102965293.0,
+    "lt50": 36475784.0,
+    "text_line": 3322,
+    "title": "Table II.B.1 Number of private-sector employees by firm size and State: United States, 2024",
+    "total": 139441077.0
+   },
+   "enrolled_percent": {
+    "50plus": 55.8,
+    "lt50": 53.0,
+    "text_line": 4150,
+    "title": "Table II.B.2.b Percent of private-sector employees that are enrolled in health insurance at establishments that offer health insurance by firm size and State: United States, 2024",
+    "total": 55.3
+   },
+   "offer_percent": {
+    "50plus": 97.4,
+    "lt50": 50.5,
+    "text_line": 3650,
+    "title": "Table II.B.2 Percent of private-sector employees in establishments that offer health insurance by firm size and State: United States, 2024",
+    "total": 85.1
+   },
+   "tier_share_percent": {
+    "employee_plus_one": {
+     "50plus": 18.1,
+     "lt50": 14.3,
+     "text_line": 17851,
+     "title": "Table II.E.4 Percent of private-sector employees enrolled in a health insurance plan that take employee-plus-one coverage by firm size and State: United States, 2024",
+     "total": 17.6
+    },
+    "family": {
+     "50plus": 24.4,
+     "lt50": 19.8,
+     "text_line": 15507,
+     "title": "Table II.D.4 Percent of private-sector employees enrolled in a health insurance plan that take family coverage by firm size and State: United States, 2024",
+     "total": 23.7
+    },
+    "single": {
+     "50plus": 57.5,
+     "lt50": 66.0,
+     "text_line": 11661,
+     "title": "Table II.C.4 Percent of private-sector employees enrolled in a health insurance plan that take single coverage by firm size and State: United States, 2024",
+     "total": 58.7
+    }
+   }
+  },
+  "2025": {
+   "employees": {
+    "50plus": 105297602.0,
+    "lt50": 35753890.0,
+    "text_line": 3330,
+    "title": "Table II.B.1 Number of private-sector employees by firm size and State: United States, 2025",
+    "total": 141051492.0
+   },
+   "enrolled_percent": {
+    "50plus": 54.7,
+    "lt50": 52.3,
+    "text_line": 4156,
+    "title": "Table II.B.2.b Percent of private-sector employees that are enrolled in health insurance at establishments that offer health insurance by firm size and State: United States, 2025",
+    "total": 54.3
+   },
+   "offer_percent": {
+    "50plus": 95.6,
+    "lt50": 50.4,
+    "text_line": 3658,
+    "title": "Table II.B.2 Percent of private-sector employees in establishments that offer health insurance by firm size and State: United States, 2025",
+    "total": 84.2
+   },
+   "tier_share_percent": {
+    "employee_plus_one": {
+     "50plus": 18.7,
+     "lt50": 14.9,
+     "text_line": 17857,
+     "title": "Table II.E.4 Percent of private-sector employees enrolled in a health insurance plan that take employee-plus-one coverage by firm size and State: United States, 2025",
+     "total": 18.1
+    },
+    "family": {
+     "50plus": 24.2,
+     "lt50": 21.6,
+     "text_line": 15511,
+     "title": "Table II.D.4 Percent of private-sector employees enrolled in a health insurance plan that take family coverage by firm size and State: United States, 2025",
+     "total": 23.8
+    },
+    "single": {
+     "50plus": 57.1,
+     "lt50": 63.5,
+     "text_line": 11663,
+     "title": "Table II.C.4 Percent of private-sector employees enrolled in a health insurance plan that take single coverage by firm size and State: United States, 2025",
+     "total": 58.1
+    }
+   }
+  }
  },
  "private_national_2024": {
   "employee_plus_one": {
@@ -2005,7 +2122,7 @@
    }
   }
  },
- "schema_version": 1,
+ "schema_version": 2,
  "sources": {
   "private_national_2025": {
    "description": "MEPS-IC 2025 Series I (private sector, national): Table I.A.2 (percent of establishments that offer health insurance) and Table I.A.2.j (percent of establishments that offer pretax employee contributions to health insurance), by firm size",
@@ -2016,7 +2133,7 @@
    "url": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/national/series_1/2025/ic25_ia_g.pdf"
   },
   "private_state_2024": {
-   "description": "MEPS-IC 2024 Series II (private sector, by firm size and State); the United States rows age the 2024 State and local government cells to 2025",
+   "description": "MEPS-IC 2024 Series II (private sector, by firm size and State); the United States rows age the 2024 State and local government cells to 2025 and carry the 2024 private-sector enrollment",
    "publisher": "Agency for Healthcare Research and Quality, Center for Financing, Access and Cost Trends, Medical Expenditure Panel Survey-Insurance Component",
    "sha256": "4ae0dada70fac7c147508b946a2d00cf2e8930f5550f6beb9d8a1bf3de71d20b",
    "size_bytes": 10687163,
@@ -2024,7 +2141,7 @@
    "url": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/state/series_2/2024/ic24_iia_f.pdf"
   },
   "private_state_2025": {
-   "description": "MEPS-IC 2025 Series II (private sector, by firm size and State): Tables II.C/D/E.1 (average total premium per enrolled employee) and II.C/D/E.2 (average employee contribution)",
+   "description": "MEPS-IC 2025 Series II (private sector, by firm size and State): Tables II.C/D/E.1 (average total premium per enrolled employee), II.C/D/E.2 (average employee contribution), II.C/D/E.4.a (percent of enrollees whose coverage required no employee contribution), and the enrollment rows II.B.1, II.B.2, II.B.2.b and II.C/D/E.4",
    "publisher": "Agency for Healthcare Research and Quality, Center for Financing, Access and Cost Trends, Medical Expenditure Panel Survey-Insurance Component",
    "sha256": "ebebf083d132e2b5a72ac99d659ee6d46a382280a47d2ff2d20f6e9e25b69330",
    "size_bytes": 12530005,

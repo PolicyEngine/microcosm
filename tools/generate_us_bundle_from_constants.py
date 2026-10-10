@@ -122,7 +122,7 @@ LEGACY_COMPATIBILITY_PROJECTIONS = {
 # frozen files, is the forward YAML -> legacy-payload path.
 FROZEN_LEGACY_RESOURCE_SHA256 = {
     "source_stages.json": (
-        "0ce29ce06285a094b214f805a8136f399216aae44dc4b55d13a568307f5c0f91"
+        "f4bc38ec224894b09329fe8ee189fa5072599fdeb42977b3be32b17665785840"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
