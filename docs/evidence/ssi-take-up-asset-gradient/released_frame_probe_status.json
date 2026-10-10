@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-10-09",
+  "status": "not_evaluated",
+  "blocking_condition": "The required heavy wrapper fails before launching a probe because the sandbox prohibits its ps subprocess. The runtime now resolves observed support holdings disagreements through explicit physical ASEC ownership; they are a reported resource-measurement risk rather than a full-frame ownership blocker.",
+  "permission_probe": {
+    "command": "heavy --mem 8 -- python3 -c 'print(\"SSI diagnostic permission probe\")'",
+    "exit_code": 1,
+    "error_tail": "PermissionError: [Errno 1] Operation not permitted: 'ps'"
+  },
+  "sources": [
+    {
+      "release_id": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+      "local_path": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/f09f2f3b9fa8409642dc0c7fc9c8f7516ae0e3c5/populace_us_2024.h5",
+      "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+      "sha256_verified": true,
+      "size_bytes": 462915783,
+      "person_rows": 166321,
+      "household_rows": 57240,
+      "missing_required_reseed_columns": [],
+      "source_attribute_audit": {
+        "source_identity_count": 135833,
+        "source_ids_with_multiple_rows": 30488,
+        "maximum_rows_per_source": 2,
+        "age_mismatch_source_count": 0,
+        "age_mismatch_row_count": 0,
+        "total_liquid_asset_mismatch_source_count": 9446,
+        "total_liquid_asset_mismatch_row_count": 18892,
+        "conflicting_ids_with_exactly_one_physical_asec_row": 9446,
+        "conflicting_ids_missing_physical_asec_row": 0,
+        "conflicting_ids_with_multiple_physical_asec_rows": 0,
+        "all_source_ids_missing_physical_asec_row": 69832,
+        "all_source_ids_with_exactly_one_physical_asec_row": 66001,
+        "row_channel_counts": {"asec": 66001, "puf_tax_detail": 100320},
+        "maximum_within_source_total_liquid_asset_range": 60547861.95822643,
+        "finite_age": true,
+        "finite_nonnegative_asset_components": true,
+        "source_asset_ownership_compatible": true,
+        "compatibility_scope": "Static attribute audit only; no runtime helper or engine probe was executed."
+      }
+    },
+    {
+      "release_id": "populace-us-2024-spm-20260915",
+      "local_path": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/8ab57ffc2ca41d8af631ff62ebbce95e966299f3/populace_us_2024.h5",
+      "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
+      "sha256_verified": true,
+      "size_bytes": 826917837,
+      "person_rows": 166321,
+      "household_rows": 57240,
+      "missing_required_reseed_columns": [],
+      "cached_release_manifest_hash_agrees": true,
+      "certified_model_specifier": ">=2.0.0,<2.3",
+      "certified_core_specifier": "==3.32.5",
+      "source_attribute_audit": {
+        "source_identity_count": 135833,
+        "source_ids_with_multiple_rows": 30488,
+        "maximum_rows_per_source": 2,
+        "age_mismatch_source_count": 0,
+        "age_mismatch_row_count": 0,
+        "total_liquid_asset_mismatch_source_count": 9446,
+        "total_liquid_asset_mismatch_row_count": 18892,
+        "conflicting_ids_with_exactly_one_physical_asec_row": 9446,
+        "conflicting_ids_missing_physical_asec_row": 0,
+        "conflicting_ids_with_multiple_physical_asec_rows": 0,
+        "all_source_ids_missing_physical_asec_row": 69832,
+        "all_source_ids_with_exactly_one_physical_asec_row": 66001,
+        "row_channel_counts": {"asec": 66001, "puf_tax_detail": 100320},
+        "maximum_within_source_total_liquid_asset_range": 60547861.95822643,
+        "finite_age": true,
+        "finite_nonnegative_asset_components": true,
+        "source_asset_ownership_compatible": true,
+        "compatibility_scope": "Static attribute audit only; no runtime helper or engine probe was executed."
+      }
+    }
+  ],
+  "required_reseed_columns": [
+    "age", "SSI_VAL", "person_source_id", "bank_account_assets",
+    "stock_assets", "bond_assets", "takes_up_ssi_if_eligible",
+    "person_support_channel", "person_support_clone_index"
+  ],
+  "source_attribute_audit_method": {
+    "columns_read": ["person_source_id", "age", "bank_account_assets", "stock_assets", "bond_assets"],
+    "follow_up_channel_audit_column": "person_support_channel",
+    "scope": "Read-only five-column H5 attribute audit and follow-up support-channel audit; no engine calculation, simulation or heavy suite.",
+    "comparison": "Exact within-source equality of age and row-order bank+stock+bond sum, followed by checking whether every differing-support ID has one physical ASEC owner.",
+    "source_imputation_contract": "scf_wealth.py draws by actual recipient household, not source ID; SIPP/SCF predictors read actual support-row incomes, and PUF copies preserve source identity while receiving tax detail. Physical ASEC holdings provide baseline provenance when present; pruning can remove that row.",
+    "runtime_ownership_rule": "Use physical ASEC holdings when present; conflicting physical rows fail. Otherwise surviving copies must agree, including a sole survivor. Capture canonical holdings with us_ssi_take_up_source_liquid_assets; pass its unchanged source_liquid_assets map through assignment, zero/gradient reseeds and final diagnostics. Maps must cover retained IDs with finite nonnegative values, agree with retained physical ASEC rows and may retain pruned extra IDs. Engine resource inputs are not rewritten.",
+    "limitation": "No source frame was modified and no helper was executed. PUF engine resources still differ from physical-source holdings for observed conflicts (#424). A pre-pruning map preserves frozen source attributes; capturing anew on an already-pruned frame cannot recover discarded physical holdings and is not an incumbent replay."
+  },
+  "measurements": {
+    "adult_10k_20k_incumbent_reported_in_task": 153211,
+    "adult_10k_20k_cbpp_published": 154000,
+    "adult_10k_20k_gradient": null,
+    "adult_non_regression_status": "not_evaluated",
+    "elderly_10k_20k_incumbent_rounded_reported_in_task": 363000,
+    "elderly_10k_20k_gradient": null,
+    "elderly_10k_20k_cbpp_published": null,
+    "elderly_no_limit_incumbent_rounded_reported_in_task": 694000,
+    "elderly_no_limit_cbpp_published": 115000,
+    "elderly_no_limit_constant_reseed": null,
+    "elderly_no_limit_gradient": null,
+    "elderly_gap_share_explained_by_gradient": null,
+    "elderly_gap_status": "not_evaluated",
+    "msp_enrollment_validation_status": "not_evaluated_no_matching_msp_population_or_program_bridge"
+  },
+  "attribution_method": {
+    "gradient_only_share": "(zero_slope_reseed_new - estimated_gradient_reseed_new) / (measured_incumbent_new - 115000)",
+    "total_reseed_share": "(measured_incumbent_new - estimated_gradient_reseed_new) / (measured_incumbent_new - 115000)",
+    "reason_for_both": "Delivered-weight intercept recomputation can change the constant-prior result as well as the gradient result.",
+    "remaining_gap": "May reflect imputed resources (#424) or eligibility undercount (#644), rather than claiming."
+  },
+  "did_not_do": [
+    "No heavy engine probe ran outside the required wrapper.",
+    "No released frame was modified or overwritten.",
+    "No full release build, calibration, publication, push, or GitHub write.",
+    "No slope, intercept or asset transform was tuned to a CBPP recipient count."
+  ]
+}

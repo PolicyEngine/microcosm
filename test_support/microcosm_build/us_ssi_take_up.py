@@ -48,6 +48,7 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
 _TARGETS = {target.key: 50.0 for target in US_SSI_TAKE_UP_AGE_TARGETS}
+_ZERO_ASSET_SLOPES = {key: 0.0 for key in _TARGETS}
 _AGES = {"under_18": 12.0, "18_64": 40.0, "65_plus": 72.0}
 # Fixture arithmetic per band: six dual-channel candidates weigh 20.0 each
 # and the PUF-only candidate weighs 10.0 (capacity 130.0); the sole anchored
@@ -111,6 +112,9 @@ def _frame(*, stale_output: bool = False) -> tuple[Frame, np.ndarray]:
                         "person_family_id": person_id,
                         "person_marital_unit_id": person_id,
                         "age": age,
+                        "bank_account_assets": 0.0,
+                        "stock_assets": 0.0,
+                        "bond_assets": 0.0,
                         # PUF copies can carry SSI_VAL, but only direct ASEC
                         # rows are independent reporter anchors.
                         US_SSI_TAKE_UP_ANCHOR: 1_200.0 if reporter else 0.0,
@@ -192,6 +196,7 @@ def _assigned(
         uncapped_ssi=potential,
         seed=seed,
         targets=targets or _TARGETS,
+        asset_slopes=_ZERO_ASSET_SLOPES,
     )
     return frame, result, potential, diagnostics
 
@@ -237,6 +242,7 @@ def _release_final_diagnostics() -> dict[str, object]:
         targets=_TARGETS,
         assignment_priors=stage_priors,
         prior_basis=ssi_take_up_prior_basis_from_diagnostics(stage_diagnostics),
+        asset_slopes=_ZERO_ASSET_SLOPES,
     )
 
 

@@ -101,6 +101,7 @@ def test_assignment_accepts_weight_split_puf_clone_indices() -> None:
 
     result, diagnostics = with_us_ssi_take_up(
         split_frame,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -116,6 +117,7 @@ def test_puf_only_ssi_value_is_not_promoted_to_reporter_anchor() -> None:
     frame, potential = _frame()
     baseline, baseline_diagnostics = with_us_ssi_take_up(
         frame,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets={key: 20.0 for key in _TARGETS},
@@ -125,6 +127,7 @@ def test_puf_only_ssi_value_is_not_promoted_to_reporter_anchor() -> None:
     person.loc[puf_only, US_SSI_TAKE_UP_ANCHOR] = 9_999.0
     result, diagnostics = with_us_ssi_take_up(
         _replace_person(frame, person),
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets={key: 20.0 for key in _TARGETS},
@@ -146,6 +149,7 @@ def test_stacked_asec_sources_own_reporters_across_operator_clones() -> None:
 
     result, diagnostics = with_us_ssi_take_up(
         frame,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -168,6 +172,7 @@ def test_stacked_asec_sources_own_reporters_across_operator_clones() -> None:
     with pytest.raises(ValueError, match="physical ASEC source rows"):
         with_us_ssi_take_up(
             invalid,
+            asset_slopes=_ZERO_ASSET_SLOPES,
             uncapped_ssi=potential,
             seed=17,
             targets=_TARGETS,
@@ -185,6 +190,7 @@ def test_reporter_lineage_survives_when_l0_keeps_only_the_puf_clone() -> None:
     sparse_potential = potential[~dropped.to_numpy()]
     result, diagnostics = with_us_ssi_take_up(
         sparse,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=sparse_potential,
         seed=17,
         targets=_TARGETS,
@@ -227,10 +233,10 @@ def test_selection_is_anchors_union_of_seeded_draws_below_the_band_prior() -> No
         )
     assert diagnostics["bernoulli_law_violation_count"] == 0
     assert diagnostics["measurement_phase"] == "assignment_stage"
-    # Schema 4 disambiguates the floor-aware assignment-prior arithmetic from
+    # Schema 5 extends the floor-aware assignment-prior arithmetic from
     # schema 3 artifacts that may carry the old floor-blind arithmetic; pin the
     # literal so reverting the constant alone cannot pass.
-    assert diagnostics["schema_version"] == 4
+    assert diagnostics["schema_version"] == 5
     assert diagnostics["prior_weight_basis"] == {
         "kind": US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
         "source_sha256": None,
@@ -336,6 +342,7 @@ def test_stale_output_is_healed_and_exact_rerun_returns_same_frame() -> None:
     _, result, potential, diagnostics = _assigned(stale_output=True)
     again, again_diagnostics = with_us_ssi_take_up(
         result,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -352,6 +359,7 @@ def test_matching_numeric_output_is_rewritten_to_canonical_boolean() -> None:
     numeric = _replace_person(result, person)
     healed, diagnostics = with_us_ssi_take_up(
         numeric,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -391,6 +399,7 @@ def test_source_provenance_failures_are_rejected(mutation: str, message: str) ->
     with pytest.raises(ValueError, match=message):
         with_us_ssi_take_up(
             _replace_person(frame, person),
+            asset_slopes=_ZERO_ASSET_SLOPES,
             uncapped_ssi=potential,
             seed=17,
             targets=_TARGETS,
@@ -481,6 +490,7 @@ def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
     )
     diagnostics = us_ssi_take_up_diagnostics(
         reweighted,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -506,6 +516,7 @@ def test_existing_assignment_diagnostics_do_not_reassign_flags() -> None:
 
     recomputed, _ = with_us_ssi_take_up(
         reweighted,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -529,6 +540,7 @@ def test_gate_rejects_persisted_flags_that_break_the_bernoulli_law() -> None:
     corrupted = _replace_person(result, person)
     diagnostics = us_ssi_take_up_diagnostics(
         corrupted,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -564,6 +576,7 @@ def test_release_artifact_basis_drives_the_band_priors() -> None:
     frame, potential = _frame()
     result, diagnostics = with_us_ssi_take_up(
         frame,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -604,6 +617,7 @@ def test_saturated_artifact_basis_falls_back_to_the_basis_reporter_rate() -> Non
     frame, potential = _frame()
     result, diagnostics = with_us_ssi_take_up(
         frame,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -679,6 +693,7 @@ def test_prior_basis_round_trips_through_diagnostics() -> None:
     }
     final = us_ssi_take_up_diagnostics(
         result,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -697,6 +712,7 @@ def test_prior_basis_round_trips_through_diagnostics() -> None:
     frame, potential = _frame()
     _, artifact_diagnostics = with_us_ssi_take_up(
         frame,
+        asset_slopes=_ZERO_ASSET_SLOPES,
         uncapped_ssi=potential,
         seed=17,
         targets=_TARGETS,
@@ -707,8 +723,9 @@ def test_prior_basis_round_trips_through_diagnostics() -> None:
 
 def test_prior_basis_loader_accepts_current_and_legacy_artifacts() -> None:
     diagnostics = _release_final_diagnostics()
-    assert diagnostics["schema_version"] == 4
+    assert diagnostics["schema_version"] == 5
     payload4 = copy.deepcopy(diagnostics)
+    payload4["schema_version"] = 4
     basis4 = ssi_take_up_prior_basis_from_artifact(
         payload4, targets=_TARGETS, source_sha256=_BASIS_SHA
     )
@@ -1026,6 +1043,9 @@ def test_gate_rejects_basis_arithmetic_drift() -> None:
     _, _, _, diagnostics = _assigned()
     drifted = copy.deepcopy(diagnostics)
     drifted["age_bands"][0]["prior_basis_candidate_capacity"] = 1_000.0
+    drifted["age_bands"][0]["prior_basis_nonanchor_asset_distribution"] = [
+        (0.0, 1_000.0 - _REPORTER_FLOOR)
+    ]
     gate = us_ssi_take_up_gate(drifted, targets=_TARGETS)
     assert not gate.passed
     assert any("prior basis" in failure for failure in gate.failures)
@@ -1035,6 +1055,9 @@ def test_gate_rejects_basis_arithmetic_drift() -> None:
     # (microcosm#507 sol review finding 6).
     absurd = copy.deepcopy(diagnostics)
     absurd["age_bands"][0]["prior_basis_candidate_capacity"] = 1e20
+    absurd["age_bands"][0]["prior_basis_nonanchor_asset_distribution"] = [
+        (0.0, 1e20 - _REPORTER_FLOOR)
+    ]
     absurd_gate = us_ssi_take_up_gate(absurd, targets=_TARGETS)
     assert not absurd_gate.passed
     assert any("prior basis" in failure for failure in absurd_gate.failures)
@@ -1080,6 +1103,7 @@ def test_gate_prior_audit_epsilon_is_dimensionless_at_absurd_capacity() -> None:
     tampered = copy.deepcopy(diagnostics)
     row = tampered["age_bands"][0]
     row["candidate_capacity"] = 1e20
+    row["candidate_nonanchor_asset_distribution"] = [(0.0, 1e20 - _REPORTER_FLOOR)]
     row["max_source_candidate_weight"] = 1e20
     row["saturated"] = False
     row["prior_recomputed_from_current_weights"] = _expected_prior(50.0, capacity=1e20)

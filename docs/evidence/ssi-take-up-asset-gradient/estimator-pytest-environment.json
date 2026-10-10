@@ -1,0 +1,15 @@
+{
+  "python": "/private/tmp/microcosm-584-tests/bin/python",
+  "python_version": "3.14.4",
+  "selector": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py",
+  "environment": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "PYTHONPATH": "packages/microcosm-build/src:packages/microcosm-frame/src:packages/microcosm-fit/src:packages/microcosm-calibrate/src:packages/microcosm-data/src:packages/microcosm-graph/src:packages/microcosm-diagnostics/src:."
+  },
+  "baseline_exit_code": 0,
+  "mutations_exit_code": 0,
+  "elapsed_seconds": 75.30601441700128
+}

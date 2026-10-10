@@ -1548,8 +1548,11 @@
           "kind": "assign_binary_from_rate",
           "output": "takes_up_ssi_if_eligible",
           "draw": "stable_source_person_draw",
-          "rate_key": "ssi_age_band_count_prior",
+          "rate_key": "ssi_age_band_asset_propensity",
           "rate_column": "ssi_take_up_assignment_prior",
+          "asset_inputs": ["bank_account_assets", "stock_assets", "bond_assets"],
+          "asset_transform": "natural_log1p_dollars",
+          "asset_attribute_basis": "physical_asec_source_row_else_agreeing_support_copies",
           "reported_true_anchor": "SSI_VAL > 0",
           "assignment_unit": "person_source_id",
           "fan_to_support_clones": true,
@@ -1558,7 +1561,7 @@
             "18_64": "18 <= age < 65",
             "65_plus": "age >= 65"
           },
-          "rate_derivation": "(band_target - basis_reporter_candidate_floor) / (basis_candidate_capacity - basis_reporter_candidate_floor) over uncapped_ssi > 0 candidates, so anchored-plus-drawn mass expects the target; basis = this frame's weights, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (microcosm#507/#508); zero once the reporter floor meets the target; min(basis_reporter_candidate_floor / capacity, 1) once capacity cannot subsample the target",
+          "rate_derivation": "logistic(a_band + b_band * log1p(own liquid assets)); estimate b_band from SIPP, solve a_band so reporter floor plus expected drawn mass on uncapped_ssi > 0 candidates equals the SSA band target; basis = this frame's weights or a prior attempt's delivered-weight candidate asset distribution (microcosm#507/#508); preserve historical reporter-share fallback when capacity cannot subsample target and zero additional draws when reporter floor meets target",
           "rate_target_role": "ssa_ssi_age_band_recipients",
           "target_source": "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html",
           "target_period": "2024-12",
@@ -1568,7 +1571,7 @@
       "outputs": [
         "takes_up_ssi_if_eligible"
       ],
-      "notes": "Restores the final retired eCPS SSI take-up export from source-backed evidence at archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe. datasets/cps/cps.py line 584 maps the direct ASEC SSI_VAL reporter signal, lines 650-657 derive the take-up leaf, and lines 1497-1499 export it; datasets/cps/takeup.py lines 10-35 define the retired stable random assignment. The retired all-age 0.50 rate has no full-population administrative source and is not reused. utils/ssi_targets.py lines 41-74 preserve the archived age-target method and cite SSA SSI Monthly Statistics, December 2024, Table 1, row Total with—Federal payment, by the three published age bands; those recipient counts enter the build only as ledger-fed calibration registry targets (role ssa_ssi_age_band_recipients, microcosm#469 and microcosm#470), never as count-matching goals in this stage. Direct SSI_VAL reporters remain true. Every other source-person identity draws once against the documented band prior — the anchored-mass-corrected count-truthful threshold (band target minus basis reporter floor) over (basis candidate capacity minus basis reporter floor) on weighted uncapped_ssi > 0 candidates, zero once the reporter floor meets the target, falling back to the basis reporter share of capacity when capacity cannot subsample the target — seeded and stable per person_source_id, with the decision fanned identically to both support clones. The capacity basis is this frame's weights by default, or a prior attempt's delivered-weight us_ssi_take_up.json diagnostics (microcosm#507/#508); either way the draw happens exactly once, with no reconcile loop. Delivered recipients on release weights are gated per enforced band (18_64, 65_plus) within a documented relative tolerance; the under-18 band is fenced pending microcosm#453/#509 and its gap ships in the release scorecard."
+      "notes": "Reporter-anchored, one-shot per-source SSI take-up. Physical ASEC source rows own asset attributes; without one, surviving copies must agree. PUF resource differences are diagnosed, not averaged. SIPP-estimated slopes act on own bank+stock+bond holdings through natural log1p, independently of reforms or eligibility regimes. SSA registry targets solve expected candidate mass intercepts. Schema-5 diagnostics carry exact anonymous non-anchor asset mass on assignment and delivered bases for the #507/#508 single retry. Understated eligibility (#644) raises intercepts; resource imputation (#424) changes the basis. Slopes never absorb those defects. Adult delivery gate and child fence stay unchanged in role. Zero slopes reproduce archived constant-prior flags."
     },
     {
       "stage": "sipp_tips",

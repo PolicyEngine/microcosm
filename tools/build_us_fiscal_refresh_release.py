@@ -317,6 +317,7 @@ from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
+    us_ssi_take_up_source_liquid_assets,
 )
 
 # The target-loss weights live in one shared module, which the ACS local
@@ -13756,6 +13757,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
+    ssi_source_liquid_assets = us_ssi_take_up_source_liquid_assets(
+        base_frame, reporter_source_ids=ssi_reporter_source_ids
+    )
     base_frame, ssi_take_up_stage_diagnostics = with_us_ssi_take_up(
         base_frame,
         uncapped_ssi=ssi_uncapped_amount,
@@ -13763,6 +13767,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         targets=ssi_band_targets,
         reporter_source_ids=ssi_reporter_source_ids,
         prior_basis=ssi_take_up_prior_basis,
+        source_liquid_assets=ssi_source_liquid_assets,
     )
     ssi_take_up_gate = us_ssi_take_up_gate(
         ssi_take_up_stage_diagnostics, targets=ssi_band_targets
@@ -14750,6 +14755,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             assignment_priors=ssi_assignment_priors,
             prior_basis=ssi_assignment_prior_basis,
             reporter_source_ids=ssi_reporter_source_ids,
+            asset_slopes=ssi_take_up_stage_diagnostics["asset_gradient"]["slopes"],
+            source_liquid_assets=ssi_source_liquid_assets,
         )
     )
     # The delivered-weight measurement is written the moment it exists —

@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "transform": "log1p(own bank + stock + bond assets, dollars)",
+  "link": "logit",
+  "sample_flow": {
+    "december_rows": 39513,
+    "observed_rows": 26177,
+    "aged_or_disabled_rows": 16289,
+    "apparent_income_eligible_rows": 9210,
+    "complete_unmarried_income_eligible_aged_or_disabled_rows": 1447
+  },
+  "fits": {
+    "under_18": {
+      "within_resource_limit": {
+        "status": "estimated",
+        "rows": 115,
+        "households": 113,
+        "receipt_rows": 8,
+        "weighted_population": 985648.8480488901,
+        "weighted_receipt_share": 0.06933310798391995,
+        "effective_rows_kish": 86.31460042781758,
+        "intercept": -2.2649358103394146,
+        "slope": -0.3479791690511584,
+        "intercept_standard_error": 0.4796639742671864,
+        "slope_standard_error": 0.21754009012906686,
+        "slope_95_percent_interval": [
+          -0.7743577457041294,
+          0.07839940760181263
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 36,
+        "score_max_abs": 8.432985971419391e-07
+      },
+      "full_observed_range_confounded_by_eligibility": {
+        "status": "estimated",
+        "rows": 119,
+        "households": 117,
+        "receipt_rows": 8,
+        "weighted_population": 1023280.1191388901,
+        "weighted_receipt_share": 0.06678337313296757,
+        "effective_rows_kish": 89.62929723556071,
+        "intercept": -2.263100337005365,
+        "slope": -0.3620122381962801,
+        "intercept_standard_error": 0.47853359237528625,
+        "slope_standard_error": 0.21074220276316477,
+        "slope_95_percent_interval": [
+          -0.775066955612083,
+          0.051042479219522874
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 6600.0,
+        "positive_asset_rows": 40,
+        "score_max_abs": 3.9439353531910824e-06
+      },
+      "positive_assets_within_limit": {
+        "status": "unstable_not_usable",
+        "original_software_status": "estimated",
+        "warning": "Extreme coefficient with one SSI receipt: potential complete/quasi-complete separation. Original numerical output retained; not a usable finite-MLE or standard-error claim. The updated estimator checks ordered one-predictor outcome ranges before fitting; the full microdata pass was not repeated.",
+        "rows": 36,
+        "households": 36,
+        "receipt_rows": 1,
+        "weighted_population": 316167.1994528,
+        "weighted_receipt_share": 0.010240339895800431,
+        "effective_rows_kish": 28.57104168665437,
+        "intercept": -1250.752297560972,
+        "slope": 164.29553210916686,
+        "intercept_standard_error": 221.06034729414648,
+        "slope_standard_error": 29.206367115742527,
+        "slope_95_percent_interval": [
+          107.0510525623115,
+          221.54001165602222
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 3.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 36,
+        "score_max_abs": 8.433195491076956e-05
+      },
+      "within_limit_annual_receipt": {
+        "status": "estimated",
+        "rows": 115,
+        "households": 113,
+        "receipt_rows": 8,
+        "weighted_population": 985648.8480488901,
+        "weighted_receipt_share": 0.06933310798391995,
+        "effective_rows_kish": 86.31460042781758,
+        "intercept": -2.2649358103394146,
+        "slope": -0.3479791690511584,
+        "intercept_standard_error": 0.4796639742671864,
+        "slope_standard_error": 0.21754009012906686,
+        "slope_95_percent_interval": [
+          -0.7743577457041294,
+          0.07839940760181263
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 36,
+        "score_max_abs": 8.432985971419391e-07
+      }
+    },
+    "18_64": {
+      "within_resource_limit": {
+        "status": "estimated",
+        "rows": 817,
+        "households": 761,
+        "receipt_rows": 260,
+        "weighted_population": 7019669.7210683,
+        "weighted_receipt_share": 0.3109624094341861,
+        "effective_rows_kish": 560.2759164584559,
+        "intercept": -0.8727417653686824,
+        "slope": 0.03330195488198548,
+        "intercept_standard_error": 0.12509807829485264,
+        "slope_standard_error": 0.03341954434825965,
+        "slope_95_percent_interval": [
+          -0.03220035204060344,
+          0.0988042618045744
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 401,
+        "score_max_abs": 7.422994944681991e-11
+      },
+      "full_observed_range_confounded_by_eligibility": {
+        "status": "estimated",
+        "rows": 911,
+        "households": 850,
+        "receipt_rows": 266,
+        "weighted_population": 7896144.2397159,
+        "weighted_receipt_share": 0.28272041162895734,
+        "effective_rows_kish": 624.7145878753038,
+        "intercept": -0.7710275759510182,
+        "slope": -0.055276572443414454,
+        "intercept_standard_error": 0.11900355826887904,
+        "slope_standard_error": 0.026065682228162537,
+        "slope_95_percent_interval": [
+          -0.10636530961061302,
+          -0.004187835276215884
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 343543.0,
+        "positive_asset_rows": 495,
+        "score_max_abs": 4.3932651159804883e-07
+      },
+      "positive_assets_within_limit": {
+        "status": "estimated",
+        "rows": 401,
+        "households": 383,
+        "receipt_rows": 137,
+        "weighted_population": 3432662.4784383,
+        "weighted_receipt_share": 0.33314973129245146,
+        "effective_rows_kish": 277.76737285914544,
+        "intercept": -0.7095609779999366,
+        "slope": 0.0033546785435373686,
+        "intercept_standard_error": 0.35259503541526666,
+        "slope_standard_error": 0.06929875055730529,
+        "slope_95_percent_interval": [
+          -0.13247087254878098,
+          0.13918022963585575
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 1.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 401,
+        "score_max_abs": 2.6556853975551446e-09
+      },
+      "within_limit_annual_receipt": {
+        "status": "estimated",
+        "rows": 817,
+        "households": 761,
+        "receipt_rows": 263,
+        "weighted_population": 7019669.7210683,
+        "weighted_receipt_share": 0.3141257095241539,
+        "effective_rows_kish": 560.2759164584559,
+        "intercept": -0.8468309161860883,
+        "slope": 0.028555998370442284,
+        "intercept_standard_error": 0.12428804996132471,
+        "slope_standard_error": 0.03336395585591775,
+        "slope_95_percent_interval": [
+          -0.036837355107156494,
+          0.09394935184804107
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 401,
+        "score_max_abs": 2.1213892552119712e-11
+      }
+    },
+    "65_plus": {
+      "within_resource_limit": {
+        "status": "estimated",
+        "rows": 342,
+        "households": 336,
+        "receipt_rows": 152,
+        "weighted_population": 1771817.00724045,
+        "weighted_receipt_share": 0.43740630043050804,
+        "effective_rows_kish": 252.10086166861333,
+        "intercept": -0.5840046102643036,
+        "slope": 0.11396257889082052,
+        "intercept_standard_error": 0.1833343966714214,
+        "slope_standard_error": 0.04487429870596883,
+        "slope_95_percent_interval": [
+          0.026008953427121617,
+          0.20191620435451943
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 196,
+        "score_max_abs": 4.761327998537013e-10
+      },
+      "full_observed_range_confounded_by_eligibility": {
+        "status": "estimated",
+        "rows": 417,
+        "households": 410,
+        "receipt_rows": 161,
+        "weighted_population": 2180468.1920387503,
+        "weighted_receipt_share": 0.3762389676118792,
+        "effective_rows_kish": 307.95426762214765,
+        "intercept": -0.268885703041089,
+        "slope": -0.05805875840323725,
+        "intercept_standard_error": 0.1684415726819375,
+        "slope_standard_error": 0.027877199009514003,
+        "slope_95_percent_interval": [
+          -0.1126980684618847,
+          -0.0034194483445898066
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 1663000.0,
+        "positive_asset_rows": 271,
+        "score_max_abs": 3.9653196342961755e-08
+      },
+      "positive_assets_within_limit": {
+        "status": "estimated",
+        "rows": 196,
+        "households": 195,
+        "receipt_rows": 108,
+        "weighted_population": 982926.1441762,
+        "weighted_receipt_share": 0.5501614220832665,
+        "effective_rows_kish": 146.64274792449197,
+        "intercept": 1.3874996665288186,
+        "slope": -0.22766334952167033,
+        "intercept_standard_error": 0.4922037473686307,
+        "slope_standard_error": 0.09212346851138035,
+        "slope_95_percent_interval": [
+          -0.4082253478039758,
+          -0.04710135123936485
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 1.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 196,
+        "score_max_abs": 2.5825913872190654e-05
+      },
+      "within_limit_annual_receipt": {
+        "status": "estimated",
+        "rows": 342,
+        "households": 336,
+        "receipt_rows": 152,
+        "weighted_population": 1771817.00724045,
+        "weighted_receipt_share": 0.43740630043050804,
+        "effective_rows_kish": 252.10086166861333,
+        "intercept": -0.5840046102643036,
+        "slope": 0.11396257889082052,
+        "intercept_standard_error": 0.1833343966714214,
+        "slope_standard_error": 0.04487429870596883,
+        "slope_95_percent_interval": [
+          0.026008953427121617,
+          0.20191620435451943
+        ],
+        "covariance_method": "SSUID-clustered sandwich, finite cluster/row correction; no replicate weights",
+        "minimum_assets": 0.0,
+        "maximum_assets": 2000.0,
+        "positive_asset_rows": 196,
+        "score_max_abs": 4.761327998537013e-10
+      }
+    }
+  },
+  "sample_definition": "December 2022 SIPP person records age 15+, EMS in 3/4/5/6, independent reported aged/disability proxy, apparent countable non-SSI monthly income <= $841, observed receipt/income/asset/disability allocation codes 0/1/9, positive finite survey weight; primary own liquid assets <= $2,000",
+  "identification_limits": [
+    "Within-limit cross-sectional receipt association is not a causal claiming effect; broad disability proxy is not SSA medical eligibility.",
+    "No spouse or parent deeming and no full non-liquid-resource screen; restrict primary sample to unmarried people.",
+    "Extrapolation above $2,000 assumes the within-limit logit slope continues; full-range receipt slope is confounded with asset eligibility and is never used.",
+    "Allocation recodes can conceal imputed components; explicit component asset flags are screened, but all income components are not.",
+    "Household sandwich SEs do not reproduce SIPP stratified replicate-weight variance.",
+    "Child assets are not measured under age 15; primary child slope transfers from disabled adults and child qualification remains fenced."
+  ],
+  "source": {
+    "survey": "Census SIPP 2023 (calendar 2022)",
+    "sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+    "size_bytes": 3726010471,
+    "mirror_revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
+    "dictionary_url": "https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf",
+    "dictionary_pages": {
+      "TVAL_BANK": 190,
+      "TVAL_BOND": 192,
+      "TPTOTINC": 2871,
+      "RSSI_MNYN": 3149
+    }
+  },
+  "execution": {
+    "elapsed_seconds": 153.78318312499323,
+    "peak_rss_gib": 12.503662109375,
+    "chunksize": 50000,
+    "heavy_admission": "attempted; sandbox PermissionError Operation not permitted: ps; bounded standalone estimation proceeded without heavy, no heavy suites run"
+  }
+}

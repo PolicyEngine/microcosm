@@ -1,0 +1,53 @@
+{
+  "command": "env PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_PLUGINS=_hypothesis_pytestplugin TORCH_DEVICE_BACKEND_AUTOLOAD=0 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 /private/tmp/microcosm-584-tests/bin/python -B -u /private/tmp/microcosm-584-runtime-verification.py",
+  "python_executable": "/private/tmp/microcosm-584-tests/bin/python",
+  "python_version": "3.14.4 (main, Apr 14 2026, 14:46:33) [Clang 22.1.3 ]",
+  "environment": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTEST_PLUGINS": "_hypothesis_pytestplugin",
+    "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "workspace_source_paths": [
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-build/src",
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-calibrate/src",
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-data/src",
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-diagnostics/src",
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-fit/src",
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-frame/src",
+    "/Users/maxghenis/PolicyEngine/_worktrees/ssi-2026-10/microcosm-584/packages/microcosm-graph/src"
+  ],
+  "focused_regression_pytest_arguments": [
+    "--import-mode=importlib",
+    "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_gradient.py::test_captured_source_assets_preserve_frozen_law_after_owner_pruning",
+    "packages/microcosm-build/tests/engine_free/us/test_us_ssi_take_up.py::test_writer_emits_strict_json_and_refuses_nan",
+    "-o",
+    "addopts=--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--maxfail=4"
+  ],
+  "pytest_main_arguments": [
+    "--import-mode=importlib",
+    "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_gradient.py",
+    "packages/microcosm-build/tests/engine_free/us/test_us_ssi_take_up.py",
+    "-o",
+    "addopts=--import-mode=importlib",
+    "-q",
+    "--tb=short",
+    "--maxfail=4"
+  ],
+  "stdout_stderr_file": "pytest-and-runtime-mutations.log",
+  "attempts": [
+    {
+      "focused_regression_exit_code": 0,
+      "baseline_exit_code": 0,
+      "mutation_exit_code": 0
+    }
+  ],
+  "focused_regression_exit_code": 0,
+  "baseline_exit_code": 0,
+  "mutation_exit_code": 0
+}

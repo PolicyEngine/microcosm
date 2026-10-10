@@ -1,0 +1,84 @@
+{
+  "status": "implementation_review_candidate_not_certified",
+  "base_commit": "a224dc110aeaaf4a8abc875b2ad131c82f7330ba",
+  "new_commits": [],
+  "commit_blocker": "Sandbox marks .git read-only; git add refused .git/index.lock with Operation not permitted.",
+  "fixture": {
+    "nonanchor_assets": [
+      0,
+      100,
+      500,
+      1000,
+      2000,
+      5000
+    ],
+    "nonanchor_candidate_weights": [
+      20,
+      20,
+      20,
+      20,
+      20,
+      10
+    ],
+    "reporter_candidate_floor": 20,
+    "candidate_capacity": 130,
+    "target_per_band": 50,
+    "estimated_slope_solved_intercepts": {
+      "under_18": -1.1620257357282067,
+      "18_64": -1.1620257357282067,
+      "65_plus": -1.6175840516183206
+    },
+    "expected_anchored_plus_drawn_mass": {
+      "under_18": 49.99999999999999,
+      "18_64": 49.99999999999999,
+      "65_plus": 50.0
+    },
+    "negative_slope_invariant_fixture": {
+      "slopes": {
+        "under_18": -0.2,
+        "18_64": -0.35,
+        "65_plus": -0.5
+      },
+      "intercepts": {
+        "under_18": 0.03439688537014163,
+        "18_64": 0.743950673766917,
+        "65_plus": 1.4471469758826374
+      }
+    }
+  },
+  "scientific_result": "Primary within-limit SIPP receipt associations are positive, contradicting the proposed decreasing elderly propensity; retain estimates without tuning to reform counts.",
+  "adult_reform_nonregression": "not_evaluated",
+  "natural_experiment_performance": "not_evaluated; cross-program studies do not identify an SSI propensity or transferable hard tolerance",
+  "did_not_do": [
+    "Full release build",
+    "Release certification or publication",
+    "Push",
+    "GitHub writes",
+    "Tune slopes/intercepts/transform to CBPP reform outcomes",
+    "Full heavy suites or engine population probe after heavy ps refusal"
+  ],
+  "test_status": "111 targeted registered pytest cases passed; all 41 source mutations failed in registered test bodies; Ruff, formatting, test-plan verification and diff checks passed. See verification.json.",
+  "july_elderly_gap_share": null,
+  "source_asset_ownership": {
+    "rule": "Physical ASEC source attributes; otherwise agreeing surviving copies or an explicitly captured pre-pruning source map.",
+    "released_frame_disagreement_source_ids": 9446,
+    "conflicting_ids_without_physical_asec_owner": 0,
+    "resource_inputs_rewritten": false,
+    "build_final_audit": "Assignment-time source map is carried unchanged into release-final diagnostics after pruning.",
+    "risk": "PUF support resource inputs still differ from canonical source attributes; this resource-imputation issue (#424) is reported rather than absorbed by a claiming slope."
+  },
+  "estimator_tests": {
+    "baseline_cases_passed": 18,
+    "pytest_exit_code": 0,
+    "source_mutations_killed": 18,
+    "all_mutation_failures_in_registered_test_bodies": true
+  },
+  "runtime_tests": {
+    "baseline_cases_passed": 93,
+    "new_behavior_cases": 23,
+    "pytest_exit_code": 0,
+    "source_mutations_killed": 23,
+    "all_mutation_failures_in_registered_test_bodies": true
+  },
+  "verification_report": "docs/evidence/ssi-take-up-asset-gradient/verification.json"
+}

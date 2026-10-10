@@ -1,0 +1,182 @@
+[
+  {
+    "mutation": "treat_complete_separation_as_regular_fit",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_complete_and_quasi_separation_do_not_report_finite_estimates[False]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n___ test_complete_and_quasi_separation_do_not_report_finite_estimates[False] ___\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:185: in test_complete_and_quasi_separation_do_not_report_finite_estimates\n    assert result[\"status\"] == \"not_estimable\"\nE   AssertionError: assert 'estimated' == 'not_estimable'\nE     \nE     - not_estimable\nE     + estimated\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_complete_and_quasi_separation_do_not_report_finite_estimates[False]",
+    "production_fragment": "if negative.max() <= positive.min() or positive.max() <= negative.min():",
+    "replacement": "if False:"
+  },
+  {
+    "mutation": "treat_quasi_separation_as_regular_fit",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_complete_and_quasi_separation_do_not_report_finite_estimates[True]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n___ test_complete_and_quasi_separation_do_not_report_finite_estimates[True] ____\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:185: in test_complete_and_quasi_separation_do_not_report_finite_estimates\n    assert result[\"status\"] == \"not_estimable\"\nE   AssertionError: assert 'estimated' == 'not_estimable'\nE     \nE     - not_estimable\nE     + estimated\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_complete_and_quasi_separation_do_not_report_finite_estimates[True]",
+    "production_fragment": "if negative.max() <= positive.min() or positive.max() <= negative.min():",
+    "replacement": "if False:"
+  },
+  {
+    "mutation": "let_eligibility_cliff_enter_primary_slope",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_primary_fit_excludes_resource_ineligible_range_and_reports_it_separately",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_primary_fit_excludes_resource_ineligible_range_and_reports_it_separately _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:203: in test_primary_fit_excludes_resource_ineligible_range_and_reports_it_separately\n    assert primary[\"rows\"] == 200\nE   assert 201 == 200\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_primary_fit_excludes_resource_ineligible_range_and_reports_it_separately",
+    "production_fragment": "band_frame[\"liquid_assets\"].le(2000)",
+    "replacement": "band_frame[\"liquid_assets\"].le(1000000)"
+  },
+  {
+    "mutation": "derived_mapping_omits_bonds",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_source_mappings_and_pin_match_manifest",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_________________ test_source_mappings_and_pin_match_manifest __________________\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:38: in test_source_mappings_and_pin_match_manifest\n    assert estimator.ASSET_COLUMNS == tuple(read[\"targets\"].values())\nE   AssertionError: assert ('TVAL_BANK', 'TVAL_STMF') == ('TVAL_BANK',..., 'TVAL_BOND')\nE     \nE     Right contains one more item: 'TVAL_BOND'\nE     Use -v to get more diff\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_source_mappings_and_pin_match_manifest",
+    "production_fragment": "tuple(DONOR_READ[\"targets\"].values())",
+    "replacement": "tuple(DONOR_READ[\"targets\"].values())[:-1]"
+  },
+  {
+    "mutation": "omit_bonds",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_uses_all_three_own_assets",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "E   First 5 mismatches are at indices:\nE    [0]: 120.0 (ACTUAL), 150.0 (DESIRED)\nE    [1]: 120.0 (ACTUAL), 150.0 (DESIRED)\nE    [2]: 120.0 (ACTUAL), 150.0 (DESIRED)\nE    [3]: 120.0 (ACTUAL), 150.0 (DESIRED)\nE    [4]: 120.0 (ACTUAL), 150.0 (DESIRED)\nE   Max absolute difference among violations: 30.\nE   Max relative difference among violations: 0.2\nE    ACTUAL: array([120., 120., 120., 120., 120., 120., 120., 120.])\nE    DESIRED: array(150.)\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_uses_all_three_own_assets",
+    "production_fragment": "frame[list(ASSET_COLUMNS)].sum(axis=1, min_count=3)",
+    "replacement": "frame[[\"TVAL_BANK\", \"TVAL_STMF\"]].sum(axis=1, min_count=2)"
+  },
+  {
+    "mutation": "count_ssi_as_eligibility_income",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_receipt_does_not_create_disability_and_ssi_does_not_disqualify_income",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n__ test_receipt_does_not_create_disability_and_ssi_does_not_disqualify_income __\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:81: in test_receipt_does_not_create_disability_and_ssi_does_not_disqualify_income\n    assert 0 in sample.index\nE   assert 0 in RangeIndex(start=2, stop=8, step=1)\nE    +  where RangeIndex(start=2, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n2  household-2     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[6 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_receipt_does_not_create_disability_and_ssi_does_not_disqualify_income",
+    "production_fragment": "(frame[\"TPTOTINC\"] - frame[\"TSSI_AMT\"].fillna(0))",
+    "replacement": "frame[\"TPTOTINC\"]"
+  },
+  {
+    "mutation": "fill_unmeasured_assets_with_zero",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TVAL_BANK-nan]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TVAL_BANK-nan] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TVAL_BANK-nan]",
+    "production_fragment": "sum(axis=1, min_count=3)",
+    "replacement": "sum(axis=1, min_count=0)"
+  },
+  {
+    "mutation": "accept_imputed_assets",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[AJSSAVVAL-2]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[AJSSAVVAL-2] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[AJSSAVVAL-2]",
+    "production_fragment": "observed &= frame[column].isin(OBSERVED_STATUSES)",
+    "replacement": "observed &= True"
+  },
+  {
+    "mutation": "accept_imputed_receipt",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[ASSI_MNYN-2]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[ASSI_MNYN-2] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[ASSI_MNYN-2]",
+    "production_fragment": "frame[\"ASSI_MNYN\"].isin(OBSERVED_STATUSES)",
+    "replacement": "True"
+  },
+  {
+    "mutation": "ignore_marriage",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[EMS-1]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[EMS-1] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[EMS-1]",
+    "production_fragment": "& unmarried\n",
+    "replacement": "& True\n"
+  },
+  {
+    "mutation": "accept_zero_weight",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[WPFINWGT-0]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[WPFINWGT-0] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[WPFINWGT-0]",
+    "production_fragment": "frame[\"weight\"].gt(0)",
+    "replacement": "frame[\"weight\"].ge(0)"
+  },
+  {
+    "mutation": "accept_unmeasured_child_universe",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TAGE-14]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TAGE-14] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TAGE-14]",
+    "production_fragment": "frame[\"TAGE\"].ge(15)",
+    "replacement": "frame[\"TAGE\"].ge(0)"
+  },
+  {
+    "mutation": "ignore_income_eligibility",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TPTOTINC-2000]",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TPTOTINC-2000] _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:107: in test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records\n    assert 0 not in sample.index\nE   assert 0 not in RangeIndex(start=0, stop=8, step=1)\nE    +  where RangeIndex(start=0, stop=8, step=1) =          SSUID  PNUM  MONTHCODE  ...  annual_receipt  age_band  countable_income\\n0  household-0     1         12  ... ...           80.0\\n7  household-7     1         12  ...               0   65_plus              80.0\\n\\n[8 rows x 64 columns].index\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_sample_excludes_unmeasured_imputed_incomplete_and_ineligible_records[TPTOTINC-2000]",
+    "production_fragment": "countable_income.le(841.0)",
+    "replacement": "countable_income.le(1000000.0)"
+  },
+  {
+    "mutation": "allow_duplicate_source_people",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_duplicate_source_people_refuse",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_____________________ test_duplicate_source_people_refuse ______________________\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:114: in test_duplicate_source_people_refuse\n    with pytest.raises(ValueError, match=\"duplicate source-person\"):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE <class 'ValueError'>\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_duplicate_source_people_refuse",
+    "production_fragment": "if frame[[\"SSUID\", \"PNUM\"]].duplicated().any():",
+    "replacement": "if False:"
+  },
+  {
+    "mutation": "replace_log1p_with_levels",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_weighted_logit_matches_analytic_odds_and_is_order_and_weight_scale_stable",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n_ test_weighted_logit_matches_analytic_odds_and_is_order_and_weight_scale_stable _\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:140: in test_weighted_logit_matches_analytic_odds_and_is_order_and_weight_scale_stable\n    assert result[\"slope\"] == pytest.approx(\nE   assert -0.0017917594595833431 == -0.25934622467605517 \u00b1 1.0e-07\nE     \nE     comparison failed\nE     Obtained: -0.0017917594595833431\nE     Expected: -0.25934622467605517 \u00b1 1.0e-07\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_weighted_logit_matches_analytic_odds_and_is_order_and_weight_scale_stable",
+    "production_fragment": "np.log1p(assets)",
+    "replacement": "assets"
+  },
+  {
+    "mutation": "treat_clones_as_new_households",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_standard_errors_cluster_households",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n___________________ test_standard_errors_cluster_households ____________________\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:158: in test_standard_errors_cluster_households\n    assert second[\"households\"] == first[\"households\"]\nE   assert 400 == 200\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_standard_errors_cluster_households",
+    "production_fragment": "frame[\"household\"].astype(str), return_inverse=True",
+    "replacement": "np.arange(len(frame)).astype(str), return_inverse=True"
+  },
+  {
+    "mutation": "fit_single_class",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_single_class_or_no_asset_variation_is_not_estimable",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:167: in test_single_class_or_no_asset_variation_is_not_estimable\n    estimator.fit_weighted_logit(frame.loc[frame[\"receipt\"].eq(1)])[\"status\"]\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntools/estimate_ssi_asset_gradient.py:110: in fit_weighted_logit\n    if negative.max() <= positive.min() or positive.max() <= negative.min():\n       ^^^^^^^^^^^^^^\n/private/tmp/microcosm-584-tests/lib/python3.14/site-packages/numpy/_core/_methods.py:41: in _amax\n    return umr_maximum(a, axis, None, out, keepdims, initial, where)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   ValueError: zero-size array to reduction operation maximum which has no identity\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_single_class_or_no_asset_variation_is_not_estimable",
+    "production_fragment": "if len(frame) < 3 or frame[outcome].nunique() != 2:",
+    "replacement": "if len(frame) < 3:"
+  },
+  {
+    "mutation": "use_unidentified_child_slope",
+    "test": "packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_packaged_summary_transfers_adult_child_slope_without_reform_tuning",
+    "killed": true,
+    "pytest_exit_code": 1,
+    "test_body_reached": true,
+    "pytest_tail": "F                                                                        [100%]\n=================================== FAILURES ===================================\n___ test_packaged_summary_transfers_adult_child_slope_without_reform_tuning ____\npackages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py:226: in test_packaged_summary_transfers_adult_child_slope_without_reform_tuning\n    assert packaged[\"bands\"][\"under_18\"][\"slope\"] == -0.1\nE   assert -0.9 == -0.1\n=========================== short test summary info ============================\nFAILED packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py::test_packaged_summary_transfers_adult_child_slope_without_reform_tuning",
+    "production_fragment": "source_band = \"18_64\" if band == \"under_18\" else band",
+    "replacement": "source_band = band"
+  }
+]

@@ -1,0 +1,73 @@
+{
+  "status": "targeted_code_verification_passed; scientific_and_reform_acceptance_not_established",
+  "targeted_pytest": {
+    "runtime_and_legacy_cases": 93,
+    "estimator_cases": 18,
+    "total_unique_cases": 111,
+    "runtime_verbatim_tail": "93 passed in 31.33s\nBaseline exit code: 0",
+    "estimator_verbatim_tail": "Estimator registered pytest baseline\n..................                                                       [100%]\n\nEstimator registered pytest source mutations\n{\"mutations\": 18, \"killed\": 18}",
+    "environments": [
+      "pytest-environment.json",
+      "estimator-pytest-environment.json"
+    ],
+    "logs": [
+      "pytest-and-runtime-mutations.log",
+      "pytest-and-estimator-mutations.log"
+    ],
+    "scope": "Engine-free targeted SSI tests with ordinary repository conftest and registry guards; no complete engine or population suite."
+  },
+  "source_mutations": {
+    "runtime_cases": 23,
+    "estimator_cases": 18,
+    "total_killed": 41,
+    "all_failures_in_registered_test_bodies": true,
+    "all_mutant_pytest_exit_codes": 1,
+    "reports": [
+      "mutation-proof.json",
+      "mutation-proof.md",
+      "estimator_mutations.json"
+    ],
+    "runtime_source_and_test_sha256_reverified": true
+  },
+  "checks": [
+    {
+      "name": "ruff_check",
+      "command": "/Users/maxghenis/PolicyEngine/microcosm/.venv/bin/ruff check packages/microcosm-build/src/microcosm/build/ssi_asset_gradient.py packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_gradient.py packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py packages/microcosm-build/tests/engine_free/us/test_us_ssi_take_up.py packages/microcosm-build/tests/fixtures/ssi_take_up_schema4_reference.py test_support/microcosm_build/us_ssi_take_up.py tools/estimate_ssi_asset_gradient.py tools/prove_us_ssi_asset_gradient_mutations.py tools/build_us_fiscal_refresh_release.py docs/evidence/ssi-take-up-asset-gradient/scripts/check_estimator_mutations.py",
+      "exit_code": 0,
+      "verbatim_output": "All checks passed!\n"
+    },
+    {
+      "name": "ruff_format",
+      "command": "/Users/maxghenis/PolicyEngine/microcosm/.venv/bin/ruff format --check packages/microcosm-build/src/microcosm/build/ssi_asset_gradient.py packages/microcosm-build/src/microcosm/build/us_runtime/ssi_take_up.py packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_gradient.py packages/microcosm-build/tests/engine_free/us/test_us_ssi_asset_estimation.py packages/microcosm-build/tests/engine_free/us/test_us_ssi_take_up.py packages/microcosm-build/tests/fixtures/ssi_take_up_schema4_reference.py test_support/microcosm_build/us_ssi_take_up.py tools/estimate_ssi_asset_gradient.py tools/prove_us_ssi_asset_gradient_mutations.py tools/build_us_fiscal_refresh_release.py docs/evidence/ssi-take-up-asset-gradient/scripts/check_estimator_mutations.py",
+      "exit_code": 0,
+      "verbatim_output": "11 files already formatted\n"
+    },
+    {
+      "name": "test_plan",
+      "command": "python3 tools/ci_test_plan.py verify",
+      "exit_code": 0,
+      "verbatim_output": "test_files=647\nengine-free-shared=178\nengine-free-us=161\nengine-free-uk=188\nengine-contract-us=33\nengine-scenario-us=25\nengine-workflow-us=21\nengine-uk=40\nintegration-uk=1\nverification=ok\n"
+    },
+    {
+      "name": "diff_check",
+      "command": "git diff --check",
+      "exit_code": 0,
+      "verbatim_output": ""
+    }
+  ],
+  "unperformed": [
+    "Release build/publication",
+    "Full heavy suites",
+    "Certified-default engine candidate/reform probe",
+    "July elderly gap attribution",
+    "Adult reform non-regression measurement",
+    "Natural-experiment program replays",
+    "Push or GitHub write"
+  ],
+  "blockers": {
+    "commits": "Assigned sandbox exposes .git read-only; git add failed to create .git/index.lock with Operation not permitted. No new commits.",
+    "heavy": "Wrapper failed before launch: PermissionError: [Errno 1] Operation not permitted: 'ps'.",
+    "scientific": "Primary SIPP adult and elderly estimates are positive; above-limit claiming is not identified. No slope was tuned to a CBPP reform count."
+  },
+  "sipp_admission_disclosure": "Historical standalone estimation was run without heavy admission after its refusal, using 50,000-row chunks and measuring 12.50 GiB peak RSS. Future 5,000-row chunks are unmeasured; reproduction documentation conservatively reserves 16 GiB."
+}

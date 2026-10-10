@@ -1,60 +1,51 @@
-"""Reporter-anchored Bernoulli SSI take-up at documented age-band priors.
+"""Reporter-anchored SSI take-up over policy-invariant own liquid assets.
 
-The retired eCPS exported ``takes_up_ssi_if_eligible`` after preserving every
-CPS ASEC ``SSI_VAL > 0`` reporter and filling additional people to a scalar
-50 percent rate.  That rate cannot be retained: its only citation estimates
-participation among adults age 65 or older, while the retired code applied it
-to children and working-age disabled people too.
+Every source person, including people whose assets make them ineligible under
+current law, draws once using the historical per-person_source_id uniform.
+Non-anchor propensity is logistic(a_band + b_band * log1p(own liquid assets)),
+where assets are bank_account_assets + stock_assets + bond_assets in dollars.
+These inputs describe holdings, not any regime's resource-test outcome. SIPP
+estimates supply the slopes; reform outputs never set a coefficient or transform.
+Direct ASEC SSI reporters remain true unconditionally.
 
-This stage keeps the source-backed half of that method (the reporter anchor)
-and replaces the scope-invalid rate with per-band priors derived from SSA's
-December 2024 counts of people receiving a *federal payment*, split into the
-three published age bands.  Each prior is the anchored-mass-corrected
-count-truthful threshold ``(band target − reporter floor) / (candidate
-capacity − reporter floor)`` on a weighted PolicyEngine-US
-``uncapped_ssi > 0`` candidate basis — anchors are selected
-unconditionally, so this is the non-anchor rate at which anchored-plus-
-drawn mass expects the target (a naive ``target/capacity`` overshoots by
-``floor·(1 − target/capacity)``) — falling back to the observed reporter
-share of capacity when capacity cannot subsample the target, so the flag
-never degenerates to a constant.  Every source person draws once against the
-band prior, seeded and stable per ``person_source_id``, with the decision
-fanned to every actual support row; direct ASEC reporters stay true
-unconditionally.  There is no count matching here (microcosm#469): the SSA
-band counts bind only as ordinary calibration registry targets
-(microcosm#470), the caller passes those same registry values in as
-``targets``, and any post-calibration miss is measured on release weights.
+The physical ASEC source row owns a source person's holdings when present.
+Existing household-grain wealth imputation can give PUF support copies different
+assets; those copies do not redefine the source person's claiming attribute.
+Without an ASEC row, use captured source attributes or require the surviving
+copies to agree (a sole survivor is usable).
+The resource discrepancy is reported, not averaged or hidden in the slope.
+The builder captures these source attributes before assignment and retains them
+for the frozen-law audit after support pruning removes physical source rows.
 
-**Prior weight basis (microcosm#507/#508).** The capacity that sets each
-prior is an explicit, documented choice. By default it is measured on the
-assignment frame's current (pre-calibration) weights — which Build N showed
-can be untruthful once the 5,672-target solve moves the weights (the 65+
-threshold froze at 5.9057% against 40.34M pre-solve candidates while release
-weights left 4.00M of capacity, collapsing aged recipients to 0.98M against
-the 2,382,142 target). The caller may instead supply a
-:class:`SSITakeUpPriorBasis` read from a prior attempt's delivered-weight
-``us_ssi_take_up.json`` diagnostics, making the frozen thresholds truthful
-against weights of the same kind the flags will ship under. Assignment
-still happens exactly once per build — there is no reconcile loop (the
-microcosm#463-class iterate-against-the-solve architecture stays deleted per
-microcosm#477) — and :func:`us_ssi_take_up_delivery_gate` hard-fails the
-release when an enforced band's delivered recipients miss the ledger target
-beyond :data:`US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE`, forcing
-threshold recomputation exactly once from the failed attempt's delivered
-weights. The under-18 band stays honestly fenced (scorecard-only) until the
-SIPP child qualifying-disability stage lands (microcosm#453/#509).
+Intercepts reproduce expected anchored-plus-drawn SSA federal-payment band
+mass on the weighted December ``uncapped_ssi > 0`` candidate basis. The targets
+enter through the calibration registry (#469/#470), not module count constants.
+When capacity cannot subsample the target, retain the historical reporter-share
+fallback; when anchors meet the target, draw no additional people. Those
+unreachable targets are reported, not repaired by a claiming slope. A zero
+slope reproduces the previous constant-prior flags exactly, including endpoints.
 
-The band targets are the SSA federal-payment universe (Σ = 7,289,843 in
-December 2024). The separate SSA by-area 7,404,820 count is the broader
-*federally administered* universe — it additionally includes ~115k people
-receiving a state supplementary payment only, with no federal SSI payment —
-and per the microcosm#508 adjudication (2026-07-23) it is a non-binding
-reference that must never set these priors nor bind engine ``ssi``.
+**Candidate-basis interaction (#424/#644).** An understated eligible candidate
+basis pushes the SSA-count-solving intercept upward and therefore raises even
+high-asset people's propensity. Errors in imputed resources can change that
+basis too. Remaining elderly discrepancies may be resources or eligibility,
+not claiming. This stage must not tune slopes to absorb those errors.
 
-The caller supplies December ``uncapped_ssi`` because the fiscal builder owns
-PolicyEngine simulations and batching.  Assignment is recomputed from the
-supplied frame weights, fixed once before target materialization, and later
-diagnosed on release weights without rewriting the persisted decisions.
+**Prior weight basis (#507/#508) and delivery gate (#524).** The default uses
+the assignment frame's weights. A prior attempt's delivered-weight diagnostics
+can instead supply the candidate distribution and anchor floor, preserving the
+one-shot retry and rejecting retry-of-retry. Nonzero gradients require the
+actual anonymous non-anchor asset/weight distribution, not scalar capacity and
+floor alone. Schema-2/3/4 scalar artifacts remain usable with zero slopes only.
+There is no reconcile loop. Frozen flags are remeasured, never rewritten, on
+release weights; the existing adult-band delivery gate remains unchanged in
+role and tolerance. Under-18 stays fenced pending #453/#509.
+
+The SSA federal-payment band counts and the broader federally-administered
+by-area count are distinct universes (#508). Only the former sets intercepts.
+For diagnostic reseeding of a released frame, use ``reseed_us_ssi_take_up`` with
+its delivered weights, the engine's December candidate probe and ledger targets;
+no full build, recalibration, release write or publication is required.
 """
 
 from __future__ import annotations
@@ -71,6 +62,14 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.ssi_asset_gradient import (
+    load_ssi_asset_slopes,
+    solve_ssi_asset_intercept,
+    ssi_asset_propensity,
+)
+from microcosm.build.us_runtime.sipp_financial_assets import (
+    SIPP_FINANCIAL_ASSET_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PERSON_SUPPORT_CHANNEL_COLUMN,
@@ -108,6 +107,10 @@ __all__ = [
     "US_SSI_TAKE_UP_TARGET_TABLE_NAME",
     "ssi_take_up_prior_basis_from_artifact",
     "ssi_take_up_prior_basis_from_diagnostics",
+    "solve_ssi_asset_intercept",
+    "ssi_asset_propensity",
+    "reseed_us_ssi_take_up",
+    "us_ssi_take_up_source_liquid_assets",
     "us_ssi_take_up_delivery_gate",
     "us_ssi_take_up_diagnostics",
     "us_ssi_take_up_gate",
@@ -143,6 +146,7 @@ US_SSI_TAKE_UP_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     US_SSI_TAKE_UP_ANCHOR,
     "person_source_id",
     PERSON_SUPPORT_CHANNEL_COLUMN,
+    *SIPP_FINANCIAL_ASSET_OUTPUT_COLUMNS,
 )
 
 _OUTPUT = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
@@ -166,12 +170,14 @@ _WEIGHTS_BASIS = "current_frame_resolved_person_weights"
 # floor-aware arithmetic while retaining the schema-3 stamp, so a schema-3
 # artifact is ambiguous about which arithmetic produced its frozen priors.
 # Version 4: assignment_prior unambiguously uses the floor-aware arithmetic.
-_DIAGNOSTICS_SCHEMA_VERSION = 4
+# Version 5: gradient coefficients and exact anonymous non-anchor asset mass
+# accompany both candidate bases; assignment_prior is propensity at assets=0.
+_DIAGNOSTICS_SCHEMA_VERSION = 5
 #: Artifact schema versions a delivered-weight prior basis may be read from.
 #: Schemas 2 and 3 are legacy seeds only: the loader consumes their target,
 #: candidate capacity, and reporter floor, never their old assignment prior.
-#: Schema 4 is the current, fully gated release-final artifact.
-_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3, 4)
+#: Schema 4 retains its full legacy audit. Schema 5 adds the gradient audit.
+_PRIOR_BASIS_ARTIFACT_SCHEMA_VERSIONS = (2, 3, 4, 5)
 
 US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME = "current_frame"
 US_SSI_TAKE_UP_PRIOR_BASIS_RELEASE_ARTIFACT = "release_artifact"
@@ -280,6 +286,7 @@ class SSITakeUpBandPriorBasis:
     key: str
     candidate_capacity: float
     reporter_candidate_floor: float
+    nonanchor_asset_distribution: tuple[tuple[float, float], ...] | None = None
 
     def __post_init__(self) -> None:
         if self.key not in _BAND_KEY_ORDER:
@@ -308,6 +315,29 @@ class SSITakeUpBandPriorBasis:
         # the original representation (sol review finding 8).
         object.__setattr__(self, "candidate_capacity", capacity)
         object.__setattr__(self, "reporter_candidate_floor", floor)
+        if self.nonanchor_asset_distribution is not None:
+            distribution = tuple(
+                (float(asset), float(weight))
+                for asset, weight in self.nonanchor_asset_distribution
+            )
+            if any(
+                not np.isfinite(asset)
+                or asset < 0
+                or not np.isfinite(weight)
+                or weight < 0
+                for asset, weight in distribution
+            ):
+                raise ValueError("SSI prior asset distribution is invalid.")
+            if not np.isclose(
+                sum(weight for _, weight in distribution),
+                capacity - floor,
+                rtol=1e-12,
+                atol=1e-6,
+            ):
+                raise ValueError(
+                    "SSI prior asset distribution does not sum to capacity minus floor."
+                )
+            object.__setattr__(self, "nonanchor_asset_distribution", distribution)
 
 
 @dataclass(frozen=True)
@@ -384,8 +414,11 @@ _READ_PARAMETERS: dict[str, object] = {
 _ASSIGN_PARAMETERS: dict[str, object] = {
     "output": _OUTPUT,
     "draw": "stable_source_person_draw",
-    "rate_key": "ssi_age_band_count_prior",
+    "rate_key": "ssi_age_band_asset_propensity",
     "rate_column": "ssi_take_up_assignment_prior",
+    "asset_inputs": list(SIPP_FINANCIAL_ASSET_OUTPUT_COLUMNS),
+    "asset_transform": "natural_log1p_dollars",
+    "asset_attribute_basis": "physical_asec_source_row_else_agreeing_support_copies",
     "reported_true_anchor": "SSI_VAL > 0",
     "assignment_unit": _SOURCE_ID,
     "fan_to_support_clones": True,
@@ -395,14 +428,13 @@ _ASSIGN_PARAMETERS: dict[str, object] = {
         "65_plus": "age >= 65",
     },
     "rate_derivation": (
-        "(band_target - basis_reporter_candidate_floor) / "
-        "(basis_candidate_capacity - basis_reporter_candidate_floor) over "
-        "uncapped_ssi > 0 candidates, so anchored-plus-drawn mass expects "
-        "the target; basis = this frame's weights, or a prior attempt's "
-        "delivered-weight us_ssi_take_up.json diagnostics "
-        "(microcosm#507/#508); zero once the reporter floor meets the "
-        "target; min(basis_reporter_candidate_floor / capacity, 1) once "
-        "capacity cannot subsample the target"
+        "logistic(a_band + b_band * log1p(own liquid assets)); estimate b_band "
+        "from SIPP, solve a_band so reporter floor plus expected drawn mass on "
+        "uncapped_ssi > 0 candidates equals the SSA band target; basis = this "
+        "frame's weights or a prior attempt's delivered-weight candidate asset "
+        "distribution (microcosm#507/#508); preserve historical reporter-share "
+        "fallback when capacity cannot subsample target and zero additional "
+        "draws when reporter floor meets target"
     ),
     "rate_target_role": "ssa_ssi_age_band_recipients",
     "target_source": SSI_TAKE_UP_SSA_SOURCE_URL,
@@ -536,16 +568,15 @@ def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:
     reported = pd.to_numeric(person[US_SSI_TAKE_UP_ANCHOR], errors="coerce").to_numpy(
         dtype=np.float64
     )
-    if source_ids.str.strip().eq("").any() or not np.isfinite(
-        reported[asec_source]
-    ).all():
+    if (
+        source_ids.str.strip().eq("").any()
+        or not np.isfinite(reported[asec_source]).all()
+    ):
         raise ValueError(
             "US SSI take-up reporter lineage requires nonblank identities and "
             "finite SSI_VAL values on physical ASEC source rows."
         )
-    reporter_ids = frozenset(
-        source_ids[asec_source & (reported > 0.0)]
-    )
+    reporter_ids = frozenset(source_ids[asec_source & (reported > 0.0)])
     if not reporter_ids:
         raise ValueError("US SSI take-up found no direct ASEC SSI reporters.")
     return reporter_ids
@@ -557,6 +588,7 @@ def _source_table(
     uncapped_ssi: np.ndarray,
     seed: int,
     reporter_source_ids: Collection[str] | None = None,
+    source_liquid_assets: Mapping[str, float] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return row- and source-person-grain tables for assignment."""
 
@@ -577,6 +609,16 @@ def _source_table(
         dtype=np.float64
     )
     potential = np.asarray(uncapped_ssi, dtype=np.float64)
+    liquid_inputs = (
+        person[list(SIPP_FINANCIAL_ASSET_OUTPUT_COLUMNS)]
+        .apply(pd.to_numeric, errors="coerce")
+        .to_numpy(dtype=np.float64)
+    )
+    if not np.isfinite(liquid_inputs).all() or (liquid_inputs < 0).any():
+        raise ValueError("US SSI take-up liquid assets must be finite and nonnegative.")
+    liquid_assets = liquid_inputs.sum(axis=1)
+    if not np.isfinite(liquid_assets).all():
+        raise ValueError("US SSI take-up liquid asset sums must be finite.")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     if not np.isfinite(age).all() or (age < 0).any():
         raise ValueError("US SSI take-up ages must be finite and nonnegative.")
@@ -624,6 +666,7 @@ def _source_table(
             "channel": channels.to_numpy(),
             "age": age,
             "age_band": _age_band_values(age),
+            "liquid_assets": liquid_assets,
             "weight": weights,
             "candidate": potential > 0.0,
             # Capture lineage on the full support before L0. When pruning keeps
@@ -672,6 +715,8 @@ def _source_table(
             age_band=("age_band", "first"),
             age_band_count=("age_band", "nunique"),
             age_count=("age", "nunique"),
+            liquid_assets=("liquid_assets", "first"),
+            asset_count=("liquid_assets", "nunique"),
             candidate_weight=("candidate_weight", "sum"),
             total_weight=("weight", "sum"),
             anchor=("anchor", "any"),
@@ -695,7 +740,60 @@ def _source_table(
         _stable_source_draw(str(source_id), seed=int(seed))
         for source_id in source.index
     ]
+    original_assets = (
+        rows.loc[rows["channel"].eq(_ASEC_CHANNEL)]
+        .groupby("source_id")["liquid_assets"]
+        .agg(["first", "nunique"])
+    )
+    if original_assets["nunique"].gt(1).any():
+        raise ValueError(
+            "US SSI take-up physical ASEC source rows disagree on liquid assets."
+        )
+    original_asset_values = original_assets["first"].reindex(source.index)
+    has_original = original_asset_values.notna()
+    if source_liquid_assets is None:
+        if source.loc[~has_original, "asset_count"].gt(1).any():
+            raise ValueError(
+                "US SSI take-up source liquid assets are ambiguous without a physical ASEC row; surviving support copies must agree."
+            )
+        source.loc[has_original, "liquid_assets"] = original_asset_values.loc[
+            has_original
+        ]
+    else:
+        owned_assets = pd.Series(
+            {str(key): float(value) for key, value in source_liquid_assets.items()}
+        ).reindex(source.index)
+        if not np.isfinite(owned_assets).all() or owned_assets.lt(0).any():
+            raise ValueError(
+                "US SSI take-up frozen source liquid assets must cover all retained identities with finite nonnegative values."
+            )
+        if not owned_assets.loc[has_original].equals(
+            original_asset_values.loc[has_original]
+        ):
+            raise ValueError(
+                "US SSI take-up frozen liquid assets disagree with physical ASEC source attributes."
+            )
+        source["liquid_assets"] = owned_assets
     return rows, source
+
+
+def us_ssi_take_up_source_liquid_assets(
+    frame: Frame, *, reporter_source_ids: Collection[str] | None = None
+) -> dict[str, float]:
+    """Capture canonical source holdings before pruning changes available rows.
+
+    Physical ASEC rows own the holdings; otherwise surviving copies must agree.
+    Pass this unchanged map into assignment and later diagnostics. It describes
+    source attributes, never weights, eligibility or a reform. The zero probe
+    below only reuses source validation; no take-up flags are assigned.
+    """
+    _, source = _source_table(
+        frame,
+        uncapped_ssi=np.zeros(len(frame.table("person"))),
+        seed=0,
+        reporter_source_ids=reporter_source_ids,
+    )
+    return {str(key): float(value) for key, value in source["liquid_assets"].items()}
 
 
 def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
@@ -714,9 +812,8 @@ def _band_prior(target: float, capacity: float, reporter_floor: float) -> float:
     The threshold only subsamples while ``capacity > target``. Otherwise it
     would flag the whole band — a constant, signal-free output — so the
     prior falls back to the observed take-up rate among the basis
-    candidates: reporter mass over candidate capacity. Reform-created
-    eligibles then take up at the rate the basis candidates are observed
-    reporting.
+    candidates: reporter mass over candidate capacity. For a gradient this sets the desired non-anchor expected mass; the
+    intercept solve distributes that mass over asset-dependent propensities.
     """
 
     if capacity <= 0:
@@ -750,12 +847,106 @@ def _current_frame_prior_basis(source: pd.DataFrame) -> SSITakeUpPriorBasis:
                 reporter_candidate_floor=float(
                     source.loc[candidate & anchored, "candidate_weight"].sum()
                 ),
+                nonanchor_asset_distribution=_asset_distribution(
+                    source.loc[candidate & ~anchored]
+                ),
             )
         )
     return SSITakeUpPriorBasis(
         kind=US_SSI_TAKE_UP_PRIOR_BASIS_CURRENT_FRAME,
         bands=tuple(bands),
     )
+
+
+def _asset_distribution(source: pd.DataFrame) -> tuple[tuple[float, float], ...]:
+    """Exact anonymous non-anchor candidate mass by distinct asset value."""
+    grouped = source.groupby("liquid_assets", sort=True)["candidate_weight"].sum()
+    return tuple((float(asset), float(weight)) for asset, weight in grouped.items())
+
+
+def _normalize_asset_slopes(slopes: Mapping[str, float] | None) -> dict[str, float]:
+    values = load_ssi_asset_slopes() if slopes is None else dict(slopes)
+    if set(values) != set(_BAND_KEY_ORDER):
+        raise ValueError(
+            "SSI gradient requires slopes for exactly the three age bands."
+        )
+    result = {key: float(values[key]) for key in _BAND_KEY_ORDER}
+    if not all(np.isfinite(value) for value in result.values()):
+        raise ValueError("SSI gradient slopes must be finite.")
+    return result
+
+
+def _intercept(prior: float) -> float | None:
+    return float(np.log(prior) - np.log1p(-prior)) if 0 < prior < 1 else None
+
+
+def _propensities(
+    source: pd.DataFrame,
+    priors: Mapping[str, float],
+    slopes: Mapping[str, float],
+    intercepts: Mapping[str, float | None] | None = None,
+) -> np.ndarray:
+    result = np.empty(len(source), dtype=np.float64)
+    for key in _BAND_KEY_ORDER:
+        mask = source["age_band"].eq(key).to_numpy()
+        prior = priors[key]
+        intercept = _intercept(prior) if intercepts is None else intercepts[key]
+        # This branch preserves the historical flags bit-for-bit, including
+        # its anchor-excess and capacity-saturation endpoint conventions.
+        result[mask] = (
+            prior
+            if slopes[key] == 0 or intercept is None
+            else ssi_asset_propensity(
+                source.loc[mask, "liquid_assets"].to_numpy(), intercept, slopes[key]
+            )
+        )
+    return result
+
+
+def _gradient_intercept(
+    target: float, basis: SSITakeUpBandPriorBasis, slope: float
+) -> float | None:
+    prior = _band_prior(
+        target, basis.candidate_capacity, basis.reporter_candidate_floor
+    )
+    if slope == 0:
+        return _intercept(prior)
+    distribution = basis.nonanchor_asset_distribution
+    if distribution is None:
+        raise ValueError(
+            "Nonzero SSI asset slopes require candidate asset mass on the prior basis; legacy scalar artifacts support zero slopes only."
+        )
+    if not 0 < prior < 1:
+        return None
+    assets = np.asarray([asset for asset, _ in distribution])
+    weights = np.asarray([weight for _, weight in distribution])
+    mass = prior * (basis.candidate_capacity - basis.reporter_candidate_floor)
+    return solve_ssi_asset_intercept(assets, weights, mass, slope)
+
+
+def _gradient_prior(
+    target: float, basis: SSITakeUpBandPriorBasis, slope: float
+) -> float:
+    # Keep the exact historical threshold when slope is zero. For nonzero
+    # slopes, p(0) is only a compatibility summary, never a round-trip path
+    # to the solved intercept: large a can round sigmoid(a) up to one.
+    intercept = _gradient_intercept(target, basis, slope)
+    if slope == 0 or intercept is None:
+        return _band_prior(
+            target, basis.candidate_capacity, basis.reporter_candidate_floor
+        )
+    return float(ssi_asset_propensity(np.asarray([0.0]), intercept, 0.0)[0])
+
+
+def _solved_intercepts(
+    targets: Mapping[str, float],
+    basis: SSITakeUpPriorBasis,
+    slopes: Mapping[str, float],
+) -> dict[str, float | None]:
+    return {
+        key: _gradient_intercept(targets[key], basis.band(key), slopes[key])
+        for key in _BAND_KEY_ORDER
+    }
 
 
 def _age_band_diagnostics(
@@ -765,17 +956,17 @@ def _age_band_diagnostics(
     targets: Mapping[str, float],
     assignment_priors: Mapping[str, float],
     prior_basis: SSITakeUpPriorBasis,
+    asset_slopes: Mapping[str, float],
 ) -> list[dict[str, object]]:
     """Summarize one existing source-grain assignment on current weights.
 
-    ``assignment_priors`` are the Bernoulli priors that generated the
-    persisted flags. Each band row publishes them verbatim next to
-    ``prior_recomputed_from_current_weights`` so release-weight measurements
-    never misdocument the one-shot assignment (microcosm#469; PR #477 review
-    finding 4). ``prior_basis`` is the capacity/floor pair those priors were
-    computed from (microcosm#507/#508): republishing it per band keeps the
-    prior arithmetic weight-free auditable long after the assignment frame
-    is gone.
+    ``assignment_priors`` summarize propensity at zero assets; the recorded
+    intercept and slope define each person's actual threshold. With zero
+    slopes they are the historical constant priors. Each band publishes the
+    frozen coefficients and asset mass next to current-weight measurements
+    so release diagnostics never reinterpret the one-shot assignment
+    (microcosm#469/#507/#508). ``prior_recomputed_from_current_weights`` keeps
+    its historical scalar arithmetic as a comparison, not a new assignment.
     """
 
     bands: list[dict[str, object]] = []
@@ -817,6 +1008,28 @@ def _age_band_diagnostics(
                 # reporter-rate fallback, so the flag agrees with it.
                 "saturated": bool(capacity <= target),
                 "assignment_prior": float(assignment_priors[key]),
+                "assignment_intercept": _gradient_intercept(
+                    target, basis_band, asset_slopes[key]
+                ),
+                "asset_slope": float(asset_slopes[key]),
+                "candidate_nonanchor_asset_distribution": [
+                    [asset, weight]
+                    for asset, weight in _asset_distribution(
+                        source.loc[candidate & ~anchored]
+                    )
+                ],
+                "prior_basis_nonanchor_asset_distribution": [
+                    [asset, weight]
+                    for asset, weight in basis_band.nonanchor_asset_distribution
+                ]
+                if basis_band.nonanchor_asset_distribution is not None
+                else None,
+                "expected_recipient_weight_on_prior_basis": _expected_basis_mass(
+                    basis_band,
+                    assignment_priors[key],
+                    asset_slopes[key],
+                    _gradient_intercept(target, basis_band, asset_slopes[key]),
+                ),
                 "prior_basis_candidate_capacity": float(basis_band.candidate_capacity),
                 "prior_basis_reporter_candidate_floor": float(
                     basis_band.reporter_candidate_floor
@@ -830,21 +1043,43 @@ def _age_band_diagnostics(
     return bands
 
 
+def _expected_basis_mass(
+    basis: SSITakeUpBandPriorBasis,
+    prior: float,
+    slope: float,
+    intercept: float | None = None,
+) -> float:
+    distribution = basis.nonanchor_asset_distribution
+    if intercept is None:
+        intercept = _intercept(prior)
+    if slope == 0 or intercept is None:
+        mass = prior * (basis.candidate_capacity - basis.reporter_candidate_floor)
+    elif distribution is None:
+        raise ValueError("SSI gradient prior basis is missing its asset distribution.")
+    else:
+        assets = np.asarray([asset for asset, _ in distribution])
+        weights = np.asarray([weight for _, weight in distribution])
+        mass = float(np.dot(weights, ssi_asset_propensity(assets, intercept, slope)))
+    return basis.reporter_candidate_floor + mass
+
+
 def _bernoulli_law_violations(
     source: pd.DataFrame,
     selected: pd.Series,
     assignment_priors: Mapping[str, float],
+    asset_slopes: Mapping[str, float],
+    intercepts: Mapping[str, float | None] | None = None,
 ) -> int:
     """Count source identities whose flag breaks the seeded Bernoulli law.
 
     The law is exact and weight-free: a source person is selected iff
-    anchored or its stable draw fell below the band's assignment-time prior.
+    anchored or its stable draw fell below its assignment-time asset propensity.
     Recomputing it against persisted flags catches any post-assignment
     corruption of the frozen decisions (microcosm#469; PR #477 review
     finding 3).
     """
 
-    priors = source["age_band"].map(dict(assignment_priors)).to_numpy(dtype=np.float64)
+    priors = _propensities(source, assignment_priors, asset_slopes, intercepts)
     expected = source["anchor"].to_numpy(dtype=bool) | (
         source["draw"].to_numpy(dtype=np.float64) < priors
     )
@@ -929,7 +1164,7 @@ def ssi_take_up_prior_basis_from_artifact(
             f"{schema_version!r}."
         )
     measurement_phase = payload.get("measurement_phase")
-    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION and (
+    if schema_version in (4, 5) and (
         measurement_phase != US_SSI_TAKE_UP_PHASE_RELEASE_FINAL
     ):
         # Current-schema artifacts must be the final release-weight
@@ -940,7 +1175,7 @@ def ssi_take_up_prior_basis_from_artifact(
             "final measurement; got measurement phase "
             f"{measurement_phase!r}."
         )
-    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION:
+    if schema_version in (4, 5):
         artifact_prior = payload.get("prior_weight_basis")
         artifact_prior_kind = (
             artifact_prior.get("kind") if isinstance(artifact_prior, Mapping) else None
@@ -1026,9 +1261,12 @@ def ssi_take_up_prior_basis_from_artifact(
                 key=key,
                 candidate_capacity=capacity,
                 reporter_candidate_floor=floor,
+                nonanchor_asset_distribution=row.get(
+                    "candidate_nonanchor_asset_distribution"
+                ),
             )
         )
-    if schema_version == _DIAGNOSTICS_SCHEMA_VERSION:
+    if schema_version in (4, 5):
         # Catch-all after the specific checks: a current-schema basis must
         # pass the FULL diagnostics gate — an integrity-failed attempt's
         # measurements (Bernoulli-law violations, corrupted band
@@ -1084,6 +1322,9 @@ def ssi_take_up_prior_basis_from_diagnostics(
                 reporter_candidate_floor=float(
                     row.get("prior_basis_reporter_candidate_floor", np.nan)
                 ),
+                nonanchor_asset_distribution=row.get(
+                    "prior_basis_nonanchor_asset_distribution"
+                ),
             )
             for key, row in rows.items()
         ),
@@ -1099,6 +1340,7 @@ def _assign_sources(
     *,
     targets: Mapping[str, float],
     prior_basis: SSITakeUpPriorBasis,
+    asset_slopes: Mapping[str, float],
 ) -> tuple[pd.Series, list[dict[str, object]], dict[str, float]]:
     """Assign one flag per source identity; return diagnostics and priors."""
 
@@ -1107,14 +1349,8 @@ def _assign_sources(
     for target_definition in US_SSI_TAKE_UP_AGE_TARGETS:
         key = target_definition.key
         target = float(targets[key])
-        in_band = source["age_band"].eq(key)
-        anchored = in_band & source["anchor"].astype(bool)
         basis_band = prior_basis.band(key)
-        prior = _band_prior(
-            target,
-            basis_band.candidate_capacity,
-            basis_band.reporter_candidate_floor,
-        )
+        prior = _gradient_prior(target, basis_band, asset_slopes[key])
         priors[key] = prior
 
         # Seeded Bernoulli at the documented band prior for everyone in the
@@ -1123,8 +1359,15 @@ def _assign_sources(
         # matching: the SSA band counts are ordinary calibration targets
         # (microcosm#470) and the post-calibration delivery is measured on
         # release weights (microcosm#507/#508 delivery gate).
-        selected.loc[in_band] = source.loc[in_band, "draw"].to_numpy() < prior
-        selected.loc[anchored] = True
+    probabilities = _propensities(
+        source,
+        priors,
+        asset_slopes,
+        _solved_intercepts(targets, prior_basis, asset_slopes),
+    )
+    selected[:] = source["anchor"].to_numpy(dtype=bool) | (
+        source["draw"].to_numpy() < probabilities
+    )
 
     bands = _age_band_diagnostics(
         source,
@@ -1132,6 +1375,7 @@ def _assign_sources(
         targets=targets,
         assignment_priors=priors,
         prior_basis=prior_basis,
+        asset_slopes=asset_slopes,
     )
     return selected, bands, priors
 
@@ -1147,6 +1391,7 @@ def _diagnostics(
     law_violation_count: int,
     prior_basis: SSITakeUpPriorBasis,
     measurement_phase: str,
+    asset_slopes: Mapping[str, float],
 ) -> dict[str, object]:
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     reporter_lost = int(np.count_nonzero(rows["anchor"].to_numpy() & ~assigned))
@@ -1177,7 +1422,12 @@ def _diagnostics(
     return {
         "schema_version": _DIAGNOSTICS_SCHEMA_VERSION,
         "classification": "release_diagnostics",
-        "issues": ["PolicyEngine/microcosm#312"],
+        "issues": [
+            "PolicyEngine/microcosm#312",
+            "PolicyEngine/microcosm#584",
+            "PolicyEngine/microcosm#424",
+            "PolicyEngine/microcosm#644",
+        ],
         "variable": _OUTPUT,
         "anchor": US_SSI_TAKE_UP_ANCHOR,
         "anchor_channel": _ASEC_CHANNEL,
@@ -1189,6 +1439,35 @@ def _diagnostics(
         "weights_basis": _WEIGHTS_BASIS,
         "measurement_phase": measurement_phase,
         "prior_weight_basis": prior_basis.provenance(),
+        "asset_gradient": {
+            "transform": "natural log1p of own bank_account_assets + stock_assets + bond_assets in dollars",
+            "attribute_basis": _ASSIGN_PARAMETERS["asset_attribute_basis"],
+            "support_asset_disagreement_source_count": int(
+                source["asset_count"].gt(1).sum()
+            ),
+            "source_without_physical_asec_row_count": int(
+                (
+                    ~source.index.isin(
+                        rows.loc[rows["channel"].eq(_ASEC_CHANNEL), "source_id"]
+                    )
+                ).sum()
+            ),
+            "slopes": dict(asset_slopes),
+            "slope_interpretation": "Estimated cross-sectional receipt associations, not causal effects. Positive slopes imply increasing propensity; extrapolation beyond the current eligible asset range is not identified by SIPP.",
+            "candidate_basis_interaction": "An understated candidate basis (#644) raises solved intercepts and high-asset propensities; resource errors (#424) can also change the basis. Slopes are not fitted to reform recipient gaps.",
+        },
+        "asset_age_bands": _asset_age_diagnostics(
+            source,
+            assigned=pd.Series(assigned, index=rows.index)
+            .groupby(rows["source_id"])
+            .first()
+            .reindex(source.index),
+            priors={
+                str(band["age_band"]): float(band["assignment_prior"]) for band in bands
+            },
+            slopes=asset_slopes,
+            intercepts=_solved_intercepts(targets, prior_basis, asset_slopes),
+        ),
         "target_total": target_total,
         "selected_recipient_weight_total": selected_total,
         "target_shortfall_total": float(
@@ -1210,6 +1489,59 @@ def _diagnostics(
     }
 
 
+def _asset_age_diagnostics(
+    source: pd.DataFrame,
+    *,
+    assigned: pd.Series,
+    priors: Mapping[str, float],
+    slopes: Mapping[str, float],
+    intercepts: Mapping[str, float | None],
+) -> list[dict[str, object]]:
+    """Propensity and realized flags on all persons, independent of eligibility."""
+    probabilities = pd.Series(
+        _propensities(source, priors, slopes, intercepts), index=source.index
+    )
+    boundaries = (0.0, 2_000.0, 10_000.0, 20_000.0, 100_000.0, np.inf)
+    result = []
+    for key in _BAND_KEY_ORDER:
+        for lower, upper in zip(boundaries[:-1], boundaries[1:], strict=True):
+            mask = (
+                source["age_band"].eq(key)
+                & source["liquid_assets"].ge(lower)
+                & source["liquid_assets"].lt(upper)
+            )
+            weights = source.loc[mask, "total_weight"]
+            mass = float(weights.sum())
+            result.append(
+                {
+                    "age_band": key,
+                    "minimum_assets_inclusive": lower,
+                    "maximum_assets_exclusive": upper if np.isfinite(upper) else None,
+                    "source_identity_count": int(mask.sum()),
+                    "person_weight": mass,
+                    "mean_propensity": float(
+                        np.dot(weights, probabilities.loc[mask]) / mass
+                    )
+                    if mass
+                    else None,
+                    "expected_flag_true_weight": float(
+                        np.dot(
+                            weights,
+                            np.where(
+                                source.loc[mask, "anchor"], 1.0, probabilities.loc[mask]
+                            ),
+                        )
+                    ),
+                    "flag_true_source_identity_count": int(assigned.loc[mask].sum()),
+                    "flag_true_weight": float(weights.loc[assigned.loc[mask]].sum()),
+                    "reporter_source_identity_count": int(
+                        source.loc[mask, "anchor"].sum()
+                    ),
+                }
+            )
+    return result
+
+
 def with_us_ssi_take_up(
     frame: Frame,
     *,
@@ -1218,32 +1550,41 @@ def with_us_ssi_take_up(
     targets: Mapping[str, float],
     reporter_source_ids: Collection[str] | None = None,
     prior_basis: SSITakeUpPriorBasis | None = None,
+    asset_slopes: Mapping[str, float] | None = None,
+    source_liquid_assets: Mapping[str, float] | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Recompute SSI take-up and return the frame plus band diagnostics.
 
     ``targets`` carries the SSA band recipient counts the caller read from
     the calibration registry (role ``ssa_ssi_age_band_recipients``); they set
-    the Bernoulli priors here and bind as ordinary calibration targets
+    the propensity intercepts here and bind as ordinary calibration targets
     downstream (microcosm#469/#470). ``prior_basis`` optionally replaces the
     default current-frame capacity basis with a prior attempt's
     delivered-weight measurements (microcosm#507/#508), read via
     :func:`ssi_take_up_prior_basis_from_artifact`; the draw still happens
     exactly once, against whichever basis is documented.
+    Capture ``source_liquid_assets`` before assignment and carry it unchanged
+    to final diagnostics if later support pruning can remove physical owners.
     """
 
     us_ssi_take_up_stage_spec()
     normalized_targets = _normalize_targets(targets)
+    slopes = _normalize_asset_slopes(asset_slopes)
     rows, source = _source_table(
         frame,
         uncapped_ssi=np.asarray(uncapped_ssi, dtype=np.float64),
         seed=int(seed),
         reporter_source_ids=reporter_source_ids,
+        source_liquid_assets=source_liquid_assets,
     )
     resolved_basis = (
         _current_frame_prior_basis(source) if prior_basis is None else prior_basis
     )
     selected, bands, priors = _assign_sources(
-        source, targets=normalized_targets, prior_basis=resolved_basis
+        source,
+        targets=normalized_targets,
+        prior_basis=resolved_basis,
+        asset_slopes=slopes,
     )
     assigned = rows["source_id"].map(selected).to_numpy(dtype=bool)
     diagnostics = _diagnostics(
@@ -1253,9 +1594,16 @@ def with_us_ssi_take_up(
         assigned=assigned,
         bands=bands,
         targets=normalized_targets,
-        law_violation_count=_bernoulli_law_violations(source, selected, priors),
+        law_violation_count=_bernoulli_law_violations(
+            source,
+            selected,
+            priors,
+            slopes,
+            _solved_intercepts(normalized_targets, resolved_basis, slopes),
+        ),
         prior_basis=resolved_basis,
         measurement_phase=US_SSI_TAKE_UP_PHASE_ASSIGNMENT,
+        asset_slopes=slopes,
     )
 
     person = frame.table("person")
@@ -1294,6 +1642,8 @@ def us_ssi_take_up_diagnostics(
     assignment_priors: Mapping[str, float],
     prior_basis: SSITakeUpPriorBasis,
     reporter_source_ids: Collection[str] | None = None,
+    asset_slopes: Mapping[str, float] | None = None,
+    source_liquid_assets: Mapping[str, float] | None = None,
 ) -> dict[str, object]:
     """Diagnose a persisted assignment without changing its decisions.
 
@@ -1309,10 +1659,14 @@ def us_ssi_take_up_diagnostics(
     the gate. Any gap between the measured recipient mass and the SSA band
     targets is reported here, never corrected here — enforced bands are
     judged by :func:`us_ssi_take_up_delivery_gate` (microcosm#507/#508).
+    Supply the unchanged assignment-time ``source_liquid_assets`` map when
+    support pruning can remove physical ASEC owners; available support assets
+    must never silently reinterpret the frozen decisions.
     """
 
     us_ssi_take_up_stage_spec()
     normalized_targets = _normalize_targets(targets)
+    slopes = _normalize_asset_slopes(asset_slopes)
     normalized_priors = _normalize_assignment_priors(assignment_priors)
     person = frame.table("person")
     if _OUTPUT not in person:
@@ -1326,6 +1680,7 @@ def us_ssi_take_up_diagnostics(
         uncapped_ssi=np.asarray(uncapped_ssi, dtype=np.float64),
         seed=int(seed),
         reporter_source_ids=reporter_source_ids,
+        source_liquid_assets=source_liquid_assets,
     )
     source_assignment = (
         pd.DataFrame({"source_id": rows["source_id"].to_numpy(), "assigned": assigned})
@@ -1340,6 +1695,7 @@ def us_ssi_take_up_diagnostics(
         targets=normalized_targets,
         assignment_priors=normalized_priors,
         prior_basis=prior_basis,
+        asset_slopes=slopes,
     )
     return _diagnostics(
         frame,
@@ -1349,10 +1705,56 @@ def us_ssi_take_up_diagnostics(
         bands=bands,
         targets=normalized_targets,
         law_violation_count=_bernoulli_law_violations(
-            source, source_assignment, normalized_priors
+            source,
+            source_assignment,
+            normalized_priors,
+            slopes,
+            _solved_intercepts(normalized_targets, prior_basis, slopes),
         ),
         prior_basis=prior_basis,
         measurement_phase=US_SSI_TAKE_UP_PHASE_RELEASE_FINAL,
+        asset_slopes=slopes,
+    )
+
+
+def reseed_us_ssi_take_up(
+    frame: Frame,
+    *,
+    uncapped_ssi: np.ndarray,
+    seed: int,
+    targets: Mapping[str, float],
+    reporter_source_ids: Collection[str] | None = None,
+    asset_slopes: Mapping[str, float] | None = None,
+    source_liquid_assets: Mapping[str, float] | None = None,
+) -> tuple[Frame, dict[str, object]]:
+    """Diagnostic reseed of a released frame on its existing delivered weights.
+
+    ``uncapped_ssi`` is an aligned December engine probe made with the original
+    frame's inputs; it must exclude the take-up flag. Pass federal-payment
+    age-band ``targets`` from the same SSA registry used by the build and the
+    original build seed. Reporter lineage may be passed explicitly if a support
+    prune removed ASEC rows. The frame must retain source IDs and source liquid
+    assets. Physical ASEC rows own those attributes; without one, surviving
+    support copies must agree unless captured source attributes are supplied.
+    Their asset discrepancies are diagnosed. This
+    overwrites only the take-up flag in a returned copy; it does
+    not recalibrate, write a release, publish, or accept any reform output.
+
+    Downstream callers can separately score reforms on the returned frame to
+    measure effects. Use all-zero ``asset_slopes`` with the same frame/probe/
+    seed for the constant-prior differential. These are new draws on delivered
+    weights, not a replay of the incumbent's original assignment-time basis.
+    An optional ``source_liquid_assets`` map captured before pruning preserves
+    original source attributes when their physical ASEC row no longer survives.
+    """
+    return with_us_ssi_take_up(
+        frame,
+        uncapped_ssi=uncapped_ssi,
+        seed=seed,
+        targets=targets,
+        reporter_source_ids=reporter_source_ids,
+        asset_slopes=asset_slopes,
+        source_liquid_assets=source_liquid_assets,
     )
 
 
@@ -1365,7 +1767,7 @@ def us_ssi_take_up_gate(
 
     expected_targets = _normalize_targets(targets)
     failures: list[str] = []
-    if diagnostics.get("schema_version") != _DIAGNOSTICS_SCHEMA_VERSION:
+    if diagnostics.get("schema_version") not in (4, _DIAGNOSTICS_SCHEMA_VERSION):
         failures.append("SSI take-up diagnostics schema version is invalid.")
     if diagnostics.get("classification") != "release_diagnostics":
         failures.append("SSI take-up diagnostics classification is invalid.")
@@ -1563,14 +1965,58 @@ def us_ssi_take_up_gate(
                 f"SSI take-up age band {key!r} has an invalid prior basis "
                 "capacity/floor pair."
             )
-        elif (
-            abs(prior - _band_prior(target, basis_capacity, basis_floor))
-            > _PRIOR_EPSILON
-        ):
-            failures.append(
-                f"SSI take-up age band {key!r} assignment prior does not "
-                "match the documented arithmetic on its prior basis."
-            )
+        else:
+            try:
+                slope = float(row.get("asset_slope", 0.0))
+                gradient_basis = SSITakeUpBandPriorBasis(
+                    key,
+                    basis_capacity,
+                    basis_floor,
+                    row.get("prior_basis_nonanchor_asset_distribution"),
+                )
+                expected_prior = _gradient_prior(target, gradient_basis, slope)
+                if abs(prior - expected_prior) > _PRIOR_EPSILON:
+                    failures.append(
+                        f"SSI take-up age band {key!r} assignment prior does not match the documented arithmetic on its prior basis."
+                    )
+                if diagnostics.get("schema_version") == 5:
+                    current_basis = SSITakeUpBandPriorBasis(
+                        key,
+                        capacity,
+                        floor,
+                        row.get("candidate_nonanchor_asset_distribution"),
+                    )
+                    if current_basis.nonanchor_asset_distribution is None:
+                        raise ValueError("missing current asset distribution")
+                    if _gradient_intercept(target, gradient_basis, slope) != row.get(
+                        "assignment_intercept"
+                    ):
+                        raise ValueError("assignment intercept does not match prior")
+                    expected_mass = _expected_basis_mass(
+                        gradient_basis,
+                        prior,
+                        slope,
+                        _gradient_intercept(target, gradient_basis, slope),
+                    )
+                    recorded_mass = float(
+                        row.get("expected_recipient_weight_on_prior_basis", np.nan)
+                    )
+                    if not np.isclose(
+                        recorded_mass, expected_mass, rtol=1e-12, atol=1e-6
+                    ):
+                        raise ValueError(
+                            "expected recipient mass does not match gradient"
+                        )
+                    gradient = diagnostics.get("asset_gradient")
+                    if (
+                        not isinstance(gradient, Mapping)
+                        or gradient.get("slopes", {}).get(key) != slope
+                    ):
+                        raise ValueError("gradient slope metadata disagrees")
+            except (TypeError, ValueError, KeyError, AttributeError) as error:
+                failures.append(
+                    f"SSI take-up age band {key!r} has invalid asset gradient on its prior basis: {error}."
+                )
         if abs(recomputed_prior - _band_prior(target, capacity, floor)) > (
             _PRIOR_EPSILON
         ):

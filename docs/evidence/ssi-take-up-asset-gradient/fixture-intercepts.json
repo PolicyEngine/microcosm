@@ -1,0 +1,68 @@
+{
+  "classification": "synthetic_fixture_diagnostic",
+  "source_sha256": "5a364d234d31ca9a1593de55a21bb25ba21fc84ae370f0fde141e3fb4210f14f",
+  "estimated_slopes_sha256": "9d73f5e11609d7650f18f0d75dc9c99e55754f61765f00cddb4889d7d93d8119",
+  "nonanchor_assets": [
+    0.0,
+    100.0,
+    500.0,
+    1000.0,
+    2000.0,
+    5000.0
+  ],
+  "nonanchor_weights": [
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    20.0,
+    10.0
+  ],
+  "candidate_capacity": 130.0,
+  "reporter_candidate_floor": 20.0,
+  "band_target": 50.0,
+  "rows": [
+    {
+      "coefficient_basis": "nonpositive_test_slopes",
+      "age_band": "under_18",
+      "slope": -0.2,
+      "solved_intercept": 0.03439688537014163,
+      "expected_anchored_plus_drawn_mass": 50.0
+    },
+    {
+      "coefficient_basis": "nonpositive_test_slopes",
+      "age_band": "18_64",
+      "slope": -0.35,
+      "solved_intercept": 0.743950673766917,
+      "expected_anchored_plus_drawn_mass": 50.0
+    },
+    {
+      "coefficient_basis": "nonpositive_test_slopes",
+      "age_band": "65_plus",
+      "slope": -0.5,
+      "solved_intercept": 1.4471469758826374,
+      "expected_anchored_plus_drawn_mass": 50.00000000000001
+    },
+    {
+      "coefficient_basis": "packaged_SIPP_estimated_slopes",
+      "age_band": "under_18",
+      "slope": 0.03330195488198548,
+      "solved_intercept": -1.1620257357282067,
+      "expected_anchored_plus_drawn_mass": 49.99999999999999
+    },
+    {
+      "coefficient_basis": "packaged_SIPP_estimated_slopes",
+      "age_band": "18_64",
+      "slope": 0.03330195488198548,
+      "solved_intercept": -1.1620257357282067,
+      "expected_anchored_plus_drawn_mass": 49.99999999999999
+    },
+    {
+      "coefficient_basis": "packaged_SIPP_estimated_slopes",
+      "age_band": "65_plus",
+      "slope": 0.11396257889082052,
+      "solved_intercept": -1.6175840516183206,
+      "expected_anchored_plus_drawn_mass": 50.0
+    }
+  ]
+}

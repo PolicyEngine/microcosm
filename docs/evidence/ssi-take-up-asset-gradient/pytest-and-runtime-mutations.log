@@ -1,0 +1,35 @@
+Checking two corrected regressions with ordinary repository fixtures.
+..                                                                       [100%]
+2 passed in 35.76s
+Running ordinary registered runtime + legacy focused pytest baseline.
+........Timeout (0:01:00)!
+Thread 0x00000001f835e180 (most recent call first):
+  <invalid frame>
+................................................................ [ 77%]
+.....................                                                    [100%]
+93 passed in 31.33s
+Baseline exit code: 0
+Running deliberate source mutations using warm ordinary pytest.
+test_propensity_is_monotone_for_nonpositive_slopes: killed
+test_finite_propensity_stays_strictly_inside_unit_interval: killed
+test_intercept_solve_reproduces_weighted_target: killed
+test_zero_weight_assets_do_not_move_intercept: killed
+test_every_person_obeys_own_asset_law_and_reporters_stay_true: killed
+test_every_person_obeys_own_asset_law_and_reporters_stay_true[extreme_intercept_precision]: killed
+test_source_draws_survive_person_row_reordering: killed
+test_weight_split_support_clones_preserve_original_flags: killed
+test_zero_slope_flags_match_frozen_schema4_implementation_exactly: killed
+test_nonzero_slopes_reject_scalar_only_legacy_prior_basis: killed
+test_schema5_delivered_basis_retains_asset_distribution_and_target_mass: killed
+test_gate_rejects_gradient_coefficient_corruption: killed
+test_gate_rejects_candidate_asset_mass_corruption: killed
+test_physical_asec_assets_own_source_despite_support_reimputation: killed
+test_asec_absent_source_assets_must_be_unambiguous: killed
+test_captured_source_assets_preserve_frozen_law_after_owner_pruning: killed
+test_captured_source_asset_map_requires_valid_coverage_and_owner_match[missing]: killed
+test_captured_source_asset_map_requires_valid_coverage_and_owner_match[negative]: killed
+test_captured_source_asset_map_requires_valid_coverage_and_owner_match[nan]: killed
+test_captured_source_asset_map_requires_valid_coverage_and_owner_match[physical_mismatch]: killed
+test_missing_liquid_asset_inputs_are_rejected: killed
+test_asset_age_diagnostics_reconcile_all_source_people_and_weights: killed
+test_public_reseed_uses_existing_weights_and_candidate_probe: killed
