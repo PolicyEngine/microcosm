@@ -76,6 +76,9 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
 )
+from microcosm.build.us_runtime.engine_lifecycle import (
+    temporary_engine_variable_modules,
+)
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     AuthenticatedPoolH5,
@@ -313,6 +316,13 @@ def _positive_workers(value: str) -> int:
     return workers
 
 
+def _positive_worker_max_slices(value: str) -> int:
+    maximum = int(value)
+    if maximum < 1:
+        raise argparse.ArgumentTypeError("--worker-max-slices must be at least 1.")
+    return maximum
+
+
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -369,7 +379,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--workers",
         type=_positive_workers,
         default=1,
-        help="Spawn N slice-scoring processes; 1 preserves sequential scoring.",
+        help=(
+            "Spawn N slice-scoring processes; 1 uses sequential scoring unless "
+            "--worker-max-slices is set."
+        ),
+    )
+    parser.add_argument(
+        "--worker-max-slices",
+        type=_positive_worker_max_slices,
+        default=None,
+        help=(
+            "Replace each spawned worker after K household slices, including "
+            "across registry chunks; defaults to no recycling."
+        ),
     )
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -832,6 +854,7 @@ def _streaming_target_column_payload_upper_bound_bytes(
     )
 
 
+@temporary_engine_variable_modules()
 def _score_household_slice(
     base_frame: Frame,
     chunk_specs: Sequence,
@@ -1161,6 +1184,7 @@ def _score_chunks_parallel(
     artifact_name: str,
     maximum_microsim_batch_size: int | None,
     workers: int,
+    worker_max_slices: int | None = None,
 ) -> Iterator[ScoredChunk]:
     """Stream bounded (chunk, slice) tasks through one spawn pool per artifact."""
 
@@ -1187,6 +1211,7 @@ def _score_chunks_parallel(
     with ProcessPoolExecutor(
         max_workers=workers,
         mp_context=multiprocessing.get_context("spawn"),
+        max_tasks_per_child=worker_max_slices,
         initializer=_initialize_slice_worker,
         initargs=(
             base_frame,
@@ -1796,11 +1821,14 @@ def score_loaded_artifact(
     yardstick: FiscalYardstick,
     maximum_microsim_batch_size: int | None,
     workers: int = 1,
+    worker_max_slices: int | None = None,
 ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
     """Run the common scoring path for one already-normalized artifact."""
 
     if workers < 1:
         raise ValueError("workers must be at least 1.")
+    if worker_max_slices is not None and worker_max_slices < 1:
+        raise ValueError("worker_max_slices must be at least 1.")
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
     terminal_battery = _terminal_battery_payload(artifact)
     base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
@@ -1832,8 +1860,9 @@ def score_loaded_artifact(
             artifact_name=artifact_name,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             workers=workers,
+            worker_max_slices=worker_max_slices,
         )
-        if workers > 1
+        if workers > 1 or worker_max_slices is not None
         else None
     )
     try:
@@ -2101,11 +2130,14 @@ def score_head_to_head(
     candidate_manifest_sha256: str | None = None,
     candidate_worker_identity_attestation: Path | None = None,
     workers: int = 1,
+    worker_max_slices: int | None = None,
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
 
     if workers < 1:
         raise ValueError("workers must be at least 1.")
+    if worker_max_slices is not None and worker_max_slices < 1:
+        raise ValueError("worker_max_slices must be at least 1.")
     crosswalk = congressional_district_vintage_crosswalk or (
         release.default_congressional_district_vintage_crosswalk_path()
     )
@@ -2148,6 +2180,7 @@ def score_head_to_head(
             yardstick=yardstick,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             workers=workers,
+            worker_max_slices=worker_max_slices,
         )
         artifacts[name] = artifact_payload
         contracts[name] = contract
@@ -2164,7 +2197,14 @@ def score_head_to_head(
     battery_contract = _canonical_battery_contract()
     return {
         "schema_version": SCHEMA_VERSION,
-        "run_metadata": {"workers": workers},
+        "run_metadata": {
+            "workers": workers,
+            **(
+                {"worker_max_slices": worker_max_slices}
+                if worker_max_slices is not None
+                else {}
+            ),
+        },
         "yardstick": {
             "fiscal_registry": dict(yardstick.identity),
             "fiscal_aggregate": {
@@ -2626,6 +2666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.candidate_worker_identity_attestation
         ),
         workers=args.workers,
+        worker_max_slices=args.worker_max_slices,
     )
     json_path, markdown_path = write_scorecard(payload, args.out_prefix)
     print(

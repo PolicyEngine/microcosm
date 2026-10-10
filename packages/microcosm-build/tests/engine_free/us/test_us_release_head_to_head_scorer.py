@@ -26,6 +26,7 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "congressional_district_vintage_crosswalk",
         "maximum_microsim_batch_size",
         "workers",
+        "worker_max_slices",
         "candidate_manifest_sha256",
         "candidate_worker_identity_attestation",
     }
@@ -73,9 +74,20 @@ def test_spawned_workers_score_identically_to_sequential_cli(
     monkeypatch.setattr(module, "_fiscal_rows_and_aggregate", capture_estimates)
     payloads = []
     markdown_bytes = []
-    for workers in (1, 3):
-        prefix = tmp_path / f"workers-{workers}"
+    # Six tasks per artifact force a replacement even for two workers with K=2.
+    # The single-worker recycling case also verifies K opts into spawn by itself.
+    configurations = [(1, None), (3, None), (2, 1), (2, 2), (1, 2)]
+    for workers, worker_max_slices in configurations:
+        prefix = tmp_path / f"workers-{workers}-max-slices-{worker_max_slices}"
+        worker_log_dir = tmp_path / f"{prefix.name}-slice-logs"
+        worker_log_dir.mkdir()
+        monkeypatch.setenv("MICROCOSM_TEST_H2H_SLICE_LOG_DIR", str(worker_log_dir))
         start = time.perf_counter()
+        recycling_args = (
+            ["--worker-max-slices", str(worker_max_slices)]
+            if worker_max_slices is not None
+            else []
+        )
         assert (
             module.main(
                 [
@@ -88,32 +100,44 @@ def test_spawned_workers_score_identically_to_sequential_cli(
                     "--congressional-district-vintage-crosswalk",
                     "/fixture/crosswalk.parquet",
                     "--maximum-microsim-batch-size",
-                    "2",
+                    "1",
                     "--workers",
                     str(workers),
                     "--out-prefix",
                     str(prefix),
+                    *recycling_args,
                 ]
             )
             == 0
         )
         print(
             f"h2h fixture timing: workers={workers} "
+            f"worker_max_slices={worker_max_slices} "
             f"elapsed_seconds={time.perf_counter() - start:.6f}"
         )
         payload = json.loads(prefix.with_suffix(".json").read_text())
         assert payload["run_metadata"].pop("workers") == workers
+        assert (
+            payload["run_metadata"].pop("worker_max_slices", None) == worker_max_slices
+        )
         payloads.append(payload)
         markdown_bytes.append(prefix.with_suffix(".md").read_bytes())
+        if worker_max_slices is not None:
+            worker_slice_counts = [
+                len(log.read_text().splitlines()) for log in worker_log_dir.iterdir()
+            ]
+            assert sum(worker_slice_counts) == 12  # Six slices for each artifact.
+            assert max(worker_slice_counts) <= worker_max_slices
 
-    assert payloads[0] == payloads[1]
-    assert markdown_bytes[0] == markdown_bytes[1]
-    assert len(estimate_vectors) == 4
-    for sequential, parallel in zip(
-        estimate_vectors[:2], estimate_vectors[2:], strict=True
-    ):
-        assert np.array_equal(sequential, parallel)
-        assert np.array_equal(sequential.view(np.uint64), parallel.view(np.uint64))
+    assert all(payload == payloads[0] for payload in payloads[1:])
+    assert all(rendered == markdown_bytes[0] for rendered in markdown_bytes[1:])
+    assert len(estimate_vectors) == 2 * len(configurations)
+    for offset in range(2, len(estimate_vectors), 2):
+        for sequential, parallel in zip(
+            estimate_vectors[:2], estimate_vectors[offset : offset + 2], strict=True
+        ):
+            assert np.array_equal(sequential, parallel)
+            assert np.array_equal(sequential.view(np.uint64), parallel.view(np.uint64))
     for artifact in payloads[0]["artifacts"].values():
         repair = artifact["normalization_receipts"]["base_population_mass_repair"]
         assert repair["applied"] is True
@@ -123,7 +147,7 @@ def test_spawned_workers_score_identically_to_sequential_cli(
         ]
         assert [chunk["spec_range"] for chunk in chunks] == [[0, 1], [1, 2]]
         assert all(
-            chunk["target_compilation"]["household_slice_row_counts"] == [2, 1]
+            chunk["target_compilation"]["household_slice_row_counts"] == [1, 1, 1]
             for chunk in chunks
         )
         digests = [
@@ -278,6 +302,32 @@ def test_workers_cli_defaults_to_one() -> None:
         ]
     )
     assert args.workers == 1
+    assert args.worker_max_slices is None
+
+
+@pytest.mark.parametrize("worker_max_slices", [0, -1])
+def test_worker_max_slices_must_be_positive(worker_max_slices) -> None:
+    module = _load_head_to_head_module()
+    with pytest.raises(ValueError, match="worker_max_slices"):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            worker_max_slices=worker_max_slices,
+        )
+    with pytest.raises(SystemExit):
+        module._parse_args(
+            [
+                "--incumbent",
+                "/fixture/incumbent.h5",
+                "--ledger-facts",
+                "/fixture/facts.jsonl",
+                "--out-prefix",
+                "/fixture/scorecard",
+                "--worker-max-slices",
+                str(worker_max_slices),
+            ]
+        )
 
 
 def test_worker_full_household_slice_matches_sequential(monkeypatch) -> None:

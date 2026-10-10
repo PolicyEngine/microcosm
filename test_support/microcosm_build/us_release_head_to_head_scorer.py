@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -245,6 +246,17 @@ def _initialize_fixture_slice_worker(*args) -> None:
     module = _load_head_to_head_module()
     module._initialize_slice_worker(*args)
     _patch_release_seams(module, pytest.MonkeyPatch())
+    log_dir = os.environ.get("MICROCOSM_TEST_H2H_SLICE_LOG_DIR")
+    if log_dir is not None:
+        score_slice = module._score_household_slice
+
+        def record_slice(*args, **kwargs):
+            result = score_slice(*args, **kwargs)
+            with (Path(log_dir) / f"{os.getpid()}.txt").open("a") as stream:
+                stream.write("slice\n")
+            return result
+
+        module._score_household_slice = record_slice
 
 
 def _failing_fixture_materialize(frame, specs, **kwargs):
