@@ -192,6 +192,33 @@ litres 0.709. The total reads 0.894, against 0.951 on the OBR cars share of duty
 uniform across fuels). The level step keeps the donor's mix (petrol 68.4% of spend), so the diesel
 shortfall is the diary's petrol-diesel split against DESNZ's cars.
 
+## Review round 1 (2026-10-10)
+
+Vahid's round-1 pass on PolicyEngine/microcosm#1167 found nothing blocking. The changes it led to,
+with María's rulings of 2026-10-10:
+
+- **Scope offset on the bound row (ruled: recorded, not scaled).** ONS 07.2.2 carries other motor
+  fuels and lubricants, 0.37% of the class on the diary. The stage levels petrol plus diesel to
+  the class less that share, and the target is the full class, so the row reads about 0.4% low
+  from scope alone. The binding notes record it.
+- **Concept of the bound row.** ONS publishes 07.2.2 on the domestic concept. It includes
+  non-residents' fuel bought in the UK, which the residents-only frame does not hold, and leaves
+  out residents' fuel bought abroad. Consumer Trends publishes those flows for total spending
+  only: for 2024, GBP 64.7bn by non-residents in the UK (3.8% of the domestic total) and
+  GBP 78.9bn by residents abroad. It splits them by no class, so their size for road fuel is not
+  known and no bridge is applied.
+- **Energy exclusions restated (approved).** The two register reasons named the FY2024-25 basis
+  the stage left on 2026-10-09. They now name calendar 2024 and quote that year beside 2025: ONS
+  04.5.1 is GBP 26.10bn against the stage's GBP 29.52bn (0.88), and ONS 04.5.2 is GBP 14.64bn
+  against GBP 19.23bn (0.76). The 2025 ratios (0.90 and 0.81) were already calendar-year.
+- **Model year.** policyengine-uk applies the fiscal 2024-25 rules to model year 2024, sampling
+  each parameter at 30 April. The spend columns are at calendar-2024 prices, about a quarter
+  before the midpoint of that policy year. The calibration binds calendar-year facts as published
+  and fiscal-year facts at the calendar window (María's rule of 2026-09-22). The stage notes say
+  so.
+- **Vehicle electricity.** The diary's 07.2.2 has three lines (c72211, c72212, c72213) and none for
+  vehicle electricity, so nothing joins the other-fuels share. The stage notes say so.
+
 ## Not run
 
 - The national remeasure (R1) runs on whatever policyengine-uk Microcosm locks then. If the VAT,
