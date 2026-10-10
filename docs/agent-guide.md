@@ -358,9 +358,18 @@ writes, including its `.graph-store`, lies under `--out`, and it has no
 upload or staging path. Before it opens the store it refuses any link in an
 existing store tree (the root, `objects`, `tmp` or a shard), because the
 store creates those directories by following links; it does not guard
-against links planted while a build is running. It refuses before reading any graph source while the
-country spec still has unresolved evidence: every selected resource/reference
-set and every null scenario knob is checked before donor preparation.
+against links planted while a build is running. Activation checks run before
+registry preparation, CREATE or any graph source read. Every declaration
+selection must name a present resource; value and JSON selections must have an
+existing path and a non-null selected value. JSON selections require objects,
+and value selections reject objects, using the same checks as parameter
+resolution. Selected JSON may retain optional null fields. The preflight also
+checks the dependent-child age limit, mandatory and selected reference activation
+rows, required engine commit and wheel pin presence, and every null scenario
+knob. The receipt kernel's shared validator checks the executable receipt
+contract's fields, required text, program and exclusion structure, and declared
+rates before preparation; checks needing person data, weights or target surfaces
+run during receipt assignment.
 Tests for it run on the engine-free toy package in
 `test_support/microcosm_build/transport_composed.py`. The rules registry checks
 module hashes and binds the RuleSpec tree digest. Engine commit and wheel

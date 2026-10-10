@@ -6,9 +6,18 @@ router, and later packages append branches through a typed extension point
 that cannot re-key the skeleton. The driver runs ancestor-closed checkpoints
 on `<out>/.graph-store` and writes every output under `--out`; it refuses an
 existing store tree that contains a link, which could redirect store writes.
-Activation checks every selected resource and reference set and every null
-scenario knob before donor preparation. Calibration ancestry refuses hold-out
-selections and sources, benefit-unit engine references, and graph digests.
+Activation checks run before registry preparation, CREATE or any graph source
+read. Declaration selections must name present resources; value and JSON
+selections must resolve existing paths to non-null selected values. Parameter
+resolution shares these checks: JSON selections require objects, while value
+selections reject objects. Optional null fields within selected JSON remain
+allowed. Preflight also checks the dependent-child age limit, mandatory and
+selected reference activation rows, required engine commit and wheel pin
+presence, and every null scenario knob. The receipt kernel's shared validator
+checks contract fields, required text, program and exclusion structure, and
+declared rates; checks needing person data, weights or target surfaces run during
+receipt assignment. Calibration ancestry refuses hold-out selections and sources,
+benefit-unit engine references, and graph digests.
 Selected resource lists remain literal data. The driver writes deterministic
 HDF5 container bytes while readback continues to hash the complete file.
 CREATE inventories are cached by implementation, parameters and source bytes;
