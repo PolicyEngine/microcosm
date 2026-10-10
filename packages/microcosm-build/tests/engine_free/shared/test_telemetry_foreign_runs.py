@@ -508,6 +508,32 @@ def test_an_orphan_owned_by_another_user_is_passed_over_not_made_local_only(host
     _assert_own_credential_only(host)
 
 
+def test_an_orphan_whose_events_another_user_may_not_send_is_passed_over(host):
+    """An events 403 is about the caller too: the run is another user's."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a, 2)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "bob")
+    # Bob's service remembers registering the run, as it would if its login
+    # changed from Alice's to Bob's afterwards, so it goes straight to the
+    # events and is refused there.
+    build_b.delivery._registered.add(build_a.run)
+
+    for _ in range(3):
+        host.flush(build_b)
+
+    assert host.collector.asked(build_b.run, "events", build_a.run) == [403]
+    assert host.states()[build_a.run] == ("pending", None)
+    assert host.queued(build_a.run) == 2
+    rescuer = host.start(MEMBER + "alice")
+    host.flush(rescuer)
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    _assert_own_credential_only(host)
+
+
 @pytest.mark.parametrize("refused", [OUTSIDER, EXPIRED])
 def test_a_passed_over_orphan_is_offered_again_once_the_login_changes(host, refused):
     """Once a service's own run is local-only and every other pending run is
@@ -891,6 +917,26 @@ def test_a_lease_is_exclusive_until_released(tmp_path):
     taken = leases.try_acquire("run-a", "producer-a", create=False)
     assert taken is not None
     taken.release()
+
+
+def test_the_lease_files_keep_the_layout_other_services_expect(tmp_path):
+    """PolicyEngine/microcosm-emitter's telemetry service can share this spool
+    and keeps the same lease files:
+    ``<spool>.leases/<sha256(run_id NUL producer_id)>.lock``. Any change here
+    makes services from different versions of either package blind to each
+    other's live runs."""
+
+    leases = ProducerLeases.beside(tmp_path / "events.sqlite3")
+
+    assert leases.directory == tmp_path / "events.sqlite3.leases"
+    assert leases.path("run-a", "producer-a") == leases.directory / (
+        "ba5dc36777c5d2275b9015aeea8bf76f7fcdbb2fc890d91fd89f5243836366f9.lock"
+    )
+    held = leases.hold("run-a", "producer-a", timeout_seconds=1)
+    assert held is not None
+    assert oct(leases.directory.stat().st_mode & 0o777) == oct(0o700)
+    assert oct(held.path.stat().st_mode & 0o777) == oct(0o600)
+    held.release()
 
 
 def test_sweep_removes_only_free_leases_of_runs_with_nothing_pending(tmp_path):
