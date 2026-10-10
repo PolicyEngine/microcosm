@@ -24,7 +24,7 @@ from microcosm.graph import (
     save_run_evidence,
 )
 from microcosm.graph.canonical import canonical_json
-from microcosm.graph.evidence import sha256
+from microcosm.graph.evidence import read_json, sha256
 from microcosm.graph.orrery import main
 from microcosm.graph.presentation import PRESENTATION_EXTENSION, PRESENTATION_PROTOCOL
 from microcosm.graph.store import StoreCorrupt, StoreMiss
@@ -586,6 +586,27 @@ def test_checkpoint_references_link_only_verifiable_bytes(tmp_path):
     graph.write_bytes(b'{"recorded":false}')
     with pytest.raises(ValueError, match="digest mismatch"):
         checkpoint_references(record, base=tmp_path)
+
+
+def test_checkpoint_references_hash_a_manifest_past_the_metadata_bound(tmp_path):
+    # A full-data spine manifest is within the 32 MiB byte bound but past the
+    # JSON metadata bound that parsing applies; the digest check reads bytes.
+    graph = tmp_path / "graph.json"
+    manifest = tmp_path / "manifest.json"
+    graph.write_bytes(b'{"recorded":true}')
+    manifest.write_bytes(b"[" + b",".join([b"0"] * 2_100_000) + b"]")
+    with pytest.raises(ValueError, match="metadata"):
+        read_json(manifest)
+    record = {
+        name: {"path": path.name, "sha256": sha256(path.read_bytes())}
+        for name, path in (("graph_declaration", graph), ("graph_manifest", manifest))
+    }
+    refs, missing = checkpoint_references(record, base=tmp_path)
+    assert [ref["label"] for ref in refs] == [
+        "Producing graph declaration",
+        "Producing run manifest",
+    ]
+    assert missing is None
 
 
 def test_save_graph_schema_copies_upstream_bytes_and_relinks(fresh, tmp_path):

@@ -73,8 +73,8 @@ def _unique(pairs):
     return result
 
 
-def read_json(path: Path) -> tuple[object, bytes]:
-    """Bounded regular-file reader used for all native evidence inputs."""
+def _read_bytes(path: Path) -> bytes:
+    """Bounded regular-file byte reader shared by every evidence input."""
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -82,6 +82,12 @@ def read_json(path: Path) -> tuple[object, bytes]:
         require(info.st_size <= _MAX_BYTES, "evidence input byte limit")
         payload = stream.read(_MAX_BYTES + 1)
     require(len(payload) <= _MAX_BYTES, "evidence input byte limit")
+    return payload
+
+
+def read_json(path: Path) -> tuple[object, bytes]:
+    """Bounded regular-file reader used for all native evidence inputs."""
+    payload = _read_bytes(path)
     value = json.loads(payload, object_pairs_hook=_unique)
     return _plain_json(value), payload
 
@@ -751,8 +757,11 @@ def checkpoint_references(
         if not path.is_file():
             missing.append(f"{label} bytes unavailable (sha256 {recorded})")
             continue
+        # Only the digest is checked, so the bytes are not parsed: a full-data
+        # spine manifest is within the byte bound but past the JSON metadata
+        # bound that parsing applies.
         require(
-            sha256(read_json(path)[1]) == recorded,
+            sha256(_read_bytes(path)) == recorded,
             f"recorded checkpoint {label.lower()} digest mismatch",
         )
         refs.append({"label": label, "url": str(path.resolve()), "sha256": recorded})
