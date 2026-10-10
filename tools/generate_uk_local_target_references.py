@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Mapping
+from dataclasses import replace
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
 
@@ -76,11 +78,17 @@ def main() -> None:
         source_fact_feed=args.source_fact_feed
         or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
     )
-    authored = author_area_target_references(
-        contract,
-        _read_jsonl(args.ledger_facts),
-        config,
-    )
+    facts = list(_read_jsonl(args.ledger_facts))
+    authored = author_area_target_references(contract, facts, config)
+    # microcosm#1123 item 7: a second pass defers, by rule, the cells the
+    # first pass found below the small-cell floor.
+    small_cells = _small_cell_deferrals(authored.membership_report)
+    if small_cells:
+        config = replace(
+            config,
+            area_signed_deferrals=(*config.area_signed_deferrals, *small_cells),
+        )
+        authored = author_area_target_references(contract, facts, config)
     resource = target_references_resource(
         country="uk",
         description=DESCRIPTION,
@@ -96,6 +104,60 @@ def main() -> None:
     print(
         f"active_reference_count={authored.membership_report['active_reference_count']}"
     )
+
+
+def _small_cell_deferrals(
+    membership_report: Mapping[str, Any],
+    rule_path: Path | None = None,
+) -> tuple[AreaSignedDeferral, ...]:
+    """Deferrals for every active cell a rule's floor puts out of reach.
+
+    Read from the first authoring pass, so the rule names the cells by their
+    published values, never by hand; each carries the rule's expiry.
+    """
+
+    register = json.loads(
+        rule_path.read_text(encoding="utf-8")
+        if rule_path is not None
+        else importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_small_cell_rule.json")
+        .read_text(encoding="utf-8")
+    )
+    if register.get("schema_version") != 1:
+        raise ValueError("UK local small-cell rule schema_version must be 1.")
+    deferrals: list[AreaSignedDeferral] = []
+    for rule in register["rules"]:
+        floor = float(rule["absolute_floor"])
+        prefixes = tuple(str(prefix) for prefix in rule["target_id_prefixes"])
+        for target_id, target in sorted(membership_report["targets"].items()):
+            if not target_id.startswith(prefixes):
+                continue
+            for level, payload in sorted(target["geography_levels"].items()):
+                areas = sorted(
+                    str(candidate["geography_id"])
+                    for candidate in payload["candidates"]
+                    if candidate.get("status") == "active"
+                    and abs(float(candidate["resolved_value"])) < floor
+                )
+                if not areas:
+                    continue
+                deferrals.append(
+                    AreaSignedDeferral(
+                        target_id=target_id,
+                        geography_level=level,
+                        reason_id=str(rule["rule_id"]),
+                        rationale=(
+                            f"{rule['reason']} Rule {rule['rule_id']} in "
+                            "uk/local_small_cell_rule.json: published value "
+                            f"below {floor:g}; approved_by "
+                            f"{rule.get('approved_by') or 'pending'}."
+                        ),
+                        area_ids=tuple(areas),
+                        defer_if_compiles=True,
+                        expires_on=rule.get("expires_on"),
+                    )
+                )
+    return tuple(deferrals)
 
 
 def _parser() -> argparse.ArgumentParser:

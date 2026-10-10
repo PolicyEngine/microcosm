@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "description": "Published local cells too small to bind (microcosm#1123 item 7, in the pattern of the #762 A14 band-H deferral). The local generator defers, by rule rather than by area name, every active cell of a matching target whose published value is below the rule's absolute floor; reconciliation still counts a deferred cell's value in its leg's control, so deferring it does not inflate its neighbours. The runtime refuses a deferral past its expiry. approved_by/approved_on stay null until María signs the floor.",
+  "rules": [
+    {
+      "rule_id": "council_tax_band_household_floor",
+      "target_id_prefixes": [
+        "mhclg.council_tax_stock.by_area.band_",
+        "welshgov.council_tax_stock.by_area.band_",
+        "scotgov.council_tax_stock.by_area.band_"
+      ],
+      "absolute_floor": 50,
+      "reason": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    }
+  ]
+}

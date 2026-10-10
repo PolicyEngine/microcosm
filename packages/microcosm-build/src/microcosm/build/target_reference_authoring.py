@@ -139,6 +139,9 @@ class AreaSignedDeferral:
     rationale: str
     area_ids: tuple[str, ...]
     defer_if_compiles: bool = False
+    #: ISO date after which the deferral no longer stands; the runtime refuses
+    #: an expired one at its review date (microcosm#1123 small-cell rule).
+    expires_on: str | None = None
 
     def __post_init__(self) -> None:
         if not self.target_id:
@@ -629,6 +632,10 @@ def author_area_target_references(
                                 "status": "signed_deferred",
                                 "signed_reason_id": signed_deferral.reason_id,
                                 "signed_rationale": signed_deferral.rationale,
+                                # The compiled value a deferral keeps out of the
+                                # solve, so reconciliation can still count it
+                                # in its leg's control (microcosm#1123).
+                                "deferred_value": float(registry.specs[0].value),
                             }
                         )
                         candidates.append(entry)
@@ -721,6 +728,7 @@ def author_area_target_references(
                 "rationale": deferral.rationale,
                 "area_ids": list(deferral.area_ids),
                 **({"defer_if_compiles": True} if deferral.defer_if_compiles else {}),
+                **({"expires_on": deferral.expires_on} if deferral.expires_on else {}),
             }
             for deferral in config.area_signed_deferrals
         ],

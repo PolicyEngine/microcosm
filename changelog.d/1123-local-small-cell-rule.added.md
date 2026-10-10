@@ -1,0 +1,1 @@
+Local cells below a declared small-cell floor (uk/local_small_cell_rule.json: council-tax band cells under 50, proposed and unsigned) are deferred by rule with an expiry the loader enforces; the joint surface still counts a deferred cell's value in its leg's control (microcosm#1123 item 7).

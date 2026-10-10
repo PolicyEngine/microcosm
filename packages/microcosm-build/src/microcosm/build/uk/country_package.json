@@ -456,6 +456,11 @@
       "path": "ons_spree_tenure_dwellings.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_small_cell_rule.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }
