@@ -3,12 +3,14 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Three tools are registered
+digest and outputs listed with sha256 receipts. Four tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
 `tools/build_us_puf_support_base.py` (tool `us-puf-support-base`, stage
-`all`; see "Route A's base stage"), and `runner-smoke` (stage `smoke`), an
+`all`; see "Route A's base stage"), the US head-to-head scorer,
+`tools/score_us_release_head_to_head.py` (tool `us-release-head-to-head`,
+stage `score`; see "Route A head-to-head (d844)"), and `runner-smoke` (stage `smoke`), an
 inline script that proves the run path on any pushed commit (see
 "Commands").
 
@@ -21,7 +23,9 @@ Two files do the work:
   files, and writes and verifies receipts. Unit tests (engine-free):
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_plan_tool.py`
   and, for the base,
-  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py`.
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py`,
+  and, for the scorer,
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_release_head_to_head.py`.
 
 Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
 notifies anyone. The furthest a stage goes is `package`, which writes a
@@ -159,21 +163,22 @@ local wall times in this table understate Modal's wall and cost.
 | package | 21.8 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
+| Route A head-to-head (`score`) | unmeasured aggregate peak; about 80 core-hours estimated locally | head-to-head | 20 cores (limit 20), 224 GiB, 4 h 45 min timeout | $38.95 non-preemptible at the timeout and request |
 
 The prices are Modal's list prices for standard compute, read from
-modal.com/pricing on 22 September 2026 and unchanged on 29 September:
+modal.com/pricing on 22 September 2026 and unchanged on 9 October:
 $0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
 higher of the request and actual use (modal.com/docs/guide/resources). The
 heavy class costs about $1.21 an hour at its request, so an 8-hour timeout
 costs about $9.70 at the request; CPU or memory used above the request
 bills above that. With `"nonpreemptible": true` every figure is three times
-higher: about $3.63 an hour for the heavy class. Only the base class sets
-a CPU limit (equal to its request); the others are request-only for CPU,
+higher: about $3.63 an hour for the heavy class. The base and head-to-head
+classes set a CPU limit equal to their request; the others are request-only for CPU,
 and every class is request-only for memory, so a stage that used more cores
 or more memory than its request would be billed for them. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
-image builds. The base class is sized in "Route A's base stage" below.
+image builds. The base and head-to-head classes are sized in their sections below.
 
 ## Commands
 
@@ -1019,6 +1024,158 @@ and the two compared checkpoints (about 1.5 GB); after resumed attempts it
 can also hold older checkpoints. The run's state already differs from its
 receipt by the checkpoints that were never copied, so a later stage of the
 same `run_id` would refuse either way; none is planned.
+
+## Route A head-to-head (d844)
+
+`docs/us-modal-stage-route-a-h2h-plan.json` compares Route A
+(`populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z`) with the US
+default (`populace-us-2024-spm-20260915`) on the frozen
+`consumer_facts_us_c5e5bf8.jsonl` ledger. The plan pins scorer commit
+`5d1f71a2cb28b130f4ecbd5a17a29e8f639c7698` on `h2h-scorer-workers` (#1171).
+The runner registration comes from this checkout. Before the paid run,
+incorporate #1171's separate scorer fix round and update `source.commit`
+and `source.branch` to its reviewed, pushed revision; repeat the local
+validation and Modal check after repinning. This plan's current immutable
+pin will not acquire those fixes when the branch moves.
+
+The stage runs the local comparison's argv with staged paths and
+`--workers 20` added:
+
+```text
+--incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 20
+```
+
+Only `workers` and `maximum_microsim_batch_size` are plan options. Every
+path flag, `--out-prefix`, the candidate-manifest pin, both spellings of
+each boolean, and the alternative batch-size spelling are runner-owned.
+The builder omits `--age-targets` and `--allow-unaged-dollar-targets`, so
+the scorer uses the same defaults as the sequential run: `False` and
+`True`, respectively. The crosswalk and candidate pool/attestation flags
+are also omitted; the scorer chooses its normal bundled crosswalk.
+Changing this scoring yardstick requires a reviewed registration change.
+The plan sets the five native numerical thread counts to `1`, so twenty
+spawned workers do not each start a twenty-thread BLAS/OpenMP pool.
+That is an execution choice; the engine-free argv test does not prove
+numerical parity across platforms or thread counts.
+
+Both H5 inputs retain the filename `populace_us_2024.h5` in separate CAS
+directories and stage to `/work/inputs/incumbent_h5/populace_us_2024.h5`
+and `/work/inputs/candidate_h5/populace_us_2024.h5`. Keep the `.h5` suffix
+and this filename: `_resolved_artifact_path` preserves them for the loader
+and artifact identity. Do not upload either H5 under an extensionless hash.
+The incumbent is 826,917,837 bytes; the ledger is 164,603,204 bytes. The
+candidate's size was not supplied; its digest is the byte identity.
+
+**Resources and ceiling.** Class `head-to-head` requests 20 physical
+cores with CPU limit 20 and 224 GiB. The d844 plan uses non-preemptible
+placement; both class runners have `retries=0`. At twenty workers,
+1,030 slices × 4.7 minutes / 20 is 14,523 seconds (about 4 hours 2 minutes).
+The tool budget is 15,900 seconds (4 hours 25 minutes), with 1,377 seconds
+for initialization and compute margin. The 17,100-second timeout
+(4 hours 45 minutes) adds the normal 900-second runner reserve and
+300 seconds for staging. Slow staging reduces the tool's available time;
+the runner preserves the reserve for logs, hashes, mirroring and receipt.
+The budget estimate including the reserve is $38.27.
+
+Using the existing runbook formula and [Modal's list prices](https://modal.com/pricing)
+(checked 9 October 2026), the request held through the timeout costs
+`(20 × $0.0000131 + 224 × $0.00000222) × 17,100 × 3 = $38.95`.
+**The per-attempt ceiling at the request is below $40.** Memory has no hard
+limit; use above 224 GiB bills above this estimate. Startup/image work,
+the check, storage, timeout overshoot and another attempt are outside this
+execution ceiling, as for the base stage. A 256 GiB class at this timeout
+would cost **$42.60, above $40**; use the registered 224 GiB class for this
+plan. A possible smaller fallback is 16 workers, 16 CPUs and 192 GiB with
+a 20,700-second timeout (5 hours 45 minutes), listing at $39.49; that
+requires a reviewed class and matching plan change before use.
+
+The independent review's 9–10 GiB per worker is unmeasured. Each worker
+holds a full copy of the repaired frame, and the parent retains the
+original and repaired frames. The 224 GiB request allows 200 GiB for
+workers plus 24 GiB for the parent, runner and spawn serialization, with
+limited spare capacity. This is an estimate, not a measured aggregate
+peak. The receipt's `peak_rss_bytes` is a child-process peak from
+`RUSAGE_CHILDREN`, not the sum of twenty workers; use Modal's container
+memory measurements to assess this sizing after the run. The stage writes
+scorecards and logs, mirrors `h2h.json` and `h2h.md` first, and has no
+checkpoint/resume state or additional disk/write-probe requirement.
+
+Stage the inputs in the `policyengine` workspace. Set these variables to
+the existing local files; the ledger path is the one used by Route A's
+base. `upload-commands` only hashes files and prints commands: it performs
+no upload. Run it first to refuse a digest mismatch before uploading.
+If a CAS file already exists (the base may have staged the ledger), skip
+that `put` and let check mode verify its digest; do not overwrite it.
+
+```bash
+INCUMBENT_H5=/path/to/populace-us-2024-spm-20260915/populace_us_2024.h5
+CANDIDATE_H5=/path/to/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/populace_us_2024.h5
+LEDGER_FACTS=$HOME/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl
+python3 tools/modal_us_stage_plan.py upload-commands \
+  docs/us-modal-stage-route-a-h2h-plan.json \
+  incumbent_h5="$INCUMBENT_H5" candidate_h5="$CANDIDATE_H5" ledger_facts="$LEDGER_FACTS"
+
+modal volume put microcosm-us-stage-inputs "$INCUMBENT_H5" \
+  cas/sha256/6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84/populace_us_2024.h5
+modal volume put microcosm-us-stage-inputs "$CANDIDATE_H5" \
+  cas/sha256/417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559/populace_us_2024.h5
+modal volume put microcosm-us-stage-inputs "$LEDGER_FACTS" \
+  cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl
+
+# Validate locally, then check on Modal after the reviewed scorer repin.
+python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-h2h-plan.json
+MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json \
+  modal run tools/modal_us_stage.py
+```
+
+Require `CHECK OK`, including the pinned parser and all three volume
+digests, before the paid run. Launch the paid run through
+`893/bin/lsubmit.sh` under launchd, never from a session shell.
+Prepare this job script in the assigned checkout; the absolute CLI and
+working directory make the payload independent of launchd's default
+`PATH` and working directory:
+
+```bash
+mkdir -p modal-runs/route-a-h2h-d844-20261009
+cat > modal-runs/route-a-h2h-d844-20261009/launch.sh <<'SH'
+#!/bin/bash
+set -euo pipefail
+cd /Users/maxghenis/PolicyEngine/_worktrees/microcosm-h2h-modal
+export PATH=/Users/maxghenis/.local/bin:/opt/homebrew/bin:/usr/bin:/bin
+export MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json
+exec /Users/maxghenis/.local/bin/modal run --detach tools/modal_us_stage.py --run
+SH
+```
+
+Submit `/bin/bash` with the absolute path to that script through the main
+session's `893/bin/lsubmit.sh`. **The exact submission command still needs
+the main session's launcher path and argument interface:** that script is
+absent from this checkout and the known build-machine locations. Do not
+run `launch.sh` directly in a session shell. The main session should fill
+in the submission command before launching; the payload above is complete.
+
+Once the launch reports a receipt path, fetch that `score-<utc>.json` and
+the two scorecards. The receipt's `outputs` lists their relative paths,
+byte counts and sha256s. Fetch the tiny complete state, including the logs,
+so strict verification covers everything:
+
+```bash
+R=route-a-h2h-d844-20261009
+mkdir -p "modal-runs/$R"
+modal volume get microcosm-us-stage-runs "runs/$R/receipts" "./modal-runs/$R/"
+modal volume get microcosm-us-stage-runs "runs/$R/state" "./modal-runs/$R/"
+RECEIPT="./modal-runs/$R/receipts/score-<utc>.json"
+python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
+  --state-root "./modal-runs/$R/state" --strict
+ls -l "./modal-runs/$R/state/h2h.json" "./modal-runs/$R/state/h2h.md"
+```
+
+Use the actual receipt name from the launch and confirm the downloaded
+directory layout (Modal CLI versions can add a level; see "Commands").
+Verification requires `COMPLETED` and no budget stop, and rehashes both
+scorecards and every other state file. Inspect `h2h.json` and `h2h.md`
+only after it passes. A successful receipt proves those bytes; Max's d844
+decision remains separate from running this comparison.
 
 ## Preemption and restarts
 

@@ -1095,6 +1095,33 @@ def run_stage_base_nonpreemptible(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.HEAD_TO_HEAD.modal_cpu,
+    memory=plan_lib.HEAD_TO_HEAD.memory_mib,
+    timeout=plan_lib.HEAD_TO_HEAD.timeout_s,
+    retries=0,
+)
+def run_stage_head_to_head(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.HEAD_TO_HEAD.modal_cpu,
+    memory=plan_lib.HEAD_TO_HEAD.memory_mib,
+    timeout=plan_lib.HEAD_TO_HEAD.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_head_to_head_nonpreemptible(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
 RUNNERS = {
     ("heavy", False): run_stage_heavy,
     ("heavy", True): run_stage_heavy_nonpreemptible,
@@ -1103,6 +1130,8 @@ RUNNERS = {
     ("check", False): run_stage_small,
     ("base", False): run_stage_base,
     ("base", True): run_stage_base_nonpreemptible,
+    ("head-to-head", False): run_stage_head_to_head,
+    ("head-to-head", True): run_stage_head_to_head_nonpreemptible,
 }
 
 

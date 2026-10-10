@@ -1,0 +1,38 @@
+{
+  "schema": "microcosm-modal-us-stage-plan/1",
+  "tool": "us-release-head-to-head",
+  "stage": "score",
+  "run_id": "route-a-h2h-d844-20261009",
+  "source": {
+    "commit": "5d1f71a2cb28b130f4ecbd5a17a29e8f639c7698",
+    "branch": "h2h-scorer-workers"
+  },
+  "inputs": {
+    "incumbent_h5": {
+      "uri": "volume://cas/sha256/6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84/populace_us_2024.h5",
+      "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
+    },
+    "candidate_h5": {
+      "uri": "volume://cas/sha256/417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559/populace_us_2024.h5",
+      "sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
+    },
+    "ledger_facts": {
+      "uri": "volume://cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl",
+      "sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+    }
+  },
+  "options": {
+    "workers": 20,
+    "maximum_microsim_batch_size": 2000
+  },
+  "env": {
+    "PYTHONUNBUFFERED": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "1"
+  },
+  "max_wall_seconds": 15900,
+  "nonpreemptible": true
+}
