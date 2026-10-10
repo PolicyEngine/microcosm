@@ -437,12 +437,157 @@ earnings-universe producer wrote the explicit zero on 25,511 records below age
 15, and none of the other 145,870 was missing a wage. No clone needed
 resetting, because the stacked order fills before it clones.
 
+## ACS local releases
+
+The ACS local lane (`tools/build_us_acs_multispine_base.py`, then
+`tools/build_us_acs_local_release.py`) pools a dense donor release with the
+ACS 2024 1-year spine. `with_optional_acs_spine` multiplies every donor
+household weight by `1 - acs_share` and gives ACS the rest of the donor's
+household mass (half each by default). The donor rows arrive with the column
+and the raw coverage columns the release carries. ACS rows have neither.
+
+### The lane transfers the column in its own pass
+
+`acs_local_esi_premium_transfer_target_families` is a one-family plan,
+`source_operator_esi_premiums`, that only the lane's staging build uses, as it
+does for usual hours (#765). The declared ACS plan
+(`declared_acs_transfer_target_families`) does not gain the column:
+
+- The lane's main transfer fits every declared family on the PUF-detail role
+  (`ACS_DONOR_CHANNEL_AUTO`), the wrong donor for this column (next section).
+- Under one of the declared plan's existing families, the column would also
+  leave the stacked pool's `source_operator_esi_premiums` family:
+  `pool_transfer_target_families` adds a `source_operator_*` family only for
+  outputs the declared plan does not own. And it would enter the frozen v11
+  authority reconstruction (`stacked_spine._legacy_stacked_authority_receipt`),
+  which leaves out post-v11 targets by family name; scoring an attested
+  schema-9 pool refuses an authority that differs from that reconstruction.
+  Declaring it under its own `source_operator_esi_premiums` family would avoid
+  both, but not the donor problem.
+- The declared plan is also the default registry of the spine-agreement
+  battery (`spine_agreement`), which would gain the column as a metric.
+
+Taking the lane's ACS rows from the stacked pool instead would replace the
+lane. Its two tools read the legacy spine tags, the legacy support roles and
+the staging summary's null register, and its hours repair refuses an assembled
+frame.
+
+### The donor rows are the ASEC observations
+
+The transfer fits on the donor's ASEC observation role (support clone 0). The
+lane's tax-detail families fit on the PUF-detail role, which is the wrong
+donor for this column:
+
+- On the observation role, `employment_income_before_lsr` is the measured CPS
+  wage, and a person has a premium only if they hold a job with an employer.
+- PUF support imputation writes the clone's wages
+  (`PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS`), while the clone's premium is a
+  copy of its source person's. On those rows the premium no longer follows the
+  wage.
+
+The recipient side is the measured ACS wage (`WAGP`), so both sides of the fit
+see a measured wage, as in the stacked pool's early fill. On the test fixture,
+where only wages tell the employed from the rest, a fit on ASEC observations
+gives no ACS person without wages a premium; a fit on the PUF-detail role
+gives one to more than a tenth of them and to fewer workers
+(`test_the_puf_detail_role_would_put_premiums_on_people_without_wages`).
+
+`prepare_acs_local_esi_premium_donor` qualifies the donor before the ACS
+sources are fetched. It refuses a donor without the column, the raw coverage
+columns, the CPS record id (`PERIDNUM`), wages or legacy support roles, and
+one that fails the stage's signal gate.
+
+### The ACS rows are held to the donor rows' scale
+
+Nothing in a QRF draw keeps a total. Once the frame is pooled,
+`with_acs_local_esi_premium_anchor` runs the stacked pool's kernel,
+`with_us_esi_premium_pool_anchor`, on it. The kernel tells the donor rows from
+the ACS rows by the CPS record id and the raw coverage columns, which only the
+donor rows carry. On the ACS rows it:
+
+1. clears the premium where the person reports zero wages; then
+2. scales the rest by one factor so the ACS rows carry the same weighted
+   premium per unit of household mass as the donor rows.
+
+The kernel refuses a transferred row whose wage is missing: a missing wage is
+not a zero wage. ACS PUMS leaves `WAGP` blank below age 15, outside its
+earnings universe, and the lane keeps that blank in the staging frame, where
+the reviewed-null register fills it for the engine pass. The anchor reads
+those people's wages as zero under the universe rule `acs_income_universe`
+names (`acs_2024_pums_wagp_age_15_plus`), in its own view of the frame, and
+writes no zero into the frame. A blank wage at age 15 or older, or one whose
+raw `WAGP` is not blank, stays missing and stops the build.
+
+It never rewrites a donor row. These hold for every lane frame
+(`tests/engine_free/us/test_us_acs_local_esi_premiums.py`, property-tested
+over the share, both spines' weights and the transfer's draws):
+
+- the lane-wide weighted column equals the donor rows' total divided by their
+  share of household mass, `1 - acs_share`. Pooling multiplied every donor
+  household weight by that share, so the lane-wide column is the donor
+  release's own column;
+- both spines carry the same weighted premium per unit of household mass, so
+  moving mass from one spine to the other does not move the total;
+- an ACS person with zero wages, or below age 15, carries nothing;
+- the frame's own wage blanks are never overwritten;
+- an anchored frame is returned unchanged.
+
+The lane runs the kernel and both gates on a narrow view of the frame, for two
+reasons:
+
+- **Source ids.** The kernel finds a support clone's wages and draw by
+  `person_source_id` across the whole frame. The stacked pool makes that id
+  unique at assembly. This lane does not: ACS rows keep their ids from before
+  the pooling remap as source ids, and those can repeat a donor's. Every ACS
+  row here is its own source record, so the view leaves the lookup's columns
+  out and the kernel reads each row's own wages. A transferred row that is not
+  clone 0 is refused.
+- **Memory.** The kernel copies every table it is given and each gate copies
+  the person table. The staging frame holds two full spines, and the view
+  carries only the columns they read.
+
+**Assumption.** As in the stacked pool, ACS rows have no policyholder flag, so
+the lane's anchor-universe total is the donor rows' total plus the ACS column
+over the donor rows' employed share of the anchor universe.
+
+The donor is a calibrated release. Its anchor-universe total is within the
+release tolerance of the anchor, not on it, and the staging frame starts from
+the same place.
+
+### What the lane records
+
+- **Staging.** Both gates run on the pooled frame before the staging H5 is
+  written. A red gate fails the build. The verdicts, the donor receipt and the
+  anchor receipt are in the staging summary under `local_esi_premiums`.
+- **Finalize.** Both gates run on the calibrated artifact. The gate report
+  carries them as `esi_premiums_signal` and `esi_premiums_anchor`, each bound
+  to the artifact's SHA-256, and either one red fails finalize. The report's
+  `input_coverage` entry used to be a fixed pass; it now passes only if both
+  gates do.
+- **Package.** A report without both verdicts, with a verdict bound to other
+  bytes, or with a red verdict is refused before a release directory exists.
+- **`fill_reviewed_nulls`** still refuses a frame whose column is null on some
+  rows. A current staging frame has none; a staging H5 built before this
+  change does.
+
+`--allow-esi-premium-gaps`, on both tools, records a red verdict without
+failing a diagnostic build from a donor that predates the stage. No row then
+carries the column.
+
+No certified donor release carries the column yet, so the lane's fill has not
+been measured on real inputs. The stacked pool's measurement above is the
+nearest evidence: the same transfer, from ASEC rows with measured wages onto
+the ACS 2024 spine. It differs in its donor rows (the pooled ASEC before the
+clone, at design weights, where the lane's are a calibrated release's
+observation role) and in its sample. The first staging build records the
+lane's own fill in `local_esi_premiums`.
+
 ## Gates
 
 | Gate | Where | Checks |
 |---|---|---|
-| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. On a pooled frame these proofs cover the rows with raw coverage columns; the other rows must carry the premium with a weighted positive share and mean within 0.5 to 2 times those rows'. |
-| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. On a pooled frame the total adds the transferred column at the source-derived rows' employed share, and the transferred rows' column per unit of household mass must stay within 0.8 to 1.25 times the source-derived rows'. |
+| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export; ACS local lane, on the staging frame and the calibrated artifact | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. On a pooled frame these proofs cover the rows with raw coverage columns; the other rows must carry the premium with a weighted positive share and mean within 0.5 to 2 times those rows'. |
+| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default; ACS local lane, on the staging frame and the calibrated artifact | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. On a pooled frame the total adds the transferred column at the source-derived rows' employed share, and the transferred rows' column per unit of household mass must stay within 0.8 to 1.25 times the source-derived rows'. |
 | `us_release_input_coverage_gate` | release tool | The input is `required` with no reviewed exclusion, so an export that drops or flattens it fails. |
 | `assert_required_us_release_source_columns` | the L0/refit export (`l0_refit_export.export_us_l0_refit_h5`, run by `tools/export_us_l0_refit_h5.py`), unless `--allow-missing-source-columns` is passed | The column must be present and non-constant. |
 | reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B. |
@@ -506,16 +651,17 @@ stage; the failures it waives are still written to that file.
 
 ## What this does not do
 
-- **ACS local releases.** An ACS spine pooled beside a donor that carries the
-  input has it null on its ACS rows. `fill_reviewed_nulls` refuses that frame
-  instead of default-filling it to zero, so this lineage does not build until
-  the input is assigned or transferred for every spine. The stacked pool's
-  fill does not reach it: that lane's ACS rows come from the legacy transfer
-  plan (`declared_acs_transfer_target_families`), which does not name the
-  column.
-- **ACS-native predictors for the fill.** The stacked pool fills ACS rows from
-  age, sex, State and income. It does not use ACS's own employer-coverage,
-  class-of-worker or employment-status items.
+- **An ACS local release from an older donor.** The lane transfers the column
+  from its donor release. A donor built before the stage has nothing to
+  transfer, and the lane refuses it unless a diagnostic build waives the
+  gates.
+- **ACS-native predictors for the fill.** The stacked pool and the ACS local
+  lane fill ACS rows from age, sex, State and income. Neither uses ACS's own
+  employer-coverage, class-of-worker or employment-status items.
+- **A second verdict on the transferred rows' cells.** The gates recompute the
+  MEPS-IC assignment on the rows that carry the raw coverage columns. They
+  compare the transferred rows with those rows and cannot check them against
+  the cells.
 - **A pool built from an older raw stage.** The pool reads the coverage
   columns from the ASEC raw-stage artifact. One written before the columns
   were restored lacks them, and the pool's ESI operator refuses it by name.
