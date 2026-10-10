@@ -17,14 +17,18 @@ as policyengine-core does. Invariants:
   plans and reform passes equal the reference's, its effects carry z-scores,
   and a stored column the engine does not define fails the stored-input gate
   authoritatively;
-- the target surface resolves from the reference release manifest.
+- the target surface resolves from the reference release manifest;
+- the report names the commit the probe was loaded from, not the worktree's
+  HEAD when the report is written.
 """
 
 # ruff: noqa: F403, F405
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -780,3 +784,53 @@ def test_a_malformed_reference_smoke_file_costs_only_the_comparison(
     assert "malformed" in smoke["reference_error"]
     assert len(smoke["probes"]) == len(fixture_engine_probes())
     assert all("reference" not in row for row in smoke["probes"])
+
+
+def test_the_report_names_the_commit_the_probe_loaded_from(
+    probe_tool, builder, chain, tmp_path, monkeypatch
+) -> None:
+    """The Route A probe launched 2026-10-02 named a commit made ten minutes
+    after it started: it read HEAD when it wrote its report header. The
+    report now keeps the state read when the probe loaded, the sha256 of the
+    probe and of the sibling tools it runs, and the state at each write,
+    flagging a move (modules imported in between would then come from either
+    state). The report is written here before ``run``, as no stage runs."""
+    _, path, receipt, _ = chain
+    with monkeypatch.context() as unmoved:
+        pin_git_state_at_load(unmoved, probe_tool)
+        probe, _ = fixture_export_probe(
+            probe_tool, builder, path, tmp_path / "probe", receipt=receipt
+        )
+    # Outside a git checkout there is no state to compare.
+    unmoved = False if probe_tool._TOOL_SOURCE["commit"] is not None else None
+    assert probe.report["tool_source"]["moved_since_load"] is unmoved
+
+    move_head_after_load(monkeypatch)
+    probe._write_report()
+    written = tmp_path / "probe" / probe_tool.REPORT_FILENAME
+    source = json.loads(written.read_text())["tool_source"]
+    assert {key: source[key] for key in LOAD_STATE_FIELDS} == probe_tool._TOOL_SOURCE
+    assert source["commit"] != LATER_HEAD
+    assert source["commit_at_write"] == LATER_HEAD
+    # Outside a git checkout there is no load state to compare with.
+    expected = True if source["commit"] is not None else None
+    assert source["moved_since_load"] is expected
+
+    def sha256(path) -> str:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    assert source["sha256"] == sha256(probe_tool.__file__)
+    # The fixtures load both siblings themselves, so the probe hashes their
+    # files when it writes.
+    assert source["tools"] == {
+        "tools/build_us_fiscal_refresh_release.py": {
+            "sha256": sha256(builder.__file__),
+            "file": builder.__file__,
+            "hashed": "at write",
+        },
+        "tools/sample_us_export_households.py": {
+            "sha256": sha256(probe.sampler.__file__),
+            "file": probe.sampler.__file__,
+            "hashed": "at write",
+        },
+    }

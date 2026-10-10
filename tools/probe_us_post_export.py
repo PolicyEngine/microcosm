@@ -112,9 +112,12 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import linecache
 import math
 import os
 import platform
+import stat
+import subprocess
 import sys
 import threading
 import time
@@ -125,11 +128,278 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import numpy as np
-import pandas as pd
+# ---------------------------------------------------------------------------
+# What this run is made of, read before the heavy imports below
+# ---------------------------------------------------------------------------
+
+#: The repository paths whose state a receipt or report records: the tools and
+#: the editable microcosm packages they import.
+WATCHED_PATHS = ("tools", "packages")
+#: Reads of a file that keeps changing while it is read, before it is
+#: recorded as unstable.
+_STABLE_READ_ATTEMPTS = 3
+
+
+def _nested_repository_head(path: Path) -> str | None:
+    """The commit checked out in a git repository whose top level is
+    ``path`` (a submodule, or a clone left under a watched path), or
+    ``None`` when ``path`` is not the top of one."""
+    if not (path / ".git").exists():
+        return None
+    try:
+        out = subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(path),
+                "rev-parse",
+                "--show-toplevel",
+                "HEAD",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
+        return None
+    if len(out) < 2 or Path(out[0]).resolve() != path.resolve():
+        return None
+    return out[1].strip() or None
+
+
+def _worktree_entry(path: Path, object_format: str) -> tuple[str, str, str] | None:
+    """A working-tree path's git mode, git object id and content (the sha256
+    of a file's bytes or a link's target), or ``None`` if nothing is there.
+
+    - A file is read in chunks, so a large one does not raise the process's
+      peak memory. If its inode, device, size, mode or modification time
+      changes while it is read (an edit, or a replacement by rename), it is
+      read again; after :data:`_STABLE_READ_ATTEMPTS` reads it is recorded as
+      ``unstable``, which never matches HEAD. A change within one timestamp
+      tick that keeps the inode and the size is not detected.
+    - A directory (a nested repository) is recorded by the commit checked
+      out in it, if any; its files are not read.
+    - A FIFO, socket or device is recorded by its type and never opened.
+    - A path that cannot be read is recorded by its errno, size and
+      modification time, never as matching HEAD; its bytes are not covered.
+    """
+
+    def signature(info) -> tuple:
+        return (info.st_ino, info.st_dev, info.st_size, info.st_mode, info.st_mtime_ns)
+
+    for _ in range(_STABLE_READ_ATTEMPTS):
+        try:
+            before = path.lstat()
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            return ("unreadable", "", f"errno {error.errno}")
+        if stat.S_ISDIR(before.st_mode):
+            head = _nested_repository_head(path)
+            content = f"repository at {head}" if head else "directory, not read"
+            return ("040000", "", content)
+        if not (stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode)):
+            return ("special", "", f"file type {stat.S_IFMT(before.st_mode):o}")
+        blob = hashlib.new(object_format)
+        plain = hashlib.sha256()
+        try:
+            if stat.S_ISLNK(before.st_mode):
+                mode, target = "120000", os.fsencode(os.readlink(path))
+                blob.update(b"blob %d\0" % len(target) + target)
+                plain.update(target)
+                opened = finished = before
+                complete = True
+            else:
+                mode = "100755" if before.st_mode & stat.S_IXUSR else "100644"
+                with path.open("rb") as handle:
+                    opened = os.fstat(handle.fileno())
+                    blob.update(b"blob %d\0" % opened.st_size)
+                    size = 0
+                    while chunk := handle.read(1 << 20):
+                        size += len(chunk)
+                        blob.update(chunk)
+                        plain.update(chunk)
+                    finished = os.fstat(handle.fileno())
+                complete = size == opened.st_size
+            after = path.lstat()
+        except FileNotFoundError:
+            continue  # removed while read: the next attempt sees what is there
+        except OSError as error:
+            return (
+                "unreadable",
+                "",
+                f"errno {error.errno} size {before.st_size} mtime {before.st_mtime_ns}",
+            )
+        if (
+            complete
+            and len({signature(i) for i in (before, opened, finished, after)}) == 1
+        ):
+            return (mode, blob.hexdigest(), plain.hexdigest())
+    return ("unstable", "", "changed while read")
+
+
+def _git_state(root: Path | None = None) -> tuple[str | None, bool | None, str | None]:
+    """The repository's state under :data:`WATCHED_PATHS`: HEAD; whether the
+    working tree there differs from HEAD's tree; and a sha256 of the
+    differences, ``None`` when there are none. ``(None, None, None)``
+    outside a git checkout or without git.
+
+    Every path in HEAD's tree, every index entry and every untracked,
+    unignored file git lists under those paths (regular files and links; git
+    lists no FIFO, socket or device it cannot track) is compared with HEAD
+    by content: its
+    mode and git object id, computed from the working tree here
+    (:func:`_worktree_entry`), never taken from the index's cached stat
+    data. So staging, a same-bytes rewrite, the assume-unchanged bit and
+    ``core.filemode`` change nothing, and a file staged while this runs is
+    still seen: one ``ls-files`` call lists the index and the untracked files
+    together. A skip-worktree entry missing from the working tree (a sparse
+    checkout) counts as unchanged, as git counts it; a submodule counts as
+    unchanged when it is not checked out or is at the commit HEAD records.
+
+    HEAD is resolved once and every read uses it. Only plumbing runs
+    (``rev-parse``, ``ls-tree``, ``ls-files``), none of which writes the
+    index, so these reads never hold the lock a concurrent ``git add``
+    needs. No diff text is hashed, so the user's git configuration cannot
+    change the digest. Every watched file is read: on this repository
+    (1,651 files, 111 MB on 2026-10-10) a read took 0.2 to 3 s.
+    """
+    root = Path(__file__).resolve().parents[1] if root is None else Path(root)
+
+    def git(*args: str) -> list[bytes]:
+        out = subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(root), *args],
+            capture_output=True,
+            check=True,
+        ).stdout
+        return [item for item in out.split(b"\0") if item]
+
+    try:
+        head = git("rev-parse", "--verify", "-z", "HEAD")[0].strip().decode("ascii")
+        object_format = (
+            git("rev-parse", "--show-object-format")[0].strip().decode("ascii")
+        )
+        committed: dict[bytes, tuple[str, str]] = {}
+        for entry in git("ls-tree", "-r", "-z", head, "--", *WATCHED_PATHS):
+            meta, _, path = entry.partition(b"\t")
+            mode, _kind, oid = meta.split(b" ")
+            committed[path] = (mode.decode("ascii"), oid.decode("ascii"))
+        listed: set[bytes] = set()
+        skip_worktree: set[bytes] = set()
+        for entry in git(
+            "ls-files",
+            "-z",
+            "-t",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *WATCHED_PATHS,
+        ):
+            tag, path = entry[:1], entry[2:]
+            listed.add(path)
+            if tag == b"S":
+                skip_worktree.add(path)
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        IndexError,
+        UnicodeDecodeError,
+        ValueError,
+    ):
+        return None, None, None
+    digest = hashlib.sha256()
+    differences = 0
+    for path in sorted(set(committed) | listed):
+        expected = committed.get(path)
+        full = root / os.fsdecode(path)
+        if expected is not None and expected[0] == "160000":
+            checked_out = _nested_repository_head(full)
+            if checked_out is None or checked_out == expected[1]:
+                continue  # not checked out, or at the commit HEAD records
+            record = f"160000 {checked_out}".encode()
+        else:
+            entry = _worktree_entry(full, object_format)
+            if entry is None:
+                if expected is None or path in skip_worktree:
+                    continue  # staged then deleted, or outside a sparse checkout
+                record = b"deleted"
+            elif expected is not None and expected == entry[:2]:
+                continue  # the committed bytes and mode
+            else:
+                record = f"{entry[0]} {entry[2]}".encode()
+        differences += 1
+        digest.update(path + b"\0" + record + b"\0")
+    if not differences:
+        return head, False, None
+    return head, True, digest.hexdigest()
+
+
+def _installed_distributions() -> dict[str, object]:
+    """The installed distributions' names and versions: a count and a sha256
+    of the sorted ``name==version`` lines. It is an inventory, so equal
+    digests mean the same names and versions, not the same installed bytes.
+    A distribution whose metadata cannot be read is listed by its location
+    and error type and counted under ``unreadable``; nothing here raises."""
+    import importlib.metadata as metadata
+
+    try:
+        distributions = list(metadata.distributions())
+    except Exception as error:  # the inventory must never stop a run
+        return {
+            "count": None,
+            "sha256": None,
+            "unreadable": None,
+            "error": f"{type(error).__name__}: {error}",
+        }
+    lines: set[str] = set()
+    unreadable = 0
+    for dist in distributions:
+        try:
+            lines.add(f"{str(dist.metadata['Name'] or '').lower()}=={dist.version}")
+        except Exception as error:  # one bad record costs only itself
+            unreadable += 1
+            where = getattr(dist, "_path", None)
+            lines.add(f"!unreadable {where}: {type(error).__name__}")
+    ordered = sorted(lines)
+    return {
+        "count": len(ordered),
+        "sha256": hashlib.sha256("\n".join(ordered).encode()).hexdigest(),
+        "unreadable": unreadable,
+    }
+
+
+def _pin_traceback_source(paths, source: bytes) -> None:
+    """Make tracebacks through ``paths`` quote ``source``, the bytes that
+    ran: linecache keeps an entry with no modification time as it is."""
+    text = importlib.util.decode_source(source)
+    lines = text.splitlines(True)
+    for path in {str(path) for path in paths}:
+        linecache.cache[path] = (len(text), None, lines, path)
+
+
+# This file's bytes and the repository state, read before the heavy imports
+# below (Python read these bytes milliseconds earlier to compile what runs);
+# tracebacks from this file quote the same bytes. The packages imported later
+# come from whatever the tree holds then: _tool_source_record compares.
+_SOURCE_AT_LOAD = Path(__file__).read_bytes()
+_pin_traceback_source((__file__, sys._getframe(0).f_code.co_filename), _SOURCE_AT_LOAD)
+_STATE_AT_LOAD = _git_state()
+_TOOL_SOURCE: dict[str, object] = {
+    "commit": _STATE_AT_LOAD[0],
+    "dirty": _STATE_AT_LOAD[1],
+    "changes_sha256": _STATE_AT_LOAD[2],
+    "sha256": hashlib.sha256(_SOURCE_AT_LOAD).hexdigest(),
+    "installed_distributions": _installed_distributions(),
+}
+
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 #: Bump with any change to the report layout or the authority rules.
-PROBE_REPORT_SCHEMA_VERSION = 1
+PROBE_REPORT_SCHEMA_VERSION = 2
 REPORT_FILENAME = "probe_report.json"
 PASSES_FILENAME = "passes.jsonl"
 #: Route A's ``--maximum-microsim-batch-size``; the per-batch cost then
@@ -211,9 +481,18 @@ def _load_tool(module_name: str, filename: str):
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {filename}")
     module = importlib.util.module_from_spec(spec)
+    # Read the file once and execute those bytes, so the report's hash is of
+    # the code that ran (the loader would read the file again). Tracebacks
+    # quote the same bytes: linecache keeps an entry with no mtime as is.
+    path = str(_TOOLS / filename)
+    source = (_TOOLS / filename).read_bytes()
+    module.__loaded_sha256__ = hashlib.sha256(source).hexdigest()
+    _pin_traceback_source((path,), source)
     sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)
+        exec(  # the loader's exec_module, minus its second read of the file
+            compile(source, path, "exec", dont_inherit=True), module.__dict__
+        )
     except BaseException:
         sys.modules.pop(module_name, None)
         raise
@@ -1258,35 +1537,57 @@ def _verdict(
     }
 
 
-def _tool_source() -> dict[str, object]:
-    import subprocess
+def _moved(commit, changes) -> bool | None:
+    """Whether the repository state differs from the one at load; ``None``
+    when either moment has no git state."""
+    if commit is None or _TOOL_SOURCE["commit"] is None:
+        return None
+    return (commit, changes) != (_TOOL_SOURCE["commit"], _TOOL_SOURCE["changes_sha256"])
 
-    root = _TOOLS.parent
+
+def _file_sha256(path: str | Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _module_sha256(module: Any) -> dict[str, str | None]:
+    """A sibling tool's sha256, the file it was taken from and when:
+    ``"at load"`` for a module :func:`_load_tool` loaded (the bytes it
+    executed); ``"at write"`` for one passed in (its file when the record is
+    written, which may be newer than the code that ran); ``None`` when there
+    is no file to read."""
+    loaded = getattr(module, "__loaded_sha256__", None)
+    path = getattr(module, "__file__", None)
+    if loaded is not None:
+        return {"sha256": loaded, "file": path, "hashed": "at load"}
+    if path is None:
+        return {"sha256": None, "file": None, "hashed": None}
     try:
-        head = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-        dirty = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(root),
-                "status",
-                "--porcelain",
-                "--",
-                "tools",
-                "packages",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return {"commit": None, "dirty": None}
-    return {"commit": head, "dirty": bool(dirty)}
+        return {"sha256": _file_sha256(path), "file": path, "hashed": "at write"}
+    except OSError as error:
+        return {
+            "sha256": None,
+            "file": path,
+            "hashed": f"unreadable at write ({error})",
+        }
+
+
+def _tool_source_record(tools: Mapping[str, Any]) -> dict[str, object]:
+    """``_TOOL_SOURCE``, each sibling tool's sha256 (:func:`_module_sha256`)
+    and the repository state when the record is written.
+
+    ``moved_since_load`` is true when HEAD or the differences from it under
+    :data:`WATCHED_PATHS` changed since this file loaded; modules imported in
+    between may then come from either state.
+    """
+    commit, dirty, changes = _git_state()
+    return {
+        **_TOOL_SOURCE,
+        "tools": {name: _module_sha256(module) for name, module in tools.items()},
+        "commit_at_write": commit,
+        "dirty_at_write": dirty,
+        "changes_sha256_at_write": changes,
+        "moved_since_load": _moved(commit, changes),
+    }
 
 
 def _package_versions() -> dict[str, str | None]:
@@ -1436,7 +1737,7 @@ class ExportProbe:
         return {
             "schema_version": PROBE_REPORT_SCHEMA_VERSION,
             "tool": "tools/probe_us_post_export.py",
-            "tool_source": _tool_source(),
+            "tool_source": self._tool_source(),
             "packages": _package_versions(),
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "host": {
@@ -1496,7 +1797,17 @@ class ExportProbe:
             "verdicts": self.verdicts,
         }
 
+    def _tool_source(self) -> dict[str, object]:
+        return _tool_source_record(
+            {
+                "tools/build_us_fiscal_refresh_release.py": self.builder,
+                "tools/sample_us_export_households.py": self.sampler,
+            }
+        )
+
     def _write_report(self) -> None:
+        self.report["tool_source"] = self._tool_source()
+        self.out_dir.mkdir(parents=True, exist_ok=True)
         _write_json(self.out_dir / REPORT_FILENAME, self.report)
 
     def _stage(self, name: str, fn: Callable[[], Mapping[str, Any]], consequence):
@@ -1589,6 +1900,9 @@ class ExportProbe:
                 self._stage("source_coverage", self._source_coverage, "recorded")
         self.report["summary"] = _summary(self.report, self.receipt)
         self.report["process_peak_rss_gib"] = _gib(_lifetime_peak_rss())
+        self.report["process_peak_rss_source"] = (
+            "resource.getrusage(RUSAGE_SELF).ru_maxrss (the process's lifetime peak)"
+        )
         self.report["rss_source"] = (
             None if self.clock.sampler is None else self.clock.sampler.source
         )
