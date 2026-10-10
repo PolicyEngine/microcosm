@@ -1,0 +1,1 @@
+The local telemetry emitter now waits up to 15 seconds, rather than 3, for its service to become ready. The service imports `microcosm.build` (torch, pandas and the calibrate stack), which takes about four seconds on an M1 Max even with a warm cache, so every build on such a machine fell back to local-only telemetry.

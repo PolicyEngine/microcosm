@@ -14,7 +14,9 @@ TEMPORARY_DIRECTORY_ALIAS: Final = Path("/tmp")
 
 DEFAULT_SEND_TIMEOUT_SECONDS: Final = 0.2
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
-DEFAULT_STARTUP_TIMEOUT_SECONDS: Final = 3.0
+#: The service imports ``microcosm.build`` (torch, pandas, the calibrate
+#: stack), which takes about four seconds on an M1 Max even warm.
+DEFAULT_STARTUP_TIMEOUT_SECONDS: Final = 15.0
 STARTUP_POLL_SECONDS: Final = 0.02
 SERVICE_READY_TIMEOUT_SECONDS: Final = 0.1
 SERVICE_PROCESS_EXIT_TIMEOUT_SECONDS: Final = 1.0
