@@ -18,7 +18,8 @@
       "uc_hh_1_child",
       "uc_hh_2_children",
       "uc_hh_3plus_children",
-      "households"
+      "households",
+      "hmrc/higher_rate_taxpayers/count"
     ],
     "la": [
       "hmrc/self_employment_income/amount",
@@ -51,7 +52,8 @@
       "council_tax/band_f",
       "council_tax/band_g",
       "council_tax/band_h",
-      "council_tax/band_i"
+      "council_tax/band_i",
+      "hmrc/higher_rate_taxpayers/count"
     ]
   },
   "area_types": [
@@ -418,6 +420,15 @@
       ],
       "family": "hmrc_income_by_area",
       "name": "hmrc/employment_income/count",
+      "status": "bound_in_code"
+    },
+    {
+      "area_types": [
+        "constituency",
+        "la"
+      ],
+      "family": "hmrc_income_by_area",
+      "name": "hmrc/higher_rate_taxpayers/count",
       "status": "bound_in_code"
     },
     {
