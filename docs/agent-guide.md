@@ -373,12 +373,18 @@ build runs CREATE twice (inventory probe and graph execution); warm inventory
 lookups hash the inputs without running the probe. Cold `--resume require`
 refuses before preparation. Output directories must also be disjoint from a
 local `--spec-dir`.
-G7 extensions can wrap a factory in `TransportExtension` to declare additional
+Extensions can wrap a factory in `TransportExtension` to declare additional
 sources and ordered checkpoints. Source names must be new; skeleton predecessor
-sets must stay identical. Checkpoints run after calibration and before export,
+sets must stay identical except for explicit `package_inputs` artifact edges
+from extension nodes to a terminal `transport.package@1` receipt. Other skeleton
+nodes cannot gain predecessors. Checkpoints run after calibration and before export,
 and must not depend on the exported dataset. `transport_rules_node` supplies
 the prepared engine reference and period from the binding, so extensions do
 not repeat period values.
+An optional `entitlement_graph.json` legacy resource installs the entitlement
+extension in both composition and the local driver. Its scenario templates,
+bridge parameters, comparison references and receipt connections are described
+in [the entitlement declaration contract](transport-entitlement.md).
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)
