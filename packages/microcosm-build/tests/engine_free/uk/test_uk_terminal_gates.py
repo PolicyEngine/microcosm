@@ -43,7 +43,15 @@ VALIDATE_REFERENCE = (
 )
 
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
+
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -122,7 +130,7 @@ def test_reviewed_degenerate_exclusion_is_recorded_and_stale_entries_fail() -> N
     assert recorded["reason"] == reason
     assert recorded["approved_by"] == "test-reviewer"
     assert recorded["adjudication"] == "microcosm#610"
-    assert recorded["expires_on"] == "2027-02-10"
+    assert recorded["expires_on"] == SYNTHETIC_EXPIRY
     assert not stale.passed
     assert stale.details["stale_exclusions"] == ["person.employment_income"]
 
@@ -779,7 +787,7 @@ def test_policy_of_record_is_immutable_and_loaded_once() -> None:
 
 
 def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:
-    entry = _entry("Fixture broadcast, admitted.")
+    entry = _entry("Fixture broadcast, admitted.", expires_on="2027-02-10")
     honored = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
         reviewed_exclusions={"person.employment_income": entry},
@@ -809,8 +817,12 @@ def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
     dormant = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
         reviewed_exclusions={
-            "person.employment_income": _entry("Fixture broadcast, admitted."),
-            "person.ghost_column": _entry("Column since dropped."),
+            "person.employment_income": _entry(
+                "Fixture broadcast, admitted.", expires_on="2027-02-10"
+            ),
+            "person.ghost_column": _entry(
+                "Column since dropped.", expires_on="2027-02-10"
+            ),
         },
         now=after_expiry,
     )
@@ -827,7 +839,9 @@ def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
     regained = uk_degenerate_release_surface_gate(
         _dataset(),
         reviewed_exclusions={
-            "person.employment_income": _entry("Fixture broadcast, admitted.")
+            "person.employment_income": _entry(
+                "Fixture broadcast, admitted.", expires_on="2027-02-10"
+            )
         },
         now=after_expiry,
     )
