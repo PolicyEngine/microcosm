@@ -129,6 +129,20 @@
    "share_below_0_01": 0.0
   }
  },
+ "asec_stored_wage_vs_survey_wage": {
+  "2022": {
+   "persons": 146133,
+   "share_stored_equals_WSAL_VAL": 1.0
+  },
+  "2023": {
+   "persons": 144265,
+   "share_stored_equals_WSAL_VAL": 1.0
+  },
+  "2024": {
+   "persons": 142125,
+   "share_stored_equals_WSAL_VAL": 1.0
+  }
+ },
  "decomposition_reconciles": {
   "targets": 2955,
   "max_relative_gap_initial": 6.250068812382077e-13,

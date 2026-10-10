@@ -158,6 +158,34 @@ def main() -> None:
             for label, mask in masks.items()
         }
 
+        # The ASEC arm's stored wage against the survey's own wage field, by
+        # the frame's source_year: is the survey half aged at all?
+        person = handle["tables/person/columns"]
+        person_by_name = {person[key].attrs["name"]: key for key in person.keys()}
+
+        def person_column(name: str) -> np.ndarray:
+            return person[person_by_name[name]]["values"][()]
+
+        person_channel = np.array(
+            [
+                c.decode() if isinstance(c, bytes) else c
+                for c in person_column("person_support_channel")
+            ]
+        )
+        source_year = person_column("source_year")
+        survey_wage = person_column("WSAL_VAL").astype(np.float64)
+        stored_wage = person_column("employment_income_before_lsr").astype(np.float64)
+        on_asec = person_channel == "asec"
+        receipt["asec_stored_wage_vs_survey_wage"] = {
+            str(int(year)): {
+                "persons": int((on_asec & (source_year == year)).sum()),
+                "share_stored_equals_WSAL_VAL": float(
+                    (stored_wage == survey_wage)[on_asec & (source_year == year)].mean()
+                ),
+            }
+            for year in sorted(set(source_year[on_asec].tolist()))
+        }
+
         decomposition = {}
         reconciliation = []
         for name in names:
