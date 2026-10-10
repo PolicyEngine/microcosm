@@ -31,6 +31,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from microcosm.build.uk_runtime.cross_grain_declarations import uk_cross_grain_grain
 from microcosm.build.uk_runtime.full_targets import load_uk_full_target_inputs
 from microcosm.build.uk_runtime.graph_targets import (
@@ -110,6 +112,133 @@ def _national_reconciliation_summary(
     }
 
 
+#: Census residence-type tables the communal validation reads (#1123,
+#: decision 2: no subtraction yet, a receipt only): ONS RM120 for England and
+#: Wales, NRS UV101a for Scotland. Areas whose communal residents make up at
+#: least STUDENT_COMMUNAL_SHARE of their 18-24 residents are listed as student
+#: areas, where the age-band targets count residents the household frame
+#: cannot hold.
+_COMMUNAL_TABLES = {
+    "ons.census2021_residents": (
+        "C2021_AGE_24_NAME",
+        "C2021_RESTYPE_3_NAME",
+        "C_SEX_NAME",
+    ),
+    "nrs.census2022_residents": ("Age", "Residence Type Indicator", "Sex"),
+}
+STUDENT_COMMUNAL_SHARE = 0.10
+
+
+def _age_range(label: str) -> tuple[int, int] | None:
+    import re
+
+    numbers = [int(value) for value in re.findall(r"\d+", str(label))]
+    if "under 1" in str(label).lower():
+        return (0, 0)
+    if len(numbers) == 2:
+        return (numbers[0], numbers[1])
+    if len(numbers) == 1 and "over" in str(label).lower():
+        return (numbers[0], 200)
+    if len(numbers) == 1:
+        return (numbers[0], numbers[0])
+    return None
+
+
+def _communal_validation(ledger_facts: Path) -> dict[str, Any]:
+    """Communal-establishment residents per area: a validation receipt only."""
+
+    path = (
+        ledger_facts / "consumer_facts.jsonl" if ledger_facts.is_dir() else ledger_facts
+    )
+    totals: dict[tuple[str, str], dict[str, float]] = {}
+    with path.open() as handle:
+        for line in handle:
+            if (
+                "census2021_residents" not in line
+                and "census2022_residents" not in line
+            ):
+                continue
+            fact = json.loads(line)
+            concept = (fact.get("observed_measure") or {}).get("source_concept")
+            keys = _COMMUNAL_TABLES.get(str(concept))
+            if keys is None:
+                continue
+            dimensions = fact.get("dimensions") or {}
+            age_label, residence, sex = (str(dimensions.get(key, "")) for key in keys)
+            if not sex.lower().startswith("all"):
+                continue
+            geography = fact.get("geography") or {}
+            level = str(geography.get("level"))
+            if level not in {"constituency", "local_authority"}:
+                continue
+            cell = totals.setdefault((level, str(geography.get("id"))), {})
+            residence_key = (
+                "communal"
+                if "communal" in residence.lower()
+                else "household"
+                if "household" in residence.lower()
+                else "all"
+            )
+            value = float(fact.get("value") or 0.0)
+            if age_label.lower() == "total":
+                cell[f"{residence_key}_all_ages"] = (
+                    cell.get(f"{residence_key}_all_ages", 0.0) + value
+                )
+                continue
+            ages = _age_range(age_label)
+            if ages is not None and 18 <= ages[0] and ages[1] <= 24:
+                cell[f"{residence_key}_18_24"] = (
+                    cell.get(f"{residence_key}_18_24", 0.0) + value
+                )
+    receipt: dict[str, Any] = {
+        "basis": (
+            "Census 2021 (England and Wales, RM120) and 2022 (Scotland, UV101a) "
+            "usual residents by residence type; Northern Ireland's district "
+            "table (CT0105) is not split by area grain here. Validation only: "
+            "the age-band targets still count communal residents (#1123)."
+        ),
+        "student_communal_share": STUDENT_COMMUNAL_SHARE,
+    }
+    for level in ("constituency", "local_authority"):
+        rows = []
+        for (cell_level, area), cell in sorted(totals.items()):
+            if cell_level != level:
+                continue
+            communal = cell.get("communal_all_ages", 0.0)
+            household = cell.get("household_all_ages", 0.0)
+            young_communal = cell.get("communal_18_24", 0.0)
+            young_household = cell.get("household_18_24", 0.0)
+            all_ages = communal + household
+            young = young_communal + young_household
+            rows.append(
+                {
+                    "area": area,
+                    "communal_share": communal / all_ages if all_ages else None,
+                    "communal_share_18_24": young_communal / young if young else None,
+                }
+            )
+        shares = [
+            row["communal_share"] for row in rows if row["communal_share"] is not None
+        ]
+        receipt[level] = {
+            "areas": len(rows),
+            "median_communal_share": float(np.median(shares)) if shares else None,
+            "max_communal_share": max(shares) if shares else None,
+            "student_areas": sorted(
+                (
+                    {
+                        "area": row["area"],
+                        "communal_share_18_24": row["communal_share_18_24"],
+                    }
+                    for row in rows
+                    if (row["communal_share_18_24"] or 0.0) >= STUDENT_COMMUNAL_SHARE
+                ),
+                key=lambda row: -row["communal_share_18_24"],
+            ),
+        }
+    return receipt
+
+
 def _group_summary(cross_geography: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
@@ -159,6 +288,9 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
             ),
         },
         "uprating_holds": inputs.get("uprating_holds"),
+        "communal_validation": (
+            _communal_validation(Path(args.ledger_facts)) if args.communal else None
+        ),
         "national_reconciliation": _national_reconciliation_summary(
             inputs.get("national_reconciliation")
         ),
@@ -232,6 +364,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--calibration-year", type=int, default=2025)
     parser.add_argument("--full", action="store_true")
+    parser.add_argument(
+        "--communal",
+        action="store_true",
+        help="Add the census communal-establishment validation receipt (#1123).",
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--diff-against", type=Path)
     parser.add_argument("--diff-out", type=Path)

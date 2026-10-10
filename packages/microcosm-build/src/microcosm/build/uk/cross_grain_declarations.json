@@ -133,6 +133,18 @@
       ],
       "kind": "share_of_parent",
       "reason": "The census tenure cells divide each authority's households; shared ownership and rent-free households are not bound, so the four cells cover part of the parent and move by the authority's household reconciliation factor, keeping their shares."
+    },
+    {
+      "partition_id": "uc_households_by_area_children",
+      "parent_target_id": "dwp.uc.households_by_area",
+      "member_target_ids": [
+        "dwp.uc.households_by_area_children_0",
+        "dwp.uc.households_by_area_children_1",
+        "dwp.uc.households_by_area_children_2",
+        "dwp.uc.households_by_area_children_3plus"
+      ],
+      "kind": "share_of_parent",
+      "reason": "DWP's constituency UC households by number of children divide each constituency's UC caseload; the published unknown-children category is not bound, so the four bands cover part of the parent and move by its reconciliation factor, keeping their published shares. The local metrics count benefit units on UC, as the parent does."
     }
   ],
   "band_bridges": [

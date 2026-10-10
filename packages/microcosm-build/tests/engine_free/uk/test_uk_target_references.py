@@ -573,11 +573,14 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
     targets = {target["target_id"]: target for target in contract["targets"]}
     sum_target_ids = _sum_target_ids(contract)
     operations = _value_operation_by_target_id(contract)
+    # National rows only: the area rows' calendar-2025 windows (#1123) are
+    # authored by the local generator.
     composition = {
         target_id: target
         for target_id, target in targets.items()
         if target["family"] == "dwp_universal_credit"
         and "dimension_values" in target["ledger_selector"]
+        and set(target["geography_levels"]) <= {"country", "region"}
     }
     assert composition
     for target_id, target in composition.items():
@@ -1104,6 +1107,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         target["target_id"]
         for target in contract["targets"]
         if target["family"] == "dwp_universal_credit"
+        and set(target["geography_levels"]) <= {"country", "region"}
     }
     assert monthly_sum_ids < uc_target_ids
     assert {
@@ -1523,7 +1527,8 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    assert len(two_level) == 52
+    # microcosm#1123 adds the LFS household estimates for England's regions.
+    assert len(two_level) == 53
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1532,7 +1537,7 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     spi_region = [
         target_id for target_id in two_level if target_id.startswith("hmrc.spi_region.")
     ]
-    assert len(ons) == 9 and len(mhclg) == 9 and len(hmrc) == 2
+    assert len(ons) == 10 and len(mhclg) == 9 and len(hmrc) == 2
     assert len(spi_region) == 30
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:

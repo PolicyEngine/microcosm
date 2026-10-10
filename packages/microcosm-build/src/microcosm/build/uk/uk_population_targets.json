@@ -832,7 +832,11 @@
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.amount_pension_age": "Post-freeze fact family (DWP benefit expenditure and caseload tables, pension-age Housing Benefit spending), no uk-data metric (microcosm#1095).",
-      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
+      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11).",
+      "ons.households.english_regions": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "nrs.households.scotland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "welshgov.households.wales": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win).",
+      "nisra.households.northern_ireland": "Post-freeze fact family (each nation's official household estimate: LFS 2025 for England's regions, NRS 2025, Welsh Government rolled to 2025, Census 2021 rolled by LPS stock for Northern Ireland), no uk-data metric (microcosm#1123, nations win)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1012,6 +1016,10 @@
       "ons.household_composition.lone_parent_dependent_children_households",
       "ons.household_composition.lone_parent_non_dependent_children_households",
       "ons.household_composition.multi_family_households",
+      "ons.households.english_regions",
+      "nrs.households.scotland",
+      "welshgov.households.wales",
+      "nisra.households.northern_ireland",
       "mhclg.council_tax_stock.band_a",
       "mhclg.council_tax_stock.band_b",
       "mhclg.council_tax_stock.band_c",
@@ -1393,13 +1401,25 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households",
-          "record_set_spec_id": [
-            "uk.local_geography.uc_households.by_constituency.v1",
-            "uk.local_geography.uc_households.by_local_authority.v1"
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
           ]
         },
-        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row.",
+        "reason": "Narrowed to the UC household local-geography record-set specs so area pins select the intended constituency or local-authority row. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households"
       },
       {
@@ -1410,10 +1430,31 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": 0
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.0_children"
       },
       {
@@ -1424,10 +1465,31 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": 1
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.1_child"
       },
       {
@@ -1438,10 +1500,31 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ],
+          "dimension_values": {
+            "number_of_children": 2
+          }
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.2_children"
       },
       {
@@ -1452,10 +1535,28 @@
         },
         "corrected_selector": {
           "source_name": "dwp",
+          "source_concept": "dwp.uc_households",
           "source_measure_id": "universal_credit_households_by_children",
-          "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
+          "dimensions": [
+            "number_of_children"
+          ],
+          "period_type": "month",
+          "period_value": [
+            "2025-01",
+            "2025-02",
+            "2025-03",
+            "2025-04",
+            "2025-05",
+            "2025-06",
+            "2025-07",
+            "2025-08",
+            "2025-09",
+            "2025-10",
+            "2025-11",
+            "2025-12"
+          ]
         },
-        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded.",
+        "reason": "UC child-bucket rows use the corrected measure id and bucket-specific record-set spec; unknown/not_available buckets are excluded. microcosm#1123 moved the selector to the calendar-2025 window of DWP's monthly series (mean of the twelve months), the window the national UC rows use.",
         "renamed_from": "dwp.universal_credit.households.3plus_children"
       },
       {
@@ -11585,7 +11686,7 @@
       "ledger_selector": {
         "source_name": "nisra",
         "source_concept": "nisra.census2021_households",
-        "record_set_spec_id": "uk.local_geography.households.by_local_authority.v1"
+        "dimensions": []
       },
       "category_id": "ons.household_composition",
       "label": "Households, Northern Ireland (Census 2021, rolled to 2025)",
@@ -27387,7 +27488,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -27504,7 +27605,7 @@
           "uk.local_geography.spi_income.by_local_authority.v1"
         ]
       },
-      "selector_note": "SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
+      "selector_note": "The area amount is the published count times the published mean (count_x_mean). SPI 2023-24 area Tables 3.14 (constituency) and 3.15 (local authority), the latest edition (2024-25 due early 2027). Projected to calendar 2025 by HMRC's own all-ranges growth in Income Tax Liabilities Table 2.5 (total income, calendar-2025 window over tax year 2023-24), the index the national band rows use band by band, and then reconciled to the national SPI band partition summed over every band (fan-out sum bridge, factor within 2%). At source the area tables and Table 3.6 agree within 0.5% (microcosm#1123).",
       "category_id": "hmrc.tax_statistics",
       "label": "Amount",
       "uprating_index": "hmrc.itl_2026.total_income_growth_all_bands"
@@ -27956,6 +28057,20 @@
             "operator": ">",
             "value": 0
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -27980,14 +28095,29 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households",
-        "record_set_spec_id": [
-          "uk.local_geography.uc_households.by_constituency.v1",
-          "uk.local_geography.uc_households.by_local_authority.v1"
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area"
+      "label": "Households by area",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_0",
@@ -28007,6 +28137,20 @@
             "concept": "uk.household.children",
             "equals": 0
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -28022,11 +28166,35 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_0.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": 0
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 0"
+      "label": "Households by area children 0",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_1",
@@ -28046,6 +28214,20 @@
             "concept": "uk.household.children",
             "equals": 1
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -28061,11 +28243,35 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_1.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": 1
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 1"
+      "label": "Households by area children 1",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_2",
@@ -28085,6 +28291,20 @@
             "concept": "uk.household.children",
             "equals": 2
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -28100,11 +28320,35 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_2.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "dimension_values": {
+          "number_of_children": 2
+        }
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 2"
+      "label": "Households by area children 2",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
     },
     {
       "target_id": "dwp.uc.households_by_area_children_3plus",
@@ -28124,6 +28368,20 @@
             "concept": "uk.household.children",
             "lower": 3
           }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
         ]
       },
       "bindings": {
@@ -28139,11 +28397,49 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
         "source_measure_id": "universal_credit_households_by_children",
-        "record_set_spec_id": "uk.local_geography.uc_households.children_3plus.v1"
+        "dimensions": [
+          "number_of_children"
+        ],
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
       },
       "category_id": "dwp.universal_credit",
-      "label": "Households by area children 3 or more"
+      "label": "Households by area children 3 or more",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "number_of_children": 3
+          }
+        },
+        {
+          "dimension_values": {
+            "number_of_children": 4
+          }
+        },
+        {
+          "dimension_values": {
+            "number_of_children": "5 or more"
+          }
+        }
+      ],
+      "period_match_policy": "source_window",
+      "selector_note": "Bound as the mean of the twelve calendar-2025 months of DWP's monthly Stat-Xplore series (extracted 7 October 2026), the window the national UC rows use, so the bridge to the GB caseload reconciles like with like (microcosm#1123)."
     },
     {
       "target_id": "ons.equiv_net_income_bhc",

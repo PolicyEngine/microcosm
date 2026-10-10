@@ -1,56 +1,5 @@
 {
   "schema_version": 1,
   "description": "Transitional ledger of target-doctrine gaps that exist on main and are closed by later commits of microcosm#1123 PR A: cross-grain coverage gaps (checked by uk_runtime.cross_grain_declarations) and undeclared uprating holds (kind undeclared_hold, checked by uk_runtime.uprating_holds per scope). Each check tolerates exactly its own entries; an entry that no longer matches a gap is stale and refused. The file is deleted by the commit that closes the last gap.",
-  "entries": [
-    {
-      "kind": "local_target_without_control",
-      "target_id": "dwp.uc.households_by_area_children_0",
-      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "dwp.uc.households_by_area_children_1",
-      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "dwp.uc.households_by_area_children_2",
-      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "dwp.uc.households_by_area_children_3plus",
-      "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "dwp.uc.households_by_area",
-      "closed_by": "C10: the area rows move to the calendar-2025 mean of the monthly Stat-Xplore cubes (chronicle#313 section 4)"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "dwp.uc.households_by_area_children_0",
-      "closed_by": "C10: the area rows move to the calendar-2025 mean of the monthly Stat-Xplore cubes (chronicle#313 section 4)"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "dwp.uc.households_by_area_children_1",
-      "closed_by": "C10: the area rows move to the calendar-2025 mean of the monthly Stat-Xplore cubes (chronicle#313 section 4)"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "dwp.uc.households_by_area_children_2",
-      "closed_by": "C10: the area rows move to the calendar-2025 mean of the monthly Stat-Xplore cubes (chronicle#313 section 4)"
-    },
-    {
-      "kind": "undeclared_hold",
-      "scope": "local",
-      "target_id": "dwp.uc.households_by_area_children_3plus",
-      "closed_by": "C10: the area rows move to the calendar-2025 mean of the monthly Stat-Xplore cubes (chronicle#313 section 4)"
-    }
-  ]
+  "entries": []
 }
