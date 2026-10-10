@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import textwrap
@@ -31,8 +32,8 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "c5e5bf8aa84960c1a200ee47303b19c953092d0f"
-_FACTS_SHA256 = "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+_CHRONICLE_COMMIT = "f98acf4edcc9488343446fda46db77914de8611f"
+_FACTS_SHA256 = "a81cbcc504caa71e4eb23b4d70a11528c8e6db6523e41283f8482569a23df04c"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -55,7 +56,7 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
     assert pin.source_repo == "PolicyEngine/chronicle"
     assert pin.source_commit == _CHRONICLE_COMMIT
     assert pin.scope == "us_fiscal_targets"
-    assert pin.fact_row_count == 39158
+    assert pin.fact_row_count == 39155
     assert pin.facts_sha256 == _FACTS_SHA256
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
     assert pin.consumer_fact_schema_sha256 == _SCHEMA_SHA256
@@ -131,14 +132,33 @@ def test_parity_resources_and_generator_restate_the_pin() -> None:
     assert manifest["reference"]["reviewed_exclusions"] == "52"
 
 
+def test_route_a_driver_restates_the_pin() -> None:
+    """The Route A driver refuses a build commit whose pin is not its
+    ``FEED_SHA``, so a re-pin that leaves the driver behind blocks every run.
+    Its example environment names the feed file the generator reads."""
+    pin = load_us_chronicle_feed()
+    generator = _load_tool("build_us_target_parity_manifest")
+    driver = (_ROOT / "tools" / "route_a" / "route_a.sh").read_text(encoding="utf-8")
+    assert re.findall(r"(?m)^FEED_SHA=(\S+)$", driver) == [pin.facts_sha256]
+    (feed_row,) = re.findall(r"(?m)^release_ledger_facts\|.*$", driver)
+    assert f"{pin.fact_row_count:,} rows" in feed_row
+    assert f"Chronicle {pin.source_commit[:7]}" in feed_row
+    example = (_ROOT / "tools" / "route_a" / "route_a.env.example").read_text(
+        encoding="utf-8"
+    )
+    assert re.findall(r"consumer_facts_us_\w+\.jsonl", example) == [
+        generator.DEFAULT_FEED_NAME
+    ]
+
+
 def test_scope_names_every_pinned_pair_once() -> None:
     builder = _load_tool("build_us_chronicle_feed")
     scope_path = builder.default_scope_path()
     scope = builder.load_scope(scope_path)
     raw = scope["raw"]
     assert scope["commit"] == load_us_chronicle_feed().source_commit
-    assert len(scope["pairs"]) == 586 == raw["pair_count"]
-    assert sum(len(p) for p in scope["runs"].values()) == 62
+    assert len(scope["pairs"]) == 585 == raw["pair_count"]
+    assert sum(len(p) for p in scope["runs"].values()) == 61
     assert set(scope["runs"]) == {
         2020,
         2021,

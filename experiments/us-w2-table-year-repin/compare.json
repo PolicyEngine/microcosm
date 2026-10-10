@@ -1,0 +1,169 @@
+{
+ "after": {
+  "compiled_families": 14,
+  "compiled_targets": 32842,
+  "fact_count": 39155,
+  "feed": "consumer_facts.jsonl",
+  "feed_sha256": "a81cbcc504caa71e4eb23b4d70a11528c8e6db6523e41283f8482569a23df04c",
+  "national_state_targets": 5694,
+  "national_state_version": "61a081ae55bb"
+ },
+ "before": {
+  "compiled_families": 14,
+  "compiled_targets": 32842,
+  "fact_count": 39158,
+  "feed": "consumer_facts_us_c5e5bf8.jsonl",
+  "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "national_state_targets": 5694,
+  "national_state_version": "d315c75804ef"
+ },
+ "exclusion_receipt_w2_ids_after": {
+  "all_vintage_reviewed_exclusion": [
+   "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count"
+  ],
+  "allowlisted_vintage_bypass": [],
+  "m_chip_state_chip_enrollment": [],
+  "reviewed_exclusion": []
+ },
+ "exclusion_receipt_w2_ids_before": {
+  "all_vintage_reviewed_exclusion": [
+   "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+   "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count"
+  ],
+  "allowlisted_vintage_bypass": [],
+  "m_chip_state_chip_enrollment": [],
+  "reviewed_exclusion": []
+ },
+ "shared_metadata_changes": [],
+ "shared_targets": 32841,
+ "shared_value_changes": [],
+ "targets_only_after": {
+  "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.amount": {
+   "family": "irs_soi",
+   "in_national_state": true,
+   "metadata": {
+    "aged_to": "2024",
+    "aging_factor": "1.28002921689246",
+    "aging_factor_source": "chained:irs_soi.ty2023.table_1_4.all.wages_salaries_amount+cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+    "basis": "projection",
+    "ledger_source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.amount",
+    "source_period": "2020",
+    "target_role": "w2_social_security_tips_total"
+   },
+   "metadata_sha256": "4db643fa9b3f093231dc8573da956f5e04a8ed60669a63bfcdbae2effe0264a2",
+   "value": 34287530778.932606
+  }
+ },
+ "targets_only_before": {
+  "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount": {
+   "family": "irs_soi",
+   "in_national_state": true,
+   "metadata": {
+    "aged_to": "2024",
+    "aging_factor": "1.05578784246075",
+    "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+    "basis": "projection",
+    "ledger_source_record_id": "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount",
+    "source_period": "2023",
+    "target_role": "w2_social_security_tips_total"
+   },
+   "metadata_sha256": "f02da6c7cc3fd20c1d24b210a358cfdcf59ce4a7ef9610598525418e6e950fba",
+   "value": 28280884269.407326
+  }
+ },
+ "w2_item_facts_after": [
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 277859181000,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 32302509000,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 26786522000,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 6038613,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.taxpayer_count",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 6105713,
+   "vintage": "tax_year_2020"
+  }
+ ],
+ "w2_item_facts_before": [
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 26786522000,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 6038613,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2020,
+   "source_record_id": "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.taxpayer_count",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 6105713,
+   "vintage": "tax_year_2020"
+  },
+  {
+   "period": 2023,
+   "source_record_id": "irs_soi.ty2023.form_w2_401k_elective_deferrals.box_12_d_401k_elective_deferrals.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 277859181000,
+   "vintage": "tax_year_2023"
+  },
+  {
+   "period": 2023,
+   "source_record_id": "irs_soi.ty2023.form_w2_designated_roth_401k_contributions.box_12_aa_designated_roth_401k_contributions.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 32302509000,
+   "vintage": "tax_year_2023"
+  },
+  {
+   "period": 2023,
+   "source_record_id": "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 26786522000,
+   "vintage": "tax_year_2023"
+  },
+  {
+   "period": 2023,
+   "source_record_id": "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 6038613,
+   "vintage": "tax_year_2023"
+  },
+  {
+   "period": 2023,
+   "source_record_id": "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.taxpayer_count",
+   "source_table": "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and Earner Type, Tax Year 2020",
+   "value": 6105713,
+   "vintage": "tax_year_2023"
+  }
+ ]
+}

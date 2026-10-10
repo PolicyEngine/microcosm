@@ -61,7 +61,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_c5e5bf8.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_f98acf4.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )

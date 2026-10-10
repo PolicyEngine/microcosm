@@ -145,19 +145,53 @@ _W2_TIPS_RETURN_COUNT = (
     "irs_soi.ty{year}.form_w2_social_security_tips."
     "box_7_social_security_tips.return_count"
 )
+# IRS titles the Form W-2 item table with its tax year; the compile refuses a
+# W-2 item fact whose period is not that year.
+_W2_TABLE_4B_TITLE = (
+    "Table 4.B. Summary of Items for Taxpayers with Form W-2, by Return and "
+    "Earner Type, Tax Year {year}"
+)
+
+
+def _w2_item_fact(
+    tax_year: int,
+    *,
+    record_set: str = "form_w2_social_security_tips",
+    item: str = "box_7_social_security_tips",
+    measure_id: str = "amount",
+    value: float = 26_786_522_000,
+    table_year: int | None = None,
+    source_table: str | None = None,
+    source_vintage: str | None = None,
+) -> dict[str, object]:
+    """A Form W-2 item fact stamped ``tax_year``.
+
+    ``table_year`` is the year its source table is for (default: the same
+    year, an honest fact); ``source_table`` overrides the whole title.
+    """
+    table_year = tax_year if table_year is None else table_year
+    return _dynamic_ledger_fact(
+        source_record_id=f"irs_soi.ty{tax_year}.{record_set}.{item}.{measure_id}",
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=tax_year,
+        layout_record_set_id=f"irs_soi.ty{tax_year}.{record_set}",
+        groupby_dimension="irs_soi.form_w2_item",
+        groupby_value_id=item,
+        source_table=(
+            _W2_TABLE_4B_TITLE.format(year=table_year)
+            if source_table is None
+            else source_table
+        ),
+        source_vintage=(
+            f"tax_year_{tax_year}" if source_vintage is None else source_vintage
+        ),
+    )
 
 
 def _w2_tips_return_count_fact(tax_year: int) -> dict[str, object]:
-    return _dynamic_ledger_fact(
-        source_record_id=_W2_TIPS_RETURN_COUNT.format(year=tax_year),
-        source_name="irs_soi",
-        measure_id="return_count",
-        value=6_038_613,
-        period_value=tax_year,
-        layout_record_set_id=f"irs_soi.ty{tax_year}.form_w2_social_security_tips",
-        groupby_dimension="irs_soi.form_w2_item",
-        groupby_value_id="box_7_social_security_tips",
-    )
+    return _w2_item_fact(tax_year, measure_id="return_count", value=6_038_613)
 
 
 def _four_rule_synthetic_feed(monkeypatch):
@@ -1085,8 +1119,11 @@ def _dynamic_ledger_fact(
     layout_record_set_id: str | None = None,
     dimensions: dict[str, object] | None = None,
     universe_constraints: list[dict[str, object]] | None = None,
+    source_table: str | None = None,
+    source_vintage: str | None = None,
 ) -> dict[str, object]:
     fact_id = _fact_id(source_record_id, period_value)
+    source_table = f"{source_name} table" if source_table is None else source_table
     fact_dimensions = dict(dimensions or {})
     hierarchy_dimensions = dict(fact_dimensions)
     if groupby_dimension and groupby_value_id:
@@ -1135,15 +1172,17 @@ def _dynamic_ledger_fact(
         },
         "observed_measure": {
             "source_name": source_name,
-            "source_table": f"{source_name} table",
+            "source_table": source_table,
             "source_measure_id": measure_id,
             "source_concept": measure_id,
             "unit": "usd",
         },
         "source": {
             "source_name": source_name,
-            "source_table": f"{source_name} table",
-            "vintage": str(period_value),
+            "source_table": source_table,
+            "vintage": (
+                str(period_value) if source_vintage is None else source_vintage
+            ),
             "url": f"https://example.org/{fact_id}",
         },
     }

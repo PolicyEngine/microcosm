@@ -54,10 +54,14 @@ surface's specs.
 ## The surfaces on the pinned feed
 
 Measured on 2026-09-22 by calling `state_admin_specs(feed, ["snap",
-"medicaid", "soi"], soi_mode=...)` on the pinned
-`consumer_facts_us_c5e5bf8.jsonl` (sha256 `b8543739…`, the `facts_sha256` in
-`packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json`). The
-Chronicle `b571381` consumer artifact gives the same counts.
+"medicaid", "soi"], soi_mode=...)` on
+`consumer_facts_us_c5e5bf8.jsonl` (sha256 `b8543739…`, the feed
+`packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json` pinned
+then). The Chronicle `b571381` consumer artifact gives the same counts, and so
+does the feed pinned since 10 October 2026 (`consumer_facts_us_f98acf4.jsonl`,
+which differs only in its Form W-2 item rows):
+`test_pinned_feed_soi_surfaces_match_their_contracts` and
+`test_pinned_feed_state_cd_surface_matches_its_contract` pass on it.
 
 | Family | `state` | `totals` | `full` |
 |---|---:|---:|---:|

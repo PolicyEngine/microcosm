@@ -3,15 +3,15 @@
   "country": "us",
   "scope": "us_fiscal_targets",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
-  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. Bare feed: `chronicle build-consumer-artifact` refuses it at this commit (994 concept_alignment rows lack `authority`); see docs/us-chronicle-feed-repin.md.",
+  "source_commit": "f98acf4edcc9488343446fda46db77914de8611f",
+  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. The commit is c5e5bf8 plus only the W-2 item package's literal Tax Year 2020 labels (tag microcosm-us-feed-w2-ty2020-v1, the package file as chronicle#292 left it on main). Bare feed: `chronicle build-consumer-artifact` refuses it at this commit (994 concept_alignment rows lack `authority`); see docs/us-chronicle-feed-repin.md.",
   "artifact_schema_version": null,
   "consumer_fact_schema_versions": [
     "chronicle.consumer_fact.v3"
   ],
   "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
-  "fact_row_count": 39158,
-  "facts_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "fact_row_count": 39155,
+  "facts_sha256": "a81cbcc504caa71e4eb23b4d70a11528c8e6db6523e41283f8482569a23df04c",
   "manifest_sha256": null,
-  "scope_sha256": "b769887d716e90612518788700c5c01dba8b411c5c75f3d47bb8b1273550ddc1"
+  "scope_sha256": "e61ae1d7e4eca9abbbb895436864c10e3f8c8a97421f786abd027768be78cd50"
 }

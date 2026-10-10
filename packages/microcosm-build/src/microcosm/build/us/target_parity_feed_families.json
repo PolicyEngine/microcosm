@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_c5e5bf8.jsonl",
- "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+ "feed": "consumer_facts_us_f98acf4.jsonl",
+ "feed_sha256": "a81cbcc504caa71e4eb23b4d70a11528c8e6db6523e41283f8482569a23df04c",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,
@@ -59,7 +59,7 @@
   "irs_soi.filing_season_week47": 34,
   "irs_soi.form_w2_401k_elective_deferrals": 1,
   "irs_soi.form_w2_designated_roth_401k_contributions": 1,
-  "irs_soi.form_w2_social_security_tips": 6,
+  "irs_soi.form_w2_social_security_tips": 3,
   "irs_soi.historic_table_2": 5654,
   "irs_soi.roth_ira_contributions": 2,
   "irs_soi.state_2022": 4,

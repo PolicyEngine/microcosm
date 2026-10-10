@@ -570,11 +570,11 @@ def test_exclusion_vintage_bypass_fails_closed_naming_the_id(
 
 def test_tips_return_count_is_excluded_at_every_vintage() -> None:
     """Decision d179: the #451 W-2 Box 7 return-count exclusion holds at every
-    vintage. The ty2020 fact carries the same 6,038,613 returns as the
-    excluded ty2023 row and used to calibrate in its place as a reviewed
-    bypass. Now no vintage compiles, the receipt lists each one under the
-    all-vintage rule, nothing is allowed through, and a sibling Table 1.4 row
-    still compiles as the control."""
+    vintage. The entry is keyed to ty2020, the latest vintage IRS has
+    published; a later table's count would be dropped too. No vintage
+    compiles, the receipt lists each one under the all-vintage rule, nothing
+    is allowed through, and a sibling Table 1.4 row still compiles as the
+    control."""
     tips_ids = [_W2_TIPS_RETURN_COUNT.format(year=year) for year in (2020, 2023, 2024)]
     control = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
     facts = [
@@ -663,7 +663,9 @@ def test_all_vintage_scope_is_vintage_invariant_and_cell_exact() -> None:
     from hypothesis import strategies as st
 
     entries = sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
-    assert all(entry.split(".")[1] == "ty2023" for entry in entries)
+    # at_vintage swaps the second token, so it must be each entry's tax year
+    # (ty2023 for the Table 1.4 rows, ty2020 for the W-2 tips return count).
+    assert all(re.fullmatch(r"ty\d{4}", entry.split(".")[1]) for entry in entries)
 
     def at_vintage(entry: str, token: str) -> str:
         source, _, rest = entry.split(".", 2)
@@ -705,7 +707,8 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
     vintage of exactly one register key that is not all-vintage scoped (else
     it could never be selected) and says why it may calibrate. The all-vintage
     set is the four #564 other-income rows plus the #451 tips return count
-    (decision d179), and no bypass remains."""
+    (decision d179, keyed to the ty2020 id IRS published), and no bypass
+    remains."""
     period_free = fiscal_targets._period_free_source_record_id
     assert US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS <= set(
         US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -715,7 +718,7 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
             f"irs_soi.ty2023.table_1_4.all.{measure}"
             for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
         ),
-        _W2_TIPS_RETURN_COUNT.format(year=2023),
+        _W2_TIPS_RETURN_COUNT.format(year=2020),
     }
     assert US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES == {}
     for source_record_id, reason in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES.items():
@@ -860,8 +863,8 @@ def test_exclusion_vintage_scope_fails_closed_for_any_vintage_pair(
 def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> None:
     """On the pinned feed the receipt names the 40 M-CHIP CHIP ids (20 states
     x 2 CMS months), the 16 other-income ids (ty2020-ty2023) and the ty2020
-    and ty2023 tips return counts, and allows no vintage bypass (decision
-    d179)."""
+    tips return count, the only W-2 vintage the feed carries, and allows no
+    vintage bypass (decision d179)."""
     _, _, receipt = pinned_feed_national_state_surface
     rules = receipt["rules"]
     m_chip_ids = rules["m_chip_state_chip_enrollment"]["source_record_ids"]
@@ -882,7 +885,6 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
                 for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
             ),
             _W2_TIPS_RETURN_COUNT.format(year=2020),
-            _W2_TIPS_RETURN_COUNT.format(year=2023),
         ]
     )
     assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == []
@@ -893,15 +895,17 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 32,842 compiled targets after
     Medicaid substitution, 5,694 national_state targets at registry
-    d315c75804ef, 32 CHIP rows none of them for an M-CHIP state, no
+    61a081ae55bb, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. Before microcosm#956 it was
     32,867 / 5,719 at d5f9d854fe11, and before decision d179 dropped the
-    ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
+    ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77. The
+    registry was d315c75804ef while the feed stamped the W-2 tips amount
+    ty2023; the same 5,694 targets now carry it as ty2020
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 32_842
     assert len(surface.specs) == 5_694
-    assert surface.version == "d315c75804ef"
+    assert surface.version == "61a081ae55bb"
     chip = [
         spec
         for spec in surface.specs
@@ -923,7 +927,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     # The fence drops the return count only: the tips amount row of the same
     # record set still calibrates.
     assert (
-        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
+        "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.amount"
         in {spec.name for spec in surface.specs}
     )
 
@@ -4448,7 +4452,7 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income(
         "irs_soi.ty2024.form_w2_social_security_tips."
         "box_7_social_security_tips.return_count"
     )
-    # Decision d179 drops every vintage of this cell (the #451 ty2023
+    # Decision d179 drops every vintage of this cell (the #451 ty2020
     # exclusion is all-vintage scoped). This test pins only the variable
     # mapping, so it lifts that scope and allowlists its own id, which the
     # compile would otherwise refuse as another vintage of the exclusion.
@@ -4456,7 +4460,7 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income(
         fiscal_targets,
         "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
         US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
-        - {_W2_TIPS_RETURN_COUNT.format(year=2023)},
+        - {_W2_TIPS_RETURN_COUNT.format(year=2020)},
     )
     monkeypatch.setitem(
         US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
@@ -4466,16 +4470,7 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income(
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
-            _dynamic_ledger_fact(
-                source_record_id=source_record_id,
-                source_name="irs_soi",
-                measure_id="return_count",
-                value=6_038_613,
-                period_value=2024,
-                layout_record_set_id="irs_soi.ty2024.form_w2_social_security_tips",
-                groupby_dimension="irs_soi.form_w2_item",
-                groupby_value_id="box_7_social_security_tips",
-            ),
+            _w2_tips_return_count_fact(2024),
         ],
         allow_unaged_dollar_targets=True,
     )
@@ -4499,16 +4494,7 @@ def test_soi_form_w2_social_security_tips_amount_targets_tip_income() -> None:
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
-            _dynamic_ledger_fact(
-                source_record_id=source_record_id,
-                source_name="irs_soi",
-                measure_id="amount",
-                value=26_786_522_000,
-                period_value=2024,
-                layout_record_set_id="irs_soi.ty2024.form_w2_social_security_tips",
-                groupby_dimension="irs_soi.form_w2_item",
-                groupby_value_id="box_7_social_security_tips",
-            ),
+            _w2_item_fact(2024),
         ],
         allow_unaged_dollar_targets=True,
     )
@@ -4531,16 +4517,7 @@ def test_age_targets_chains_w2_tips_through_soi_wages_bridge() -> None:
     )
     facts = [
         *packaged_reference_facts(),
-        _dynamic_ledger_fact(
-            source_record_id=source_record_id,
-            source_name="irs_soi",
-            measure_id="amount",
-            value=26_786_522_000,
-            period_value=2020,
-            layout_record_set_id="irs_soi.ty2020.form_w2_social_security_tips",
-            groupby_dimension="irs_soi.form_w2_item",
-            groupby_value_id="box_7_social_security_tips",
-        ),
+        _w2_item_fact(2020),
         _dynamic_ledger_fact(
             source_record_id="irs_soi.ty2020.table_1_4.all.wages_salaries_amount",
             source_name="irs_soi",

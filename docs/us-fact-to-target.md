@@ -74,6 +74,14 @@ the release PROGRESS notes). Re-pin the sha everywhere it is enforced: the
 launch scripts' `FACTS_SHA` guards, `--ledger-facts-sha256`, and the PROGRESS
 doc. The builder refuses to start on a mismatch.
 
+An id the package no longer emits leaves the feed without a replacement. The
+October 2026 re-pin dropped five `irs_soi.ty2023` Form W-2 item ids that way:
+they named a tax year IRS has not published for that table
+(`docs/us-chronicle-feed-repin.md`). Check a new fact's period against the
+year in its source table's title before it ships. For the W-2 item tables the
+compile enforces it: `_check_w2_item_fact_tax_years` refuses a fact whose
+period or `tax_year` vintage is not the one tax year its title names.
+
 ## 2. Run the support oracle BEFORE wiring anything
 
 A target with no model support cannot bind; a target with thin support binds

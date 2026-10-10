@@ -1,0 +1,136 @@
+{
+ "scope": "packages/microcosm-build/src/microcosm/build/us/chronicle_feed_scope.json",
+ "scope_sha256": "e61ae1d7e4eca9abbbb895436864c10e3f8c8a97421f786abd027768be78cd50",
+ "source_commit": "f98acf4edcc9488343446fda46db77914de8611f",
+ "chronicle_root": "/Users/maxghenis/PolicyEngine/_worktrees/chronicle-feed-w2-2020",
+ "runs": [
+  {
+   "year": 2020,
+   "packages": [
+    "packages/bea/nipa_total_wages_salaries",
+    "packages/cms_medicaid/chip_monthly_enrollment_dataset",
+    "packages/irs_soi/table_1_4",
+    "packages/irs_soi/w2_statistics_2020"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2020 --source packages/bea/nipa_total_wages_salaries --source packages/cms_medicaid/chip_monthly_enrollment_dataset --source packages/irs_soi/table_1_4 --source packages/irs_soi/w2_statistics_2020 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2020 --replace"
+  },
+  {
+   "year": 2021,
+   "packages": [
+    "packages/irs_soi/table_1_4"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2021 --source packages/irs_soi/table_1_4 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2021 --replace"
+  },
+  {
+   "year": 2022,
+   "packages": [
+    "packages/irs_soi/historic_table_2",
+    "packages/irs_soi/historic_table_2_state_agi_2022",
+    "packages/irs_soi/historic_table_2_state_broad_2022",
+    "packages/irs_soi/historic_table_2_state_eitc_2022",
+    "packages/irs_soi/table_1_1",
+    "packages/irs_soi/table_1_4",
+    "packages/irs_soi/table_2_5_eitc_agi_children_2022"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2022 --source packages/irs_soi/historic_table_2 --source packages/irs_soi/historic_table_2_state_agi_2022 --source packages/irs_soi/historic_table_2_state_broad_2022 --source packages/irs_soi/historic_table_2_state_eitc_2022 --source packages/irs_soi/table_1_1 --source packages/irs_soi/table_1_4 --source packages/irs_soi/table_2_5_eitc_agi_children_2022 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2022 --replace"
+  },
+  {
+   "year": 2023,
+   "packages": [
+    "packages/bea/nipa_pension_contributions",
+    "packages/bea/nipa_personal_income_components",
+    "packages/bea/nipa_personal_income_disposition",
+    "packages/bea/nipa_total_wages_salaries",
+    "packages/bea/regional_personal_income_state",
+    "packages/cbo/individual_income_tax_receipts_2026_02",
+    "packages/cbo/revenue_projections_income_by_source_2026_02",
+    "packages/census/b01001_female_15_44_2023",
+    "packages/census/population_projections_2023",
+    "packages/census/stc_individual_income_tax",
+    "packages/cms_nhe/historical_service_source",
+    "packages/cms_nhe/table_24",
+    "packages/federal_reserve/z1_household_net_worth",
+    "packages/hhs_acf_liheap/fy2023_national_profile",
+    "packages/irs_soi/congressional_district_2022",
+    "packages/irs_soi/ira_roth_contributions_2022",
+    "packages/irs_soi/ira_traditional_contributions_2022",
+    "packages/irs_soi/state_2022",
+    "packages/irs_soi/table_1_1",
+    "packages/irs_soi/table_1_2",
+    "packages/irs_soi/table_1_4",
+    "packages/irs_soi/table_2_1",
+    "packages/irs_soi/table_2_5",
+    "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+    "packages/irs_soi/table_4_3"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2023 --source packages/bea/nipa_pension_contributions --source packages/bea/nipa_personal_income_components --source packages/bea/nipa_personal_income_disposition --source packages/bea/nipa_total_wages_salaries --source packages/bea/regional_personal_income_state --source packages/cbo/individual_income_tax_receipts_2026_02 --source packages/cbo/revenue_projections_income_by_source_2026_02 --source packages/census/b01001_female_15_44_2023 --source packages/census/population_projections_2023 --source packages/census/stc_individual_income_tax --source packages/cms_nhe/historical_service_source --source packages/cms_nhe/table_24 --source packages/federal_reserve/z1_household_net_worth --source packages/hhs_acf_liheap/fy2023_national_profile --source packages/irs_soi/congressional_district_2022 --source packages/irs_soi/ira_roth_contributions_2022 --source packages/irs_soi/ira_traditional_contributions_2022 --source packages/irs_soi/state_2022 --source packages/irs_soi/table_1_1 --source packages/irs_soi/table_1_2 --source packages/irs_soi/table_1_4 --source packages/irs_soi/table_2_1 --source packages/irs_soi/table_2_5 --source packages/irs_soi/table_2_5_eitc_agi_children_2023 --source packages/irs_soi/table_4_3 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2023 --replace"
+  },
+  {
+   "year": 2024,
+   "packages": [
+    "packages/bea/nipa_total_wages_salaries",
+    "packages/cbo/revenue_projections_income_by_source_2026_02",
+    "packages/census/pep_2024_national_age_sex",
+    "packages/census/pep_2024_state_age_sex",
+    "packages/cms_aca/oep_state_level",
+    "packages/cms_medicaid/chip_monthly_enrollment_december_2024",
+    "packages/cms_medicare/medicare_trustees_report_2025",
+    "packages/cms_nhe/table_24",
+    "packages/hhs_acf/tanf_caseload_2024",
+    "packages/hhs_acf/tanf_financial_2024",
+    "packages/hhs_acf_liheap/fy2024_national_profile",
+    "packages/irs_soi/filing_season_week47_2024",
+    "packages/jct/tax_expenditures_2024",
+    "packages/kff/marketplace_effectuated_enrollment",
+    "packages/ssa/annual_statistical_supplement_2025",
+    "packages/ssa/ssi_monthly_statistics_2024_12",
+    "packages/ssa/ssi_table_7b1_2024",
+    "packages/usda_snap/fy69_to_current"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2024 --source packages/bea/nipa_total_wages_salaries --source packages/cbo/revenue_projections_income_by_source_2026_02 --source packages/census/pep_2024_national_age_sex --source packages/census/pep_2024_state_age_sex --source packages/cms_aca/oep_state_level --source packages/cms_medicaid/chip_monthly_enrollment_december_2024 --source packages/cms_medicare/medicare_trustees_report_2025 --source packages/cms_nhe/table_24 --source packages/hhs_acf/tanf_caseload_2024 --source packages/hhs_acf/tanf_financial_2024 --source packages/hhs_acf_liheap/fy2024_national_profile --source packages/irs_soi/filing_season_week47_2024 --source packages/jct/tax_expenditures_2024 --source packages/kff/marketplace_effectuated_enrollment --source packages/ssa/annual_statistical_supplement_2025 --source packages/ssa/ssi_monthly_statistics_2024_12 --source packages/ssa/ssi_table_7b1_2024 --source packages/usda_snap/fy69_to_current --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2024 --replace"
+  },
+  {
+   "year": 2025,
+   "packages": [
+    "packages/cbo/revenue_projections_income_by_source_2026_02"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2025 --source packages/cbo/revenue_projections_income_by_source_2026_02 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2025 --replace"
+  },
+  {
+   "year": 2026,
+   "packages": [
+    "packages/cbo/revenue_projections_income_by_source_2026_02",
+    "packages/jct/obbba_revenue_estimates_2025"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2026 --source packages/cbo/revenue_projections_income_by_source_2026_02 --source packages/jct/obbba_revenue_estimates_2025 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2026 --replace"
+  },
+  {
+   "year": 2027,
+   "packages": [
+    "packages/jct/obbba_revenue_estimates_2025"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2027 --source packages/jct/obbba_revenue_estimates_2025 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2027 --replace"
+  },
+  {
+   "year": 2028,
+   "packages": [
+    "packages/jct/obbba_revenue_estimates_2025"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2028 --source packages/jct/obbba_revenue_estimates_2025 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2028 --replace"
+  },
+  {
+   "year": 2029,
+   "packages": [
+    "packages/jct/obbba_revenue_estimates_2025"
+   ],
+   "command": "uv run --frozen chronicle build-bundle --year 2029 --source packages/jct/obbba_revenue_estimates_2025 --out /private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/bundles/2029 --replace"
+  }
+ ],
+ "pair_count": 585,
+ "rows_per_pair_min": 1,
+ "rows_per_pair_max": 26880,
+ "row_count": 39155,
+ "facts_path": "/private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-exciting-joliot-e8c36c/75ec5d70-ebad-4af4-8643-6ff4e43b9391/scratchpad/us-feed-w2-run1/consumer_facts.jsonl",
+ "facts_sha256": "a81cbcc504caa71e4eb23b4d70a11528c8e6db6523e41283f8482569a23df04c",
+ "artifact": null
+}
