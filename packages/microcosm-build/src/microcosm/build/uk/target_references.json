@@ -288,8 +288,6 @@
       "dwp.pension_credit.benefit_units_guarantee_only_single": "dwp.pension_credit",
       "dwp.pension_credit.benefit_units_savings_only_couple": "dwp.pension_credit",
       "dwp.pension_credit.benefit_units_savings_only_single": "dwp.pension_credit",
-      "dwp.pip.daily_living_enhanced_claimants": "dwp.pip",
-      "dwp.pip.daily_living_standard_claimants": "dwp.pip",
       "dwp.state_pension.amount": "dwp.state_pension",
       "dwp.state_pension.recipients": "dwp.state_pension",
       "dwp.state_pension.recipients_female_66_69_new": "dwp.state_pension",
@@ -616,8 +614,6 @@
       "dwp.pension_credit.benefit_units_guarantee_only_single": "Pension Credit benefit units, Guarantee Credit only, has no partner",
       "dwp.pension_credit.benefit_units_savings_only_couple": "Pension Credit benefit units, Savings Credit only, has a partner",
       "dwp.pension_credit.benefit_units_savings_only_single": "Pension Credit benefit units, Savings Credit only, has no partner",
-      "dwp.pip.daily_living_enhanced_claimants": "Daily living enhanced claimants",
-      "dwp.pip.daily_living_standard_claimants": "Daily living standard claimants",
       "dwp.state_pension.amount": "State Pension paid, Great Britain residents",
       "dwp.state_pension.recipients": "State Pension recipients, Great Britain residents",
       "dwp.state_pension.recipients_female_66_69_new": "State Pension recipients, female 66 to 69, New State Pension",
@@ -5056,50 +5052,6 @@
         "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2025-11",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "dwp.pip.daily_living_standard_claimants",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "standard"
-        },
-        "geography_level": "country",
-        "geography_id": "K04000001"
-      },
-      "entity": "person",
-      "measure": "dwp/pip_dl_standard_claimants",
-      "family": "dwp_pip",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.pip.daily_living_standard_claimants",
-        "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2025-01",
-      "uprating_to_period": 2025
-    },
-    {
-      "name": "dwp.pip.daily_living_enhanced_claimants",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "enhanced"
-        },
-        "geography_level": "country",
-        "geography_id": "K04000001"
-      },
-      "entity": "person",
-      "measure": "dwp/pip_dl_enhanced_claimants",
-      "family": "dwp_pip",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.pip.daily_living_enhanced_claimants",
-        "measure_kind": "prepared_column"
-      },
-      "uprating_from_period": "2025-01",
       "uprating_to_period": 2025
     },
     {

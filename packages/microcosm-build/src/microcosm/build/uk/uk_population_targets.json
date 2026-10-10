@@ -24,16 +24,14 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 624,
-    "excluded_rows": 28,
+    "mapped_rows": 622,
+    "excluded_rows": 30,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
       "dwp/esa_contrib_claimants": "dwp.esa_contrib_claimants",
       "dwp/esa_income_claimants": "dwp.esa_income_claimants",
       "dwp/jsa_claimants": "dwp.jsa_claimants",
-      "dwp/pip_dl_enhanced_claimants": "dwp.pip.daily_living_enhanced_claimants",
-      "dwp/pip_dl_standard_claimants": "dwp.pip.daily_living_standard_claimants",
       "dwp/scotland_uc_households_child_under_1": "dwp.uc.scotland_households_child_under_1",
       "dwp/uc/claimants_couple_no_children": "dwp.uc.households_couple_no_children",
       "dwp/uc/claimants_couple_with_children": "dwp.uc.households_couple_with_children",
@@ -680,7 +678,9 @@
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
       "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
       "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit.",
-      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted."
+      "obr/ni": "Diagnostic only (María's ruling of 2026-10-09, microcosm#1095; uk-data#537 drops the row): OBR's total NICs receipts (table 3.8 row 12) is a cash total, while the three bound class rows are accrued, and it carries statutory-payment recoveries, Class 1A, 1B and 3 and settlements, which no household carries; at the calendar-2025 window it sits about 1.8% above the class rows. The exact OBR FY2025-26 figure is retained only as diagnostic provenance on obr.ni_employee; no source value is adjusted.",
+      "dwp/pip_dl_standard_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows pushes the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted.",
+      "dwp/pip_dl_enhanced_claimants": "Diagnostic only (María's ruling of 2026-10-10, microcosm#1095): DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) resolves at K04000001 and fits within 0.1%, but fitting the two rows pushes the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151. The exact figure is retained only as diagnostic provenance on obr.pip; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -913,8 +913,6 @@
       "hmrc.cgt.taxpayers_total",
       "hmrc.cgt.gains_total",
       "dwp.benefit_cap.capped_households",
-      "dwp.pip.daily_living_standard_claimants",
-      "dwp.pip.daily_living_enhanced_claimants",
       "dwp.esa_claimants",
       "dwp.esa_contrib_claimants",
       "dwp.esa_income_claimants",
@@ -4074,142 +4072,6 @@
       },
       "category_id": "dwp.benefit_cap",
       "label": "Capped households"
-    },
-    {
-      "target_id": "dwp.pip.daily_living_standard_claimants",
-      "family": "dwp_pip",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.pip.daily_living_category",
-            "equals": "standard"
-          },
-          {
-            "concept": "uk.geography.country",
-            "operator": "in",
-            "value": [
-              "england",
-              "wales"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/pip_dl_standard_claimants",
-          "filters": [
-            {
-              "variable": "pip_dl_category",
-              "equals": "STANDARD"
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "household_conditions": [
-            {
-              "variable": "country",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "ENGLAND",
-                "WALES"
-              ],
-              "map_to": "person"
-            }
-          ],
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables. Scoped to England and Wales as obr.pip is (microcosm#1095, uk-data#490): DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, and Scotland's Adult Disability Payment is Scottish Government spending, so the model column counts English and Welsh households only and the selector pins K04000001."
-        },
-        "axiom": {
-          "metric_name": "dwp/pip_dl_standard_claimants",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "standard"
-        }
-      },
-      "category_id": "dwp.pip",
-      "label": "Daily living standard claimants"
-    },
-    {
-      "target_id": "dwp.pip.daily_living_enhanced_claimants",
-      "family": "dwp_pip",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.benefits.pip.daily_living_category",
-            "equals": "enhanced"
-          },
-          {
-            "concept": "uk.geography.country",
-            "operator": "in",
-            "value": [
-              "england",
-              "wales"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/pip_dl_enhanced_claimants",
-          "filters": [
-            {
-              "variable": "pip_dl_category",
-              "equals": "ENHANCED"
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "household_conditions": [
-            {
-              "variable": "country",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "ENGLAND",
-                "WALES"
-              ],
-              "map_to": "person"
-            }
-          ],
-          "notes": "True source is DWP FOI2025/24990 (caseload at end January 2025), not the routine PIP publication tables. Scoped to England and Wales as obr.pip is (microcosm#1095, uk-data#490): DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, and Scotland's Adult Disability Payment is Scottish Government spending, so the model column counts English and Welsh households only and the selector pins K04000001."
-        },
-        "axiom": {
-          "metric_name": "dwp/pip_dl_enhanced_claimants",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.pip_daily_living_claimants",
-        "dimension_values": {
-          "pip_daily_living_award_rate": "enhanced"
-        }
-      },
-      "category_id": "dwp.pip",
-      "label": "Daily living enhanced claimants"
     },
     {
       "target_id": "dwp.esa_claimants",
@@ -30061,6 +29923,68 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:ab19a7f36038519a7f359742"
       },
       "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions at all rates (GBP 8.8bn), retained as diagnostic provenance beside the three bound rate bands of Table 6.1 (María's ruling of 2026-10-09, microcosm#1095). The bands carry the same relief by rate; binding the total as well would fit it twice. Never insert it into the fitting registry."
+    },
+    "dwp.pip.daily_living_standard_claimants": {
+      "attach_to_target": "obr.pip",
+      "metadata_prefix": "dwp_pip_daily_living_standard_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.pip.daily_living_standard_claimants",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.pip_daily_living_claimants",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001",
+          "dimension_values": {
+            "pip_daily_living_award_rate": "standard"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/pip_dl_standard_claimants",
+        "family": "dwp_pip",
+        "period": "2025-01",
+        "metadata": {
+          "diagnostic_role": "caseload_beside_bound_spending"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:7e25a3faa6fdceb4f5ee5868"
+      },
+      "notes": "DWP FOI2025/24990: PIP daily living standard-rate claimants in England and Wales at the end of January 2025 (1.283m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
+    },
+    "dwp.pip.daily_living_enhanced_claimants": {
+      "attach_to_target": "obr.pip",
+      "metadata_prefix": "dwp_pip_daily_living_enhanced_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "month",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.pip.daily_living_enhanced_claimants",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.pip_daily_living_claimants",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001",
+          "dimension_values": {
+            "pip_daily_living_award_rate": "enhanced"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/pip_dl_enhanced_claimants",
+        "family": "dwp_pip",
+        "period": "2025-01",
+        "metadata": {
+          "diagnostic_role": "caseload_beside_bound_spending"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:8d850c8ffb6eae8f4c71e611"
+      },
+      "notes": "DWP FOI2025/24990: PIP daily living enhanced-rate claimants in England and Wales at the end of January 2025 (1.608m), retained as diagnostic provenance beside the bound OBR line obr.pip (María's ruling of 2026-10-10, microcosm#1095). DWP has reported PIP for England and Wales only since executive competence moved to the Scottish Government on 1 April 2020, so Chronicle stamps the fact K04000001 (uk-data#490); under the Great Britain default pin the row matched no fact. Fitted with its sibling it calibrates to within 0.1%, but the two rows push the heaviest support family's weight from 1,061 to 1,241 times the positive median, over the uk_weight_ratio fence of 1,151 (experiments/1095-uk-data-ports-3-receipts.md). Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

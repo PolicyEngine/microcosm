@@ -206,8 +206,8 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # microcosm#1069 c9 arm); microcosm#1095 adds DWP's Great Britain
     # pension-age Housing Benefit spending, and OBR's NICs total and the
     # all-rates salary-sacrifice relief become diagnostics beside the bound
-    # rows they repeat.
-    assert len(resource["targets"]) == 390
+    # rows they repeat, as do the two PIP daily-living caseload rows.
+    assert len(resource["targets"]) == 388
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -221,10 +221,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 339
+    assert len(registry_scope) == 337
     assert len(profile_scope) == 51
-    assert target_ids[:339] == registry_scope
-    assert target_ids[339:] == profile_scope
+    assert target_ids[:337] == registry_scope
+    assert target_ids[337:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -237,8 +237,9 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    # microcosm#1095: obr/ni leaves the mapped rows for a diagnostic.
-    assert len(mapped_target_ids) == 191
+    # microcosm#1095: obr/ni and the two PIP daily-living caseload rows leave
+    # the mapped rows for diagnostics.
+    assert len(mapped_target_ids) == 189
     assert len(unmapped_declarations) == 148
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
@@ -358,7 +359,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 390
+    assert len(target_ids) == 388
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -830,7 +831,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 390
+    assert len(targets) == 388
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

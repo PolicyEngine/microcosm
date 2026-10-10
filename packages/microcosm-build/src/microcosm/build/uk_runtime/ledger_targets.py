@@ -794,9 +794,20 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
         "hmrc.salary_sacrifice.it_relief_higher_rate": (
             "hmrc.salary_sacrifice.it_relief_total",
         ),
+        # microcosm#1095 (María, 2026-10-10): DWP's England-and-Wales daily
+        # living caseload sits beside the bound spending line; fitting the two
+        # rows breaks the weight-ratio fence.
+        "obr.pip": (
+            "dwp.pip.daily_living_standard_claimants",
+            "dwp.pip.daily_living_enhanced_claimants",
+        ),
     }
 )
-_DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))
+#: A diagnostic is one exactly dated publisher figure; a caseload snapshot is
+#: dated by its month (microcosm#1095).
+_DIAGNOSTIC_PERIOD_TYPES = frozenset(
+    ("fiscal_year", "tax_year", "calendar_year", "month")
+)
 _DIAGNOSTIC_ASSERTION_POLICIES = MappingProxyType(
     {"source_projection": "allow_source_projection", "observation": "observed_only"}
 )

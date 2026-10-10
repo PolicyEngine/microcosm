@@ -140,6 +140,20 @@ _OBR_NI_DIAGNOSTIC_RATIONALE = (
     "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
     "fitted row is fixture-only on the current surface."
 )
+_DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS = frozenset(
+    {
+        "dwp.pip.daily_living_standard_claimants",
+        "dwp.pip.daily_living_enhanced_claimants",
+    }
+)
+_DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1095 (María's ruling of 2026-10-10) keeps DWP's England-and-Wales "
+    "PIP daily living caseload (FOI2025/24990, end of January 2025) out of the "
+    "fit: the two rows resolve and fit, but they push the heaviest support "
+    "family's weight over the uk_weight_ratio fence. The exact figures are "
+    "retained as diagnostic provenance on obr.pip, so the frozen fixture's "
+    "fitted rows are fixture-only on the current surface."
+)
 _STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
 _STATE_PENSION_LEDGER_ONLY_RATIONALE = (
     "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great "
@@ -635,6 +649,11 @@ def _add_signed_rationale_notes(
             row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
         elif name == "obr.ni" and row.get("kind") == "fixture_only":
             row["reason"] = _OBR_NI_DIAGNOSTIC_RATIONALE
+        elif (
+            name in _DWP_PIP_CASELOAD_DIAGNOSTIC_ROWS
+            and row.get("kind") == "fixture_only"
+        ):
+            row["reason"] = _DWP_PIP_CASELOAD_DIAGNOSTIC_RATIONALE
         elif (
             name.startswith(_STATE_PENSION_PREFIXES)
             and row.get("kind") == "ledger_only"

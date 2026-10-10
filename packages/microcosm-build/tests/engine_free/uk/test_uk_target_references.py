@@ -65,7 +65,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1231
+ACTIVE_REFERENCE_COUNT = 1229
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -651,8 +651,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     construction — while the GB default pin could never match.
     slc.repayments.devolved_total keeps the GB pin and stays held: activating
     it needs per-nation repayment rows, not a pin change. The dwp.pip
-    claimant counts took that redesign (microcosm#1095): an England-and-Wales
-    binding, and the K04000001 pin Chronicle stamps DWP's caseload with.
+    claimant counts are no targets now: they are England-and-Wales diagnostics
+    on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -691,12 +691,7 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "E92000001"
     }
     assert pins["slc.repayments.devolved_total"]["geography_id"] == "K03000001"
-    assert (
-        pins["dwp.pip.daily_living_standard_claimants"]["geography_id"] == "K04000001"
-    )
-    assert (
-        pins["dwp.pip.daily_living_enhanced_claimants"]["geography_id"] == "K04000001"
-    )
+    assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
@@ -744,12 +739,11 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         membership["targets"]["slc.repayments.devolved_total"]["status"]
         == "no_fact_at_or_before_period"
     )
-    for target_id in (
-        "dwp.pip.daily_living_standard_claimants",
-        "dwp.pip.daily_living_enhanced_claimants",
-    ):
-        assert membership["geography_pins"][target_id]["geography_id"] == "K04000001"
-        assert membership["targets"][target_id]["status"] == "active"
+    assert not [
+        target_id
+        for target_id in membership["targets"]
+        if target_id.startswith("dwp.pip.")
+    ]
 
 
 def test_uk_target_reference_membership_report_is_packaged() -> None:
@@ -758,7 +752,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1231,
+        "active": 1229,
         "no_fact_at_or_before_period": 5,
         "signed_excluded": 16,
     }
@@ -984,6 +978,10 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
     national_insurance = differences["obr.ni"]
     assert national_insurance["kind"] == "fixture_only"
     assert "diagnostic provenance on obr.ni_employee" in national_insurance["reason"]
+    for rate in ("standard", "enhanced"):
+        caseload = differences[f"dwp.pip.daily_living_{rate}_claimants"]
+        assert caseload["kind"] == "fixture_only"
+        assert "diagnostic provenance on obr.pip" in caseload["reason"]
     assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
     assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
     assert (

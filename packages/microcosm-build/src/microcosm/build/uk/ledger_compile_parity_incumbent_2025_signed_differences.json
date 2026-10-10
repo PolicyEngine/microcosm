@@ -1,12 +1,26 @@
 {
- "compiled_count": 1231,
+ "compiled_count": 1229,
  "counts_by_kind": {
   "calibration_drift": 552,
-  "fixture_only": 54,
+  "fixture_only": 56,
   "ledger_only": 648
  },
- "difference_count": 1254,
+ "difference_count": 1256,
  "differences": [
+  {
+   "fixture_value": 1608000.0,
+   "kind": "fixture_only",
+   "name": "dwp.pip.daily_living_enhanced_claimants",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-10) keeps DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) out of the fit: the two rows resolve and fit, but they push the heaviest support family's weight over the uk_weight_ratio fence. The exact figures are retained as diagnostic provenance on obr.pip, so the frozen fixture's fitted rows are fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 1283000.0,
+   "kind": "fixture_only",
+   "name": "dwp.pip.daily_living_standard_claimants",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-10) keeps DWP's England-and-Wales PIP daily living caseload (FOI2025/24990, end of January 2025) out of the fit: the two rows resolve and fit, but they push the heaviest support family's weight over the uk_weight_ratio fence. The exact figures are retained as diagnostic provenance on obr.pip, so the frozen fixture's fitted rows are fixture-only on the current surface."
+  },
   {
    "fixture_value": 320866000.0,
    "kind": "fixture_only",
