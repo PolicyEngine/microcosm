@@ -29,10 +29,10 @@ column divided by their share of household mass. Pooling multiplies every
 donor household weight by that share, so the lane-wide column is the donor
 release's own.
 
-The kernel and both gates read a handful of columns but copy every table they
-are given. This module hands them a narrow view of the pooled frame: the
-staging frame holds two full spines and the lane's memory budget has no room
-for further whole-frame copies.
+The kernel and both gates read a handful of columns, but the kernel copies
+every table it is given and each gate copies the person table. This module
+hands them a narrow view of the pooled frame: the staging frame holds two full
+spines, and the lane's memory budget has no room for further copies of them.
 """
 
 from __future__ import annotations

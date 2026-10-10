@@ -300,10 +300,11 @@ what else reads that plan:
 - The frozen v11 authority reconstruction
   (`stacked_spine._legacy_stacked_authority_receipt`) leaves out post-v11
   targets by family name. A legacy family existed in v11, so the column would
-  enter the reconstruction and the attested schema-9 pools would no longer
-  match it.
+  enter the reconstruction, and scoring an attested schema-9 pool refuses an
+  authority that differs from it.
 - The declared plan is also the default registry of the spine-agreement
-  battery and feeds the spec bundle.
+  battery (`spine_agreement`), which would gain the column as a legacy-family
+  metric.
 
 Taking the lane's ACS rows from the stacked pool instead would replace the
 lane. Its two tools read the legacy spine tags, the legacy support roles and
@@ -368,8 +369,9 @@ reasons:
   row here is its own source record, so the view leaves the lookup's columns
   out and the kernel reads each row's own wages. A transferred row that is not
   clone 0 is refused.
-- **Memory.** The kernel and the gates copy every table they are given, and
-  the staging frame holds two full spines.
+- **Memory.** The kernel copies every table it is given and each gate copies
+  the person table. The staging frame holds two full spines, and the view
+  carries only the columns they read.
 
 **Assumption.** As in the stacked pool, ACS rows have no policyholder flag, so
 the lane's anchor-universe total is the donor rows' total plus the ACS column
