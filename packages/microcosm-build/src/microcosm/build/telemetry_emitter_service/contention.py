@@ -52,7 +52,7 @@ def retry_spool_contention[T](
     transient lock error the next attempt waits a jittered backoff that starts
     at ``SPOOL_RETRY_INITIAL_SECONDS`` and doubles up to
     ``SPOOL_RETRY_MAX_SECONDS``. When that attempt would not start before
-    ``deadline``, the last lock error is raised instead. Any other error is
+    ``deadline``, or the wait overran it, the last lock error is raised instead. Any other error is
     raised at once. Each attempt may itself wait in SQLite's busy handler, so
     this bounds when attempts start, not when the last one ends.
     """
@@ -67,5 +67,9 @@ def retry_spool_contention[T](
             wait = jitter(delay / 2, delay)
             if clock() + wait >= deadline:
                 raise
+            contended = error
         sleep(wait)
+        if clock() >= deadline:
+            # The sleep overran, as it can on a loaded host.
+            raise contended
         delay = min(SPOOL_RETRY_MAX_SECONDS, delay * 2)

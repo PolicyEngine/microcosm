@@ -93,8 +93,14 @@ def test_every_us_engine_extra_pins_the_us_core(package: str, extra: str) -> Non
 
 
 def _us_install_paths() -> list[tuple[str, ...]]:
+    # Workspace installs name each US extra alone, then all of them together.
+    extra_names = sorted({extra for _, extra in US_EXTRAS})
     return [
-        ("--all-packages", "--extra", "us"),
+        *(("--all-packages", "--extra", extra) for extra in extra_names),
+        (
+            "--all-packages",
+            *(arg for extra in extra_names for arg in ("--extra", extra)),
+        ),
         *(("--package", package, "--extra", extra) for package, extra in US_EXTRAS),
     ]
 

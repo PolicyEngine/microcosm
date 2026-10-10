@@ -12,7 +12,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Integer, delete, func, select
+from sqlalchemy import Integer, delete, func, select, tuple_
 
 from microcosm.build.telemetry_emitter_service.constants import (
     BATCH_SIZE,
@@ -48,7 +48,7 @@ class EventSpool:
         self,
         path: Path | str,
         *,
-        busy_timeout_seconds: float = DATABASE_TIMEOUT_SECONDS,
+        busy_deadline: float | None = None,
         script_location: Traversable | None = None,
     ) -> None:
         """Open the spool, migrating it to this checkout's schema if behind.
@@ -63,18 +63,17 @@ class EventSpool:
             self.path.parent.chmod(0o700)
         except OSError:
             pass
-        # How long one statement waits for another process's lock. Startup
-        # lowers it so its own retry loop decides when to give up; it applies
-        # from each connection's next checkout.
-        self.busy_timeout_seconds = busy_timeout_seconds
+        # A time.monotonic() reading that startup sets: until it is cleared,
+        # no statement waits past it for another process's lock.
+        self.busy_deadline = busy_deadline
         self._engine = create_spool_engine(
             self.path,
-            busy_timeout_seconds=lambda: self.busy_timeout_seconds,
+            busy_timeout_seconds=self.busy_timeout_seconds,
         )
         try:
             upgrade_spool_database(
                 self._engine,
-                busy_timeout_seconds=busy_timeout_seconds,
+                busy_timeout_seconds=self.busy_timeout_seconds,
                 script_location=script_location,
             )
         except BaseException:
@@ -87,6 +86,18 @@ class EventSpool:
         # has expired, and this constructor runs before the build's readiness
         # ping is answered.
         self._last_prune_at: float | None = None
+
+    def busy_timeout_seconds(self) -> float:
+        """How long a statement may wait for another process's lock.
+
+        At most ``DATABASE_TIMEOUT_SECONDS``, and never past ``busy_deadline``
+        while one is set. Applied each time a connection is checked out.
+        """
+
+        if self.busy_deadline is None:
+            return DATABASE_TIMEOUT_SECONDS
+        remaining = self.busy_deadline - time.monotonic()
+        return min(DATABASE_TIMEOUT_SECONDS, max(0.0, remaining))
 
     def register(self, registration: Mapping[str, Any]) -> None:
         """Create or refresh a producer registration."""
@@ -282,25 +293,32 @@ class EventSpool:
                 .where(is_expired)
                 .limit(PRUNE_BATCH_ROWS)
             )
-            while self._delete_events(expired) == PRUNE_BATCH_ROWS:
+            in_batch = TelemetryEventRecord.event_id.in_(expired)
+            while self._delete(TelemetryEventRecord, in_batch) == PRUNE_BATCH_ROWS:
                 if not self._pause_between_batches(deadline):
                     return False
         oldest_first = self._oldest_events_over_size_limit()
         for start in range(0, len(oldest_first), PRUNE_BATCH_ROWS):
             if start and not self._pause_between_batches(deadline):
                 return False
-            self._delete_events(oldest_first[start : start + PRUNE_BATCH_ROWS])
+            batch = oldest_first[start : start + PRUNE_BATCH_ROWS]
+            self._delete(TelemetryEventRecord, TelemetryEventRecord.event_id.in_(batch))
         is_expired_run = (
             TelemetryRunRecord.updated_at < cutoff,
             ~TelemetryRunRecord.events.any(),
         )
         if self._any(select(TelemetryRunRecord.run_id).where(*is_expired_run)):
-            with self._lock, self._session_factory.begin() as session:
-                session.execute(
-                    delete(TelemetryRunRecord)
-                    .where(*is_expired_run)
-                    .execution_options(synchronize_session=False)
-                )
+            expired_runs = (
+                select(TelemetryRunRecord.run_id, TelemetryRunRecord.producer_id)
+                .where(*is_expired_run)
+                .limit(PRUNE_BATCH_ROWS)
+            )
+            in_batch = tuple_(
+                TelemetryRunRecord.run_id, TelemetryRunRecord.producer_id
+            ).in_(expired_runs)
+            while self._delete(TelemetryRunRecord, in_batch) == PRUNE_BATCH_ROWS:
+                if not self._pause_between_batches(deadline):
+                    return False
         return True
 
     def _any(self, statement) -> bool:
@@ -318,19 +336,34 @@ class EventSpool:
         time.sleep(PRUNE_BATCH_PAUSE_SECONDS)
         return True
 
-    def _delete_events(self, event_ids) -> int:
-        """Delete the selected or listed events in one transaction."""
+    def _delete(self, model, criterion) -> int:
+        """Delete one batch of matching rows in its own transaction."""
 
         with self._lock, self._session_factory.begin() as session:
             return session.execute(
-                delete(TelemetryEventRecord)
-                .where(TelemetryEventRecord.event_id.in_(event_ids))
+                delete(model)
+                .where(criterion)
                 .execution_options(synchronize_session=False)
             ).rowcount
+
+    def _used_bytes(self) -> int:
+        """Return the bytes of the pages the spool file uses, without a scan."""
+
+        with self._lock, self._engine.connect() as connection:
+            page_size = connection.exec_driver_sql("PRAGMA page_size").scalar()
+            pages = connection.exec_driver_sql("PRAGMA page_count").scalar()
+            free_pages = connection.exec_driver_sql("PRAGMA freelist_count").scalar()
+        return (pages - free_pages) * page_size
 
     def _oldest_events_over_size_limit(self) -> list[str]:
         """Return the oldest events whose removal brings storage under the cap."""
 
+        # Every stored payload lies on a used page, so a file that uses no more
+        # than the cap cannot hold more than the cap. That spares the usual
+        # prune a read of every payload; other writers cannot commit while
+        # such a read runs.
+        if self._used_bytes() <= MAX_QUEUED_BYTES:
+            return []
         stored = func.length(TelemetryEventRecord.payload, type_=Integer)
         with self._lock, self._session_factory() as session:
             excess = (

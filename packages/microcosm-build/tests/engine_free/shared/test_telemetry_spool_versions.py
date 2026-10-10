@@ -436,7 +436,7 @@ def test_an_opener_that_waited_out_a_newer_migration_changes_nothing(
         try:
             results.append(
                 upgrade_spool_database(
-                    engine, busy_timeout_seconds=60, script_location=opener
+                    engine, busy_timeout_seconds=lambda: 60, script_location=opener
                 )
             )
         except BaseException as error:

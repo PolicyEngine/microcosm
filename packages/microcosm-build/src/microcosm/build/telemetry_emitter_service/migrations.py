@@ -31,7 +31,7 @@ the next checkout at that revision records it.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -135,7 +135,7 @@ def classify_spool_revision(
 def upgrade_spool_database(
     engine: Engine,
     *,
-    busy_timeout_seconds: float = DATABASE_TIMEOUT_SECONDS,
+    busy_timeout_seconds: Callable[[], float] = lambda: DATABASE_TIMEOUT_SECONDS,
     script_location: Traversable | None = None,
 ) -> SpoolRevisionState:
     """Bring a spool behind this checkout's head up to it, one process at a time.
@@ -145,12 +145,12 @@ def upgrade_spool_database(
     write lock. Neither does refusing any other revision this checkout does not
     know, which raises ``IncompatibleSpoolRevisionError``. Otherwise the whole
     upgrade, DDL, version stamp and lineage, runs in one ``BEGIN IMMEDIATE``
-    transaction whose statements each wait at most ``busy_timeout_seconds`` for
-    another process's lock. Without that transaction two services opening a new
-    spool at once interleave their DDL, and one fails with "table already
-    exists". The revision is read again once the lock is held, so a service
-    that waited for it finds the spool where the last migrator left it, and
-    changes nothing unless it is still behind.
+    transaction whose statements each wait for another process's lock as long
+    as ``busy_timeout_seconds()`` allows. Without that transaction two services
+    opening a new spool at once interleave their DDL, and one fails with "table
+    already exists". The revision is read again once the lock is held, so a
+    service that waited for it finds the spool where the last migrator left it,
+    and changes nothing unless it is still behind.
 
     A spool at this head with no lineage, or another's, was moved there by a
     checkout from before lineage was recorded. Its lineage is written under the
@@ -165,7 +165,7 @@ def upgrade_spool_database(
     migration_engine = create_spool_engine(
         engine.url.database,
         immediate_transactions=True,
-        busy_timeout_seconds=lambda: busy_timeout_seconds,
+        busy_timeout_seconds=busy_timeout_seconds,
     )
     try:
         with migration_engine.begin() as connection:
