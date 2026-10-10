@@ -5144,3 +5144,178 @@ def test__given_a_numeric_month_beside_its_year__then_it_is_a_period(
     from microcosm.build.ledger_targets import _normalized_period_bearing_id
 
     assert _normalized_period_bearing_id(value) == normalized
+
+
+def _rolled_facts(*, numerator: float = 3_175_181, base_cells: int = 1) -> list[dict]:
+    facts = [
+        _ratio_fact(
+            key=f"wales-households-{index}",
+            measure_id="households_total",
+            value=1_388_543 / base_cells,
+            level="country",
+            geography_id="W92000004",
+            period=2024,
+        )
+        for index in range(base_cells)
+    ]
+    return [
+        *facts,
+        _ratio_fact(
+            key="wales-population-2025",
+            measure_id="population",
+            value=numerator,
+            level="country",
+            geography_id="W92000004",
+            period=2025,
+        ),
+        _ratio_fact(
+            key="wales-population-2024",
+            measure_id="population",
+            value=3_177_949,
+            level="country",
+            geography_id="W92000004",
+            period=2024,
+        ),
+    ]
+
+
+def _rolled_reference(**overrides) -> LedgerTargetReference:
+    values = {
+        "name": "households, Wales",
+        "ledger_selector": {
+            "source_name": "irs_soi",
+            "source_measure_id": "households_total",
+            "geography_id": "W92000004",
+        },
+        "value_operation": "rolled_forward_by_ratio",
+        "value_operands": (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "population",
+                "geography_id": "W92000004",
+                "period_type": "tax_year",
+                "period_value": 2025,
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "population",
+                "geography_id": "W92000004",
+                "period_type": "tax_year",
+                "period_value": 2024,
+            },
+        ),
+        "entity": "household",
+        "measure": "households@W92000004",
+        "period": 2025,
+    }
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def test__given_rolled_forward_reference__then_the_base_grows_by_the_pinned_ratio():
+    # microcosm#1123: Wales's official mid-2024 household estimate carried to
+    # 2025 by its mid-2025/mid-2024 population; the ratio may exceed one
+    # (unlike scaled_by_ratio) and every input is recorded.
+    registry = compile_ledger_target_references(
+        _rolled_facts(), [_rolled_reference()], country="uk"
+    )
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(1_388_543 * 3_175_181 / 3_177_949)
+    assert spec.metadata["ledger_value_rolled_from_period"] == "2024"
+    assert spec.metadata["ledger_value_rolled_to_period"] == "2025"
+    assert spec.metadata["ledger_fact_period"] == "2024"
+    grown = compile_ledger_target_references(
+        _rolled_facts(numerator=3_300_000), [_rolled_reference()], country="uk"
+    )
+    assert grown.specs[0].value > 1_388_543
+
+
+def test__given_a_summed_base__then_the_roll_forward_sums_its_cells_first():
+    registry = compile_ledger_target_references(
+        _rolled_facts(base_cells=3), [_rolled_reference()], country="uk"
+    )
+    spec = registry.specs[0]
+    assert spec.metadata["ledger_value_base_cells"] == "3"
+    assert spec.value == pytest.approx(1_388_543 * 3_175_181 / 3_177_949)
+
+
+@pytest.mark.parametrize(
+    ("numerator", "message"),
+    [(9_000_000, r"outside \(0.5, 2.0\]"), (1_000_000, r"outside \(0.5, 2.0\]")],
+)
+def test__given_an_implausible_growth__then_the_roll_forward_refuses(
+    numerator: float, message: str
+):
+    with pytest.raises(ValueError, match=message):
+        compile_ledger_target_references(
+            _rolled_facts(numerator=numerator), [_rolled_reference()], country="uk"
+        )
+
+
+def test__given_an_operand_without_a_period_pin__then_the_reference_refuses():
+    operands = list(_rolled_reference().value_operands)
+    operands[1] = {"role": "numerator", "source_measure_id": "population"}
+    with pytest.raises(ValueError, match="must pin its own period"):
+        _rolled_reference(value_operands=tuple(operands))
+
+
+def test__given_a_denominator_off_the_base_period__then_the_roll_forward_refuses():
+    operands = list(_rolled_reference().value_operands)
+    operands[2] = {**operands[2], "period_value": 2025}
+    with pytest.raises(ValueError, match="must resolve exactly once|base's period"):
+        compile_ledger_target_references(
+            _rolled_facts(),
+            [_rolled_reference(value_operands=tuple(operands))],
+            country="uk",
+        )
+
+
+def test__given_a_base_below_the_reference_geography__then_the_cell_keeps_its_own():
+    # Northern Ireland: no NI-wide census household fact exists, so the base
+    # is the districts' census cells while the cell stays the nation's.
+    districts = [
+        _ratio_fact(
+            key=f"ni-district-{index}",
+            measure_id="households_total",
+            value=value,
+            level="local_authority",
+            geography_id=f"N0900000{index}",
+            period=2024,
+        )
+        for index, value in enumerate((400_000, 368_810), start=1)
+    ]
+    population = _rolled_facts()[1:]
+    for fact in population:
+        fact["geography"]["id"] = "N92000002"
+    operands = list(_rolled_reference().value_operands)
+    operands[0] = {
+        "role": "base",
+        "geography_level": "local_authority",
+        "geography_id": ["N09000001", "N09000002"],
+    }
+    operands[1] = {**operands[1], "geography_id": "N92000002"}
+    operands[2] = {**operands[2], "geography_id": "N92000002"}
+    reference = _rolled_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "households_total",
+            "geography_level": "country",
+            "geography_id": "N92000002",
+        },
+        value_operands=tuple(operands),
+    )
+    spec = compile_ledger_target_references(
+        [*districts, *population], [reference], country="uk"
+    ).specs[0]
+    assert spec.metadata["ledger_value_base_cells"] == "2"
+    assert spec.value == pytest.approx(768_810 * 3_175_181 / 3_177_949)
+    assert spec.metadata["geography_level"] == "country"
+    assert spec.metadata["geography_id"] == "N92000002"
+
+
+def test__given_a_base_overlay_beyond_geography__then_the_reference_refuses():
+    operands = list(_rolled_reference().value_operands)
+    operands[0] = {"role": "base", "source_measure_id": "other"}
+    with pytest.raises(ValueError, match="only move the base below"):
+        _rolled_reference(value_operands=tuple(operands))
