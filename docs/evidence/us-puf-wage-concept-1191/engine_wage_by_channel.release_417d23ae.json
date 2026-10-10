@@ -1,0 +1,62 @@
+{
+ "h5": "populace_us_2024.h5",
+ "h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+ "period": 2024,
+ "policyengine_us": "2.2.1",
+ "policyengine_core": "3.32.5",
+ "persons_count": 907863,
+ "persons_without_channel_count": 0,
+ "units": "USD weighted sums",
+ "all": {
+  "employment_income": 10734933156125.28,
+  "employment_income_before_lsr": 10734933156125.28,
+  "irs_employment_income": 10423668928154.016,
+  "pre_tax_contributions": 311585802931.4092,
+  "traditional_401k_contributions": 311585802931.4092,
+  "traditional_403b_contributions": 0.0,
+  "pre_tax_health_insurance_premiums": 0.0,
+  "health_savings_account_payroll_contributions": 0.0
+ },
+ "by_channel": {
+  "asec": {
+   "employment_income": 4546201683065.86,
+   "employment_income_before_lsr": 4546201683065.86,
+   "irs_employment_income": 4407150094426.305,
+   "pre_tax_contributions": 139342041958.17407,
+   "traditional_401k_contributions": 139342041958.17407,
+   "traditional_403b_contributions": 0.0,
+   "pre_tax_health_insurance_premiums": 0.0,
+   "health_savings_account_payroll_contributions": 0.0,
+   "weighted_persons_count": 153628740.66556227,
+   "gross_minus_taxed": 139051588639.55554,
+   "lost_to_zero_floor": 290450669.41755855,
+   "persons_with_pre_tax_contributions_count": 25996423.953257203
+  },
+  "puf_tax_detail": {
+   "employment_income": 6188731473059.418,
+   "employment_income_before_lsr": 6188731473059.418,
+   "irs_employment_income": 6016518833727.711,
+   "pre_tax_contributions": 172243760973.23505,
+   "traditional_401k_contributions": 172243760973.23505,
+   "traditional_403b_contributions": 0.0,
+   "pre_tax_health_insurance_premiums": 0.0,
+   "health_savings_account_payroll_contributions": 0.0,
+   "weighted_persons_count": 186673899.55459443,
+   "gross_minus_taxed": 172212639331.70743,
+   "lost_to_zero_floor": 31123237.170874577,
+   "persons_with_pre_tax_contributions_count": 30536559.843675897
+  }
+ },
+ "per_person_differential_vs_stored_columns": {
+  "pre_tax_contributions": {
+   "max_abs_difference": 0.001953125,
+   "persons_over_float32_bound_count": 0,
+   "persons_count": 907863
+  },
+  "irs_employment_income": {
+   "max_abs_difference": 2.0850893557071686,
+   "persons_over_float32_bound_count": 0,
+   "persons_count": 907863
+  }
+ }
+}
