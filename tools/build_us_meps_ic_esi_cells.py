@@ -16,14 +16,13 @@ data. The premium tables' United States rows are checked against the AHRQ
 national figures they must reproduce, and a parse that does not find exactly
 one row per state, division or firm-size label refuses.
 
-Three national blocks ride along: the share of enrollees whose coverage
+Two national blocks ride along: the share of enrollees whose coverage
 required no employee contribution (Tables II.C/D/E.4.a), which turns the
-average employee contribution into the contribution of those who pay one; the
-private-sector enrollment rows (Tables II.B.1, II.B.2, II.B.2.b and
-II.C/D/E.4) behind the stage's active-employee cross-check; and the firm-size
-pretax-contribution offer rates.
+average employee contribution into the contribution of those who pay one; and
+the private-sector enrollment rows (Tables II.B.1, II.B.2, II.B.2.b and
+II.C/D/E.4) behind the stage's active-employee cross-check.
 
-Run (downloads the four PDFs, about 34 MB, into ``--pdf-dir``)::
+Run (downloads the three PDFs, about 25 MB, into ``--pdf-dir``)::
 
     uv run python tools/build_us_meps_ic_esi_cells.py --pdf-dir /tmp/meps-ic
 
@@ -109,19 +108,6 @@ PDFS: tuple[PinnedPdf, ...] = (
             "government type and size and census division): Tables "
             "III.C/D/E.1 and III.C/D/E.2. 2024 is the latest published year "
             "for this series (the 2025 series is not yet released)."
-        ),
-    ),
-    PinnedPdf(
-        key="private_national_2025",
-        url=_MEPS_ROOT + "national/series_1/2025/ic25_ia_g.pdf",
-        size_bytes=9_210_366,
-        sha256="cceba5da68e41caf1b03b83f93d1c20fc1aa1b3ccd0eefc4a9dfc80754c950f3",
-        survey_year=2025,
-        description=(
-            "MEPS-IC 2025 Series I (private sector, national): Table I.A.2 "
-            "(percent of establishments that offer health insurance) and "
-            "Table I.A.2.j (percent of establishments that offer pretax "
-            "employee contributions to health insurance), by firm size"
         ),
     ),
 )
@@ -462,34 +448,6 @@ def _private_enrollment(lines, pin: PinnedPdf) -> dict:
     }
 
 
-def _pretax_offer_shares(lines, pin: PinnedPdf) -> dict:
-    """Firm-size pretax-contribution and health-insurance offer rates."""
-
-    _start, offer = _table_block(lines, "I.A.2")
-    offer_values, _ = _row_values(offer, "United States", 8, "I.A.2")
-    offer_by_column = dict(zip(_SERIES_II_COLUMNS, offer_values, strict=True))
-    start_j, pretax = _table_block(lines, "I.A.2.j")
-    out = {}
-    for key, label in (
-        ("total", "United States"),
-        ("lt50", "Less than 50 employees"),
-        ("50plus", "50+ employees"),
-    ):
-        values, unreliable = _row_values(pretax, label, 3, "I.A.2.j")
-        if unreliable[0]:
-            raise ExtractionError(f"Table I.A.2.j {label} is flagged unreliable.")
-        out[key] = {
-            "pretax_contribution_offer_percent": values[0],
-            "health_insurance_offer_percent": offer_by_column[key],
-        }
-    return {
-        "text_line": start_j + 1,
-        "title": pretax[0].strip(),
-        "offer_title": offer[0].strip(),
-        "rows": out,
-    }
-
-
 def build_payload(pdf_dir: Path) -> dict:
     texts = {pin.key: pdf_text(fetch(pin, pdf_dir)) for pin in PDFS}
     private_2025 = {
@@ -548,11 +506,10 @@ def build_payload(pdf_dir: Path) -> dict:
             "division (2024, the latest published year), the 2024 private "
             "national rows that age the government cells, the 2025 national "
             "share of enrollees whose coverage required no employee "
-            "contribution, the 2024 and 2025 national private-sector "
-            "enrollment rows, and the 2025 firm-size pretax-contribution "
-            "offer rates. Values are copied as published; null marks a cell "
-            "AHRQ suppressed ('--'). Dollar values are annual; percent values "
-            "are percents; employee counts are persons."
+            "contribution, and the 2024 and 2025 national private-sector "
+            "enrollment rows. Values are copied as published; null marks a "
+            "cell AHRQ suppressed ('--'). Dollar values are annual; percent "
+            "values are percents; employee counts are persons."
         ),
         "generator": "tools/build_us_meps_ic_esi_cells.py",
         "extraction": {
@@ -589,9 +546,6 @@ def build_payload(pdf_dir: Path) -> dict:
             "2024": _private_enrollment(texts["private_state_2024"], PDFS[1]),
             "2025": _private_enrollment(texts["private_state_2025"], PDFS[0]),
         },
-        "pretax_contribution_2025": _pretax_offer_shares(
-            texts["private_national_2025"], PDFS[3]
-        ),
     }
 
 

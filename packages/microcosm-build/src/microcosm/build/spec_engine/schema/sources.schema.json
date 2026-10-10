@@ -1827,47 +1827,6 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
-      "amount": {
-       "type": "string",
-       "x-spec-surface": "documentation"
-      },
-      "employer_payment_codes": {
-       "type": "array",
-       "items": {
-        "type": "integer"
-       }
-      },
-      "kind": {
-       "const": "derive_pre_tax_health_insurance_premiums"
-      },
-      "pre_tax_share": {
-       "type": "string",
-       "x-spec-surface": "documentation"
-      },
-      "premium_column": {
-       "type": "string"
-      },
-      "seed_from_build_config": {
-       "type": "boolean"
-      },
-      "wage_column": {
-       "type": "string"
-      }
-     },
-     "required": [
-      "amount",
-      "employer_payment_codes",
-      "kind",
-      "pre_tax_share",
-      "premium_column",
-      "seed_from_build_config",
-      "wage_column"
-     ]
-    },
-    {
-     "type": "object",
-     "additionalProperties": false,
-     "properties": {
       "employment_allocation_flag": {
        "type": "string"
       },

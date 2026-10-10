@@ -33,7 +33,6 @@ from microcosm.build.us_runtime.asec_pool import (
 from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
 from microcosm.build.us_runtime.esi_premiums import (
     US_ESI_EMPLOYER_PREMIUM_COLUMN,
-    US_ESI_PRE_TAX_PREMIUM_COLUMN,
     us_esi_premiums_anchor_gate,
     us_esi_premiums_signal_gate,
     us_esi_premiums_summary,
@@ -67,7 +66,6 @@ def _by_vintage(frame, years) -> dict[str, dict[str, float]]:
     for year in years:
         mask = person["source_year"].to_numpy() == year
         employer = person[US_ESI_EMPLOYER_PREMIUM_COLUMN].to_numpy()
-        pre_tax = person[US_ESI_PRE_TAX_PREMIUM_COLUMN].to_numpy()
         holders = mask & (employer > 0)
         out[str(year)] = {
             "weighted_persons": float(weights[mask].sum()),
@@ -76,7 +74,6 @@ def _by_vintage(frame, years) -> dict[str, dict[str, float]]:
             "mean_per_positive_person": float(
                 weights[holders] @ employer[holders] / weights[holders].sum()
             ),
-            "pre_tax_premium_total": float(weights[mask] @ pre_tax[mask]),
         }
     return out
 
@@ -233,7 +230,6 @@ def main() -> None:
                     for key in (
                         "employer_premium_total",
                         "anchor_universe_employer_total",
-                        "pre_tax_premium_total",
                     )
                 },
             },

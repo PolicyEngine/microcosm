@@ -1,16 +1,9 @@
-"""MEPS-IC employer premiums and pre-tax employee premiums for ESI policyholders.
+"""MEPS-IC employer premiums for ESI policyholders.
 
-Microcosm #454. PolicyEngine-US 2.2.1 reads two person inputs that no
-Microcosm stage produced:
-
-* ``employer_sponsored_insurance_premiums`` — "annual employer-paid health
-  insurance premiums", one of ``gov.household.cbo_market_income_additions``
-  (CBO household market income); and
-* ``pre_tax_health_insurance_premiums`` — premiums paid through pre-tax
-  payroll deductions, listed in ``gov.irs.gross_income.pre_tax_contributions``
-  (subtracted from ``employment_income`` in ``irs_employment_income``) and
-  ``gov.irs.gross_income.fica_pre_tax_contributions`` (subtracted in
-  ``payroll_tax_gross_wages``).
+Microcosm #454. PolicyEngine-US 2.2.1 reads a person input that no Microcosm
+stage produced: ``employer_sponsored_insurance_premiums``, "annual
+employer-paid health insurance premiums", one of
+``gov.household.cbo_market_income_additions`` (CBO household market income).
 
 The retired eCPS derivation (archived 42ed5d45 ``datasets/cps/cps.py``
 L197-271) read the CPS ASEC current employment-based coverage fields, which the
@@ -77,20 +70,14 @@ employers for their active and retired employees" and its federal estimate
 covers "active and retired federal civilian employees". It is recorded as a
 cross-check, not gated.
 
-Pre-tax employee premium
-------------------------
-Eligible: an employed policyholder with wages last year (``WSAL_VAL`` > 0), a
-positive reported premium (``PHIP_VAL``) and an employee share to pay
-(``NOW_HIPAID`` 2 or 3). An eligible person pays the reported premium, capped
-at their wages, pre-tax with the firm-size probability that their employer
-offers pretax employee contributions, among employers that offer health
-insurance: MEPS-IC 2025 Table I.A.2.j over Table I.A.2. The rates are
-establishment-weighted; the published bands rise with firm size (8.9% under
-10 employees, 92.6% at 1,000 or more), so they understate the
-enrollee-weighted rate among private employers. ``PHIP_VAL`` is every premium
-the person paid, not the ESI premium alone.
-The draw is a seeded blake2b uniform keyed by stable source identity, so
-support clones agree. Others carry zero.
+Not produced here
+-----------------
+``pre_tax_health_insurance_premiums``, the employee share paid by pre-tax
+payroll deduction, has no producer yet. PolicyEngine-US treats it as disjoint
+from the other premium inputs (PolicyEngine/policyengine-us#10046), so
+producing it means moving those dollars out of the reported premium the base
+carries, on an engine that counts the pre-tax input where the reported premium
+was counted. That is a separate change.
 """
 
 from __future__ import annotations
@@ -127,9 +114,7 @@ __all__ = [
     "US_ESI_PREMIUMS_OUTPUT_COLUMNS",
     "US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS",
     "US_ESI_PREMIUMS_STAGE_NAME",
-    "US_ESI_PRE_TAX_PREMIUM_COLUMN",
     "derive_us_employer_esi_premiums_from_manifest",
-    "derive_us_pre_tax_health_insurance_premiums_from_manifest",
     "load_meps_ic_esi_premium_cells",
     "meps_ic_private_active_employer_totals",
     "refuse_unassigned_us_esi_premiums",
@@ -142,11 +127,7 @@ __all__ = [
 
 US_ESI_PREMIUMS_STAGE_NAME = "meps_esi_premiums"
 US_ESI_EMPLOYER_PREMIUM_COLUMN = "employer_sponsored_insurance_premiums"
-US_ESI_PRE_TAX_PREMIUM_COLUMN = "pre_tax_health_insurance_premiums"
-US_ESI_PREMIUMS_OUTPUT_COLUMNS: tuple[str, ...] = (
-    US_ESI_EMPLOYER_PREMIUM_COLUMN,
-    US_ESI_PRE_TAX_PREMIUM_COLUMN,
-)
+US_ESI_PREMIUMS_OUTPUT_COLUMNS: tuple[str, ...] = (US_ESI_EMPLOYER_PREMIUM_COLUMN,)
 US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS = US_ESI_PREMIUMS_OUTPUT_COLUMNS
 
 #: Raw CPS ASEC person columns the stage reads (the six NOW_*/PEMLR/NOEMP
@@ -161,8 +142,6 @@ US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "PEMLR",
     "NOEMP",
     "PEIO1COW",
-    "PHIP_VAL",
-    "WSAL_VAL",
     "state_fips",
 )
 
@@ -210,9 +189,8 @@ _PRIVATE_EMPLOYER_CODES = (4, 5, 6)
 _EMPLOYER_SECTOR_CODES = (_FEDERAL, _STATE_GOVERNMENT, _LOCAL_GOVERNMENT, 4, 5, 6)
 
 _CELLS_RESOURCE = "meps_ic_esi_premium_cells.json"
-_CELLS_SHA256 = "0d3a2facb8c161fa6ea0ed43ba09a69253a4b593c7b0d42e5c87c4c4cf5b769c"
+_CELLS_SHA256 = "29a5502abbd921e70007d6bcec8ed1ae065b309cacfa80f49f9bc4dd9a28ec93"
 _PERSON_WEIGHT_COLUMN = "person_weight"
-_DRAW_SALT = US_ESI_PRE_TAX_PREMIUM_COLUMN
 
 _BEA_SECTION7_URL = (
     "https://apps.bea.gov/national/Release/XLS/Survey/Section7All_xls.xlsx"
@@ -224,8 +202,6 @@ _NHE_TABLES_URL = "https://www.cms.gov/files/zip/nhe-tables.zip"
 #: private, federal and State and local employers, for active employees, COBRA
 #: enrollees and retirees. The anchor microcosm#454 chose; banked in the
 #: pinned feed as cms_nhe.cy{2023,2024}.esi_employer_contribution_premiums.
-#: ``employee_contribution`` is the same table's employee row, the ceiling on
-#: pre-tax employee premiums.
 EMPLOYER_PREMIUM_ANCHOR: Mapping[str, Any] = MappingProxyType(
     {
         "source": _NHE_TABLES_URL,
@@ -238,10 +214,6 @@ EMPLOYER_PREMIUM_ANCHOR: Mapping[str, Any] = MappingProxyType(
         ),
         # Integer dollars: the manifest round-trips through YAML.
         "values": {"2023": 975_700_000_000, "2024": 1_047_000_000_000},
-        "employee_contribution": {
-            "2023": 357_800_000_000,
-            "2024": 382_100_000_000,
-        },
     }
 )
 #: BEA NIPA Table 7.8 line 17 (B4923C), millions of dollars converted to
@@ -285,9 +257,6 @@ _RAW_MEAN_BAND = (6_000.0, 20_000.0)
 #: Weighted share of all persons with a positive employer premium. Measured
 #: on both pinned pools: 22.7%.
 _POSITIVE_SHARE_BAND = (0.15, 0.32)
-#: Weighted share of all persons with a positive pre-tax premium. Measured on
-#: both pinned pools: 16.1%.
-_PRE_TAX_POSITIVE_SHARE_BAND = (0.05, 0.25)
 #: Employed policyholders' share of the anchor-universe employer total.
 #: Measured on the pinned pools: 88.4% and 88.2%. A release whose calibration
 #: moves the split far from that has reweighted workers against retirees.
@@ -337,19 +306,6 @@ _EMPLOYER_PREMIUM_PARAMETERS: Mapping[str, Any] = MappingProxyType(
         },
     }
 )
-_PRE_TAX_PARAMETERS: Mapping[str, Any] = MappingProxyType(
-    {
-        "seed_from_build_config": True,
-        "premium_column": "PHIP_VAL",
-        "wage_column": "WSAL_VAL",
-        "amount": "min(PHIP_VAL, WSAL_VAL)",
-        "employer_payment_codes": [_PAYS_SOME, _PAYS_NONE],
-        "pre_tax_share": (
-            "MEPS-IC 2025 Table I.A.2.j pretax-contribution offer percent / "
-            "Table I.A.2 health-insurance offer percent, by firm size"
-        ),
-    }
-)
 
 
 def us_esi_premiums_stage_spec() -> SourceStageSpec:
@@ -373,7 +329,6 @@ def us_esi_premiums_stage_spec() -> SourceStageSpec:
             "derive_employer_sponsored_insurance_premiums",
             _plain(_EMPLOYER_PREMIUM_PARAMETERS),
         ),
-        ("derive_pre_tax_health_insurance_premiums", _plain(_PRE_TAX_PARAMETERS)),
     )
     actual = tuple(
         (operation.kind, dict(operation.parameters)) for operation in spec.operations
@@ -381,7 +336,7 @@ def us_esi_premiums_stage_spec() -> SourceStageSpec:
     if actual != expected:
         raise ValueError(
             "US ESI premium operations drifted from the reviewed MEPS-IC cell "
-            "assignment and pre-tax share contract."
+            "assignment contract."
         )
     return spec
 
@@ -759,15 +714,6 @@ def derive_us_employer_esi_premiums_from_manifest(
     return result
 
 
-def _pre_tax_shares(cells: Mapping[str, Any]) -> dict[str, float]:
-    rows = cells["pretax_contribution_2025"]["rows"]
-    return {
-        size: rows[size]["pretax_contribution_offer_percent"]
-        / rows[size]["health_insurance_offer_percent"]
-        for size in ("total", "lt50", "50plus")
-    }
-
-
 def _stable_person_keys(frame: pd.DataFrame) -> pd.Series:
     if {"source_year", "source_household_id", "source_person_id"} <= set(frame.columns):
         return (
@@ -778,88 +724,6 @@ def _stable_person_keys(frame: pd.DataFrame) -> pd.Series:
             + frame["source_person_id"].astype(str)
         )
     return frame["person_id"].astype(str)
-
-
-def _stable_person_draws(frame: pd.DataFrame, *, seed: int) -> np.ndarray:
-    """Seeded uniform draws keyed by stable source identity per person.
-
-    Support-channel clones share their source identity, so they always
-    receive the same draw; frames without source columns key on the person
-    id itself.
-    """
-
-    denominator = float(2**64)
-    return np.asarray(
-        [
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{_DRAW_SALT}:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in _stable_person_keys(frame)
-        ],
-        dtype=np.float64,
-    )
-
-
-def _pre_tax_amounts(
-    frame: pd.DataFrame, codes: _EsiCodes
-) -> tuple[np.ndarray, np.ndarray]:
-    """Eligibility mask and the amount an eligible person would pay pre-tax.
-
-    The amount is the reported premium capped at wages: a payroll deduction
-    cannot exceed the pay it is taken from.
-    """
-
-    premium = pd.to_numeric(frame["PHIP_VAL"], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
-    wages = pd.to_numeric(frame["WSAL_VAL"], errors="coerce").to_numpy(dtype=np.float64)
-    if not (np.isfinite(premium).all() and np.isfinite(wages).all()):
-        raise SourceRuntimeError(
-            "US ESI premium stage requires finite PHIP_VAL and WSAL_VAL."
-        )
-    eligible = (
-        codes.universe
-        & np.isin(codes.hipaid, [_PAYS_SOME, _PAYS_NONE])
-        & (wages > 0)
-        & (premium > 0)
-    )
-    return eligible, np.minimum(premium, wages)
-
-
-def derive_us_pre_tax_health_insurance_premiums_from_manifest(
-    frame: pd.DataFrame | None,
-    operation: SourceOperationSpec,
-    context: SourceRuntimeContext,
-) -> pd.DataFrame:
-    """Route an eligible policyholder's reported premium through payroll."""
-
-    if operation.kind != "derive_pre_tax_health_insurance_premiums":
-        raise SourceRuntimeError(
-            f"Unexpected ESI premium operation {operation.kind!r}."
-        )
-    if frame is None:
-        raise SourceRuntimeError(
-            "Pre-tax premium assignment requires the person table."
-        )
-    _check_parameters(operation, _PRE_TAX_PARAMETERS)
-    codes = _esi_person_codes(frame)
-    eligible, amount = _pre_tax_amounts(frame, codes)
-    shares = _pre_tax_shares(load_meps_ic_esi_premium_cells())
-    probability = (
-        pd.Series(codes.noemp).map(dict(_SIZE_BY_NOEMP)).map(shares).to_numpy()
-    )
-    draws = _stable_person_draws(frame, seed=context.config.seed)
-    result = frame.copy(deep=True)
-    result[US_ESI_PRE_TAX_PREMIUM_COLUMN] = np.where(
-        eligible & (draws < probability), amount, 0.0
-    )
-    return result
 
 
 def _person_with_state(frame: Frame) -> pd.DataFrame:
@@ -894,9 +758,11 @@ def _outputs_carry_signal(person: pd.DataFrame) -> bool:
 def with_us_esi_premium_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
     """Run the ``meps_esi_premiums`` stage over a US frame.
 
-    A frame that already carries both outputs with signal and passes the
-    signal gate is returned unchanged (idempotent). Otherwise the person table
-    must still carry the raw ASEC columns; the stage never defaults them.
+    A frame that already carries the output with signal and passes the signal
+    gate is returned unchanged (idempotent). Otherwise the person table must
+    still carry the raw ASEC columns; the stage never defaults them. The
+    assignment is deterministic: ``seed`` only fills the runtime config that
+    every source stage takes.
     """
 
     if frame.schema != US_SCHEMA:
@@ -919,9 +785,6 @@ def with_us_esi_premium_inputs(frame: Frame, *, seed: int, time_period: int) -> 
             "derive_employer_sponsored_insurance_premiums": (
                 derive_us_employer_esi_premiums_from_manifest
             ),
-            "derive_pre_tax_health_insurance_premiums": (
-                derive_us_pre_tax_health_insurance_premiums_from_manifest
-            ),
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
     )
@@ -943,12 +806,12 @@ def with_us_esi_premium_inputs(frame: Frame, *, seed: int, time_period: int) -> 
 
 
 def refuse_unassigned_us_esi_premiums(frame: Frame, *, consumer: str) -> None:
-    """Refuse a frame whose ESI premium inputs are null on some rows.
+    """Refuse a frame whose ESI employer premium input is null on some rows.
 
     A lineage that pools rows the stage never ran on (ACS-spine rows beside an
-    ASEC donor that carries the columns) leaves them null there. Filling those
-    with the engine default would ship columns that are zero on part of the
-    population yet look populated, and no anchor gate runs on that lineage, so
+    ASEC donor that carries the column) leaves it null there. Filling those
+    with the engine default would ship a column that is zero on part of the
+    population yet looks populated, and no anchor gate runs on that lineage, so
     the consumer refuses instead.
     """
 
@@ -962,8 +825,8 @@ def refuse_unassigned_us_esi_premiums(frame: Frame, *, consumer: str) -> None:
         raise SourceRuntimeError(
             f"{consumer}: ESI premium input(s) are null on some rows {gaps}. The "
             "meps_esi_premiums stage (microcosm#454) ran on the ASEC rows only; "
-            "these columns are never filled with an engine default. Assign or "
-            "transfer them for every spine before building this lineage."
+            "its output is never filled with an engine default. Assign or "
+            "transfer it for every spine before building this lineage."
         )
 
 
@@ -1005,7 +868,6 @@ def us_esi_premiums_summary(frame: Frame) -> dict[str, object]:
     person = frame.table("person")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
     employer = person[US_ESI_EMPLOYER_PREMIUM_COLUMN].to_numpy(dtype=np.float64)
-    pre_tax = person[US_ESI_PRE_TAX_PREMIUM_COLUMN].to_numpy(dtype=np.float64)
     positive = employer > 0
     total_weight = float(weights.sum())
     holders = float(weights[positive].sum())
@@ -1019,15 +881,8 @@ def us_esi_premiums_summary(frame: Frame) -> dict[str, object]:
         "employer_premium_positive_share": holders / total_weight
         if total_weight
         else 0.0,
-        "pre_tax_premium_total": _weighted(weights, pre_tax),
-        "pre_tax_premium_positive_persons": float(weights[pre_tax > 0].sum()),
-        "pre_tax_premium_positive_share": (
-            float(weights[pre_tax > 0].sum()) / total_weight if total_weight else 0.0
-        ),
-        "nonfinite_rows": int(
-            (~np.isfinite(employer)).sum() + (~np.isfinite(pre_tax)).sum()
-        ),
-        "negative_rows": int((employer < 0).sum() + (pre_tax < 0).sum()),
+        "nonfinite_rows": int((~np.isfinite(employer)).sum()),
+        "negative_rows": int((employer < 0).sum()),
         "clone_disagreement_source_persons": _clone_disagreements(person),
         "anchor": dict(EMPLOYER_PREMIUM_ANCHOR),
         "cross_check": dict(EMPLOYER_PREMIUM_CROSS_CHECK),
@@ -1052,7 +907,6 @@ def us_esi_premiums_summary(frame: Frame) -> dict[str, object]:
         if raw_universe_total
         else float("nan")
     )
-    eligible, amount = _pre_tax_amounts(person, codes)
     by_tier = {
         tier: _weighted(weights, employer, universe & (codes.tier == code))
         for code, tier in _TIER_BY_CODE.items()
@@ -1123,18 +977,6 @@ def us_esi_premiums_summary(frame: Frame) -> dict[str, object]:
         "employer_premium_without_raw_share_rows": int(
             (positive & ~raw_positive).sum()
         ),
-        "pre_tax_ineligible_rows": int(((pre_tax > 0) & ~eligible).sum()),
-        "pre_tax_amount_mismatch_rows": int(
-            ((pre_tax > 0) & ~np.isclose(pre_tax, amount)).sum()
-        ),
-        "pre_tax_eligible_weight": float(weights[eligible].sum()),
-        "pre_tax_selected_share_of_eligible": (
-            float(weights[eligible & (pre_tax > 0)].sum())
-            / float(weights[eligible].sum())
-            if eligible.any()
-            else 0.0
-        ),
-        "pre_tax_shares": _pre_tax_shares(load_meps_ic_esi_premium_cells()),
         "meps_ic_private_active_employer_total": (
             meps_ic_private_active_employer_totals(load_meps_ic_esi_premium_cells())
         ),
@@ -1151,13 +993,12 @@ def _missing_source_failure(missing: list[str], consequence: str) -> str:
 
 
 def us_esi_premiums_signal_gate(frame: Frame) -> GateResult:
-    """Structure and scale-invariant signal of the two ESI premium inputs.
+    """Structure and scale-invariant signal of the ESI employer premium input.
 
     Holds on any frame size (smoke builds included). It proves every positive
-    value sits in the employed-policyholder universe, equals one common
-    multiple of its MEPS-IC cell, and that pre-tax premiums are the reported,
-    wage-capped premiums of eligible people. Those proofs read the raw ASEC
-    columns, so a frame without them fails: it cannot be certified.
+    value sits in the employed-policyholder universe and equals one common
+    multiple of its MEPS-IC cell. Those proofs read the raw ASEC columns, so a
+    frame without them fails: it cannot be certified.
     """
 
     person = frame.table("person")
@@ -1209,11 +1050,6 @@ def us_esi_premiums_signal_gate(frame: Frame) -> GateResult:
             "employer_premium_without_raw_share_rows",
             "employer premium(s) with no MEPS-IC share",
         ),
-        ("pre_tax_ineligible_rows", "pre-tax premium(s) for ineligible people"),
-        (
-            "pre_tax_amount_mismatch_rows",
-            "pre-tax premium(s) not equal to min(PHIP_VAL, WSAL_VAL)",
-        ),
     ):
         count = int(summary.get(key, 0))
         if count:
@@ -1223,12 +1059,6 @@ def us_esi_premiums_signal_gate(frame: Frame) -> GateResult:
     if not low <= share <= high:
         failures.append(
             f"employer premium positive share {share:.4f} outside [{low}, {high}]."
-        )
-    share = float(summary["pre_tax_premium_positive_share"])
-    low, high = _PRE_TAX_POSITIVE_SHARE_BAND
-    if not low <= share <= high:
-        failures.append(
-            f"pre-tax premium positive share {share:.4f} outside [{low}, {high}]."
         )
     if "raw_employer_share_mean_per_positive_person" in summary:
         mean = float(summary["raw_employer_share_mean_per_positive_person"])
@@ -1254,20 +1084,19 @@ def us_esi_premiums_signal_gate(frame: Frame) -> GateResult:
 
 
 def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult:
-    """Hold a release's weighted ESI premium totals to their external anchor.
+    """Hold a release's weighted ESI employer premium total to its anchor.
 
     Runs on the calibrated export (dense and sparse). The anchor, CMS NHE
     Table 24, counts employer contributions for every policyholder, so the
     gate compares the anchor-universe total: the column (employed
     policyholders) plus the same scale factor applied to the other
     policyholders' MEPS-IC shares, recomputed from the raw ASEC columns at the
-    frame's weights. It fails when either column is absent or zero-mass, when
+    frame's weights. It fails when the column is absent or zero-mass, when
     the raw columns are absent, when that total leaves
-    ±``ANCHOR_RELATIVE_TOLERANCE`` of the anchor for ``time_period``, when the
-    employed share of it leaves its band, or when pre-tax premiums exceed
-    NHE's employee contribution (which also counts retiree- and COBRA-paid
-    premiums). BEA NIPA 7.8 line 17 and MEPS-IC's own private-sector
-    enrollment total are recorded beside the verdict, not gated.
+    ±``ANCHOR_RELATIVE_TOLERANCE`` of the anchor for ``time_period``, or when
+    the employed share of it leaves its band. BEA NIPA 7.8 line 17 and
+    MEPS-IC's own private-sector enrollment total are recorded beside the
+    verdict, not gated.
     """
 
     person = frame.table("person")
@@ -1293,13 +1122,11 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
             details={"structural_error": str(exc)},
         )
     employer_total = float(summary["employer_premium_total"])
-    pre_tax_total = float(summary["pre_tax_premium_total"])
     year = str(int(time_period))
     failures: list[str] = []
     details: dict[str, object] = {
         "time_period": int(time_period),
         "employer_premium_total": employer_total,
-        "pre_tax_premium_total": pre_tax_total,
         "employer_premium_positive_persons": summary[
             "employer_premium_positive_persons"
         ],
@@ -1310,12 +1137,8 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
         "anchor": dict(EMPLOYER_PREMIUM_ANCHOR),
         "cross_check": dict(EMPLOYER_PREMIUM_CROSS_CHECK),
     }
-    for column, total in (
-        (US_ESI_EMPLOYER_PREMIUM_COLUMN, employer_total),
-        (US_ESI_PRE_TAX_PREMIUM_COLUMN, pre_tax_total),
-    ):
-        if not total > 0:
-            failures.append(f"{column}: zero weighted mass.")
+    if not employer_total > 0:
+        failures.append(f"{US_ESI_EMPLOYER_PREMIUM_COLUMN}: zero weighted mass.")
     anchor = EMPLOYER_PREMIUM_ANCHOR["values"].get(year)
     if anchor is None:
         failures.append(f"no NHE Table 24 employer-contribution anchor for {year}.")
@@ -1375,15 +1198,6 @@ def us_esi_premiums_anchor_gate(frame: Frame, *, time_period: int) -> GateResult
                 "employer_premium_private_sector": private,
                 "ratio": private / active[year],
             }
-    employee = EMPLOYER_PREMIUM_ANCHOR["employee_contribution"].get(year)
-    if employee is not None:
-        details["pre_tax_over_employee_contribution"] = pre_tax_total / float(employee)
-        if pre_tax_total > float(employee):
-            failures.append(
-                f"{US_ESI_PRE_TAX_PREMIUM_COLUMN}: weighted total "
-                f"${pre_tax_total / 1e9:,.1f}B exceeds NHE Table 24's employee "
-                f"contribution ${float(employee) / 1e9:,.1f}B."
-            )
     return GateResult(
         name="esi_premiums_anchor",
         passed=not failures,

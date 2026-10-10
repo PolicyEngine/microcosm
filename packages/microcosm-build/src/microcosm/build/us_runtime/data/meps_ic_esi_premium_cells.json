@@ -1,5 +1,5 @@
 {
- "description": "MEPS-IC average total premium and average employee contribution per enrolled employee, by coverage tier, for the meps_esi_premiums source stage: private-sector cells by State and firm size (2025), State and local government cells by census division (2024, the latest published year), the 2024 private national rows that age the government cells, the 2025 national share of enrollees whose coverage required no employee contribution, the 2024 and 2025 national private-sector enrollment rows, and the 2025 firm-size pretax-contribution offer rates. Values are copied as published; null marks a cell AHRQ suppressed ('--'). Dollar values are annual; percent values are percents; employee counts are persons.",
+ "description": "MEPS-IC average total premium and average employee contribution per enrolled employee, by coverage tier, for the meps_esi_premiums source stage: private-sector cells by State and firm size (2025), State and local government cells by census division (2024, the latest published year), the 2024 private national rows that age the government cells, the 2025 national share of enrollees whose coverage required no employee contribution, and the 2024 and 2025 national private-sector enrollment rows. Values are copied as published; null marks a cell AHRQ suppressed ('--'). Dollar values are annual; percent values are percents; employee counts are persons.",
  "extraction": {
   "method": "pdftotext -layout, one row per label, refusing any label that does not match exactly one line",
   "pdftotext": "pdftotext version 26.09.0"
@@ -28,25 +28,6 @@
    "title": "Table II.C.4.a Percent of private-sector employees enrolled in a health insurance plan that take single coverage that required no employee contribution by firm size and State: United States, 2025",
    "total": 13.0
   }
- },
- "pretax_contribution_2025": {
-  "offer_title": "Table I.A.2 Percent of private-sector establishments that offer health insurance by firm size and selected characteristics: United States,",
-  "rows": {
-   "50plus": {
-    "health_insurance_offer_percent": 94.8,
-    "pretax_contribution_offer_percent": 87.8
-   },
-   "lt50": {
-    "health_insurance_offer_percent": 32.1,
-    "pretax_contribution_offer_percent": 15.9
-   },
-   "total": {
-    "health_insurance_offer_percent": 49.2,
-    "pretax_contribution_offer_percent": 35.5
-   }
-  },
-  "text_line": 2376,
-  "title": "Table I.A.2.j Percent of private-sector establishments that offer tax-advantaged benefits for contributions to health insurance, Flexible"
  },
  "private_enrollment_national": {
   "2024": {
@@ -2124,14 +2105,6 @@
  },
  "schema_version": 2,
  "sources": {
-  "private_national_2025": {
-   "description": "MEPS-IC 2025 Series I (private sector, national): Table I.A.2 (percent of establishments that offer health insurance) and Table I.A.2.j (percent of establishments that offer pretax employee contributions to health insurance), by firm size",
-   "publisher": "Agency for Healthcare Research and Quality, Center for Financing, Access and Cost Trends, Medical Expenditure Panel Survey-Insurance Component",
-   "sha256": "cceba5da68e41caf1b03b83f93d1c20fc1aa1b3ccd0eefc4a9dfc80754c950f3",
-   "size_bytes": 9210366,
-   "survey_year": 2025,
-   "url": "https://meps.ahrq.gov/mepsweb/data_stats/summ_tables/insr/national/series_1/2025/ic25_ia_g.pdf"
-  },
   "private_state_2024": {
    "description": "MEPS-IC 2024 Series II (private sector, by firm size and State); the United States rows age the 2024 State and local government cells to 2025 and carry the 2024 private-sector enrollment",
    "publisher": "Agency for Healthcare Research and Quality, Center for Financing, Access and Cost Trends, Medical Expenditure Panel Survey-Insurance Component",

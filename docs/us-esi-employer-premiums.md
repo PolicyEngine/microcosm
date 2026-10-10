@@ -5,26 +5,25 @@ Status as of 2026-10-10. Code: `microcosm.build.us_runtime.esi_premiums`
 
 ## What the stage produces
 
-Two PolicyEngine-US person inputs that no Microcosm stage produced. Their
-consumers were read in the locked engine, policyengine-us 2.2.1:
+One PolicyEngine-US person input that no Microcosm stage produced,
+`employer_sponsored_insurance_premiums`. Its consumer was read in the locked
+engine, policyengine-us 2.2.1: `gov.household.cbo_market_income_additions`,
+summed into `cbo_household_market_income`. No other variable or parameter
+list names it.
 
-| Input | Engine consumer |
-|---|---|
-| `employer_sponsored_insurance_premiums` | `gov.household.cbo_market_income_additions`, summed into `cbo_household_market_income`. No other variable or parameter list names it. |
-| `pre_tax_health_insurance_premiums` | `gov.irs.gross_income.pre_tax_contributions`, subtracted from `employment_income` in `irs_employment_income`; and `gov.irs.gross_income.fica_pre_tax_contributions`, subtracted in `payroll_tax_gross_wages`. |
+`tests/engine_contract/us/test_us_esi_premiums_engine.py` computes it in the
+engine for one worker: a $10,000 employer premium raises
+`cbo_household_market_income` by exactly $10,000 and moves none of the tax
+measures.
 
-`tests/engine_contract/us/test_us_esi_premiums_engine.py` computes both in the
-engine for one worker: a $2,000 pre-tax premium lowers `irs_employment_income`,
-`payroll_tax_gross_wages` and adjusted gross income by exactly $2,000, and a
-$10,000 employer premium raises `cbo_household_market_income` by exactly
-$10,000 and moves none of the tax measures. The engine floors
-`irs_employment_income` at zero, so the dollar-for-dollar reduction holds only
-while a person's pre-tax contributions stay under their wages.
-
-The first was a recorded parity gap: the retired eCPS derivation (archived
+It was a recorded parity gap: the retired eCPS derivation (archived
 `42ed5d45`, `datasets/cps/cps.py` L197-271) read the CPS ASEC current
 employment-based coverage fields, and every pinned processed ASEC input omits
-them. The second never had a producer.
+them.
+
+The stage does not produce `pre_tax_health_insurance_premiums`, the employee
+share paid by pre-tax payroll deduction. See "The pre-tax employee premium"
+below.
 
 ## Source fields
 
@@ -57,9 +56,8 @@ does not read `NOW_GRP` or `has_esi`: neither identifies the policyholder. (In
 the four files every policyholder also has `NOW_GRP == 1`; that was observed,
 and the stage does not enforce it.)
 
-`PEIO1COW` (class of worker), `PHIP_VAL` (premiums paid out of pocket last
-year) and `WSAL_VAL` are in the pinned inputs already. State is the household
-`GESTFIPS`.
+`PEIO1COW` (class of worker) is in the pinned inputs already. State is the
+household `GESTFIPS`.
 
 ## Employer premium
 
@@ -171,7 +169,7 @@ factor times the employed policyholders' shares.
 
 | Series | CY2024 | Who it covers |
 |---|---:|---|
-| CMS NHE Table 24, "Employer Contribution to Private Health Insurance Premiums" | **$1,047.0B** | Private, federal and State and local employers. The NHEA methodology paper (2024, p. 28) says the estimates cover "active employees, continuation of health coverage (COBRA), and retirees" of private and State and local sponsors, from MEPS-IC, and federal "employers, employees and retirees", from OPM. |
+| CMS NHE Table 24, "Employer Contribution to Private Health Insurance Premiums" | **$1,047.0B** | Private, federal and State and local employers. The NHEA methodology paper (2024, p. 29) says the estimates cover "active employees, continuation of health coverage (COBRA), and retirees" of private and State and local sponsors, from MEPS-IC, and federal "employers, employees and retirees", from OPM. |
 | BEA NIPA Table 7.8 line 17, B4923C, "Private group health insurance" | $977.0B | Employer contributions as a supplement to wages and salaries. BEA's State Personal Income methodology (December 2025, paragraphs 3.18 and 3.19) says its MEPS source "covers both health insurance purchased by employers for their active and retired employees" and that the federal estimate covers "active and retired federal civilian employees". |
 
 Both series measure the same concept, and both include retirees. The stage
@@ -214,70 +212,38 @@ figure; under the BEA reading it would be $665.6B, 0.4% below. The check
 covers the private sector only (77% of the column) and shares the cells'
 source, so it informs the choice without settling it.
 
-## Pre-tax employee premium
+## The pre-tax employee premium
 
-**Eligible.** A person in the column universe with wages last year
-(`WSAL_VAL` > 0), a reported premium (`PHIP_VAL` > 0) and an employee share to
-pay (`NOW_HIPAID` 2 or 3).
+`pre_tax_health_insurance_premiums` has no producer, and this stage does not
+add one.
 
-**Amount.** The reported premium capped at wages, `min(PHIP_VAL, WSAL_VAL)`,
-or zero. A payroll deduction cannot exceed the pay it is taken from; the cap
-binds on 217 eligible rows of the default pool and lowers the eligible total
-by 0.6%.
+PolicyEngine-US treats the premium inputs as disjoint: a premium paid by
+pre-tax payroll deduction belongs only in `pre_tax_health_insurance_premiums`,
+and `health_insurance_premiums_without_medicare_part_b`,
+`other_health_insurance_premiums` and `health_insurance_premiums` hold the
+premiums not paid that way (PolicyEngine/policyengine-us#10046). The base
+carries the whole reported premium (`PHIP_VAL`) in the second set. A producer
+therefore has to move the pre-tax dollars out of the reported premium, not
+copy them:
 
-**Probability.** The share of insurance-offering private establishments that
-offer pretax employee contributions, by firm size: MEPS-IC 2025 Table I.A.2.j
-over Table I.A.2.
+- Copying them would count the same premium twice. The engine would exclude
+  it from wages and still deduct it for itemizers with medical expenses above
+  the floor (for a filer with $60,000 of wages, $20,000 of other medical
+  expenses and a $2,000 premium, income tax of $4,445.74 against $4,685.74).
+- Moving them is only right on an engine that counts the pre-tax input where
+  the reported premium was counted. policyengine-us 2.2.1 does not: its
+  `spm_unit_health_insurance_premiums` adds `other_health_insurance_premiums`
+  and the modeled premiums, not the pre-tax input, so the moved dollars would
+  drop out of SPM medical out-of-pocket expenses. #10046 adds it.
+- Moving about $180 billion out of two premium inputs also changes what the
+  release tool's input-mass parity gate and the eCPS parity reference expect
+  of those columns.
 
-| Firm size | Offer pretax contributions | Offer health insurance | Share used |
-|---|---:|---:|---:|
-| Under 50 | 15.9% | 32.1% | 49.5% |
-| 50 or more | 87.8% | 94.8% | 92.6% |
-| All (size unknown) | 35.5% | 49.2% | 72.2% |
-
-The draw is a seeded blake2b uniform keyed by source identity, so the two
-support clones of a person agree and a rerun is bit-reproducible.
-
-Assumptions, each a known limit:
-
-- Table I.A.2.j's denominator is all establishments. Its title does not say
-  "that offer health insurance", unlike its neighbors I.A.2.a to I.A.2.i, so
-  the stage divides by the offer rate. This assumes pretax premium
-  contributions exist only where insurance is offered.
-- The rates are establishment-weighted, and the published firm-size bands
-  rise with size, so among private employers they understate the
-  enrollee-weighted rate. That does not make the column as a whole a lower
-  estimate, because of the next two points.
-- Government employers take the private firm-size rate for their `NOEMP`.
-- `PHIP_VAL` covers every premium the person paid last year, not only the ESI
-  employee share.
-- Coverage is measured at interview and the premium over the prior calendar
-  year.
-
-### A known engine defect for itemizers
-
-A premium paid by pre-tax salary reduction is excluded from wages and is not
-a deductible medical expense. policyengine-us 2.2.1 excludes it from wages and
-still counts it in `itemized_medical_expenses`, because
-`medical_expense_health_insurance_premiums` returns the whole reported premium
-(`health_insurance_premiums_without_medicare_part_b`, which the base carries
-from `PHIP_VAL`). A tax unit that itemizes with medical expenses above the
-7.5% floor therefore deducts the premium twice. For a single filer with
-$60,000 of wages, $20,000 of other medical expenses and a $2,000 pre-tax
-premium, income tax is $4,445.74 in the engine against $4,685.74 with the
-premium out of the medical base, a $240 difference.
-
-The stage cannot repair this in the data. The same reported premium feeds the
-SNAP, HUD and Medicaid medical-expense definitions, which count it whatever
-its tax treatment, so removing it from the input would break those. The fix
-belongs in the engine: PolicyEngine/policyengine-us#10064.
-`test_known_engine_defect_a_pre_tax_premium_stays_in_itemized_medical_expenses`
-pins the defect, so the engine release that fixes it turns that test red and
-this caveat comes out.
-
-For everyone who does not itemize above the floor, the input moves taxable
-wages in the right direction. The size of the affected group has not been
-measured on a release.
+An earlier round of this work assigned the reported premium, capped at wages,
+to eligible workers at MEPS-IC pretax-offer rates and measured $180.1 billion
+over 52.5 million workers on the default pool. That code is on branch
+`esi-pre-tax-premiums-454` and is the starting point for the follow-up, which
+is sequenced after an engine pin that includes #10046.
 
 ## Measurements on the pinned inputs
 
@@ -301,8 +267,6 @@ pre-calibration figures at pooled ASEC weights, target year 2024.
 | Mean per employed policyholder | $11,616 | $11,579 |
 | By tier: family / self plus one / self-only | $393.1B / $198.2B / $334.4B | $393.2B / $199.7B / $331.0B |
 | By employer: private / State and local / federal | $713.2B / $174.3B / $38.1B | $711.2B / $174.1B / $38.6B |
-| Pre-tax premiums | $180.1B over 52.5M | $173.6B over 52.5M |
-| Share of eligible workers selected | 86.5% | 86.6% |
 
 Of the 12.7M other policyholders in the default pool, 7.1M are retired
 (`PEMLR` 5), 2.1M are otherwise out of the labor force (7), 0.9M are disabled
@@ -316,19 +280,19 @@ the PUF-support clone, and the clone conserves both totals.
 
 | Gate | Where | Checks |
 |---|---|---|
-| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Columns present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share; every pre-tax premium is the wage-capped reported premium of an eligible person. |
-| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | Either column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. Pre-tax premiums must be at or below NHE's employee contribution ($382.1B). |
-| `us_release_input_coverage_gate` | release tool | Both inputs are `required` with no reviewed exclusion, so an export that drops or flattens either fails. |
-| reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B; neutralizing the pre-tax premium must raise `income_tax` by at least $5B. |
+| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. |
+| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of NHE Table 24 for the release period. Employed policyholders must carry 80% to 95% of it. |
+| `us_release_input_coverage_gate` | release tool | The input is `required` with no reviewed exclusion, so an export that drops or flattens it fails. |
+| reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B. |
 
 What the gates need, and what they do not catch:
 
 - **They need the raw ASEC columns.** Both gates recompute the assignment
-  from `NOW_OWNGRP`, `NOW_HIPAID`, `NOW_GRPFTYP2`, `PEMLR`, `NOEMP`,
-  `PEIO1COW`, `PHIP_VAL`, `WSAL_VAL` and State. A frame missing any of them
-  fails both: it cannot be certified. Published release files carry raw ASEC
-  person fields today (`PEIO1COW`, `PHIP_VAL`, `WSAL_VAL`, `NOW_MCAID`); a
-  release path that dropped the restored columns would turn both gates red.
+  from `NOW_OWNGRP`, `NOW_HIPAID`, `NOW_GRPFTYP`, `NOW_GRPFTYP2`, `PEMLR`,
+  `NOEMP`, `PEIO1COW` and State. A frame missing any of them fails both: it
+  cannot be certified. Published release files carry raw ASEC person fields
+  today (`PEIO1COW`, `PHIP_VAL`, `WSAL_VAL`, `NOW_MCAID`); a release path
+  that dropped the restored columns would turn both gates red.
 - **The raw-mean band catches unit errors only.** The signal gate requires
   the unscaled share per holder to sit between $6k and $20k, which catches a
   cell table in the wrong units. A cell table that is 20% low passes: the
@@ -351,7 +315,7 @@ stage; the failures it waives are still written to that file.
 - Census person members: pinned in
   `education_assistance_source.ASEC_EDUCATION_ASSISTANCE_ARCHIVES` (archive
   and member SHA-256), read by the #720 restoration.
-- MEPS-IC cells: four AHRQ PDFs pinned by URL, byte length and SHA-256 in
+- MEPS-IC cells: three AHRQ PDFs pinned by URL, byte length and SHA-256 in
   `tools/build_us_meps_ic_esi_cells.py`, extracted to
   `us_runtime/data/meps_ic_esi_premium_cells.json`, whose own SHA-256 the
   stage pins and checks on load.
@@ -369,17 +333,13 @@ stage; the failures it waives are still written to that file.
   CPS-source rows that carry only part of the stacked population's weight, so
   scaling to a national total there needs its own design. Until then the
   coverage and anchor gates are red on that lineage. The raw-stage operator
-  boundary already refuses a source frame that carries the two outputs.
+  boundary already refuses a source frame that carries the output.
 - **ACS local releases.** An ACS spine pooled beside a donor that carries the
-  two inputs has them null on its ACS rows. `fill_reviewed_nulls` refuses
-  that frame instead of default-filling it to zero, so this lineage does not
-  build until the inputs are assigned or transferred for every spine.
+  input has it null on its ACS rows. `fill_reviewed_nulls` refuses that frame
+  instead of default-filling it to zero, so this lineage does not build until
+  the input is assigned or transferred for every spine.
 - **A calibration target.** The column is the employed part of the NHE fact,
   so the fact cannot be compiled as a sum target on it. The target-parity
   manifest keeps the two `cms_nhe` ESI families as `deferred` reviewed
   exclusions and records BEA's series as a source-absent family.
-- **The engine's medical-expense base.** See the itemizer defect above.
-- **The wage targets.** `fiscal_targets.SOI_AMOUNT_MEASURE_VARIABLES` maps SOI
-  wages and salaries to `employment_income`, while the engine taxes
-  `irs_employment_income`, which is net of pre-tax contributions. This stage
-  widens that existing gap by the pre-tax premium total.
+- **The pre-tax employee premium.** See the section above.

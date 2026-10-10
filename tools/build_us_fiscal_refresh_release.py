@@ -1308,9 +1308,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Diagnostic escape hatch (microcosm#454): record the ESI premium "
-            "gates — employer_sponsored_insurance_premiums and "
-            "pre_tax_health_insurance_premiums absent, zero-mass, missing "
-            "their raw ASEC coverage columns, or off the CMS NHE Table 24 "
+            "gates — employer_sponsored_insurance_premiums absent, zero-mass, "
+            "missing its raw ASEC coverage columns, or off the CMS NHE Table 24 "
             "anchor — without failing the build (for example on a base built "
             "before the meps_esi_premiums stage). The failures are still "
             "written to esi_premiums.json. Release builds must leave this "
@@ -14151,8 +14150,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in other_health_insurance_gate.failures
             )
         )
-    # microcosm#454: the meps_esi_premiums base stage owns both ESI premium
-    # inputs; refuse a base that lacks or flattens them before the solve.
+    # microcosm#454: the meps_esi_premiums base stage owns the ESI employer
+    # premium input; refuse a base that lacks or flattens it before the solve.
     esi_premiums_base_gate = us_esi_premiums_signal_gate(base_frame)
     if not esi_premiums_base_gate.passed and not args.allow_esi_premium_gaps:
         if telemetry is not None:

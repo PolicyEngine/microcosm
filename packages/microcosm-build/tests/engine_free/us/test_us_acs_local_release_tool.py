@@ -2098,12 +2098,12 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     assert "l2_lambda=0 " not in penalized["reason"]
 
 
-def test_null_esi_premium_inputs_are_refused_before_any_default_fill(tmp_path) -> None:
-    """microcosm#454: an ACS-spine null in an ESI premium input is never a zero.
+def test_a_null_esi_premium_input_is_refused_before_any_default_fill(tmp_path) -> None:
+    """microcosm#454: an ACS-spine null in the ESI premium input is never a zero.
 
     The ``meps_esi_premiums`` stage runs on the ASEC donor rows only. A pooled
-    frame therefore carries the two inputs as NaN on its ACS rows, and the
-    reviewed-null register would default-fill them to zero for half the
+    frame therefore carries the input as NaN on its ACS rows, and the
+    reviewed-null register would default-fill it to zero for half the
     population while input coverage reads green. The refusal comes first: it
     needs neither the engine nor the register file.
     """
@@ -2123,7 +2123,6 @@ def test_null_esi_premium_inputs_are_refused_before_any_default_fill(tmp_path) -
             "person_marital_unit_id": ids,
             # Two ASEC donor rows, two ACS rows the stage never saw.
             "employer_sponsored_insurance_premiums": [9_000.0, 0.0, np.nan, np.nan],
-            "pre_tax_health_insurance_premiums": [1_500.0, 0.0, np.nan, np.nan],
         }
     )
     frame = Frame(
@@ -2143,4 +2142,3 @@ def test_null_esi_premium_inputs_are_refused_before_any_default_fill(tmp_path) -
         module.fill_reviewed_nulls(frame, absent_register)
     assert "ACS local release" in str(error.value)
     assert "'employer_sponsored_insurance_premiums': 2" in str(error.value)
-    assert "'pre_tax_health_insurance_premiums': 2" in str(error.value)

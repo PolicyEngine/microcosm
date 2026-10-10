@@ -244,7 +244,7 @@ _ESI_ANCHOR_EXCLUSION = (
     "NHE Table 24 employer contribution to ESI premiums. The meps_esi_premiums "
     "base stage (microcosm#454) scales to this fact over the fact's own "
     "universe, every current ESI policyholder (NHEA methodology paper 2024, "
-    "p. 28: active employees, COBRA and retirees), and writes the pe-us input "
+    "p. 29: active employees, COBRA and retirees), and writes the pe-us input "
     "(employer_sponsored_insurance_premiums) for employed policyholders only. "
     "So the fact is not a sum target on the column: the column carries about "
     "88% of it and the rest is priced, not exported. Validation-gated "
