@@ -391,8 +391,10 @@ def author_target_references(
             if operand_selectors:
                 # A ratio-scaled cell resolves its quotient from facts the
                 # row selector never matches (national rows for a region
-                # cell), so the compile sees the source's facts that match
-                # any operand selector as well.
+                # cell), so the compile sees the facts that match any operand
+                # selector as well, read from the operand's own source: a
+                # roll-forward's growth can come from another publisher than
+                # its base (Wales's households by ONS population, #1123).
                 compile_facts = [
                     fact
                     for fact in source_facts
@@ -402,6 +404,15 @@ def author_target_references(
                         for selector in operand_selectors
                     )
                 ]
+                own_source = target["ledger_selector"].get("source_name")
+                compile_facts.extend(
+                    fact
+                    for selector in operand_selectors
+                    if selector.get("source_name")
+                    and selector.get("source_name") != own_source
+                    for fact in facts_by_source.get(str(selector["source_name"]), ())
+                    if _fact_matches_selector(fact, selector)
+                )
             try:
                 registry = compile_ledger_target_references(
                     compile_facts,
