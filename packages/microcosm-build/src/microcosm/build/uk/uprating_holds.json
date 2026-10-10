@@ -209,13 +209,9 @@
       "scope": "local",
       "kind": "control_rescaled",
       "target_ids": [
-        "ons.census.households",
-        "ons.tenure.owned_mortgage",
-        "ons.tenure.owned_outright",
-        "ons.tenure.private_rent",
-        "ons.tenure.social_rent"
+        "ons.census.households"
       ],
-      "reason": "Census 2021 (Scotland 2022) household and tenure cells: their level is set by the 2025 household control (the UK total, microcosm#887 A15/A17, and the nation controls once microcosm#1123 binds them), so only their census shares are held.",
+      "reason": "Census 2021 (Scotland 2022) household cells: their level is set by each nation's 2025 household estimate through the nation and region bridge (microcosm#1123, nations win), so only their census shares within a leg are held. The tenure cells are drifted by SPREE and follow the authority's household reconciliation.",
       "tracking": "microcosm#1123",
       "approved_by": null,
       "approved_on": null,

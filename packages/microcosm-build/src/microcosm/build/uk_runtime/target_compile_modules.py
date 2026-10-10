@@ -39,6 +39,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.tenure_constants",
     "microcosm.build.uk_runtime.uc_relationships",
     "microcosm.build.uk_runtime.uc_source_periods",
+    "microcosm.build.uk_runtime.tenure_drift",
     "microcosm.build.uk_runtime.uprating_holds",
 )
 
