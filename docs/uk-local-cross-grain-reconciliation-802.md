@@ -72,6 +72,38 @@ lower grain is a control grain
 (`national_reconciliation.assert_uk_national_rows_unmoved`): the two passes
 must agree.
 
+## Household, income and caseload controls (#1123)
+
+Five relations reconcile the families the K=25 audit found out of line.
+
+**Census households.** Each nation's official household estimate controls its
+census cells, through a per-geography bridge (`per_geography`: each control
+covers the legs of the geography it sits at):
+
+- the LFS 2025 rows for England's nine regions;
+- NRS 2025 for Scotland;
+- Welsh Government mid-2024, rolled to 2025 by population growth;
+- Northern Ireland's Census 2021 districts, rolled by LPS dwelling stock.
+
+The UK household-composition partition takes the nations' sum in the
+national pass (`sum_bridges`). A15 uprates the census cells to that sum, and
+the LFS UK total is a diagnostic with its gap recorded.
+
+**Tenure.** The census tenure cells partition their authority's households
+(`share_of_parent`). England's shares are drifted by SPREE's 2022–2024 share
+change before the partition.
+
+**HMRC income by area.** The SPI band partition, summed over every band of
+the full compiled register, controls the Tables 3.14 and 3.15 area cells per
+grain (`fanout_sum_bridges`). A factor more than 2% from one is refused. A
+fan-out is never an exact-signature control: its cells are a distribution.
+
+**UC child bands.** The bands partition each constituency's UC caseload
+(`share_of_parent`).
+
+**Small cells.** A small-cell deferral still counts its value in its leg's
+control, through a reconciliation row that never reaches the solve.
+
 ## Declarations and enforcement
 
 Every declaration lives in `uk/cross_grain_declarations.json`, which the
