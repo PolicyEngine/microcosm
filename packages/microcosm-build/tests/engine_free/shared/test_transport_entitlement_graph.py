@@ -17,7 +17,10 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
-from microcosm.build.transport.compose import compose_transport_graph
+from microcosm.build.transport.compose import (
+    compose_transport_graph,
+    validate_transport_activation,
+)
 from microcosm.build.transport.takeup_kernels import decode_bands, decode_gap
 from microcosm.graph import compile_graph, graph_to_json
 from microcosm.graph.keys import node_key, source_content_key
@@ -488,3 +491,52 @@ def test_automatic_extension_installation_and_package_edge_restrictions(tmp_path
     rows.append(consumer)
     with pytest.raises(ValueError, match="terminal skeleton package node"):
         compose_transport_graph(spec, fixture.config)
+
+
+@pytest.mark.parametrize("template", ["scenario_nodes", "variant_nodes"])
+def test_activation_ignores_unused_absent_tier_template(tmp_path, template):
+    """Explicit scenario nodes replace their tier's entire unused template."""
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    spec = copy.deepcopy(fixture.spec)
+    document = spec["resources"]["entitlement_graph"]
+    unused = copy.deepcopy(document["scenario_nodes"][0])
+    unused["params"]["unused"] = {"resource": "unused_absent"}
+    document[template] = [unused]
+    validate_transport_activation(spec)
+    assert graph_to_json(
+        compose_transport_graph(spec, fixture.config)
+    ) == graph_to_json(fixture.graph())
+
+
+@pytest.mark.parametrize("location", ["common", "scenario", "variant", "template"])
+@pytest.mark.parametrize("gap", ["null", "path", "name"])
+def test_activation_checks_every_instantiated_entitlement_selection(
+    tmp_path, location, gap
+):
+    """G6's resource preflight also covers the G7 rows that will be used."""
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    spec = copy.deepcopy(fixture.spec)
+    document = spec["resources"]["entitlement_graph"]
+    scenarios = spec["resources"]["scenarios"]["scenarios"]
+    if location == "common":
+        node = document["nodes"][0]
+    elif location == "template":
+        scenarios[0].pop("nodes")
+        node = document["scenario_nodes"][0]
+    else:
+        tier = "entitlement" if location == "scenario" else "calibration"
+        node = next(row for row in scenarios if row["tier"] == tier)["nodes"][0]
+    spec["resources"]["selected_probe"] = {"value": None}
+    selection = {"resource": "selected_probe", "path": ["value"]}
+    if gap == "path":
+        selection["path"] = ["absent"]
+    elif gap == "name":
+        selection["resource"] = None
+    node["params"]["probe"] = selection
+    match = {
+        "null": "selected_probe.*not activated",
+        "path": "selected_probe.*no selected path",
+        "name": "must name a nonempty string",
+    }[gap]
+    with pytest.raises(ValueError, match=match):
+        validate_transport_activation(spec)

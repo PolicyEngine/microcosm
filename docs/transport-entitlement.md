@@ -17,6 +17,12 @@ driver install it automatically. Its fields are:
 | `package` | Final skeleton receipt `id`, bands `artifact_name`, optional additional `inputs` in the ordinary artifact-edge grammar. |
 | `sources`, `checkpoints` | Additional sources with new names and ordered pre-export endpoints. The bands node is the default checkpoint. |
 
+Activation checks resource selections in the common nodes and each scenario's
+selected nodes, using the entitlement factory's row selection. A scenario's
+explicit `nodes` replaces its tier template; an unused template contributes no
+resource selections. Selected resources, paths and reference activation remain
+preflight checks before registry preparation or graph-source reads.
+
 Only explicit extension artifact edges may change a terminal skeleton package
 receipt.
 Every other skeleton predecessor set stays fixed. Scenarios branch below the
@@ -55,12 +61,19 @@ All bridge outputs are produced float64 columns. Each family engine node and
 keep-all FILTER declares a person data-column slice.
 
 `simulate.solve_zero@1` adds `solve_input`, `bracket`, `tolerance` and
-`iterations`. It uses fixed-count vector bisection of a declared non-increasing
-residual and returns the first nonpositive upper boundary, including a floored
-benefit's zero plateau. The iteration count must achieve the declared bracket
-tolerance in float64. The caller supplies the reference-case overrides; for
-golden-08 the cutout uses JSS single-with-children inputs, independently of the
-unit's actual benefit.
+`iterations`. Each output row's residual must be independent of other rows'
+trial inputs and non-increasing in its own trial input over the bracket. The
+kernel does not support coupled systems. Fixed-count vector bisection locates
+the boundary of positive residuals, including a benefit's zero plateau;
+an already nonpositive lower endpoint returns that endpoint. A residual of
+exactly zero at a positive trial input retains the nonzero boundary answer.
+The iteration count must achieve the declared input-interval tolerance in
+float64. After the fixed iterations the kernel evaluates the returned answers
+and refuses if any row's positive residual exceeds the same declared tolerance.
+A successful run reports `iterations + 3` residual evaluations: two bracket
+endpoints, the fixed iterations and final verification. Each component engine
+runs once per residual evaluation. The caller supplies the reference-case
+overrides.
 
 `takeup.gap@1` parameters are `country`, `references`, `references_sha256`,
 `entities`, `weight_entity`, `annualisation_factors` and `scenario` (optional
@@ -83,20 +96,34 @@ does not accept an `aging_index` parameter. If pre-calibration quantile maps are
 aged too, those variants must branch from CREATE. V3 declares its receipt
 override before its independent problem and calibration.
 
-The NZS/VP reg 17 treatment is declared through engine components and masks;
-the implementation contains no statutory branch. The alternative is an
-explicit exclusion input and a counted excluded-unit reference. The toy tests
-exercise an engine-derived alternative and exclusion/grouping shape. Actual
-NZS/VP correctness requires the hub's approved bridge data.
+Engine components and masks can declare an NZS/VP alternative; an explicit
+exclusion input and counted excluded-unit reference can declare the fallback.
+The toy tests exercise these declaration and grouping shapes with invented
+rules. Actual reg 17 treatment requires approved bridge data, legal-source
+review and real-engine differential evidence.
 
-Real WFF stays parked until its input encoding, three chained module bindings
-and Child-rule treatment are approved. A tripwire declaration must calculate
-the WFF measure before comparing it with the hold-out reference. The toy graph
+Real WFF remains deferred pending approved input encoding, RuleSpec bindings
+and Child-rule treatment. The supplied graph plan describes three chained
+modules; this checkout does not certify their law semantics or external
+approval. A tripwire declaration must calculate the WFF measure before
+comparing it with the hold-out reference. The toy graph
 does this with its invented family-credit engine. It supplies no real WFF
 inputs or statutory claim.
 
-The hub can run golden-08 and small sampled-unit differentials without donor H5
-I/O using the declared case format in `tools/transport_bridge_differential.py`:
+The committed `build/nz/as_rate_bridge.json` sole-parent declaration rules out
+a `solve_zero` recipe for golden-08: no engine input combination reproduces
+the harness's single-with-children gross rate paired with the Income Test 3
+slope. It instead declares three evaluations, `gross_rate`,
+`reduction_at_anchor` and `reduction_after_step`, whose outputs recover the
+slope and lower threshold before assembling the cutout. The resource declares
+the overrides, anchor, step, composition and refusal conditions. The driver
+executes declared kernel calls but does not assemble this nonlinear
+composition. The approved executable golden-08 case and evaluation assembly
+therefore remain unresolved; no golden-08 result is claimed.
+
+The hub can compare approved small cases and sampled-unit outputs without donor
+H5 I/O using the declared case format in
+`tools/transport_bridge_differential.py`:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 \
@@ -106,11 +133,16 @@ uv run --no-project .venv/bin/python tools/transport_bridge_differential.py \
   --case <approved-small-case.json> \
   --oracle <axiom-oracles/conformance/executable/nz-treasury-incomeexplorer/requests.json> \
   --rulespec-root <exported-pinned-rulespec-tree> \
-  --out .hub-scratch/golden08-receipt.json
+  --out .hub-scratch/bridge-receipt.json
 ```
 
 The case supplies unit-rule data, bindings, small entity tables and weights,
-ordered base-rate/cutout/AS calls, and oracle JSON pointers with explicit
-absolute tolerances. It can include sampled units and matching oracle arrays.
-The receipt records each comparison and the input hashes. If the engine is
-absent the command writes a skipped receipt; no real-engine result is claimed.
+ordered kernel calls, and oracle JSON pointers with explicit absolute
+tolerances. Call IDs must be distinct and nonempty, each output entity/column
+coordinate must have one producer, and comparisons must name a declared call
+output. These checks precede execution. Oracle pointers use RFC 6901 escapes;
+array indices must be canonical nonnegative integers within bounds. A case can
+include sampled units and matching oracle arrays. With the engine available,
+the receipt records each comparison and the case/oracle hashes. If the engine
+is absent the command writes a skipped receipt without reading case data;
+no real-engine result is claimed.

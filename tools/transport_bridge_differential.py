@@ -11,15 +11,21 @@ are replaced with prepared references, including embedded component/term refs.
 
 ``comparisons`` contains records with ``call``, ``entity``, ``column``,
 ``oracle_pointer`` (RFC 6901 pointer into the oracle JSON) and explicit
-``tolerance``. The case must provide the JSS single-with-children overrides
-for the cutout, rather than using the family's actual benefit. All numbers
-come from case data or the oracle; the script has no policy constants.
+``tolerance``. Call ids must be nonempty and distinct, each entity/column must
+have one output owner, and comparisons must name an output of their call.
+These declarations and oracle comparisons are checked before registry
+preparation or engine execution. All numbers come from case data or the
+oracle; the script has no policy constants.
 
-For golden-08, supply three calls: counterfactual base rate (rates plus WFF
-components), solve_zero cutout, then rules_by_ref AS, with comparisons pointing
-at the oracle's base-rate, cutout and weekly-AS values. A sampled-unit receipt
-uses the same call declarations with additional small entity-table rows and
-the corresponding oracle arrays. This command does not read donor HDF5.
+The golden-08 executable case is unresolved pending an approved declaration.
+``build/nz/as_rate_bridge.json`` declares three sole-parent cutout evaluations:
+``gross_rate``, ``reduction_at_anchor`` and ``reduction_after_step``, followed by
+slope, threshold and cutout composition. Its ``why_not_solve_zero`` explains
+why a zero solve on the unit's own Jobseeker schedule cannot reproduce that
+harness pairing. This driver has no arithmetic-composition contract for those
+evaluations and cannot yet run that recipe. Approved sampled-unit cases may
+declare additional small entity-table rows and corresponding oracle arrays.
+This command does not read donor HDF5.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -46,9 +53,79 @@ def _pointer(document, pointer):
         raise ValueError("oracle_pointer must be an RFC 6901 JSON pointer.")
     value = document
     for token in pointer[1:].split("/"):
+        if re.search(r"~(?:[^01]|$)", token):
+            raise ValueError("oracle_pointer contains an invalid JSON pointer escape.")
         token = token.replace("~1", "/").replace("~0", "~")
-        value = value[int(token)] if isinstance(value, list) else value[token]
+        if isinstance(value, list):
+            if re.fullmatch(r"0|[1-9][0-9]*", token) is None:
+                raise ValueError(
+                    "oracle_pointer requires a canonical non-negative array index."
+                )
+            index = int(token)
+            if index >= len(value):
+                raise ValueError("oracle_pointer array index is out of bounds.")
+            value = value[index]
+        elif isinstance(value, dict) and token in value:
+            value = value[token]
+        else:
+            raise ValueError("oracle_pointer does not resolve to an oracle value.")
     return value
+
+
+def _validate_case(case, oracle):
+    """Refuse ambiguous calls and comparisons before preparing any engine."""
+    declared_outputs = {}
+    for call in case["calls"]:
+        call_id = call.get("id")
+        if not isinstance(call_id, str) or not call_id:
+            raise ValueError("Every differential call needs a non-empty call id.")
+        if call_id in declared_outputs:
+            raise ValueError(
+                f"The differential case has duplicate call id {call_id!r}."
+            )
+        declared_outputs[call_id] = set()
+    owners = {}
+    for call in case["calls"]:
+        call_id = call["id"]
+        for output in call["outputs"]:
+            coordinate = (output["entity"], output["column"])
+            if coordinate in owners:
+                raise ValueError(
+                    f"The differential output coordinate {coordinate!r} has "
+                    f"multiple owners: {owners[coordinate]!r} and {call_id!r}."
+                )
+            owners[coordinate] = call_id
+            declared_outputs[call_id].add(coordinate)
+    if not case["comparisons"]:
+        raise ValueError("The differential case must declare comparisons.")
+    expected_values = []
+    for row in case["comparisons"]:
+        call_id = row["call"]
+        if call_id not in declared_outputs:
+            raise ValueError(f"A comparison names missing call {call_id!r}.")
+        coordinate = (row["entity"], row["column"])
+        if coordinate not in declared_outputs[call_id]:
+            raise ValueError(
+                f"A comparison names missing output {coordinate!r} "
+                f"for call {call_id!r}."
+            )
+        tolerance = row["tolerance"]
+        if (
+            isinstance(tolerance, bool)
+            or not isinstance(tolerance, int | float)
+            or not np.isfinite(tolerance)
+            or tolerance < 0
+        ):
+            raise ValueError(
+                "Every comparison needs an explicit finite nonnegative tolerance."
+            )
+        expected = np.atleast_1d(
+            np.asarray(_pointer(oracle, row["oracle_pointer"]), dtype=np.float64)
+        )
+        if not np.all(np.isfinite(expected)):
+            raise ValueError("Oracle comparison values must be finite.")
+        expected_values.append(expected)
+    return expected_values
 
 
 def _resolve_params(params, refs):
@@ -94,7 +171,8 @@ def _call_tables(frame, node):
 
 
 def differential(case, oracle, rulespec_root):
-    """Return comparisons against oracle data after executing declared calls."""
+    """Validate declarations, execute unique calls, and compare oracle data."""
+    expected_values = _validate_case(case, oracle)
     rule = BenefitUnitRule.from_dict(case["unit_rule"])
     prepared = build_transport_registry(
         case["rules_bindings"], rulespec_root, unit_rule=rule
@@ -139,23 +217,9 @@ def differential(case, oracle, rulespec_root):
             tables[entity][column] = tables[entity][ids].map(values).to_numpy()
         frame = Frame(tables, prepared.schema, weights)
     comparisons = []
-    for row in case["comparisons"]:
+    for row, expected in zip(case["comparisons"], expected_values, strict=True):
         actual = outputs[(row["call"], row["entity"], row["column"])]
-        expected = np.atleast_1d(
-            np.asarray(_pointer(oracle, row["oracle_pointer"]), dtype=np.float64)
-        )
-        if not np.all(np.isfinite(expected)):
-            raise ValueError("Oracle comparison values must be finite.")
         tolerance = row["tolerance"]
-        if (
-            isinstance(tolerance, bool)
-            or not isinstance(tolerance, int | float)
-            or not np.isfinite(tolerance)
-            or tolerance < 0
-        ):
-            raise ValueError(
-                "Every comparison needs an explicit finite nonnegative tolerance."
-            )
         same_shape = actual.shape == expected.shape
         differences = np.abs(actual - expected) if same_shape else None
         comparisons.append(
@@ -171,8 +235,6 @@ def differential(case, oracle, rulespec_root):
                 ),
             }
         )
-    if not comparisons:
-        raise ValueError("The differential case must declare comparisons.")
     return {
         "status": "passed" if all(row["passed"] for row in comparisons) else "failed",
         "comparisons": comparisons,

@@ -323,7 +323,7 @@ def test_fixed_vector_bisection_matches_analytic_cutout_and_is_deterministic(
     )
     assert np.all(cutouts >= expected - np.spacing(expected))
     assert np.all(cutouts - expected <= node.params["tolerance"])
-    assert engine.calls == node.params["iterations"] + 2
+    assert engine.calls == node.params["iterations"] + 3
     assert result.receipt["evaluations"] == engine.calls
     repeated = _run(kernel, frame, node)
     assert (
@@ -353,7 +353,60 @@ def test_nonpositive_lower_endpoint_is_returned_with_fixed_evaluation_count():
     kernel = SimulateSolveZeroKernel({RATE_REF: engine})
     result = _run(kernel, frame, _node(kernel, bracket=(10, 256)))
     assert result.columns[("family", "bridge")].iloc[0] == 10
-    assert engine.calls == 36
+    assert engine.calls == 37
+    assert result.receipt["evaluations"] == engine.calls
+
+
+def test_solver_evaluates_final_nonzero_answer_on_zero_plateau():
+    class RecordingEngine(RatesEngine):
+        def materialize(self, bundle, variables, period):
+            self.last_inputs = bundle.table("person")["income"].to_numpy().copy()
+            self.last_residuals = super().materialize(bundle, variables, period)
+            return self.last_residuals
+
+    frame = _frame([(10, 5, 1, True)])
+    engine = RecordingEngine()
+    kernel = SimulateSolveZeroKernel({RATE_REF: engine})
+    node = _node(
+        kernel,
+        input_overrides=_json(
+            [
+                {"entity": "person", "column": "rate", "value": 100},
+                {"entity": "person", "column": "reduction", "value": 2},
+            ]
+        ),
+    )
+    result = _run(kernel, frame, node)
+    answer = result.columns[("family", "bridge")].iloc[0]
+    assert answer == 50
+    np.testing.assert_array_equal(engine.last_inputs, np.full(2, answer))
+    np.testing.assert_array_equal(engine.last_residuals["weekly_benefit"], [0, 0])
+    assert engine.calls == node.params["iterations"] + 3
+    assert result.receipt["evaluations"] == engine.calls
+
+
+def test_solver_refuses_coupled_rows_with_positive_final_residual():
+    class CoupledEngine(RatesEngine):
+        def materialize(self, bundle, variables, period):
+            self.calls += 1
+            person = bundle.table("person")
+            family = bundle.table("family")
+            first_incomes = person.groupby("person_family_id")["income"].first()
+            total_income = first_incomes.sum()
+            residuals = pd.Series(
+                np.maximum(np.asarray([100, 50]) - total_income, 0),
+                index=family["family_id"],
+            )
+            values = person["person_family_id"].map(residuals).to_numpy()
+            return {variable: values for variable in variables}
+
+    frame = _frame([(0, 100, 1, True), (0, 50, 1, True)])
+    engine = CoupledEngine()
+    kernel = SimulateSolveZeroKernel({RATE_REF: engine})
+    node = _node(kernel)
+    with pytest.raises(ValueError, match="final answer.*positive residual"):
+        _run(kernel, frame, node)
+    assert engine.calls == node.params["iterations"] + 3
 
 
 @pytest.mark.parametrize(

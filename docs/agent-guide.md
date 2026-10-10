@@ -363,11 +363,14 @@ upload or staging path. Before it opens the store it refuses any link in an
 existing store tree (the root, `objects`, `tmp` or a shard), because the
 store creates those directories by following links; it does not guard
 against links planted while a build is running. Activation checks run before
-registry preparation, CREATE or any graph source read. Every declaration
-selection must name a present resource; value and JSON selections must have an
-existing path and a non-null selected value. JSON selections require objects,
-and value selections reject objects, using the same checks as parameter
-resolution. Selected JSON may retain optional null fields. The preflight also
+registry preparation, CREATE or any graph source read. Resource selections
+must name a present resource; value and JSON selections must have an
+existing path and a non-null selected value. Skeleton JSON selections require
+objects; entitlement JSON selections also accept lists. Value selections
+reject objects, using the same checks as parameter resolution. Selected JSON
+may retain optional null fields. Entitlement resource checks use the factory's
+common and selected scenario rows; explicit scenario `nodes` replaces the tier
+template, so unused templates contribute no selections. The preflight also
 checks the dependent-child age limit, mandatory and selected reference activation
 rows, required engine commit and wheel pin presence, and every null scenario
 knob. The receipt kernel's shared validator checks the executable receipt
@@ -398,6 +401,12 @@ An optional `entitlement_graph.json` legacy resource installs the entitlement
 extension in both composition and the local driver. Its scenario templates,
 bridge parameters, comparison references and receipt connections are described
 in [the entitlement declaration contract](transport-entitlement.md).
+The zero solver requires independent, non-increasing row residuals and verifies
+the returned answers after its fixed iterations. Its receipt counts the final
+verification. The local differential driver validates call and output identities
+before execution and uses canonical RFC 6901 oracle pointers. The packaged NZ
+spec remains inactive; the approved golden-08 evaluation assembly, real WFF
+inputs and law certification remain deferred.
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)

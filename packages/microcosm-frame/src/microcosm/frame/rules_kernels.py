@@ -471,14 +471,20 @@ class SimulateSolveZeroKernel(SimulateCounterfactualKernel):
     ``solve_input`` is a JSON record naming ``entity`` and input ``column``;
     its optional ``engine_ref`` defaults to the primary component. Trial values
     on the output entity broadcast to that input entity. ``bracket`` is a
-    finite increasing pair, ``tolerance`` bounds the final income interval,
-    and ``iterations`` is a fixed positive integer sufficient for that bound.
-    The residual must be non-increasing on the bracket (the caller's rules
-    contract); a positive upper endpoint is refused. An already nonpositive
-    lower endpoint returns that endpoint. All rows perform every iteration,
-    without value-dependent early stopping. Outputs are the upper endpoints,
-    so a benefit that floors at zero yields its cutout rather than an
-    arbitrary point in its zero plateau.
+    finite increasing pair, ``tolerance`` bounds the final income interval
+    and positive residual at the returned answer, and ``iterations`` is a
+    fixed positive integer sufficient for the interval bound. Each output
+    row's residual must be independent of other rows' trial inputs and must
+    be non-increasing in its own trial input on the bracket (the caller's rules
+    contract). Coupled rows are unsupported. A positive upper endpoint is
+    refused, and an already nonpositive lower endpoint returns that endpoint.
+    All rows perform every iteration, without value-dependent early stopping.
+    Returned answers are
+    evaluated once more; a positive residual beyond ``tolerance`` is refused.
+    Successful runs perform exactly ``iterations + 3`` residual evaluations,
+    each evaluating every component once. Outputs are the upper endpoints,
+    so a benefit that floors at zero yields its cutout. An exact-zero residual
+    does not replace a nonzero answer with zero.
     """
 
     ref = "simulate.solve_zero@1"
@@ -542,6 +548,11 @@ class SimulateSolveZeroKernel(SimulateCounterfactualKernel):
         if np.any((hi - lo) > tolerance):
             raise ValueError("Float64 bisection cannot meet the declared tolerance.")
         answer = np.where(already_zero, lower, hi)
+        if np.any(residual(answer) > tolerance):
+            raise ValueError(
+                "solve_zero final answer has a positive residual beyond the "
+                "declared tolerance; output rows must be independent."
+            )
         return self._result(
             context,
             frame,
@@ -549,7 +560,7 @@ class SimulateSolveZeroKernel(SimulateCounterfactualKernel):
             bracket=bracket,
             tolerance=tolerance,
             iterations=iterations,
-            evaluations=iterations + 2,
+            evaluations=iterations + 3,
         )
 
 

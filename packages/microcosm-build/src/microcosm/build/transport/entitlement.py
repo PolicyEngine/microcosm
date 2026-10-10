@@ -24,6 +24,7 @@ The only skeleton change is these explicit artifact edges on the final receipt.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -39,6 +40,7 @@ from .compose import (
     _mapping,
     _node,
     _param,
+    _resource_param,
     _safe_node_id,
     _sequence,
     transport_resource,
@@ -149,15 +151,7 @@ def _parameter(spec, config, value, scenario):
             "Scenario objects require json encoding; encodings are value, json, sha256."
         )
     if value.get("encoding") == "json" and "resource" in value:
-        if set(value) - {"resource", "path", "encoding"}:
-            raise ValueError(
-                "A resource selection names resource, path and encoding only."
-            )
-        selected = transport_resource(spec, value["resource"])
-        for component in value.get("path", ()):
-            selected = _mapping(selected, "resource selection")[component]
-        if not isinstance(selected, Mapping | list | tuple):
-            raise ValueError("Extension json selections require an object or list.")
+        selected = json.loads(_resource_param(spec, value, allow_json_sequences=True))
         return canonical_json(_bind_data(spec, config, selected)).decode("utf-8")
     if not ({"resource", "prepared"} & set(value)):
         return canonical_json(_bind_data(spec, config, value)).decode("utf-8")
@@ -165,6 +159,7 @@ def _parameter(spec, config, value, scenario):
 
 
 def _rows(spec):
+    """Rows the factory instantiates, shared with activation preflight."""
     document = _document(spec)
     result = [(row, None) for row in document.get("nodes", ())]
     gaps = {}
