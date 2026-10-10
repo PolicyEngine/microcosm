@@ -111,7 +111,8 @@ def test_prices_recompute_from_the_vendored_rows() -> None:
     assert scotland.trips_basis == "england_other_local_bus_rate_as_proxy"
     assert scotland.receipts == pytest.approx(391_000_000.0)
     ni = prices.other_by_region["NORTHERN_IRELAND"]
-    assert ni.receipts == pytest.approx(49_584_434.28 + 100_498_383.21, rel=1e-6)
+    # DfI's 2025-26 edition restates 2024-25 to the £0.1m (microcosm#1123 re-pin).
+    assert ni.receipts == pytest.approx(49_600_000.0 + 100_500_000.0, rel=1e-6)
     assert ni.concessionary_boardings == pytest.approx(8_960_000.0)
     assert "composition check" in prices.receipt["algebra"]
 
