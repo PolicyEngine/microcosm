@@ -2,18 +2,31 @@
 
 Every checkout and worktree on a host shares one spool, so checkouts at
 different microcosm versions open the same file, and an older one can find it
-migrated past its own head. Every revision is therefore additive: it may add
-tables, nullable or defaulted columns and non-unique indexes, and leaves every
-existing table, column, index, constraint, trigger and row as it was, so older
-code reads and writes the migrated spool as before. A test checks every
-packaged revision (``test_telemetry_spool_versions.py``). A change that older
-code cannot use does not belong in this history; it needs a new spool file.
+migrated past its own head. Every revision after the first is therefore
+additive. It may create tables. To a table that already exists it may only
+append ordinary columns that are nullable or have a default, and add plain,
+non-unique indexes. It never rebuilds, renames or drops such a table, changes
+or deletes its rows, or gives it a trigger. A test holds every packaged
+revision to this (``test_telemetry_spool_versions.py``). The rule is
+deliberately stricter than compatibility needs, and it covers the schema, not
+what rows mean:
+
+- Rows a newer version writes must stay deliverable by older services. Those
+  upload every run whose ``upload_state`` is ``pending``, and read ``run_id``
+  and ``producer_id`` from its registration and ``event_id`` from each event.
+- A new table needs its own retention. Older services neither prune it nor
+  deliver from it.
+
+A change older code cannot use does not belong in this history; it needs a new
+spool file.
 
 Whenever this module moves a spool to a new revision it also records the
 spool's lineage: every revision in the history of the checkout that moved it.
 A checkout that does not know a spool's revision uses the spool as it is when
-that lineage includes its own head, and refuses it otherwise, as when a branch
-with a different migration stamped it.
+that lineage includes both that revision and its own head, and refuses it
+otherwise, as when a branch with a different migration stamped it. A checkout
+from before lineage was recorded can move the revision without recording it;
+the next checkout at that revision records it.
 """
 
 from __future__ import annotations
@@ -64,10 +77,15 @@ class IncompatibleSpoolRevisionError(RuntimeError):
 
 @dataclass(frozen=True)
 class MigrationHistory:
-    """One checkout's spool migrations: its head and every revision up to it."""
+    """One checkout's spool migrations: its head and every revision up to it.
+
+    ``bases`` are the revisions with no parent. Every checkout's history
+    starts from them, so no checkout needs a lineage to place a spool there.
+    """
 
     head: str | None
     revisions: frozenset[str]
+    bases: frozenset[str]
 
 
 @contextmanager
@@ -133,12 +151,16 @@ def upgrade_spool_database(
     exists". The revision is read again once the lock is held, so a service
     that waited for it finds the spool where the last migrator left it, and
     changes nothing unless it is still behind.
+
+    A spool at this head with no lineage, or another's, was moved there by a
+    checkout from before lineage was recorded. Its lineage is written under the
+    same lock, so that older checkouts can use it.
     """
 
     history = migration_history(script_location)
     with engine.connect() as connection:
-        state = _spool_revision_state(connection, history)
-    if state is not SpoolRevisionState.BEHIND:
+        state, lineage_recorded = _inspect_spool(connection, history)
+    if state is not SpoolRevisionState.BEHIND and lineage_recorded:
         return state
     migration_engine = create_spool_engine(
         engine.url.database,
@@ -147,33 +169,46 @@ def upgrade_spool_database(
     )
     try:
         with migration_engine.begin() as connection:
-            state = _spool_revision_state(connection, history)
+            state, lineage_recorded = _inspect_spool(connection, history)
             if state is SpoolRevisionState.BEHIND:
                 with alembic_config(
                     connection=connection,
                     script_location=script_location,
                 ) as config:
                     command.upgrade(config, _MIGRATION_TARGET)
+            if state is SpoolRevisionState.BEHIND or not lineage_recorded:
                 _record_lineage(connection, history)
     finally:
         migration_engine.dispose()
     return state
 
 
-def _spool_revision_state(
+def _inspect_spool(
     connection: Connection,
     history: MigrationHistory,
-) -> SpoolRevisionState:
+) -> tuple[SpoolRevisionState, bool]:
+    """Return the spool's state and whether its lineage is in order.
+
+    Only a spool at this checkout's head can have its lineage found wanting,
+    since only then does this checkout know what it should be. A spool at a
+    base revision needs none.
+    """
+
     revision = MigrationContext.configure(connection).get_current_revision()
     lineage = None
-    if revision is not None and revision not in history.revisions:
+    if revision is not None and revision not in history.bases:
         lineage = _recorded_lineage(connection)
     state = classify_spool_revision(revision, lineage, history)
     if state is SpoolRevisionState.INCOMPATIBLE:
         raise IncompatibleSpoolRevisionError(
             UNKNOWN_SPOOL_REVISION_ERROR.format(revision=revision, head=history.head)
         )
-    return state
+    lineage_recorded = (
+        state is not SpoolRevisionState.AT_HEAD
+        or revision in history.bases
+        or lineage == history.revisions
+    )
+    return state, lineage_recorded
 
 
 def _recorded_lineage(connection: Connection) -> frozenset[str] | None:
@@ -221,6 +256,7 @@ def migration_history(script_location: Traversable | None = None) -> MigrationHi
         return MigrationHistory(
             head=scripts.get_current_head(),
             revisions=frozenset(script.revision for script in scripts.walk_revisions()),
+            bases=frozenset(scripts.get_bases()),
         )
 
 

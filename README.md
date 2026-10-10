@@ -54,12 +54,14 @@ event spool; a service that finds it locked by another process keeps retrying
 until shortly before the build stops waiting for it, and one that still cannot
 register prints a single warning line, without a traceback, before the build
 continues without hosted telemetry. Checkouts at different versions share the
-spool too. Its schema migrations only add to it, so a checkout older than the
-one that last migrated it keeps using it as it is, and every service delivers
-the events any version queued. A checkout on a branch with a different spool
-migration from the one applied is refused, in one line, and builds without
-hosted telemetry. This live event path is independent of the staging run files
-described below.
+spool too. Its schema migrations only add to it, and each records the
+revisions it builds on, so an older checkout keeps using a spool that a newer
+one migrated, and a service delivers the events queued by any version. Two
+kinds of checkout are refused instead, in one line, and build without hosted
+telemetry: one on a branch whose spool migration differs from the one applied,
+and one from before October 2026, which cannot read that record, once the
+spool has been migrated past the revision it knows. This live event path is
+independent of the staging run files described below.
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. Progress JSON is uploaded to `policyengine/populace-us-staging`

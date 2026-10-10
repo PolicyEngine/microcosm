@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -36,7 +37,6 @@ from alembic import command
 from alembic.script import ScriptDirectory
 from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
-from sqlalchemy import create_engine, inspect
 
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
 from microcosm.build.telemetry_emitter_constants import TELEMETRY_SERVICE_MODULE
@@ -47,10 +47,7 @@ from microcosm.build.telemetry_emitter_service.constants import (
     DATABASE_TIMEOUT_SECONDS,
     SPOOL_LINEAGE_TABLE,
 )
-from microcosm.build.telemetry_emitter_service.database import (
-    create_spool_engine,
-    sqlite_database_url,
-)
+from microcosm.build.telemetry_emitter_service.database import create_spool_engine
 from microcosm.build.telemetry_emitter_service.migrations import (
     IncompatibleSpoolRevisionError,
     MigrationHistory,
@@ -462,6 +459,159 @@ def test_an_opener_that_waited_out_a_newer_migration_changes_nothing(
 
     assert results == [SpoolRevisionState.AHEAD]
     assert current_database_revision(spool_path) == "future"
+    # The opener left the newer checkout's lineage alone. Had it written its
+    # own, the spool's revision would be missing from it, and every older
+    # checkout would be refused from then on.
+    assert recorded_spool_lineage(spool_path) == migration_history(newer).revisions
+    for script_location in (None, opener, newer):
+        _close(EventSpool(spool_path, script_location=script_location))
+
+
+def test_an_older_append_waits_out_a_newer_migration_in_progress(tmp_path) -> None:
+    """The event waits in SQLite's busy handler while the migration holds the lock.
+
+    One that outlasts that 5 s wait is lost, as behind any long writer.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    newer = _checkout(tmp_path / "newer", _additive_revision("future"))
+    older = EventSpool(spool_path)
+    registration = _registration("older-run", "older-producer")
+    older.register(registration)
+    older.append(registration, _event("a"))
+    appended: list[dict[str, object] | BaseException] = []
+
+    def append() -> None:
+        try:
+            appended.append(older.append(registration, _event("b")))
+        except BaseException as error:
+            appended.append(error)
+
+    appending = threading.Thread(target=append, daemon=True)
+    migrator = create_spool_engine(spool_path, immediate_transactions=True)
+    try:
+        with migrator.begin() as connection:
+            with alembic_config(connection=connection, script_location=newer) as config:
+                command.upgrade(config, "head")
+            migrations_module._record_lineage(connection, migration_history(newer))
+            appending.start()
+            time.sleep(0.5)
+            assert appending.is_alive(), appended
+        appending.join(timeout=60)
+        events = older.batch("older-run", "older-producer")
+    finally:
+        migrator.dispose()
+        _close(older)
+
+    assert [type(result) for result in appended] == [dict], appended
+    assert [(event["sequence"], event["stage_id"]) for event in events] == [
+        (1, "a"),
+        (2, "b"),
+    ]
+    assert current_database_revision(spool_path) == "future"
+
+
+def test_a_failed_upgrade_leaves_the_schema_the_stamp_and_the_lineage(
+    tmp_path, monkeypatch
+) -> None:
+    """They commit together, so an upgrade that fails last undoes all three."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    _close(EventSpool(spool_path))
+    lineage = recorded_spool_lineage(spool_path)
+    record_lineage = migrations_module._record_lineage
+
+    def record_lineage_then_fail(connection, history) -> None:
+        record_lineage(connection, history)
+        raise RuntimeError("interrupted after the lineage")
+
+    monkeypatch.setattr(migrations_module, "_record_lineage", record_lineage_then_fail)
+    with pytest.raises(RuntimeError, match="interrupted after the lineage"):
+        EventSpool(
+            spool_path,
+            script_location=_checkout(tmp_path / "newer", _additive_revision("future")),
+        )
+
+    assert current_database_revision(spool_path) == _packaged_head()
+    assert recorded_spool_lineage(spool_path) == lineage
+    assert "graph_publication_jobs_future" not in _tables(spool_path)
+    assert "region_future" not in _runs_columns(spool_path)
+
+
+@pytest.mark.parametrize(
+    "created_by", ["a lineage-recording runner", "an older runner"]
+)
+def test_a_checkout_at_head_records_the_lineage_an_older_runner_left_out(
+    tmp_path, created_by
+) -> None:
+    """A checkout from before lineage was recorded migrated the spool.
+
+    Until a lineage-recording checkout at that revision opens it, an older
+    checkout cannot tell that the revision descends from its own head.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    newer = _checkout(tmp_path / "newer", _additive_revision("future"))
+    if created_by == "a lineage-recording runner":
+        _close(EventSpool(spool_path))
+    state = _open_as_runner_without_lineage(spool_path, newer)
+    assert state is SpoolRevisionState.BEHIND
+    assert current_database_revision(spool_path) == "future"
+    assert recorded_spool_lineage(spool_path) == (
+        migration_history().revisions
+        if created_by == "a lineage-recording runner"
+        else None
+    )
+    with pytest.raises(IncompatibleSpoolRevisionError):
+        EventSpool(spool_path)
+
+    _close(EventSpool(spool_path, script_location=newer))
+    assert recorded_spool_lineage(spool_path) == migration_history(newer).revisions
+    # Recorded once: with the lock held elsewhere, the next opens only read.
+    with _write_lock(spool_path):
+        started = time.monotonic()
+        _close(EventSpool(spool_path, script_location=newer))
+        older = EventSpool(spool_path)
+        assert time.monotonic() - started < DATABASE_TIMEOUT_SECONDS
+    try:
+        registration = _registration("older-run", "older-producer")
+        older.register(registration)
+        assert older.append(registration, _event("a"))["sequence"] == 1
+    finally:
+        _close(older)
+
+
+def _initial_checkout(root: Path) -> Path:
+    """A checkout whose history is the initial revision alone."""
+
+    _checkout(root)
+    with alembic_config(script_location=root) as config:
+        for script in ScriptDirectory.from_config(config).walk_revisions():
+            if script.down_revision is not None:
+                Path(script.path).unlink()
+    return root
+
+
+def test_a_spool_at_the_initial_revision_needs_no_lineage(tmp_path) -> None:
+    """Every history starts there, so nothing is written and no lock is taken.
+
+    Every spool that exists when lineage-recording checkouts arrive is in
+    this state.
+    """
+
+    spool_path = tmp_path / "events.sqlite3"
+    initial = _initial_checkout(tmp_path / "initial")
+    state = _open_as_runner_without_lineage(spool_path, initial)
+    assert state is SpoolRevisionState.BEHIND
+    assert current_database_revision(spool_path) == _INITIAL_REVISION
+    assert recorded_spool_lineage(spool_path) is None
+
+    with _write_lock(spool_path):
+        started = time.monotonic()
+        spool = EventSpool(spool_path, script_location=initial)
+        assert time.monotonic() - started < DATABASE_TIMEOUT_SECONDS
+    _close(spool)
+    assert recorded_spool_lineage(spool_path) is None
 
 
 def test_the_lineage_table_is_not_part_of_the_schema_alembic_checks(tmp_path) -> None:
@@ -647,7 +797,8 @@ def test_the_service_refuses_a_diverged_spool_in_one_line(tmp_path) -> None:
     spool_path = tmp_path / "events.sqlite3"
     _close(EventSpool(spool_path))
     _stamp(spool_path, "elsewhere", frozenset({"other_root", "elsewhere"}))
-    socket_path = Path(tempfile.mkdtemp(prefix="microcosm-test-", dir="/tmp")) / "s"
+    # The service refuses the spool before it would bind this.
+    socket_path = tmp_path / "emitter.sock"
     completed = subprocess.run(
         [
             sys.executable,
@@ -734,6 +885,7 @@ def test_classification_follows_ancestry_alone(parents, head, stamp, recorded) -
     history = MigrationHistory(
         head=names[head],
         revisions=frozenset(names[node] for node in _ancestry(parents, head)),
+        bases=frozenset({names[0]}),
     )
     if stamp is None:
         state = classify_spool_revision(None, None, history)
@@ -773,12 +925,89 @@ def _runs_columns(path: Path) -> set[str]:
         connection.close()
 
 
+def _open_as_runner_without_lineage(
+    path: Path, script_location: Path | None
+) -> SpoolRevisionState:
+    """Open as a checkout from before lineage was recorded, like #1168's runner.
+
+    It refuses a revision it does not know. Otherwise it upgrades to its head
+    in one ``BEGIN IMMEDIATE`` transaction, and records no lineage.
+    """
+
+    history = migration_history(script_location)
+    revision = current_database_revision(path)
+    if revision == history.head:
+        return SpoolRevisionState.AT_HEAD
+    if revision is not None and revision not in history.revisions:
+        return SpoolRevisionState.INCOMPATIBLE
+    engine = create_spool_engine(path, immediate_transactions=True)
+    try:
+        with (
+            engine.begin() as connection,
+            alembic_config(
+                connection=connection, script_location=script_location
+            ) as config,
+        ):
+            command.upgrade(config, "head")
+    finally:
+        engine.dispose()
+    return SpoolRevisionState.BEHIND
+
+
+@dataclass
+class _ModelSpool:
+    stamp: int | None = None
+    lineage: frozenset[int] | None = None
+
+
+def _model_open(
+    parents: list[int | None],
+    spool: _ModelSpool,
+    node: int,
+    records_lineage: bool,
+    *,
+    needs_no_lineage: frozenset[int],
+) -> tuple[SpoolRevisionState, bool]:
+    """What one open should find and whether it should write; updates ``spool``.
+
+    A runner from before lineage was recorded upgrades without recording it and
+    refuses every revision it does not know. A lineage-recording runner records
+    it on each upgrade, repairs it at its own head unless that revision is one
+    every history starts from (``needs_no_lineage``), and accepts an unknown
+    revision only on the recorded lineage.
+    """
+
+    ancestry = _ancestry(parents, node)
+    if spool.stamp == node:
+        repair = (
+            records_lineage
+            and node not in needs_no_lineage
+            and spool.lineage != ancestry
+        )
+        if repair:
+            spool.lineage = ancestry
+        return SpoolRevisionState.AT_HEAD, repair
+    if spool.stamp is None or spool.stamp in ancestry:
+        spool.stamp = node
+        if records_lineage:
+            spool.lineage = ancestry
+        return SpoolRevisionState.BEHIND, True
+    if (
+        records_lineage
+        and spool.lineage is not None
+        and {spool.stamp, node} <= spool.lineage
+    ):
+        return SpoolRevisionState.AHEAD, False
+    return SpoolRevisionState.INCOMPATIBLE, False
+
+
 def _open_in_order(
-    root: Path, parents: list[int | None], opens: list[int]
+    root: Path, parents: list[int | None], opens: list[tuple[int, bool]]
 ) -> tuple[list[SpoolRevisionState], int | None]:
     """Open one spool as each checkout in turn, checking the model after each.
 
-    Returns each open's state and the revision the spool ends at.
+    Each open is a revision and whether that checkout's runner records
+    lineage. Returns each open's state and the revision the spool ends at.
     """
 
     names = [_packaged_head()] + [f"node_{index}" for index in range(1, len(parents))]
@@ -795,70 +1024,92 @@ def _open_in_order(
     spool_path = root / "events.sqlite3"
     sqlite3.connect(spool_path).close()
     observer = sqlite3.connect(spool_path)
-    stamp: int | None = None
+    model = _ModelSpool()
     states: list[SpoolRevisionState] = []
+    # Revision 0 stands for the whole packaged history, whatever its length.
+    packaged = migration_history()
+    needs_no_lineage = frozenset({0} if names[0] in packaged.bases else ())
     try:
-        for node in opens:
+        for node, records_lineage in opens:
             before = _data_version(observer)
-            engine = create_spool_engine(spool_path)
-            try:
-                state = upgrade_spool_database(engine, script_location=checkouts[node])
-            except IncompatibleSpoolRevisionError:
-                state = SpoolRevisionState.INCOMPATIBLE
-            finally:
-                engine.dispose()
-            assert state is _expected_state(parents, stamp, node)
-            event(f"an open found the spool {state}")
-            states.append(state)
-            if state is SpoolRevisionState.BEHIND:
-                stamp = node
+            expected, writes = _model_open(
+                parents,
+                model,
+                node,
+                records_lineage,
+                needs_no_lineage=needs_no_lineage,
+            )
+            if records_lineage:
+                engine = create_spool_engine(spool_path)
+                try:
+                    state = upgrade_spool_database(
+                        engine, script_location=checkouts[node]
+                    )
+                except IncompatibleSpoolRevisionError:
+                    state = SpoolRevisionState.INCOMPATIBLE
+                finally:
+                    engine.dispose()
             else:
-                # Only an upgrade writes; every other open just reads.
-                assert _data_version(observer) == before
-            assert current_database_revision(spool_path) == names[stamp]
-            spool_lineage = _ancestry(parents, stamp)
-            assert recorded_spool_lineage(spool_path) == {
-                names[ancestor] for ancestor in spool_lineage
-            }
-            # The schema is exactly the spool's lineage's: refused checkouts
-            # added nothing.
+                state = _open_as_runner_without_lineage(spool_path, checkouts[node])
+            assert state is expected
+            runner = "a lineage-recording" if records_lineage else "an older"
+            event(f"{runner} runner found the spool {state}")
+            if writes and state is SpoolRevisionState.AT_HEAD:
+                event("a checkout at head recorded a missing or stale lineage")
+            states.append(state)
+            # Only an upgrade or a lineage repair writes; every other open reads.
+            assert (_data_version(observer) != before) == writes
+            assert model.stamp is not None
+            assert current_database_revision(spool_path) == names[model.stamp]
+            assert recorded_spool_lineage(spool_path) == (
+                None
+                if model.lineage is None
+                else packaged.revisions | {names[other] for other in model.lineage}
+            )
+            # The schema is exactly that of the spool's revision: refused
+            # checkouts added nothing.
+            applied = _ancestry(parents, model.stamp) - {0}
             synthetic = range(1, len(parents))
             tables = _tables(spool_path)
             columns = _runs_columns(spool_path)
             assert {
-                node
-                for node in synthetic
-                if f"graph_publication_jobs_{names[node]}" in tables
-            } == spool_lineage - {0}
+                other
+                for other in synthetic
+                if f"graph_publication_jobs_{names[other]}" in tables
+            } == applied
             assert {
-                node for node in synthetic if f"region_{names[node]}" in columns
-            } == spool_lineage - {0}
+                other for other in synthetic if f"region_{names[other]}" in columns
+            } == applied
             if state is not SpoolRevisionState.INCOMPATIBLE:
                 # Everything this checkout's schema has is in the spool.
-                needed = _ancestry(parents, node) - {0}
-                assert {f"graph_publication_jobs_{names[n]}" for n in needed} <= tables
-                assert {f"region_{names[n]}" for n in needed} <= columns
+                assert _ancestry(parents, node) - {0} <= applied
     finally:
         observer.close()
-    return states, stamp
+    return states, model.stamp
 
 
 @settings(
-    max_examples=20,
+    max_examples=40,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
 @given(
-    parents=_revision_trees(max_revisions=4),
-    opens=st.lists(st.integers(min_value=0, max_value=4), min_size=1, max_size=5),
+    parents=_revision_trees(max_revisions=3),
+    opens=st.lists(
+        st.tuples(st.integers(min_value=0, max_value=3), st.booleans()),
+        min_size=1,
+        max_size=8,
+    ),
 )
 def test_opens_in_any_order_by_checkouts_on_a_revision_tree_match_the_model(
     tmp_path_factory, parents, opens
 ) -> None:
+    """Including checkouts whose runner predates lineage, and never records it."""
+
     states, _ = _open_in_order(
         tmp_path_factory.mktemp("tree"),
         parents,
-        [node % len(parents) for node in opens],
+        [(node % len(parents), records_lineage) for node, records_lineage in opens],
     )
     assert len(states) == len(opens)
 
@@ -872,41 +1123,45 @@ def test_opens_in_any_order_by_checkouts_on_a_revision_tree_match_the_model(
     length=st.integers(min_value=1, max_value=4),
     opens=st.lists(st.integers(min_value=0, max_value=4), min_size=1, max_size=5),
 )
-def test_checkouts_on_one_line_of_history_are_never_refused(
+def test_lineage_recording_checkouts_on_one_line_of_history_are_never_refused(
     tmp_path_factory, length, opens
 ) -> None:
     parents = [None] + list(range(length))
     opens = [node % len(parents) for node in opens]
-    states, stamp = _open_in_order(tmp_path_factory.mktemp("line"), parents, opens)
+    states, stamp = _open_in_order(
+        tmp_path_factory.mktemp("line"), parents, [(node, True) for node in opens]
+    )
     assert SpoolRevisionState.INCOMPATIBLE not in states
     # The spool ends at the newest revision any checkout brought.
     assert stamp == max(opens)
 
 
 # --- Every revision is additive ------------------------------------------------
+#
+# The check is a guard, not a proof that older code keeps working. It holds a
+# migration to a short list of operations on the tables that existed before
+# it, and confirms that rows the real spool code stored survive it and can
+# still be written naming only the old columns.
 
 
 @dataclass(frozen=True)
 class _TableShape:
+    sql: str
     columns: dict[str, tuple[object, ...]]
     indexes: frozenset[tuple[object, ...]]
-    foreign_keys: frozenset[tuple[object, ...]]
-    checks: frozenset[str]
     triggers: frozenset[tuple[str, str]]
 
 
 def _shape(path: Path) -> dict[str, _TableShape]:
-    """Every table's columns, indexes, foreign keys, checks and triggers."""
+    """Every table's stored definition, columns, indexes and triggers."""
 
     connection = sqlite3.connect(path)
-    engine = create_engine(sqlite_database_url(path))
     try:
-        reflection = inspect(engine)
         shapes: dict[str, _TableShape] = {}
-        for (table,) in connection.execute(
-            "SELECT name FROM sqlite_master "
+        for table, sql in connection.execute(
+            "SELECT name, sql FROM sqlite_master "
             "WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
-        ):
+        ).fetchall():
             if table in _BOOKKEEPING_TABLES:
                 continue
             columns = {
@@ -918,7 +1173,7 @@ def _shape(path: Path) -> dict[str, _TableShape]:
             indexes = set()
             for _, index, unique, origin, partial in connection.execute(
                 f'PRAGMA index_list("{table}")'
-            ):
+            ).fetchall():
                 keys = tuple(
                     (name, descending, collation)
                     for _, _, name, descending, collation, key in connection.execute(
@@ -926,7 +1181,7 @@ def _shape(path: Path) -> dict[str, _TableShape]:
                     )
                     if key
                 )
-                (sql,) = connection.execute(
+                (index_sql,) = connection.execute(
                     "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
                     (index,),
                 ).fetchone()
@@ -934,32 +1189,12 @@ def _shape(path: Path) -> dict[str, _TableShape]:
                 # itself, so they are compared by definition, not name.
                 indexes.add(
                     (index if origin == "c" else None, unique, origin, partial)
-                    + (keys, sql)
+                    + (keys, index_sql)
                 )
-            references: dict[int, list[object]] = {}
-            for (
-                identifier,
-                _,
-                target,
-                source_column,
-                target_column,
-                on_update,
-                on_delete,
-                match,
-            ) in connection.execute(f'PRAGMA foreign_key_list("{table}")'):
-                reference = references.setdefault(
-                    identifier, [target, (), (), on_update, on_delete, match]
-                )
-                reference[1] += (source_column,)
-                reference[2] += (target_column,)
             shapes[table] = _TableShape(
+                sql=sql,
                 columns=columns,
                 indexes=frozenset(indexes),
-                foreign_keys=frozenset(tuple(item) for item in references.values()),
-                checks=frozenset(
-                    str(check["sqltext"])
-                    for check in reflection.get_check_constraints(table)
-                ),
                 triggers=frozenset(
                     connection.execute(
                         "SELECT name, sql FROM sqlite_master "
@@ -970,8 +1205,28 @@ def _shape(path: Path) -> dict[str, _TableShape]:
             )
         return shapes
     finally:
-        engine.dispose()
         connection.close()
+
+
+def _inserted_text(before: str, after: str) -> str | None:
+    """What ``after`` adds to ``before`` in one place, or ``None`` otherwise.
+
+    ``ALTER TABLE … ADD COLUMN`` inserts the column into the stored definition
+    after the last column, ahead of any table constraints. A rename, a drop
+    or a rebuilt table changes the definition some other way.
+    """
+
+    prefix = len(os.path.commonprefix([before, after]))
+    suffix = len(os.path.commonprefix([before[::-1], after[::-1]]))
+    suffix = min(suffix, len(before) - prefix, len(after) - prefix)
+    if prefix + suffix != len(before):
+        return None
+    return after[prefix : len(after) - suffix]
+
+
+_CONSTRAINT_OR_EXPRESSION = re.compile(
+    r"\b(CHECK|UNIQUE|PRIMARY|GENERATED|AS)\b", re.IGNORECASE
+)
 
 
 def _shape_violations(
@@ -983,35 +1238,153 @@ def _shape_violations(
         if new is None:
             problems.append(f"{table}: removed")
             continue
-        for column, definition in old.columns.items():
-            if column not in new.columns:
-                problems.append(f"{table}.{column}: removed")
-            elif new.columns[column] != definition:
-                problems.append(
-                    f"{table}.{column}: changed from {definition} "
-                    f"to {new.columns[column]}"
-                )
-        for column, (_, notnull, default, primary_key, hidden) in new.columns.items():
+        added = _inserted_text(old.sql, new.sql)
+        if added is None:
+            problems.append(f"{table}: definition changed, not only extended")
+        elif _CONSTRAINT_OR_EXPRESSION.search(added):
+            problems.append(f"{table}: new columns carry a constraint or expression")
+        for column in old.columns.keys() - new.columns.keys():
+            problems.append(f"{table}.{column}: removed")
+        for column, definition in new.columns.items():
             if column in old.columns:
+                if old.columns[column] != definition:
+                    problems.append(f"{table}.{column}: changed")
                 continue
+            _, notnull, default, primary_key, hidden = definition
+            if hidden:
+                problems.append(f"{table}.{column}: new column is generated")
             if primary_key:
                 problems.append(f"{table}.{column}: new column is in the primary key")
-            if notnull and default is None and not hidden:
+            if notnull and default is None:
                 problems.append(
                     f"{table}.{column}: new column is NOT NULL without a default"
                 )
         for index in sorted(old.indexes - new.indexes, key=repr):
             problems.append(f"{table}: index {index[0] or index[4]} removed or changed")
-        for index in sorted(new.indexes - old.indexes, key=repr):
-            if index[1]:
-                problems.append(f"{table}: new unique index {index[0] or index[4]}")
-        if new.foreign_keys != old.foreign_keys:
-            problems.append(f"{table}: foreign keys changed")
-        if new.checks != old.checks:
-            problems.append(f"{table}: CHECK constraints changed")
+        for name, unique, _, partial, keys, _ in sorted(
+            new.indexes - old.indexes, key=repr
+        ):
+            if unique:
+                problems.append(f"{table}: new index {name or keys} is unique")
+            if partial:
+                problems.append(f"{table}: new index {name or keys} is partial")
+            if any(column is None for column, _, _ in keys):
+                problems.append(
+                    f"{table}: new index {name or keys} is on an expression"
+                )
         if new.triggers != old.triggers:
             problems.append(f"{table}: triggers changed")
     return problems
+
+
+_NAME = r'(?:["`\[]?\w+["`\]]?\s*\.\s*)?["`\[]?(\w+)["`\]]?'
+_ROW_STATEMENTS = (
+    (
+        "INSERT",
+        re.compile(rf"(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO\s+{_NAME}", re.I),
+    ),
+    ("UPDATE", re.compile(rf"UPDATE(?:\s+OR\s+\w+)?\s+{_NAME}", re.I)),
+    ("DELETE", re.compile(rf"DELETE\s+FROM\s+{_NAME}", re.I)),
+)
+_ALTER_TABLE = re.compile(rf"ALTER\s+TABLE\s+{_NAME}\s+(\w+)", re.I)
+_DROP = re.compile(rf"DROP\s+(TABLE|INDEX|TRIGGER)\s+(?:IF\s+EXISTS\s+)?{_NAME}", re.I)
+_CREATE_TRIGGER = re.compile(
+    rf"CREATE\s+(?:TEMP\s+|TEMPORARY\s+)?TRIGGER\b.*?\bON\s+{_NAME}", re.I | re.S
+)
+_HARMLESS_STATEMENT = re.compile(
+    r"(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|PRAGMA|SELECT|ANALYZE|"
+    r"CREATE\s+(?:UNIQUE\s+)?INDEX|CREATE\s+TABLE|CREATE\s+VIEW)\b",
+    re.I,
+)
+
+
+def _statement_violations(
+    statements: list[str], before: dict[str, _TableShape]
+) -> list[str]:
+    """Statements the migration ran that the policy does not allow.
+
+    On a table that already existed, only ``ALTER TABLE … ADD COLUMN`` and
+    ``CREATE INDEX`` are allowed: no inserted, updated or deleted rows, no
+    other ``ALTER``, no ``DROP`` and no trigger. Whatever a statement would
+    spare of the rows this check seeds, it is refused for its kind.
+    """
+
+    indexes = {
+        index[0]: table
+        for table, shape in before.items()
+        for index in shape.indexes
+        if index[0]
+    }
+    triggers = {
+        name: table for table, shape in before.items() for name, _ in shape.triggers
+    }
+    refused = "statement not allowed on an existing table"
+    problems: list[str] = []
+    for statement in statements:
+        statement = statement.strip()
+        if statement.startswith("--"):
+            continue  # SQLite's own checks, traced as comments
+        rows = [
+            (kind, found.group(1))
+            for kind, pattern in _ROW_STATEMENTS
+            # A WITH clause can precede the verb, so look past the start.
+            for found in pattern.finditer(statement)
+            if statement.upper().startswith(("WITH", kind, "REPLACE"))
+        ]
+        if rows:
+            problems += [
+                f"{table}: {refused}: {kind}" for kind, table in rows if table in before
+            ]
+        elif found := _ALTER_TABLE.match(statement):
+            table, action = found.groups()
+            if table in before and action.upper() != "ADD":
+                problems.append(f"{table}: {refused}: ALTER TABLE {action.upper()}")
+        elif found := _DROP.match(statement):
+            kind, name = found.group(1).upper(), found.group(2)
+            table = {"TABLE": name, "INDEX": indexes.get(name)}.get(
+                kind, triggers.get(name)
+            )
+            if table in before:
+                problems.append(f"{table}: {refused}: DROP {kind} {name}")
+        elif found := _CREATE_TRIGGER.match(statement):
+            if found.group(1) in before:
+                problems.append(f"{found.group(1)}: {refused}: CREATE TRIGGER")
+        elif not _HARMLESS_STATEMENT.match(statement):
+            problems.append(f"statement to review by hand: {statement[:60]}")
+    return problems
+
+
+@functools.cache
+def _stored_by_the_spool(label: str) -> dict[str, list[dict[str, object]]]:
+    """The rows this checkout's spool code stores for one build's runs.
+
+    A pending run with two events, a local-only run with one and a registered
+    run with none, read back as stored: valid JSON, both upload states.
+    """
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "events.sqlite3"
+        spool = EventSpool(path)
+        try:
+            pending = _registration(f"{label}-pending", f"{label}-producer")
+            spool.register(pending)
+            for stage in "ab":
+                spool.append(pending, _event(stage))
+            local = _registration(f"{label}-local", f"{label}-producer")
+            spool.register(local)
+            spool.append(local, _event("a"))
+            spool.make_local_only(f"{label}-local", f"{label}-producer", "test")
+            spool.register(_registration(f"{label}-idle", f"{label}-producer"))
+        finally:
+            _close(spool)
+        return _stored_rows(path)
+
+
+# Rows for tables the spool code above does not fill, by table name: a
+# function from 0 (a row to seed) or 1 (a row to write afterwards) to a valid
+# row. A revision that adds a table whose constraints refuse arbitrary values
+# gives it rows here, so that the revision after it can be checked.
+_ROWS_FOR_OTHER_TABLES: dict[str, Callable[[int], dict[str, object]]] = {}
 
 
 def _sample(declared: str, index: int) -> object:
@@ -1032,14 +1405,27 @@ def _writable_columns(shape: _TableShape) -> list[str]:
     return [name for name, definition in shape.columns.items() if not definition[4]]
 
 
+def _rows(table: str, shape: _TableShape, variant: int) -> list[list[object]]:
+    """Rows for one table, each in the order of its writable columns."""
+
+    columns = _writable_columns(shape)
+    stored = _stored_by_the_spool(("seeded", "written")[variant])
+    if table in stored:
+        return [[row[column] for column in columns] for row in stored[table]]
+    if table in _ROWS_FOR_OTHER_TABLES:
+        row = _ROWS_FOR_OTHER_TABLES[table](variant)
+        return [[row[column] for column in columns]]
+    return [[_sample(shape.columns[column][0], variant) for column in columns]]
+
+
 def _insert(
-    connection: sqlite3.Connection, table: str, shape: _TableShape, index: int
+    connection: sqlite3.Connection, table: str, shape: _TableShape, row: list[object]
 ) -> None:
     columns = _writable_columns(shape)
     connection.execute(
         f'INSERT INTO "{table}" ({", ".join(f'"{name}"' for name in columns)}) '
         f"VALUES ({', '.join('?' for _ in columns)})",
-        [_sample(shape.columns[name][0], index) for name in columns],
+        row,
     )
 
 
@@ -1051,7 +1437,7 @@ def _old_rows(
 
 
 def _write_violations(path: Path, before: dict[str, _TableShape]) -> list[str]:
-    """Insert, update and delete a row in each table naming only old columns."""
+    """Insert, update and delete rows in each table naming only old columns."""
 
     problems: list[str] = []
     connection = sqlite3.connect(path, isolation_level=None)
@@ -1061,18 +1447,21 @@ def _write_violations(path: Path, before: dict[str, _TableShape]) -> list[str]:
             key = [name for name in columns if shape.columns[name][3]] or columns
             others = [name for name in columns if name not in key]
             where = " AND ".join(f'"{name}" = ?' for name in key)
-            key_values = [_sample(shape.columns[name][0], 1) for name in key]
             try:
-                _insert(connection, table, shape, 1)
-                if others:
+                for row in _rows(table, shape, 1):
+                    values = dict(zip(columns, row, strict=True))
+                    key_values = [values[name] for name in key]
+                    _insert(connection, table, shape, row)
+                    if others:
+                        connection.execute(
+                            f'UPDATE "{table}" SET '
+                            + ", ".join(f'"{name}" = ?' for name in others)
+                            + f" WHERE {where}",
+                            [values[name] for name in others] + key_values,
+                        )
                     connection.execute(
-                        f'UPDATE "{table}" SET '
-                        + ", ".join(f'"{name}" = ?' for name in others)
-                        + f" WHERE {where}",
-                        [_sample(shape.columns[name][0], 2) for name in others]
-                        + key_values,
+                        f'DELETE FROM "{table}" WHERE {where}', key_values
                     )
-                connection.execute(f'DELETE FROM "{table}" WHERE {where}', key_values)
             except sqlite3.Error as error:
                 problems.append(
                     f"{table}: a write naming only its existing columns failed: {error}"
@@ -1082,21 +1471,29 @@ def _write_violations(path: Path, before: dict[str, _TableShape]) -> list[str]:
     return problems
 
 
-def _additivity_violations(path: Path, migrate: Callable[[], None]) -> list[str]:
-    """Why older code could not use ``path`` after ``migrate``, if it could not.
+def _additivity_violations(
+    path: Path, migrate: Callable[[Callable[[str], None]], None]
+) -> list[str]:
+    """Why ``migrate`` breaks the additive-only rule on ``path``, if it does.
 
-    Every table gets a row first. Afterwards each table must keep its columns,
-    indexes, foreign keys, checks, triggers and rows; new columns must be
-    nullable or defaulted and outside the primary key; new indexes on them
-    must not be unique; and a row written naming only the old columns must
-    insert, update and delete.
+    ``migrate`` runs the migration in one transaction and passes every
+    statement SQLite executes to the function it is given. Before it, each
+    table is given the rows the real spool code stores, or arbitrary rows for
+    tables that code does not fill.
     """
 
     before = _shape(path)
     connection = sqlite3.connect(path)
     try:
         for table, shape in before.items():
-            _insert(connection, table, shape, 0)
+            for row in _rows(table, shape, 0):
+                try:
+                    _insert(connection, table, shape, row)
+                except sqlite3.Error as error:
+                    raise AssertionError(
+                        f"give table {table!r} valid rows in _ROWS_FOR_OTHER_TABLES: "
+                        f"it refuses arbitrary ones ({error})"
+                    ) from error
         connection.commit()
         seeded = {
             table: _old_rows(connection, table, shape)
@@ -1105,10 +1502,16 @@ def _additivity_violations(path: Path, migrate: Callable[[], None]) -> list[str]
     finally:
         connection.close()
 
-    migrate()
+    statements: list[str] = []
+    try:
+        migrate(statements.append)
+    except Exception as error:
+        reason = (str(error).strip().splitlines() or [type(error).__name__])[0]
+        return [f"the migration failed in its transaction: {reason}"]
 
     after = _shape(path)
-    problems = _shape_violations(before, after)
+    problems = _statement_violations(statements, before)
+    problems += _shape_violations(before, after)
     connection = sqlite3.connect(path)
     try:
         for table, shape in before.items():
@@ -1133,20 +1536,26 @@ def _revision_additivity_violations(
 ) -> list[str]:
     directory.mkdir(parents=True)
     path = directory / "events.sqlite3"
-    engine = create_spool_engine(path)
+    # As upgrade_spool_database migrates: one BEGIN IMMEDIATE transaction.
+    engine = create_spool_engine(path, immediate_transactions=True)
 
-    def upgrade_to(target: str) -> None:
+    def upgrade_to(target: str, trace: Callable[[str], None] | None = None) -> None:
         with (
             engine.begin() as connection,
             alembic_config(
                 connection=connection, script_location=script_location
             ) as config,
         ):
-            command.upgrade(config, target)
+            driver_connection = connection.connection.driver_connection
+            driver_connection.set_trace_callback(trace)
+            try:
+                command.upgrade(config, target)
+            finally:
+                driver_connection.set_trace_callback(None)
 
     try:
         upgrade_to(parent)
-        return _additivity_violations(path, lambda: upgrade_to(revision))
+        return _additivity_violations(path, lambda trace: upgrade_to(revision, trace))
     finally:
         engine.dispose()
 
@@ -1185,37 +1594,73 @@ def test_a_later_additive_revision_passes_the_same_check(tmp_path) -> None:
     )
 
 
+# The generated column and the conditional statements are the ones an earlier
+# version of this check passed: its seeded rows held no JSON and no real
+# upload state, so they neither tripped the expression nor matched the WHERE.
+_OVERFLOW_ON_VALID_JSON = (
+    "ALTER TABLE telemetry_events ADD COLUMN synthetic_overflow INTEGER GENERATED ALWAYS "
+    "AS (CASE WHEN json_valid(payload_json) THEN abs(-9223372036854775808) "
+    "ELSE 0 END) VIRTUAL"
+)
+_NULL_FOR_PENDING_RUNS = (
+    "ALTER TABLE telemetry_runs ADD COLUMN synthetic_gate INT GENERATED ALWAYS AS "
+    "(CASE WHEN upload_state = 'pending' THEN NULL ELSE 1 END) VIRTUAL NOT NULL"
+)
+_DELETE_VALID_EVENTS = "DELETE FROM telemetry_events WHERE json_valid(payload_json)"
+_HOLD_PENDING_RUNS = (
+    "UPDATE telemetry_runs SET upload_state = 'held' WHERE upload_state = 'pending'"
+)
+
 _BREAKING_REVISIONS = {
     "drop-column": (
         'op.drop_column("telemetry_runs", "local_only_reason")',
         "telemetry_runs.local_only_reason: removed",
     ),
     "unique-index": (
-        'op.create_index("runs_updated", "telemetry_runs", ["updated_at"], '
-        "unique=True)",
-        "telemetry_runs: new unique index runs_updated",
+        'op.create_index("synthetic_unique_index", "telemetry_runs", '
+        '["run_id", "updated_at"], unique=True)',
+        "telemetry_runs: new index synthetic_unique_index is unique",
     ),
     "required-column": (
         """
         with op.batch_alter_table("telemetry_runs", recreate="always") as batch:
             batch.add_column(
-                sa.Column("note", sa.Text(), nullable=False, server_default="x")
+                sa.Column("synthetic_note", sa.Text(), nullable=False, server_default="x")
             )
         with op.batch_alter_table("telemetry_runs", recreate="always") as batch:
-            batch.alter_column("note", server_default=None)
+            batch.alter_column("synthetic_note", server_default=None)
         """,
-        "telemetry_runs.note: new column is NOT NULL without a default",
+        "telemetry_runs.synthetic_note: new column is NOT NULL without a default",
     ),
     "type-change": (
         """
         with op.batch_alter_table("telemetry_events") as batch:
             batch.alter_column("sequence", type_=sa.Text())
         """,
-        "telemetry_events.sequence: changed from ('INTEGER'",
+        "telemetry_events.sequence: changed",
     ),
     "rewritten-rows": (
         "op.execute(\"UPDATE telemetry_runs SET upload_state = 'held'\")",
         "telemetry_runs: existing rows changed",
+    ),
+    "conditional-update": (
+        f"op.execute({_HOLD_PENDING_RUNS!r})",
+        "telemetry_runs: statement not allowed on an existing table: UPDATE",
+    ),
+    "conditional-delete": (
+        f"op.execute({_DELETE_VALID_EVENTS!r})",
+        "telemetry_events: statement not allowed on an existing table: DELETE",
+    ),
+    "generated-column": (
+        f"op.execute({_OVERFLOW_ON_VALID_JSON!r})",
+        "telemetry_events.synthetic_overflow: new column is generated",
+    ),
+    "vacuum": (
+        """
+        op.create_table("synthetic_table", sa.Column("body", sa.Text()))
+        op.execute("VACUUM")
+        """,
+        "the migration failed in its transaction",
     ),
 }
 
@@ -1254,13 +1699,11 @@ def _recreate(
             (table,),
         )
     ]
-    changed = edit(sql)
-    assert changed != sql
     # SQLite quotes the name in the definition it stores after a rename.
     renamed, count = re.subn(
-        rf'^CREATE TABLE "?{table}"? \(', f"CREATE TABLE {table}_new (", changed
+        rf'^CREATE TABLE "?{table}"? \(', f"CREATE TABLE {table}_new (", edit(sql)
     )
-    assert count == 1, changed
+    assert count == 1, sql
     connection.execute(renamed)
     connection.execute(f"INSERT INTO {table}_new SELECT {leading_values}* FROM {table}")
     connection.execute(f"DROP TABLE {table}")
@@ -1269,81 +1712,163 @@ def _recreate(
         connection.execute(index_sql)
 
 
-def _sql(statement: str) -> Callable[[sqlite3.Connection], object]:
-    return lambda connection: connection.execute(statement)
+def _edited(old: str, new: str) -> Callable[[str], str]:
+    def edit(sql: str) -> str:
+        assert old in sql, sql
+        return sql.replace(old, new, 1)
+
+    return edit
 
 
-_ADDITIVE_CHANGES: dict[str, Callable[[sqlite3.Connection], object]] = {
+def _sql(*statements: str) -> Callable[[sqlite3.Connection], object]:
+    def apply(connection: sqlite3.Connection) -> None:
+        for statement in statements:
+            connection.execute(statement)
+
+    return apply
+
+
+_ALLOWED_CHANGES: dict[str, Callable[[sqlite3.Connection], object]] = {
     "new-table": _sql(
-        "CREATE TABLE graph_publication_jobs "
+        "CREATE TABLE synthetic_jobs "
         "(publication_id TEXT PRIMARY KEY, status TEXT NOT NULL)"
     ),
+    "new-table-with-check": _sql(
+        "CREATE TABLE synthetic_states (state TEXT NOT NULL "
+        "CHECK (state IN ('queued', 'done')))"
+    ),
     "new-table-referencing-runs": _sql(
-        "CREATE TABLE run_receipts (run_id TEXT, producer_id TEXT, "
+        "CREATE TABLE synthetic_receipts (run_id TEXT, producer_id TEXT, "
         "FOREIGN KEY (run_id, producer_id) "
         "REFERENCES telemetry_runs (run_id, producer_id))"
     ),
-    "nullable-column": _sql("ALTER TABLE telemetry_runs ADD COLUMN region TEXT"),
+    "new-table-filled-from-old-rows": _sql(
+        "CREATE TABLE synthetic_notes (run_id TEXT, note TEXT)",
+        "INSERT INTO synthetic_notes (run_id) SELECT run_id FROM telemetry_runs",
+    ),
+    "nullable-column": _sql(
+        "ALTER TABLE telemetry_runs ADD COLUMN synthetic_region TEXT"
+    ),
     "defaulted-column": _sql(
-        "ALTER TABLE telemetry_events ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
+        "ALTER TABLE telemetry_events ADD COLUMN synthetic_attempts INTEGER NOT NULL DEFAULT 0"
     ),
     "plain-index": _sql(
-        "CREATE INDEX telemetry_runs_updated ON telemetry_runs (updated_at)"
+        "CREATE INDEX synthetic_plain_index ON telemetry_runs (updated_at)"
     ),
 }
 
-# Applied in this order, after any additive changes, so every combination
-# applies cleanly. Each maps to the problem it alone must be reported as.
-_BREAKING_CHANGES: dict[str, tuple[Callable[[sqlite3.Connection], object], str]] = {
+# Each maps to a problem it must be reported as when applied alone. They are
+# applied in this order, after any allowed changes.
+_FORBIDDEN_CHANGES: dict[str, tuple[Callable[[sqlite3.Connection], object], str]] = {
     "drop-column": (
         _sql("ALTER TABLE telemetry_runs DROP COLUMN local_only_reason"),
         "telemetry_runs.local_only_reason: removed",
     ),
     "rename-column": (
         _sql("ALTER TABLE telemetry_events RENAME COLUMN created_at TO queued_at"),
-        "telemetry_events.created_at: removed",
+        "telemetry_events: statement not allowed on an existing table: "
+        "ALTER TABLE RENAME",
     ),
     "drop-index": (
         _sql("DROP INDEX telemetry_events_run_sequence"),
         "telemetry_events: index telemetry_events_run_sequence removed",
     ),
+    "replaced-index": (
+        _sql(
+            "DROP INDEX telemetry_events_run_sequence",
+            "CREATE INDEX telemetry_events_run_sequence "
+            "ON telemetry_events (run_id, producer_id, sequence)",
+        ),
+        "telemetry_events: statement not allowed on an existing table: DROP INDEX",
+    ),
     "unique-index": (
-        _sql("CREATE UNIQUE INDEX runs_updated ON telemetry_runs (updated_at)"),
-        "telemetry_runs: new unique index runs_updated",
+        _sql(
+            "CREATE UNIQUE INDEX synthetic_unique_index ON telemetry_runs (run_id, updated_at)"
+        ),
+        "telemetry_runs: new index synthetic_unique_index is unique",
+    ),
+    "partial-index": (
+        _sql(
+            "CREATE INDEX synthetic_partial_index ON telemetry_events (created_at) "
+            "WHERE sequence > 0"
+        ),
+        "telemetry_events: new index synthetic_partial_index is partial",
+    ),
+    "expression-index": (
+        _sql(
+            "CREATE INDEX synthetic_expression_index ON telemetry_events (length(payload_json))"
+        ),
+        "telemetry_events: new index synthetic_expression_index is on an expression",
     ),
     "trigger": (
         _sql(
-            "CREATE TRIGGER runs_touch AFTER INSERT ON telemetry_runs "
+            "CREATE TRIGGER synthetic_trigger AFTER INSERT ON telemetry_runs "
             "BEGIN SELECT 1; END"
         ),
-        "telemetry_runs: triggers changed",
+        "telemetry_runs: statement not allowed on an existing table: CREATE TRIGGER",
     ),
     "rewritten-rows": (
         _sql("UPDATE telemetry_runs SET upload_state = 'held'"),
+        "telemetry_runs: existing rows changed",
+    ),
+    "conditional-update": (
+        _sql(_HOLD_PENDING_RUNS),
         "telemetry_runs: existing rows changed",
     ),
     "deleted-rows": (
         _sql("DELETE FROM telemetry_events"),
         "telemetry_events: existing rows changed",
     ),
+    "conditional-delete": (
+        _sql(_DELETE_VALID_EVENTS),
+        "telemetry_events: existing rows changed",
+    ),
+    "delete-through-a-with-clause": (
+        _sql(
+            "WITH doomed AS (SELECT event_id FROM telemetry_events) "
+            "DELETE FROM telemetry_events WHERE event_id IN (SELECT event_id FROM doomed)"
+        ),
+        "telemetry_events: statement not allowed on an existing table: DELETE",
+    ),
+    "inserted-rows": (
+        _sql(
+            "INSERT INTO telemetry_runs "
+            "(run_id, producer_id, registration_json, updated_at) "
+            "VALUES ('extra', 'extra', '{}', '2026-10-09T00:00:00+00:00')"
+        ),
+        "telemetry_runs: statement not allowed on an existing table: INSERT",
+    ),
+    "generated-column": (
+        _sql(_OVERFLOW_ON_VALID_JSON),
+        "telemetry_events.synthetic_overflow: new column is generated",
+    ),
+    "constrained-generated-column": (
+        _sql(_NULL_FOR_PENDING_RUNS),
+        "the migration failed in its transaction: NOT NULL constraint failed",
+    ),
+    "column-with-check": (
+        _sql(
+            "ALTER TABLE telemetry_events ADD COLUMN synthetic_flag INTEGER DEFAULT 0 "
+            "CHECK (synthetic_flag = 0)"
+        ),
+        "telemetry_events: new columns carry a constraint or expression",
+    ),
     "required-column": (
         lambda connection: _recreate(
             connection,
             "telemetry_runs",
-            lambda sql: sql.replace("(\n\t", "(\n\tnote TEXT NOT NULL, \n\t", 1),
+            _edited("(\n\t", "(\n\tsynthetic_note TEXT NOT NULL, \n\t"),
             leading_values="'x', ",
         ),
-        "telemetry_runs.note: new column is NOT NULL without a default",
+        "telemetry_runs.synthetic_note: new column is NOT NULL without a default",
     ),
     "type-change": (
         lambda connection: _recreate(
             connection,
             "telemetry_events",
-            lambda sql: sql.replace(
-                "sequence INTEGER NOT NULL", "sequence TEXT NOT NULL"
-            ),
+            _edited("sequence INTEGER NOT NULL", "sequence TEXT NOT NULL"),
         ),
-        "telemetry_events.sequence: changed from ('INTEGER'",
+        "telemetry_events.sequence: changed",
     ),
     "check-constraint": (
         lambda connection: _recreate(
@@ -1351,11 +1876,27 @@ _BREAKING_CHANGES: dict[str, tuple[Callable[[sqlite3.Connection], object], str]]
             "telemetry_events",
             lambda sql: sql[: sql.rindex(")")] + ", \n\tCHECK (sequence > 0)\n)",
         ),
-        "telemetry_events: CHECK constraints changed",
+        "telemetry_events: definition changed, not only extended",
+    ),
+    "collation": (
+        lambda connection: _recreate(
+            connection,
+            "telemetry_runs",
+            _edited("upload_state TEXT", "upload_state TEXT COLLATE RTRIM"),
+        ),
+        "telemetry_runs: definition changed, not only extended",
+    ),
+    "identical-rebuild": (
+        lambda connection: _recreate(connection, "telemetry_runs", lambda sql: sql),
+        "telemetry_runs: statement not allowed on an existing table: DROP TABLE",
     ),
     "drop-table": (
         _sql("DROP TABLE telemetry_events"),
         "telemetry_events: removed",
+    ),
+    "vacuum": (
+        _sql("VACUUM"),
+        "the migration failed in its transaction: cannot VACUUM",
     ),
 }
 
@@ -1367,40 +1908,55 @@ def spool_at_packaged_head(tmp_path_factory) -> Path:
     return path
 
 
-def _change(path: Path, additive: list[str], breaking: list[str]) -> None:
+def _change(
+    path: Path,
+    allowed: list[str],
+    forbidden: list[str],
+    trace: Callable[[str], None] | None = None,
+) -> None:
+    """Apply the named changes in one ``BEGIN IMMEDIATE`` transaction."""
+
     connection = sqlite3.connect(path, isolation_level=None)
     try:
-        connection.execute("BEGIN")
-        for name in _ADDITIVE_CHANGES:
-            if name in additive:
-                _ADDITIVE_CHANGES[name](connection)
-        for name, (apply, _) in _BREAKING_CHANGES.items():
-            if name in breaking:
-                apply(connection)
-        connection.execute("COMMIT")
+        connection.set_trace_callback(trace)
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            for name in _ALLOWED_CHANGES:
+                if name in allowed:
+                    _ALLOWED_CHANGES[name](connection)
+            for name, (apply, _) in _FORBIDDEN_CHANGES.items():
+                if name in forbidden:
+                    apply(connection)
+            connection.execute("COMMIT")
+        except BaseException:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
     finally:
         connection.close()
 
 
-@pytest.mark.parametrize("name", list(_BREAKING_CHANGES))
-def test_the_additivity_check_names_each_breaking_change(
+@pytest.mark.parametrize("name", list(_FORBIDDEN_CHANGES))
+def test_the_additivity_check_names_each_forbidden_change(
     tmp_path, spool_at_packaged_head, name
 ) -> None:
     path = tmp_path / "events.sqlite3"
     shutil.copyfile(spool_at_packaged_head, path)
-    problems = _additivity_violations(path, lambda: _change(path, [], [name]))
-    assert any(found.startswith(_BREAKING_CHANGES[name][1]) for found in problems), (
+    problems = _additivity_violations(
+        path, lambda trace: _change(path, [], [name], trace)
+    )
+    assert any(found.startswith(_FORBIDDEN_CHANGES[name][1]) for found in problems), (
         problems
     )
 
 
-@settings(max_examples=60, deadline=None)
+@settings(max_examples=80, deadline=None)
 @given(
-    additive=st.lists(st.sampled_from(sorted(_ADDITIVE_CHANGES)), unique=True),
-    breaking=st.lists(st.sampled_from(sorted(_BREAKING_CHANGES)), unique=True),
+    allowed=st.lists(st.sampled_from(sorted(_ALLOWED_CHANGES)), unique=True),
+    forbidden=st.lists(st.sampled_from(sorted(_FORBIDDEN_CHANGES)), unique=True),
 )
-def test_the_additivity_check_flags_exactly_the_changes_that_break(
-    tmp_path_factory, spool_at_packaged_head, additive, breaking
+def test_the_additivity_check_flags_exactly_the_forbidden_changes(
+    tmp_path_factory, spool_at_packaged_head, allowed, forbidden
 ) -> None:
     """And on whatever it accepts, this checkout's spool code still works."""
 
@@ -1408,16 +1964,16 @@ def test_the_additivity_check_flags_exactly_the_changes_that_break(
     checked = directory / "checked.sqlite3"
     shutil.copyfile(spool_at_packaged_head, checked)
     problems = _additivity_violations(
-        checked, lambda: _change(checked, additive, breaking)
+        checked, lambda trace: _change(checked, allowed, forbidden, trace)
     )
-    assert bool(problems) == bool(breaking), problems
-    if breaking:
+    assert bool(problems) == bool(forbidden), problems
+    if forbidden:
         return
 
     # A newer checkout stamped this spool after making exactly these changes.
     used = directory / "used.sqlite3"
     shutil.copyfile(spool_at_packaged_head, used)
-    _change(used, additive, [])
+    _change(used, allowed, [])
     _stamp(used, "future", migration_history().revisions | {"future"})
     spool = EventSpool(used)
     try:
