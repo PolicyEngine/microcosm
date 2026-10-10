@@ -17,6 +17,7 @@ from microcosm.build.us_runtime.acs_sources import (
 )
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puf_support import support_channel_column
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -39,6 +40,7 @@ def _load_builder_module():
 def _frame(
     *,
     benefit_participation: bool = True,
+    spm_role: bool = True,
     spines: tuple[str, str] | None = None,
 ) -> Frame:
     person = pd.DataFrame(
@@ -55,6 +57,8 @@ def _frame(
     )
     if benefit_participation:
         person["takes_up_snap_if_eligible"] = [True, False]
+    if spm_role:
+        person[NATIVE_SPM_ROLE] = np.asarray([True, True])
     tables = {
         "person": person,
         "household": pd.DataFrame({"household_id": [1, 2], "state_fips": [6, 36]}),
@@ -76,6 +80,20 @@ def _frame(
             )
         },
     )
+
+
+def _spm_role_receipt(*, persons: int) -> dict[str, object]:
+    return {
+        "column": NATIVE_SPM_ROLE,
+        "rule": "RELSHIPP rule",
+        "partition": "household",
+        "asec_rule": "ASEC rule",
+        "persons": persons,
+        "role_true_persons": persons,
+        "independent_minor_persons": 0,
+        "housing_units_classified_only_by_role": 0,
+        "group_quarters_units_without_classified_adult": 0,
+    }
 
 
 def _manifest() -> AcsSourceManifest:
@@ -262,6 +280,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "unmodeled_recipient_rows": 0,
                     }
                 ],
+                "spm_independence_role": _spm_role_receipt(persons=1),
             },
         )
 
@@ -408,6 +427,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "acs_group_quarters_housing_universe",
         "native_acs_source_universe_blanks",
         "sub_puma_geographic_precision",
+        "acs_spm_independence_role_household_partition",
     ]
     assert summary["reviewed_limitations"][2]["unavailable_exact_geography"] == [
         "block_geoid",
@@ -1135,3 +1155,175 @@ def test_donor_release_identity_requires_one_microdata_artifact(
 
     with pytest.raises(SystemExit, match="exactly one microdata artifact"):
         module._donor_release_identity(manifest, "a" * 64)
+
+
+def test_donor_without_the_spm_role_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(
+        builder, "_load_base_frame", lambda path: _frame(spm_role=False)
+    )
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        raise AssertionError("source fetch must not run for a role-free donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"carries no {NATIVE_SPM_ROLE}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "values,match",
+    [
+        (pd.Series([True, None], dtype=object), "null on 1 person row"),
+        (pd.Series([1, 0]), "must be Boolean"),
+    ],
+)
+def test_donor_spm_role_must_be_complete_and_boolean(values, match) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[NATIVE_SPM_ROLE] = values
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_donor_spm_independence_role(donor)
+
+
+def _pooled_result(builder, *, role, receipt):
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    if role is None:
+        frame.person.drop(columns=[NATIVE_SPM_ROLE], inplace=True)
+    else:
+        frame.person[NATIVE_SPM_ROLE] = role
+    provenance = {} if receipt is None else {"spm_independence_role": receipt}
+    return builder.AcsMultispineResult(frame=frame, provenance=provenance)
+
+
+def test_pooled_spm_role_passes_when_complete_boolean_and_receipted() -> None:
+    builder = _load_builder_module()
+    receipt = _spm_role_receipt(persons=1)
+
+    result = _pooled_result(builder, role=np.asarray([True, False]), receipt=receipt)
+
+    assert builder._require_pooled_spm_independence_role(result) is receipt
+
+
+@pytest.mark.parametrize(
+    "role,receipt,match",
+    [
+        (np.asarray([True, False]), None, "derived no SPM independence role"),
+        (None, _spm_role_receipt(persons=1), "lost is_spm_independent_minor_role"),
+        (
+            pd.Series([True, None], dtype=object),
+            _spm_role_receipt(persons=1),
+            r"null on 1 person row\(s\) \(by spine \{'acs_2024_1yr': 1\}\)",
+        ),
+        (pd.Series([1, 0]), _spm_role_receipt(persons=1), "must be Boolean"),
+        (
+            np.asarray([True, False]),
+            _spm_role_receipt(persons=2),
+            "receipt covers 2 person",
+        ),
+    ],
+)
+def test_pooled_spm_role_refuses_an_incomplete_or_unreceipted_role(
+    role, receipt, match
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_pooled_spm_independence_role(
+            _pooled_result(builder, role=role, receipt=receipt)
+        )
+
+
+def test_engine_input_null_audit_refuses_a_declared_source_input() -> None:
+    """A null source role never enters the register, even via a stub engine."""
+
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person[NATIVE_SPM_ROLE] = pd.Series([True, None], dtype=object)
+
+    class FakeEngine:  # declares no source inputs of its own
+        def variables(self):
+            return ["age", NATIVE_SPM_ROLE]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(
+                dtype={"age": "float", NATIVE_SPM_ROLE: "bool"}[name]
+            )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._engine_input_null_audit(frame, FakeEngine())
+
+    assert f"person.{NATIVE_SPM_ROLE} (1 null rows" in str(exc.value)
+    assert "{'acs_2024_1yr': 1}" in str(exc.value)
+    assert "does not permit synthesizing a default" in str(exc.value)
+
+
+def test_engine_input_null_audit_honors_the_engine_declaration() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["future_source_input"] = [1.0, np.nan]
+
+    class FakeEngine:
+        def variables(self):
+            return ["future_source_input", NATIVE_SPM_ROLE]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(dtype="float")
+
+        def _dataset_source_inputs(self):
+            return frozenset({NATIVE_SPM_ROLE, "future_source_input"})
+
+    with pytest.raises(SystemExit, match="person.future_source_input"):
+        builder._engine_input_null_audit(frame, FakeEngine())
+
+
+def test_reviewed_limitations_document_the_acs_spm_role() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.table("household")["TYPEHUGQ"] = [np.nan, 1.0]
+    receipt = {
+        **_spm_role_receipt(persons=1),
+        "group_quarters_units_without_classified_adult": 0,
+        "housing_units_classified_only_by_role": 1,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "geography_ladder": {"applied": True, "seed": 3},
+            "spm_independence_role": receipt,
+        },
+    )
+
+    limitation = builder._reviewed_limitations(
+        result, transfer_coverage={}, input_null_audit=[]
+    )[-1]
+
+    assert limitation["id"] == "acs_spm_independence_role_household_partition"
+    assert limitation["status"] == "reviewed_source_derivation"
+    assert limitation["affected_columns"] == {"person": [NATIVE_SPM_ROLE]}
+    assert limitation["rule"] == receipt["rule"]
+    assert limitation["counts"]["housing_units_classified_only_by_role"] == 1
+    assert limitation["validation"] == "experiments/acs-spm-role-asec-validation.md"
+    assert limitation["calibration_blocker"] is False
+
+
+def test_staging_h5_round_trips_a_complete_boolean_spm_role(tmp_path: Path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person[NATIVE_SPM_ROLE] = np.asarray([True, False])
+    output = tmp_path / "role-staging.h5"
+
+    builder._write_dataset(frame, output, period=2024)
+
+    stored = pd.read_hdf(output, key="person")[NATIVE_SPM_ROLE]
+    assert stored.dtype == np.dtype(bool)
+    assert stored.tolist() == [True, False]

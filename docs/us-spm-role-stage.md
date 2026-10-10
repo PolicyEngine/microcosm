@@ -233,6 +233,13 @@ It is not a storage-independent semantic hash or a certificate for arbitrary
 selected frames. The derivation's metadata contract contains JSON values;
 set-valued provenance is outside that contract.
 
+> Dated note (2026-10-10): ACS-origin rows also exist in the legacy local-release
+> staging (`tools/build_us_acs_multispine_base.py`, which pools the ACS spine
+> onto a role-bearing donor). That lane now derives the role for its ACS rows
+> from `RELSHIPP` on the one-SPM-unit-per-household partition; see
+> [`docs/us-acs-spm-role.md`](us-acs-spm-role.md). The stacked pool below is
+> unchanged, and Q1 in §7 stays open for it.
+
 **ACS-origin rows.** These exist only in the production stacked pool
 (`tools/build_us_multispine_pool.py`, `docs/us-multispine-operator-ordering.md`):
 `acs_inputs.py` derives `is_household_head` for them from `RELSHIPP == 20`, and
@@ -421,6 +428,13 @@ the generated coverage accounts for all 42,174 fields and 41 inventory checks.
 This remains local source qualification on the pinned dependency set.
 
 ## 7. Unresolved stacked-pool qualification
+
+> Dated note (2026-10-10): the local-release staging lane now derives the ACS
+> rows' role ([`docs/us-acs-spm-role.md`](us-acs-spm-role.md)). Its measurement
+> bears on Q1: on the pinned ASEC files, in households that are one SPM unit,
+> the ACS reading of the rule reproduces Census's SPM adult counts in every
+> unit but one per vintage at most. Q1 itself is unchanged: the stacked pool's
+> ASEC arm still carries no role, so a stacked pool still fails closed.
 
 **Q1 — ACS-origin rows in the production stacked pool.** The stage refuses a
 frame with any person lacking an ASEC origin, so this PR does not add it to

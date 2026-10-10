@@ -19,6 +19,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 )
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -91,7 +92,8 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     tmp_path,
 ) -> None:
     events: list[tuple[Any, ...]] = []
-    base = object()
+    # A base with no SPM independence role: the ACS spine derives none.
+    base = SimpleNamespace(table=lambda entity: pd.DataFrame())
     raw_acs = object()
     mapped_acs = object()
     # The post-transfer adult-care gate probes the transferred frame's person
@@ -200,6 +202,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "source_columns": ["AGEP"],
             }
         },
+        "spm_independence_role": None,
         "imputed_inputs": [
             {
                 "column": "taxable_interest_income",
@@ -286,6 +289,93 @@ def test__given_tiny_frames__then_mapping_transfer_and_pool_interoperate(
         "qualified_dividend_income"
     }
     assert result.fit_records[0].weight_kind == "design"
+
+
+def test__given_a_role_bearing_base__then_the_acs_spine_derives_the_role(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The pooled role is complete on both spines, so nothing registers it."""
+
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (_raw_acs_frame(), {}),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+    )
+
+    person = result.frame.table("person")
+    role = person[NATIVE_SPM_ROLE]
+    assert role.dtype == np.dtype(bool)
+    assert not role.isna().any()
+    acs = person[spine_column("person")].eq("acs_2024_1yr")
+    # RELSHIPP [20, 25]: the reference person holds the role, the child not.
+    assert role[acs].tolist() == [True, False]
+    assert role[~acs].tolist() == [True, True, True, False]
+    receipt = result.provenance["spm_independence_role"]
+    assert receipt["persons"] == 2
+    assert receipt["role_true_persons"] == 1
+    assert receipt["source_columns"] == ["RELSHIPP"]
+    assert NATIVE_SPM_ROLE not in {
+        item["column"] for item in result.provenance["imputed_inputs"]
+    }
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_a_role_free_base__then_the_acs_spine_derives_none(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (_raw_acs_frame(), {}),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        _base_donor_frame(),
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+    )
+
+    assert NATIVE_SPM_ROLE not in result.frame.table("person")
+    assert result.provenance["spm_independence_role"] is None
+
+
+def test__given_a_broken_acs_household__then_the_role_refuses_before_any_fit(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    raw = _raw_acs_frame()
+    raw.person["RELSHIPP"] = [25, 25]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (raw, {}),
+    )
+    monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", _must_not_run)
+
+    with pytest.raises(ValueError, match="not exactly one head"):
+        acs_multispine.build_optional_acs_multispine(
+            base,
+            AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        )
 
 
 def test__given_ladder__then_multispine_records_geography_assignment(
