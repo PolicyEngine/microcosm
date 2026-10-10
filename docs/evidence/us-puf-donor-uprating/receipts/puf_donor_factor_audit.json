@@ -23,8 +23,8 @@
  },
  "archived": {
   "soi_targets_42ed5d45.csv": "0d60ddbe0b2c0a00d8c0521ab1693e51487595fb941314e114ec52901bba04bb",
-  "uprate_puf_42ed5d45.py": "ab806fdd9f4c05366e1859150b082b71ece9d1666e2d292c2266a335df105e9b",
-  "utils_uprating_42ed5d45.py": "688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a"
+  "uprate_puf_42ed5d45.py.txt": "ab806fdd9f4c05366e1859150b082b71ece9d1666e2d292c2266a335df105e9b",
+  "utils_uprating_42ed5d45.py.txt": "688a46f81e81788ce0c92a8a476addf66afe7e6a259af9f895e688f9e36fc77a"
  },
  "tolerance": {
   "float64": 1e-09,
@@ -5160,6 +5160,105 @@
    "modal_ratio_share": 0.022612,
    "class": "monetary, tested as a sum",
    "note": "E19200 split by Microcosm into mortgage and investment interest by TY2015 SOI AGI band; field-local quarantine zeroes raw totals of $10M or more; the archived structural conversion (utils/mortgage_interest.py lines 274-283 at 42ed5d45) divides deductible interest by the deductible share where balances exceed the cap, so unmatched records sit above the uprated E19200"
+  }
+ },
+ "donor_weighted_totals_vs_soi": {
+  "donor_weight_total": 161181891.72138393,
+  "soi_returns": {
+   "2015": 150493263.0,
+   "2021": 160824340.0,
+   "2022": 161336659.0,
+   "2023": 160602107.0
+  },
+  "lines": {
+   "Wages": {
+    "donor_column": "employment_income_before_lsr",
+    "soi_variable": "employment_income",
+    "donor_weighted_total": 9078255779726.191,
+    "soi_actual": {
+     "2015": 7112222959000.0,
+     "2021": 9022352941000.0,
+     "2022": 9738950972000.0,
+     "2023": 10204095705000.0
+    }
+   },
+   "Taxable interest": {
+    "donor_column": "taxable_interest_income",
+    "soi_variable": "taxable_interest_income",
+    "donor_weighted_total": 105659861734.69215,
+    "soi_actual": {
+     "2015": 95881223000.0,
+     "2021": 103535203000.0,
+     "2022": 133596569000.0,
+     "2023": 313812674000.0
+    }
+   },
+   "Tax-exempt interest": {
+    "donor_column": "tax_exempt_interest_income",
+    "soi_variable": "exempt_interest",
+    "donor_weighted_total": 55299819857.1012,
+    "soi_actual": {
+     "2015": 61871455000.0,
+     "2021": 55518422000.0,
+     "2022": 55567941000.0,
+     "2023": 66091992000.0
+    }
+   },
+   "Qualified dividends": {
+    "donor_column": "qualified_dividend_income",
+    "soi_variable": "qualified_dividends",
+    "donor_weighted_total": 297122813185.1782,
+    "soi_actual": {
+     "2015": 203187788000.0,
+     "2021": 295906194000.0,
+     "2022": 313230845000.0,
+     "2023": 336070296000.0
+    }
+   },
+   "Capital gain distributions": {
+    "donor_column": "non_sch_d_capital_gains",
+    "soi_variable": "capital_gains_distributions",
+    "donor_weighted_total": 24311594282.324425,
+    "soi_actual": {
+     "2015": 11563203000.0,
+     "2021": 23889533000.0,
+     "2022": 12863423000.0,
+     "2023": 9340820000.0
+    }
+   },
+   "Taxable IRA distributions": {
+    "donor_column": "taxable_ira_distributions",
+    "soi_variable": "ira_distributions",
+    "donor_weighted_total": 406130987951.6224,
+    "soi_actual": {
+     "2015": 253213041000.0,
+     "2021": 408382461000.0,
+     "2022": 437775580000.0,
+     "2023": 438147938000.0
+    }
+   },
+   "Taxable pensions": {
+    "donor_column": "taxable_private_pension_income",
+    "soi_variable": "taxable_pension_income",
+    "donor_weighted_total": 861772339481.1648,
+    "soi_actual": {
+     "2015": 689991999000.0,
+     "2021": 858038339000.0,
+     "2022": 911698884000.0,
+     "2023": 932130236000.0
+    }
+   },
+   "Social Security benefits": {
+    "donor_column": "social_security_retirement",
+    "soi_variable": "total_social_security",
+    "donor_weighted_total": 790662247935.0814,
+    "soi_actual": {
+     "2015": 605152093000.0,
+     "2021": 791161174000.0,
+     "2022": 871307268000.0,
+     "2023": 973642779000.0
+    }
+   }
   }
  }
 }

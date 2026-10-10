@@ -14,7 +14,9 @@ pre-solve design weights; the npz stores the initial and final household
 weights. For each target this script splits the estimate into the ASEC
 channel, the PUF clone (clone index 1) and the capital-gains tail clone
 (clone index 2), at initial and at final weights, and checks that the parts
-add up to the estimates the build recorded. It reports aggregates only.
+add up to the estimates the build recorded. It reports aggregates only: the
+JSON receipt holds the national rows and the summaries, and a CSV beside it
+holds one line per target.
 
 The npz holds object arrays (target names), so it is loaded with
 allow_pickle=True; it is this build's own output, not a downloaded file.
@@ -23,6 +25,7 @@ allow_pickle=True; it is this build's own output, not a downloaded file.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 from collections import defaultdict
@@ -206,7 +209,39 @@ def main() -> None:
             "max_relative_gap_initial": float(rec[:, 0].max()),
             "max_relative_gap_final": float(rec[:, 1].max()),
         }
-        receipt["targets"] = decomposition
+        # National, all-AGI, all-filing-status rows stay in the JSON; every
+        # row goes to the CSV beside it.
+        receipt["national_targets"] = {
+            name: row
+            for name, row in decomposition.items()
+            if row["geography_level"] == "country"
+            and row["agi_lower_bound"] in ("-inf", None)
+            and row["agi_upper_bound"] in ("inf", None)
+            and row["filing_status"] in ("All", None)
+        }
+        csv_path = args.out.with_name(args.out.stem + "_targets.csv")
+        with open(csv_path, "w", newline="") as handle:
+            writer = csv.writer(handle)
+            scalar = [k for k in next(iter(decomposition.values())) if k != "channels"]
+            parts = [
+                f"{label}_{stage}"
+                for label in CHANNELS.values()
+                for stage in ("initial", "final", "nonzero_households")
+            ]
+            writer.writerow(["name", *scalar, *parts])
+            for name, row in decomposition.items():
+                writer.writerow(
+                    [
+                        name,
+                        *[row[k] for k in scalar],
+                        *[
+                            row["channels"][label][stage]
+                            for label in CHANNELS.values()
+                            for stage in ("initial", "final", "nonzero_households")
+                        ],
+                    ]
+                )
+        receipt["all_targets_csv"] = csv_path.name
 
         # Per variable: channel shares across all its rows, initial and final.
         summary = defaultdict(lambda: defaultdict(list))

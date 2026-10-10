@@ -279,7 +279,7 @@ def release_table(donor: dict, release: dict) -> str:
             carried *= table["2021"][key]
         leg = table["2023"][own_key] / carried
         label = f"{label} ({note})" if note else label
-        row = release["targets"][name]
+        row = release["national_targets"][name]
         target = row["target"]
         channels = row["channels"]
         puf_initial = (
@@ -323,10 +323,36 @@ def weight_table(release: dict) -> str:
     return "\n".join(lines)
 
 
+def totals_table(donor: dict) -> str:
+    block = donor["donor_weighted_totals_vs_soi"]
+    lines = [
+        "| SOI line | Donor weighted total, $B | SOI TY2021, $B | SOI TY2023, $B | Donor / TY2021 | Donor / TY2023 |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for label, row in block["lines"].items():
+        total = row["donor_weighted_total"]
+        soi = row["soi_actual"]
+        lines.append(
+            f"| {label} | {total / 1e9:,.1f} | {soi['2021'] / 1e9:,.1f} | "
+            f"{soi['2023'] / 1e9:,.1f} | {fmt(total / soi['2021'])} | "
+            f"{fmt(total / soi['2023'])} |"
+        )
+    returns = block["soi_returns"]
+    lines.append(
+        f"| Returns (donor weight total), M | {block['donor_weight_total'] / 1e6:,.2f} | "
+        f"{returns['2021'] / 1e6:,.2f} | {returns['2023'] / 1e6:,.2f} | "
+        f"{fmt(block['donor_weight_total'] / returns['2021'])} | "
+        f"{fmt(block['donor_weight_total'] / returns['2023'])} |"
+    )
+    return "\n".join(lines)
+
+
 def main() -> None:
     donor = json.loads(open(sys.argv[1]).read())
     release = json.loads(open(sys.argv[2]).read())
-    print("## Donor columns by factor\n")
+    print("## Donor totals against SOI actuals\n")
+    print(totals_table(donor))
+    print("\n## Donor columns by factor\n")
     print(donor_table(donor))
     print("\n## The leg the 2024 branch never applied\n")
     print(leg_table(donor))

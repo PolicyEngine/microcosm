@@ -223,6 +223,23 @@ MICROCOSM_CANDIDATE_SOURCES = {
     ),
 }
 
+# (label, Microcosm donor column, archived SOI variable) for lines whose donor
+# column is one PUF field aged by that field's own SOI line.
+SOI_TOTAL_LINES = (
+    ("Wages", "employment_income_before_lsr", "employment_income"),
+    ("Taxable interest", "taxable_interest_income", "taxable_interest_income"),
+    ("Tax-exempt interest", "tax_exempt_interest_income", "exempt_interest"),
+    ("Qualified dividends", "qualified_dividend_income", "qualified_dividends"),
+    (
+        "Capital gain distributions",
+        "non_sch_d_capital_gains",
+        "capital_gains_distributions",
+    ),
+    ("Taxable IRA distributions", "taxable_ira_distributions", "ira_distributions"),
+    ("Taxable pensions", "taxable_private_pension_income", "taxable_pension_income"),
+    ("Social Security benefits", "social_security_retirement", "total_social_security"),
+)
+
 NON_MONETARY = {
     "tax_unit_id": "identifier",
     "filing_status_code": "categorical",
@@ -306,7 +323,7 @@ def load_archived_uprate(archived_dir: Path):
     storage.CALIBRATION_FOLDER = calibration
     sys.modules.setdefault("policyengine_us_data", types.ModuleType("pud"))
     sys.modules["policyengine_us_data.storage"] = storage
-    source = archived_dir / "uprate_puf_42ed5d45.py"
+    source = archived_dir / "uprate_puf_42ed5d45.py.txt"
     namespace: dict = {}
     exec(compile(source.read_text(), str(source), "exec"), namespace)
     return namespace
@@ -737,6 +754,32 @@ def main() -> None:
         )
         classes[label] = entry
     receipt["microcosm_donor_columns"] = classes
+
+    # 7. Donor weighted totals beside the SOI actuals of the same line. The
+    # donor weights are S006/100 times return-count growth to 2021, so a file
+    # at TY2021 levels should total near the TY2021 actuals.
+    get_agg = uprate_ns["get_soi_aggregate"]
+    weights = table["weight"].to_numpy(dtype=np.float64)
+    totals = {}
+    for label, column, variable in SOI_TOTAL_LINES:
+        values = table[column].to_numpy(dtype=np.float64)
+        totals[label] = {
+            "donor_column": column,
+            "soi_variable": variable,
+            "donor_weighted_total": float(weights @ values),
+            "soi_actual": {
+                str(year): float(get_agg(variable, year, False))
+                for year in (2015, 2021, 2022, 2023)
+            },
+        }
+    receipt["donor_weighted_totals_vs_soi"] = {
+        "donor_weight_total": float(weights.sum()),
+        "soi_returns": {
+            str(year): float(get_agg("count", year, True))
+            for year in (2015, 2021, 2022, 2023)
+        },
+        "lines": totals,
+    }
 
     args.out.write_text(json.dumps(receipt, indent=1, sort_keys=False) + "\n")
     print(f"wrote {args.out}")

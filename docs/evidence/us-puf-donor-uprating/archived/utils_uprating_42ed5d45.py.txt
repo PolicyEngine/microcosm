@@ -21,8 +21,8 @@ the variable name, so parameters known to be per-capita indices (by
 path substring match) skip the divisor.
 """
 
-import pandas as pd
 from policyengine_us_data.storage import STORAGE_FOLDER
+import pandas as pd
 
 START_YEAR = 2020
 END_YEAR = 2034

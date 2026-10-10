@@ -254,7 +254,7 @@ def _archived_uprate_namespace():
     sys.modules.setdefault("policyengine_us_data", types.ModuleType("pud"))
     sys.modules["policyengine_us_data.storage"] = storage
     namespace: dict = {}
-    source = ARCHIVED / "uprate_puf_42ed5d45.py"
+    source = ARCHIVED / "uprate_puf_42ed5d45.py.txt"
     exec(compile(source.read_text(), str(source), "exec"), namespace)
     return namespace
 

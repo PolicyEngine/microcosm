@@ -1,3 +1,17 @@
+## Donor totals against SOI actuals
+
+| SOI line | Donor weighted total, $B | SOI TY2021, $B | SOI TY2023, $B | Donor / TY2021 | Donor / TY2023 |
+|---|---:|---:|---:|---:|---:|
+| Wages | 9,078.3 | 9,022.4 | 10,204.1 | 1.006 | 0.890 |
+| Taxable interest | 105.7 | 103.5 | 313.8 | 1.021 | 0.337 |
+| Tax-exempt interest | 55.3 | 55.5 | 66.1 | 0.996 | 0.837 |
+| Qualified dividends | 297.1 | 295.9 | 336.1 | 1.004 | 0.884 |
+| Capital gain distributions | 24.3 | 23.9 | 9.3 | 1.018 | 2.603 |
+| Taxable IRA distributions | 406.1 | 408.4 | 438.1 | 0.994 | 0.927 |
+| Taxable pensions | 861.8 | 858.0 | 932.1 | 1.004 | 0.925 |
+| Social Security benefits | 790.7 | 791.2 | 973.6 | 0.999 | 0.812 |
+| Returns (donor weight total), M | 161.18 | 160.82 | 160.60 | 1.002 | 1.004 |
+
 ## Donor columns by factor
 
 | Factor carried, TY2015 to TY2021 | Microcosm donor column | Source fields | Records with a nonzero source value | Share matching the archived 2015-to-2021 value | Share matching 2015, 2022 or 2023 | Modal ratio to the source value |
