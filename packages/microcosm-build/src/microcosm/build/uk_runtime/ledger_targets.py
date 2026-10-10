@@ -1785,6 +1785,56 @@ def uk_ledger_households_total(
     }
 
 
+#: The nations' official household estimates (microcosm#1123, decision
+#: "nations win"): their sum is the UK household level the census household
+#: cells are uprated to, before the nation and region bridge places it.
+UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS = (
+    "ons.households.english_regions",
+    "welshgov.households.wales",
+    "nrs.households.scotland",
+    "nisra.households.northern_ireland",
+)
+
+
+def uk_nation_households_reference(
+    national_registry: TargetRegistry,
+    facts: Iterable[Mapping[str, Any]],
+    *,
+    period: int | str,
+) -> dict[str, Any]:
+    """The UK household level as the sum of the nations' official estimates.
+
+    A15 uprated every census household cell by one UK factor onto the LFS UK
+    total. Since #1123 the nations' own estimates win: the reference is their
+    sum, read from the national register the solve binds, and the LFS UK
+    total stays as a diagnostic with its gap recorded.
+    """
+
+    members: dict[str, float] = {}
+    for spec in national_registry.specs:
+        target_id = str(spec.metadata.get("contract_target_id", spec.name))
+        if target_id in UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS:
+            members[target_id] = members.get(target_id, 0.0) + float(spec.value)
+    missing = sorted(set(UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS) - set(members))
+    if missing:
+        raise ValueError(
+            f"UK census household uprating needs every nation household control; "
+            f"the national register lacks {missing}."
+        )
+    value = math.fsum(members.values())
+    lfs = uk_ledger_households_total(facts, period=period)
+    return {
+        "concept": "uk.nation_household_controls_sum",
+        "geography_id": UK_LEDGER_HOUSEHOLDS_TOTAL_GEOGRAPHY,
+        "period": int(period),
+        "value": value,
+        "members": dict(sorted(members.items())),
+        "lfs_uk_total": lfs,
+        "gap_to_lfs_uk_total": value - float(lfs["value"]),
+        "relative_gap_to_lfs_uk_total": value / float(lfs["value"]) - 1.0,
+    }
+
+
 def uk_census_household_uprating(
     local_registry: TargetRegistry,
     households_reference: Mapping[str, Any],

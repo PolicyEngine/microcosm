@@ -72,6 +72,88 @@ def uk_band_bridges(
     )
 
 
+@dataclass(frozen=True)
+class UKSumBridge:
+    """Every cell of the higher targets, summed, controls every lower cell.
+
+    Declared where the grains' precedence would run the wrong way: the four
+    nations' official household estimates control the UK household
+    composition partition, so the composition keeps its shares and takes the
+    nations' total (microcosm#1123, decision "nations win").
+    """
+
+    bridge_id: str
+    higher_target_ids: tuple[str, ...]
+    lower_target_ids: tuple[str, ...]
+
+
+def uk_sum_bridges(
+    declarations: Mapping[str, Any] | None = None,
+) -> tuple[UKSumBridge, ...]:
+    declared = declarations or load_uk_cross_grain_declarations()
+    return tuple(
+        UKSumBridge(
+            bridge_id=str(entry["bridge_id"]),
+            higher_target_ids=tuple(str(value) for value in entry["higher_target_ids"]),
+            lower_target_ids=tuple(str(value) for value in entry["lower_target_ids"]),
+        )
+        for entry in declared.get("sum_bridges", ())
+    )
+
+
+def _apply_sum_bridges(
+    specs: list[TargetSpec],
+    bridges: Sequence[UKSumBridge],
+) -> list[dict[str, Any]]:
+    receipts: list[dict[str, Any]] = []
+    by_target: dict[str, list[int]] = {}
+    for position, spec in enumerate(specs):
+        by_target.setdefault(_contract_target_id(spec), []).append(position)
+    for bridge in bridges:
+        sides = (*bridge.higher_target_ids, *bridge.lower_target_ids)
+        missing = [target_id for target_id in sides if target_id not in by_target]
+        if len(missing) == len(sides):
+            continue
+        if missing:
+            raise ValueError(
+                f"UK sum bridge {bridge.bridge_id!r} is partly bound: no cells "
+                f"for {missing}."
+            )
+        higher = [p for t in bridge.higher_target_ids for p in by_target[t]]
+        lower = [p for t in bridge.lower_target_ids for p in by_target[t]]
+        control = math.fsum(float(specs[p].value) for p in higher)
+        raw_total = math.fsum(float(specs[p].value) for p in lower)
+        if raw_total <= 0.0 or control < 0.0:
+            raise ValueError(
+                f"UK sum bridge {bridge.bridge_id!r} cannot scale a total of "
+                f"{raw_total!r} onto {control!r}."
+            )
+        factor = control / raw_total
+        for position in lower:
+            spec = specs[position]
+            specs[position] = replace(
+                spec,
+                value=float(spec.value) * factor,
+                metadata={
+                    **spec.metadata,
+                    "cross_grain_value_before": repr(float(spec.value)),
+                    "cross_grain_factor": repr(factor),
+                    "cross_grain_control": bridge.bridge_id,
+                },
+            )
+        receipts.append(
+            {
+                "bridge_id": bridge.bridge_id,
+                "control": control,
+                "old_total": raw_total,
+                "new_total": math.fsum(float(specs[p].value) for p in lower),
+                "declared_factor": factor,
+                "cells": len(lower),
+            }
+        )
+    return receipts
+
+
 def _contract_target_id(spec: TargetSpec) -> str:
     return str(spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0]))
 
@@ -191,6 +273,7 @@ def reconcile_uk_national_registry(
 
     specs = list(registry.specs)
     band_receipts = _apply_band_bridges(specs, uk_band_bridges(declarations))
+    sum_receipts = _apply_sum_bridges(specs, uk_sum_bridges(declarations))
 
     rows: list[dict[str, Any]] = []
     cells: dict[tuple[str, str], int] = {}
@@ -258,6 +341,7 @@ def reconcile_uk_national_registry(
     _assert_national_closure(out, reviewed_unbound_higher_targets, declarations)
     return out, {
         "band_bridges": band_receipts,
+        "sum_bridges": sum_receipts,
         "fanout_sum_controls": uk_fanout_sum_controls(out, declarations),
         "cross_grain": receipt,
         "fanout_targets_not_controls": sorted(fanout),
@@ -306,6 +390,26 @@ def _assert_national_closure(
 
     specs = list(registry.specs)
     bound = {_contract_target_id(spec) for spec in specs}
+    for sum_bridge in uk_sum_bridges(declarations):
+        if bound.isdisjoint(
+            (*sum_bridge.higher_target_ids, *sum_bridge.lower_target_ids)
+        ):
+            continue
+        higher = math.fsum(
+            float(spec.value)
+            for spec in specs
+            if _contract_target_id(spec) in sum_bridge.higher_target_ids
+        )
+        lower = math.fsum(
+            float(spec.value)
+            for spec in specs
+            if _contract_target_id(spec) in sum_bridge.lower_target_ids
+        )
+        if not math.isclose(higher, lower, rel_tol=_CLOSURE_RTOL, abs_tol=0.0):
+            raise ValueError(
+                f"UK national register does not close on sum bridge "
+                f"{sum_bridge.bridge_id!r}: {lower!r} against {higher!r}."
+            )
     for bridge in uk_band_bridges(declarations):
         if bridge.higher_target_id not in bound and bound.isdisjoint(
             bridge.lower_target_ids

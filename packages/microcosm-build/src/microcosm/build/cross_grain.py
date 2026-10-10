@@ -35,12 +35,20 @@ _UNSPECIFIED = ("<unspecified>",)
 
 @dataclass(frozen=True)
 class CrossGrainBridge:
-    """Declare one higher-control partition as the identity of a lower side."""
+    """Declare one higher-control partition as the identity of a lower side.
+
+    By default the higher targets partition one control at each geography
+    (the UK household composition), so every one must be valued there.
+    ``per_geography`` declares instead that each higher target is the control
+    of the geography it sits at (each nation's household estimate over its
+    own legs, microcosm#1123): a geography then carries some of them only.
+    """
 
     bridge_id: str
     concept: str
     higher_target_ids: tuple[str, ...]
     lower_side: str
+    per_geography: bool = False
 
 
 @dataclass(frozen=True)
@@ -1224,7 +1232,7 @@ def _winning_controls(
                     if bridge.bridge_id == group.bridge_id
                 )
                 missing = sorted(set(bridge.higher_target_ids) - set(deduplicated))
-                if missing:
+                if missing and not bridge.per_geography:
                     raise ValueError(
                         f"cross-grain bridge {bridge.bridge_id!r} is partially "
                         f"valued at {geography_id!r}; missing {missing}."

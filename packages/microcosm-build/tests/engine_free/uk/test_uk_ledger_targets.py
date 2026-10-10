@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -112,56 +113,72 @@ def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
     assert {leg["parent_geography_id"] for leg in uc_group["legs"]} == {"K03000001"}
 
 
-def test_uk_local_target_surface_fires_k020_household_partition_bridge() -> None:
-    composition_ids = UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids
+def test_uk_local_target_surface_fires_the_nation_household_bridge() -> None:
+    """#1123: each nation's household estimate controls its census cells; the
+    English regional rows control England's (London here), Scotland's row
+    Scotland's. The UK composition no longer parents them."""
+
+    def control(target_id: str, geography_id: str, value: float, **extra) -> TargetSpec:
+        return TargetSpec(
+            name=f"{target_id}@{geography_id}",
+            entity="household",
+            value=value,
+            measure=f"households/{target_id}",
+            period=2025,
+            source="ONS",
+            family="ons_households",
+            metadata={
+                "contract_target_id": target_id,
+                "ledger_geography_level": "region"
+                if geography_id.startswith("E12")
+                else "country",
+                "ledger_geography_id": geography_id,
+                **extra,
+            },
+        )
+
     registry = TargetRegistry(
         [
-            TargetSpec(
-                name=target_id,
-                entity="household",
-                value=10.0,
-                measure=f"measure/{position}",
-                period=2025,
-                source="ONS",
-                family="household_composition",
-                metadata={
-                    "contract_target_id": target_id,
-                    "ledger_geography_level": "country",
-                    "ledger_geography_id": "K02000001",
-                },
-            )
-            for position, target_id in enumerate(composition_ids)
-        ]
-        + [
+            control(
+                "ons.households.english_regions",
+                "E12000007",
+                100.0,
+                cross_grain_grain="region",
+            ),
+            control("welshgov.households.wales", "W92000004", 50.0),
+            control("nrs.households.scotland", "S92000003", 40.0),
+            control("nisra.households.northern_ireland", "N92000002", 30.0),
             _household_spec("E14001073", "constituency", 10.0),
             _household_spec("S14000001", "constituency", 20.0),
+            _household_spec("W07000041", "constituency", 25.0),
+            _household_spec("N05000001", "constituency", 15.0),
             _household_spec("E09000001", "local_authority", 10.0),
             _household_spec("S12000005", "local_authority", 20.0),
+            _household_spec("W06000001", "local_authority", 25.0),
+            _household_spec("N09000001", "local_authority", 15.0),
         ],
         country="uk",
     )
 
     surface, receipt = uk_local_target_surface(
         registry,
-        bound_national_target_ids=composition_ids,
+        bound_national_target_ids=UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids,
         period=2025,
     )
 
     ladder_rows = surface.loc[surface["metric"] == "households"]
     assert ladder_rows.groupby("area_type")["value"].sum().to_dict() == {
-        "constituency": pytest.approx(100.0),
-        "la": pytest.approx(100.0),
+        "constituency": pytest.approx(220.0),
+        "la": pytest.approx(220.0),
     }
     groups = [
         group
         for group in receipt["groups"]
-        if group["bridge_id"]
-        == "national_household_composition_partition_vs_census_households"
+        if group["bridge_id"] == "nation_household_controls_vs_census_households"
     ]
-    assert {group["winning_grain"] for group in groups} == {"country"}
     assert {
         leg["parent_geography_id"] for group in groups for leg in group["legs"]
-    } == {"K02000001"}
+    } == {"E12000007", "W92000004", "S92000003", "N92000002"}
 
 
 def _national_geography_spec(metadata: dict[str, str]) -> TargetSpec:
@@ -1042,7 +1059,7 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
     assert UK_CROSS_GRAIN_RULE.grain_precedence == UK_CROSS_GRAIN_GRAIN_PRECEDENCE
     assert UK_CROSS_GRAIN_RULE.control_grains == ("country", "nation", "region")
     assert [bridge.bridge_id for bridge in UK_CROSS_GRAIN_BRIDGES] == [
-        "national_household_composition_partition_vs_census_households",
+        "nation_household_controls_vs_census_households",
         "national_uc_caseload_vs_uc_households_by_area",
         "national_age_0_9_vs_local_age_0_10",
         "national_age_10_19_vs_local_age_10_20",
@@ -1053,17 +1070,13 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
         "national_age_60_69_vs_local_age_60_70",
         "national_age_70_79_vs_local_age_70_80",
     ]
+    # #1123, nations win: each nation's official household estimate controls
+    # its census cells; the UK composition takes the nations' sum nationally.
     assert UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids == (
-        "ons.household_composition.lone_households_under_65",
-        "ons.household_composition.lone_households_over_65",
-        "ons.household_composition.unrelated_adult_households",
-        "ons.household_composition.couple_no_children_households",
-        "ons.household_composition.couple_under_3_children_households",
-        "ons.household_composition.couple_3_plus_children_households",
-        "ons.household_composition.couple_non_dependent_children_only_households",
-        "ons.household_composition.lone_parent_dependent_children_households",
-        "ons.household_composition.lone_parent_non_dependent_children_households",
-        "ons.household_composition.multi_family_households",
+        "ons.households.english_regions",
+        "welshgov.households.wales",
+        "nrs.households.scotland",
+        "nisra.households.northern_ireland",
     )
     assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == ("dwp.uc.households",)
 
@@ -1354,21 +1367,13 @@ def test_council_tax_stock_country_control_rescales_la_band_counts():
 
 def test_real_uk_bridges_resolve_contract_lower_sides():
     bridges = {bridge.bridge_id: bridge for bridge in UK_CROSS_GRAIN_BRIDGES}
-    household_bridge = bridges[
-        "national_household_composition_partition_vs_census_households"
-    ]
+    household_bridge = bridges["nation_household_controls_vs_census_households"]
     uc_bridge = bridges["national_uc_caseload_vs_uc_households_by_area"]
     household_surface = pd.DataFrame(
         [
-            *[
-                {
-                    "grain": "country",
-                    "geography_id": "K02000001",
-                    "target_id": target_id,
-                    "value": 10.0,
-                }
-                for target_id in household_bridge.higher_target_ids
-            ],
+            *_nation_control_rows(
+                london=80.0, wales=10.0, scotland=20.0, northern_ireland=10.0
+            ),
             {
                 "grain": "constituency",
                 "geography_id": "E14001073",
@@ -1381,6 +1386,18 @@ def test_real_uk_bridges_resolve_contract_lower_sides():
                 "target_id": "ons.census.households",
                 "value": 10.0,
             },
+            {
+                "grain": "constituency",
+                "geography_id": "W07000041",
+                "target_id": "ons.census.households",
+                "value": 5.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "N05000001",
+                "target_id": "ons.census.households",
+                "value": 5.0,
+            },
         ]
     )
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
@@ -1389,7 +1406,7 @@ def test_real_uk_bridges_resolve_contract_lower_sides():
     assert household_bridge.bridge_id in {
         group["bridge_id"] for group in receipt["groups"]
     }
-    assert reconciled.loc[10:, "value"].tolist() == [80.0, 20.0]
+    assert reconciled.loc[4:, "value"].tolist() == [80.0, 20.0, 10.0, 10.0]
 
     uc_surface = pd.DataFrame(
         [
@@ -1420,32 +1437,22 @@ def test_real_uk_bridges_resolve_contract_lower_sides():
     assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
 
 
-def test_partially_bound_household_composition_bridge_stays_unbound_with_reviewed_records():
-    # Synthetic partial bridge: the production register no longer carries these
-    # three exclusions (microcosm#791), so this exercises the reviewed-record
-    # path on a hand-built surface only.
+def test_partially_bound_household_bridge_stays_unbound_with_reviewed_records():
+    # Synthetic partial bridge: a nation control the register does not bind
+    # (a reviewed exclusion) leaves the bridge unbound and the cells as compiled.
     household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
-    missing = {
-        "ons.household_composition.unrelated_adult_households",
-        "ons.household_composition.lone_parent_non_dependent_children_households",
-        "ons.household_composition.multi_family_households",
-    }
-    selected = tuple(
-        target_id
-        for target_id in household_bridge.higher_target_ids
-        if target_id not in missing
-    )
+    missing = {"nisra.households.northern_ireland"}
+    rows = [
+        row
+        for row in _nation_control_rows(
+            london=80.0, wales=10.0, scotland=20.0, northern_ireland=10.0
+        )
+        if row["target_id"] not in missing
+    ]
+    selected = tuple(row["target_id"] for row in rows)
     surface = pd.DataFrame(
         [
-            *[
-                {
-                    "grain": "country",
-                    "geography_id": "K02000001",
-                    "target_id": target_id,
-                    "value": 10.0,
-                }
-                for target_id in selected
-            ],
+            *rows,
             {
                 "grain": "constituency",
                 "geography_id": "E14001073",
@@ -1458,13 +1465,22 @@ def test_partially_bound_household_composition_bridge_stays_unbound_with_reviewe
                 "target_id": "ons.census.households",
                 "value": 10.0,
             },
+            {
+                "grain": "constituency",
+                "geography_id": "W07000041",
+                "target_id": "ons.census.households",
+                "value": 5.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "N05000001",
+                "target_id": "ons.census.households",
+                "value": 5.0,
+            },
         ]
     )
     reviewed = {
-        target_id: {
-            "tracking": "microcosm#791",
-            "reason": "relationship-to-head is unavailable",
-        }
+        target_id: {"tracking": "microcosm#1123", "reason": "test exclusion"}
         for target_id in missing
     }
 
@@ -1474,7 +1490,7 @@ def test_partially_bound_household_composition_bridge_stays_unbound_with_reviewe
         reviewed_unbound_higher_targets=reviewed,
     )
 
-    assert reconciled.loc[len(selected) :, "value"].tolist() == [40.0, 10.0]
+    assert reconciled.loc[len(selected) :, "value"].tolist() == [40.0, 10.0, 5.0, 5.0]
     assert receipt["groups"] == []
     assert receipt["unbound_bridges"] == [
         {
@@ -1488,21 +1504,15 @@ def test_partially_bound_household_composition_bridge_stays_unbound_with_reviewe
     ]
 
 
-def test_fully_bound_household_composition_bridge_reconciles_census_cells():
-    # microcosm#791: with the three composition exclusions retired, the ten-cell
-    # partition binds and the census household cells rescale to its total.
+def test_fully_bound_household_bridge_reconciles_census_cells_per_nation():
+    # #1123: with all four nation controls bound, each census cell rescales to
+    # its own leg's control: London's regional row, Scotland's nation row.
     household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
     surface = pd.DataFrame(
         [
-            *[
-                {
-                    "grain": "country",
-                    "geography_id": "K02000001",
-                    "target_id": target_id,
-                    "value": 10.0,
-                }
-                for target_id in household_bridge.higher_target_ids
-            ],
+            *_nation_control_rows(
+                london=80.0, wales=10.0, scotland=20.0, northern_ireland=10.0
+            ),
             {
                 "grain": "constituency",
                 "geography_id": "E14001073",
@@ -1515,6 +1525,18 @@ def test_fully_bound_household_composition_bridge_reconciles_census_cells():
                 "target_id": "ons.census.households",
                 "value": 10.0,
             },
+            {
+                "grain": "constituency",
+                "geography_id": "W07000041",
+                "target_id": "ons.census.households",
+                "value": 5.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "N05000001",
+                "target_id": "ons.census.households",
+                "value": 5.0,
+            },
         ]
     )
 
@@ -1525,20 +1547,17 @@ def test_fully_bound_household_composition_bridge_reconciles_census_cells():
     )
 
     assert receipt["unbound_bridges"] == []
-    groups = [
-        group
+    legs = {
+        leg["parent_geography_id"]: leg
         for group in receipt["groups"]
         if group["bridge_id"] == household_bridge.bridge_id
-    ]
-    assert len(groups) == 1
-    assert groups[0]["winning_grain"] == "country"
-    legs = groups[0]["legs"]
-    assert len(legs) == 1
-    assert legs[0]["parent_geography_id"] == "K02000001"
-    assert legs[0]["declared_factor"] == pytest.approx(2.0)
-    assert legs[0]["new_total"] == pytest.approx(100.0)
+        for leg in group["legs"]
+    }
+    assert set(legs) == {"E12000007", "W92000004", "S92000003", "N92000002"}
+    assert legs["E12000007"]["declared_factor"] == pytest.approx(2.0)
+    assert legs["S92000003"]["declared_factor"] == pytest.approx(2.0)
     census = reconciled.loc[reconciled["target_id"] == "ons.census.households", "value"]
-    assert census.tolist() == pytest.approx([80.0, 20.0])
+    assert census.tolist() == pytest.approx([80.0, 20.0, 10.0, 10.0])
 
 
 def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
@@ -1716,6 +1735,62 @@ def _tenure_spec(
     )
 
 
+def _full_tenure(area: str, social_rent: float, **periods) -> tuple[TargetSpec, ...]:
+    """All four bound tenure cells of an authority (#1123: the tenure cells
+    partition their authority's households, so a parented authority binds all
+    of them or none)."""
+
+    others = []
+    for target_id in (
+        "ons.tenure.owned_outright",
+        "ons.tenure.owned_mortgage",
+        "ons.tenure.private_rent",
+    ):
+        spec = _tenure_spec(area, 1.0, **periods)
+        others.append(
+            replace(
+                spec,
+                name=f"{target_id}@{area}@2025",
+                measure=f"tenure/{target_id.rsplit('.', 1)[1]}",
+                metadata={**spec.metadata, "contract_target_id": target_id},
+            )
+        )
+    return (_tenure_spec(area, social_rent, **periods), *others)
+
+
+def _nation_control_rows(
+    *, london: float, wales: float, scotland: float, northern_ireland: float
+) -> list[dict]:
+    """The four nation household controls on a reconciliation frame (#1123)."""
+
+    return [
+        {
+            "grain": "region",
+            "geography_id": "E12000007",
+            "target_id": "ons.households.english_regions",
+            "value": london,
+        },
+        {
+            "grain": "nation",
+            "geography_id": "W92000004",
+            "target_id": "welshgov.households.wales",
+            "value": wales,
+        },
+        {
+            "grain": "nation",
+            "geography_id": "S92000003",
+            "target_id": "nrs.households.scotland",
+            "value": scotland,
+        },
+        {
+            "grain": "nation",
+            "geography_id": "N92000002",
+            "target_id": "nisra.households.northern_ireland",
+            "value": northern_ireland,
+        },
+    ]
+
+
 def _census_household_registry(*extra: TargetSpec) -> TargetRegistry:
     return TargetRegistry(
         [
@@ -1774,29 +1849,30 @@ def test_uk_census_household_uprating_uses_each_compiled_grain() -> None:
 
 def test_uk_local_target_surface_uprates_households_and_tenure_by_grain() -> None:
     household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
-    bound_composition = household_bridge.higher_target_ids[0]
+    bound_composition = "nrs.households.scotland"
     composition_spec = TargetSpec(
         name=bound_composition,
         entity="household",
         value=1.0,
-        measure="household_composition",
+        measure="households/scotland",
         period=2025,
-        source="ONS",
-        family="household_composition",
+        source="NRS",
+        family="ons_households",
         metadata={
             "contract_target_id": bound_composition,
             "ledger_geography_level": "country",
-            "ledger_geography_id": "K02000001",
+            "ledger_geography_id": "S92000003",
         },
     )
     reviewed = {
         target_id: {"tracking": "microcosm#887", "reason": "test exclusion"}
-        for target_id in household_bridge.higher_target_ids[1:]
+        for target_id in household_bridge.higher_target_ids
+        if target_id != bound_composition
     }
     registry = _census_household_registry(
         composition_spec,
-        _tenure_spec("E09000001", 5.0, from_period=2021, to_period=2025),
-        _tenure_spec("S12000005", 4.0, from_period=2022, to_period=2025),
+        *_full_tenure("E09000001", 5.0, from_period=2021, to_period=2025),
+        *_full_tenure("S12000005", 4.0, from_period=2022, to_period=2025),
         _tenure_spec("E06000002", 3.0),
     )
     reference = uk_ledger_households_total(
@@ -1825,16 +1901,20 @@ def test_uk_local_target_surface_uprates_households_and_tenure_by_grain() -> Non
     assert surface.loc[surface["metric"] == "households", "value"].tolist() == (
         pytest.approx([11.0, 22.0, 11.0, 22.0])
     )
+    # A17 lifts the census tenure cells by their grain's factor; since #1123
+    # the tenure cells also follow their authority's household reconciliation
+    # (share_of_parent): with no control bound, the constituency cells parent
+    # the authorities per leg (London 11/13.2, Scotland 22/19.8).
     assert surface.loc[
         surface["metric"] == "tenure/social_rent", "value"
-    ].tolist() == pytest.approx([5.5, 4.4, 3.0])
+    ].tolist() == pytest.approx([5.5 * 11.0 / 13.2, 4.4 * 22.0 / 19.8, 3.0])
     household_receipt = receipt["census_household_uprating"]["household_cells"]
     assert household_receipt["cells"] == 4
     assert household_receipt["by_census_vintage"] == {"2021": 2, "2022": 2}
     tenure_receipt = receipt["census_household_uprating"]["tenure_cells"]
-    assert tenure_receipt["cells"] == 2
+    assert tenure_receipt["cells"] == 8
     assert tenure_receipt["skipped_cells"] == 1
-    assert tenure_receipt["by_census_vintage"] == {"2021": 1, "2022": 1}
+    assert tenure_receipt["by_census_vintage"] == {"2021": 4, "2022": 4}
     assert "A17" in tenure_receipt["adjudication"]
 
 
@@ -2069,7 +2149,7 @@ def test_tenure_receipt_counts_attempted_and_skipped_holds(
     from_period, to_period, reason, eligible
 ):
     registry = _census_household_registry(
-        _tenure_spec("E09000001", 5.0, from_period=from_period, to_period=to_period)
+        *_full_tenure("E09000001", 5.0, from_period=from_period, to_period=to_period)
     )
     reference = uk_ledger_households_total(
         (_households_total_fact(2025, 33.0),), period=2025
@@ -2082,16 +2162,18 @@ def test_tenure_receipt_counts_attempted_and_skipped_holds(
         census_household_uprating=uprating,
     )
     tenure = receipt["census_household_uprating"]["tenure_cells"]
-    assert tenure["total_cells"] == 1
-    assert tenure["attempted_cells"] == int(
+    assert tenure["total_cells"] == 4
+    assert tenure["attempted_cells"] == 4 * int(
         from_period is not None or to_period is not None
     )
-    assert tenure["eligible_cells"] == tenure["cells"] == int(eligible)
-    assert tenure["skipped_cells"] == int(not eligible)
+    assert tenure["eligible_cells"] == tenure["cells"] == 4 * int(eligible)
+    assert tenure["skipped_cells"] == 4 * int(not eligible)
     assert tenure["holds"][0]["reason"] == reason
+    # The tenure cells follow their authority's household factor (#1123): the
+    # London constituency cell parents the City's authority cell (10 / 12).
     assert surface.loc[
         surface["metric"] == "tenure/social_rent", "value"
-    ].tolist() == pytest.approx([5.5 if eligible else 5.0])
+    ].tolist() == pytest.approx([(5.5 if eligible else 5.0) * 10.0 / 12.0])
 
 
 def test_uk_cross_grain_legs_are_the_region_tier() -> None:
@@ -2481,10 +2563,12 @@ def test_household_composition_partition_and_stock_totals_reconcile_together() -
         ),
         period=2025,
     )
-    # The composition partition (100 households UK-wide) still parents the
-    # census cells; the stock totals never enter that group.
+    # #1123: the nations' estimates, not the UK composition, parent the census
+    # cells (and take the composition onto their sum nationally); with no
+    # nation control bound the cells stay as compiled, and the stock totals
+    # never enter a household group.
     households = surface.loc[surface["metric"] == "households", "value"].tolist()
-    assert households == pytest.approx([100.0 * 60.0 / 90.0, 100.0 * 30.0 / 90.0])
+    assert households == pytest.approx([60.0, 30.0])
     group_ids = {group["inconsistency_id"] for group in receipt["groups"]}
     assert all(
         "uk.household.count" in gid or "national_household" in gid for gid in group_ids
@@ -2527,3 +2611,41 @@ def test_leg_licences_follow_the_resolver_the_surface_reconciles_with() -> None:
     assert (
         _uk_licensed_empty_legs_from_membership(membership, leg_of_area=partial) == {}
     )
+
+
+def test_the_census_household_level_is_the_nations_controls_summed():
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS,
+        uk_nation_households_reference,
+    )
+
+    specs = [
+        TargetSpec(
+            name=f"{target_id}@{index}",
+            entity="household",
+            value=value,
+            measure="households",
+            period=2025,
+            source="test",
+            family="ons_households",
+            metadata={"contract_target_id": target_id},
+        )
+        for index, (target_id, value) in enumerate(
+            zip(
+                UK_NATION_HOUSEHOLD_CONTROL_TARGET_IDS,
+                (24.0, 1.4, 2.6, 0.8),
+                strict=True,
+            )
+        )
+    ]
+    facts = (_households_total_fact(2025, 29.0),)
+    reference = uk_nation_households_reference(
+        TargetRegistry(specs, country="uk"), facts, period=2025
+    )
+    assert reference["value"] == pytest.approx(28.8)
+    assert reference["lfs_uk_total"]["value"] == 29.0
+    assert reference["relative_gap_to_lfs_uk_total"] == pytest.approx(28.8 / 29.0 - 1)
+    with pytest.raises(ValueError, match="lacks"):
+        uk_nation_households_reference(
+            TargetRegistry(specs[:3], country="uk"), facts, period=2025
+        )

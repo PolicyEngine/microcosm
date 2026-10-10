@@ -27,22 +27,17 @@
   ],
   "bridges": [
     {
-      "bridge_id": "national_household_composition_partition_vs_census_households",
+      "bridge_id": "nation_household_controls_vs_census_households",
       "concept": "uk.household.count",
       "higher_target_ids": [
-        "ons.household_composition.lone_households_under_65",
-        "ons.household_composition.lone_households_over_65",
-        "ons.household_composition.unrelated_adult_households",
-        "ons.household_composition.couple_no_children_households",
-        "ons.household_composition.couple_under_3_children_households",
-        "ons.household_composition.couple_3_plus_children_households",
-        "ons.household_composition.couple_non_dependent_children_only_households",
-        "ons.household_composition.lone_parent_dependent_children_households",
-        "ons.household_composition.lone_parent_non_dependent_children_households",
-        "ons.household_composition.multi_family_households"
+        "ons.households.english_regions",
+        "welshgov.households.wales",
+        "nrs.households.scotland",
+        "nisra.households.northern_ireland"
       ],
       "lower_side": "contract:ons.census.households",
-      "reason": "The ten ONS household-composition rows (Families and households, LFS) partition all UK households; their sum controls the census household cells at both local grains (microcosm#887)."
+      "per_geography": true,
+      "reason": "Each nation's official household estimate controls its census household cells (microcosm#1123, nations win): the LFS 2025 rows for the nine English regions, NRS 2025 for Scotland, Welsh Government mid-2024 rolled to 2025 for Wales, Census 2021 rolled by LPS dwelling stock for Northern Ireland. Each row covers its own legs; the census cells keep their shares within a leg."
     },
     {
       "bridge_id": "national_uc_caseload_vs_uc_households_by_area",
@@ -126,7 +121,20 @@
       "reason": "The ONS controls use inclusive integer-age bands (0-9) and the local cells the equivalent half-open encoding (0-10), so the signatures cannot match directly; the region-tier rows (one per English region and per nation, microcosm#905) rescale both local grains over their twelve legs. The 80-89 band has no local cell."
     }
   ],
-  "partitions": [],
+  "partitions": [
+    {
+      "partition_id": "census_tenure_shares",
+      "parent_target_id": "ons.census.households",
+      "member_target_ids": [
+        "ons.tenure.owned_outright",
+        "ons.tenure.owned_mortgage",
+        "ons.tenure.private_rent",
+        "ons.tenure.social_rent"
+      ],
+      "kind": "share_of_parent",
+      "reason": "The census tenure cells divide each authority's households; shared ownership and rent-free households are not bound, so the four cells cover part of the parent and move by the authority's household reconciliation factor, keeping their shares."
+    }
+  ],
   "band_bridges": [
     {
       "bridge_id": "itl_taxpayers_12570_vs_spi_region_12570",
@@ -440,6 +448,30 @@
       "geography_id": "K02000001",
       "max_factor_shift": 0.02,
       "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. At source the tables agree within 0.5%, so a factor beyond 2% is refused."
+    }
+  ],
+  "sum_bridges": [
+    {
+      "bridge_id": "nation_households_vs_uk_household_composition",
+      "higher_target_ids": [
+        "ons.households.english_regions",
+        "welshgov.households.wales",
+        "nrs.households.scotland",
+        "nisra.households.northern_ireland"
+      ],
+      "lower_target_ids": [
+        "ons.household_composition.lone_households_under_65",
+        "ons.household_composition.lone_households_over_65",
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.couple_no_children_households",
+        "ons.household_composition.couple_under_3_children_households",
+        "ons.household_composition.couple_3_plus_children_households",
+        "ons.household_composition.couple_non_dependent_children_only_households",
+        "ons.household_composition.lone_parent_dependent_children_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
+        "ons.household_composition.multi_family_households"
+      ],
+      "reason": "The ten LFS household-composition rows partition all UK households; the nations' official estimates sum to a different total than the LFS UK figure (about 29.09m against 29.003m), and the nations win, so the national reconciliation scales the composition by one factor onto the nations' sum, keeping its shares."
     }
   ],
   "local_routes": {

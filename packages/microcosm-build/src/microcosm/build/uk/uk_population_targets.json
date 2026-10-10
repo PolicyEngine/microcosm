@@ -12,7 +12,8 @@
     "monthly_window_count_x_mean",
     "linear_combination",
     "scaled_by_ratio",
-    "calendar_year_window"
+    "calendar_year_window",
+    "rolled_forward_by_ratio"
   ],
   "resolution_defaults": {
     "base_period_policy": "latest_not_after_build_base_period",
@@ -11391,6 +11392,240 @@
       },
       "category_id": "ons.household_composition",
       "label": "Multi-family households"
+    },
+    {
+      "target_id": "ons.households.english_regions",
+      "family": "ons_households",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/english_regions",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
+            }
+          ],
+          "notes": "ONS household estimates by region from the Labour Force Survey (April to June 2025), ONS's official household estimate for England and its regions (2025: England 24.329m, the nine regions summing to it). Each region's row controls the census household cells of its constituencies and authorities; the projection is not used for levels (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/english_regions",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.households_total"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households by English region (LFS)",
+      "selector_note": "ONS household estimates by region from the Labour Force Survey (April to June 2025), ONS's official household estimate for England and its regions (2025: England 24.329m, the nine regions summing to it). Each region's row controls the census household cells of its constituencies and authorities; the projection is not used for levels (microcosm#1123, nations win)."
+    },
+    {
+      "target_id": "nrs.households.scotland",
+      "family": "ons_households",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/scotland",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "SCOTLAND"
+            }
+          ],
+          "notes": "NRS household estimates for Scotland, June 2025 (2,570,799), from council tax records: Scotland's official estimate. It controls Scotland's census household cells (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/scotland",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "nrs",
+        "source_concept": "nrs.households_total"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households, Scotland (NRS)",
+      "selector_note": "NRS household estimates for Scotland, June 2025 (2,570,799), from council tax records: Scotland's official estimate. It controls Scotland's census household cells (microcosm#1123, nations win)."
+    },
+    {
+      "target_id": "welshgov.households.wales",
+      "family": "ons_households",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "WALES"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/wales",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "WALES"
+            }
+          ],
+          "notes": "Welsh Government household estimates, mid-2024 (1,388,543), Wales's official estimate, carried to 2025 by the growth of Wales's ONS mid-year population (mid-2025 over revised mid-2024): no mid-2025 household estimate is published yet. It controls Wales's census household cells (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/wales",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "source_concept": "welshgov.households_total"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households, Wales (Welsh Government, rolled to 2025)",
+      "selector_note": "Welsh Government household estimates, mid-2024 (1,388,543), Wales's official estimate, carried to 2025 by the growth of Wales's ONS mid-year population (mid-2025 over revised mid-2024): no mid-2025 household estimate is published yet. It controls Wales's census household cells (microcosm#1123, nations win).",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_name": "ons",
+          "source_concept": "ons.mid_year_population_estimate",
+          "geography_id": "W92000004",
+          "dimensions": [],
+          "period_type": "calendar_year",
+          "period_value": 2025
+        },
+        {
+          "role": "denominator",
+          "source_name": "ons",
+          "source_concept": "ons.mid_year_population_estimate",
+          "geography_id": "W92000004",
+          "dimensions": [],
+          "period_type": "calendar_year",
+          "period_value": 2024
+        }
+      ]
+    },
+    {
+      "target_id": "nisra.households.northern_ireland",
+      "family": "ons_households",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "NORTHERN_IRELAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "households/northern_ireland",
+          "value_variable": "household_count",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "NORTHERN_IRELAND"
+            }
+          ],
+          "notes": "Census 2021 households in Northern Ireland's eleven districts (768,810), carried to 2025 by LPS domestic and mixed-rated dwelling stock (1 April 2025 over 1 April 2021): NISRA's official household figures are 2016-based projections the census has overtaken. The lowest-confidence nation control; it controls Northern Ireland's census household cells (microcosm#1123, nations win)."
+        },
+        "axiom": {
+          "metric_name": "households/northern_ireland",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "nisra",
+        "source_concept": "nisra.census2021_households",
+        "record_set_spec_id": "uk.local_geography.households.by_local_authority.v1"
+      },
+      "category_id": "ons.household_composition",
+      "label": "Households, Northern Ireland (Census 2021, rolled to 2025)",
+      "selector_note": "Census 2021 households in Northern Ireland's eleven districts (768,810), carried to 2025 by LPS domestic and mixed-rated dwelling stock (1 April 2025 over 1 April 2021): NISRA's official household figures are 2016-based projections the census has overtaken. The lowest-confidence nation control; it controls Northern Ireland's census household cells (microcosm#1123, nations win).",
+      "value_operation": "rolled_forward_by_ratio",
+      "value_operands": [
+        {
+          "role": "base",
+          "geography_level": "local_authority",
+          "geography_id": [
+            "N09000001",
+            "N09000002",
+            "N09000003",
+            "N09000004",
+            "N09000005",
+            "N09000006",
+            "N09000007",
+            "N09000008",
+            "N09000009",
+            "N09000010",
+            "N09000011"
+          ]
+        },
+        {
+          "role": "numerator",
+          "source_name": "lps",
+          "source_concept": "lps.housing_stock",
+          "geography_id": "N92000002",
+          "period_type": "calendar_year",
+          "period_value": 2025
+        },
+        {
+          "role": "denominator",
+          "source_name": "lps",
+          "source_concept": "lps.housing_stock",
+          "geography_id": "N92000002",
+          "period_type": "calendar_year",
+          "period_value": 2021
+        }
+      ]
     },
     {
       "target_id": "mhclg.council_tax_stock.band_a",

@@ -4,26 +4,6 @@
   "entries": [
     {
       "kind": "local_target_without_control",
-      "target_id": "ons.tenure.owned_mortgage",
-      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "ons.tenure.owned_outright",
-      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "ons.tenure.private_rent",
-      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
-    },
-    {
-      "kind": "local_target_without_control",
-      "target_id": "ons.tenure.social_rent",
-      "closed_by": "C9: tenure cells move with the reconciled census households (share_of_parent partition)"
-    },
-    {
-      "kind": "local_target_without_control",
       "target_id": "dwp.uc.households_by_area_children_0",
       "closed_by": "C10: UC children cells on the benefit-unit entity and bridged to the national UC children rows"
     },
