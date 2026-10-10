@@ -6411,17 +6411,20 @@ def _run_green_register_release(
     }
     # microcosm#454: the ESI premium signal gate graded the base before the
     # solve and the export after it; the anchor gate graded the export at the
-    # release period and its verdict is the bound esi_premiums evidence.
+    # release period and its verdict is the bound esi_premiums evidence, with
+    # both signal verdicts recorded beside it.
     assert captured["esi_premiums_signal_gate_calls"] == 2
     assert captured["esi_premiums_anchor_periods"] == [builder.PERIOD]
+    signal_evidence = {"evaluated": True, "passed": True, "failures": []}
     assert json.loads((release_dir / "esi_premiums.json").read_text()) == {
-        "schema_version": 1,
+        "schema_version": 2,
         "enforced": True,
         "esi_premiums": {
             "passed": True,
             "failures": [],
             "details": {"checked": True},
         },
+        "signal": {"base_frame": signal_evidence, "export_frame": signal_evidence},
     }
     for block in (build_manifest, release_manifest["build"]):
         assert block["gate_evidence"] == expected_gate_evidence
@@ -16964,3 +16967,25 @@ def test_main_reports_actual_dry_run_outcome(
     if expected_status == "failed":
         assert str(exit_code) in run_events[0]["message"]
         assert run_events[0]["details"]["failure_class"] == "build_failure"
+
+
+def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> None:
+    """microcosm#454: --allow-esi-premium-gaps records, it does not erase.
+
+    The evidence file carries the base and export signal verdicts, so a build
+    that waived an assignment failure still says which check was red. A gate
+    that never ran (it crashed under earlier failures) is recorded as such.
+    """
+
+    builder = _load_builder_module()
+    failed = builder.GateResult(
+        name="esi_premiums_signal",
+        passed=False,
+        failures=("ESI premiums: 100 employer premium(s) outside employed ...",),
+    )
+    assert builder._esi_premiums_signal_evidence(failed) == {
+        "evaluated": True,
+        "passed": False,
+        "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
+    }
+    assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}

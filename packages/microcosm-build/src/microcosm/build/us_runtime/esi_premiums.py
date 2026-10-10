@@ -278,7 +278,7 @@ EMPLOYER_PREMIUM_CROSS_CHECK: Mapping[str, Any] = MappingProxyType(
 ANCHOR_RELATIVE_TOLERANCE = 0.05
 #: Weighted-raw employer share per positive employed holder, before scaling.
 #: MEPS-IC 2025 employer shares run $7.2k (single) to $19.0k (family) and the
-#: pinned pools measure $12.0k. The band catches a gross unit error in the
+#: pinned pools measure $12.0-12.1k. The band catches a gross unit error in the
 #: cell table (monthly for annual, cents for dollars), which the scale factor
 #: would otherwise hide; it does not catch a level error inside the band.
 _RAW_MEAN_BAND = (6_000.0, 20_000.0)
@@ -289,8 +289,8 @@ _POSITIVE_SHARE_BAND = (0.15, 0.32)
 #: both pinned pools: 16.1%.
 _PRE_TAX_POSITIVE_SHARE_BAND = (0.05, 0.25)
 #: Employed policyholders' share of the anchor-universe employer total.
-#: Measured on both pinned pools: 88.4%. A release whose calibration moves the
-#: split far from that has reweighted workers against retirees.
+#: Measured on the pinned pools: 88.4% and 88.2%. A release whose calibration
+#: moves the split far from that has reweighted workers against retirees.
 _EMPLOYED_SHARE_BAND = (0.80, 0.95)
 
 _EMPLOYER_PREMIUM_PARAMETERS: Mapping[str, Any] = MappingProxyType(

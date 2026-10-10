@@ -1123,6 +1123,21 @@ class TestAnchorGate:
         assert payload["cross_check"]["values"]["2024"] == BEA
 
 
+class TestOperatorBoundary:
+    def test_a_raw_source_frame_that_carries_the_outputs_is_refused(self) -> None:
+        from microcosm.build.us_runtime.operator_boundary import (
+            PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+            assert_operator_free_source_frame,
+        )
+
+        assert PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["esi_premiums"] == {
+            "person": frozenset(US_ESI_PREMIUMS_OUTPUT_COLUMNS)
+        }
+        assert_operator_free_source_frame(_frame(_realistic_rows(40)), label="raw")
+        with pytest.raises(ValueError, match="esi_premiums:person="):
+            assert_operator_free_source_frame(_run(_realistic_rows(40)), label="raw")
+
+
 class TestUnassignedRefusal:
     def test_a_staged_frame_and_a_frame_without_the_columns_pass(self) -> None:
         refuse_unassigned_us_esi_premiums(_run(_realistic_rows(60)), consumer="t")

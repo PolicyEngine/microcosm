@@ -15400,7 +15400,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         esi_premiums_path.write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "enforced": not args.allow_esi_premium_gaps,
                     "esi_premiums": {
                         "passed": esi_premiums_anchor_gate.passed,
