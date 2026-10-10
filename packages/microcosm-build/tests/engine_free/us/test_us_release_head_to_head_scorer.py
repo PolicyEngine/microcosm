@@ -43,10 +43,20 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         ((3, 14, 7), True),
         ((3, 15, 0), True),
         ((3, 12, 11), False),
+        # 3.15 prereleases: the fix landed in beta 4.
+        ((3, 15, 0, "alpha", 7), False),
+        ((3, 15, 0, "beta", 3), False),
+        ((3, 15, 0, "beta", 4), True),
+        ((3, 15, 0, "candidate", 1), True),
+        ((3, 15, 0, "final", 0), True),
+        # A prerelease of a fixed patch is not yet the fixed release.
+        ((3, 14, 7, "candidate", 1), False),
+        ((3, 14, 7, "final", 0), True),
+        ((3, 16, 0, "alpha", 1), True),
     ],
 )
 def test_worker_recycling_refuses_interpreters_that_can_deadlock(
-    version: tuple[int, int, int], supported: bool
+    version: tuple, supported: bool
 ) -> None:
     module = _load_head_to_head_module()
 

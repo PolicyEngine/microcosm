@@ -325,34 +325,60 @@ def _positive_worker_max_slices(value: str) -> int:
 
 # CPython could deadlock when ProcessPoolExecutor replaced a worker that had
 # reached max_tasks_per_child: the pool was left with no worker and a pending
-# task, so future.result() waited forever. Fixed in 3.13.15 and 3.14.7 (see
-# the max_tasks_per_child notes in the concurrent.futures documentation).
-_WORKER_RECYCLING_FIXED_IN = {(3, 13): (3, 13, 15), (3, 14): (3, 14, 7)}
+# task, so future.result() waited forever. Fixed in 3.13.15, 3.14.7 and
+# 3.15.0b4 (see the max_tasks_per_child notes in the concurrent.futures
+# documentation); every later minor ships the fix.
+_RELEASE_LEVEL_RANK = {"alpha": 0, "beta": 1, "candidate": 2, "final": 3}
+_RELEASE_LEVEL_SUFFIX = {"alpha": "a", "beta": "b", "candidate": "rc"}
+_WORKER_RECYCLING_FIXED_IN = {
+    (3, 13): (3, 13, 15, "final", 0),
+    (3, 14): (3, 14, 7, "final", 0),
+    (3, 15): (3, 15, 0, "beta", 4),
+}
+
+
+def _comparable_version(version: Sequence[object]) -> tuple[int, int, int, int, int]:
+    """Order a ``sys.version_info``-shaped value, prereleases before finals."""
+
+    parts = tuple(version)
+    major, minor, micro = (int(part) for part in parts[:3])
+    level = str(parts[3]) if len(parts) > 3 else "final"
+    serial = int(parts[4]) if len(parts) > 4 else 0
+    return (major, minor, micro, _RELEASE_LEVEL_RANK[level], serial)
+
+
+def _version_text(version: Sequence[object]) -> str:
+    parts = tuple(version)
+    text = ".".join(str(part) for part in parts[:3])
+    level = str(parts[3]) if len(parts) > 3 else "final"
+    if level == "final":
+        return text
+    serial = parts[4] if len(parts) > 4 else 0
+    return f"{text}{_RELEASE_LEVEL_SUFFIX[level]}{serial}"
 
 
 def _assert_worker_recycling_supported(
-    version_info: Sequence[int] | None = None,
+    version_info: Sequence[object] | None = None,
 ) -> None:
     """Refuse worker recycling on an interpreter that can deadlock doing it."""
 
-    version = tuple((sys.version_info if version_info is None else version_info)[:3])
-    minor = version[:2]
+    version = tuple(sys.version_info if version_info is None else version_info)
+    minor = (int(version[0]), int(version[1]))
     fixed = _WORKER_RECYCLING_FIXED_IN.get(minor)
     if fixed is None:
         # Later minors ship the fix; earlier ones are below requires-python
         # and never received it.
         if minor > max(_WORKER_RECYCLING_FIXED_IN):
             return
-        fixed_text = "3.13.15 or 3.14.7"
-    elif version >= fixed:
+        fixed_text = "3.13.15, 3.14.7 or 3.15.0b4"
+    elif _comparable_version(version) >= _comparable_version(fixed):
         return
     else:
-        fixed_text = ".".join(str(part) for part in fixed)
+        fixed_text = _version_text(fixed)
     raise RuntimeError(
-        "--worker-max-slices needs Python "
-        f"{fixed_text} or later: on {'.'.join(str(part) for part in version)} "
-        "replacing a recycled worker can deadlock the pool. Run without "
-        "--worker-max-slices, or use a fixed interpreter."
+        f"--worker-max-slices needs Python {fixed_text} or later: on "
+        f"{_version_text(version)} replacing a recycled worker can deadlock "
+        "the pool. Run without --worker-max-slices, or use a fixed interpreter."
     )
 
 
