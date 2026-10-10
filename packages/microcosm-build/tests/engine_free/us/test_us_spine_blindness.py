@@ -235,6 +235,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
+        # Legacy local-lane employer premium (#454): donor qualification, a
+        # one-family transfer plan and narrow views for the pool anchor and
+        # the two ESI gates. It selects donors by support role and tells the
+        # rows apart by whether the raw ASEC fields are present, never by a
+        # spine or support-channel column, so it owns no provenance boundary.
+        "acs_local_esi_premiums.py",
         # Legacy source-hours completion and release gate; outside the registry.
         "acs_local_hours.py",
         "acs_multispine.py",
