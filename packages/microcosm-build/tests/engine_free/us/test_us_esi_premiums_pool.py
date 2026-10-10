@@ -31,14 +31,29 @@ from hypothesis import strategies as st
 
 from microcosm.build.source_runtime import SourceRuntimeError
 from microcosm.build.us_runtime import esi_premiums as esi
+from microcosm.build.us_runtime import multispine_pool as pool_module
+from microcosm.build.us_runtime.acs_transfer import transfer_acs_inputs
 from microcosm.build.us_runtime.esi_premiums import (
     US_ESI_EMPLOYER_PREMIUM_COLUMN,
     US_ESI_PREMIUMS_OUTPUT_COLUMNS,
     US_ESI_PREMIUMS_WAGE_COLUMN,
     us_esi_premiums_household_mass_share,
+    with_us_esi_premium_inputs,
     with_us_esi_premium_pool_anchor,
 )
+from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
+from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.stacked_spine import (
+    GapFillDirection,
+    assemble_stacked_spine,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from test_support.microcosm_build.us_stacked_spine import (
+    _gap_fill_with_test_authority,
+)
+from test_support.microcosm_build.us_stacked_spine import (
+    _source_frame as _stacked_source_frame,
+)
 
 EMPLOYER = US_ESI_EMPLOYER_PREMIUM_COLUMN
 WAGES = US_ESI_PREMIUMS_WAGE_COLUMN
@@ -75,9 +90,7 @@ def _pool(
                 column: float(premium) * (1.0 if column == EMPLOYER else 0.5)
                 for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS
             }
-            record |= {
-                column: 1.0 if household["source"] else np.nan for column in RAW
-            }
+            record |= {column: 1.0 if household["source"] else np.nan for column in RAW}
             records.append(record)
     person = pd.DataFrame(records)
     person.insert(0, "person_id", np.arange(1, len(person) + 1, dtype="int64"))
@@ -432,3 +445,269 @@ def test_household_mass_share_is_weight_not_headcount() -> None:
     assert us_esi_premiums_household_mass_share(frame, ~_source_rows(frame)) == 0.25
     with pytest.raises(SourceRuntimeError, match="one flag per person"):
         us_esi_premiums_household_mass_share(frame, np.array([True]))
+
+
+# --- The stage, the cross-source fill and the anchor on one stacked pool ------
+
+_STATES = (6, 36, 48, 12, 17, 39, 53, 13)
+_ESI_FAMILY = "source_operator_esi_premiums"
+
+
+def _replace_tables(frame: Frame, **tables: pd.DataFrame) -> Frame:
+    return Frame(
+        {entity: tables.get(entity, frame.table(entity)) for entity in frame.entities},
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+def _asec_arm(households: int = 320) -> Frame:
+    """One-person ASEC households: a mix inside the signal-gate bands.
+
+    Of every 20 people, 7 are employed policyholders, 2 are policyholders
+    without a job (retirees), 5 are employed without a policy and 6 are
+    neither.
+    """
+
+    frame = _stacked_source_frame(
+        household_ids=list(range(1, households + 1)),
+        weights=[900.0 + 37.0 * (index % 11) for index in range(households)],
+        stratum="asec_2024",
+    )
+    index = np.arange(households)
+    kind = index % 20
+    holder = kind < 9
+    employed = (kind < 7) | ((kind >= 9) & (kind < 14))
+    tier = np.where(holder, np.asarray([1, 2, 3])[index % 3], 0)
+    wages = np.where(employed, 28_000.0 + 850.0 * (index % 97), 0.0)
+    person = frame.table("person").copy()
+    person["PERIDNUM"] = [f"asec-{position:05d}" for position in index]
+    person["source_year"] = 2024
+    person["source_household_id"] = person["person_household_id"].to_numpy()
+    person["source_person_id"] = 1
+    person["age"] = np.where(employed, 24.0 + index % 40, 66.0 + index % 20)
+    person["is_female"] = index % 2 == 0
+    person[WAGES] = wages
+    person["NOW_OWNGRP"] = np.where(holder, 1, 2)
+    person["NOW_HIPAID"] = np.where(holder, np.asarray([1, 2, 2, 3])[index % 4], 0)
+    person["NOW_GRPFTYP2"] = tier
+    person["NOW_GRPFTYP"] = np.asarray([0, 1, 1, 2])[tier]
+    person["PEMLR"] = np.where(employed, 1, 5)
+    person["NOEMP"] = np.where(employed, np.asarray([1, 3, 6, 0])[index % 4], 0)
+    person["PEIO1COW"] = np.where(
+        employed, np.asarray([4, 4, 5, 2, 3, 1])[index % 6], 0
+    )
+    person["WSAL_VAL"] = wages
+    person["PHIP_VAL"] = np.where(holder, 1_200.0 + 15.0 * (index % 60), 0.0)
+    household = frame.table("household").copy()
+    household["state_fips"] = np.asarray(_STATES, dtype=np.int64)[index % len(_STATES)]
+    return _replace_tables(frame, person=person, household=household)
+
+
+def _acs_arm(households: int = 280) -> Frame:
+    """One-person ACS households: native age, sex, State and wages only."""
+
+    frame = _stacked_source_frame(
+        household_ids=list(range(10_001, 10_001 + households)),
+        weights=[40.0 + 3.0 * (index % 13) for index in range(households)],
+        extra_household_columns={"TYPEHUGQ": 1},
+        stratum="acs_2024_1yr",
+    )
+    index = np.arange(households)
+    employed = index % 5 < 3
+    person = frame.table("person").copy()
+    person["age"] = np.where(employed, 23.0 + index % 42, 67.0 + index % 18)
+    person["is_female"] = index % 2 == 1
+    person[WAGES] = np.where(employed, 26_000.0 + 1_100.0 * (index % 83), 0.0)
+    household = frame.table("household").copy()
+    household["state_fips"] = np.asarray(_STATES, dtype=np.int64)[
+        (index + 3) % len(_STATES)
+    ]
+    return _replace_tables(frame, person=person, household=household)
+
+
+def _stage_on_cps_rows(pool: Frame) -> tuple[Frame, dict]:
+    """Run the pool's ESI operator alone through the guarded pre-clone runner."""
+
+    staged = pool_module._run_source_operator_chain(
+        pool,
+        phase="pre_clone",
+        operator_names=("with_us_esi_premium_inputs",),
+        operators={
+            "with_us_esi_premium_inputs": lambda available: (
+                pool_module._with_pool_us_esi_premium_inputs(available, pool=pool)
+            )
+        },
+    )
+    return staged.frame, staged.receipt["suboperators"][0]["kernel_receipt"]
+
+
+def _esi_gap_fill_plan() -> tuple[GapFillDirection, ...]:
+    return (
+        GapFillDirection(
+            name="asec_survey_to_acs",
+            recipient_channel="acs",
+            donor_channel="asec",
+            target_families={
+                "person": {_ESI_FAMILY: tuple(sorted(US_ESI_PREMIUMS_OUTPUT_COLUMNS))}
+            },
+        ),
+    )
+
+
+@pytest.fixture(scope="module")
+def stacked_pool() -> dict[str, object]:
+    asec, acs = _asec_arm(), _acs_arm()
+    assembled = assemble_stacked_spine(
+        asec, acs, acs_sample_fraction=1.0, acs_sample_seed=578
+    ).frame
+    staged, stage_receipt = _stage_on_cps_rows(assembled)
+    filled = _gap_fill_with_test_authority(
+        staged, plan=_esi_gap_fill_plan(), seed=0, n_estimators=20
+    ).frame
+    anchored, receipt = with_us_esi_premium_pool_anchor(filled)
+    return {
+        "asec": asec,
+        "assembled": assembled,
+        "staged": staged,
+        "stage_receipt": stage_receipt,
+        "filled": filled,
+        "anchored": anchored,
+        "receipt": receipt,
+    }
+
+
+def test_the_pool_runs_the_stage_on_cps_rows_at_their_household_mass_share(
+    stacked_pool,
+) -> None:
+    staged = stacked_pool["staged"].table("person")
+    cps = staged["PERIDNUM"].notna().to_numpy()
+
+    assert stacked_pool["stage_receipt"] == {"anchor_share": 0.5}
+    for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        assert staged.loc[cps, column].notna().all()
+        assert staged.loc[~cps, column].isna().all()
+        assert staged.loc[cps, column].nunique() > 1
+
+
+def test_pool_cps_rows_carry_the_dollars_of_a_single_source_build(stacked_pool) -> None:
+    # Differential: the same stage on the ASEC arm alone, at its own weights.
+    alone = with_us_esi_premium_inputs(
+        stacked_pool["asec"], seed=pool_module.POOL_RANDOM_SEED, time_period=2024
+    ).table("person")
+    pooled = stacked_pool["anchored"].table("person")
+    pooled = pooled.loc[pooled["PERIDNUM"].notna()].set_index("PERIDNUM")
+
+    for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        np.testing.assert_allclose(
+            pooled.loc[alone["PERIDNUM"], column].to_numpy(),
+            alone[column].to_numpy(),
+            rtol=1e-12,
+        )
+
+
+def test_pool_wide_employer_total_is_the_single_source_total(stacked_pool) -> None:
+    alone = with_us_esi_premium_inputs(
+        stacked_pool["asec"], seed=pool_module.POOL_RANDOM_SEED, time_period=2024
+    )
+    anchored = stacked_pool["anchored"]
+    cps = _source_rows(anchored)
+
+    assert _total(anchored) == pytest.approx(_total(alone), rel=1e-9)
+    assert _total(anchored, cps) == pytest.approx(0.5 * _total(alone), rel=1e-9)
+    assert _total(anchored, ~cps) == pytest.approx(0.5 * _total(alone), rel=1e-9)
+    assert stacked_pool["receipt"]["status"] == "scaled"
+    assert stacked_pool["receipt"]["source_household_mass_share"] == 0.5
+
+
+def test_acs_rows_carry_signal_and_no_premium_without_wages(stacked_pool) -> None:
+    person = stacked_pool["anchored"].table("person")
+    acs = person["PERIDNUM"].isna().to_numpy()
+    workers = (person[WAGES] > 0).to_numpy()
+
+    assert acs.sum() == 280
+    for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        values = person[column].to_numpy(dtype=float)
+        assert np.isfinite(values).all() and (values >= 0).all()
+        assert (values[acs & workers] > 0).any()
+        assert np.unique(values[acs]).size > 2
+        assert not values[acs & ~workers].any()
+    # The fill conditions on measured wages, so few draws needed clearing and
+    # the transferred rows sit near the source rows before the anchor scale.
+    receipt = stacked_pool["receipt"]
+    assert receipt["cleared_rows"][EMPLOYER] <= 0.1 * acs.sum()
+    assert 0.5 <= receipt["scale_factor"] <= 2.0
+
+
+def test_the_pool_keeps_its_total_and_clone_agreement_through_the_puf_clone(
+    stacked_pool,
+) -> None:
+    # The pipeline clones after the fill and anchors after the clone. Clone a
+    # seeded half of the households so both clone pairs and single lineages
+    # are present.
+    cloned = clone_us_frame_for_puf_support(
+        stacked_pool["filled"],
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=7,
+    )
+    anchored, receipt = with_us_esi_premium_pool_anchor(cloned)
+    person = anchored.table("person")
+
+    assert set(person["person_support_clone_index"]) == {0, 1}
+    assert _total(anchored) == pytest.approx(_total(stacked_pool["anchored"]), rel=1e-9)
+    assert receipt["source_household_mass_share"] == pytest.approx(0.5, rel=1e-12)
+    assert receipt["scale_factor"] == pytest.approx(
+        stacked_pool["receipt"]["scale_factor"], rel=1e-9
+    )
+    per_source = person.groupby("person_source_id")[
+        list(US_ESI_PREMIUMS_OUTPUT_COLUMNS)
+    ].nunique()
+    assert (per_source == 1).all().all()
+
+
+@given(
+    share=st.floats(min_value=0.1, max_value=0.9),
+    asec_scale=st.floats(min_value=0.01, max_value=100.0),
+    acs_scale=st.floats(min_value=0.01, max_value=100.0),
+)
+@settings(max_examples=12, deadline=None)
+def test_any_mass_split_keeps_the_pool_on_the_single_source_total(
+    share: float, asec_scale: float, acs_scale: float
+) -> None:
+    def scaled(frame: Frame, factor: float) -> Frame:
+        return Frame(
+            {entity: frame.table(entity) for entity in frame.entities},
+            frame.schema,
+            {
+                "household": Weights(
+                    values=np.asarray(frame.weights_for("household").values) * factor,
+                    kind=WeightKind.DESIGN,
+                )
+            },
+            frame.strata,
+        )
+
+    asec = scaled(_asec_arm(120), asec_scale)
+    pool = assemble_spines(
+        {"asec": asec, "acs": scaled(_acs_arm(90), acs_scale)},
+        household_mass_shares={"asec": share, "acs": 1.0 - share},
+    )
+    staged, stage_receipt = _stage_on_cps_rows(pool)
+    cps = staged.table("person")["PERIDNUM"].notna().to_numpy()
+    filled = transfer_acs_inputs(
+        staged,
+        staged.select(cps),
+        target_families=_esi_gap_fill_plan()[0].target_families,
+        donor_channel=None,
+        seed=0,
+        n_estimators=5,
+    ).frame
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(filled)
+
+    alone = with_us_esi_premium_inputs(asec, seed=0, time_period=2024)
+    assert stage_receipt["anchor_share"] == pytest.approx(share, rel=1e-9)
+    assert _total(anchored) == pytest.approx(_total(alone), rel=1e-9)
+    assert _total(anchored, cps) == pytest.approx(share * _total(alone), rel=1e-9)
+    assert receipt["source_household_mass_share"] == pytest.approx(share, rel=1e-9)

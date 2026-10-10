@@ -321,8 +321,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     "retirement_distributions": {
         "person": frozenset(US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS),
     },
-    # Base-build only (microcosm#454): no pool operator produces these yet, so
-    # a raw source frame that already carries them was staged elsewhere.
+    # The base build and the pool's pre-clone operator produce this from the
+    # raw ASEC coverage columns (microcosm#454), so a raw source frame that
+    # already carries it was staged elsewhere.
     "esi_premiums": {
         "person": frozenset(US_ESI_PREMIUMS_OUTPUT_COLUMNS),
     },

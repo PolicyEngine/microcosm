@@ -340,6 +340,17 @@ def _real_pre_clone_source_frame() -> Frame:
             "WICYN": [0, 1, 2, 0],
             "SPM_CAPHOUSESUB": [0.0, 0.0, 0.0, 0.0],
             "SPM_TENMORTSTATUS": [3, 3, 3, 3],
+            # Each parent is an employed private-sector ESI policyholder
+            # whose employer pays some or all of a family premium; the
+            # children are outside the coverage universe.
+            "NOW_OWNGRP": [1, 0, 1, 0],
+            "NOW_HIPAID": [2, 0, 1, 0],
+            "NOW_GRPFTYP": [1, 0, 1, 0],
+            "NOW_GRPFTYP2": [1, 0, 2, 0],
+            "PEMLR": [1, 0, 1, 0],
+            "NOEMP": [6, 0, 2, 0],
+            "PEIO1COW": [4, 0, 4, 0],
+            "PHIP_VAL": [2_000.0, 0.0, 1_500.0, 0.0],
         }
     )
     tables = {
@@ -737,7 +748,6 @@ def _producer_dtype_source_frame() -> Frame:
     person["RESNSS2"] = 0
     person["SS_YN"] = 2
     person["SSI_YN"] = 2
-    person["PEIO1COW"] = 0
     person["A_MJOCC"] = 0
     person["PEAFEVER"] = 2
     person["ED_VAL"] = [0.0, 500.0, 0.0, 1_000.0]
