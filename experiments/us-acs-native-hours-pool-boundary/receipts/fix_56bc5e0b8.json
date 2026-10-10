@@ -1,0 +1,123 @@
+{
+  "archives": {
+    "household": {
+      "filename": "csv_hus.zip",
+      "matches_source_manifest": true,
+      "sha256": "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0"
+    },
+    "person": {
+      "filename": "csv_pus.zip",
+      "matches_source_manifest": true,
+      "sha256": "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894"
+    }
+  },
+  "battery_preview": {
+    "asec_file": {
+      "name": "census_cps_2025.h5",
+      "persons": 134729,
+      "sha256": "4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58"
+    },
+    "caveats": [
+      "A preview, not a battery run: no pool was built.",
+      "ACS blanks count as zero hours here; the pool fills them from ASEC donors, which are zero below age 15.",
+      "ASEC is the public Census file named below at household supplement weights, not the pool's pooled raw-stage artifact."
+    ],
+    "conditional_quantiles": {
+      "acs": [
+        20.0,
+        35.0,
+        40.0,
+        40.0,
+        50.0
+      ],
+      "asec": [
+        20.0,
+        40.0,
+        40.0,
+        40.0,
+        50.0
+      ]
+    },
+    "incidence_ratio_acs_over_asec": 1.0375198372567975,
+    "incidence_ratio_bounds": [
+      0.8,
+      1.25
+    ],
+    "metric": "monetary_sign_separated, positive leg",
+    "positive_incidence": {
+      "acs": 0.5386401464531511,
+      "asec": 0.5191612990044755
+    },
+    "quantile_envelope_distance": 0.13333333333333333,
+    "quantile_envelope_tolerance": 0.25,
+    "quantiles": [
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      0.9
+    ],
+    "within_tolerance": true
+  },
+  "boundary": {
+    "admitted": true,
+    "error": null
+  },
+  "code": {
+    "operator_boundary": "/Users/maxghenis/PolicyEngine/microcosm/.claude/worktrees/nifty-tu-d7feca/packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py",
+    "repo_root_dirty_paths": [],
+    "repo_root_head": "56bc5e0b88cfb25edc055798c1dc6e360d79a5c5",
+    "tool": "/Users/maxghenis/PolicyEngine/microcosm/.claude/worktrees/nifty-tu-d7feca/tools/build_us_multispine_pool.py"
+  },
+  "load_and_map_seconds": 1455.6,
+  "native_outputs": [
+    "acs_annual_property_tax",
+    "acs_interest_dividend_rental_income",
+    "acs_monthly_contract_rent",
+    "acs_monthly_gross_rent",
+    "acs_retirement_income",
+    "acs_social_security_income",
+    "age",
+    "employment_income_before_lsr",
+    "is_female",
+    "is_household_head",
+    "parent_1_id",
+    "parent_2_id",
+    "real_estate_taxes",
+    "self_employment_income_before_lsr",
+    "spm_unit_tenure_type",
+    "ssi_reported",
+    "tenure_type",
+    "weekly_hours_worked_before_lsr"
+  ],
+  "usual_hours_receipt": {
+    "allocated_value_rows": 315404,
+    "allocation_reference_page": 130,
+    "allocation_unknown_value_rows": 0,
+    "entity": "person",
+    "missing_rows": 549898,
+    "observed_rows": 2872990,
+    "provenance": "acs_2024_1yr_native",
+    "reference": "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf#page=45",
+    "source_columns": [
+      "WKHP",
+      "AGEP",
+      "WKL",
+      "FWKHP"
+    ],
+    "source_universe_unavailable_rows": 549898,
+    "source_value_rows": 1767132,
+    "structural_zero_rows": 1105858,
+    "transformation": "WKHP; zero only for source-confirmed past-year nonwork"
+  },
+  "usual_hours_rows": {
+    "blank": 549898,
+    "blank_age_15": 39800,
+    "blank_age_16_plus": 0,
+    "blank_under_15": 510098,
+    "observed_positive": 1767132,
+    "observed_under_16": 0,
+    "observed_zero": 1105858,
+    "persons": 3422888
+  }
+}
