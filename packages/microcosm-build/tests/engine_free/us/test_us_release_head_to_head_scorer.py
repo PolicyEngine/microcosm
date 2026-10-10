@@ -2,7 +2,11 @@
 
 # ruff: noqa: F403, F405
 import json
+import multiprocessing
+import signal
 import time
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
@@ -122,6 +126,12 @@ def test_spawned_workers_score_identically_to_sequential_cli(
             chunk["target_compilation"]["household_slice_row_counts"] == [2, 1]
             for chunk in chunks
         )
+        digests = [
+            digest
+            for chunk in chunks
+            for digest in chunk["target_compilation"]["slice_compilation_sha256s"]
+        ]
+        assert len(set(digests)) == len(digests)
 
 
 def test_spawned_worker_failure_includes_chunk_and_slice_label(monkeypatch) -> None:
@@ -142,6 +152,105 @@ def test_spawned_worker_failure_includes_chunk_and_slice_label(monkeypatch) -> N
             maximum_microsim_batch_size=2,
             workers=3,
         )
+
+
+def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> None:
+    from test_support.microcosm_build.us_release_head_to_head_worker_death import (
+        OneHouseholdFrame,
+        exit_slice_worker,
+        initialize_slice_worker,
+    )
+
+    module = _load_head_to_head_module()
+    executors = []
+
+    class TrackingExecutor(ProcessPoolExecutor):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.children = {}
+            self.shutdown_completed = False
+            self.shutdown_waited = False
+            executors.append(self)
+
+        def submit(self, *args, **kwargs):
+            try:
+                return super().submit(*args, **kwargs)
+            finally:
+                self.children.update(self._processes or {})
+
+        def shutdown(self, wait=True, *, cancel_futures=False):
+            self.children.update(self._processes or {})
+            self.shutdown_waited = wait
+            super().shutdown(wait=wait, cancel_futures=cancel_futures)
+            self.shutdown_completed = True
+
+    monkeypatch.setattr(module, "MATERIALIZE_SCORE_CHUNK_SPECS", 1)
+    monkeypatch.setattr(module, "ProcessPoolExecutor", TrackingExecutor)
+    monkeypatch.setattr(module, "_initialize_slice_worker", initialize_slice_worker)
+    monkeypatch.setattr(module, "_score_slice_worker", exit_slice_worker)
+
+    def kill_alive_workers() -> None:
+        for executor in executors:
+            for process in executor.children.values():
+                try:
+                    if process.is_alive():
+                        process.kill()
+                except ProcessLookupError:
+                    pass
+
+    timed_out = False
+
+    def timeout_handler(signum, frame) -> None:
+        nonlocal timed_out
+        timed_out = True
+        kill_alive_workers()
+        raise TimeoutError("worker death pool did not shut down within 60 seconds")
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+    old_timer = signal.setitimer(signal.ITIMER_REAL, 0)
+    try:
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.setitimer(signal.ITIMER_REAL, 60)
+        with pytest.raises(
+            RuntimeError,
+            match=r"fixture chunk [12]/2 slice 1/1 worker (?:submission )?failed:",
+        ) as failure:
+            list(
+                module._score_chunks_parallel(
+                    OneHouseholdFrame(),
+                    ("first", "second"),
+                    loss_weights=(1.0, 1.0),
+                    artifact_name="fixture",
+                    maximum_microsim_batch_size=None,
+                    workers=2,
+                )
+            )
+
+        # Check production shutdown before our defensive cleanup can run.
+        assert timed_out is False
+        assert isinstance(failure.value.__cause__, BrokenProcessPool)
+        assert len(executors) == 1
+        executor = executors[0]
+        assert executor.shutdown_completed is True
+        assert executor.shutdown_waited is True
+        children = list(executor.children.values())
+        assert children
+        assert any(process.exitcode == 97 for process in children)
+        assert all(
+            not process.is_alive() and process.exitcode is not None
+            for process in children
+        )
+        assert multiprocessing.active_children() == []
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        try:
+            kill_alive_workers()
+            for executor in executors:
+                for process in executor.children.values():
+                    process.join(timeout=5)
+        finally:
+            signal.signal(signal.SIGALRM, old_handler)
+            signal.setitimer(signal.ITIMER_REAL, *old_timer)
 
 
 @pytest.mark.parametrize("workers", [0, -1])
@@ -248,6 +357,7 @@ def _scored_slice(module, row, slice_index):
         "declared_targets": width,
         "compiled_candidate_targets": width,
         "dropped_target_names": [],
+        "fixture_slice_index": slice_index,
     }
     return module.ScoredSlice(
         slice_index=slice_index,
@@ -258,7 +368,7 @@ def _scored_slice(module, row, slice_index):
         scored_contract=(("household", "m_income", "measure"),),
         compilation=compilation,
         compilation_digest=module._canonical_sha256(compilation),
-        slice_size=1,
+        slice_size=slice_index + 1,
     )
 
 
@@ -275,6 +385,7 @@ def test_parallel_reduction_preserves_sequential_float64_bits(case) -> None:
     module = _load_head_to_head_module()
     rows, completion_order = case
     slices = [_scored_slice(module, row, index) for index, row in enumerate(rows)]
+    assert len({result.compilation_digest for result in slices}) == len(slices)
     expected = slices[0].estimates.copy()
     for result in slices[1:]:
         np.add(expected, result.estimates, out=expected)
@@ -284,13 +395,15 @@ def test_parallel_reduction_preserves_sequential_float64_bits(case) -> None:
             slice_count=len(slices),
             artifact_name="fixture",
             chunk_label="chunk 1/1",
-            maximum_microsim_batch_size=1,
+            maximum_microsim_batch_size=len(slices),
         )
         assert np.array_equal(actual.estimates, expected)
         assert np.array_equal(
             actual.estimates.view(np.uint64), expected.view(np.uint64)
         )
-        assert actual.compilation["household_slice_row_counts"] == [1] * len(slices)
+        assert actual.compilation["household_slice_row_counts"] == [
+            result.slice_size for result in slices
+        ]
         assert actual.compilation["slice_compilation_sha256s"] == [
             result.compilation_digest for result in slices
         ]
@@ -825,6 +938,7 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
     def _materialize_with_receipt(frame, specs, **kwargs):
         assert kwargs["refuse_population_aggregates"] is True
         target_frame, registry, compilation = stub_materialize(frame, specs, **kwargs)
+        compilation.pop("fixture_materialization")
         return (
             target_frame,
             registry,
@@ -989,3 +1103,116 @@ def test_live_incumbent_identity_annotation() -> None:
         resolved["revision"]
         == "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
     )
+
+
+@pytest.mark.parametrize("batch_size", [1, 2, 3])
+def test_sequential_cli_matches_origin_main_household_scoring(
+    monkeypatch, tmp_path, batch_size
+) -> None:
+    """Compare the refactor with main's frozen loop, including all JSON receipts."""
+    module = _load_head_to_head_module()
+    from test_support.microcosm_build.us_release_head_to_head_main_baseline import (
+        _score_chunk_household_sliced as origin_main_scorer,
+    )
+
+    _parallel_fixture(module, monkeypatch)
+    branch_scorer = module._score_chunk_household_sliced
+    original_aggregate = module._fiscal_rows_and_aggregate
+    estimate_vectors = []
+
+    def capture_estimates(**kwargs):
+        estimate_vectors.append(kwargs["estimates"].copy())
+        return original_aggregate(**kwargs)
+
+    monkeypatch.setattr(module, "_fiscal_rows_and_aggregate", capture_estimates)
+    json_documents = []
+    markdown_documents = []
+    for label, scorer in (
+        ("origin-main", origin_main_scorer),
+        ("branch", branch_scorer),
+    ):
+        monkeypatch.setattr(module, "_score_chunk_household_sliced", scorer)
+        prefix = tmp_path / label
+        argv = [
+            "--incumbent",
+            "/fixture/incumbent.h5",
+            "--candidate",
+            "/fixture/candidate.h5",
+            "--ledger-facts",
+            "/fixture/facts.jsonl",
+            "--congressional-district-vintage-crosswalk",
+            "/fixture/crosswalk.parquet",
+            "--workers",
+            "1",
+            "--out-prefix",
+            str(prefix),
+        ]
+        argv.extend(["--maximum-microsim-batch-size", str(batch_size)])
+        assert module.main(argv) == 0
+        payload = json.loads(prefix.with_suffix(".json").read_text())
+        # Main did not have worker metadata; remove only that documented addition.
+        assert payload["run_metadata"].pop("workers") == 1
+        json_documents.append(
+            json.dumps(payload, allow_nan=False, indent=2, sort_keys=True) + "\n"
+        )
+        markdown_documents.append(prefix.with_suffix(".md").read_bytes())
+
+    assert json_documents[0] == json_documents[1]
+    assert markdown_documents[0] == markdown_documents[1]
+    assert len(estimate_vectors) == 4
+    for original, refactored in zip(
+        estimate_vectors[:2], estimate_vectors[2:], strict=True
+    ):
+        assert original.tobytes() == refactored.tobytes()
+
+
+@pytest.mark.parametrize(
+    ("corruption", "expected_type"),
+    [
+        ("dropped_target", ValueError),
+        ("registry_contract", ValueError),
+        ("household_row_count", RuntimeError),
+    ],
+)
+def test_sequential_slice_errors_match_origin_main(
+    monkeypatch, corruption, expected_type
+) -> None:
+    module = _load_head_to_head_module()
+    from test_support.microcosm_build.us_release_head_to_head_main_baseline import (
+        _score_chunk_household_sliced as origin_main_scorer,
+    )
+
+    _patch_release_seams(module, monkeypatch)
+    materialize = module.release._materialize_target_frame
+    frame = _tiny_frame(measure_values=(1.0, 2.0))
+    registry = _tiny_registry()
+
+    def corrupt_materialize(slice_frame, specs, **kwargs):
+        target_frame, compiled_registry, compilation = materialize(
+            slice_frame, specs, **kwargs
+        )
+        if corruption == "dropped_target":
+            compilation["dropped_target_names"] = [specs[0].name]
+        elif corruption == "registry_contract":
+            compiled_registry = TargetRegistry(list(reversed(specs)), country="us")
+        else:
+            target_frame = frame
+        return target_frame, compiled_registry, compilation
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", corrupt_materialize
+    )
+    errors = []
+    for scorer in (origin_main_scorer, module._score_chunk_household_sliced):
+        with pytest.raises(expected_type) as caught:
+            scorer(
+                frame,
+                registry.specs,
+                chunk_loss_weights=np.ones(len(registry.specs)),
+                artifact_name="fixture",
+                chunk_label="chunk 1/1",
+                maximum_microsim_batch_size=1,
+            )
+        assert type(caught.value) is expected_type
+        errors.append((type(caught.value), str(caught.value).encode("utf-8")))
+    assert errors[0] == errors[1]

@@ -232,6 +232,10 @@ def _fixture_materialize(frame, specs, **kwargs):
             "declared_targets": len(specs),
             "compiled_candidate_targets": len(specs),
             "dropped_target_names": [],
+            "fixture_materialization": {
+                "household_ids": frame.table("household")["household_id"].tolist(),
+                "target_names": [spec.name for spec in specs],
+            },
         },
     )
 
