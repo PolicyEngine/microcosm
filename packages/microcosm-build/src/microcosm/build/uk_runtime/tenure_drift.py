@@ -47,7 +47,7 @@ def _spree_values(
 ) -> dict[tuple[str, str, int], float]:
     values: dict[tuple[str, str, int], float] = {}
     for row in rows:
-        concept = str((row.get("observed_measure") or {}).get("source_concept") or "")
+        concept = str(row.get("concept") or "")
         area = str((row.get("geography") or {}).get("id") or "")
         period = row.get("period") or {}
         try:

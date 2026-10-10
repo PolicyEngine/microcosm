@@ -6,6 +6,7 @@ import pytest
 
 from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime.tenure_drift import (
+    SPREE_CONCEPT_BY_TENURE_TARGET,
     UK_TENURE_SHARE_DRIFT_INDEX_CONCEPT,
     align_tenure_by_spree_share_drift,
 )
@@ -14,7 +15,7 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 
 def _row(concept: str, area: str, year: int, value: float) -> dict:
     return {
-        "observed_measure": {"source_concept": concept},
+        "concept": concept,
         "geography": {"id": area},
         "period": {"type": "calendar_year", "value": year},
         "value": value,
@@ -80,3 +81,31 @@ def test_an_english_authority_missing_from_spree_is_refused():
     registry = TargetRegistry([_cell("E06000002", 50.0)], country="uk")
     with pytest.raises(ValueError, match="no SPREE"):
         align_tenure_by_spree_share_drift(_reference("E06000002"), registry, rows=_ROWS)
+
+
+@pytest.mark.parametrize("target_id", sorted(SPREE_CONCEPT_BY_TENURE_TARGET))
+def test_the_packaged_spree_resource_drifts_an_english_authority(target_id):
+    # The vendored rows carry the concept at top level (#1123).
+    cell = TargetSpec(
+        name=f"{target_id}@E06000001@2025",
+        entity="household",
+        value=1000.0,
+        measure="tenure",
+        period=2025,
+        family="ons_housing",
+        source="test",
+        metadata={"contract_target_id": target_id, "geography_id": "E06000001"},
+    )
+    reference = LedgerTargetReference(
+        name=f"{target_id}@E06000001",
+        ledger_selector={"source_measure_id": "households"},
+        entity="household",
+        measure="tenure",
+        period=2025,
+        uprating_index=UK_TENURE_SHARE_DRIFT_INDEX_CONCEPT,
+    )
+    (spec,) = align_tenure_by_spree_share_drift(
+        reference, TargetRegistry([cell], country="uk")
+    ).specs
+    factor = float(spec.metadata["uprating_factor"])
+    assert 0.5 < factor < 2.0 and factor != 1.0
