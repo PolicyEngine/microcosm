@@ -196,6 +196,11 @@ class LocalTelemetryEmitter:
                 str(os.getpid()),
                 "--heartbeat-seconds",
                 str(heartbeat_seconds),
+                # The service retries spool lock contention until just before
+                # this wall-clock time, when the wait below gives up. One token,
+                # so a past or negative deadline is not read as an option.
+                "--ready-deadline="
+                + repr(datetime.now(UTC).timestamp() + startup_timeout_seconds),
             ]
             if development_collector_url is not None:
                 command.extend(

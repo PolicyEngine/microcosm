@@ -20,7 +20,7 @@ depends_on: str | Sequence[str] | None = ${repr(depends_on)}
 
 
 def upgrade() -> None:
-    """Apply this schema revision."""
+    """Apply this schema revision, additively: see ``migrations.py``."""
 
     ${upgrades if upgrades else "pass"}
 
