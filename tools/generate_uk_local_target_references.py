@@ -295,7 +295,10 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
             "hmrc.employment_income.amount",
         }:
             operations[target_id] = "count_x_mean"
-        if target_id == "dwp.uc.households_by_area_children_3plus":
+        if target_id == "dwp.uc.households_by_area_children_3plus" and declared is None:
+            # The May-snapshot spelling summed the three published child
+            # counts; the calendar-2025 window declares its own monthly sum
+            # (microcosm#1123).
             operations[target_id] = "sum"
         if target_id in {
             "ons.tenure.private_rent",
