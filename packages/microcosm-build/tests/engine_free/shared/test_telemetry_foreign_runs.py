@@ -7,6 +7,8 @@ fake collector that follows the hosted collector's authorization model
 exchange refuses a non-member with 403 and a bad token with 401; the first
 Hugging Face user to register a run owns it and anyone else gets 403; an
 unknown run's events get 404, and a batch the collector cannot accept 422.
+The fake can also lose a run it registered, as a restored database would, and
+can be told never to find a run's events.
 
 Invariants (each checked below; the first four also after every step of a
 property test that runs services in any order and lets one run while
@@ -14,7 +16,9 @@ another's collector request is in flight):
 
 - No service makes another producer's run local-only because of its own
   credential (missing, refused, or not the run's owner). Another producer's
-  run goes local-only only after a collector answer about the run itself.
+  run goes local-only only after a collector answer about the run itself: a
+  registration 409, a batch refused with 422, or a second 404 for its events
+  with no batch acknowledged to that service since the first.
 - While a producer's service is alive, no other service sends any request for
   that producer's run.
 - A run goes local-only only when the deciding service's latest collector
@@ -25,7 +29,9 @@ another's collector request is in flight):
   goes local-only, even from a service that listed the run before.
 - Once every service has gone, a run left pending is delivered in full by a
   service whose credential owns it, including a service that was refused for
-  the run under an earlier login.
+  the run under an earlier login, unless the collector refuses the run itself
+  (409, 422, or never finding it), which makes it local-only. If the collector
+  lost the run, the first service to register it again owns it.
 """
 
 from __future__ import annotations
@@ -65,6 +71,7 @@ from microcosm.build.telemetry_emitter_service import collector as collector_mod
 from microcosm.build.telemetry_emitter_service import leases as leases_module
 from microcosm.build.telemetry_emitter_service import main as main_module
 from microcosm.build.telemetry_emitter_service.constants import (
+    BATCH_SIZE,
     DEFAULT_TOKEN_LIFETIME_SECONDS,
     LOCAL_ONLY_MISSING_CREDENTIAL,
     LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
@@ -120,8 +127,11 @@ class FakeCollector:
         self,
         rejected_run_ids: set[str] | None = None,
         conflicted_run_ids: set[str] | None = None,
+        unfindable_run_ids: set[str] | None = None,
     ) -> None:
         self.rejected_run_ids = set(rejected_run_ids or ())
+        # Runs it registers and then never finds when their events arrive.
+        self.unfindable_run_ids = set(unfindable_run_ids or ())
         self.owners: dict[str, str] = {}
         # A conflicted run id was registered before with other metadata, so
         # whoever owns it gets 409 for this registration.
@@ -182,7 +192,7 @@ class FakeCollector:
         run_id = path.split("/")[3]
         events = payload["events"]
         run = (run_id, events[0]["producer_id"])
-        if run_id not in self.owners:
+        if run_id not in self.owners or run_id in self.unfindable_run_ids:
             return self._answer(caller, "events", run, 404, {})
         if self.owners[run_id] != user or run not in self.producers:
             return self._answer(caller, "events", run, 403, {})
@@ -194,6 +204,13 @@ class FakeCollector:
     def _answer(self, caller, kind, run, status, body):
         self.requests.append((caller, kind, run, status))
         return status, body
+
+    def forget(self, run_id: str) -> None:
+        """Lose a registered run. What was acknowledged stays on record here."""
+
+        self.owners.pop(run_id, None)
+        self.metadata.pop(run_id, None)
+        self.producers = {run for run in self.producers if run[0] != run_id}
 
     def latest(self, caller: Run, before: int) -> tuple[str, Run | None, int] | None:
         """The caller's last request among the first ``before``: kind, run, status."""
@@ -345,11 +362,27 @@ def host(tmp_path):
     host.close()
 
 
+def _assert_events_were_refused(host: Host, caller: Run, run: Run, at: int) -> None:
+    """The service's latest answer refused this run's events: with 422, or with
+    a second 404 and no batch of the run acknowledged to it since the first."""
+
+    latest = host.collector.latest(caller, at)
+    if latest == ("events", run, 422):
+        assert run[0] in host.collector.rejected_run_ids, (caller, run)
+        return
+    assert latest == ("events", run, 404), (caller, run, latest)
+    answers = [
+        status
+        for who, kind, about, status in host.collector.requests[:at]
+        if (who, kind, about) == (caller, "events", run)
+    ]
+    assert answers[-2:] == [404, 404], (caller, run, answers)
+
+
 def _assert_own_credential_only(host: Host) -> None:
     """The safety invariants, over everything recorded so far."""
 
     assert host.intrusions == []
-    rejected = host.collector.rejected_run_ids
     conflicted = host.collector.conflicted_run_ids
     for caller, run, reason, credential, at in host.local_only:
         # Local-only is final: nothing about the run reaches the collector after.
@@ -365,8 +398,7 @@ def _assert_own_credential_only(host: Host) -> None:
                 assert latest == ("register", run, 409), (caller, run, latest)
             else:
                 assert reason == LOCAL_ONLY_REJECTED_EVENTS, (caller, run, reason)
-                assert run[0] in rejected, (caller, run)
-                assert latest == ("events", run, 422), (caller, run, latest)
+                _assert_events_were_refused(host, caller, run, at)
             continue
         if reason == LOCAL_ONLY_MISSING_CREDENTIAL:
             assert credential is None
@@ -384,10 +416,7 @@ def _assert_own_credential_only(host: Host) -> None:
             assert latest == ("events", run, 403), (run, latest)
         else:
             assert reason == LOCAL_ONLY_REJECTED_EVENTS
-            assert latest in (("events", run, 404), ("events", run, 422)), (
-                run,
-                latest,
-            )
+            _assert_events_were_refused(host, caller, run, at)
     # A refused credential is exchanged once per service, not on every pass.
     refused = host.collector.refused
     assert len(set(refused)) == len(refused), refused
@@ -788,7 +817,9 @@ def test_an_own_lease_waits_out_refused_locks_until_its_deadline(tmp_path, monke
     lease.release()
 
 
-@pytest.mark.parametrize("answer", ["unacceptable_events", "registration_conflict"])
+@pytest.mark.parametrize(
+    "answer", ["unacceptable_events", "unfindable_run", "registration_conflict"]
+)
 def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
     host, capsys, answer
 ):
@@ -797,6 +828,9 @@ def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
     host.kill(build_a)
     if answer == "unacceptable_events":
         host.collector.rejected_run_ids.add(build_a.run[0])
+        reason = LOCAL_ONLY_REJECTED_EVENTS
+    elif answer == "unfindable_run":
+        host.collector.unfindable_run_ids.add(build_a.run[0])
         reason = LOCAL_ONLY_REJECTED_EVENTS
     else:
         # The run id is already Alice's with other metadata: a 409 reaches
@@ -808,11 +842,74 @@ def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
     host.emit(build_b)
 
     host.flush(build_b)
+    if answer == "unfindable_run":
+        # The first 404 has the run registered again; the second settles it.
+        assert host.states()[build_a.run] == ("pending", None)
+        host.flush(build_b)
+        assert host.collector.asked(build_b.run, "register", build_a.run) == [201, 201]
+        assert host.collector.asked(build_b.run, "events", build_a.run) == [404, 404]
 
     assert host.states()[build_a.run] == ("local_only", reason)
     assert host.collector.accepted[build_b.run] == set(build_b.appended)
     # The warning says "this run"; another build's run is not this build's.
     assert "local-only" not in capsys.readouterr().err
+    _assert_own_credential_only(host)
+
+
+def test_an_adopted_orphan_the_collector_loses_is_registered_again(host, capsys):
+    """An adopter is answered as the run's own service would be: after a 404
+    it registers the orphan again and delivers the rest."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a, BATCH_SIZE + 1)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "alice")
+
+    assert host.flush(build_b)
+    host.collector.forget(build_a.run[0])
+    assert not host.flush(build_b)
+    assert host.states()[build_a.run] == ("pending", None)
+    assert host.flush(build_b)
+
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [201, 201]
+    assert host.collector.asked(build_b.run, "events", build_a.run) == [202, 404, 202]
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    assert host.queued(build_a.run) == 0
+    assert "local-only" not in capsys.readouterr().err
+    _assert_own_credential_only(host)
+
+
+def test_a_lost_run_another_user_registers_first_is_refused_its_first_owner(
+    host, capsys
+):
+    """The collector gives a run it does not have to whoever registers it. So
+    registering again can be refused, like any registration: only for this
+    login, and only this build's own run."""
+
+    build_a = host.start(MEMBER + "alice", run_id="shared")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a)
+    host.collector.forget("shared")
+    host.flush(build_a)
+    build_b = host.start(MEMBER + "bob", run_id="shared")
+    host.emit(build_b)
+    host.flush(build_b)
+
+    host.flush(build_a)
+
+    assert host.collector.asked(build_a.run, "register", build_a.run) == [201, 403]
+    assert host.states()[build_a.run] == (
+        "local_only",
+        LOCAL_ONLY_REJECTED_REGISTRATION,
+    )
+    assert host.states()[build_b.run] == ("pending", None)
+    assert host.collector.accepted[build_b.run] == set(build_b.appended)
+    warning = capsys.readouterr().err
+    assert warning.count("local-only for this run") == 1
+    assert "Hugging Face user" in warning and "HTTP 403" in warning
+    assert "organization member" not in warning
+    _assert_own_credential_only(host)
 
 
 def test_a_shared_run_id_refuses_the_second_user_its_own_run_only(host):
@@ -1164,9 +1261,14 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
 def _label_paths(host: Host) -> None:
     """Report which delivery paths a generated scenario reached."""
 
+    registered: set[tuple[Run, Run]] = set()
     for caller, kind, about, status in host.collector.requests:
         if about is not None and about != caller:
             event(f"adopted orphan: {kind} {status}")
+        if kind == "register" and status == 201:
+            if (caller, about) in registered:
+                event(f"{'own' if caller == about else 'adopted'} run registered again")
+            registered.add((caller, about))
     for caller, run, reason, *_ in host.local_only:
         event(f"{'own' if caller == run else 'adopted'} run local-only: {reason}")
 
@@ -1184,6 +1286,8 @@ OPERATIONS = st.lists(
         st.tuples(st.just("flush"), PRODUCER),
         st.tuples(st.just("kill"), PRODUCER),
         st.tuples(st.just("login"), PRODUCER, st.sampled_from(CREDENTIALS)),
+        # The collector loses a run it registered, any build's.
+        st.tuples(st.just("forget"), PRODUCER),
         # One service flushes while another's request is in flight, and may
         # then exit: the first service's list of pending runs goes stale.
         st.tuples(st.just("interleave"), PRODUCER, PRODUCER, st.booleans()),
@@ -1212,6 +1316,7 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     operations=OPERATIONS,
     rejected=st.sets(st.integers(0, 7), max_size=2),
     conflicted=st.sets(st.integers(0, 7), max_size=2),
+    unfindable=st.sets(st.integers(0, 7), max_size=1),
     # The logins the two last services start under, before Alice's and Bob's.
     rescue_logins=st.tuples(st.sampled_from(CREDENTIALS), st.sampled_from(CREDENTIALS)),
 )
@@ -1223,6 +1328,7 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     operations=[("interleave", 0, 1, True)],
     rejected=set(),
     conflicted=set(),
+    unfindable=set(),
     rescue_logins=(MEMBER + "alice", MEMBER + "bob"),
 )
 # From review: a service refused for every pending run, whose own run is not
@@ -1232,16 +1338,35 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     operations=[],
     rejected=set(),
     conflicted=set(),
+    unfindable=set(),
     rescue_logins=(OUTSIDER, EXPIRED),
 )
+# Alice's service loses its run at the collector, and Bob's build of the same
+# run id registers it first.
+@example(
+    builds=[(MEMBER + "alice", 0), (MEMBER + "bob", 1)],
+    operations=[("flush", 0), ("emit", 0, 1), ("forget", 0), ("flush", 0)]
+    + [("flush", 1), ("flush", 0)],
+    rejected=set(),
+    conflicted=set(),
+    unfindable=set(),
+    rescue_logins=(MEMBER + "alice", MEMBER + "bob"),
+)
 def test_no_service_decides_another_producers_run_from_its_own_credential(
-    tmp_path_factory, builds, operations, rejected, conflicted, rescue_logins
+    tmp_path_factory,
+    builds,
+    operations,
+    rejected,
+    conflicted,
+    unfindable,
+    rescue_logins,
 ):
     host = Host(
         tmp_path_factory.mktemp("foreign"),
         FakeCollector(
             {f"run-{index}" for index in rejected},
             {f"run-{index}" for index in conflicted},
+            {f"run-{index}" for index in unfindable},
         ),
     )
     try:
@@ -1252,6 +1377,10 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
             kind = operation[0]
             if kind == "start":
                 _start_build(host, operation[1])
+                continue
+            if kind == "forget":
+                lost = host.producers[operation[1] % len(host.producers)]
+                host.collector.forget(lost.run[0])
                 continue
             live = [producer for producer in host.producers if producer.alive]
             if not live:
@@ -1314,7 +1443,12 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
                     LOCAL_ONLY_REJECTED_REGISTRATION,
                 ), producer.run
                 continue
-            if run_id in host.collector.rejected_run_ids and producer.appended:
+            refused = (
+                host.collector.rejected_run_ids | host.collector.unfindable_run_ids
+            )
+            if run_id in refused and producer.appended:
+                # Its owner, whoever that is, gets 422, or 404 twice: a
+                # refusal of the batch.
                 if host.queued(producer.run):
                     assert after[producer.run] == (
                         "local_only",
