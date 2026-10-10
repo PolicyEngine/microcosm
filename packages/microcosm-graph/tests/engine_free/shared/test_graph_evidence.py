@@ -643,6 +643,30 @@ def test_save_graph_schema_copies_upstream_bytes_and_relinks(fresh, tmp_path):
         save_graph_schema(fresh.compiled, tmp_path / "again", presentation=contract)
 
 
+def test_save_graph_schema_copies_an_upstream_manifest_past_the_metadata_bound(
+    fresh, tmp_path
+):
+    upstream = tmp_path / "spine.graph.json"
+    upstream.write_bytes(b"[" + b",".join([b"0"] * 2_100_000) + b"]")
+    contract = presentation(fresh.compiled)
+    contract["scope"]["boundaries"] = [
+        {
+            "operation": "survey",
+            "kind": "checkpoint",
+            "upstream": [
+                {
+                    "label": "Producing run manifest",
+                    "url": str(upstream),
+                    "sha256": sha256(upstream.read_bytes()),
+                }
+            ],
+        }
+    ]
+    saved = save_graph_schema(fresh.compiled, tmp_path / "out", presentation=contract)
+    copied = saved.parent / f"upstream-{sha256(upstream.read_bytes())}.json"
+    assert copied.read_bytes() == upstream.read_bytes()
+
+
 @pytest.mark.parametrize(
     "composite",
     [

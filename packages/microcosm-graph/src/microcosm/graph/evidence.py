@@ -799,7 +799,7 @@ def save_graph_schema(
                 source = Path(url)
                 if not source.is_absolute() or not source.is_file():
                     continue
-                payload = read_json(source)[1]
+                payload = _read_bytes(source)
                 require(
                     sha256(payload) == digest(ref.get("sha256")),
                     "checkpoint reference changed during capture",
@@ -873,7 +873,7 @@ def publish_run_evidence(
                     "restore it or clear the published evidence",
                 )
                 require(
-                    sha256(read_json(target)[1]) == digest(ref["sha256"]),
+                    sha256(_read_bytes(target)) == digest(ref["sha256"]),
                     f"published evidence file {relative} no longer matches its digest",
                 )
             runs.append(entry)
@@ -889,7 +889,7 @@ def publish_run_evidence(
             filename = (
                 f"{prefix}-{entry['attempt_id']}-{relative.parent.name}-{field}.json"
             )
-            payload = read_json(index_path.parent / relative)[1]
+            payload = _read_bytes(index_path.parent / relative)
             require(
                 sha256(payload) == digest(entry[field]["sha256"]),
                 "native phase evidence changed during capture",
