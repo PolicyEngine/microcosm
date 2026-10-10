@@ -33,6 +33,7 @@ from typing import Any
 from microcosm.build.ledger_targets import (
     MONTHLY_WINDOW_COUNT_X_MEAN,
     MONTHLY_WINDOW_OPERATIONS,
+    ROLLED_FORWARD_BY_RATIO,
     _period_key_from_value,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -101,12 +102,16 @@ def is_uprating_hold(spec: TargetSpec, calibration_period: int | str) -> bool:
     A window of the calibration year's subperiods (the compiled
     ``ledger_value_operation``), a calendar-year mean
     (``fact_aggregation: time_mean``) and a declared source window cover the
-    period by construction, whatever month the fact key names.
+    period by construction, whatever month the fact key names. A
+    ``rolled_forward_by_ratio`` value is carried to the target period by a
+    ratio whose numerator is pinned there, so the older base is not held.
     """
 
     if "uprating_factor" in spec.metadata:
         return False
     if spec.metadata.get("ledger_value_operation") in _WINDOW_VALUE_OPERATIONS:
+        return False
+    if spec.metadata.get("ledger_value_operation") == ROLLED_FORWARD_BY_RATIO:
         return False
     if spec.metadata.get("fact_aggregation") == "time_mean":
         return False
