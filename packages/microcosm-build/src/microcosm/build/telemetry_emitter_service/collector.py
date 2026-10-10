@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -42,6 +41,10 @@ from microcosm.build.telemetry_emitter_service.constants import (
     TOKEN_EXCHANGE_PATH,
     TOKEN_REFRESH_MARGIN_SECONDS,
 )
+from microcosm.build.telemetry_emitter_service.contention import (
+    is_transient_spool_error,
+)
+from microcosm.build.telemetry_emitter_service.diagnostics import write_warning
 from microcosm.build.telemetry_emitter_service.spool import EventSpool
 
 
@@ -168,6 +171,17 @@ class CollectorDelivery:
 
         if time.monotonic() < self._next_attempt_at:
             return False
+        try:
+            return self._flush_pending_runs()
+        except Exception as error:
+            # The worker runs this every second and survives the error, so an
+            # unexpected one backs off like a collector failure rather than
+            # repeating requests every tick. A busy spool is retried next tick.
+            if not is_transient_spool_error(error):
+                self._defer_retry()
+            raise
+
+    def _flush_pending_runs(self) -> bool:
         made_progress = False
         for registration in self.spool.pending_runs():
             run_id = str(registration["run_id"])
@@ -220,7 +234,7 @@ class CollectorDelivery:
         hf_token = _huggingface_token()
         if not hf_token:
             if not self._warned_no_token:
-                print(NO_CREDENTIAL_MESSAGE, file=sys.stderr, flush=True)
+                write_warning(NO_CREDENTIAL_MESSAGE)
                 self._warned_no_token = True
             self._make_local_only(registration, LOCAL_ONLY_MISSING_CREDENTIAL)
             return None
@@ -293,5 +307,5 @@ class CollectorDelivery:
     def _warn_denied(self, registration_key: str, message: str) -> None:
         if registration_key in self._warned_denied:
             return
-        print(message, file=sys.stderr, flush=True)
+        write_warning(message)
         self._warned_denied.add(registration_key)
