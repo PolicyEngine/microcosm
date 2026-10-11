@@ -329,28 +329,55 @@ not use them.
 ### The transferred rows are held to the ASEC rows' scale
 
 Nothing in a QRF draw keeps a total. `with_us_esi_premium_pool_anchor` runs in
-the pool's derive stage, once every row carries the column. A row is
-source-derived if every raw coverage column is present and transferred if all
-are null; a row with only some is refused. On the transferred rows it:
+the pool's derive stage, once every row carries the column.
 
-1. clears the premium where the person's source record (support clone 0)
-   reports no wages, because the column's universe is people employed by an
-   employer; then
-2. scales the rest by one factor so those rows carry the same weighted premium
+**Which rows it touches.** A row is source-derived if every raw coverage column
+is present and transferred if all are null; a row with only some is refused.
+Nulls alone do not make a row transferred, because an ASEC record that lost
+its coverage codes would look the same. The CPS record id (`PERIDNUM`)
+decides: a row with the id must carry every coverage column, a row with the
+columns must carry the id, and a frame without the id column cannot hold
+transferred rows.
+
+**What it does.** On the transferred rows it:
+
+1. gives every support clone its source record's draw (support clone 0), so a
+   person carries one premium whether the pool transferred before or after it
+   cloned;
+2. clears the premium where that source record reports zero wages, because the
+   column's universe is people employed by an employer; then
+3. scales the rest by one factor so those rows carry the same weighted premium
    per unit of household mass as the source-derived rows.
 
-It never rewrites a source-derived row. These hold for every pool
-(`tests/engine_free/us/test_us_esi_premiums_pool.py`, property-tested):
+It never rewrites a source-derived row. A transferred person's source record
+must report a wage: a missing wage is refused, not read as zero. In the
+stacked pool the wage is always a number by then, because the ACS
+earnings-universe producer writes an explicit zero below age 15 before the
+derive stage. The rule adds no refusal a pool would otherwise survive: the QBI
+reconciliation that follows in the same derive stage already refuses a blank
+ACS earnings value below age 15, and the one producer that writes those zeros
+writes wages and self-employment income together. Transferred rows that hold
+no household mass have nothing to be scaled to, and their factor stays at one.
+
+**What holds.** For every pool
+(`tests/engine_free/us/test_us_esi_premiums_pool.py`, property-tested over
+pools with zero-weight households and support clones):
 
 - the pool-wide weighted column equals the source-derived rows' total divided
   by their household mass share, which is the single-source column;
 - both sides carry the same weighted premium per unit of household mass;
-- a transferred person whose source record has no wages carries nothing, on
+- every support clone of a transferred person carries one premium;
+- a transferred person whose source record has zero wages carries nothing, on
   every support clone;
 - a pool already on that scale is returned unchanged.
 
-Equal totals per unit of mass on both sides also mean that calibration moving
-weight between sources does not move the pool total.
+Because both sides carry the same premium per unit of household mass, shifting
+household mass from one source to the other leaves the pool total where it
+was.
+
+**The legacy two-spine path** shares the pool's operator registry, so it runs
+the stage and the anchor too. It transfers after it clones, which is why the
+anchor resets each clone to its source record's draw.
 
 **Assumption.** The anchor counts every policyholder, and ACS rows have no
 policyholder flag to price the non-employed ones from. The pool's
@@ -405,6 +432,11 @@ The stage holds the sampled ASEC rows' anchor universe to the anchor, so a
 sample's column total moves with that sample's employed share of the
 universe. That is why the two samples' totals differ from the full pool's.
 
+Every ACS wage was a number when the anchor ran. In the 5% sample the
+earnings-universe producer wrote the explicit zero on 25,511 records below age
+15, and none of the other 145,870 was missing a wage. No clone needed
+resetting, because the stacked order fills before it clones.
+
 ## Gates
 
 | Gate | Where | Checks |
@@ -424,12 +456,19 @@ What the gates need, and what they do not catch:
   today (`PEIO1COW`, `PHIP_VAL`, `WSAL_VAL`, `NOW_MCAID`); a release path
   that dropped the restored columns would turn both gates red.
 - **A pooled frame is graded by row kind.** Rows with every raw coverage
-  column get the full recomputation. Rows with none are the ones a transfer
-  filled; the gates compare them with the first kind and cannot check them
-  against MEPS-IC cells. A row with only some of the columns fails both
-  gates. The pool tool does not run these gates: its anchor operator raises
-  if its own invariants fail, its by-origin battery grades the column's
-  distribution, and the release tool grades the pool as its base.
+  column get the full recomputation. Rows with none of them and no CPS record
+  id are the ones a transfer filled; the gates compare them with the first
+  kind and cannot check them against MEPS-IC cells. Three things fail both
+  gates: a row with only some of the columns, a CPS record without them
+  (lost coverage codes are never graded as a transfer, in a pool or a
+  single-source frame), and a row without them in a frame that has no CPS
+  record id column. The signal gate also fails when a transferred person's
+  support clones disagree. When the transferred rows hold no household mass,
+  the gates skip the comparison between the two kinds: there is no second
+  half to compare. The pool tool does not run these gates: its anchor
+  operator raises if its own invariants fail, its by-origin battery grades
+  the column's distribution, and the release tool grades the pool as its
+  base.
 - **The raw-mean band catches unit errors only.** The signal gate requires
   the unscaled share per holder to sit between $6k and $20k, which catches a
   cell table in the wrong units. A cell table that is 20% low passes: the

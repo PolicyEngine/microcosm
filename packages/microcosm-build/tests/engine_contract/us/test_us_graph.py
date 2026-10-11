@@ -78,7 +78,7 @@ def test_us_post_transfer_rewrites_are_opened_by_identity_filters() -> None:
     materialize = graph.node("materialize_multispine_agreement_outputs")
 
     assert create.structural is StructuralDelta.CREATE
-    assert len(create.outputs) == 85
+    assert len(create.outputs) == 86
     assert all(not owned.rewrite for owned in create.outputs)
 
     for stage in _STAGES[:3]:

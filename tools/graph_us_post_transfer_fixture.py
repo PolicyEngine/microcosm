@@ -233,10 +233,10 @@ def _post_transfer_prerequisites(frame: Frame) -> Frame:
     asec = person["person_support_channel"].astype(str).eq("asec").to_numpy()
     if asec.sum() != 1:
         raise RuntimeError("Expected one ASEC and one ACS sampled spine row.")
-    for column, code in zip(
-        ESI_RAW_EVIDENCE_COLUMNS, (1.0, 1.0, 1.0, 1.0, 1.0, 6.0, 4.0), strict=True
-    ):
-        person[column] = np.where(asec, code, np.nan)
+    for column in ESI_RAW_EVIDENCE_COLUMNS:
+        # The coverage codes and the CPS record id mark the row the stage
+        # derived; the anchor reads only whether they are present.
+        person[column] = np.where(asec, 1.0, np.nan)
     person[US_ESI_PREMIUMS_WAGE_COLUMN] = np.where(asec, 50_000.0, 40_000.0)
     person[US_ESI_EMPLOYER_PREMIUM_COLUMN] = np.where(asec, 8_000.0, 6_000.0)
 

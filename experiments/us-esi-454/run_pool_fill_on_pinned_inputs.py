@@ -12,13 +12,16 @@ real pinned inputs:
    rows: CPS-carried inputs, relationships and the ESI premium stage;
 5. fill the ESI premium family on ACS rows with the pool's early gap-fill
    (the real weighted QRF, under a test authority limited to this family);
-6. run ``with_us_esi_premium_pool_anchor``; and
-7. grade each output with the pool's by-origin battery, before and after the
+6. materialize the ACS earnings-universe zeros (wages below age 15) with the
+   pool's late producer, as the pool does before its derive stage, so every
+   transferred person's wage is a number and none is missing;
+7. run ``with_us_esi_premium_pool_anchor``; and
+8. grade each output with the pool's by-origin battery, before and after the
    anchor, and with the stage's gates.
 
 It skips everything else the pool does (geography, the other pre-clone
-operators, the PUF pass, the late producers), none of which writes or reads
-the ESI premium family before the anchor. Without the housing operator the
+operators, the PUF pass, the other late producers), none of which writes or
+reads the ESI premium family before the anchor. Without the housing operator the
 ASEC donors carry no tenure, so the script drops the ACS tenure columns and
 the fill runs without the tenure predictor that a full pool build has. It
 also drops the native ACS usual-hours column, which the pool's operator
@@ -353,7 +356,9 @@ def main() -> None:
         seed=pool.POOL_RANDOM_SEED,
         n_estimators=args.n_estimators,
     )
-    anchored, anchor_receipt = with_us_esi_premium_pool_anchor(filled.frame)
+    universe = stacked_spine._materialize_stacked_acs_earnings_universe(filled.frame)
+    wage_rule = universe.receipt["rules"][esi.US_ESI_PREMIUMS_WAGE_COLUMN]
+    anchored, anchor_receipt = with_us_esi_premium_pool_anchor(universe.frame)
 
     alone = with_us_esi_premium_inputs(
         asec, seed=pool.POOL_RANDOM_SEED, time_period=args.target_year
@@ -388,6 +393,15 @@ def main() -> None:
         "gap_fill_targets": _jsonable(
             filled.receipt["directions"]["asec_survey_to_acs"]["targets"]
         ),
+        "acs_wage_universe": {
+            key: wage_rule[key]
+            for key in (
+                "rule_id",
+                "structurally_absent_person_rows",
+                "eligible_acs_person_rows",
+                "in_universe_null_rows",
+            )
+        },
         "pool_anchor": _jsonable(anchor_receipt),
         "before_anchor": {
             "sides": _side_summary(filled.frame),

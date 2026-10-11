@@ -6,6 +6,12 @@
     },
     "vintage": 2024
   },
+  "acs_wage_universe": {
+    "eligible_acs_person_rows": 145870,
+    "in_universe_null_rows": 0,
+    "rule_id": "acs_2024_pums_wagp_age_15_plus",
+    "structurally_absent_person_rows": 25511
+  },
   "after_anchor": {
     "by_origin_battery": {
       "comparisons": {
@@ -171,7 +177,11 @@
     "status": "scaled",
     "transferred_employer_premium_target": 462373665675.62036,
     "transferred_employer_premium_total_before": 441454461199.70605,
+    "transferred_household_mass_share": 0.5000000000000001,
     "transferred_rows": 171381,
+    "transferred_rows_reset_to_source_record": {
+      "employer_sponsored_insurance_premiums": 0
+    },
     "transferred_rows_without_source_wages": 88169,
     "wage_column": "employment_income_before_lsr"
   },
@@ -179,7 +189,7 @@
   "pool_over_single_source_minus_one": -0.0010423165607768015,
   "sample_fraction": 0.05,
   "sample_seed": 578,
-  "seconds": 292.73178304196335,
+  "seconds": 92.54829929198604,
   "signal_gate": {
     "failures": [],
     "passed": true

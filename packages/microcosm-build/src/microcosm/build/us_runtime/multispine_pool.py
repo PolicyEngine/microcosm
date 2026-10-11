@@ -392,9 +392,9 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "2552a2386e84556fe5867dcb5759bef893bfa5afddadfb96ffb987ac53322e47"
+    "d32b748b4e240a7a93c6354925bd2e7af2c493587cc740cd822cda8d8480833c"
 )
-"""Pinned content digest of all 1,074 post-transfer consumer/input rows."""
+"""Pinned content digest of all 1,075 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)

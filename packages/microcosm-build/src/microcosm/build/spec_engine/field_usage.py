@@ -27,8 +27,8 @@ from .resolver import (
 from .schemas import load_schema_registry
 
 EXPECTED_AUTHORED_FIELD_COUNT = 32_477
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_901
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_378
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_909
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_386
 
 
 class FieldUsageError(AssertionError):
@@ -377,8 +377,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
     ),
     "generated_authorities": (
-        8_735,
-        "7d556b0c6b57ba83acb3008553c752437c01ad4401e1e9b4ac55dd0ee7199359",
+        8_743,
+        "c4a7ba2589f2ed17cab5697197fbfa528a736692d23f6932405cdf4fe5d45454",
     ),
     "geography_assignment": (
         28,

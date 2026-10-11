@@ -203,9 +203,9 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1074
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1075
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
-        "derive": 49,
+        "derive": 50,
         "seed": 33,
         "simulate": 992,
     }

@@ -32,6 +32,7 @@
       "NOW_OWNGRP": "float64",
       "PEIO1COW": "float64",
       "PEMLR": "float64",
+      "PERIDNUM": "float64",
       "SEMP": "float64",
       "__stratum__": "string[python]",
       "age": "float64",

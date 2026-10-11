@@ -350,7 +350,7 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "5d0c9e0c8626e7d5e8ab3f65f9a6b4ce0a15d64aceac4da02ca67b2b879c623c",
     "early_families": "69ecea17171ba40d46bc26e35f0cf8c3636f4cb27e51f84572b60e94c3b01370",
-    "full_checkpoint": "478669d67c13ec0a46b1cef40119c80e0182ff3b87395ffe1c490699b13d73fd",
+    "full_checkpoint": "03987d2ccf871324910457f699b750773cc60044591180ec269f7fb89ae55b25",
     "gap_fill_schedule": "2c93d98926a267a05b9c339b087d14cca9c0dd7eb19fe5954d140a1b202454aa",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",

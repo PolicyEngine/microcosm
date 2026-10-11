@@ -1055,9 +1055,10 @@ def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
 def _with_esi_premium_pool_surface(frame: Frame) -> Frame:
     """Give a fixture pool the ESI premium surface the derive stage requires.
 
-    ASEC-channel rows carry the raw ASEC fields the stage reads; every other
-    row holds a transferred premium. Everyone has the same premium, and wages
-    unless the fixture already sets them.
+    ASEC-channel rows carry the raw ASEC fields the stage reads and a CPS
+    record id; every other row holds a transferred premium and neither.
+    Everyone has the same premium, and wages unless the fixture already sets
+    them.
     """
 
     person = frame.table("person").copy()
@@ -1065,6 +1066,16 @@ def _with_esi_premium_pool_surface(frame: Frame) -> Frame:
     for column in US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS:
         if column != "state_fips":
             person[column] = np.where(asec, 1.0, np.nan)
+    record_ids = (
+        person["PERIDNUM"].astype(object)
+        if "PERIDNUM" in person
+        else "cps-" + person["person_source_id"].astype(str)
+    )
+    person["PERIDNUM"] = record_ids.where(asec & pd.notna(record_ids), None)
+    if person.loc[asec, "PERIDNUM"].isna().any():
+        person.loc[asec, "PERIDNUM"] = "cps-" + person.loc[
+            asec, "person_source_id"
+        ].astype(str)
     for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
         person[column] = 100.0
     if US_ESI_PREMIUMS_WAGE_COLUMN not in person:
