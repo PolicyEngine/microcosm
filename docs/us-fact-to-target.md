@@ -148,16 +148,16 @@ binds them:
   total): the newest published shares scale onto the level the state total
   binds at, rather than binding a second, differently aged level.
 - **One vintage.** State bands are the one family selected by vintage, not
-  per row. Every vintage of a binding band stays a candidate through
-  latest-vintage selection, and `_with_one_state_agi_band_vintage` then keeps,
-  per state and measure, the newest vintage whose published partition is
-  complete. The TY2022 package's summed `500k_plus` row never binds beside
+  per row. Every eligible vintage (not after the build period) of a binding
+  band stays a candidate through latest-vintage selection, and
+  `_with_one_state_agi_band_vintage` then keeps, per state and measure, the
+  newest vintage whose published partition is complete. The TY2022 package's summed `500k_plus` row never binds beside
   TY2023's split rows, and a gapped newest vintage falls back to the last
   complete one. The choice is made inside selection, so the exclusion vintage
   guard and the exclusion receipt see only the band ids that can bind.
 - **Malformed partitions.** In a vintage that is examined, overlapping
-  bands, a NaN bound or value, or one source record id with two different
-  rows raise; an identical re-emission of a sub-floor band counts once. A
+  bands, a NaN bound, a value that is infinite, NaN or does not parse, or one
+  source record id with two different rows raise; an identical re-emission of a sub-floor band counts once. A
   binding band's own fact is a target fact: like every other family, the
   compile refuses two facts for one source record id, identical or not.
   Vintages older than the one chosen are not examined.

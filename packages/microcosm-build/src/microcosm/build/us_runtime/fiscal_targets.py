@@ -2115,7 +2115,8 @@ def _with_one_state_agi_band_vintage(
     """Keep each state's AGI bands of one vintage: the newest that tiles (#940).
 
     Binding state bands keep their period in the selection key, so every
-    vintage arrives here; ``band_vintages`` maps each band's source record id
+    eligible vintage (not after the target period) arrives here;
+    ``band_vintages`` maps each band's source record id
     to its (period, record set). Per (state, measure) the newest vintage whose
     published partition tiles the AGI line is kept and every other vintage's
     rows are dropped: a collapsed ``500k_plus`` row from one year never binds
@@ -2153,14 +2154,15 @@ def _soi_state_agi_band_rows(
     """Every published state HT2 AGI band of the binding measures.
 
     Keyed ``(state_fips, measure_id, period, period-free record set)``; each
-    row is ``(source record id, (lower, upper, value))``. All bands count,
-    those below the binding floor and negative AGI under $1 included. Rows
-    are not validated here: a group is checked only when a binding band asks
-    for its partition.
+    row is ``(source record id, (lower, upper, value))``, with ``value``
+    ``None`` when it does not parse as a number. All bands count, those below
+    the binding floor and negative AGI under $1 included. Rows are not
+    validated here: a group is checked only when a binding band asks for its
+    partition.
     """
 
     groups: dict[
-        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float]]]
+        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float | None]]]
     ] = {}
     for fact in facts:
         if _soi_state_agi_band_status(fact, _measure_id(fact)) is None:
@@ -2180,7 +2182,7 @@ def _soi_state_agi_band_rows(
                 (
                     _bound_from_metadata_value(lower),
                     _bound_from_metadata_value(upper),
-                    _numeric_value(fact),
+                    _parsed_value_or_none(fact),
                 ),
             )
         )
@@ -2189,24 +2191,30 @@ def _soi_state_agi_band_rows(
 
 def _state_agi_band_partition_total(
     key: tuple[str, str, str, str],
-    rows: Iterable[tuple[str, tuple[float, float, float]]],
+    rows: Iterable[tuple[str, tuple[float, float, float | None]]],
 ) -> float | None:
     """The sum of one group's bands if they tile the whole AGI line.
 
-    A gap leaves the partition incomplete (``None``). A NaN bound or value,
-    overlapping bands, or one source record id with two different rows is a
-    packaging error and raises; an identical re-emission of one id counts
-    once. (A binding band's own fact is still subject to the compile's
+    A gap leaves the partition incomplete (``None``). A NaN bound, a value
+    that is infinite, NaN or does not parse, overlapping bands, or one source
+    record id with two different rows is a packaging error and raises; an
+    identical re-emission of one id counts once. (A binding band's own fact is still subject to the compile's
     one-fact-per-record-id rule, which refuses any duplicate.)
     """
 
     state_fips, measure_id, period, record_set = key
     unique: dict[str, tuple[float, float, float]] = {}
     for source_record_id, row in rows:
-        if any(math.isnan(component) for component in row):
+        lower, upper, value = row
+        if math.isnan(lower) or math.isnan(upper):
             raise ValueError(
-                f"State AGI band {source_record_id} has a NaN bound or value: "
-                f"{row} (microcosm#940)."
+                f"State AGI band {source_record_id} has a NaN bound: {row} "
+                "(microcosm#940)."
+            )
+        if value is None or not math.isfinite(value):
+            raise ValueError(
+                f"State AGI band {source_record_id} has a value that is not a "
+                f"finite number: {row} (microcosm#940)."
             )
         if unique.get(source_record_id, row) != row:
             raise ValueError(
@@ -2238,7 +2246,7 @@ def _latest_complete_state_agi_band_vintage(
     key: tuple[str, str],
     vintages: set[tuple[str, str]],
     band_rows: Mapping[
-        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float]]]
+        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float | None]]]
     ],
 ) -> tuple[str, str] | None:
     """The newest vintage of a state's bands with a complete, nonzero partition.
@@ -2664,8 +2672,8 @@ def _latest_dynamic_target_references(
 
     Returns ``(source_record_id, reference)`` pairs so the exclusion vintage
     guard and receipt can see which fact won each key. State AGI bands are
-    the one family selected by vintage rather than per key: every vintage is
-    a candidate, and :func:`_with_one_state_agi_band_vintage` keeps one per
+    the one family selected by vintage rather than per key: every eligible
+    vintage is a candidate, and :func:`_with_one_state_agi_band_vintage` keeps one per
     state and measure (microcosm#940).
     """
 
@@ -2688,7 +2696,7 @@ def _latest_dynamic_target_references(
         if reference is not None:
             key = _dynamic_target_key(fact)
             if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true":
-                # Every vintage of a state AGI band stays a candidate: one
+                # Every eligible vintage of a state AGI band stays a candidate: one
                 # vintage is chosen per state and measure by partition
                 # completeness, which per-band latest selection cannot see
                 # (microcosm#940).
@@ -4029,6 +4037,14 @@ def _congressional_district_geoid(fact: object) -> str | None:
     if state_fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return congressional_district_geoid
+
+
+def _parsed_value_or_none(fact: object) -> float | None:
+    """The fact's value as a float, or ``None`` when it does not parse."""
+    try:
+        return float(_at(fact, "value"))
+    except (TypeError, ValueError):
+        return None
 
 
 def _numeric_value(fact: object) -> float:

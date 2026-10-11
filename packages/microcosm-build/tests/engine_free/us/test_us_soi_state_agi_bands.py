@@ -643,6 +643,22 @@ def test_release_coverage_requires_both_top_tail_rows_in_each_state() -> None:
         assert [failure.split(":")[0] for failure in result.failures] == [
             f"irs_state_agi_top_tail_co_{measure}"
         ]
+        # A Colorado row with the right lower edge but a closed upper edge is
+        # not the $1M+ band.
+        colorado = next(spec for spec in registry.specs if spec.name == dropped)
+        capped = {
+            "name": colorado.name,
+            "measure": colorado.name,
+            "family": colorado.family,
+            "metadata": {**colorado.metadata, "agi_upper_bound": "5000000.0"},
+        }
+        result = target_profile_coverage_gate(
+            [*[spec for spec in registry.specs if spec.name != dropped], capped],
+            requirements,
+        )
+        assert [failure.split(":")[0] for failure in result.failures] == [
+            f"irs_state_agi_top_tail_co_{measure}"
+        ]
 
 
 def test_state_bands_below_the_floor_never_bind_even_in_their_own_year() -> None:
@@ -824,6 +840,82 @@ def test_the_exclusion_guard_sees_only_the_chosen_band_vintage(monkeypatch) -> N
     } == {"2023"}
 
 
+def test_two_bound_state_totals_for_one_measure_are_refused() -> None:
+    """A second state_broad record set for Colorado binds its own AGI total
+    beside the first; the bands then have two candidate controls, and the
+    compile refuses rather than choose one."""
+    restated = "irs_soi.ty2022.historic_table_2.state_broad.co_restated"
+    with pytest.raises(ValueError, match="Two state totals bind"):
+        _compile(
+            [
+                *_partition("CO", 2023, CO_2023),
+                *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+                _state_total_fact(
+                    "CO",
+                    2022,
+                    "adjusted_gross_income",
+                    CO_2022_TOTAL_AGI,
+                    record_set_id=restated,
+                ),
+            ]
+        )
+
+
+def test_only_a_state_level_all_returns_total_is_a_control() -> None:
+    """The control filters, checked directly on the bound Colorado AGI total:
+    the same spec stops being a control when it is a filing-status slice, an
+    AGI band, another return universe, a congressional district, or outside
+    the state_broad record sets."""
+    from microcosm.build.us_runtime import fiscal_targets
+    from microcosm.calibrate import TargetRegistry
+
+    registry = _compile(
+        [
+            *_partition("CO", 2023, CO_2023),
+            *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI),
+        ]
+    )
+    total = next(
+        spec
+        for spec in registry.specs
+        if spec.name.endswith("state_broad.co.all.adjusted_gross_income")
+    )
+
+    def controls(**metadata):
+        variant = replace(total, metadata={**total.metadata, **metadata})
+        return fiscal_targets._soi_state_agi_band_controls(
+            TargetRegistry([variant], country="us")
+        )
+
+    assert set(controls()) == {("08", "adjusted_gross_income")}
+    for decoy in (
+        {"filing_status": "Single"},
+        {"agi_lower_bound": "1000000.0"},
+        {"agi_upper_bound": "1000000.0"},
+        {"soi_return_universe": "returns_excluding_dependents"},
+        {"congressional_district_geoid": "0801"},
+        {"ledger_geography_level": "congressional_district"},
+        {"ledger_layout_record_set_id": "irs_soi.ty2023.congressional_district_2022"},
+    ):
+        assert controls(**decoy) == {}, decoy
+
+
+@pytest.mark.parametrize("bad_value", ["inf", float("inf"), "not-a-number"])
+def test_a_partition_value_that_is_not_a_finite_number_is_refused(bad_value) -> None:
+    """An infinite sub-floor value would make every share zero, and an
+    unparseable one would silently count as zero; both refuse."""
+    facts = [
+        {**fact, "value": bad_value}
+        if str(fact["lineage"]["source_record_id"]).endswith("under_1.return_count")
+        else fact
+        for fact in _partition("CO", 2023, CO_2023)
+    ]
+    with pytest.raises(ValueError, match="not a finite number"):
+        _compile(
+            [*facts, *_totals("CO", 2022, CO_2022_TOTAL_RETURNS, CO_2022_TOTAL_AGI)]
+        )
+
+
 def test_a_nan_bound_in_a_partition_is_refused() -> None:
     nan_under_1 = [
         {
@@ -836,7 +928,7 @@ def test_a_nan_bound_in_a_partition_is_refused() -> None:
         else fact
         for fact in _partition("CO", 2023, CO_2023)
     ]
-    with pytest.raises(ValueError, match="NaN bound or value"):
+    with pytest.raises(ValueError, match="NaN bound"):
         _compile(
             [
                 *nan_under_1,
@@ -936,12 +1028,16 @@ def test_rebase_invariants_hold_for_generated_partitions() -> None:
     partition share; scaling a control scales exactly that state's bands;
     and the output never depends on feed order."""
     pytest.importorskip("hypothesis")
-    from hypothesis import given, settings
+    from hypothesis import HealthCheck, given, settings
     from hypothesis import strategies as st
 
     states = sorted(POSTAL_TO_FIPS)
 
-    @settings(max_examples=40, deadline=None)
+    @settings(
+        max_examples=40,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
     @given(
         chosen=st.lists(st.sampled_from(states), min_size=1, max_size=3, unique=True),
         seed=st.integers(0, 2**32 - 1),
