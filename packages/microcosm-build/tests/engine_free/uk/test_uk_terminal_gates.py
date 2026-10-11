@@ -552,17 +552,12 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # regional cells slice on the engine's total_income, which leaves out the
     # other investment income that income tax charges, and on policyengine-uk
     # 2.122.2 the solver's pull on the cell stops at +27.4 %. The fix is
-    # upstream in policyengine-uk's total_income (pe-uk#2174).
-    assert set(register) == {
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    }
-    deferral = register[
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025"
-    ]
-    assert deferral.approved_on == "2026-10-06"
-    assert deferral.expires_on == "2026-11-03"
-    assert "microcosm#1095" in deferral.adjudication
-    assert "pe-uk#2174" in deferral.reason
+    # upstream in policyengine-uk's total_income (pe-uk#2174). It is retired
+    # in turn with the third microcosm#1095 ports: the cell fits at +23.9 % on
+    # that head, back inside the bound, and the gate fails the deferral as
+    # stale. The upstream defect stands: the cell's design value is still 6.2
+    # times its target, so a later change can push it back over the bound.
+    assert register == {}
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
