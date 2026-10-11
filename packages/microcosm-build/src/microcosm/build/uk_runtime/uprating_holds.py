@@ -20,10 +20,10 @@ Hold kinds:
 * ``reviewed_no_index``: a public spending line with no index that would
   carry it forward, held to its latest outturn until the next edition.
 
-A hold is a signed decision. An entry without an approver and an approval
-date, or still marked ``proposed``, is not in force: the compile refuses its
-rows as it refuses undeclared ones, so an open decision cannot be merged
-around.
+A hold is a signed decision. An entry is in force only with an approver, an
+approval date and the status ``approved``: the compile refuses the rows of
+any other entry as it refuses undeclared ones, so an open decision cannot be
+merged around.
 """
 
 from __future__ import annotations
@@ -62,15 +62,35 @@ UK_HOLD_KINDS = (
     "control_rescaled",
     "reviewed_no_index",
 )
+#: The one status that puts a signed register entry in force. Any other value
+#: (``proposed``, ``rejected``, ``withdrawn``, a typo) leaves it out of force.
+UK_SIGNED_STATUS = "approved"
+
+
+def uk_register_entry_is_signed(entry: Mapping[str, Any]) -> bool:
+    """An approver, an approval date and the status ``approved``."""
+
+    return (
+        bool(str(entry.get("approved_by") or "").strip())
+        and bool(str(entry.get("approved_on") or "").strip())
+        and str(entry.get("status") or "").strip().lower() == UK_SIGNED_STATUS
+    )
 
 
 @functools.lru_cache(maxsize=1)
 def load_uk_uprating_holds() -> Mapping[str, Any]:
-    payload = json.loads(
-        importlib_resources.files("microcosm.build.uk")
-        .joinpath(UK_UPRATING_HOLDS_RESOURCE)
-        .read_text(encoding="utf-8")
+    return validated_uk_uprating_holds(
+        json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(UK_UPRATING_HOLDS_RESOURCE)
+            .read_text(encoding="utf-8")
+        )
     )
+
+
+def validated_uk_uprating_holds(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Refuse a register with an unknown kind or a missing required field."""
+
     if payload.get("schema_version") != 1:
         raise ValueError(
             "UK uprating holds schema_version must be 1, got "
@@ -160,17 +180,13 @@ def is_uprating_hold(spec: TargetSpec, calibration_period: int | str) -> bool:
 
 
 def uk_hold_is_signed(entry: Mapping[str, Any]) -> bool:
-    """An approver and an approval date, and no longer marked proposed.
+    """An approver, an approval date and the status ``approved``.
 
-    A proposed hold is a draft of a decision, not the decision: until it is
-    signed it stands for nothing, so the compile refuses the rows it names.
+    A proposed, rejected or withdrawn hold is not the decision: it stands for
+    nothing, so the compile refuses the rows it names.
     """
 
-    return (
-        bool(str(entry.get("approved_by") or "").strip())
-        and bool(str(entry.get("approved_on") or "").strip())
-        and str(entry.get("status") or "").strip().lower() != "proposed"
-    )
+    return uk_register_entry_is_signed(entry)
 
 
 def _declaration_index(
@@ -200,11 +216,18 @@ def assert_uk_uprating_holds_declared(
     ``scope`` (``national`` or ``local``) names the register in the receipt.
     A declaration that matches no held target is stale and refused too, so
     the register cannot outlive the holds it explains. A declaration nobody
-    has signed (no approver, no approval date, or still ``proposed``) is not
-    in force, so its rows are refused like undeclared ones.
+    has signed (no approver, no approval date, or a status other than
+    ``approved``) is not in force, so its rows are refused like undeclared
+    ones. A register passed in is validated as the committed one is.
     """
 
-    declared = _declaration_index((holds or load_uk_uprating_holds())["holds"])
+    declared = _declaration_index(
+        (
+            load_uk_uprating_holds()
+            if holds is None
+            else validated_uk_uprating_holds(holds)
+        )["holds"]
+    )
     unresolved = sorted(
         spec.name
         for spec in registry.specs
@@ -244,7 +267,7 @@ def assert_uk_uprating_holds_declared(
             f"{unsigned}; expired {expired}; stale declarations {stale}. Declare "
             "an uprating_index on the contract target or a hold in "
             "uk/uprating_holds.json; a hold is in force only once it carries "
-            "approved_by and approved_on and is no longer proposed "
+            "approved_by and approved_on and its status is approved "
             "(microcosm#1123)."
         )
     by_kind: dict[str, list[str]] = {}

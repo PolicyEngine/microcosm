@@ -171,6 +171,10 @@ def test_a_moved_row_needs_no_readable_period():
         {"approved_on": None},
         {"approved_by": " "},
         {"status": "proposed"},
+        # Only ``approved`` puts a hold in force, whoever signed the entry.
+        {"status": "rejected"},
+        {"status": "withdrawn"},
+        {"status": None},
     ],
 )
 def test_a_hold_nobody_signed_is_not_in_force(unsigned):
@@ -185,10 +189,24 @@ def test_a_hold_nobody_signed_is_not_in_force(unsigned):
         )
 
 
+@pytest.mark.parametrize("missing", ["reason", "tracking", "expires_on"])
+def test_a_register_passed_in_is_validated_like_the_committed_one(missing):
+    registry = TargetRegistry([_spec("t", "2025-10")], country="uk")
+    entry = _hold("t")
+    del entry[missing]
+    with pytest.raises(ValueError, match=f"has no {missing}"):
+        assert_uk_uprating_holds_declared(
+            registry,
+            calibration_period=2025,
+            evaluated_on=date(2026, 10, 7),
+            scope="national",
+            holds=_holds(entry),
+        )
+
+
 def test_every_committed_hold_is_signed():
-    # Fails until María signs each entry in uk/uprating_holds.json: a proposed
-    # hold is not in force, so the compile refuses its rows and this branch
-    # cannot be merged around the open decision (microcosm#1198 review).
+    # An unsigned hold is not in force, so the compile refuses its rows: an
+    # entry added without a signature fails here before it fails a build.
     unsigned = [
         target_id
         for entry in load_uk_uprating_holds()["holds"]

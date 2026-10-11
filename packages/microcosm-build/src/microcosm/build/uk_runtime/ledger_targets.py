@@ -55,6 +55,7 @@ from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
 )
+from microcosm.build.uk_runtime.uprating_holds import uk_register_entry_is_signed
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.geography_constants import (
     UK_REGION_TIER,
@@ -882,15 +883,11 @@ UK_LOCAL_SMALL_CELL_RULE_RESOURCE = "local_small_cell_rule.json"
 def uk_small_cell_rule_is_signed(rule: Mapping[str, Any]) -> bool:
     """A small-cell rule defers cells only once it is signed (#1123).
 
-    Signed means an approver, an approval date, and no longer ``proposed``:
-    a proposed floor is a draft of a decision and defers nothing.
+    Signed means an approver, an approval date and the status ``approved``:
+    a proposed, rejected or withdrawn floor defers nothing.
     """
 
-    return (
-        bool(str(rule.get("approved_by") or "").strip())
-        and bool(str(rule.get("approved_on") or "").strip())
-        and str(rule.get("status") or "").strip().lower() != "proposed"
-    )
+    return uk_register_entry_is_signed(rule)
 
 
 def _uk_small_cell_rules() -> tuple[Mapping[str, Any], ...]:
@@ -940,15 +937,33 @@ def assert_uk_local_deferrals_in_force(
     *,
     rules: Sequence[Mapping[str, Any]] | None = None,
 ) -> None:
-    """Refuse a rule deferral nobody signed, or one past its expiry."""
+    """Refuse a rule deferral nobody signed, or one past its expiry.
+
+    Only a rule deferral carries ``expires_on``, so one that names no rule in
+    the register (the rule was deleted after the references were generated)
+    is refused with the unsigned ones.
+    """
 
     from datetime import date
 
+    register = _uk_small_cell_rules() if rules is None else rules
     unsigned_rule_ids = {
         str(rule["rule_id"])
-        for rule in (_uk_small_cell_rules() if rules is None else rules)
+        for rule in register
         if not uk_small_cell_rule_is_signed(rule)
     }
+    rule_ids = {str(rule["rule_id"]) for rule in register}
+    orphaned = sorted(
+        f"{deferral['target_id']}@{deferral['geography_level']}"
+        for deferral in membership.get("signed_deferrals", ())
+        if deferral.get("expires_on") and deferral.get("reason_id") not in rule_ids
+    )
+    if orphaned:
+        raise ValueError(
+            f"UK local membership defers cells under a small-cell rule that is "
+            f"not in uk/local_small_cell_rule.json: {orphaned}. Restore the rule "
+            "or regenerate the local references (microcosm#1123)."
+        )
     unsigned = sorted(
         f"{deferral['target_id']}@{deferral['geography_level']}"
         for deferral in membership.get("signed_deferrals", ())

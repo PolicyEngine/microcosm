@@ -84,7 +84,12 @@ def test_a_target_outside_the_rule_is_never_deferred(tmp_path):
 
 @pytest.mark.parametrize(
     "unsigned",
-    [{"approved_by": None}, {"approved_on": None}, {"status": "proposed"}],
+    [
+        {"approved_by": None},
+        {"approved_on": None},
+        {"status": "proposed"},
+        {"status": "rejected"},
+    ],
 )
 def test_a_rule_nobody_signed_defers_nothing(tmp_path, unsigned):
     membership = _membership(_candidate("W06000019", 3.0))
@@ -106,8 +111,33 @@ def test_a_membership_deferring_under_an_unsigned_rule_is_refused():
     assert not uk_small_cell_rule_is_signed(rule)
     with pytest.raises(ValueError, match="unsigned small-cell rule"):
         assert_uk_local_deferrals_in_force(membership, date(2026, 10, 7), rules=[rule])
-    signed = {**rule, "approved_by": "r", "approved_on": "2026-10-01", "status": "ok"}
+    signed = {
+        **rule,
+        "approved_by": "r",
+        "approved_on": "2026-10-01",
+        "status": "approved",
+    }
     assert_uk_local_deferrals_in_force(membership, date(2026, 10, 7), rules=[signed])
+    # A status other than ``approved`` leaves a signed-looking rule out of force.
+    with pytest.raises(ValueError, match="unsigned small-cell rule"):
+        assert_uk_local_deferrals_in_force(
+            membership, date(2026, 10, 7), rules=[{**signed, "status": "withdrawn"}]
+        )
+
+
+def test_a_deferral_under_a_rule_no_longer_in_the_register_is_refused():
+    membership = {
+        "signed_deferrals": [
+            {
+                "target_id": "welshgov.council_tax_stock.by_area.band_h",
+                "geography_level": "local_authority",
+                "reason_id": "council_tax_band_household_floor",
+                "expires_on": "2027-04-01",
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="not in uk/local_small_cell_rule.json"):
+        assert_uk_local_deferrals_in_force(membership, date(2026, 10, 7), rules=[])
 
 
 def test_deferred_cells_keep_their_values_for_reconciliation():
@@ -136,10 +166,19 @@ def test_an_expired_deferral_is_refused_at_its_review_date():
             {
                 "target_id": "welshgov.council_tax_stock.by_area.band_h",
                 "geography_level": "local_authority",
+                "reason_id": "council_tax_band_household_floor",
                 "expires_on": "2027-04-01",
             }
         ]
     }
-    assert_uk_local_deferrals_in_force(membership, date(2027, 4, 1), rules=[])
+    rules = [
+        {
+            "rule_id": "council_tax_band_household_floor",
+            "approved_by": "r",
+            "approved_on": "2026-10-01",
+            "status": "approved",
+        }
+    ]
+    assert_uk_local_deferrals_in_force(membership, date(2027, 4, 1), rules=rules)
     with pytest.raises(ValueError, match="expired"):
-        assert_uk_local_deferrals_in_force(membership, date(2027, 4, 2), rules=[])
+        assert_uk_local_deferrals_in_force(membership, date(2027, 4, 2), rules=rules)
