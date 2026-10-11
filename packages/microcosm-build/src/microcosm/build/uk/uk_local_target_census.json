@@ -845,7 +845,7 @@
         "source_commit": "942a1fa0adc50d645734481c88f403ac2175e896",
         "source_repo": "PolicyEngine/chronicle"
       },
-      "notes": "The pinned feed record-set specs uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1, h7_total_chargeable_empty_properties.v1 and h8_total_chargeable_second_homes.v1 supply the 22 Welsh authorities by band A-I per financial year. Each cell binds a1 minus h7 minus h8 on the 2025-26 row (the taxbase set for that year, counted on the 31 October 2024 list, one count-year behind England and Scotland by ruling of 2026-09-15); all 198 cells bind, band I included.",
+      "notes": "The pinned feed record-set specs uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1, h7_total_chargeable_empty_properties.v1 and h8_total_chargeable_second_homes.v1 supply the 22 Welsh authorities by band A-I per financial year. Each cell binds a1 minus h7 minus h8 on the 2025-26 row (the taxbase set for that year, counted on the 31 October 2024 list, one count-year behind England and Scotland by ruling of 2026-09-15); all 198 cells compile, band I included, and bind unless a signed small-cell rule defers them (uk/local_small_cell_rule.json).",
       "product": "Council tax dwellings by authority and band (CT1 returns), FY2023-24 to FY2026-27 (chronicle#262 / #264).",
       "publisher": "Welsh Government (StatsWales)",
       "source_id": "welshgov_council_tax_dwellings_la",
@@ -868,7 +868,7 @@
         "source_commit": "942a1fa0adc50d645734481c88f403ac2175e896",
         "source_repo": "PolicyEngine/chronicle"
       },
-      "notes": "The pinned feed record-set spec uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1 supplies the 32 councils by band A-H, the concept the scotgov.council_tax_stock country rows already bind; 255 cells bind and Shetland band H is signed deferred (no band-H clone at K=15). Chargeable dwellings run about 1 % above the household frame nationally, the residual the universe fence records.",
+      "notes": "The pinned feed record-set spec uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1 supplies the 32 councils by band A-H, the concept the scotgov.council_tax_stock country rows already bind; 255 cells compile and bind unless a signed small-cell rule defers them (uk/local_small_cell_rule.json), and Shetland band H is signed deferred (no band-H clone at K=15). Chargeable dwellings run about 1 % above the household frame nationally, the residual the universe fence records.",
       "product": "Number of chargeable dwellings, September 2025 (CTAXBASE 2025): council-area rows (chronicle#262 / #264).",
       "publisher": "Scottish Government",
       "source_id": "scotgov_ctaxbase_chargeable_dwellings_la",

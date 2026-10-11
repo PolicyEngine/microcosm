@@ -602933,6 +602933,52 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "mhclg.council_tax_stock.by_area.band_g@E09000002",
+      "ledger_selector": {
+        "source_name": "mhclg",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_relief.v1",
+          "uk.local_geography.council_tax.england_ctb.line_11_second_homes.v1",
+          "uk.local_geography.council_tax.england_ctb.line_15_empty_dwellings.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "E09000002"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_g",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "mhclg.council_tax_stock.by_area.band_g",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "E09000002"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "mhclg.council_taxbase.chargeable_dwellings_adjusted_for_disabled_relief",
+          "source_measure_id": "band_g",
+          "label": "line_07[G]"
+        },
+        {
+          "weight": -1,
+          "source_concept": "mhclg.council_taxbase.second_homes",
+          "source_measure_id": "band_g",
+          "label": "line_11[G]"
+        },
+        {
+          "weight": -1,
+          "source_concept": "mhclg.council_taxbase.empty_dwellings",
+          "source_measure_id": "band_g",
+          "label": "line_15[G]"
+        }
+      ],
+      "uprating_from_period": "2025-10",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "mhclg.council_tax_stock.by_area.band_g@E09000003",
       "ledger_selector": {
         "source_name": "mhclg",
@@ -613369,6 +613415,59 @@
       ]
     },
     {
+      "name": "welshgov.council_tax_stock.by_area.band_h@W06000019",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000019"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000019"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[H]",
+          "dimension_values": {
+            "council_tax_band": "H"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[H]",
+          "dimension_values": {
+            "council_tax_band": "H"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[H]",
+          "dimension_values": {
+            "council_tax_band": "H"
+          }
+        }
+      ]
+    },
+    {
       "name": "welshgov.council_tax_stock.by_area.band_h@W06000020",
       "ledger_selector": {
         "source_name": "welshgov",
@@ -613576,6 +613675,112 @@
           "label": "h8[H]",
           "dimension_values": {
             "council_tax_band": "H"
+          }
+        }
+      ]
+    },
+    {
+      "name": "welshgov.council_tax_stock.by_area.band_h@W06000024",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000024"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000024"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[H]",
+          "dimension_values": {
+            "council_tax_band": "H"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[H]",
+          "dimension_values": {
+            "council_tax_band": "H"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[H]",
+          "dimension_values": {
+            "council_tax_band": "H"
+          }
+        }
+      ]
+    },
+    {
+      "name": "welshgov.council_tax_stock.by_area.band_i@W06000001",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000001"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_i",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000001"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
           }
         }
       ]
@@ -613846,6 +614051,59 @@
       ]
     },
     {
+      "name": "welshgov.council_tax_stock.by_area.band_i@W06000008",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000008"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_i",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000008"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        }
+      ]
+    },
+    {
       "name": "welshgov.council_tax_stock.by_area.band_i@W06000009",
       "ledger_selector": {
         "source_name": "welshgov",
@@ -613972,6 +614230,59 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "W06000011"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        }
+      ]
+    },
+    {
+      "name": "welshgov.council_tax_stock.by_area.band_i@W06000012",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000012"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_i",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000012"
       },
       "value_operation": "linear_combination",
       "value_operands": [
@@ -614270,6 +614581,112 @@
       ]
     },
     {
+      "name": "welshgov.council_tax_stock.by_area.band_i@W06000019",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000019"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_i",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000019"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        }
+      ]
+    },
+    {
+      "name": "welshgov.council_tax_stock.by_area.band_i@W06000020",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000020"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_i",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000020"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        }
+      ]
+    },
+    {
       "name": "welshgov.council_tax_stock.by_area.band_i@W06000021",
       "ledger_selector": {
         "source_name": "welshgov",
@@ -614396,6 +614813,59 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "W06000023"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
+          "source_measure_id": "a1",
+          "label": "a1[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
+          "source_measure_id": "h7",
+          "label": "h7[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        },
+        {
+          "weight": -1,
+          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
+          "source_measure_id": "h8",
+          "label": "h8[I]",
+          "dimension_values": {
+            "council_tax_band": "I"
+          }
+        }
+      ]
+    },
+    {
+      "name": "welshgov.council_tax_stock.by_area.band_i@W06000024",
+      "ledger_selector": {
+        "source_name": "welshgov",
+        "record_set_spec_id": [
+          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
+          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
+          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
+        ],
+        "geography_level": "local_authority",
+        "geography_id": "W06000024"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_i",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "W06000024"
       },
       "value_operation": "linear_combination",
       "value_operands": [
@@ -618763,6 +619233,28 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.by_area.band_g@S12000013",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_g",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000013"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_g",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_g",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000013"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "scotgov.council_tax_stock.by_area.band_g@S12000014",
       "ledger_selector": {
         "source_name": "scotgov",
@@ -618890,6 +619382,28 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000021"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_g@S12000023",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_g",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000023"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_g",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_g",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000023"
       },
       "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
@@ -619313,6 +619827,28 @@
       "uprating_to_period": 2025
     },
     {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000005",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_h",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000005"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000005"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
       "name": "scotgov.council_tax_stock.by_area.band_h@S12000006",
       "ledger_selector": {
         "source_name": "scotgov",
@@ -619330,6 +619866,28 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000006"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000008",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_h",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000008"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000008"
       },
       "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
@@ -619374,6 +619932,28 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000011"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000013",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_h",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000013"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000013"
       },
       "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
@@ -619506,6 +620086,28 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000021"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000023",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_h",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000023"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000023"
       },
       "uprating_from_period": "2025-09",
       "uprating_to_period": 2025
@@ -619770,6 +620372,28 @@
         "measure_kind": "prepared_column",
         "geography_level": "local_authority",
         "geography_id": "S12000041"
+      },
+      "uprating_from_period": "2025-09",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000042",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_measure_id": "band_h",
+        "record_set_spec_id": "uk.local_geography.council_tax_stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1",
+        "geography_level": "local_authority",
+        "geography_id": "S12000042"
+      },
+      "entity": "household",
+      "measure": "council_tax/band_h",
+      "family": "council_tax_stock",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
+        "measure_kind": "prepared_column",
+        "geography_level": "local_authority",
+        "geography_id": "S12000042"
       },
       "uprating_from_period": "2025-09",
       "uprating_to_period": 2025

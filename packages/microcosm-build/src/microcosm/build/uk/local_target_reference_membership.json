@@ -3,12 +3,12 @@
   "target_period": 2025,
   "candidate_count": 23386,
   "contract_target_count": 52,
-  "active_reference_count": 21788,
+  "active_reference_count": 21804,
   "status_counts": {
-    "active": 21788,
+    "active": 21804,
     "no_fact_for_area": 1239,
     "signed_deferral_compile_error": 1,
-    "signed_deferred": 358
+    "signed_deferred": 342
   },
   "areas_by_geography_level": {
     "constituency": [
@@ -7035,72 +7035,6 @@
         "E09000001"
       ],
       "defer_if_compiles": true
-    },
-    {
-      "target_id": "mhclg.council_tax_stock.by_area.band_g",
-      "geography_level": "local_authority",
-      "reason_id": "council_tax_band_household_floor",
-      "rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-      "area_ids": [
-        "E09000002"
-      ],
-      "defer_if_compiles": true,
-      "expires_on": "2027-04-01"
-    },
-    {
-      "target_id": "scotgov.council_tax_stock.by_area.band_g",
-      "geography_level": "local_authority",
-      "reason_id": "council_tax_band_household_floor",
-      "rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-      "area_ids": [
-        "S12000013",
-        "S12000023"
-      ],
-      "defer_if_compiles": true,
-      "expires_on": "2027-04-01"
-    },
-    {
-      "target_id": "scotgov.council_tax_stock.by_area.band_h",
-      "geography_level": "local_authority",
-      "reason_id": "council_tax_band_household_floor",
-      "rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-      "area_ids": [
-        "S12000005",
-        "S12000008",
-        "S12000013",
-        "S12000023",
-        "S12000042"
-      ],
-      "defer_if_compiles": true,
-      "expires_on": "2027-04-01"
-    },
-    {
-      "target_id": "welshgov.council_tax_stock.by_area.band_h",
-      "geography_level": "local_authority",
-      "reason_id": "council_tax_band_household_floor",
-      "rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-      "area_ids": [
-        "W06000019",
-        "W06000024"
-      ],
-      "defer_if_compiles": true,
-      "expires_on": "2027-04-01"
-    },
-    {
-      "target_id": "welshgov.council_tax_stock.by_area.band_i",
-      "geography_level": "local_authority",
-      "reason_id": "council_tax_band_household_floor",
-      "rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-      "area_ids": [
-        "W06000001",
-        "W06000008",
-        "W06000012",
-        "W06000019",
-        "W06000020",
-        "W06000024"
-      ],
-      "defer_if_compiles": true,
-      "expires_on": "2027-04-01"
     }
   ],
   "uprating_holds": [
@@ -94307,7 +94241,7 @@
       "from": "2021",
       "to": "2025",
       "index": "ons.spree.tenure_share_drift",
-      "factor": "1.06341958059168",
+      "factor": "1",
       "value_before_uprating": "9979.0"
     },
     {
@@ -98256,7 +98190,7 @@
       "from": "2021",
       "to": "2025",
       "index": "ons.spree.tenure_share_drift",
-      "factor": "1.06289218510311",
+      "factor": "1",
       "value_before_uprating": "13795.0"
     },
     {
@@ -102205,7 +102139,7 @@
       "from": "2021",
       "to": "2025",
       "index": "ons.spree.tenure_share_drift",
-      "factor": "1.06247111801183",
+      "factor": "1",
       "value_before_uprating": "8449.0"
     },
     {
@@ -106154,7 +106088,7 @@
       "from": "2021",
       "to": "2025",
       "index": "ons.spree.tenure_share_drift",
-      "factor": "0.76339690470419",
+      "factor": "1",
       "value_before_uprating": "6369.0"
     },
     {
@@ -135666,6 +135600,14 @@
       "to": "2025"
     },
     {
+      "name": "mhclg.council_tax_stock.by_area.band_g@E09000002",
+      "target_id": "mhclg.council_tax_stock.by_area.band_g",
+      "geography_level": "local_authority",
+      "geography_id": "E09000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
       "name": "mhclg.council_tax_stock.by_area.band_g@E09000003",
       "target_id": "mhclg.council_tax_stock.by_area.band_g",
       "geography_level": "local_authority",
@@ -137490,6 +137432,14 @@
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.by_area.band_g@S12000013",
+      "target_id": "scotgov.council_tax_stock.by_area.band_g",
+      "geography_level": "local_authority",
+      "geography_id": "S12000013",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "scotgov.council_tax_stock.by_area.band_g@S12000014",
       "target_id": "scotgov.council_tax_stock.by_area.band_g",
       "geography_level": "local_authority",
@@ -137534,6 +137484,14 @@
       "target_id": "scotgov.council_tax_stock.by_area.band_g",
       "geography_level": "local_authority",
       "geography_id": "S12000021",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_g@S12000023",
+      "target_id": "scotgov.council_tax_stock.by_area.band_g",
+      "geography_level": "local_authority",
+      "geography_id": "S12000023",
       "from": "2025-09",
       "to": "2025"
     },
@@ -137690,10 +137648,26 @@
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000005",
+      "target_id": "scotgov.council_tax_stock.by_area.band_h",
+      "geography_level": "local_authority",
+      "geography_id": "S12000005",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "scotgov.council_tax_stock.by_area.band_h@S12000006",
       "target_id": "scotgov.council_tax_stock.by_area.band_h",
       "geography_level": "local_authority",
       "geography_id": "S12000006",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000008",
+      "target_id": "scotgov.council_tax_stock.by_area.band_h",
+      "geography_level": "local_authority",
+      "geography_id": "S12000008",
       "from": "2025-09",
       "to": "2025"
     },
@@ -137710,6 +137684,14 @@
       "target_id": "scotgov.council_tax_stock.by_area.band_h",
       "geography_level": "local_authority",
       "geography_id": "S12000011",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000013",
+      "target_id": "scotgov.council_tax_stock.by_area.band_h",
+      "geography_level": "local_authority",
+      "geography_id": "S12000013",
       "from": "2025-09",
       "to": "2025"
     },
@@ -137758,6 +137740,14 @@
       "target_id": "scotgov.council_tax_stock.by_area.band_h",
       "geography_level": "local_authority",
       "geography_id": "S12000021",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000023",
+      "target_id": "scotgov.council_tax_stock.by_area.band_h",
+      "geography_level": "local_authority",
+      "geography_id": "S12000023",
       "from": "2025-09",
       "to": "2025"
     },
@@ -137854,6 +137844,14 @@
       "target_id": "scotgov.council_tax_stock.by_area.band_h",
       "geography_level": "local_authority",
       "geography_id": "S12000041",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.by_area.band_h@S12000042",
+      "target_id": "scotgov.council_tax_stock.by_area.band_h",
+      "geography_level": "local_authority",
+      "geography_id": "S12000042",
       "from": "2025-09",
       "to": "2025"
     },
@@ -145262,7 +145260,7 @@
     "mhclg.council_tax_stock.by_area.band_d": 294,
     "mhclg.council_tax_stock.by_area.band_e": 294,
     "mhclg.council_tax_stock.by_area.band_f": 294,
-    "mhclg.council_tax_stock.by_area.band_g": 293,
+    "mhclg.council_tax_stock.by_area.band_g": 294,
     "ons.age.0_10": 650,
     "ons.age.10_20": 650,
     "ons.age.20_30": 650,
@@ -145283,8 +145281,8 @@
     "scotgov.council_tax_stock.by_area.band_d": 32,
     "scotgov.council_tax_stock.by_area.band_e": 32,
     "scotgov.council_tax_stock.by_area.band_f": 32,
-    "scotgov.council_tax_stock.by_area.band_g": 30,
-    "scotgov.council_tax_stock.by_area.band_h": 26
+    "scotgov.council_tax_stock.by_area.band_g": 32,
+    "scotgov.council_tax_stock.by_area.band_h": 31
   },
   "targets": {
     "hmrc.self_employment_income.amount": {
@@ -364618,7 +364616,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "resolved_period": 2025,
-              "resolved_value": 10611.86399472436,
+              "resolved_value": 9979.0,
               "resolved_fact_period": "2021",
               "resolved_fact_key": "ledger_aggregate_fact_v2_a3341b1442b122899fbbf081"
             },
@@ -369320,7 +369318,7 @@
               "matched_fact_count_overall": 1,
               "matched_fact_count_at_or_before_period": 1,
               "resolved_period": 2025,
-              "resolved_value": 14662.597693497448,
+              "resolved_value": 13795.0,
               "resolved_fact_period": "2021",
               "resolved_fact_key": "ledger_aggregate_fact_v2_f5584f5384224d2d50a8bbed"
             },
@@ -374022,7 +374020,7 @@
               "matched_fact_count_overall": 2,
               "matched_fact_count_at_or_before_period": 2,
               "resolved_period": 2025,
-              "resolved_value": 8976.818476081933,
+              "resolved_value": 8449.0,
               "resolved_fact_period": "2021",
               "resolved_fact_key": "ledger_aggregate_fact_v2_dc02d5f186b7feef0b3683dc"
             },
@@ -378724,7 +378722,7 @@
               "matched_fact_count_overall": 2,
               "matched_fact_count_at_or_before_period": 2,
               "resolved_period": 2025,
-              "resolved_value": 4862.074886060985,
+              "resolved_value": 6369.0,
               "resolved_fact_period": "2021",
               "resolved_fact_key": "ledger_aggregate_fact_v2_dd92d1b0d7e6bcbaae15f2e4"
             },
@@ -426319,12 +426317,13 @@
               "target_id": "mhclg.council_tax_stock.by_area.band_g",
               "geography_level": "local_authority",
               "geography_id": "E09000002",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 84,
               "matched_fact_count_at_or_before_period": 84,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 49.0
+              "resolved_period": 2025,
+              "resolved_value": 49.0,
+              "resolved_fact_period": "2025-10",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_3ca6c45eb82aee61095f7fba"
             },
             {
               "name": "mhclg.council_tax_stock.by_area.band_g@E09000003",
@@ -432376,10 +432375,10 @@
       }
     },
     "welshgov.council_tax_stock.by_area.band_h": {
-      "status": "partially_active",
+      "status": "active",
       "geography_levels": {
         "local_authority": {
-          "status": "partially_active",
+          "status": "active",
           "candidate_count": 22,
           "candidates": [
             {
@@ -432595,12 +432594,13 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "W06000019",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 3.0
+              "resolved_period": 2025,
+              "resolved_value": 3.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_a5c499bad2643b3b1a4e9d78"
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_h@W06000020",
@@ -432659,22 +432659,23 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "W06000024",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 2.0
+              "resolved_period": 2025,
+              "resolved_value": 2.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_77bd808425425977713eb8f1"
             }
           ]
         }
       }
     },
     "welshgov.council_tax_stock.by_area.band_i": {
-      "status": "partially_active",
+      "status": "active",
       "geography_levels": {
         "local_authority": {
-          "status": "partially_active",
+          "status": "active",
           "candidate_count": 22,
           "candidates": [
             {
@@ -432682,12 +432683,13 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000001",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 42.0
+              "resolved_period": 2025,
+              "resolved_value": 42.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_a36a5a1f235d94480831068c"
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_i@W06000002",
@@ -432759,12 +432761,13 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000008",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 20.0
+              "resolved_period": 2025,
+              "resolved_value": 20.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_87e4127b5a9f7f959da3334f"
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_i@W06000009",
@@ -432810,12 +432813,13 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000012",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 19.0
+              "resolved_period": 2025,
+              "resolved_value": 19.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_dc2a9a2b66247b37be097a12"
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_i@W06000013",
@@ -432887,24 +432891,26 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000019",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 18.0
+              "resolved_period": 2025,
+              "resolved_value": 18.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_ecf60cdebd8dbe7b3fb65824"
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_i@W06000020",
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000020",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 25.0
+              "resolved_period": 2025,
+              "resolved_value": 25.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_5b45f52c03f12769ba20c0d2"
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_i@W06000021",
@@ -432950,12 +432956,13 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000024",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 7.0
+              "resolved_period": 2025,
+              "resolved_value": 7.0,
+              "resolved_fact_period": "2025",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_44a486c38cb6e24d8e2d696a"
             }
           ]
         }
@@ -435524,10 +435531,10 @@
       }
     },
     "scotgov.council_tax_stock.by_area.band_g": {
-      "status": "partially_active",
+      "status": "active",
       "geography_levels": {
         "local_authority": {
-          "status": "partially_active",
+          "status": "active",
           "candidate_count": 32,
           "candidates": [
             {
@@ -435600,12 +435607,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_g",
               "geography_level": "local_authority",
               "geography_id": "S12000013",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 29.0
+              "resolved_period": 2025,
+              "resolved_value": 29.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_3c4cef548a5df19779bdd581"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_g@S12000014",
@@ -435690,12 +435698,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_g",
               "geography_level": "local_authority",
               "geography_id": "S12000023",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 27.0
+              "resolved_period": 2025,
+              "resolved_value": 27.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_728bf55a5dc6c846f63df557"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_g@S12000026",
@@ -435960,12 +435969,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "S12000005",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 49.0
+              "resolved_period": 2025,
+              "resolved_value": 49.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_fac7305277638488671cf6fc"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_h@S12000006",
@@ -435985,12 +435995,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "S12000008",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 49.0
+              "resolved_period": 2025,
+              "resolved_value": 49.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_1852a696d0bf5a54a68bd460"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_h@S12000010",
@@ -436023,12 +436034,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "S12000013",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 5.0
+              "resolved_period": 2025,
+              "resolved_value": 5.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_9e34f4031f1be6d3df9405d2"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_h@S12000014",
@@ -436113,12 +436125,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "S12000023",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 5.0
+              "resolved_period": 2025,
+              "resolved_value": 5.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_f7b79da8e7ac960ec8076ee6"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_h@S12000026",
@@ -436293,12 +436306,13 @@
               "target_id": "scotgov.council_tax_stock.by_area.band_h",
               "geography_level": "local_authority",
               "geography_id": "S12000042",
-              "status": "signed_deferred",
+              "status": "active",
               "matched_fact_count_overall": 3,
               "matched_fact_count_at_or_before_period": 3,
-              "signed_reason_id": "council_tax_band_household_floor",
-              "signed_rationale": "A council-tax band cell of fewer than 50 dwellings (Blaenau Gwent band H 3, Barking and Dagenham band G 49) cannot be met by a sample of households: the capped loss stops paying for it and it sits past the target-fit fence for good (microcosm#1123 item 7). The deferred cell's dwellings still count in its leg's band control through reconciliation. Rule council_tax_band_household_floor in uk/local_small_cell_rule.json: published value below 50; approved_by pending.",
-              "deferred_value": 37.0
+              "resolved_period": 2025,
+              "resolved_value": 37.0,
+              "resolved_fact_period": "2025-09",
+              "resolved_fact_key": "ledger_aggregate_fact_v2_7dd4ab9f131acdb0c2e971f8"
             },
             {
               "name": "scotgov.council_tax_stock.by_area.band_h@S12000045",

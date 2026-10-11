@@ -19,6 +19,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     UKFrameTargetAdapter,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
+    uk_small_cell_rule_is_signed,
 )
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -225,16 +226,55 @@ def test_national_ons_region_cells_count_only_their_region_at_person_grain() -> 
     assert by_name[f"{prefix}E12000001"].tolist() == [0.0, 0.0, 0.0]
 
 
+#: Cells the council-tax floor of 50 dwellings defers, by family and band.
+_SMALL_CELLS = {
+    "mhclg_g": 1,
+    "welshgov_h": 2,
+    "welshgov_i": 6,
+    "scotgov_g": 2,
+    "scotgov_h": 5,
+}
+
+
+def _floor_rule_is_signed() -> bool:
+    register = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("local_small_cell_rule.json")
+        .read_text(encoding="utf-8")
+    )
+    (rule,) = [
+        rule
+        for rule in register["rules"]
+        if rule["rule_id"] == "council_tax_band_household_floor"
+    ]
+    return uk_small_cell_rule_is_signed(rule)
+
+
 def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:
     membership = _membership()
     # Cells below the small-cell floor (uk/local_small_cell_rule.json,
-    # microcosm#1123 item 7) defer by rule: Barking and Dagenham band G, two
-    # Welsh band H and six band I cells, two Scottish band G and five band H.
+    # microcosm#1123 item 7) defer by rule once the rule is signed: Barking
+    # and Dagenham band G, two Welsh band H and six band I cells, two
+    # Scottish band G and five band H. Unsigned, the rule defers nothing.
+    floor = _SMALL_CELLS if _floor_rule_is_signed() else {}
     expected = {
-        "mhclg": ("abcdefgh", 296, {"g": 293, "h": 0}, 294),
-        "welshgov": ("abcdefghi", 22, {"h": 20, "i": 16}, 22),
+        "mhclg": ("abcdefgh", 296, {"g": 294 - floor.get("mhclg_g", 0), "h": 0}, 294),
+        "welshgov": (
+            "abcdefghi",
+            22,
+            {
+                "h": 22 - floor.get("welshgov_h", 0),
+                "i": 22 - floor.get("welshgov_i", 0),
+            },
+            22,
+        ),
         # Shetland band H has no band-H clone at K=15 (support deferral).
-        "scotgov": ("abcdefgh", 32, {"g": 30, "h": 26}, 32),
+        "scotgov": (
+            "abcdefgh",
+            32,
+            {"g": 32 - floor.get("scotgov_g", 0), "h": 31 - floor.get("scotgov_h", 0)},
+            32,
+        ),
     }
     for source, (bands, roster, overrides, active_default) in expected.items():
         for band in bands:
@@ -272,10 +312,10 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     # publishes the City's band A.
     assert set(by_reason) == {
         "council_tax_band_h_spine_support_absent",
-        "council_tax_band_household_floor",
+        *(["council_tax_band_household_floor"] if _floor_rule_is_signed() else []),
     }
-    floor = by_reason["council_tax_band_household_floor"]
-    assert [(row["target_id"], row["area_ids"]) for row in floor] == [
+    floor = by_reason.get("council_tax_band_household_floor", [])
+    expected_floor = [
         ("mhclg.council_tax_stock.by_area.band_g", ["E09000002"]),
         ("scotgov.council_tax_stock.by_area.band_g", ["S12000013", "S12000023"]),
         (
@@ -295,7 +335,10 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
             ],
         ),
     ]
-    assert {row["expires_on"] for row in floor} == {"2027-04-01"}
+    assert [(row["target_id"], row["area_ids"]) for row in floor] == (
+        expected_floor if _floor_rule_is_signed() else []
+    )
+    assert {row["expires_on"] for row in floor} <= {"2027-04-01"}
     band_h = by_reason["council_tax_band_h_spine_support_absent"]
     expected_english = tuple(
         area_id
@@ -321,7 +364,7 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
     assert "84 of 296 at K=10" in band_h[0]["rationale"]
 
 
-def test_council_tax_activation_binds_2495_references() -> None:
+def test_council_tax_activation_binds_2511_references_less_the_small_cells() -> None:
     membership = _membership()
     active = 0
     for target_id, payload in membership["targets"].items():
@@ -332,8 +375,10 @@ def test_council_tax_activation_binds_2495_references() -> None:
     # 2,058 English A-G cells (microcosm#762) + 198 Welsh A-I + 255 Scottish
     # A-H (microcosm#929; Shetland band H is a support deferral); the 296
     # English band-H cells stay deferred, and the 16 cells below the
-    # small-cell floor defer by rule (microcosm#1123 item 7).
-    assert active == 2_495
+    # small-cell floor defer by rule once it is signed (microcosm#1123 item 7).
+    deferred = sum(_SMALL_CELLS.values()) if _floor_rule_is_signed() else 0
+    assert sum(_SMALL_CELLS.values()) == 16
+    assert active == 2_511 - deferred
 
 
 def test_barnsley_and_sheffield_bind_their_2025_rows_through_the_code_aliases() -> None:

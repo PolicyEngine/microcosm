@@ -1,11 +1,11 @@
 {
- "compiled_count": 21788,
+ "compiled_count": 21804,
  "counts_by_kind": {
-  "calibration_drift": 19275,
-  "fixture_only": 4267,
-  "ledger_only": 2510
+  "calibration_drift": 19276,
+  "fixture_only": 4266,
+  "ledger_only": 2525
  },
- "difference_count": 26052,
+ "difference_count": 26067,
  "differences": [
   {
    "fixture_value": 70.0,
@@ -21326,13 +21326,6 @@
    "fixture_value": 1500.0,
    "kind": "fixture_only",
    "name": "mhclg.council_tax_stock.by_area.band_g@E09000001",
-   "period": 2025,
-   "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
-  },
-  {
-   "fixture_value": 50.0,
-   "kind": "fixture_only",
-   "name": "mhclg.council_tax_stock.by_area.band_g@E09000002",
    "period": 2025,
    "reason": "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's English band-H cells stay deferred under council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 authorities), and the City of London and Isles of Scilly cells sit under the local-authority support floor. Scotland and Wales now bind their own returns, so no coverage gap remains on the incumbent's rows."
   },
@@ -46979,6 +46972,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 29.0,
+   "name": "scotgov.council_tax_stock.by_area.band_g@S12000013",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 3107.0,
    "name": "scotgov.council_tax_stock.by_area.band_g@S12000014",
    "period": 2025,
@@ -47016,6 +47016,13 @@
    "kind": "ledger_only",
    "ledger_value": 1274.0,
    "name": "scotgov.council_tax_stock.by_area.band_g@S12000021",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27.0,
+   "name": "scotgov.council_tax_stock.by_area.band_g@S12000023",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
   },
@@ -47154,8 +47161,22 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 49.0,
+   "name": "scotgov.council_tax_stock.by_area.band_h@S12000005",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 152.0,
    "name": "scotgov.council_tax_stock.by_area.band_h@S12000006",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 49.0,
+   "name": "scotgov.council_tax_stock.by_area.band_h@S12000008",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
   },
@@ -47170,6 +47191,13 @@
    "kind": "ledger_only",
    "ledger_value": 800.0,
    "name": "scotgov.council_tax_stock.by_area.band_h@S12000011",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5.0,
+   "name": "scotgov.council_tax_stock.by_area.band_h@S12000013",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
   },
@@ -47212,6 +47240,13 @@
    "kind": "ledger_only",
    "ledger_value": 61.0,
    "name": "scotgov.council_tax_stock.by_area.band_h@S12000021",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5.0,
+   "name": "scotgov.council_tax_stock.by_area.band_h@S12000023",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
   },
@@ -47301,6 +47336,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 37.0,
+   "name": "scotgov.council_tax_stock.by_area.band_h@S12000042",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 683.0,
    "name": "scotgov.council_tax_stock.by_area.band_h@S12000045",
    "period": 2025,
@@ -47333,6 +47375,27 @@
    "name": "scotgov.council_tax_stock.by_area.band_h@S12000050",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only. Microcosm binds the 32 Scottish councils' CTAXBASE chargeable dwellings by band A-H (chronicle#264, the concept the scotgov.council_tax_stock country rows already bind; Shetland band H is signed deferred for support), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3.0,
+   "name": "welshgov.council_tax_stock.by_area.band_h@W06000019",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2.0,
+   "name": "welshgov.council_tax_stock.by_area.band_h@W06000024",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 42.0,
+   "name": "welshgov.council_tax_stock.by_area.band_i@W06000001",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
   },
   {
    "kind": "ledger_only",
@@ -47371,6 +47434,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 20.0,
+   "name": "welshgov.council_tax_stock.by_area.band_i@W06000008",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 80.0,
    "name": "welshgov.council_tax_stock.by_area.band_i@W06000009",
    "period": 2025,
@@ -47387,6 +47457,13 @@
    "kind": "ledger_only",
    "ledger_value": 500.0,
    "name": "welshgov.council_tax_stock.by_area.band_i@W06000011",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19.0,
+   "name": "welshgov.council_tax_stock.by_area.band_i@W06000012",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
   },
@@ -47427,6 +47504,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 18.0,
+   "name": "welshgov.council_tax_stock.by_area.band_i@W06000019",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25.0,
+   "name": "welshgov.council_tax_stock.by_area.band_i@W06000020",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 637.0,
    "name": "welshgov.council_tax_stock.by_area.band_i@W06000021",
    "period": 2025,
@@ -47443,6 +47534,13 @@
    "kind": "ledger_only",
    "ledger_value": 181.0,
    "name": "welshgov.council_tax_stock.by_area.band_i@W06000023",
+   "period": 2025,
+   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7.0,
+   "name": "welshgov.council_tax_stock.by_area.band_i@W06000024",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
   },
@@ -123911,6 +124009,14 @@
    "reason": "Signed basis translation (microcosm#929, ruled by María on 2026-09-11 and 2026-09-15): the incumbent binds the VOA CTSOP valuation-list stock, every banded dwelling including exempt, empty and second homes; Microcosm binds the MHCLG Council Taxbase return (chronicle#264), CTB line 7 chargeable dwellings after the disabled-relief adjustment (band A adds the A- column) minus line 11 second homes minus line 15 empty dwellings, the dwellings a household file can carry. England's valuation list runs 6.3 % over the household rows, so the taxbase cells sit below the VOA cells by roughly that margin, authority by authority (Westminster band A 1,660 VOA against 1,328 taxbase). Receipts: experiments/929-council-tax-taxbase-receipts.md Parts C and D."
   },
   {
+   "fixture_value": 50.0,
+   "kind": "calibration_drift",
+   "ledger_value": 49.0,
+   "name": "mhclg.council_tax_stock.by_area.band_g@E09000002",
+   "period": 2025,
+   "reason": "Signed basis translation (microcosm#929, ruled by María on 2026-09-11 and 2026-09-15): the incumbent binds the VOA CTSOP valuation-list stock, every banded dwelling including exempt, empty and second homes; Microcosm binds the MHCLG Council Taxbase return (chronicle#264), CTB line 7 chargeable dwellings after the disabled-relief adjustment (band A adds the A- column) minus line 11 second homes minus line 15 empty dwellings, the dwellings a household file can carry. England's valuation list runs 6.3 % over the household rows, so the taxbase cells sit below the VOA cells by roughly that margin, authority by authority (Westminster band A 1,660 VOA against 1,328 taxbase). Receipts: experiments/929-council-tax-taxbase-receipts.md Parts C and D."
+  },
+  {
    "fixture_value": 16820.0,
    "kind": "calibration_drift",
    "ledger_value": 15869.0,
@@ -191857,7 +191963,7 @@
   {
    "fixture_value": 14491.016099999999,
    "kind": "calibration_drift",
-   "ledger_value": 14662.597693497448,
+   "ledger_value": 13795.0,
    "name": "ons.tenure.owned_mortgage@E07000092",
    "period": 2025,
    "reason": "Vintage class: ours holds the per-nation census tenure counts (E&W 2021, Scotland 2022, NI 2021) at identity with uprating declared as holds; the incumbent derives counts as percentage shares times a separate household-count workbook."
@@ -194177,7 +194283,7 @@
   {
    "fixture_value": 9998.683200000001,
    "kind": "calibration_drift",
-   "ledger_value": 10611.86399472436,
+   "ledger_value": 9979.0,
    "name": "ons.tenure.owned_outright@E07000092",
    "period": 2025,
    "reason": "Vintage class: ours holds the per-nation census tenure counts (E&W 2021, Scotland 2022, NI 2021) at identity with uprating declared as holds; the incumbent derives counts as percentage shares times a separate household-count workbook."
@@ -196497,7 +196603,7 @@
   {
    "fixture_value": 8485.5177,
    "kind": "calibration_drift",
-   "ledger_value": 8976.818476081933,
+   "ledger_value": 8449.0,
    "name": "ons.tenure.private_rent@E07000092",
    "period": 2025,
    "reason": "Vintage class: ours holds the per-nation census tenure counts (E&W 2021, Scotland 2022, NI 2021) at identity with uprating declared as holds; the incumbent derives counts as percentage shares times a separate household-count workbook."
@@ -198817,7 +198923,7 @@
   {
    "fixture_value": 6331.713299999999,
    "kind": "calibration_drift",
-   "ledger_value": 4862.074886060985,
+   "ledger_value": 6369.0,
    "name": "ons.tenure.social_rent@E07000092",
    "period": 2025,
    "reason": "Vintage class: ours holds the per-nation census tenure counts (E&W 2021, Scotland 2022, NI 2021) at identity with uprating declared as holds; the incumbent derives counts as percentage shares times a separate household-count workbook."
