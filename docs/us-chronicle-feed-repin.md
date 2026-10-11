@@ -13,7 +13,33 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
-## Why the feed moved
+## The 2026-10-04 re-pin: TY2023 state AGI bands (microcosm#940)
+
+The state x AGI-band targets of #940 need the TY2023 Historic Table 2 state
+file, whose $500k-$1M and $1M+ classes are separate facts
+(PolicyEngine/chronicle#291). The pin moved from `c5e5bf8` to `51aa40f`, a
+commit that is `c5e5bf8` plus only that package (Chronicle branch
+`feed/us-c5e5bf8-state-agi-2023`, tag `microcosm-us-feed-940-v1`), not to
+Chronicle main:
+
+- At Chronicle main the artifact-year restamp guard (chronicle#292) stops
+  building the TY2022 and TY2020 files at `--year 2023`, so ten scoped pairs
+  (the congressional-district file, the W-2 tips and 401(k) items, the IRA
+  tables, the `state_2022` US rows) produce no row, and chronicle#304 renames
+  the Historic Table 2 and district-file capital-gains concepts. Adopting
+  those is microcosm#1030's re-pin and needs its own decisions.
+- Built at `51aa40f`, the feed keeps all 39,158 `c5e5bf8` cells with equal
+  values and no changed field, and adds exactly the 1,020 TY2023 state AGI
+  cells (`irs_soi.ty2023.historic_table_2.state_agi.<st>`, 51 new scope
+  pairs). Compiled at 2024 with the packaged CD crosswalk, aging and the
+  Medicaid substitutions, every target other than the state AGI bands is
+  identical on both feeds, name, value and metadata; the bands go from 306
+  TY2022 rows to 408 TY2023 rows. The comparison script and its report are in
+  `experiments/940-state-agi-bands/feed-repin/`.
+- A later re-pin to Chronicle main carries the 51 pairs over: chronicle#291
+  adds the same package to main.
+
+## Why the feed moved (2026-09-18)
 
 `_validate_chronicle_hierarchy_labels`
 (`packages/microcosm-build/src/microcosm/build/ledger_targets.py`) requires
@@ -28,15 +54,20 @@ the first labelled US export.
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `c5e5bf8aa84960c1a200ee47303b19c953092d0f` |
-| Feed file | `consumer_facts_us_c5e5bf8.jsonl`, 39,158 rows, 164,603,204 bytes |
-| `facts_sha256` | `b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801` |
+| Chronicle commit | `51aa40fd28e2ca81937752515e773d123fecfb71` (`c5e5bf8` plus the TY2023 state AGI package; tag `microcosm-us-feed-940-v1`) |
+| Feed file | `consumer_facts_us_51aa40f.jsonl`, 40,178 rows, 169,038,757 bytes |
+| `facts_sha256` | `965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac` |
 | Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (unchanged from the UK pin) |
-| Scope | 586 (record set, period) pairs; 62 package runs over build years 2020 to 2029 |
+| Scope | 637 (record set, period) pairs; 63 package runs over build years 2020 to 2029 |
 | Consumer artifact | none: refused at this commit, see below |
 
+The previous pin was `c5e5bf8aa84960c1a200ee47303b19c953092d0f`
+(`consumer_facts_us_c5e5bf8.jsonl`, 39,158 rows, `facts_sha256`
+`b8543739…`, 586 pairs, 62 runs); the rest of this document describes its
+2026-09-18 rebuild unless it says otherwise.
+
 The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl`,
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_51aa40f.jsonl`,
 beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
 there by default. A holder of the Chronicle commit regenerates it byte for
 byte with the commands below.
