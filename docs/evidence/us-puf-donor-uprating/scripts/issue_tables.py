@@ -85,133 +85,189 @@ DONOR_GROUPS = [
     ),
 ]
 
-# (label, target, own-series key at TY2023, carried keys at TY2021, note).
-# The last column is own-series growth from TY2015 to TY2023 divided by the
-# factor the donor column carries: how far the column sits from its own
-# series' TY2023 level. Both come from the archived SOI table.
 ITEMIZED = "itemized deductions (1.02 per year)"
 AGI = "REMAINING_VARIABLES (adjusted_gross_income)"
-RELEASE_ROWS = [
+WAGES = "E00200 (employment_income)"
+INTEREST = "E00300 (taxable_interest_income)"
+EXEMPT = "E00400 (exempt_interest)"
+QUALIFIED = "E00650 (qualified_dividends)"
+DISTRIBUTIONS = "E01100 (capital_gains_distributions)"
+PENSIONS = "E01700 (taxable_pension_income)"
+IRA = "E01400 (ira_distributions)"
+SOCIAL_SECURITY = "E02400 (total_social_security)"
+PROFITS = "E00900 pos_only (business_net_profits)"
+PARTNERSHIP = "E26270 pos_only (partnership_and_s_corp_income)"
+GAINS = "E01000 pos_only (capital_gains_gross)"
+
+# (label, frame columns, own-series key at TY2023 or None, carried keys at
+# TY2021, note). Positive mass only, so sign-mixed columns do not cancel. The
+# last table column is own-series growth from TY2015 to TY2023 over the factor
+# the donor column carries, both from the archived SOI table.
+ARM_ROWS = [
+    ("Wages", ["employment_income_before_lsr"], WAGES, [WAGES], ""),
+    ("Taxable interest", ["taxable_interest_income"], INTEREST, [INTEREST], ""),
+    ("Tax-exempt interest", ["tax_exempt_interest_income"], EXEMPT, [EXEMPT], ""),
+    ("Qualified dividends", ["qualified_dividend_income"], QUALIFIED, [QUALIFIED], ""),
+    ("Non-qualified dividends", ["non_qualified_dividend_income"], None, [], "h"),
+    ("Short-term gains", ["short_term_capital_gains"], GAINS, [AGI], "d"),
+    ("Long-term gains", ["long_term_capital_gains_before_response"], GAINS, [AGI], "d"),
     (
-        "Wages",
-        "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
-        "E00200 (employment_income)",
-        ["E00200 (employment_income)"],
-        "",
+        "Capital gain distributions",
+        ["non_sch_d_capital_gains"],
+        DISTRIBUTIONS,
+        [DISTRIBUTIONS],
+        "e",
     ),
+    ("Taxable pensions", ["taxable_private_pension_income"], PENSIONS, [PENSIONS], ""),
+    ("Taxable IRA distributions", ["taxable_ira_distributions"], IRA, [IRA], ""),
     (
-        "Taxable interest",
-        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_interest_amount@2024",
-        "E00300 (taxable_interest_income)",
-        ["E00300 (taxable_interest_income)"],
-        "",
-    ),
-    (
-        "Tax-exempt interest",
-        "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount@2024",
-        "E00400 (exempt_interest)",
-        ["E00400 (exempt_interest)"],
-        "",
-    ),
-    (
-        "Ordinary dividends",
-        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.ordinary_dividends_amount@2024",
-        "E00600 (ordinary_dividends)",
-        ["E00600 (ordinary_dividends)"],
-        "",
-    ),
-    (
-        "Qualified dividends",
-        "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount@2024",
-        "E00650 (qualified_dividends)",
-        ["E00650 (qualified_dividends)"],
-        "",
-    ),
-    (
-        "Taxable pensions",
-        "irs_soi.ty2023.table_1_4.all.taxable_pension_income_amount@2024",
-        "E01700 (taxable_pension_income)",
-        ["E01700 (taxable_pension_income)"],
-        "",
-    ),
-    (
-        "Taxable IRA distributions",
-        "irs_soi.ty2023.table_1_4.all.taxable_ira_distributions_amount@2024",
-        "E01400 (ira_distributions)",
-        ["E01400 (ira_distributions)"],
-        "",
-    ),
-    (
-        "Taxable Social Security",
-        "irs_soi.ty2023.table_1_4.all.taxable_social_security_amount@2024",
-        "E02400 (total_social_security)",
-        ["E02400 (total_social_security)"],
+        "Social Security, retirement component",
+        ["social_security_retirement"],
+        SOCIAL_SECURITY,
+        [SOCIAL_SECURITY],
         "a",
     ),
     (
-        "Schedule C net profit",
-        "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount@2024",
-        "E00900 pos_only (business_net_profits)",
-        ["E00900 pos_only (business_net_profits)", AGI],
+        "Schedule C profit, with its SSTB share",
+        [
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr",
+        ],
+        PROFITS,
+        [PROFITS, AGI],
         "b",
     ),
+    ("Partnership income, positive", ["partnership_income"], PARTNERSHIP, [], "c"),
     (
-        "Partnership and S-corp net income",
-        "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount@2024",
-        "E26270 pos_only (partnership_and_s_corp_income)",
-        [],
-        "c",
-    ),
-    (
-        "Net capital gains",
-        "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount@2024",
-        "E01000 pos_only (capital_gains_gross)",
+        "Rental income, positive",
+        ["rental_income"],
+        "own series (rent_and_royalty_net_income)",
         [AGI],
-        "d",
+        "",
     ),
     (
-        "Capital gain distributions",
-        "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount@2024",
-        "E01100 (capital_gains_distributions)",
-        ["E01100 (capital_gains_distributions)"],
-        "e",
-    ),
-    (
-        "Estate and trust net income",
-        "irs_soi.ty2023.table_1_4.all.estate_trust_net_income_amount@2024",
+        "Estate income, positive",
+        ["estate_income"],
         "own series (estate_income)",
         [AGI],
         "",
     ),
+    ("Cash charitable gifts", ["charitable_cash_donations"], ITEMIZED, [ITEMIZED], "f"),
+    ("Real estate taxes", ["real_estate_taxes"], ITEMIZED, [ITEMIZED], "f"),
+    ("Mortgage interest", ["home_mortgage_interest"], ITEMIZED, [ITEMIZED], "f"),
+    ("Farm operations income, positive", ["farm_operations_income"], None, [], "i"),
     (
-        "Rent and royalty net income",
+        "Partnership self-employment earnings, positive",
+        ["partnership_self_employment_net_earnings"],
+        None,
+        [],
+        "i",
+    ),
+]
+
+# (label, target, source table). Where one measure has two national
+# all-return rows of different vintages that disagree, both are listed.
+RELEASE_ROWS = [
+    (
+        "Wages",
+        "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Taxable interest",
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_interest_amount@2024",
+        "TY2023 Table 4.3, excluding dependents",
+    ),
+    (
+        "Tax-exempt interest",
+        "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount@2024",
+        "TY2022 Historic Table 2",
+    ),
+    (
+        "Ordinary dividends",
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.ordinary_dividends_amount@2024",
+        "TY2023 Table 4.3, excluding dependents",
+    ),
+    (
+        "Ordinary dividends",
+        "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount@2024",
+        "TY2022 Historic Table 2",
+    ),
+    (
+        "Qualified dividends",
+        "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount@2024",
+        "TY2022 Historic Table 2",
+    ),
+    (
+        "Taxable pensions",
+        "irs_soi.ty2023.table_1_4.all.taxable_pension_income_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Taxable IRA distributions",
+        "irs_soi.ty2023.table_1_4.all.taxable_ira_distributions_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Taxable Social Security (a)",
+        "irs_soi.ty2023.table_1_4.all.taxable_social_security_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Taxable Social Security (a)",
+        "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
+        "TY2022 Historic Table 2",
+    ),
+    (
+        "Schedule C net profit",
+        "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount@2024",
+        "TY2022 Historic Table 2",
+    ),
+    (
+        "Partnership and S-corp net income",
+        "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount@2024",
+        "TY2022 Historic Table 2",
+    ),
+    (
+        "Net capital gains",
+        "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Capital gain distributions (e)",
+        "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Estate and trust net income",
+        "irs_soi.ty2023.table_1_4.all.estate_trust_net_income_amount@2024",
+        "TY2023 Table 1.4",
+    ),
+    (
+        "Rent and royalty net income (g)",
         "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount@2024",
-        "own series (rent_and_royalty_net_income)",
-        [AGI],
-        "g",
+        "TY2022 Historic Table 2",
     ),
     (
-        "Real estate taxes (itemizers)",
+        "Real estate taxes",
         "irs_soi.ty2023.table_2_1.itemized_all_returns.all.real_estate_taxes_amount@2024",
-        ITEMIZED,
-        [ITEMIZED],
-        "f",
+        "TY2023 Table 2.1, itemizers",
     ),
     (
-        "Mortgage interest (itemizers)",
+        "Mortgage interest",
         "irs_soi.ty2023.table_2_1.itemized_all_returns.all.home_mortgage_interest_amount@2024",
-        ITEMIZED,
-        [ITEMIZED],
-        "f",
+        "TY2023 Table 2.1, itemizers",
     ),
     (
-        "Charitable (itemizers)",
+        "Charitable gifts",
         "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount@2024",
-        ITEMIZED,
-        [ITEMIZED],
-        "f",
+        "TY2023 Table 2.1, itemizers",
     ),
-    ("AGI", "irs_soi.ty2023.table_1_1.all.adjusted_gross_income@2024", AGI, [AGI], ""),
+    (
+        "AGI",
+        "irs_soi.ty2023.table_1_1.all.adjusted_gross_income@2024",
+        "TY2023 Table 1.1",
+    ),
 ]
 
 
@@ -274,18 +330,46 @@ def leg_table(donor: dict) -> str:
     return "\n".join(lines)
 
 
-def release_table(donor: dict, release: dict) -> str:
+def arm_table(donor: dict, release: dict) -> str:
     table = donor["archived_factor_table"]
+    donor_mass = donor["donor_weighted_mass"]["columns"]
+    stored = release["stored_inputs_by_arm"]
     lines = [
-        "| National row (SOI, aged to 2024) | Target, $B | PUF arm ×2 / target, design weights | ASEC arm ×2 / target, design weights | Estimate / target, design weights | Estimate / target, final weights | PUF-arm part, final / design | ASEC-arm part, final / design | Own series at TY2023 / level the donor carries |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Donor column | Donor at its own weights, $B | PUF arm ×2 at design weights, $B | PUF arm / donor | ASEC arm ×2 at design weights, $B | Own series at TY2023 / level the donor carries |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
-    for label, name, own_key, carried_keys, note in RELEASE_ROWS:
-        carried = 1.0
-        for key in carried_keys:
-            carried *= table["2021"][key]
-        leg = table["2023"][own_key] / carried
+    for label, columns, own_key, carried_keys, note in ARM_ROWS:
+        donor_total = sum(donor_mass[c]["positive"] for c in columns)
+        puf = 2 * sum(stored[c]["puf_arm_design_positive"] for c in columns)
+        asec = 2 * sum(stored[c]["asec_design_positive"] for c in columns)
+        if own_key is None:
+            leg = ""
+        else:
+            carried = 1.0
+            for key in carried_keys:
+                carried *= table["2021"][key]
+            leg = fmt(table["2023"][own_key] / carried)
         label = f"{label} ({note})" if note else label
+        lines.append(
+            f"| {label} | {donor_total / 1e9:,.1f} | {puf / 1e9:,.1f} | "
+            f"{fmt(puf / donor_total, 2)} | {asec / 1e9:,.1f} | {leg} |"
+        )
+    units = release["weighted_units_by_arm"]["tax_units"]
+    donor_units = donor["donor_weighted_mass"]["tax_units_weighted"]
+    puf_units = 2 * units["puf_arm_design"]
+    lines.append(
+        f"| Tax units, M | {donor_units / 1e6:,.1f} | {puf_units / 1e6:,.1f} | "
+        f"{fmt(puf_units / donor_units, 2)} | {2 * units['asec_design'] / 1e6:,.1f} | |"
+    )
+    return "\n".join(lines)
+
+
+def release_table(release: dict) -> str:
+    lines = [
+        "| National row, aged to 2024 | Source | Target, $B | PUF arm ×2 / target, design weights | ASEC arm ×2 / target, design weights | Estimate / target, design weights | Estimate / target, final weights | PUF-arm part, final / design | ASEC-arm part, final / design |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for label, name, source in RELEASE_ROWS:
         row = release["national_targets"][name]
         target = row["target"]
         channels = row["channels"]
@@ -296,12 +380,74 @@ def release_table(donor: dict, release: dict) -> str:
         asec_initial = channels["asec"]["initial"]
         asec_final = channels["asec"]["final"]
         lines.append(
-            f"| {label} | {target / 1e9:,.1f} | {fmt(2 * puf_initial / target)} | "
+            f"| {label} | {source} | {target / 1e9:,.1f} | "
+            f"{fmt(2 * puf_initial / target)} | "
             f"{fmt(2 * asec_initial / target)} | {fmt(row['initial_estimate'] / target)} | "
             f"{fmt(row['final_estimate'] / target)} | "
             f"{fmt(puf_final / puf_initial) if puf_initial else ''} | "
-            f"{fmt(asec_final / asec_initial) if asec_initial else 'n/a'} | "
-            f"{fmt(leg, 3)} |"
+            f"{fmt(asec_final / asec_initial) if asec_initial else 'n/a'} |"
+        )
+    return "\n".join(lines)
+
+
+# National rows fed by one donor column on the PUF arm: (label, target,
+# own-series key at TY2023, carried keys at TY2021).
+REBASE_ROWS = [
+    (
+        "Wages",
+        "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
+        WAGES,
+        [WAGES],
+    ),
+    (
+        "Taxable interest",
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_interest_amount@2024",
+        INTEREST,
+        [INTEREST],
+    ),
+    (
+        "Tax-exempt interest",
+        "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount@2024",
+        EXEMPT,
+        [EXEMPT],
+    ),
+    (
+        "Qualified dividends",
+        "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount@2024",
+        QUALIFIED,
+        [QUALIFIED],
+    ),
+    (
+        "Partnership and S-corp net income",
+        "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount@2024",
+        PARTNERSHIP,
+        [],
+    ),
+]
+
+
+def rebase_table(donor: dict, release: dict) -> str:
+    """Design-weight arithmetic: the PUF-arm part times the own-series factor."""
+
+    table = donor["archived_factor_table"]
+    lines = [
+        "| National row | Estimate / target today | PUF arm ×2 / target × own-series factor | Estimate / target after |",
+        "|---|---:|---:|---:|",
+    ]
+    for label, name, own_key, carried_keys in REBASE_ROWS:
+        carried = 1.0
+        for key in carried_keys:
+            carried *= table["2021"][key]
+        factor = table["2023"][own_key] / carried
+        row = release["national_targets"][name]
+        target = row["target"]
+        channels = row["channels"]
+        puf = channels["puf_clone"]["initial"] + channels["cg_tail_clone"]["initial"]
+        asec = channels["asec"]["initial"]
+        lines.append(
+            f"| {label} | {fmt((puf + asec) / target)} | "
+            f"{fmt(2 * puf / target)} × {fmt(factor)} | "
+            f"{fmt((puf * factor + asec) / target)} |"
         )
     return "\n".join(lines)
 
@@ -361,10 +507,18 @@ def main() -> None:
     print(totals_table(donor))
     print("\n## Donor columns by factor\n")
     print(donor_table(donor))
+    print(
+        "\nFor the two TY2015 columns the hypotheses coincide: no archived list "
+        "names their fields, so every hypothesis equals the raw value."
+    )
     print("\n## The leg the 2024 branch never applied\n")
     print(leg_table(donor))
+    print("\n## From donor to PUF arm\n")
+    print(arm_table(donor, release))
     print("\n## Release, national rows\n")
-    print(release_table(donor, release))
+    print(release_table(release))
+    print("\n## A rebase alone, at design weights\n")
+    print(rebase_table(donor, release))
     print("\n## Release, weights by arm\n")
     print(weight_table(release))
 

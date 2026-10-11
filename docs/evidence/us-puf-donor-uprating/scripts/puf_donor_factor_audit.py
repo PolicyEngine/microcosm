@@ -125,7 +125,10 @@ ARRAY_EXPRESSIONS: dict[str, tuple] = {
     "savers_credit": (lambda p: p.E07240, ("E07240",)),
     "recapture_of_investment_credit": (lambda p: p.E09700, ("E09700",)),
     "unreported_payroll_tax": (lambda p: p.E09800, ("E09800",)),
-    # Two candidate definitions; the processed file decides.
+    # Two candidate definitions; the processed file decides. E26270 is the
+    # generator's definition before 2025-05-22 (c33e3bff), the one the
+    # published 1.8.0 file carries; the split components are the definition
+    # at 42ed5d45.
     "partnership_s_corp_income[E26270]": (lambda p: p.E26270, ("E26270",)),
     "partnership_s_corp_income[components]": (
         lambda p: (p.E26190 - p.E26180) + (p.E25980 - p.E25960),
@@ -400,6 +403,9 @@ def classify(
             )
             result["unmatched_raw_nonzero_below_2021_value"] = int(
                 (~ok & nonzero & (observed < expected)).sum()
+            )
+            result["unmatched_raw_nonzero_below_and_exactly_zero"] = int(
+                (~ok & nonzero & (observed < expected) & (observed == 0)).sum()
             )
         result["match_share_of_all_records"][label] = round(float(ok.mean()), 6)
         result["match_share_of_raw_nonzero"][label] = (
@@ -760,6 +766,41 @@ def main() -> None:
         )
         classes[label] = entry
     receipt["microcosm_donor_columns"] = classes
+
+    # 6b. Dividends: the donor stores qualified = Q x a and non-qualified =
+    # O x b - Q x a. Recover TY2015 O and Q from the two stored columns and
+    # compare with the source fields.
+    factors_2021 = receipt["archived_factor_table"]["2021"]
+    carried_ordinary = factors_2021["E00600 (ordinary_dividends)"]
+    carried_qualified = factors_2021["E00650 (qualified_dividends)"]
+    stored_qualified = table_regular["qualified_dividend_income"].to_numpy(np.float64)
+    stored_non_qualified = table_regular["non_qualified_dividend_income"].to_numpy(
+        np.float64
+    )
+    recovered_ordinary = np.rint(
+        (stored_non_qualified + stored_qualified) / carried_ordinary
+    )
+    recovered_qualified = np.rint(stored_qualified / carried_qualified)
+    source_ordinary = raw["E00600"].to_numpy(np.float64)
+    source_qualified = raw["E00650"].to_numpy(np.float64)
+    receipt["dividends"] = {
+        "records": int(len(raw)),
+        "recovered_ordinary_equals_E00600_share": float(
+            (recovered_ordinary == source_ordinary).mean()
+        ),
+        "recovered_qualified_equals_E00650_share": float(
+            (recovered_qualified == source_qualified).mean()
+        ),
+        "source_qualified_exceeds_ordinary_records": int(
+            (source_qualified > source_ordinary).sum()
+        ),
+        "source_ordinary_equals_qualified_and_positive_records": int(
+            ((source_ordinary == source_qualified) & (source_ordinary > 0)).sum()
+        ),
+        "stored_non_qualified_nonzero_where_source_difference_zero": int(
+            ((stored_non_qualified != 0) & (source_ordinary == source_qualified)).sum()
+        ),
+    }
 
     # 7. Donor weighted totals beside the SOI actuals of the same line. The
     # donor weights are S006/100 times return-count growth to 2021, so a file

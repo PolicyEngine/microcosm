@@ -55,6 +55,8 @@
 | None: TY2015 level | `partnership_income` | E26190 less E26180 plus E25980 less E25960 | 60,763 | 1.0000 | 1.0000 |  |
 | None: TY2015 level | `farm_operations_income` | E02100 | 8,318 | 1.0000 | 1.0000 | 1.0000 |
 
+For the two TY2015 columns the hypotheses coincide: no archived list names their fields, so every hypothesis equals the raw value.
+
 ## The leg the 2024 branch never applied
 
 | Archived series | 2015 to 2021, applied | 2021 to 2022 | 2021 to 2023, not applied |
@@ -76,28 +78,66 @@
 | REMAINING_VARIABLES (adjusted_gross_income) | 1.3560 | 0.9994 | 1.0346 |
 | S006 weights (return count) | 1.0686 | 1.0032 | 0.9986 |
 
+## From donor to PUF arm
+
+| Donor column | Donor at its own weights, $B | PUF arm ×2 at design weights, $B | PUF arm / donor | ASEC arm ×2 at design weights, $B | Own series at TY2023 / level the donor carries |
+|---|---:|---:|---:|---:|---:|
+| Wages | 9,078.3 | 9,860.4 | 1.09 | 11,562.0 | 1.133 |
+| Taxable interest | 105.7 | 158.7 | 1.50 | 436.2 | 3.035 |
+| Tax-exempt interest | 55.3 | 108.9 | 1.97 | 0.0 | 1.192 |
+| Qualified dividends | 297.1 | 363.9 | 1.22 | 97.0 | 1.137 |
+| Non-qualified dividends (h) | 92.3 | 137.6 | 1.49 | 119.6 |  |
+| Short-term gains (d) | 55.0 | 106.9 | 1.94 | 28.9 | 0.936 |
+| Long-term gains (d) | 1,112.6 | 2,225.8 | 2.00 | 212.2 | 0.936 |
+| Capital gain distributions (e) | 24.3 | 20.3 | 0.84 | 0.0 | 0.392 |
+| Taxable pensions | 861.8 | 1,574.1 | 1.83 | 335.6 | 1.088 |
+| Taxable IRA distributions | 406.1 | 730.7 | 1.80 | 110.8 | 1.074 |
+| Social Security, retirement component (a) | 790.7 | 1,024.8 | 1.30 | 1,198.6 | 1.232 |
+| Schedule C profit, with its SSTB share (b) | 699.1 | 1,024.3 | 1.47 | 550.0 | 0.757 |
+| Partnership income, positive (c) | 766.2 | 821.5 | 1.07 | 0.0 | 1.550 |
+| Rental income, positive | 142.5 | 277.4 | 1.95 | 245.4 | 0.929 |
+| Estate income, positive | 48.0 | 150.7 | 3.14 | 0.0 | 1.020 |
+| Cash charitable gifts (f) | 196.8 | 269.7 | 1.37 | 0.0 | 1.040 |
+| Real estate taxes (f) | 227.3 | 312.3 | 1.37 | 0.0 | 1.040 |
+| Mortgage interest (f) | 378.4 | 476.2 | 1.26 | 0.0 | 1.040 |
+| Farm operations income, positive (i) | 15.1 | 17.2 | 1.14 | 41.9 |  |
+| Partnership self-employment earnings, positive (i) | 106.9 | 122.0 | 1.14 | 0.0 |  |
+| Tax units, M | 161.2 | 184.1 | 1.14 | 184.1 | |
+
 ## Release, national rows
 
-| National row (SOI, aged to 2024) | Target, $B | PUF arm ×2 / target, design weights | ASEC arm ×2 / target, design weights | Estimate / target, design weights | Estimate / target, final weights | PUF-arm part, final / design | ASEC-arm part, final / design | Own series at TY2023 / level the donor carries |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Wages | 10,773.4 | 0.915 | 1.073 | 0.994 | 0.996 | 1.255 | 0.786 | 1.133 |
-| Taxable interest | 340.4 | 0.466 | 1.281 | 0.874 | 0.844 | 1.650 | 0.717 | 3.035 |
-| Tax-exempt interest | 61.7 | 1.765 | 0.000 | 0.882 | 1.004 | 1.138 | n/a | 1.192 |
-| Ordinary dividends | 544.8 | 0.921 | 0.398 | 0.659 | 0.839 | 1.523 | 0.694 | 1.305 |
-| Qualified dividends | 346.6 | 1.050 | 0.280 | 0.665 | 0.974 | 1.670 | 0.694 | 1.137 |
-| Taxable pensions | 1,013.4 | 1.553 | 0.331 | 0.942 | 0.989 | 1.105 | 0.791 | 1.088 |
-| Taxable IRA distributions | 476.4 | 1.534 | 0.233 | 0.883 | 1.019 | 1.180 | 0.985 | 1.074 |
-| Taxable Social Security (a) | 573.0 | 1.591 | 0.694 | 1.143 | 0.892 | 0.870 | 0.576 | 1.232 |
-| Schedule C net profit (b) | 472.3 | 1.490 | 1.164 | 1.327 | 1.035 | 0.878 | 0.655 | 0.757 |
-| Partnership and S-corp net income (c) | 1,157.6 | 0.710 | 0.000 | 0.355 | 0.975 | 2.747 | n/a | 1.550 |
-| Net capital gains (d) | 1,270.9 | 1.756 | 0.190 | 0.973 | 0.980 | 1.017 | 0.923 | 0.936 |
-| Capital gain distributions (e) | 10.2 | 2.000 | 0.000 | 1.000 | 1.000 | 1.000 | n/a | 0.392 |
-| Estate and trust net income | 52.1 | 2.895 | 0.000 | 1.447 | 1.001 | 0.691 | n/a | 1.020 |
-| Rent and royalty net income (g) | 95.9 | 2.049 | 2.521 | 2.285 | 2.640 | 1.174 | 1.140 | 0.929 |
-| Real estate taxes (itemizers) (f) | 118.1 | 1.109 | 0.000 | 0.555 | 1.007 | 1.817 | n/a | 1.040 |
-| Mortgage interest (itemizers) (f) | 186.3 | 1.204 | 0.000 | 0.602 | 1.034 | 1.719 | n/a | 1.040 |
-| Charitable (itemizers) (f) | 230.5 | 0.966 | 0.000 | 0.483 | 1.137 | 2.354 | n/a | 1.040 |
-| AGI | 16,619.2 | 1.118 | 0.832 | 0.975 | 1.004 | 1.219 | 0.777 | 1.035 |
+| National row, aged to 2024 | Source | Target, $B | PUF arm ×2 / target, design weights | ASEC arm ×2 / target, design weights | Estimate / target, design weights | Estimate / target, final weights | PUF-arm part, final / design | ASEC-arm part, final / design |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Wages | TY2023 Table 1.4 | 10,773.4 | 0.915 | 1.073 | 0.994 | 0.996 | 1.255 | 0.786 |
+| Taxable interest | TY2023 Table 4.3, excluding dependents | 340.4 | 0.466 | 1.281 | 0.874 | 0.844 | 1.650 | 0.717 |
+| Tax-exempt interest | TY2022 Historic Table 2 | 61.7 | 1.765 | 0.000 | 0.882 | 1.004 | 1.138 | n/a |
+| Ordinary dividends | TY2023 Table 4.3, excluding dependents | 544.8 | 0.921 | 0.398 | 0.659 | 0.839 | 1.523 | 0.694 |
+| Ordinary dividends | TY2022 Historic Table 2 | 457.4 | 1.096 | 0.474 | 0.785 | 0.999 | 1.523 | 0.694 |
+| Qualified dividends | TY2022 Historic Table 2 | 346.6 | 1.050 | 0.280 | 0.665 | 0.974 | 1.670 | 0.694 |
+| Taxable pensions | TY2023 Table 1.4 | 1,013.4 | 1.553 | 0.331 | 0.942 | 0.989 | 1.105 | 0.791 |
+| Taxable IRA distributions | TY2023 Table 1.4 | 476.4 | 1.534 | 0.233 | 0.883 | 1.019 | 1.180 | 0.985 |
+| Taxable Social Security (a) | TY2023 Table 1.4 | 573.0 | 1.591 | 0.694 | 1.143 | 0.892 | 0.870 | 0.576 |
+| Taxable Social Security (a) | TY2022 Historic Table 2 | 510.8 | 1.785 | 0.779 | 1.282 | 1.000 | 0.870 | 0.576 |
+| Schedule C net profit | TY2022 Historic Table 2 | 472.3 | 1.490 | 1.164 | 1.327 | 1.035 | 0.878 | 0.655 |
+| Partnership and S-corp net income | TY2022 Historic Table 2 | 1,157.6 | 0.710 | 0.000 | 0.355 | 0.975 | 2.747 | n/a |
+| Net capital gains | TY2023 Table 1.4 | 1,270.9 | 1.756 | 0.190 | 0.973 | 0.980 | 1.017 | 0.923 |
+| Capital gain distributions (e) | TY2023 Table 1.4 | 10.2 | 2.000 | 0.000 | 1.000 | 1.000 | 1.000 | n/a |
+| Estate and trust net income | TY2023 Table 1.4 | 52.1 | 2.895 | 0.000 | 1.447 | 1.001 | 0.691 | n/a |
+| Rent and royalty net income (g) | TY2022 Historic Table 2 | 95.9 | 2.049 | 2.521 | 2.285 | 2.640 | 1.174 | 1.140 |
+| Real estate taxes | TY2023 Table 2.1, itemizers | 118.1 | 1.109 | 0.000 | 0.555 | 1.007 | 1.817 | n/a |
+| Mortgage interest | TY2023 Table 2.1, itemizers | 186.3 | 1.204 | 0.000 | 0.602 | 1.034 | 1.719 | n/a |
+| Charitable gifts | TY2023 Table 2.1, itemizers | 230.5 | 0.966 | 0.000 | 0.483 | 1.137 | 2.354 | n/a |
+| AGI | TY2023 Table 1.1 | 16,619.2 | 1.118 | 0.832 | 0.975 | 1.004 | 1.219 | 0.777 |
+
+## A rebase alone, at design weights
+
+| National row | Estimate / target today | PUF arm ×2 / target × own-series factor | Estimate / target after |
+|---|---:|---:|---:|
+| Wages | 0.994 | 0.915 × 1.133 | 1.055 |
+| Taxable interest | 0.874 | 0.466 × 3.035 | 1.348 |
+| Tax-exempt interest | 0.882 | 1.765 × 1.192 | 1.052 |
+| Qualified dividends | 0.665 | 1.050 × 1.137 | 0.737 |
+| Partnership and S-corp net income | 0.355 | 0.710 × 1.550 | 0.550 |
 
 ## Release, weights by arm
 
