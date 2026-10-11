@@ -879,6 +879,30 @@ def load_uk_local_target_reference_membership() -> dict[str, Any]:
 UK_LOCAL_SMALL_CELL_RULE_RESOURCE = "local_small_cell_rule.json"
 
 
+def uk_small_cell_rule_is_signed(rule: Mapping[str, Any]) -> bool:
+    """A small-cell rule defers cells only once it is signed (#1123).
+
+    Signed means an approver, an approval date, and no longer ``proposed``:
+    a proposed floor is a draft of a decision and defers nothing.
+    """
+
+    return (
+        bool(str(rule.get("approved_by") or "").strip())
+        and bool(str(rule.get("approved_on") or "").strip())
+        and str(rule.get("status") or "").strip().lower() != "proposed"
+    )
+
+
+def _uk_small_cell_rules() -> tuple[Mapping[str, Any], ...]:
+    return tuple(
+        json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(UK_LOCAL_SMALL_CELL_RULE_RESOURCE)
+            .read_text(encoding="utf-8")
+        )["rules"]
+    )
+
+
 def uk_small_cell_deferred_cells(
     membership: Mapping[str, Any],
 ) -> tuple[dict[str, Any], ...]:
@@ -889,14 +913,7 @@ def uk_small_cell_deferred_cells(
     a cell does not inflate its neighbours (microcosm#1123 item 7).
     """
 
-    rule_ids = {
-        str(rule["rule_id"])
-        for rule in json.loads(
-            importlib_resources.files("microcosm.build.uk")
-            .joinpath(UK_LOCAL_SMALL_CELL_RULE_RESOURCE)
-            .read_text(encoding="utf-8")
-        )["rules"]
-    }
+    rule_ids = {str(rule["rule_id"]) for rule in _uk_small_cell_rules()}
     cells = []
     for target_id, target in sorted(membership.get("targets", {}).items()):
         for level, payload in sorted(target["geography_levels"].items()):
@@ -920,11 +937,30 @@ def uk_small_cell_deferred_cells(
 def assert_uk_local_deferrals_in_force(
     membership: Mapping[str, Any],
     evaluated_on: Any,
+    *,
+    rules: Sequence[Mapping[str, Any]] | None = None,
 ) -> None:
-    """Refuse a signed area deferral past its declared expiry."""
+    """Refuse a rule deferral nobody signed, or one past its expiry."""
 
     from datetime import date
 
+    unsigned_rule_ids = {
+        str(rule["rule_id"])
+        for rule in (_uk_small_cell_rules() if rules is None else rules)
+        if not uk_small_cell_rule_is_signed(rule)
+    }
+    unsigned = sorted(
+        f"{deferral['target_id']}@{deferral['geography_level']}"
+        for deferral in membership.get("signed_deferrals", ())
+        if deferral.get("reason_id") in unsigned_rule_ids
+    )
+    if unsigned:
+        raise ValueError(
+            f"UK local membership defers cells under an unsigned small-cell rule: "
+            f"{unsigned}. A proposed rule defers nothing: sign it in "
+            "uk/local_small_cell_rule.json or regenerate the local references "
+            "(microcosm#1123)."
+        )
     expired = sorted(
         f"{deferral['target_id']}@{deferral['geography_level']}"
         for deferral in membership.get("signed_deferrals", ())

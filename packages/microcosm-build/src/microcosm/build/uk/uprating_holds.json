@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Declared reasons for UK targets bound at the 2025 calibration period from an older fact without an uprating index (microcosm#1123). Kinds: matched_period, in_year_snapshot, control_rescaled, reviewed_no_index. uk_runtime.uprating_holds refuses an undeclared, expired or stale hold at compile time. approved_by/approved_on are left null until María signs each entry.",
+  "description": "Declared reasons for UK targets bound at the 2025 calibration period from an older fact without an uprating index (microcosm#1123). Kinds: matched_period, in_year_snapshot, control_rescaled, reviewed_no_index. uk_runtime.uprating_holds refuses an undeclared, expired or stale hold at compile time. A hold is in force only once it carries approved_by and approved_on and is no longer proposed: the compile refuses the rows of an unsigned entry, so every entry here waits on María's signature.",
   "holds": [
     {
       "scope": "national",

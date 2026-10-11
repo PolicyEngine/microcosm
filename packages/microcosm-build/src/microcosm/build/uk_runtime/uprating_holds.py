@@ -19,6 +19,11 @@ Hold kinds:
   and tenure cells under the household controls).
 * ``reviewed_no_index``: a public spending line with no index that would
   carry it forward, held to its latest outturn until the next edition.
+
+A hold is a signed decision. An entry without an approver and an approval
+date, or still marked ``proposed``, is not in force: the compile refuses its
+rows as it refuses undeclared ones, so an open decision cannot be merged
+around.
 """
 
 from __future__ import annotations
@@ -77,10 +82,14 @@ def load_uk_uprating_holds() -> Mapping[str, Any]:
                 f"UK uprating hold for {entry.get('target_ids')!r} has unknown kind "
                 f"{entry.get('kind')!r}; expected one of {UK_HOLD_KINDS}."
             )
-        if not str(entry.get("reason") or "").strip():
-            raise ValueError(
-                f"UK uprating hold for {entry.get('target_ids')!r} has no reason."
-            )
+        for field in ("reason", "tracking", "expires_on"):
+            if not str(entry.get(field) or "").strip():
+                raise ValueError(
+                    f"UK uprating hold for {entry.get('target_ids')!r} has no "
+                    f"{field}: a hold names why it stands, where it is tracked "
+                    "and when it lapses."
+                )
+        date.fromisoformat(str(entry["expires_on"]))
     return payload
 
 
@@ -127,6 +136,20 @@ def is_uprating_hold(spec: TargetSpec, calibration_period: int | str) -> bool:
     return source[1] < target[1]
 
 
+def uk_hold_is_signed(entry: Mapping[str, Any]) -> bool:
+    """An approver and an approval date, and no longer marked proposed.
+
+    A proposed hold is a draft of a decision, not the decision: until it is
+    signed it stands for nothing, so the compile refuses the rows it names.
+    """
+
+    return (
+        bool(str(entry.get("approved_by") or "").strip())
+        and bool(str(entry.get("approved_on") or "").strip())
+        and str(entry.get("status") or "").strip().lower() != "proposed"
+    )
+
+
 def _declaration_index(
     holds: Iterable[Mapping[str, Any]],
 ) -> dict[str, Mapping[str, Any]]:
@@ -149,11 +172,13 @@ def assert_uk_uprating_holds_declared(
     scope: str,
     holds: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Refuse an undeclared or expired hold; return the holds by kind.
+    """Refuse an undeclared, unsigned or expired hold; return the holds by kind.
 
     ``scope`` (``national`` or ``local``) names the register in the receipt.
     A declaration that matches no held target is stale and refused too, so
-    the register cannot outlive the holds it explains.
+    the register cannot outlive the holds it explains. A declaration nobody
+    has signed (no approver, no approval date, or still ``proposed``) is not
+    in force, so its rows are refused like undeclared ones.
     """
 
     declared = _declaration_index((holds or load_uk_uprating_holds())["holds"])
@@ -162,11 +187,15 @@ def assert_uk_uprating_holds_declared(
         if is_uprating_hold(spec, calibration_period):
             held.setdefault(_contract_target_id(spec), []).append(spec.name)
     undeclared = sorted(target_id for target_id in held if target_id not in declared)
+    unsigned = sorted(
+        target_id
+        for target_id in held
+        if target_id in declared and not uk_hold_is_signed(declared[target_id])
+    )
     expired = sorted(
         target_id
         for target_id in held
         if target_id in declared
-        and declared[target_id].get("expires_on")
         and date.fromisoformat(str(declared[target_id]["expires_on"])) < evaluated_on
     )
     scoped_declarations = {
@@ -175,11 +204,13 @@ def assert_uk_uprating_holds_declared(
         if entry.get("scope", scope) == scope
     }
     stale = sorted(scoped_declarations - set(held))
-    if undeclared or expired or stale:
+    if undeclared or unsigned or expired or stale:
         raise ValueError(
-            f"UK {scope} uprating holds refused: undeclared {undeclared}; expired "
-            f"{expired}; stale declarations {stale}. Declare an uprating_index on "
-            "the contract target or a hold in uk/uprating_holds.json "
+            f"UK {scope} uprating holds refused: undeclared {undeclared}; unsigned "
+            f"{unsigned}; expired {expired}; stale declarations {stale}. Declare "
+            "an uprating_index on the contract target or a hold in "
+            "uk/uprating_holds.json; a hold is in force only once it carries "
+            "approved_by and approved_on and is no longer proposed "
             "(microcosm#1123)."
         )
     by_kind: dict[str, list[str]] = {}

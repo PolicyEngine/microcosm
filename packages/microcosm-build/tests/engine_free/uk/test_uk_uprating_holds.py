@@ -10,6 +10,7 @@ from microcosm.build.uk_runtime.uprating_holds import (
     assert_uk_uprating_holds_declared,
     is_uprating_hold,
     load_uk_uprating_holds,
+    uk_hold_is_signed,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -41,6 +42,11 @@ def _hold(target_id: str, kind: str = "in_year_snapshot", **fields) -> dict:
         "kind": kind,
         "target_ids": [target_id],
         "reason": "test",
+        "tracking": "test",
+        "approved_by": "reviewer",
+        "approved_on": "2026-10-01",
+        "status": "approved",
+        "expires_on": "2027-04-01",
         **fields,
     }
 
@@ -112,12 +118,48 @@ def test_a_declaration_for_a_target_no_longer_held_is_stale():
         )
 
 
+@pytest.mark.parametrize(
+    "unsigned",
+    [
+        {"approved_by": None},
+        {"approved_on": None},
+        {"approved_by": " "},
+        {"status": "proposed"},
+    ],
+)
+def test_a_hold_nobody_signed_is_not_in_force(unsigned):
+    registry = TargetRegistry([_spec("t", "2025-10")], country="uk")
+    with pytest.raises(ValueError, match=r"unsigned \['t'\]"):
+        assert_uk_uprating_holds_declared(
+            registry,
+            calibration_period=2025,
+            evaluated_on=date(2026, 10, 7),
+            scope="national",
+            holds=_holds(_hold("t", **unsigned)),
+        )
+
+
+def test_every_committed_hold_is_signed():
+    # Fails until María signs each entry in uk/uprating_holds.json: a proposed
+    # hold is not in force, so the compile refuses its rows and this branch
+    # cannot be merged around the open decision (microcosm#1198 review).
+    unsigned = [
+        target_id
+        for entry in load_uk_uprating_holds()["holds"]
+        if not uk_hold_is_signed(entry)
+        for target_id in entry["target_ids"]
+    ]
+    assert unsigned == []
+
+
 def test_the_committed_declarations_are_well_formed():
     payload = load_uk_uprating_holds()
     seen: set[str] = set()
     for entry in payload["holds"]:
         assert entry["scope"] in {"national", "local"}
         assert entry["reason"].strip()
+        assert entry["tracking"].strip()
+        date.fromisoformat(entry["expires_on"])
         for target_id in entry["target_ids"]:
             assert target_id not in seen
             seen.add(target_id)

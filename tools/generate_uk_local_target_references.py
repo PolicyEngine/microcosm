@@ -17,7 +17,10 @@ from microcosm.build.target_reference_authoring import (
     author_area_target_references,
     target_references_resource,
 )
-from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
+from microcosm.build.uk_runtime.ledger_targets import (
+    UK_UPRATING_APPLIERS,
+    uk_small_cell_rule_is_signed,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_local_area_support_exclusion_register,
 )
@@ -127,6 +130,10 @@ def _small_cell_deferrals(
         raise ValueError("UK local small-cell rule schema_version must be 1.")
     deferrals: list[AreaSignedDeferral] = []
     for rule in register["rules"]:
+        if not uk_small_cell_rule_is_signed(rule):
+            # A proposed rule defers nothing: its cells stay bound until the
+            # floor is signed (approved_by, approved_on, no longer proposed).
+            continue
         floor = float(rule["absolute_floor"])
         prefixes = tuple(str(prefix) for prefix in rule["target_id_prefixes"])
         for target_id, target in sorted(membership_report["targets"].items()):
@@ -149,8 +156,8 @@ def _small_cell_deferrals(
                         rationale=(
                             f"{rule['reason']} Rule {rule['rule_id']} in "
                             "uk/local_small_cell_rule.json: published value "
-                            f"below {floor:g}; approved_by "
-                            f"{rule.get('approved_by') or 'pending'}."
+                            f"below {floor:g}; approved by "
+                            f"{rule['approved_by']} on {rule['approved_on']}."
                         ),
                         area_ids=tuple(areas),
                         defer_if_compiles=True,
