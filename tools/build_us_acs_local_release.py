@@ -3206,7 +3206,7 @@ def do_finalize(args) -> None:
     # microcosm#454: the lane's own verdict on the ESI employer premium, on
     # the calibrated bytes. The donor rows get the MEPS-IC recomputation, the
     # ACS rows are compared with them, and the anchor-universe total is held
-    # to NHE Table 24 at the calibrated weights.
+    # to the stage's national anchor at the calibrated weights.
     esi_signal_gate, esi_anchor_gate = acs_local_esi_premium_gates(
         frame, time_period=PERIOD
     )
@@ -4270,7 +4270,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "gates on the calibrated artifact — "
             "employer_sponsored_insurance_premiums absent, zero-mass, missing "
             "on the ACS spine, missing its raw ASEC coverage columns, or off "
-            "the CMS NHE Table 24 anchor — without failing finalize or "
+            "the stage's national anchor — without failing finalize or "
             "package (for example on a staging H5 built from a donor that "
             "predates the meps_esi_premiums stage). The failures are still "
             "written to the gate report. Release builds must leave this unset."

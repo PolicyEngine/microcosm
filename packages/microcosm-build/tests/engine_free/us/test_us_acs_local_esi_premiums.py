@@ -89,7 +89,7 @@ from test_support.microcosm_build.us_acs_local_esi_premiums import (
     transferred_acs,
 )
 
-#: CMS NHE Table 24 employer contribution, CY2024: the stage's anchor.
+#: The stage's scale anchor for CY2024, read from the stage, not restated.
 ANCHOR = float(esi.EMPLOYER_PREMIUM_ANCHOR["values"]["2024"])
 RAW = tuple(
     column
