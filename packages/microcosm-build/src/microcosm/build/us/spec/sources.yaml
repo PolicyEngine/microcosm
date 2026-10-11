@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf
+  sha256: c23be1739974237a881e38646cfcdea13e6eaefbe4a97bbdde06feb31471da46
 stage_manifest:
   version: 1
   country: us
@@ -2880,9 +2880,14 @@ stages:
     weight: person_weight
   - kind: attribute_self_employed_health_premiums
     reported_source: health_insurance_premiums_without_medicare_part_b
-    self_employment_income_sources:
-    - self_employment_income_before_lsr
-    - sstb_self_employment_income_before_lsr
+    plan_business_income_sources:
+      schedule_c:
+      - self_employment_income_before_lsr
+      - sstb_self_employment_income_before_lsr
+      schedule_f:
+      - farm_operations_income
+      partnership:
+      - partnership_self_employment_net_earnings
     medicare_age_source: age
     medicare_age_threshold: 65
     medicare_ssdi_source: social_security_disability
@@ -2908,20 +2913,27 @@ stages:
     preserve the exact residual identity. The archive did not explicitly pin tree count or weights; Microcosm
     pins 100 trees and typed person weights as reproducibility hardening. The final attribution operation
     (PolicyEngine/microcosm#451 item 2) is deterministic: it copies the finished reported non-Part-B premium
-    onto the person health_insurance_premiums input exactly where combined Schedule C income (self_employment_income_before_lsr
-    + sstb_self_employment_income_before_lsr) is strictly positive, the person is outside the Medicare
-    proxy (age 65+ or any Social Security disability income), and the person is outside measured employer-sponsored
-    coverage (has_esi - the conservative, incomplete proxy for the 26 USC 162(l)(2)(B) subsidized-employer-plan
-    month exclusion; eligibility through a spouse''s or dependent''s employer is not measured and remains
-    documented residual overbreadth), and marks is_self_employed for every strictly-positive Schedule
-    C person. PolicyEngine-US 2.2.1 then computes self_employed_health_insurance_premiums (a formula-owned
-    adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the section 162(l)
-    ALD as min(total_self_employment_income, premiums). The Medicare proxy keeps the statutory medical-expense
-    premium concept numerically invariant because the direct input equals the decomposed reported premium
-    whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US 2.2.1 reads the
-    bare health_insurance_premiums input in five state/local formulas (MO qualified-premium subtraction,
-    MI household resources, OH uninsured unreimbursed medical expenses, CA Orange County general relief
-    countable income, MO child-care-subsidy adjusted income): attribution moves those programs from premiums-invisible
-    toward the measured premium structure for the self-employed slice, outside the federal income_tax
-    probe''s scope. External anchor class: IRS SOI Pub 1304 Table 1.4 TY2023 self-employed health insurance
-    deduction, 3,595,764 returns / $31.23B (ledger#105, buildn v9.2 feed).'
+    onto the person health_insurance_premiums input exactly where some business a plan can be established
+    under has strictly positive net earnings on its own (26 USC 162(l)(2)(A); Form 7206 instructions,
+    2023, p. 1): Schedule C (self_employment_income_before_lsr + sstb_self_employment_income_before_lsr),
+    a Schedule F farm (farm_operations_income) or a partnership''s Schedule K-1 box 14 code A earnings
+    (partnership_self_employment_net_earnings), so a loss in one business never cancels another''s profit;
+    the person is outside the Medicare proxy (age 65+ or any Social Security disability income), and the
+    person is outside measured employer-sponsored coverage (has_esi - the conservative, incomplete proxy
+    for the 26 USC 162(l)(2)(B) subsidized-employer-plan month exclusion; eligibility through a spouse''s
+    or dependent''s employer is not measured and remains documented residual overbreadth), and marks is_self_employed
+    for every person with such a business. More-than-2% S corporation shareholders, the fourth Form 7206
+    path, have no measured input. PolicyEngine-US then computes self_employed_health_insurance_premiums
+    (a formula-owned adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the
+    section 162(l) ALD as premiums capped at earned income. Version 2.2.1 caps at Schedule C income alone
+    (min(max(total_self_employment_income, 0), premiums)), so the people a farm or partnership alone qualifies
+    receive no federal deduction until the engine carries PolicyEngine/policyengine-us#10120, which computes
+    the Form 7206 limit for each business and takes the largest. The Medicare proxy keeps the statutory
+    medical-expense premium concept numerically invariant because the direct input equals the decomposed
+    reported premium whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US
+    2.2.1 reads the bare health_insurance_premiums input in five state/local formulas (MO qualified-premium
+    subtraction, MI household resources, OH uninsured unreimbursed medical expenses, CA Orange County
+    general relief countable income, MO child-care-subsidy adjusted income): attribution moves those programs
+    from premiums-invisible toward the measured premium structure for the self-employed slice, outside
+    the federal income_tax probe''s scope. External anchor class: IRS SOI Pub 1304 Table 1.4 TY2023 self-employed
+    health insurance deduction, 3,595,764 returns / $31.23B (ledger#105, buildn v9.2 feed).'

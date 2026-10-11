@@ -74,9 +74,14 @@ def test_stage_manifest_pins_residual_and_joint_puf_qrf() -> None:
     }
     assert spec.operations[3].parameters == {
         "reported_source": _REPORTED,
-        "self_employment_income_sources": list(
-            US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES
-        ),
+        "plan_business_income_sources": {
+            "schedule_c": [
+                "self_employment_income_before_lsr",
+                "sstb_self_employment_income_before_lsr",
+            ],
+            "schedule_f": ["farm_operations_income"],
+            "partnership": ["partnership_self_employment_net_earnings"],
+        },
         "medicare_age_source": "age",
         "medicare_age_threshold": US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
         "medicare_ssdi_source": "social_security_disability",
@@ -434,13 +439,28 @@ def test_with_inputs_materializes_se_attribution_and_carries_signal(
     result = with_us_other_health_insurance_inputs(_frame(), seed=0, time_period=2024)
 
     person = result.table("person")
+    self_employed = (
+        (_SELF_EMPLOYMENT_VALUES > 0.0)
+        | (_FARM_VALUES > 0.0)
+        | (_PARTNERSHIP_VALUES > 0.0)
+    )
     expected_premiums = np.where(
-        (_SELF_EMPLOYMENT_VALUES > 0.0) & ~person["has_esi"].to_numpy(),
+        self_employed & ~person["has_esi"].to_numpy(),
         _REPORTED_VALUES,
         0.0,
     )
     np.testing.assert_allclose(person[_PREMIUMS_OUTPUT], expected_premiums)
-    assert person[_FLAG_OUTPUT].tolist() == (_SELF_EMPLOYMENT_VALUES > 0.0).tolist()
+    assert person[_FLAG_OUTPUT].tolist() == self_employed.tolist()
+    # The farm and partnership paths flag their people; neither carries a
+    # premium here (no reported premium; measured employer coverage).
+    assert person[_FLAG_OUTPUT].tolist()[2:4] == [True, True]
+    assert person[_FLAG_OUTPUT].tolist()[8] is False
+    summary = us_other_health_insurance_summary(result)["se_attribution"]
+    assert summary["positive_plan_business_rows"] == {
+        "schedule_c": 1,
+        "schedule_f": 1,
+        "partnership": 1,
+    }
     assert person[_FLAG_OUTPUT].dtype == bool
     gate = us_other_health_insurance_signal_gate(result)
     assert gate.passed, gate.failures

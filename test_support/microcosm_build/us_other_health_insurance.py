@@ -28,7 +28,8 @@ from microcosm.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_STAGE_OUTPUT_COLUMNS,
     US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
     US_SE_HEALTH_MEDICARE_AGE_THRESHOLD,
-    US_SE_HEALTH_SELF_EMPLOYMENT_INCOME_SOURCES,
+    US_SE_HEALTH_PLAN_BUSINESS_INCOME_SOURCES,
+    US_SE_HEALTH_PLAN_BUSINESS_SOURCE_COLUMNS,
     attribute_us_se_health_premiums,
     attribute_us_se_health_premiums_from_manifest,
     derive_us_other_health_insurance_from_asec,
@@ -36,6 +37,7 @@ from microcosm.build.us_runtime.other_health_insurance import (
     impute_us_other_health_insurance_to_puf_support_from_manifest,
     us_other_health_insurance_signal_gate,
     us_other_health_insurance_stage_spec,
+    us_other_health_insurance_summary,
     with_us_other_health_insurance_inputs,
 )
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
@@ -66,6 +68,12 @@ _REPORTED_VALUES = np.asarray(
 _SELF_EMPLOYMENT_VALUES = np.asarray(
     [0.0, 0.0, 0.0, 0.0, 0.0, 20_000.0, 0.0, 0.0, 0.0, 0.0]
 )
+# Person 2 (no reported premium) farms and person 3 (reported 2,000, measured
+# employer coverage) has partnership earnings, so the Schedule F and
+# partnership paths flag both without either carrying a premium; person 8's
+# farm loss leaves the flag off.
+_FARM_VALUES = np.asarray([0.0, 0.0, 15_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2_000.0, 0.0])
+_PARTNERSHIP_VALUES = np.asarray([0.0, 0.0, 0.0, 9_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
 
 def _frame() -> Frame:
@@ -91,6 +99,8 @@ def _frame() -> Frame:
             "employment_income_before_lsr": np.arange(count) * 5_000.0,
             "self_employment_income_before_lsr": _SELF_EMPLOYMENT_VALUES,
             "sstb_self_employment_income_before_lsr": np.zeros(count),
+            "farm_operations_income": _FARM_VALUES,
+            "partnership_self_employment_net_earnings": _PARTNERSHIP_VALUES,
             "social_security_retirement": np.zeros(count),
             "social_security_disability": np.zeros(count),
             "social_security_dependents": np.zeros(count),
@@ -155,6 +165,8 @@ def _attribution_source(
     reported: list[float],
     self_employment: list[float],
     sstb: list[float] | None = None,
+    farm: list[float] | None = None,
+    partnership: list[float] | None = None,
     age: list[float] | None = None,
     ssdi: list[float] | None = None,
     esi: list[bool] | None = None,
@@ -166,6 +178,10 @@ def _attribution_source(
             "self_employment_income_before_lsr": self_employment,
             "sstb_self_employment_income_before_lsr": (
                 sstb if sstb is not None else [0.0] * count
+            ),
+            "farm_operations_income": farm if farm is not None else [0.0] * count,
+            "partnership_self_employment_net_earnings": (
+                partnership if partnership is not None else [0.0] * count
             ),
             "age": age if age is not None else [40.0] * count,
             "social_security_disability": (ssdi if ssdi is not None else [0.0] * count),
