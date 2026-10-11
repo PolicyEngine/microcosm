@@ -908,8 +908,9 @@ def test_package_records_the_materialized_soi_mode_not_the_parser_default(
 
 def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     """On the real feed: the default ``state`` surface is Build O/P's
-    3,972-spec admin contract, built only from the three Historic Table 2
-    state tables at state geography; ``totals`` holds no
+    3,972-spec admin contract plus the 408 state AGI-band rows of
+    microcosm#940 (4,380 specs), built only from the Historic Table 2 state
+    tables at state geography; ``totals`` holds no
     ``soi_fiscal_distribution`` spec; ``full`` adds exactly those specs to
     ``totals`` and contains ``state``.
 
@@ -936,11 +937,13 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
 
     # Build P's ACS local contract: 102 SNAP + 51 Medicaid + 3,819 SOI admin
     # specs (4,459 with the 487 population marginals); Build O's 4,461 plus the
-    # Vermont under-$1 taxable-interest pair the compiler now excludes.
+    # Vermont under-$1 taxable-interest pair the compiler now excludes. The
+    # TY2023 state AGI bands (#940: 51 states x 4 bands x 2 measures, same
+    # record-set spec) add 408 SOI specs.
     families_count = {}
     for spec in state_specs:
         families_count[spec.family] = families_count.get(spec.family, 0) + 1
-    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 3819}
+    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 4227}
     soi = [spec for spec in state_specs if spec.family == "irs_soi"]
     record_sets = {}
     for spec in soi:
@@ -948,7 +951,7 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
         record_sets[key] = record_sets.get(key, 0) + 1
     assert record_sets == {
         "irs_soi.historic_table_2.state_broad_totals.v1": 2397,
-        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 912,
+        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 1320,
         "irs_soi.historic_table_2.state_eitc.v1": 510,
     }
     assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
