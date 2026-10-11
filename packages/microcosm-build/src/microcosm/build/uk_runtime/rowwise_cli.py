@@ -296,6 +296,12 @@ def rowwise_parameters(args: argparse.Namespace, *, source_year: int) -> dict[st
             "budget_iters": BUDGET_ITERS,
         },
         **_size_l2_parameters(args),
+        # Recorded only when on, so a default run's parameters are unchanged.
+        **(
+            {"inspection_export": True}
+            if getattr(args, "inspection_export", False)
+            else {}
+        ),
     }
 
 
@@ -504,6 +510,11 @@ def validate_cli_args(args: argparse.Namespace) -> None:
                 "--resume-size-checkpoint already implies no new checkpoint; "
                 "drop --no-size-checkpoint."
             )
+    if getattr(args, "inspection_export", False) and args.release_candidate:
+        raise ValueError(
+            "--inspection-export is candidate-only: a release candidate never "
+            "exports past a blocking gate."
+        )
     if args.dataset_households is not None:
         if args.dataset_households <= 0:
             raise ValueError("--dataset-households must be positive.")
@@ -732,6 +743,8 @@ def refuse_dense_role_arguments(
         refused.append("--sample-fraction")
     if "sample_seed" in explicit:
         refused.append("--sample-seed")
+    if getattr(args, "inspection_export", False):
+        refused.append("--inspection-export")
     if "seed" in explicit and args.seed != posture.seed:
         # The seam doctrine's seed is a reviewed constant, not a knob.
         refused.append(f"--seed != doctrine {posture.seed}")

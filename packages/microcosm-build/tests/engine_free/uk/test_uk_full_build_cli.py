@@ -2211,3 +2211,79 @@ def test_checkpoint_skips_only_evidence_past_its_bounds(
     ]
     assert records == [{"phase": "preflight", "reason": message, "skipped": True}]
     assert (attempt / "evidence-index.json").is_file()
+
+
+def test_inspection_export_is_candidate_only_and_dense_only(tmp_path):
+    args = arguments(tmp_path, "--inspection-export")
+    cli.validate_cli_args(args)
+    assert args.inspection_export
+    assert not arguments(tmp_path).inspection_export
+    with pytest.raises(ValueError, match="--inspection-export is candidate-only"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--release-candidate", "--inspection-export")
+        )
+    national = cli.parse_args(_national_argv(tmp_path, "--inspection-export"))
+    with pytest.raises(ValueError, match="--inspection-export"):
+        cli.validate_cli_args(national)
+
+
+def test_inspection_export_swaps_only_the_export_node():
+    from dataclasses import dataclass, field
+
+    from microcosm.build.uk_runtime import inspection_export
+    from microcosm.build.uk_runtime.graph_terminal import UKExportPrepareKernel
+
+    @dataclass(frozen=True)
+    class Node:
+        id: str
+        kernel: str
+        params: dict = field(default_factory=dict)
+
+    @dataclass(frozen=True)
+    class Graph:
+        nodes: tuple
+
+    export = Node(
+        "uk.full.export.prepare", UKExportPrepareKernel.ref, {"bindings": "{}"}
+    )
+    other = Node("uk.full.gates.calibrated", "gate@1")
+    swapped = inspection_export.use_inspection_export(Graph((other, export)))
+    nodes = {node.id: node for node in swapped.nodes}
+    assert nodes["uk.full.gates.calibrated"] is other
+    assert nodes["uk.full.export.prepare"].kernel == (
+        inspection_export.UKInspectionExportPrepareKernel.ref
+    )
+    assert nodes["uk.full.export.prepare"].params == {
+        "bindings": "{}",
+        "inspection_export": True,
+    }
+    assert export.params == {"bindings": "{}"}
+    with pytest.raises(ValueError, match="Expected one"):
+        inspection_export.use_inspection_export(Graph((other,)))
+
+
+def test_inspection_kernel_describes_past_a_gate_block_only_when_requested(monkeypatch):
+    from microcosm.build.uk_runtime import inspection_export
+
+    monkeypatch.setattr(inspection_export, "context_frame", lambda context: "frame")
+    monkeypatch.setattr(
+        inspection_export.graph_terminal,
+        "describe_uk_export",
+        lambda frame, *, bindings: {"frame": frame, "bindings": bindings},
+    )
+    kernel = inspection_export.UKInspectionExportPrepareKernel()
+    gate = SimpleNamespace(key="g" * 64)
+
+    def context(params):
+        return SimpleNamespace(params=params, artifacts={"full_gates": gate})
+
+    result = kernel.run(
+        context({"bindings": '{"inspection_export":true}', "inspection_export": True})
+    )
+    descriptor = json.loads(result.artifacts["export_descriptor"])
+    assert descriptor["bindings"]["inspection_export"] is True
+    assert descriptor["bindings"]["artifacts"] == {"full_gates": "g" * 64}
+    with pytest.raises(ValueError, match="requires inspection_export"):
+        kernel.run(context({"bindings": '{"inspection_export":true}'}))
+    with pytest.raises(ValueError, match="must record inspection_export"):
+        kernel.run(context({"bindings": "{}", "inspection_export": True}))

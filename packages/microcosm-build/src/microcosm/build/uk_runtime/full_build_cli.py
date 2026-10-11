@@ -156,6 +156,10 @@ from .graph_terminal import (
     register_uk_terminal_kernels,
     rowwise_candidate_manifest_from_graph,
 )
+from .inspection_export import (
+    register_uk_inspection_export_kernel,
+    use_inspection_export,
+)
 from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
@@ -592,6 +596,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Dense role only: constituency vintage required from the ladder.",
     )
     parser.add_argument("--skip-holdout", action="store_true")
+    parser.add_argument(
+        "--inspection-export",
+        action="store_true",
+        help=(
+            "Candidate-only: export, package and stage the H5 for inspection "
+            "even when a structural full-build gate blocks the artifact. The "
+            "bundle stays unreleasable and the exit status still reports the "
+            "block. Refused with --release-candidate."
+        ),
+    )
     parser.add_argument("--release-candidate", action="store_true")
     parser.add_argument("--review-date", type=date.fromisoformat, default=date.today())
     parser.add_argument(
@@ -1032,6 +1046,13 @@ def prepare_full_build(
         "engine_identity": engine_identity,
         "release_candidate": args.release_candidate,
         "skip_holdout": args.skip_holdout,
+        # Recorded only when on, so a default request (and the export node's
+        # key) is unchanged.
+        **(
+            {"inspection_export": True}
+            if getattr(args, "inspection_export", False)
+            else {}
+        ),
         "targets": {
             "chronicle": {
                 "facts_sha256": feed.facts_sha256,
@@ -1054,6 +1075,9 @@ def prepare_full_build(
             ),
         ),
     )
+    if getattr(args, "inspection_export", False):
+        graph = use_inspection_export(graph)
+        register_uk_inspection_export_kernel(kernels)
     register_uk_full_kernels(
         kernels,
         progress_callback=None if args.dry_run else _solve_observer(args, telemetry),
@@ -1835,7 +1859,15 @@ def _execute_full_build(
         local_gate_report=_local_gate_report_state(local_report),
     )
     if not enforcement["artifact_permitted"]:
-        return 1
+        if not getattr(args, "inspection_export", False):
+            return 1
+        print(
+            "warning: structural gates blocked the artifact "
+            f"({', '.join(enforcement['structural_failures'])}); "
+            "--inspection-export continues to an unreleasable inspection bundle.",
+            file=sys.stderr,
+            flush=True,
+        )
     stage(telemetry, "output_bundle", "started")
     manifest = _run_graph_with_progress(
         compile_graph(graph),
