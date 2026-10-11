@@ -202,6 +202,11 @@ def _require_matching_cell_targets(spec, contract):
     diagnostics; the ``cell_support_target`` gate reports them. Both are spec
     data, so a spec that changes one copy without the other would flag cells
     against one threshold and report against another.
+
+    Every active target gate is checked, ``"not_applicable": null`` included,
+    as the gate parser treats it. Each shared value must be declared on both
+    sides. Lists compare as multisets, ordered by their canonical JSON, so a
+    malformed list is refused with this error rather than a ``TypeError``.
     """
     pairs = (
         ("minimum_cell_ess", "target_minimum_cell_ess"),
@@ -214,21 +219,37 @@ def _require_matching_cell_targets(spec, contract):
         ("aggregation_column", "aggregation_column"),
     )
     for gate in transport_resource(spec, "gates")["gates"]:
-        if gate["gate"] != "cell_support_target" or "not_applicable" in gate:
+        if gate["gate"] != "cell_support_target" or not _applicable(gate):
             continue
-        target = _mapping(gate["parameters"], "cell-support target parameters")
+        target = _mapping(gate.get("parameters"), "cell-support target parameters")
         for own, declared in pairs:
-            if own not in target:
-                continue
-            mine, theirs = target[own], contract[declared]
-            if isinstance(mine, list | tuple):
-                mine, theirs = sorted(mine), sorted(theirs)
-            if mine != theirs:
+            if own not in target or declared not in contract:
+                raise ValueError(
+                    f"The cell-support target gate {gate['id']!r} and the support "
+                    f"contract must both declare {own!r} (contract: {declared!r})."
+                )
+            if not _same_declaration(target[own], contract[declared]):
                 raise ValueError(
                     f"The cell-support target gate {gate['id']!r} declares "
                     f"{own}={target[own]!r}, but the support contract declares "
                     f"{declared}={contract[declared]!r}; the two must agree."
                 )
+
+
+def _applicable(gate):
+    """Return whether a gate entry runs: ``not_applicable`` absent or null."""
+    return gate.get("not_applicable") is None
+
+
+def _same_declaration(mine, theirs):
+    """Compare two declared values, lists as multisets."""
+    if isinstance(mine, list | tuple) and isinstance(theirs, list | tuple):
+
+        def key(item):
+            return json.dumps(item, sort_keys=True)
+
+        return sorted(mine, key=key) == sorted(theirs, key=key)
+    return mine == theirs
 
 
 def _cell_contract(spec):
@@ -238,7 +259,7 @@ def _cell_contract(spec):
     matches = [
         row
         for row in transport_resource(spec, "gates")["gates"]
-        if row["gate"] == "cell_support" and "not_applicable" not in row
+        if row["gate"] == "cell_support" and _applicable(row)
     ]
     if not matches:
         return None

@@ -290,6 +290,82 @@ def test_cell_support_contract_target_drift_is_refused(tmp_path):
         fixture.reprepare(spec).graph()
 
 
+def test_cell_support_target_lists_in_another_order_build(tmp_path):
+    fixture = _cell_support_fixture(tmp_path)
+    contract = _cell_support_contract(fixture.spec)
+    fixture.reprepare(
+        _with_cell_target(
+            fixture,
+            required_cells=list(reversed(contract["required_cells"])),
+            required_scenarios=list(reversed(contract["required_scenarios"])),
+        )
+    ).graph()
+
+
+def test_cell_support_target_with_null_not_applicable_is_checked(tmp_path):
+    # The gate parser treats "not_applicable": null as an active gate.
+    fixture = _cell_support_fixture(tmp_path)
+    spec = _with_cell_target(fixture, minimum_cell_ess=1_000_000)
+    spec["resources"]["gates"]["gates"][-1]["not_applicable"] = None
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(spec).graph()
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "minimum_cell_ess",
+        "maximum_single_donor_dollar_share",
+        "required_cells",
+        "required_scenarios",
+        "aggregation_column",
+    ],
+)
+def test_cell_support_target_omitting_a_shared_value_is_refused(tmp_path, key):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = _with_cell_target(fixture)
+    del spec["resources"]["gates"]["gates"][-1]["parameters"][key]
+    with pytest.raises(ValueError, match="must both declare"):
+        fixture.reprepare(spec).graph()
+
+
+@pytest.mark.parametrize("malformed", ["mixed", "mappings", "string"])
+def test_cell_support_target_malformed_lists_are_refused_by_name(tmp_path, malformed):
+    fixture = _cell_support_fixture(tmp_path)
+    cells = list(_cell_support_contract(fixture.spec)["required_cells"])
+    overrides = {
+        "mixed": {"required_cells": [*cells, 1]},
+        "mappings": {"required_cells": [{"name": cell} for cell in cells]},
+        # The same characters as one cell name, as a list: equal only if a
+        # string were sorted like a list.
+        "string": {"required_cells": sorted(cells[0])},
+    }[malformed]
+    if malformed == "string":
+        spec = _with_cell_target(fixture, **overrides)
+        _cell_support_contract(spec)["required_cells"] = cells[0]
+    else:
+        spec = _with_cell_target(fixture, **overrides)
+    with pytest.raises(ValueError, match="the two must agree"):
+        fixture.reprepare(spec).graph()
+
+
+def test_cell_support_contract_with_null_not_applicable_is_the_contract(tmp_path):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    next(g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support")[
+        "not_applicable"
+    ] = None
+    nodes = {node.id: node.kernel for node in fixture.reprepare(spec).graph().nodes}
+    assert nodes == {node.id: node.kernel for node in fixture.graph().nodes}
+    assert "nz.as.bands.cell_diagnostics" in nodes
+
+
+def _cell_support_contract(spec):
+    return next(
+        g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support"
+    )["parameters"]
+
+
 @pytest.mark.parametrize("absence", ["diagnostics", "scenario", "lineage"])
 def test_cell_support_graph_absence_prevents_export(tmp_path, absence):
     fixture = _cell_support_fixture(tmp_path)
