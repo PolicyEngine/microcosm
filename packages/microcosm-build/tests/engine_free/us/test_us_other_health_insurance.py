@@ -401,6 +401,26 @@ def test_se_attribution_is_deterministic_reported_identity_with_guards() -> None
             "has_esi",
         ),
         (
+            lambda source: source.drop(columns=["farm_operations_income"]),
+            "farm_operations_income",
+        ),
+        (
+            lambda source: source.drop(
+                columns=["partnership_self_employment_net_earnings"]
+            ),
+            "partnership_self_employment_net_earnings",
+        ),
+        (
+            lambda source: source.assign(farm_operations_income=[np.inf]),
+            "nonnumeric or nonfinite",
+        ),
+        (
+            lambda source: source.assign(
+                partnership_self_employment_net_earnings=[np.nan]
+            ),
+            "nonnumeric or nonfinite",
+        ),
+        (
             lambda source: source.assign(has_esi=["True"]),
             "object dtype",
         ),
@@ -429,6 +449,86 @@ def test_se_attribution_allows_negative_self_employment_losses() -> None:
 
     assert result[_PREMIUMS_OUTPUT].tolist() == [0.0, 0.0]
     assert result[_FLAG_OUTPUT].tolist() == [False, False]
+
+
+def test_se_attribution_covers_farm_and_partnership_plan_businesses() -> None:
+    # 26 USC 162(l)(2)(A) and the Form 7206 instructions let the plan be
+    # established under a Schedule F farm or a partnership (Schedule K-1 box
+    # 14 code A), and PolicyEngine-US #10120 limits the deduction business by
+    # business, so each profitable business qualifies on its own.
+    source = _attribution_source(
+        reported=[6_000.0] * 9,
+        self_employment=[0.0, 0.0, -10_000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        farm=[20_000.0, 0.0, 5_000.0, -3_000.0, 20_000.0, 20_000.0, 0.0, 0.0, -1.0],
+        partnership=[0.0, 15_000.0, 0.0, 8_000.0, 0.0, 0.0, 15_000.0, 0.0, -1.0],
+        age=[40.0, 40.0, 40.0, 40.0, 65.0, 40.0, 40.0, 40.0, 40.0],
+        ssdi=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 12_000.0, 0.0, 0.0],
+        esi=[False, False, False, False, False, True, False, False, False],
+    )
+
+    result = attribute_us_se_health_premiums(source)
+
+    assert result[_PREMIUMS_OUTPUT].tolist() == [
+        6_000.0,  # farm profit alone
+        6_000.0,  # partnership earnings alone
+        6_000.0,  # a Schedule C loss does not cancel the farm's profit
+        6_000.0,  # nor does a farm loss cancel the partnership's earnings
+        0.0,  # farm profit, Medicare age proxy
+        0.0,  # farm profit, measured employer coverage
+        0.0,  # partnership earnings, SSDI Medicare proxy
+        0.0,  # no business at all
+        0.0,  # losses everywhere
+    ]
+    assert result[_FLAG_OUTPUT].tolist() == [
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        False,
+        False,
+    ]
+
+
+def test_se_attribution_manifest_refuses_the_schedule_c_only_parameter() -> None:
+    from microcosm.build.source_manifest import SourceOperationSpec
+
+    spec = us_other_health_insurance_stage_spec()
+    operation = spec.operations[3]
+    retired = {
+        key: value
+        for key, value in operation.parameters.items()
+        if key != "plan_business_income_sources"
+    }
+    retired["self_employment_income_sources"] = [
+        "self_employment_income_before_lsr",
+        "sstb_self_employment_income_before_lsr",
+    ]
+    source = _attribution_source(reported=[5_000.0], self_employment=[0.0])
+
+    with pytest.raises(SourceRuntimeError, match="drifted from the pinned"):
+        attribute_us_se_health_premiums_from_manifest(
+            source,
+            SourceOperationSpec.from_mapping({"kind": operation.kind, **retired}),
+            None,
+        )
+    narrowed = dict(operation.parameters)
+    narrowed["plan_business_income_sources"] = {
+        "schedule_c": narrowed["plan_business_income_sources"]["schedule_c"]
+    }
+    with pytest.raises(SourceRuntimeError, match="drifted from the pinned"):
+        attribute_us_se_health_premiums_from_manifest(
+            source,
+            SourceOperationSpec.from_mapping({"kind": operation.kind, **narrowed}),
+            None,
+        )
+    assert attribute_us_se_health_premiums_from_manifest(
+        _attribution_source(reported=[5_000.0], self_employment=[0.0], farm=[1.0]),
+        operation,
+        None,
+    )[_FLAG_OUTPUT].tolist() == [True]
 
 
 def test_with_inputs_materializes_se_attribution_and_carries_signal(
@@ -496,6 +596,29 @@ def test_signal_gate_rejects_broken_or_absent_se_attribution(
     unflagged.table("person")[_FLAG_OUTPUT] = False
     gate = us_other_health_insurance_signal_gate(unflagged)
     assert not gate.passed
+
+    # The farm person's flag is part of the identity the gate recomputes.
+    farm_unflagged = with_us_other_health_insurance_inputs(
+        _frame(), seed=0, time_period=2024
+    )
+    farm_unflagged.table("person").loc[2, _FLAG_OUTPUT] = False
+    gate = us_other_health_insurance_signal_gate(farm_unflagged)
+    assert not gate.passed
+    assert any("attribution identity" in failure for failure in gate.failures)
+
+    # Without a plan-business source the identity cannot be recomputed.
+    unsourced = with_us_other_health_insurance_inputs(
+        _frame(), seed=0, time_period=2024
+    )
+    unsourced.table("person").drop(
+        columns=["partnership_self_employment_net_earnings"], inplace=True
+    )
+    gate = us_other_health_insurance_signal_gate(unsourced)
+    assert not gate.passed
+    assert any(
+        "partnership_self_employment_net_earnings" in failure
+        for failure in gate.failures
+    )
 
 
 def test_signal_gate_rejects_malformed_flag_and_nonfinite_identity_sources(
