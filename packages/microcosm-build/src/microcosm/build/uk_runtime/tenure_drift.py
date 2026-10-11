@@ -8,6 +8,17 @@ category's share of the authority's dwellings in 2024 over the same share in
 2022. SPREE counts dwellings, not households, so it moves shares only, never
 levels. Authorities outside England have no such series paired with their
 census, so their census shares are held (factor one, said so on the spec).
+
+What the drift carries: SPREE measures the social stock and apportions the
+rest by fixed splits, so the drift moves social renting against everything
+else and leaves the private-rent to owner-occupied ratio where the census
+put it (it moves by under 0.1% in every authority). A share that moves by
+more than ``SPREE_MAX_SHARE_DRIFT`` in two years is a stock reclassification,
+not tenure drift (Rushmoor's social stock falls 22%): that authority's four
+census shares are held instead.
+
+A held cell carries ``uprating_hold``: the applier moved nothing, so the cell
+stays a hold the register must declare.
 """
 
 from __future__ import annotations
@@ -23,6 +34,9 @@ UK_TENURE_SHARE_DRIFT_INDEX_CONCEPT = "ons.spree.tenure_share_drift"
 UK_TENURE_SPREE_RESOURCE = "ons_spree_tenure_dwellings.json"
 SPREE_OPENING_YEAR = 2022
 SPREE_CLOSING_YEAR = 2024
+#: The widest two-year move in a category's dwelling share read as drift. On
+#: the 2024 edition every authority but one sits within 7%.
+SPREE_MAX_SHARE_DRIFT = 0.10
 SPREE_TOTAL_CONCEPT = "ons.spree.total_dwellings"
 SPREE_CONCEPT_BY_TENURE_TARGET: Mapping[str, str] = {
     "ons.tenure.owned_outright": "ons.spree.owned_outright_dwellings",
@@ -40,6 +54,13 @@ UK_TENURE_SHARE_HELD_BASIS = (
     "the census tenure share is held; the level follows the authority's "
     "household reconciliation"
 )
+UK_TENURE_SHARE_OUT_OF_BOUNDS_BASIS = (
+    "ONS subnational dwelling stock by tenure (SPREE) moves a tenure share of "
+    "this authority by more than {bound:.0%} between {opening} and {closing} "
+    "({category}: {factor:.3f}), a stock reclassification rather than drift: "
+    "the authority's census tenure shares are held"
+)
+UK_TENURE_SHARE_HOLD = "census_share_held"
 
 
 def _spree_values(
@@ -86,53 +107,74 @@ def align_tenure_by_spree_share_drift(
     aligned = []
     for spec in registry.specs:
         area = _cell_area(spec)
-        keys = [
-            (concept, area, year)
-            for concept in (category, SPREE_TOTAL_CONCEPT)
-            for year in (SPREE_OPENING_YEAR, SPREE_CLOSING_YEAR)
-        ]
-        if all(key in values for key in keys):
-            opening_share = (
-                values[(category, area, SPREE_OPENING_YEAR)]
-                / values[(SPREE_TOTAL_CONCEPT, area, SPREE_OPENING_YEAR)]
-            )
-            closing_share = (
-                values[(category, area, SPREE_CLOSING_YEAR)]
-                / values[(SPREE_TOTAL_CONCEPT, area, SPREE_CLOSING_YEAR)]
-            )
-            if opening_share <= 0.0:
+        factors = _area_share_factors(values, area)
+        hold: str | None = None
+        if factors is None:
+            if area.startswith("E"):
                 raise ValueError(
-                    f"UK target {spec.name!r}: SPREE {category} share in "
-                    f"{SPREE_OPENING_YEAR} is {opening_share!r}."
+                    f"UK target {spec.name!r}: the English authority {area!r} has "
+                    f"no SPREE {category} or total in {SPREE_OPENING_YEAR} and "
+                    f"{SPREE_CLOSING_YEAR}."
                 )
-            factor = closing_share / opening_share
-            basis = UK_TENURE_SHARE_DRIFT_BASIS.format(
-                opening=SPREE_OPENING_YEAR, closing=SPREE_CLOSING_YEAR
-            )
-        elif area.startswith("E"):
-            raise ValueError(
-                f"UK target {spec.name!r}: the English authority {area!r} has no "
-                f"SPREE {category} or total in {SPREE_OPENING_YEAR} and "
-                f"{SPREE_CLOSING_YEAR}."
-            )
-        else:
             factor = 1.0
             basis = UK_TENURE_SHARE_HELD_BASIS
-        aligned.append(
-            replace(
-                spec,
-                value=spec.value * factor,
-                metadata={
-                    **spec.metadata,
-                    "uprating_index": UK_TENURE_SHARE_DRIFT_INDEX_CONCEPT,
-                    "uprating_index_basis": basis,
-                    "uprating_index_resource": UK_TENURE_SPREE_RESOURCE,
-                    "uprating_factor": f"{factor:.15g}",
-                    "ledger_value_before_alignment": f"{spec.value:.15g}",
-                },
-            )
-        )
+            hold = UK_TENURE_SHARE_HOLD
+        else:
+            widest = max(factors, key=lambda name: abs(factors[name] - 1.0))
+            if abs(factors[widest] - 1.0) > SPREE_MAX_SHARE_DRIFT:
+                factor = 1.0
+                basis = UK_TENURE_SHARE_OUT_OF_BOUNDS_BASIS.format(
+                    bound=SPREE_MAX_SHARE_DRIFT,
+                    opening=SPREE_OPENING_YEAR,
+                    closing=SPREE_CLOSING_YEAR,
+                    category=widest,
+                    factor=factors[widest],
+                )
+                hold = UK_TENURE_SHARE_HOLD
+            else:
+                factor = factors[category]
+                basis = UK_TENURE_SHARE_DRIFT_BASIS.format(
+                    opening=SPREE_OPENING_YEAR, closing=SPREE_CLOSING_YEAR
+                )
+        metadata = {
+            **spec.metadata,
+            "uprating_index": UK_TENURE_SHARE_DRIFT_INDEX_CONCEPT,
+            "uprating_index_basis": basis,
+            "uprating_index_resource": UK_TENURE_SPREE_RESOURCE,
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+        }
+        if hold is not None:
+            metadata["uprating_hold"] = hold
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(aligned, country="uk")
+
+
+def _area_share_factors(
+    values: Mapping[tuple[str, str, int], float], area: str
+) -> dict[str, float] | None:
+    """Each tenure category's closing share over its opening share, or None."""
+
+    totals = [
+        values.get((SPREE_TOTAL_CONCEPT, area, year))
+        for year in (SPREE_OPENING_YEAR, SPREE_CLOSING_YEAR)
+    ]
+    if any(total is None for total in totals):
+        return None
+    factors: dict[str, float] = {}
+    for concept in SPREE_CONCEPT_BY_TENURE_TARGET.values():
+        opening = values.get((concept, area, SPREE_OPENING_YEAR))
+        closing = values.get((concept, area, SPREE_CLOSING_YEAR))
+        if opening is None or closing is None:
+            return None
+        opening_share = opening / totals[0]
+        if opening_share <= 0.0:
+            raise ValueError(
+                f"UK tenure drift: SPREE {concept} share in {area!r} in "
+                f"{SPREE_OPENING_YEAR} is {opening_share!r}."
+            )
+        factors[concept] = (closing / totals[1]) / opening_share
+    return factors
 
 
 def tenure_drift_appliers() -> dict[str, Any]:

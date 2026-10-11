@@ -2357,6 +2357,7 @@ def _resolve_rolled_forward_reference_facts(
         )
     latest = max(_period_key(fact) for fact in eligible_matches)
     base = [fact for fact in eligible_matches if _period_key(fact) == latest]
+    _assert_rolled_forward_base_cells(reference, base)
     resolved: list[object] = list(base)
     for operand, selector in zip(
         reference.value_operands[1:],
@@ -2377,6 +2378,13 @@ def _resolve_rolled_forward_reference_facts(
             )
         resolved.append(matches[0])
     numerator, denominator = resolved[-2:]
+    if _rolled_forward_series_key(numerator) != _rolled_forward_series_key(denominator):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} numerator and denominator are not one "
+            "series at two periods (source, concept, geography, entity, "
+            "dimensions and universe must match), so their ratio is not a growth."
+        )
     if _period_key(denominator) != latest:
         raise ValueError(
             f"Ledger target reference {reference.name!r}: "
@@ -2392,6 +2400,61 @@ def _resolve_rolled_forward_reference_facts(
             f"{reference.period!r}."
         )
     return tuple(resolved)
+
+
+def _assert_rolled_forward_base_cells(
+    reference: LedgerTargetReference, base: list[object]
+) -> None:
+    """The base is one cell, or exactly one cell for each geography it names.
+
+    Summing whatever matches at the latest period would count a duplicate
+    fact twice and pass a missing district silently.
+    """
+
+    declared = None
+    if _rolled_forward_base_overlay(reference):
+        declared = _rolled_forward_base_selector(reference).get("geography_id")
+    if isinstance(declared, (list, tuple)):
+        expected = sorted(str(value) for value in declared)
+        found = sorted(_str_at(fact, "geography", "id") for fact in base)
+        if found != expected:
+            missing = sorted(set(expected) - set(found))
+            repeated = sorted({area for area in found if found.count(area) > 1})
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one cell "
+                f"for each of its {len(expected)} geographies at its latest "
+                f"period; missing {missing}, repeated {repeated}."
+            )
+        return
+    if len(base) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one cell at "
+            f"its latest period, got {len(base)}."
+        )
+
+
+def _rolled_forward_series_key(fact: object) -> tuple[str, ...]:
+    """What makes two facts one series at two periods.
+
+    Narrower than the selector's period-invariant key on purpose: a publisher
+    issues a period's estimate and the revision of the period before it as
+    separate tables of one release (ONS mid-2025 beside revised mid-2024), so
+    the record set and measure id may differ while the series is the same.
+    """
+
+    return (
+        _source_name(fact),
+        _source_measure_concept(fact),
+        _str_at(fact, "geography", "level"),
+        _str_at(fact, "geography", "id"),
+        _str_at(fact, "entity", "name"),
+        _str_at(fact, "aggregation", "method"),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+        _domain(fact),
+    )
 
 
 def reference_fact_selectors(

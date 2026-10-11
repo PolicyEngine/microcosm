@@ -259,7 +259,10 @@ def compile_uk_full_target_surface(
     """
 
     from .ledger_targets import uk_local_target_surface
-    from .national_reconciliation import assert_uk_national_rows_unmoved
+    from .national_reconciliation import (
+        assert_uk_national_rows_unmoved,
+        assert_uk_subset_relations,
+    )
 
     ladder = load_uk_oa_ladder(ladder_path)
     period = int(inputs["calibration_year"])
@@ -294,6 +297,11 @@ def compile_uk_full_target_surface(
         ),
     )
     assert_uk_national_rows_unmoved(reconciliation)
+    # Parts <= whole on the values the solve binds: the full national register
+    # (measure-excluded bands included) against the reconciled local surface.
+    reconciliation["subset_relations"] = assert_uk_subset_relations(
+        inputs["band_edge_registry"], local_surface=surface
+    )
     full = TargetRegistry(
         [
             *_local_specs(surface),

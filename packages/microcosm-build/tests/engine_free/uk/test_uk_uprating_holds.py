@@ -62,6 +62,8 @@ def _hold(target_id: str, kind: str = "in_year_snapshot", **fields) -> dict:
         ("2025-11", {"ledger_value_operation": "monthly_window_average"}, False),
         ("2025-12", {"ledger_value_operation": "calendar_year_average"}, False),
         ("2024", {"ledger_value_operation": "rolled_forward_by_ratio"}, False),
+        # An applier that says it moved nothing leaves the row a hold.
+        ("2021", {"uprating_factor": "1", "uprating_hold": "census_share_held"}, True),
         ("2025-11", {"ledger_value_operation": "latest_plateau"}, True),
         ("2025-03", {"period_match_policy": "source_window"}, False),
     ],
@@ -116,6 +118,50 @@ def test_a_declaration_for_a_target_no_longer_held_is_stale():
             scope="national",
             holds=_holds(_hold("t")),
         )
+
+
+def _periodless(**metadata) -> TargetSpec:
+    spec = _spec("t", "2025", **metadata)
+    return TargetSpec(
+        name=spec.name,
+        entity=spec.entity,
+        measure=spec.measure,
+        value=spec.value,
+        period=spec.period,
+        family=spec.family,
+        source=spec.source,
+        metadata={
+            key: value
+            for key, value in spec.metadata.items()
+            if key != "ledger_fact_period"
+        },
+    )
+
+
+@pytest.mark.parametrize("spec", [_periodless(), _spec("t", "not-a-period")])
+def test_a_row_with_no_readable_period_is_refused(spec):
+    registry = TargetRegistry([spec], country="uk")
+    assert not is_uprating_hold(spec, 2025)
+    with pytest.raises(ValueError, match="no readable fact period"):
+        assert_uk_uprating_holds_declared(
+            registry,
+            calibration_period=2025,
+            evaluated_on=date(2026, 10, 7),
+            scope="national",
+            holds=_holds(),
+        )
+
+
+def test_a_moved_row_needs_no_readable_period():
+    registry = TargetRegistry([_periodless(uprating_factor="1.1")], country="uk")
+    receipt = assert_uk_uprating_holds_declared(
+        registry,
+        calibration_period=2025,
+        evaluated_on=date(2026, 10, 7),
+        scope="national",
+        holds=_holds(),
+    )
+    assert receipt["held_targets"] == 0
 
 
 @pytest.mark.parametrize(

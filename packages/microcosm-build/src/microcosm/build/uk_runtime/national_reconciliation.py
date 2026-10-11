@@ -47,12 +47,18 @@ _CLOSURE_RTOL = 1e-9
 
 @dataclass(frozen=True)
 class UKBandBridge:
-    """Projected UK band cells that control a set of regional band targets."""
+    """Projected UK band cells that control a set of regional band targets.
+
+    The bridge refuses a factor further than ``max_factor_shift`` from one:
+    each declaration states the gap it was reviewed at, so a wider gap means
+    the regional table and the UK band no longer differ for the stated reason.
+    """
 
     bridge_id: str
     higher_target_id: str
     higher_band_lower_bounds: tuple[float, ...]
     lower_target_ids: tuple[str, ...]
+    max_factor_shift: float
 
 
 def uk_band_bridges(
@@ -67,9 +73,20 @@ def uk_band_bridges(
                 float(value) for value in entry["higher_band_lower_bounds"]
             ),
             lower_target_ids=tuple(str(value) for value in entry["lower_target_ids"]),
+            max_factor_shift=_band_bridge_bound(entry),
         )
         for entry in declared.get("band_bridges", ())
     )
+
+
+def _band_bridge_bound(entry: Mapping[str, Any]) -> float:
+    bound = entry.get("max_factor_shift")
+    if not isinstance(bound, (int, float)) or not 0.0 < float(bound) < 1.0:
+        raise ValueError(
+            f"UK band bridge {entry.get('bridge_id')!r} must declare a "
+            f"max_factor_shift in (0, 1), got {bound!r}."
+        )
+    return float(bound)
 
 
 @dataclass(frozen=True)
@@ -227,6 +244,14 @@ def _apply_band_bridges(
                 f"{raw_total!r} onto {control!r}."
             )
         factor = control / raw_total
+        if abs(factor - 1.0) > bridge.max_factor_shift:
+            raise ValueError(
+                f"UK band bridge {bridge.bridge_id!r} would rescale its regional "
+                f"cells by {factor!r}, beyond the declared "
+                f"{bridge.max_factor_shift!r}: the regional table and the UK "
+                "band no longer differ by the gap the bridge was reviewed at "
+                "(microcosm#1123)."
+            )
         for position in lower_positions:
             spec = specs[position]
             specs[position] = replace(
@@ -252,6 +277,7 @@ def _apply_band_bridges(
                 "old_total": raw_total,
                 "new_total": new_total,
                 "declared_factor": factor,
+                "max_factor_shift": bridge.max_factor_shift,
                 "cells": len(lower_positions),
             }
         )
@@ -376,9 +402,90 @@ def uk_fanout_sum_controls(
             "higher_target_id": bridge.higher_target_id,
             "geography_id": bridge.geography_id,
             "control": math.fsum(float(spec.value) for spec in cells),
+            # The same total before the bands' own uprating index, so the
+            # joint surface can test source agreement apart from the indices.
+            "control_before_alignment": math.fsum(
+                float(spec.metadata.get("ledger_value_before_alignment", spec.value))
+                for spec in cells
+            ),
             "cells": sorted(spec.name for spec in cells),
         }
     return controls
+
+
+def assert_uk_subset_relations(
+    national_registry: TargetRegistry,
+    *,
+    local_surface: pd.DataFrame | None = None,
+    declarations: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Refuse a declared part that exceeds its whole on the compiled surface.
+
+    A ``subset`` relation lets two overlapping targets stand unreconciled
+    because the part is bounded by the whole. Declared alone it only silences
+    the static overlap check, so an infeasible pair would compile; this tests
+    it on the values the solve binds. The whole is every cell of its target in
+    the full compiled register (a banded total sums its bands, a region-tier
+    target its cells). A national part is summed the same way; a local part
+    is tested at each grain on its own. A relation whose part or whole is not
+    bound here has nothing to test and is receipted as skipped.
+    """
+
+    declared = declarations or load_uk_cross_grain_declarations()
+    national_totals: dict[str, float] = {}
+    for spec in national_registry.specs:
+        target_id = _contract_target_id(spec)
+        national_totals[target_id] = national_totals.get(target_id, 0.0) + float(
+            spec.value
+        )
+    local_totals: dict[str, dict[str, float]] = {}
+    if local_surface is not None and len(local_surface):
+        grouped = local_surface.groupby(["contract_target_id", "area_type"])["value"]
+        for (target_id, area_type), total in grouped.sum().items():
+            local_totals.setdefault(str(target_id), {})[str(area_type)] = float(total)
+    receipts: list[dict[str, Any]] = []
+    breaches: list[str] = []
+    for relation in declared.get("relations", ()):
+        if relation.get("relation") != "subset":
+            continue
+        part, whole = str(relation["part"]), str(relation["whole"])
+        max_excess = float(relation.get("max_excess", 0.0))
+        whole_total = national_totals.get(whole)
+        parts = (
+            {"national": national_totals[part]}
+            if part in national_totals
+            else local_totals.get(part, {})
+        )
+        if whole_total is None or not parts:
+            receipts.append({"part": part, "whole": whole, "status": "skipped"})
+            continue
+        for grain, part_total in sorted(parts.items()):
+            ceiling = whole_total * (1.0 + max_excess)
+            holds = part_total <= ceiling * (1.0 + _CLOSURE_RTOL)
+            receipts.append(
+                {
+                    "part": part,
+                    "whole": whole,
+                    "grain": grain,
+                    "part_total": part_total,
+                    "whole_total": whole_total,
+                    "max_excess": max_excess,
+                    "status": "holds" if holds else "breached",
+                }
+            )
+            if not holds:
+                breaches.append(
+                    f"{part} ({grain}) sums to {part_total!r}, above {whole} at "
+                    f"{whole_total!r}"
+                )
+    if breaches:
+        raise ValueError(
+            "UK subset relation(s) breached on the compiled surface: "
+            + "; ".join(breaches)
+            + ". A part above its whole cannot be met with it: fix the "
+            "declaration or reconcile the pair (microcosm#1123)."
+        )
+    return receipts
 
 
 def _assert_national_closure(

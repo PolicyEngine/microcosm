@@ -87,9 +87,11 @@ class UKFanoutSumBridge:
     joint surface its cells are skipped as controls. Summed over every cell of
     the full compiled register, measure-excluded bands included, it is the
     total the area cells divide (HMRC SPI Table 3.6 bands over Tables 3.14 and
-    3.15). The bridge refuses a reconciliation factor further than
-    ``max_factor_shift`` from one: the publisher's tables agree closely, so a
-    larger move means the two sides no longer measure one quantity.
+    3.15). The bridge refuses a source factor further than
+    ``max_factor_shift`` from one, at every grain the surface binds: the
+    control over the cells' total before either side's uprating index. The
+    publisher's tables agree closely, so a larger gap means the two sides no
+    longer measure one quantity.
     """
 
     bridge_id: str
@@ -373,7 +375,15 @@ def uk_cross_grain_coverage_violations(
     declared_pairs: set[tuple[str, str]] = set()
     for relation in declared.get("relations", ()):
         targets = [str(value) for value in relation["targets"]]
-        if len(targets) != 2 or relation.get("relation") not in _RELATION_KINDS:
+        malformed_subset = relation.get("relation") == "subset" and {
+            str(relation.get("part")),
+            str(relation.get("whole")),
+        } != set(targets)
+        if (
+            len(targets) != 2
+            or relation.get("relation") not in _RELATION_KINDS
+            or malformed_subset
+        ):
             violations.append(
                 {
                     "kind": "malformed_relation",

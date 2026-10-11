@@ -194,7 +194,23 @@
       "target_ids": [
         "ons.census.households"
       ],
-      "reason": "Census 2021 (Scotland 2022) household cells: their level is set by each nation's 2025 household estimate through the nation and region bridge (microcosm#1123, nations win), so only their census shares within a leg are held. The tenure cells are drifted by SPREE and follow the authority's household reconciliation.",
+      "reason": "Census 2021 (Scotland 2022) household cells: their level is set by each nation's 2025 household estimate through the nation and region bridge (microcosm#1123, nations win), so only their census shares within a leg are held.",
+      "tracking": "microcosm#1123",
+      "approved_by": null,
+      "approved_on": null,
+      "status": "proposed",
+      "expires_on": "2027-04-01"
+    },
+    {
+      "scope": "local",
+      "kind": "control_rescaled",
+      "target_ids": [
+        "ons.tenure.owned_mortgage",
+        "ons.tenure.owned_outright",
+        "ons.tenure.private_rent",
+        "ons.tenure.social_rent"
+      ],
+      "reason": "Census 2021 (Scotland 2022) tenure cells whose share no series drifts: every Welsh, Scottish and Northern Irish authority (the feed pairs no dwelling stock by tenure with their census) and any English authority whose SPREE share moves by more than 10% in two years (a stock reclassification: Rushmoor). Their level follows the authority's household reconciliation through the tenure partition, so only the census share is held. The other English cells are drifted by SPREE and are not holds.",
       "tracking": "microcosm#1123",
       "approved_by": null,
       "approved_on": null,

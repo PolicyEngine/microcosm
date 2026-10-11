@@ -4,10 +4,17 @@ The receipt is what the ``uk.full.target_compilation`` node compiles, read
 through the node's own code path (``compile_uk_full_target_surface``): every
 national row after the measure exclusions and every local cell after uprating
 and cross-grain reconciliation, with the reconciliation groups' factors, the
-partitions, the coverage gaps the doctrine ledger tolerates and the uprating
-holds. ``--diff-against`` compares it with an earlier receipt row by row, so a
+national band bridges and their bounds, each fan-out sum bridge at each local
+grain, the subset relations, the partitions and the uprating holds.
+``--diff-against`` compares it with an earlier receipt row by row, so a
 change to the target surface states exactly which values it moves
 (microcosm#1123).
+
+Inputs, neither of which the repository carries: the Chronicle consumer
+artifact at the commit ``uk/chronicle_feed.json`` pins (Chronicle's
+``build-bundle --suite uk`` then ``build-consumer-artifact``; the loader
+checks its hashes against the pin) and the 2021 output-area ladder
+(``uk_oa_ladder_2021.npz``) a UK local build produces.
 
 By default only the calibration year is compiled (the node also compiles the
 historical validation periods, which never feed the surface); ``--full``
@@ -107,6 +114,14 @@ def _national_reconciliation_summary(
         return None
     return {
         "band_bridges": receipt.get("band_bridges"),
+        "sum_bridges": receipt.get("sum_bridges"),
+        "fanout_sum_controls": {
+            bridge_id: {
+                key: control.get(key)
+                for key in ("higher_target_id", "control", "control_before_alignment")
+            }
+            for bridge_id, control in (receipt.get("fanout_sum_controls") or {}).items()
+        },
         "rows_moved_by_exact_signature": receipt.get("rows_moved_by_exact_signature"),
         "cross_grain_groups": _group_summary(receipt.get("cross_grain") or {}),
     }
@@ -300,6 +315,11 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
             if row["uprating_from_period"] is not None and not row["uprating_index"]
         ),
         "cross_grain_groups": _group_summary(cross),
+        # Each fan-out sum bridge at each local grain, read before any
+        # reconciliation: the applied factor and the source-agreement factor
+        # the gate tests.
+        "fanout_sum_bridges": cross.get("fanout_sum_bridges"),
+        "subset_relations": cross.get("subset_relations"),
         "partitions": cross.get("partitions"),
         "coverage": cross.get("coverage"),
         "census_household_uprating": {

@@ -5231,13 +5231,71 @@ def test__given_rolled_forward_reference__then_the_base_grows_by_the_pinned_rati
     assert grown.specs[0].value > 1_388_543
 
 
-def test__given_a_summed_base__then_the_roll_forward_sums_its_cells_first():
-    registry = compile_ledger_target_references(
-        _rolled_facts(base_cells=3), [_rolled_reference()], country="uk"
+def test__given_a_repeated_base_fact__then_the_roll_forward_refuses():
+    # Three facts at one geography are a duplicate, not a set to sum: only a
+    # base that names its geographies is summed, one cell for each.
+    with pytest.raises(ValueError, match="exactly one cell at its latest period"):
+        compile_ledger_target_references(
+            _rolled_facts(base_cells=3), [_rolled_reference()], country="uk"
+        )
+
+
+def _district_roll(district_ids: tuple[str, ...], declared: list[str]):
+    districts = [
+        _ratio_fact(
+            key=f"ni-district-{index}",
+            measure_id="households_total",
+            value=400_000,
+            level="local_authority",
+            geography_id=district_id,
+            period=2024,
+        )
+        for index, district_id in enumerate(district_ids)
+    ]
+    population = _rolled_facts()[1:]
+    for fact in population:
+        fact["geography"]["id"] = "N92000002"
+    operands = list(_rolled_reference().value_operands)
+    operands[0] = {
+        "role": "base",
+        "geography_level": "local_authority",
+        "geography_id": declared,
+    }
+    operands[1] = {**operands[1], "geography_id": "N92000002"}
+    operands[2] = {**operands[2], "geography_id": "N92000002"}
+    reference = _rolled_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "households_total",
+            "geography_level": "country",
+            "geography_id": "N92000002",
+        },
+        value_operands=tuple(operands),
     )
-    spec = registry.specs[0]
-    assert spec.metadata["ledger_value_base_cells"] == "3"
-    assert spec.value == pytest.approx(1_388_543 * 3_175_181 / 3_177_949)
+    return [*districts, *population], reference
+
+
+@pytest.mark.parametrize(
+    ("district_ids", "message"),
+    [
+        (("N09000001",), r"missing \['N09000002'\]"),
+        (("N09000001", "N09000002", "N09000002"), r"repeated \['N09000002'\]"),
+    ],
+)
+def test__given_a_district_base_short_or_repeated__then_the_roll_forward_refuses(
+    district_ids, message
+):
+    facts, reference = _district_roll(district_ids, ["N09000001", "N09000002"])
+    with pytest.raises(ValueError, match=message):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_operands_of_two_series__then_the_ratio_is_not_a_growth():
+    facts = _rolled_facts()
+    # The denominator counts something else at the same place and period.
+    facts[-1]["observed_measure"]["source_concept"] = "another.concept"
+    with pytest.raises(ValueError, match="not one series at two periods"):
+        compile_ledger_target_references(facts, [_rolled_reference()], country="uk")
 
 
 @pytest.mark.parametrize(

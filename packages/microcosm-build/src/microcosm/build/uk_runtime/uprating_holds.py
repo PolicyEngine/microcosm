@@ -105,34 +105,57 @@ def _resolved_period(spec: TargetSpec) -> str:
     )
 
 
-def is_uprating_hold(spec: TargetSpec, calibration_period: int | str) -> bool:
-    """The spec's fact is older than the period and no index moved it.
+def _moved_or_covers_the_period(spec: TargetSpec) -> bool:
+    """An index moved the value, or the value covers the period by construction.
 
-    A window of the calibration year's subperiods (the compiled
-    ``ledger_value_operation``), a calendar-year mean
+    An applier that stamps ``uprating_hold`` beside its factor says it moved
+    nothing (a census tenure share with no dwelling series to drift it): that
+    row stays a hold. A window of the calibration year's subperiods (the
+    compiled ``ledger_value_operation``), a calendar-year mean
     (``fact_aggregation: time_mean``) and a declared source window cover the
-    period by construction, whatever month the fact key names. A
-    ``rolled_forward_by_ratio`` value is carried to the target period by a
-    ratio whose numerator is pinned there, so the older base is not held.
+    period whatever month the fact key names. A ``rolled_forward_by_ratio``
+    value is carried to the target period by a ratio whose numerator is pinned
+    there, so the older base is not held.
     """
 
-    if "uprating_factor" in spec.metadata:
-        return False
-    if spec.metadata.get("ledger_value_operation") in _WINDOW_VALUE_OPERATIONS:
-        return False
-    if spec.metadata.get("ledger_value_operation") == ROLLED_FORWARD_BY_RATIO:
-        return False
-    if spec.metadata.get("fact_aggregation") == "time_mean":
-        return False
-    if spec.metadata.get("period_match_policy") == "source_window":
+    metadata = spec.metadata
+    if "uprating_factor" in metadata and "uprating_hold" not in metadata:
+        return True
+    operation = metadata.get("ledger_value_operation")
+    return (
+        operation in _WINDOW_VALUE_OPERATIONS
+        or operation == ROLLED_FORWARD_BY_RATIO
+        or metadata.get("fact_aggregation") == "time_mean"
+        or metadata.get("period_match_policy") == "source_window"
+    )
+
+
+def has_unresolved_period(spec: TargetSpec, calibration_period: int | str) -> bool:
+    """No index moved the value and its fact period cannot be read.
+
+    Such a row can be neither shown current nor declared held, so the holds
+    check refuses it rather than passing it as not held.
+    """
+
+    if _moved_or_covers_the_period(spec):
         return False
     resolved = _resolved_period(spec)
-    if not resolved:
+    return not (
+        resolved
+        and _period_key_from_value(resolved)[0]
+        and _period_key_from_value(calibration_period)[0]
+    )
+
+
+def is_uprating_hold(spec: TargetSpec, calibration_period: int | str) -> bool:
+    """The spec's fact is older than the period and no index moved it."""
+
+    if _moved_or_covers_the_period(spec) or has_unresolved_period(
+        spec, calibration_period
+    ):
         return False
-    source = _period_key_from_value(resolved)
+    source = _period_key_from_value(_resolved_period(spec))
     target = _period_key_from_value(calibration_period)
-    if not (source[0] and target[0]):
-        return False
     return source[1] < target[1]
 
 
@@ -182,6 +205,17 @@ def assert_uk_uprating_holds_declared(
     """
 
     declared = _declaration_index((holds or load_uk_uprating_holds())["holds"])
+    unresolved = sorted(
+        spec.name
+        for spec in registry.specs
+        if has_unresolved_period(spec, calibration_period)
+    )
+    if unresolved:
+        raise ValueError(
+            f"UK {scope} uprating holds refused: {len(unresolved)} row(s) carry "
+            f"no readable fact period, so they can be neither shown current nor "
+            f"declared held: {unresolved[:10]} (microcosm#1123)."
+        )
     held: dict[str, list[str]] = {}
     for spec in registry.specs:
         if is_uprating_hold(spec, calibration_period):

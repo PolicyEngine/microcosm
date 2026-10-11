@@ -2508,7 +2508,9 @@ def uk_local_target_surface(
         extra_bridges=fanout_bridges,
         extra_signatures=fanout_signatures,
     )
-    receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_factors(receipt)
+    receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
+        local_registry, fanout_sum_controls
+    )
     reconciled, partition_receipt = apply_cross_grain_partitions(
         raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
     )
@@ -2612,30 +2614,81 @@ def _uk_fanout_sum_controls(
     return tuple(bridges), signatures, rows
 
 
-def _assert_uk_fanout_sum_factors(receipt: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Refuse a fan-out sum bridge whose factor leaves its declared tolerance."""
+def _spec_value_before_alignment(spec: TargetSpec) -> float:
+    return float(spec.metadata.get("ledger_value_before_alignment", spec.value))
 
-    by_id = {bridge.bridge_id: bridge for bridge in UK_FANOUT_SUM_BRIDGES}
+
+def _assert_uk_fanout_sum_agreement(
+    local_registry: TargetRegistry,
+    fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Refuse a fan-out sum bridge whose sides disagree at source, per grain.
+
+    Read from the cells before any reconciliation. The single-winner rule
+    reconciles the local-authority cells through the constituency cells
+    first, so the bridge's own local-authority leg always shows a factor near
+    one: gating the reconciliation receipt would never test that grain.
+
+    Two factors are receipted for each grain. The applied factor is the
+    control over the cells' total as the surface binds them. The source
+    factor is the same ratio before either side's uprating index, at the
+    cells' own period: it measures only whether the publisher's area tables
+    and national bands agree, where the applied factor also carries the gap
+    between the bands' band-by-band growth and the cells' all-ranges growth.
+    The gate is on the source factor, at every grain the surface binds.
+    """
+
     checked: list[dict[str, Any]] = []
-    for group in receipt.get("groups", ()):
-        bridge = by_id.get(str(group.get("bridge_id")))
-        if bridge is None:
+    for bridge in UK_FANOUT_SUM_BRIDGES:
+        by_level: dict[str, list[TargetSpec]] = {}
+        for spec in local_registry.specs:
+            if (
+                str(spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0]))
+                == bridge.lower_target_id
+            ):
+                by_level.setdefault(_spec_geography(spec)[0], []).append(spec)
+        if not by_level:
             continue
-        for leg in group["legs"]:
-            factor = float(leg["declared_factor"])
-            if abs(factor - 1.0) > bridge.max_factor_shift:
+        control = (fanout_sum_controls or {}).get(bridge.bridge_id)
+        if control is None:
+            raise ValueError(
+                f"UK local surface binds {bridge.lower_target_id!r} but has no "
+                f"summed control for fan-out sum bridge {bridge.bridge_id!r}; "
+                "pass the national reconciliation's fanout_sum_controls "
+                "(microcosm#1123)."
+            )
+        control_value = float(control["control"])
+        control_before = float(control["control_before_alignment"])
+        for level, cells in sorted(by_level.items()):
+            total = math.fsum(float(spec.value) for spec in cells)
+            total_before = math.fsum(_spec_value_before_alignment(s) for s in cells)
+            if total <= 0.0 or total_before <= 0.0:
                 raise ValueError(
-                    f"UK fan-out sum bridge {bridge.bridge_id!r} rescales its "
-                    f"{group['lower_grain']} cells by {factor!r}, beyond the "
-                    f"declared {bridge.max_factor_shift!r}: the area cells and "
-                    "the national bands no longer measure one quantity "
-                    "(microcosm#1123)."
+                    f"UK fan-out sum bridge {bridge.bridge_id!r} has a "
+                    f"non-positive {level} cell total."
+                )
+            applied = control_value / total
+            source = control_before / total_before
+            if abs(source - 1.0) > bridge.max_factor_shift:
+                raise ValueError(
+                    f"UK fan-out sum bridge {bridge.bridge_id!r}: at source its "
+                    f"{level} cells sum to the national bands by {source!r}, "
+                    f"beyond the declared {bridge.max_factor_shift!r}: the area "
+                    "cells and the national bands no longer measure one "
+                    "quantity (microcosm#1123)."
                 )
             checked.append(
                 {
                     "bridge_id": bridge.bridge_id,
-                    "lower_grain": group["lower_grain"],
-                    "declared_factor": factor,
+                    "geography_level": level,
+                    "cells": len(cells),
+                    "control": control_value,
+                    "control_before_alignment": control_before,
+                    "cell_total": total,
+                    "cell_total_before_alignment": total_before,
+                    "applied_factor": applied,
+                    "source_factor": source,
+                    "index_factor": applied / source,
                     "max_factor_shift": bridge.max_factor_shift,
                 }
             )

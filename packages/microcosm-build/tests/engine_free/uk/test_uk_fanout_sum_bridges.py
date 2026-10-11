@@ -18,7 +18,7 @@ from microcosm.build.uk_runtime.cross_grain_declarations import (
 from microcosm.build.uk_runtime.ledger_targets import (
     UK_CROSS_GRAIN_RULE,
     UK_FANOUT_SUM_BRIDGES,
-    _assert_uk_fanout_sum_factors,
+    _assert_uk_fanout_sum_agreement,
     _uk_fanout_sum_controls,
 )
 from microcosm.build.uk_runtime.national_reconciliation import uk_fanout_sum_controls
@@ -126,25 +126,73 @@ def test_a_surface_binding_the_area_cells_without_the_control_is_refused():
         _uk_fanout_sum_controls(rows, {})
 
 
-def _receipt(factor: float) -> dict:
-    return {
-        "groups": [
-            {
-                "inconsistency_id": "x",
-                "bridge_id": _EMPLOYMENT,
-                "winning_grain": "country",
-                "lower_grain": "constituency",
-                "legs": [{"leg": "all", "declared_factor": factor}],
-            }
-        ]
-    }
+def _area(level: str, area: str, value: float, before: float) -> TargetSpec:
+    return TargetSpec(
+        name=f"hmrc.employment_income.amount@{area}@2025",
+        entity="person",
+        measure="hmrc/employment_income/amount",
+        value=value,
+        period=2025,
+        family="hmrc",
+        source="test",
+        metadata={
+            "contract_target_id": "hmrc.employment_income.amount",
+            "geography_level": level,
+            "geography_id": area,
+            "ledger_value_before_alignment": repr(before),
+        },
+    )
 
 
-def test_a_bridge_factor_beyond_its_tolerance_is_refused():
+def _controls(control: float, before: float) -> dict:
+    return {_EMPLOYMENT: {"control": control, "control_before_alignment": before}}
+
+
+def test_the_gate_reads_source_agreement_apart_from_the_two_indices():
+    # At source the cells sum to 1,000 against bands of 1,010 (1% apart). The
+    # bands grew 20% band by band and the cells 15% on the all-ranges index,
+    # so the applied factor is 5.4% from one while the sides agree at source.
+    registry = TargetRegistry(
+        [
+            _area("constituency", "E14000001", 575.0, 500.0),
+            _area("constituency", "E14000002", 575.0, 500.0),
+            _area("local_authority", "E06000001", 1_150.0, 1_000.0),
+        ],
+        country="uk",
+    )
+    rows = _assert_uk_fanout_sum_agreement(registry, _controls(1_212.0, 1_010.0))
+    assert [(row["geography_level"], row["cells"]) for row in rows] == [
+        ("constituency", 2),
+        ("local_authority", 1),
+    ]
+    for row in rows:
+        assert row["source_factor"] == pytest.approx(1.01)
+        assert row["applied_factor"] == pytest.approx(1_212.0 / 1_150.0)
+        assert row["index_factor"] == pytest.approx(1.2 / 1.15)
+        assert row["max_factor_shift"] == 0.02
+
+
+def test_a_grain_the_single_winner_rule_reconciles_first_is_still_gated():
+    # The constituency cells agree with the bands; the local-authority cells
+    # are 3% short at source. The reconciliation parents the local-authority
+    # cells on the constituency cells, so its bridge leg would read one.
     (bridge,) = [b for b in UK_FANOUT_SUM_BRIDGES if b.bridge_id == _EMPLOYMENT]
     assert bridge.max_factor_shift == 0.02
-    assert _assert_uk_fanout_sum_factors(_receipt(1.015))[0]["declared_factor"] == (
-        1.015
+    registry = TargetRegistry(
+        [
+            _area("constituency", "E14000001", 1_000.0, 1_000.0),
+            _area("local_authority", "E06000001", 970.0, 970.0),
+        ],
+        country="uk",
     )
-    with pytest.raises(ValueError, match="no longer measure one quantity"):
-        _assert_uk_fanout_sum_factors(_receipt(1.03))
+    with pytest.raises(ValueError, match="local_authority cells.*no longer measure"):
+        _assert_uk_fanout_sum_agreement(registry, _controls(1_000.0, 1_000.0))
+
+
+def test_a_surface_binding_the_cells_needs_the_control_to_gate_them():
+    registry = TargetRegistry(
+        [_area("constituency", "E14000001", 1.0, 1.0)], country="uk"
+    )
+    with pytest.raises(ValueError, match="no summed control"):
+        _assert_uk_fanout_sum_agreement(registry, {})
+    assert _assert_uk_fanout_sum_agreement(TargetRegistry([], country="uk"), {}) == []

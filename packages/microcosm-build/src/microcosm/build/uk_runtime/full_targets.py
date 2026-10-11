@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
     load_uk_local_target_reference_membership,
+    uk_cross_grain_coverage_receipt,
 )
 from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.build.uk_runtime.measure_simulation import (
@@ -35,6 +36,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.national_reconciliation import (
+    assert_uk_subset_relations,
     reconcile_uk_national_registry,
 )
 from microcosm.build.uk_runtime.uprating_holds import (
@@ -333,6 +335,13 @@ def load_uk_national_target_inputs(
     reconciled, national_reconciliation = reconcile_uk_national_registry(
         compilation.registry
     )
+    # The joint path runs the coverage check on its local surface; the
+    # national line has none, so it runs the same check here.
+    national_reconciliation = {
+        **national_reconciliation,
+        "coverage": uk_cross_grain_coverage_receipt(),
+        "subset_relations": assert_uk_subset_relations(reconciled),
+    }
     registry, exclusion_receipt = apply_uk_calibration_measure_exclusions(
         reconciled, exclusions, now=evaluated_on
     )

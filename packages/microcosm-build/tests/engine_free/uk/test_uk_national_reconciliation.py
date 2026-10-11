@@ -62,6 +62,7 @@ def test_regional_cells_close_on_the_uk_bands_they_nest_in():
             "hmrc.spi_region.taxpayers_by_region_30000_40000",
             "hmrc.spi_region.taxpayers_by_region_40000_50000",
         ),
+        max_factor_shift=0.02,
     )
     (receipt,) = _apply_band_bridges(specs, (bridge,))
     lower = math.fsum(spec.value for spec in specs[1:])
@@ -85,9 +86,52 @@ def test_an_open_top_regional_band_takes_every_uk_band_above_it():
         higher_target_id="hmrc.itl.taxpayers_by_total_income_band",
         higher_band_lower_bounds=(200000.0, 500000.0, 1000000.0, 2000000.0),
         lower_target_ids=("hmrc.spi_region.taxpayers_by_region_200000_plus",),
+        max_factor_shift=0.02,
     )
     _apply_band_bridges(specs, (bridge,))
     assert specs[-1].value == pytest.approx(400.0)
+
+
+def test_a_band_bridge_factor_beyond_its_bound_is_refused():
+    specs = [
+        _itl(30000, "50000", 12_000.0),
+        _regional("30000_40000", "E12000001", 11_000.0),
+    ]
+    bridge = UKBandBridge(
+        bridge_id="itl_taxpayers_30000",
+        higher_target_id="hmrc.itl.taxpayers_by_total_income_band",
+        higher_band_lower_bounds=(30000.0,),
+        lower_target_ids=("hmrc.spi_region.taxpayers_by_region_30000_40000",),
+        max_factor_shift=0.05,
+    )
+    with pytest.raises(ValueError, match="beyond the declared 0.05"):
+        _apply_band_bridges(specs, (bridge,))
+    assert specs[1].value == 11_000.0
+
+
+def test_every_declared_band_bridge_states_a_bound_and_its_measured_gap():
+    bridges = uk_band_bridges()
+    assert len(bridges) == 24
+    assert all(0.005 < bridge.max_factor_shift <= 0.063 for bridge in bridges)
+    # The lowest band carries most of the taxpayers HMRC places in no region.
+    by_id = {bridge.bridge_id: bridge for bridge in bridges}
+    assert by_id["itl_income_tax_12570_vs_spi_region_12570"].max_factor_shift == 0.063
+    assert by_id["itl_taxpayers_30000_vs_spi_region_30000_40000"].max_factor_shift == (
+        0.008
+    )
+    with pytest.raises(ValueError, match="must declare a max_factor_shift"):
+        uk_band_bridges(
+            {
+                "band_bridges": [
+                    {
+                        "bridge_id": "x",
+                        "higher_target_id": "h",
+                        "higher_band_lower_bounds": [0],
+                        "lower_target_ids": [],
+                    }
+                ]
+            }
+        )
 
 
 def test_a_bridge_whose_uk_band_is_missing_is_refused():
@@ -97,6 +141,7 @@ def test_a_bridge_whose_uk_band_is_missing_is_refused():
         higher_target_id="hmrc.itl.taxpayers_by_total_income_band",
         higher_band_lower_bounds=(30000.0,),
         lower_target_ids=("hmrc.spi_region.taxpayers_by_region_30000_40000",),
+        max_factor_shift=0.02,
     )
     with pytest.raises(ValueError, match="expects ITL band"):
         _apply_band_bridges(specs, (bridge,))
