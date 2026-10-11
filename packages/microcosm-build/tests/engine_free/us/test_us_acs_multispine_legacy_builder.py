@@ -131,6 +131,7 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert args.seed == 0
     assert args.geography_seed == 0
     assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
+    assert args.allow_esi_premium_gaps is False
 
     custom = builder._parse_args(
         [
@@ -180,6 +181,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("household")["congressional_district_geoid"] = [101, 200]
     combined.table("household")["county_fips"] = ["01001", "02020"]
     combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    combined.table("person")["employer_sponsored_insurance_premiums"] = [9_000.0, 0.0]
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -260,7 +262,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "column": "takes_up_snap_if_eligible",
                         "family": "benefit_participation",
                         "unmodeled_recipient_rows": 0,
-                    }
+                    },
+                    # The lane owes the ACS spine the employer premium too.
+                    {
+                        "column": "employer_sponsored_insurance_premiums",
+                        "family": "source_operator_esi_premiums",
+                        "unmodeled_recipient_rows": 0,
+                    },
                 ],
             },
         )
@@ -340,6 +348,29 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch.setattr(builder, "_write_dataset", fake_write)
     monkeypatch.setattr(builder, "acs_local_hours_signal_gate", staging_hours_gate)
 
+    def qualify_esi_premium_donor(frame):
+        captured.setdefault("esi_premium_donors", []).append(frame)
+        return frame, {"donor_channel": "asec"}
+
+    def staging_esi_premium_gates(frame, *, time_period):
+        captured["staging_esi_premium_gates"] = (frame, time_period)
+        return (
+            GateResult(name="esi_premiums_signal", passed=True, failures=()),
+            GateResult(
+                name="esi_premiums_anchor",
+                passed=True,
+                failures=(),
+                details={"relative_error": 0.0, "cross_check_ratio": float("nan")},
+            ),
+        )
+
+    monkeypatch.setattr(
+        builder, "prepare_acs_local_esi_premium_donor", qualify_esi_premium_donor
+    )
+    monkeypatch.setattr(
+        builder, "acs_local_esi_premium_gates", staging_esi_premium_gates
+    )
+
     arguments = [
         "--base-h5",
         str(base_h5),
@@ -385,6 +416,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert actual_source.max_households == 7
     assert build_options.pop("puma_ladder") is puma_ladder
     assert callable(build_options.pop("hours_donor_factory"))
+    # The donor is qualified before the ACS sources are fetched, and the same
+    # qualifier selects its rows when the transfer runs.
+    assert build_options.pop("esi_premium_donor_factory") is qualify_esi_premium_donor
+    assert captured["esi_premium_donors"] == [base]
+    assert captured["staging_esi_premium_gates"] == (combined, 2024)
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
@@ -415,6 +451,26 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     ]
     assert summary["reviewed_engine_input_nulls"] == [reviewed_null]
     assert summary["local_hours_gate"]["passed"] is True
+    assert summary["local_esi_premiums"] == {
+        "enforced": True,
+        "transferred": True,
+        "donor_qualification_waived": None,
+        "provenance": None,
+        "signal_gate": {
+            "name": "esi_premiums_signal",
+            "passed": True,
+            "failures": [],
+            "details": {},
+        },
+        "anchor_gate": {
+            "name": "esi_premiums_anchor",
+            "passed": True,
+            "failures": [],
+            # Strict JSON: a non-finite detail is written as null.
+            "details": {"relative_error": 0.0, "cross_check_ratio": None},
+        },
+    }
+    assert summary["orchestration"]["allow_esi_premium_gaps"] is False
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -471,6 +527,128 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         },
     }
     assert summary["output"]["sha256"] == hashlib.sha256(b"combined-output").hexdigest()
+
+
+def test_esi_premium_donor_is_qualified_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """microcosm#454: a donor without the stage's premium stops the build early."""
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: _frame())
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+    monkeypatch.setattr(
+        builder, "_require_dense_donor_coverage", lambda frame, **kwargs: None
+    )
+
+    def must_not_fetch(*_args, **_kwargs):
+        raise AssertionError("source fetch must not run for an unqualified donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit) as exc:
+        builder.main(["--base-h5", "prestage.h5", "--out-h5", "combined.h5"])
+
+    message = str(exc.value)
+    assert "failed the ESI employer premium qualification" in message
+    assert "employer_sponsored_insurance_premiums" in message
+    assert "meps_esi_premiums stage" in message
+    assert "--allow-esi-premium-gaps" in message
+
+
+def test_esi_premium_donor_refusal_is_a_recorded_waiver_for_a_diagnostic_build() -> (
+    None
+):
+    builder = _load_builder_module()
+
+    waiver = builder._qualify_esi_premium_donor(_frame(), allow_gaps=True)
+
+    assert waiver is not None
+    assert "built without the meps_esi_premiums stage" in waiver
+
+
+def test_local_coverage_plan_owes_the_premium_only_when_it_was_transferred() -> None:
+    builder = _load_builder_module()
+    hours_only = builder.acs_local_transfer_target_families()
+
+    with_premium = builder._local_coverage_plan(esi_premiums=True)
+    without_premium = builder._local_coverage_plan(esi_premiums=False)
+
+    assert with_premium["person"]["source_operator_esi_premiums"] == (
+        "employer_sponsored_insurance_premiums",
+    )
+    assert without_premium == hours_only
+    assert {
+        family: targets
+        for family, targets in with_premium["person"].items()
+        if family != "source_operator_esi_premiums"
+    } == dict(hours_only["person"])
+    # The composition copies: the shared plans are not edited in place.
+    assert builder.acs_local_transfer_target_families() == hours_only
+    assert (
+        "source_operator_esi_premiums"
+        not in (builder.declared_acs_transfer_target_families()["person"])
+    )
+
+
+def _esi_premium_gates(*, signal: tuple[str, ...] = (), anchor: tuple[str, ...] = ()):
+    return lambda frame, *, time_period: (
+        GateResult(name="esi_premiums_signal", passed=not signal, failures=signal),
+        GateResult(name="esi_premiums_anchor", passed=not anchor, failures=anchor),
+    )
+
+
+def test_red_staging_esi_premium_gates_abort_before_export(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    monkeypatch.setattr(
+        builder,
+        "acs_local_esi_premium_gates",
+        _esi_premium_gates(anchor=("off the NHE anchor",)),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._local_esi_premium_evidence(
+            result, period=2024, waiver=None, allow_gaps=False
+        )
+
+    assert "Local staging ESI employer premium gates failed" in str(exc.value)
+    assert "esi_premiums_anchor: off the NHE anchor" in str(exc.value)
+
+
+def test_waived_staging_esi_premium_gates_are_recorded_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    missing = ("person column missing: employer_sponsored_insurance_premiums.",)
+    monkeypatch.setattr(
+        builder,
+        "acs_local_esi_premium_gates",
+        _esi_premium_gates(signal=missing, anchor=missing),
+    )
+
+    evidence = builder._local_esi_premium_evidence(
+        result,
+        period=2024,
+        waiver="Local ESI premium donor lacks the column.",
+        allow_gaps=True,
+    )
+
+    assert evidence["enforced"] is False
+    assert evidence["transferred"] is False
+    assert evidence["donor_qualification_waived"] == (
+        "Local ESI premium donor lacks the column."
+    )
+    assert evidence["signal_gate"]["passed"] is False
+    assert evidence["signal_gate"]["failures"] == list(missing)
+    assert evidence["anchor_gate"]["failures"] == list(missing)
+    json.dumps(evidence, allow_nan=False)
 
 
 def test_weights_audit_failure_aborts_before_export() -> None:

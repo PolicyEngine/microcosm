@@ -42,7 +42,8 @@ package; each is separately resumable):
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
-                gate, spine-composition evidence) + the reviewed-limitations
+                gate, both ESI employer-premium gates on the calibrated
+                artifact, spine-composition evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -79,6 +80,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
+from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_gate_payload,
+    acs_local_esi_premium_gates,
+)
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
 
@@ -503,13 +508,15 @@ def fill_reviewed_nulls(
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled. The ESI employer premium input is never
-    filled, registered or not: a null there refuses the build.
+    defect, surfaced not filled. The ESI employer premium is never filled,
+    registered or not: a null there refuses the build.
     """
 
-    # microcosm#454: the ESI employer premium exists only where the
-    # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
-    # fill: a registered null here would become a silent zero on the ACS spine.
+    # microcosm#454: the staging build transfers the ESI employer premium onto
+    # the ACS spine and holds it to the donor rows' scale, so every row of a
+    # current staging frame carries it. A null means a staging H5 built before
+    # that. Refuse before any fill: a registered null here would become a
+    # silent zero on the ACS spine.
     refuse_unassigned_us_esi_premiums(
         frame, consumer="ACS local release (fill_reviewed_nulls)"
     )
@@ -2684,6 +2691,56 @@ def _require_local_hours(frame, staging_summary: dict) -> None:
         raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
 
 
+#: The lane's verdict on the ESI employer premium (microcosm#454), in the
+#: gate report finalize writes and package requires.
+ESI_PREMIUM_GATE_NAMES = ("esi_premiums_signal", "esi_premiums_anchor")
+
+
+def _esi_premium_gate_entry(gate, *, artifact_sha256: str, enforced: bool) -> dict:
+    """One ESI premium verdict, bound to the artifact bytes it graded."""
+
+    payload = acs_local_esi_premium_gate_payload(gate)
+    return {
+        "passed": payload["passed"],
+        "failures": payload["failures"],
+        "detail": payload["details"],
+        "artifact_sha256": artifact_sha256,
+        "enforced": enforced,
+    }
+
+
+def _require_esi_premium_gates(gates, *, h5_sha: str, allow_gaps: bool) -> None:
+    """Refuse to package without the lane's passing ESI premium verdict.
+
+    Both gates must be present and bound to the bytes being packaged. A red
+    gate is refused unless this stage was also run with
+    ``--allow-esi-premium-gaps``; a report finalized before the gates existed
+    carries neither and is always refused.
+    """
+
+    for name in ESI_PREMIUM_GATE_NAMES:
+        gate = gates.get(name) if isinstance(gates, dict) else None
+        if not isinstance(gate, dict) or not isinstance(gate.get("passed"), bool):
+            raise SystemExit(
+                f"The finalize gate report carries no {name} verdict "
+                "(microcosm#454); an old simulation_ready summary is "
+                "insufficient. Re-run --stage finalize."
+            )
+        if gate.get("artifact_sha256") != h5_sha:
+            raise SystemExit(
+                f"The {name} gate is missing its artifact binding or certifies "
+                "different H5 bytes. Re-run --stage finalize against the "
+                "current artifact."
+            )
+        if gate["passed"] is not True and not allow_gaps:
+            raise SystemExit(
+                f"Packaging requires a passing {name} gate: "
+                + "; ".join(map(str, gate.get("failures") or ["no failure recorded"]))
+                + ". --allow-esi-premium-gaps packages a diagnostic build with "
+                "the red verdict recorded."
+            )
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -2760,6 +2817,13 @@ def do_finalize(args) -> None:
     # the two hours columns it carries.
     hours_gate = us_hours_worked_signal_gate(
         frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+    )
+    # microcosm#454: the lane's own verdict on the ESI employer premium, on
+    # the calibrated bytes. The donor rows get the MEPS-IC recomputation, the
+    # ACS rows are compared with them, and the anchor-universe total is held
+    # to NHE Table 24 at the calibrated weights.
+    esi_signal_gate, esi_anchor_gate = acs_local_esi_premium_gates(
+        frame, time_period=PERIOD
     )
     del frame
     gc.collect()
@@ -2869,17 +2933,35 @@ def do_finalize(args) -> None:
             ),
             "detail": diagnostics.get("weight_origin"),
         },
+        "esi_premiums_signal": _esi_premium_gate_entry(
+            esi_signal_gate,
+            artifact_sha256=hours_artifact_sha,
+            enforced=not args.allow_esi_premium_gaps,
+        ),
+        "esi_premiums_anchor": _esi_premium_gate_entry(
+            esi_anchor_gate,
+            artifact_sha256=hours_artifact_sha,
+            enforced=not args.allow_esi_premium_gaps,
+        ),
         "input_coverage": {
-            # Enforced upstream: the staging driver's donor-coverage gate
-            # hard-fails before transfer, so reaching finalize means it held.
-            "passed": True,
+            # The donor's own coverage is enforced upstream: the staging
+            # driver's donor-coverage gate hard-fails before transfer, so
+            # reaching finalize means it held. That says nothing about a
+            # required input on the ACS spine, so the one this lane produces
+            # there from a stage output, the ESI employer premium, is graded
+            # on this artifact by the two gates above.
+            "passed": bool(esi_signal_gate.passed and esi_anchor_gate.passed),
             "binds": "donor_certified_release",
+            "graded_on_artifact": ["esi_premiums_signal", "esi_premiums_anchor"],
             "note": (
                 "Input coverage is enforced on the certified donor release "
                 "before transfer; the ACS spine inherits required inputs via "
-                "QRF transfer. ACS native GQ-housing / source-universe nulls "
-                "are reviewed_limitations (calibration_blocker: false) and "
-                "are NOT re-imposed on the ACS spine."
+                "QRF transfer. The ESI employer premium (microcosm#454) is "
+                "also graded on the calibrated artifact: esi_premiums_signal "
+                "and esi_premiums_anchor. ACS native GQ-housing / "
+                "source-universe nulls are reviewed_limitations "
+                "(calibration_blocker: false) and are NOT re-imposed on the "
+                "ACS spine."
             ),
         },
         "spine_composition": {
@@ -2933,6 +3015,12 @@ def do_finalize(args) -> None:
         )
         if not gates[name]["passed"]
     ]
+    # --allow-esi-premium-gaps records a red ESI premium gate without failing
+    # a diagnostic build; the gate entries keep what was red.
+    if not args.allow_esi_premium_gaps:
+        hard_failures += [
+            name for name in ESI_PREMIUM_GATE_NAMES if not gates[name]["passed"]
+        ]
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -3159,6 +3247,14 @@ def do_package(args) -> dict:
         out_h5=calibrated_h5,
         out_h5_sha256=h5_sha,
         stage="package",
+    )
+    # microcosm#454: the lane's verdict on the ESI employer premium must be
+    # in the report and bound to these bytes. A refusal leaves no release
+    # directory behind.
+    _require_esi_premium_gates(
+        gate_report.get("gates"),
+        h5_sha=h5_sha,
+        allow_gaps=args.allow_esi_premium_gaps,
     )
 
     code = _repo_code_identity(args.allow_dirty)
@@ -3637,6 +3733,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Release root for --stage package (releases/<id>/ lands here).",
     )
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): record the ESI premium "
+            "gates on the calibrated artifact — "
+            "employer_sponsored_insurance_premiums absent, zero-mass, missing "
+            "on the ACS spine, missing its raw ASEC coverage columns, or off "
+            "the CMS NHE Table 24 anchor — without failing finalize or "
+            "package (for example on a staging H5 built from a donor that "
+            "predates the meps_esi_premiums stage). The failures are still "
+            "written to the gate report. Release builds must leave this unset."
+        ),
+    )
     parser.add_argument(
         "--allow-partial-geography",
         action="store_true",

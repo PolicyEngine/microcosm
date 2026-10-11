@@ -346,7 +346,11 @@ for what each mode contains and where the build records it. Its
 `--l2-basis chi_square` and `--mass-parametrization softmax` options (defaults:
 the historical `record` and `projection`) penalize distance from the design
 weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
-for the algebra, the evidence and the measured frontier.
+for the algebra, the evidence and the measured frontier. The chain needs a
+donor release that carries `employer_sponsored_insurance_premiums`: its
+staging build transfers the column onto the ACS spine, and finalize grades it
+on the calibrated artifact with both ESI premium gates. See
+[ACS local releases](docs/us-esi-employer-premiums.md#acs-local-releases).
 
 National and ACS local-area builds now use the same typed schema-8 calibration
 diagnostics writer. The local builder adds its Census population marginals to a
