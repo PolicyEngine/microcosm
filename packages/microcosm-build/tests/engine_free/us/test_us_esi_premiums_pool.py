@@ -12,10 +12,14 @@ Invariants of :func:`with_us_esi_premium_pool_anchor`, for every valid pool:
 * **Equal intensity**: source-derived and transferred rows carry the same
   weighted employer premium per unit of household mass.
 * **Source rows are immutable**: no source-derived cell changes by a byte.
-* **Structural zeros**: a transferred person whose source record reports no
-  wages carries no premium, on every support clone.
+* **One premium per person**: every support clone of a transferred person
+  carries its clone-0 source record's draw, whether the pool transferred
+  before or after it cloned.
+* **Structural zeros**: a transferred person whose source record reports zero
+  wages carries no premium, on every support clone. A missing wage is
+  refused, never read as zero.
 * **Proportionality**: every other transferred employer premium is one common
-  multiple of the value the transfer drew.
+  multiple of the value the transfer drew for the source record.
 * **Idempotence**: a pool already on the stage's scale is returned unchanged.
 * **Weight homogeneity**: rescaling every household weight leaves each value
   where it was.
@@ -66,6 +70,7 @@ EMPLOYER = US_ESI_EMPLOYER_PREMIUM_COLUMN
 ANCHOR = float(esi.EMPLOYER_PREMIUM_ANCHOR["values"]["2024"])
 WAGES = US_ESI_PREMIUMS_WAGE_COLUMN
 RAW = esi._RAW_EVIDENCE_COLUMNS
+CPS_ID = esi._CPS_EVIDENCE_COLUMN
 _GROUPS = ("tax_unit", "spm_unit", "family", "marital_unit")
 _REPOSITORY_ROOT = paths_for("microcosm-build").repository
 
@@ -74,6 +79,7 @@ def _pool(
     households: list[dict],
     *,
     clone_of: dict[int, int] | None = None,
+    clone_index: dict[int, int] | None = None,
 ) -> Frame:
     """A pool frame from household records.
 
@@ -82,9 +88,12 @@ def _pool(
     other stage output takes half the employer premium. ``clone_of`` maps a
     household position to the position of the household it is a support clone
     of; clones then share ``person_source_id`` with their source person.
+    ``clone_index`` gives a clone's support index (1 by default; 2 is the
+    capital-gains tail descendant).
     """
 
     clone_of = clone_of or {}
+    clone_index = clone_index or {}
     records = []
     for position, household in enumerate(households):
         origin = clone_of.get(position, position)
@@ -92,7 +101,9 @@ def _pool(
             record = {
                 "person_household_id": position + 1,
                 "person_source_id": (origin + 1) * 100 + member,
-                "person_support_clone_index": int(position in clone_of),
+                "person_support_clone_index": (
+                    clone_index.get(position, 1) if position in clone_of else 0
+                ),
                 WAGES: float(wages),
             }
             record |= {
@@ -100,6 +111,10 @@ def _pool(
                 for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS
             }
             record |= {column: 1.0 if household["source"] else np.nan for column in RAW}
+            # The CPS record id corroborates the row kind the raw fields imply.
+            record[CPS_ID] = (
+                f"cps-{origin + 1:04d}-{member}" if household["source"] else None
+            )
             records.append(record)
     person = pd.DataFrame(records)
     person.insert(0, "person_id", np.arange(1, len(person) + 1, dtype="int64"))
@@ -146,7 +161,10 @@ _amount = st.one_of(
     st.floats(min_value=1.0, max_value=40_000.0, allow_nan=False),
 )
 _person = st.tuples(_amount, _amount)
-_weight = st.floats(min_value=0.5, max_value=5_000.0, allow_nan=False)
+_weight = st.one_of(
+    st.just(0.0),
+    st.floats(min_value=0.5, max_value=5_000.0, allow_nan=False),
+)
 
 
 def _households(source: bool) -> st.SearchStrategy[list[dict]]:
@@ -159,19 +177,65 @@ def _households(source: bool) -> st.SearchStrategy[list[dict]]:
             }
         ),
         min_size=1,
-        max_size=8,
+        max_size=6,
     )
+
+
+def _record(frame: Frame, column: str) -> np.ndarray:
+    """Each row's value of ``column`` on its clone-0 source record."""
+
+    person = frame.table("person")
+    native = person["person_support_clone_index"].eq(0)
+    by_source = person.loc[native].set_index("person_source_id")[column]
+    return person["person_source_id"].map(by_source).to_numpy(dtype=float)
+
+
+def _transferred_mass(frame: Frame) -> float:
+    return 1.0 - us_esi_premiums_household_mass_share(frame, _source_rows(frame))
 
 
 @st.composite
 def _pools(draw) -> Frame:
+    """Valid pools: either household kind may hold zero-weight households and
+    support clones (index 1 and the tail's index 2).
+
+    A source household's clone copies its people, as the pool's clone does. A
+    transferred household's clone gets its own draws and wages, as a transfer
+    that ran after the clone would leave it.
+    """
+
     households = draw(_households(True)) + draw(_households(False))
-    frame = _pool(households)
+    clone_of: dict[int, int] = {}
+    clone_index: dict[int, int] = {}
+    for position in range(len(households)):
+        origin = households[position]
+        for index in sorted(draw(st.sets(st.sampled_from([1, 2])))):
+            people = (
+                origin["people"]
+                if origin["source"]
+                else draw(
+                    st.lists(
+                        _person,
+                        min_size=len(origin["people"]),
+                        max_size=len(origin["people"]),
+                    )
+                )
+            )
+            clone_of[len(households)] = position
+            clone_index[len(households)] = index
+            households.append(
+                {"source": origin["source"], "weight": draw(_weight), "people": people}
+            )
+    # A frame needs weight somewhere, and the anchor needs it on a source row.
+    assume(any(household["weight"] > 0 for household in households))
+    frame = _pool(households, clone_of=clone_of, clone_index=clone_index)
     source = _source_rows(frame)
-    wages = _column(frame, WAGES)
-    employer = _column(frame, EMPLOYER)
     assume(_total(frame, source) > 0)
-    assume(((~source) & (wages > 0) & (employer > 0)).any())
+    weights = _person_weights(frame)
+    workers = ~source & (_record(frame, WAGES) > 0)
+    drawn_on_workers = float(weights[workers] @ _record(frame, EMPLOYER)[workers])
+    # Transferred mass needs premium on workers to scale; none needs nothing.
+    assume(drawn_on_workers > 0 or _transferred_mass(frame) == 0)
     return frame
 
 
@@ -204,6 +268,7 @@ def test_both_sides_carry_the_same_premium_per_unit_of_household_mass(
 ) -> None:
     source = _source_rows(frame)
     share = us_esi_premiums_household_mass_share(frame, source)
+    assume(share < 1.0)
 
     anchored, _receipt = with_us_esi_premium_pool_anchor(frame)
 
@@ -240,29 +305,47 @@ def test_transferred_rows_without_wages_carry_nothing_and_the_rest_one_multiple(
     frame: Frame,
 ) -> None:
     source = _source_rows(frame)
-    workers = _column(frame, WAGES) > 0
+    workers = _record(frame, WAGES) > 0
 
     anchored, receipt = with_us_esi_premium_pool_anchor(frame)
 
     cleared = ~source & ~workers
+    kept = ~source & workers
     for column in US_ESI_PREMIUMS_OUTPUT_COLUMNS:
+        drawn = _record(frame, column)
         assert not _column(anchored, column)[cleared].any()
-        assert receipt["cleared_rows"][column] == int(
-            (cleared & (_column(frame, column) > 0)).sum()
+        assert receipt["cleared_rows"][column] == int((cleared & (drawn > 0)).sum())
+        assert receipt["transferred_rows_reset_to_source_record"][column] == int(
+            (~source & (drawn != _column(frame, column))).sum()
         )
         if column != EMPLOYER:
-            kept = ~source & workers
-            np.testing.assert_array_equal(
-                _column(anchored, column)[kept], _column(frame, column)[kept]
-            )
-    scaled = ~source & workers
+            np.testing.assert_array_equal(_column(anchored, column)[kept], drawn[kept])
     np.testing.assert_allclose(
-        _column(anchored, EMPLOYER)[scaled],
-        _column(frame, EMPLOYER)[scaled] * receipt["scale_factor"],
+        _column(anchored, EMPLOYER)[kept],
+        _record(frame, EMPLOYER)[kept] * receipt["scale_factor"],
         rtol=1e-12,
     )
     assert np.isfinite(_column(anchored, EMPLOYER)).all()
     assert (_column(anchored, EMPLOYER) >= 0).all()
+
+
+@given(_pools())
+@_SETTINGS
+def test_every_support_clone_of_a_transferred_person_carries_one_premium(
+    frame: Frame,
+) -> None:
+    anchored, _receipt = with_us_esi_premium_pool_anchor(frame)
+
+    person = anchored.table("person")
+    transferred = ~_source_rows(anchored)
+    per_person = person.loc[transferred].groupby("person_source_id")[
+        list(US_ESI_PREMIUMS_OUTPUT_COLUMNS)
+    ]
+    assert (per_person.nunique() == 1).all().all()
+    np.testing.assert_array_equal(
+        _column(anchored, EMPLOYER)[transferred],
+        _record(anchored, EMPLOYER)[transferred],
+    )
 
 
 @given(_pools())
@@ -273,7 +356,9 @@ def test_a_pool_on_the_stage_scale_is_returned_unchanged(frame: Frame) -> None:
     again, receipt = with_us_esi_premium_pool_anchor(anchored)
 
     assert again is anchored
-    assert receipt["status"] == "already_on_anchor"
+    assert receipt["status"] == (
+        "already_on_anchor" if _transferred_mass(frame) > 0 else "no_transferred_mass"
+    )
     assert receipt["scale_factor"] == pytest.approx(1.0, rel=1e-12)
 
 
@@ -350,6 +435,69 @@ def test_support_clones_follow_their_source_record_wages() -> None:
     np.testing.assert_array_equal(employer[:2], [400.0, 400.0])
 
 
+def test_a_transfer_that_ran_after_the_clone_is_reset_to_one_premium_per_person() -> (
+    None
+):
+    # The legacy two-spine order clones first, so its transfer draws every
+    # support clone separately: $100 on the source record, $700 and nothing
+    # on its clones, whose own wages are another tax-detail vector.
+    frame = _pool(
+        [
+            {"source": True, "weight": 3.0, "people": [(300.0, 50_000.0)]},
+            {"source": False, "weight": 1.0, "people": [(100.0, 40_000.0)]},
+            {"source": False, "weight": 1.0, "people": [(700.0, 0.0)]},
+            {"source": False, "weight": 1.0, "people": [(0.0, 9.0)]},
+        ],
+        clone_of={2: 1, 3: 1},
+        clone_index={3: 2},
+    )
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    # Every clone takes the source record's $100, then the one factor.
+    np.testing.assert_array_equal(
+        _column(anchored, EMPLOYER), [300.0, 300.0, 300.0, 300.0]
+    )
+    assert receipt["transferred_rows_reset_to_source_record"][EMPLOYER] == 2
+    assert receipt["cleared_rows"][EMPLOYER] == 0
+    assert receipt["scale_factor"] == 3.0
+    assert _total(anchored) == 1_800.0
+
+
+def test_transferred_rows_without_household_mass_are_not_scaled() -> None:
+    # Nothing to hold a zero-mass side to: structural zeros still apply, the
+    # factor stays at one and the pool total is the source total.
+    frame = _pool(
+        [
+            {"source": True, "weight": 2.0, "people": [(300.0, 50_000.0)]},
+            {"source": False, "weight": 0.0, "people": [(250.0, 40_000.0)]},
+            {"source": False, "weight": 0.0, "people": [(500.0, 0.0)]},
+        ]
+    )
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    assert receipt["source_household_mass_share"] == 1.0
+    assert receipt["transferred_household_mass_share"] == 0.0
+    assert receipt["transferred_employer_premium_target"] == 0.0
+    assert receipt["scale_factor"] == 1.0
+    np.testing.assert_array_equal(_column(anchored, EMPLOYER), [300.0, 250.0, 0.0])
+    assert _total(anchored) == 600.0 == receipt["pool_employer_premium_target"]
+
+    again, receipt = with_us_esi_premium_pool_anchor(anchored)
+    assert again is anchored
+    assert receipt["status"] == "no_transferred_mass"
+
+
+def test_zero_mass_transferred_rows_need_no_premium_on_workers() -> None:
+    frame = _pool(_two_sided(h1={"weight": 0.0, "people": [(100.0, 0.0)]}))
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    np.testing.assert_array_equal(_column(anchored, EMPLOYER), [100.0, 0.0])
+    assert receipt["scale_factor"] == 1.0
+
+
 def test_a_frame_with_no_transferred_row_is_returned_unchanged() -> None:
     frame = _pool([{"source": True, "weight": 3.0, "people": [(100.0, 1.0)]}])
 
@@ -371,7 +519,9 @@ def _two_sided(**changes) -> list[dict]:
     return households
 
 
-def _with_person_cell(frame: Frame, row: int, column: str, value: object) -> Frame:
+def _with_person_cell(
+    frame: Frame, row: int, column: str | list[str], value: object
+) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["person"].loc[row, column] = value
     return Frame(
@@ -392,12 +542,77 @@ def test_a_household_mixing_both_kinds_of_row_is_refused() -> None:
     frame = _pool(
         [{"source": True, "weight": 1.0, "people": [(100.0, 1.0), (50.0, 1.0)]}]
     )
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables["person"].loc[1, list(RAW)] = np.nan
-    mixed = Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+    mixed = _with_person_cell(frame, 1, [*RAW, CPS_ID], None)
 
     with pytest.raises(SourceRuntimeError, match="mix source-derived and transferred"):
         with_us_esi_premium_pool_anchor(mixed)
+
+
+def _two_cps_one_transferred() -> Frame:
+    return _pool(
+        [
+            {"source": True, "weight": 1.0, "people": [(100.0, 1.0)]},
+            {"source": True, "weight": 1.0, "people": [(100.0, 1.0)]},
+            {"source": False, "weight": 2.0, "people": [(100.0, 1.0)]},
+        ]
+    )
+
+
+def test_a_cps_record_that_lost_its_raw_fields_is_not_a_transferred_row() -> None:
+    # Nulls in every coverage field look like a transferred row. The CPS
+    # record id says otherwise, and the premium is not taken on trust.
+    frame = _with_person_cell(_two_cps_one_transferred(), 1, list(RAW), np.nan)
+
+    with pytest.raises(
+        SourceRuntimeError, match=r"1 CPS record\(s\).*lack the raw ASEC fields"
+    ):
+        with_us_esi_premium_pool_anchor(frame)
+
+
+@pytest.mark.parametrize("blank", [None, "", "   "])
+def test_raw_fields_without_a_cps_record_id_are_refused(blank: object) -> None:
+    frame = _with_person_cell(_two_cps_one_transferred(), 1, CPS_ID, blank)
+
+    with pytest.raises(SourceRuntimeError, match="without a CPS record id"):
+        with_us_esi_premium_pool_anchor(frame)
+
+
+def test_a_frame_without_the_cps_record_id_cannot_hold_transferred_rows() -> None:
+    frame = _two_cps_one_transferred()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = tables["person"].drop(columns=[CPS_ID])
+    unmarked = Frame(
+        tables, frame.schema, {"household": frame.weights_for("household")}
+    )
+
+    with pytest.raises(SourceRuntimeError, match=f"no {CPS_ID!r} column"):
+        with_us_esi_premium_pool_anchor(unmarked)
+
+
+@pytest.mark.parametrize("wage", [np.nan, None])
+def test_a_transferred_person_with_a_missing_wage_is_refused(wage: object) -> None:
+    # Missing evidence is not a zero: the premium is neither cleared nor kept.
+    frame = _with_person_cell(_pool(_two_sided()), 1, WAGES, wage)
+
+    with pytest.raises(SourceRuntimeError, match="A missing wage is not a zero wage"):
+        with_us_esi_premium_pool_anchor(frame)
+
+
+def test_a_missing_wage_on_a_source_record_blocks_its_clones_too() -> None:
+    frame = _pool(_two_sided() + [_two_sided()[1]], clone_of={2: 1})
+    frame = _with_person_cell(frame, 1, WAGES, np.nan)
+
+    with pytest.raises(SourceRuntimeError, match="2 transferred row"):
+        with_us_esi_premium_pool_anchor(frame)
+
+
+def test_a_missing_wage_on_a_source_derived_row_is_not_read() -> None:
+    frame = _with_person_cell(_pool(_two_sided()), 0, WAGES, np.nan)
+
+    anchored, receipt = with_us_esi_premium_pool_anchor(frame)
+
+    assert anchored is frame
+    assert receipt["status"] == "already_on_anchor"
 
 
 @pytest.mark.parametrize("value", [np.nan, np.inf, -1.0])
@@ -919,6 +1134,96 @@ def test_reweighting_one_side_moves_the_pool_total_but_not_the_per_mass_ratio(
     )
 
 
+def _with_person_rows(frame: Frame, rows: np.ndarray, columns, value) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    person.loc[person.index[rows], columns] = value
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        metadata=frame.metadata,
+    )
+
+
+def test_a_pool_whose_transferred_rows_hold_no_mass_passes_both_gates(
+    stacked_pool,
+) -> None:
+    # Selection can leave one source without weight. The other source then
+    # carries the whole population, and there is no second half to compare.
+    anchored = stacked_pool["anchored"]
+    household = anchored.table("household")
+    transferred_households = household["household_id"].isin(
+        anchored.table("person").loc[~_source_rows(anchored), "person_household_id"]
+    )
+    source_only = _reweighted(anchored, np.where(transferred_households, 0.0, 2.0))
+
+    signal = us_esi_premiums_signal_gate(source_only)
+    anchor = us_esi_premiums_anchor_gate(source_only, time_period=2024)
+
+    assert signal.passed, signal.failures
+    assert anchor.passed, anchor.failures
+    assert anchor.details["transferred_household_mass_share"] == 0.0
+    assert anchor.details["anchor_universe_employer_total"] == pytest.approx(
+        ANCHOR, rel=1e-9
+    )
+    again, receipt = with_us_esi_premium_pool_anchor(source_only)
+    assert again is source_only
+    assert receipt["status"] == "no_transferred_mass"
+
+
+def test_cps_records_that_lost_their_raw_fields_fail_both_gates(stacked_pool) -> None:
+    anchored = stacked_pool["anchored"]
+    lost = np.flatnonzero(_source_rows(anchored))[:4]
+
+    for frame in (
+        # A pool, and a single-source frame: neither may read lost coverage
+        # codes as a transfer.
+        _with_person_rows(anchored, lost, list(RAW), np.nan),
+        _with_person_rows(
+            with_us_esi_premium_inputs(stacked_pool["asec"], seed=0, time_period=2024),
+            np.arange(4),
+            list(RAW),
+            np.nan,
+        ),
+    ):
+        for gate in (
+            us_esi_premiums_signal_gate(frame),
+            us_esi_premiums_anchor_gate(frame, time_period=2024),
+        ):
+            assert not gate.passed
+            assert "4 CPS record(s)" in gate.failures[0]
+            assert "lack the raw ASEC fields" in gate.failures[0]
+
+
+def test_transferred_support_clones_that_disagree_fail_the_signal_gate(
+    stacked_pool,
+) -> None:
+    cloned = clone_us_frame_for_puf_support(stacked_pool["filled"])
+    anchored, _receipt = with_us_esi_premium_pool_anchor(cloned)
+    person = anchored.table("person")
+    clone = np.flatnonzero(
+        ~_source_rows(anchored)
+        & person["person_support_clone_index"].eq(1).to_numpy()
+        & (person[EMPLOYER] > 0).to_numpy()
+    )[:1]
+    split = _with_person_rows(anchored, clone, EMPLOYER, 1.0)
+
+    signal = us_esi_premiums_signal_gate(split)
+
+    assert us_esi_premiums_signal_gate(anchored).passed
+    assert signal.details["transferred_clone_disagreement_source_records"] == 1
+    assert any(
+        "support-clone disagreement(s) on the rows without raw ASEC columns" in failure
+        for failure in signal.failures
+    )
+    # The anchor restores one premium per person.
+    restored, receipt = with_us_esi_premium_pool_anchor(split)
+    assert receipt["transferred_rows_reset_to_source_record"][EMPLOYER] == 1
+    assert us_esi_premiums_signal_gate(restored).passed
+
+
 def test_a_row_with_only_some_raw_columns_fails_both_gates(stacked_pool) -> None:
     anchored = stacked_pool["anchored"]
     tables = {entity: anchored.table(entity).copy() for entity in anchored.entities}
@@ -1016,6 +1321,18 @@ def test_the_pool_fill_receipts_reproduce_the_documented_measurements(
     }
     assert (anchor["source_rows"], anchor["transferred_rows"]) == rows
     assert anchor["source_household_mass_share"] == pytest.approx(0.5)
+    # Every ACS wage is a number by the anchor: the universe producer wrote
+    # the zeros below age 15 and no eligible record was missing one.
+    universe = receipt["acs_wage_universe"]
+    assert universe["rule_id"] == "acs_2024_pums_wagp_age_15_plus"
+    assert universe["in_universe_null_rows"] == 0
+    assert (
+        universe["structurally_absent_person_rows"]
+        + universe["eligible_acs_person_rows"]
+        == rows[1]
+    )
+    # The stacked order fills before it clones, so no clone needed resetting.
+    assert anchor["transferred_rows_reset_to_source_record"] == {EMPLOYER: 0}
     assert anchor["cleared_rows"] == {EMPLOYER: cleared}
     assert anchor["scale_factor"] == pytest.approx(factor, abs=5e-4)
     # Conservation and equal intensity, on the real fill.

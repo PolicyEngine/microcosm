@@ -329,15 +329,19 @@ by_origin_battery
    batched simulation run on the transferred stack. Between Schedule-D
    completion and QBI reconciliation the derive stage runs
    `with_us_esi_premium_pool_anchor`. On rows without the raw ASEC coverage
-   columns it clears the transferred employer premium where the person's
-   clone-0 record has no wages, then scales the rest by one factor so those
-   rows carry the same weighted premium per unit of household mass as the
-   rows the stage derived. It never rewrites a source-derived row, and it
-   tells the two kinds of row apart by whether the raw columns are present,
-   not by a source channel. The stack-wide total is then the source-derived
-   total divided by its household mass share. The receipt
+   columns it gives every support clone its clone-0 record's transferred
+   employer premium, clears it where that record has zero wages, then scales
+   the rest by one factor so those rows carry the same weighted premium per
+   unit of household mass as the rows the stage derived. It never rewrites a
+   source-derived row. It tells the two kinds of row apart by whether the raw
+   columns are present, corroborated by the CPS record id (`PERIDNUM`), not
+   by a source channel: a CPS record without the columns is refused. A
+   transferred record with a missing wage is refused too; the late ACS
+   earnings-universe producer has already written the explicit zeros below
+   age 15. The stack-wide total is then the source-derived total divided by
+   its household mass share. The receipt
    (`derive.pool_derivation.esi_premium_pool_anchor`) records that share, the
-   cleared rows and the factor. QBI reconciliation uses
+   rows reset and cleared, and the factor. QBI reconciliation uses
    the same source declaration: it fails on any in-universe self-employment
    null and preserves the receipted ACS under-15 base self-employment zero in
    every clone role. That narrow source exception does not suppress independent QBI
@@ -993,7 +997,7 @@ and valid. Neither receipt authorizes an upstream null.
 | Fit-weight audit | Every primary and post-PUF QRF fit receipts its resolved entity weight kind, and the collected fit records pass the weights audit before a transferred checkpoint can exist. | Calibrated household weights mapped by the frame to each modeled entity. | No. A missing, inconsistent, or manually substituted weight declaration fails before checkpoint emission. |
 | Tail preservation | Tail manifest, support decisions, attached descendants, IDs, weights, provenance, joint vector, and non-tail QRF cells remain exact after completion, transfer, derive, seed, and simulation. | The schema-v2 tail manifest and support receipt bound during the PUF pass and projected into both terminal gates. | A support receipt cannot authorize mutation. Any byte or identity change in an attached status, any descendant for a skipped status, or any receipt change fails. |
 | Schedule-D derive | Both transferred parent columns are finite for every person and align to every tax unit. Bounded late-transfer groups do not write this leaf; the whole-pool tax-unit derive is its sole canonical owner. | Completed late transfer plus tail replacements. | No. A residual would fail late transfer first and derive again by name. |
-| ESI premium anchor | Every row carries a finite, nonnegative employer premium. Each row is source-derived (every raw ASEC coverage column present) or transferred (all null), and no household mixes the two. The transferred rows hold premium mass on people whose source record has wages. | The pre-clone ESI operator on ASEC rows, the early gap-fill on ACS rows, and the clone, which copies one value per source person. | No. A null, a row with only some raw columns, or a transferred side with nothing to scale raises by name; nothing is defaulted and no source-derived cell is rewritten. |
+| ESI premium anchor | Every row carries a finite, nonnegative employer premium. Each row is source-derived (every raw ASEC coverage column and a CPS record id present) or transferred (all null), and no household mixes the two. Every transferred person's clone-0 record reports a finite wage. Transferred rows that hold household mass hold premium mass on people whose source record has wages. | The pre-clone ESI operator on ASEC rows, the early gap-fill on ACS rows, the clone, which copies one value per source person, and the late ACS earnings-universe producer, which writes the explicit wage zeros below age 15. | No. A null premium, a row with only some raw columns, a CPS record without them, a missing wage, or a weighted transferred side with nothing to scale raises by name; nothing is defaulted and no source-derived cell is rewritten. |
 | QBI derive | All QBI detail outputs are finite; self-employment is finite wherever its source applies; every independent archived QBI identity holds. The declared surface includes the base self-employment rewrite and binds pre/post digests. Its exact receipt is recomputed and authenticated at every persisted and publication boundary. | PUF/source detail plus ACS/ASEC native self-employment. Raw under-15 ACS `SEMP` remains structurally blank; mapped `self_employment_income_before_lsr` is a named, receipted universe zero. | No silent starvation. Every mapped ACS under-15 base value is held at its receipted universe zero across clone roles; all derived QBI cells remain in scope, and an in-universe null, forged receipt, or non-kernel output fails. |
 | Take-up seed | Every administratively seeded variable completes; transfer-owned take-up cannot use a default; only explicitly non-transfer-owned inputs may use receipted engine defaults. | Seed kernels, the complete transfer surface, and declared defaults. | Transfer-owned residuals fail. A declared default is a separate modeled state, not an insufficient-support receipt. |
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
@@ -1100,7 +1104,7 @@ runs:
 | Immigration | post | Source-keyed draws preserve equality across clones. |
 | Education | post | Deterministic rowwise derivation follows PUF tuition imputation. |
 | Schedule-D completion | post | Transferred tax-unit parents exist only on the physically cloned pool. |
-| ESI premium pool anchor | post | Runs once every row is filled: transferred employer premiums are cleared for people whose source record has no wages and scaled to the source rows' total per unit of household mass. |
+| ESI premium pool anchor | post | Runs once every row is filled: transferred employer premiums take their clone-0 record's draw, are cleared for people whose source record has zero wages, and are scaled to the source rows' total per unit of household mass. |
 | QBI reconciliation | post | All-or-nothing identities reconcile the post-transfer PUF detail surface. |
 
 The ASEC checkpoint remains the operator-untouched `raw_source_mapping`
