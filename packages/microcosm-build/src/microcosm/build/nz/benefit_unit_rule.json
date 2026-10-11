@@ -21,6 +21,11 @@
     "household_reference_person": "reference_person_id",
     "citation": "packages/microcosm-frame/src/microcosm/frame/concepts.py:880-919"
   },
+  "source_household_lineage": {
+    "concept": "fact:household.source_household_id",
+    "unit_column": "family.family_source_household_id",
+    "rule": "Each unit inherits its household's exact original-source key. The donor reader scopes raw source_household_id by source_year, merging support clones across channels; no row-order or support-row-id fallback is permitted."
+  },
   "composition": [
     {
       "member": "adult",

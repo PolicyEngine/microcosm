@@ -18,7 +18,8 @@ Every policy coefficient, override and solver setting remains spec data.
 ``variant_gap`` name each tier's gap producer template. ``package`` names the
 skeleton receipt node and the bands artifact alias; its optional ``inputs``
 adds other typed extension evidence, such as a held-out validation tripwire.
-The only skeleton change is these explicit artifact edges on the final receipt.
+The extension adds explicit artifact edges to the final receipt and, when a
+cell-support gate is declared, to its matching skeleton gate battery.
 """
 
 from __future__ import annotations
@@ -45,7 +46,12 @@ from .compose import (
     _sequence,
     transport_resource,
 )
-from .takeup_kernels import BANDS_TYPE, GAP_TYPE
+from .takeup_kernels import (
+    BANDS_TYPE,
+    CELL_DIAGNOSTICS_TYPE,
+    GAP_TYPE,
+    reporting_cell_declarations,
+)
 
 __all__ = ["ENTITLEMENT_RESOURCE", "entitlement_extension", "transport_extensions"]
 
@@ -56,6 +62,7 @@ _KERNELS = SKELETON_KERNELS | frozenset(
         "simulate.solve_zero@1",
         "takeup.gap@1",
         "takeup.bands@1",
+        "takeup.cell_diagnostics@1",
         "takeup.compare@1",
         "transport.scenario_override@1",
     }
@@ -188,7 +195,48 @@ def _rows(spec):
     return result, gaps
 
 
-def _types(rows, skeleton=None):
+def _cell_contract(spec):
+    resources = spec.get("resources", {})
+    if not any(name in resources for name in ("gates", "gates.json")):
+        return None
+    matches = [
+        row
+        for row in transport_resource(spec, "gates")["gates"]
+        if row["gate"] == "cell_support" and "not_applicable" not in row
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            "An entitlement graph needs exactly one cell-support contract."
+        )
+    gate = matches[0]
+    parameters = _mapping(gate["parameters"], "cell-support parameters")
+    thresholds = {
+        name: parameters[name]
+        for name in (
+            "minimum_cell_ess",
+            "maximum_contribution_cv",
+            "maximum_single_donor_dollar_share",
+            "target_minimum_cell_ess",
+            "target_maximum_single_donor_dollar_share",
+        )
+    }
+    reporting = transport_resource(spec, "scenarios")["gap_conventions"][
+        "reporting_cells"
+    ]
+    declarations = reporting_cell_declarations(reporting)
+    if set(parameters["required_cells"]) != {row["name"] for row in declarations}:
+        raise ValueError(
+            "The support gate must require exactly the declared reported cells."
+        )
+    _, gaps = _rows(spec)
+    if set(parameters["required_scenarios"]) != set(gaps):
+        raise ValueError("The support gate must require every declared scenario.")
+    return gate, thresholds, reporting
+
+
+def _types(rows, skeleton=None, *, cell_support=False):
     types = (
         {}
         if skeleton is None
@@ -199,9 +247,12 @@ def _types(rows, skeleton=None):
         }
     )
     for row, _ in rows:
-        outputs = {"takeup.gap@1": (ArtifactOutput("gap", GAP_TYPE),)}.get(
-            row["kernel"], _artifact_outputs(row)
-        )
+        if row["kernel"] == "takeup.gap@1":
+            outputs = (ArtifactOutput("gap", GAP_TYPE),)
+            if cell_support:
+                outputs += (ArtifactOutput("cell_diagnostics", CELL_DIAGNOSTICS_TYPE),)
+        else:
+            outputs = _artifact_outputs(row)
         types.update({(row["id"], output.name): output.type for output in outputs})
     return types
 
@@ -211,25 +262,86 @@ class _EntitlementFactory:
     def __call__(self, spec: Mapping, config: TransportGraphConfig, skeleton: Graph):
         document = _document(spec)
         rows, gaps = _rows(spec)
-        types = _types(rows, skeleton)
+        cell_contract = _cell_contract(spec)
+        types = _types(rows, skeleton, cell_support=cell_contract is not None)
         nodes: list[Node] = []
         for row, scenario in rows:
             params = {
                 key: _parameter(spec, config, value, scenario)
                 for key, value in row.get("params", {}).items()
             }
-            if row["kernel"] == "takeup.gap@1" and "artifact_outputs" not in row:
-                row = {
-                    **row,
-                    "artifact_outputs": [
+            if row["kernel"] == "takeup.gap@1" and cell_contract is not None:
+                gate, thresholds, reporting = cell_contract
+                contract_params = gate["parameters"]
+                params.update(
+                    source_household_column=contract_params["aggregation_column"],
+                    expected_weight_kind=contract_params["required_weight_kind"],
+                    cell_support=canonical_json(thresholds).decode("utf-8"),
+                    reporting_cells=canonical_json(reporting).decode("utf-8"),
+                )
+                if (
+                    params.get("weight_entity")
+                    != contract_params["required_weight_entity"]
+                ):
+                    raise ValueError(
+                        "Reported cells must use the declared household weight entity."
+                    )
+                extra_columns = {
+                    contract_params["required_weight_entity"]: {
+                        contract_params["aggregation_column"]
+                    }
+                }
+                extra_columns.setdefault(reporting["entity"], set()).update(
+                    {
+                        reporting["measure"],
+                        *(
+                            axis["column"]
+                            for table in reporting["tables"]
+                            for axis in table["axes"]
+                        ),
+                    }
+                )
+                inputs = [dict(item) for item in row.get("inputs", [])]
+                for entity, columns in extra_columns.items():
+                    matching = next(
+                        (item for item in inputs if item["entity"] == entity), None
+                    )
+                    if matching is None:
+                        inputs.append({"entity": entity, "columns": sorted(columns)})
+                    else:
+                        existing = list(matching["columns"])
+                        matching["columns"] = existing + sorted(columns - set(existing))
+                row = {**row, "inputs": inputs}
+            if row["kernel"] == "takeup.gap@1":
+                outputs = list(
+                    row.get(
+                        "artifact_outputs",
+                        [
+                            {
+                                "name": "gap",
+                                "type": {
+                                    "name": GAP_TYPE.name,
+                                    "schema_version": GAP_TYPE.schema_version,
+                                },
+                            }
+                        ],
+                    )
+                )
+                if cell_contract is not None and not any(
+                    output["name"] == "cell_diagnostics" for output in outputs
+                ):
+                    outputs.append(
                         {
-                            "name": "gap",
+                            "name": "cell_diagnostics",
                             "type": {
-                                "name": GAP_TYPE.name,
-                                "schema_version": GAP_TYPE.schema_version,
+                                "name": CELL_DIAGNOSTICS_TYPE.name,
+                                "schema_version": CELL_DIAGNOSTICS_TYPE.schema_version,
                             },
                         }
-                    ],
+                    )
+                row = {
+                    **row,
+                    "artifact_outputs": outputs,
                 }
             nodes.append(
                 _node(
@@ -243,6 +355,26 @@ class _EntitlementFactory:
             )
         bands = _mapping(document["bands"], "entitlement bands")
         aliases = {f"scenario_{index}": name for index, name in enumerate(sorted(gaps))}
+        if cell_contract is not None:
+            nodes.append(
+                Node(
+                    id=bands["id"] + ".cell_diagnostics",
+                    kernel="takeup.cell_diagnostics@1",
+                    population=bands["population"],
+                    params={
+                        "artifact_scenarios": canonical_json(aliases).decode("utf-8")
+                    },
+                    artifact_inputs=tuple(
+                        ArtifactInput(
+                            alias, gaps[name], "cell_diagnostics", CELL_DIAGNOSTICS_TYPE
+                        )
+                        for alias, name in aliases.items()
+                    ),
+                    artifact_outputs=(
+                        ArtifactOutput("cell_diagnostics", CELL_DIAGNOSTICS_TYPE),
+                    ),
+                )
+            )
         nodes.append(
             Node(
                 id=bands["id"],
@@ -268,7 +400,8 @@ def entitlement_extension(spec: Mapping) -> TransportExtension:
     rows, _ = _rows(spec)
     bands = _mapping(document["bands"], "entitlement bands")
     package = _mapping(document["package"], "entitlement package")
-    types = _types(rows)
+    cell_contract = _cell_contract(spec)
+    types = _types(rows, cell_support=cell_contract is not None)
     types[bands["id"], "bands"] = BANDS_TYPE
     edges = [
         ArtifactInput(
@@ -282,11 +415,43 @@ def entitlement_extension(spec: Mapping) -> TransportExtension:
                 row["name"], row["producer"], artifact, types[row["producer"], artifact]
             )
         )
+    checkpoints = tuple(document.get("checkpoints", (bands["id"],)))
+    gate_inputs = []
+    if cell_contract is not None:
+        collector = bands["id"] + ".cell_diagnostics"
+        edges.append(
+            ArtifactInput(
+                "cell_diagnostics", collector, "cell_diagnostics", CELL_DIAGNOSTICS_TYPE
+            )
+        )
+        checkpoints += (collector,)
+        screen_gate = cell_contract[0]
+        for row in transport_resource(spec, "transport_graph")["nodes"]:
+            if (
+                row["kernel"] == "gates.battery@1"
+                and row.get("params", {}).get("phase") == screen_gate["phase"]
+            ):
+                gate_inputs.append(
+                    (
+                        row["id"],
+                        ArtifactInput(
+                            "cell_diagnostics",
+                            collector,
+                            "cell_diagnostics",
+                            CELL_DIAGNOSTICS_TYPE,
+                        ),
+                    )
+                )
+        if not gate_inputs:
+            raise ValueError(
+                "Cell diagnostics need a matching declared gate-battery node."
+            )
     return TransportExtension(
         factory=_EntitlementFactory(),
         sources=tuple(SourceRef(**row) for row in document.get("sources", ())),
-        checkpoints=tuple(document.get("checkpoints", (bands["id"],))),
+        checkpoints=checkpoints,
         package_inputs=tuple((package["id"], edge) for edge in edges),
+        gate_inputs=tuple(gate_inputs),
     )
 
 

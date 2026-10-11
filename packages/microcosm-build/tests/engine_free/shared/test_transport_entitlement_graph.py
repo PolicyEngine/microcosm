@@ -21,12 +21,19 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     validate_transport_activation,
 )
-from microcosm.build.transport.takeup_kernels import decode_bands, decode_gap
+from microcosm.build.transport.takeup_kernels import (
+    decode_bands,
+    decode_cell_diagnostics,
+    decode_gap,
+    reporting_cell_declarations,
+)
+from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 from microcosm.graph import compile_graph, graph_to_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.transport_entitlement import (
     AS_INPUTS,
     AS_OUTPUTS,
+    EXPORT_FILENAME,
     TOY_DECLARATIONS,
     make_entitlement_fixture,
     run_entitlement_graph,
@@ -97,6 +104,172 @@ def _declared_keys(fixture, graph, exported):
             kernel_capabilities=kernel.capabilities,
         )
     return keys
+
+
+def _cell_support_fixture(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture", variants=False)
+    spec = copy.deepcopy(fixture.spec)
+    resources = spec["resources"]
+    grid = {
+        "entity": "family",
+        "measure": "toy_as_weekly",
+        "period": "2026-27",
+        "annualisation_factor": 52,
+        "tables": [
+            {
+                "name": "toy_type",
+                "axes": [
+                    {
+                        "column": "family_type",
+                        "values": [
+                            "single",
+                            "couple",
+                            "sole_parent",
+                            "couple_with_children",
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    resources["scenarios"]["gap_conventions"] = {"reporting_cells": grid}
+    resources["gates"]["gates"].append(
+        {
+            "id": "toy_cell_support",
+            "gate": "cell_support",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "evidence_absent_blocks": True,
+            "parameters": {
+                "required_scenarios": [
+                    row["id"] for row in resources["scenarios"]["scenarios"]
+                ],
+                "required_cells": [
+                    row["name"] for row in reporting_cell_declarations(grid)
+                ],
+                # CREATE owns and carries the declared source-household concept.
+                "aggregation_column": SOURCE_HOUSEHOLD_ID_COLUMN,
+                "required_weight_entity": "household",
+                "required_weight_kind": "calibrated",
+                "minimum_cell_ess": 100,
+                "maximum_contribution_cv": 2,
+                "maximum_single_donor_dollar_share": 0.1,
+                "target_minimum_cell_ess": 400,
+                "target_maximum_single_donor_dollar_share": 0.05,
+            },
+        }
+    )
+    return fixture.reprepare(spec)
+
+
+def test_cell_support_graph_enforces_scenario_complete_diagnostics_and_suppresses_cells(
+    tmp_path,
+):
+    fixture = _cell_support_fixture(tmp_path)
+    graph = fixture.graph()
+    collector = "nz.as.bands.cell_diagnostics"
+    gate = graph.node("nz.gates.terminal")
+    assert any(
+        edge.name == "cell_diagnostics" and edge.producer == collector
+        for edge in gate.artifact_inputs
+    )
+    manifest, store, exported = run_entitlement_graph(
+        tmp_path / "supported", fixture, graph=graph
+    )
+    assert exported.exists()
+    diagnostics = decode_cell_diagnostics(
+        _artifact(manifest, store, collector, "cell_diagnostics")
+    )
+    assert {row["scenario"] for row in diagnostics["scenarios"]} == {
+        row["id"] for row in fixture.spec["resources"]["scenarios"]["scenarios"]
+    }
+    assert all(
+        cell["suppressed"]
+        for scenario in diagnostics["scenarios"]
+        for cell in scenario["cells"]
+    )
+    assert (
+        decode_bands(_artifact(manifest, store, "nz.as.bands", "bands"))["bands"] == []
+    )
+    report = json.loads(_artifact(manifest, store, "nz.gates.terminal", "gate_report"))
+    assert report["enforcement"]["artifact_permitted"] is True
+
+
+def test_cell_support_graph_adds_diagnostics_to_explicit_gap_output_declarations(
+    tmp_path,
+):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    entitlement = spec["resources"]["entitlement_graph"]
+    node_groups = [
+        entitlement.get(template, [])
+        for template in ("nodes", "scenario_nodes", "variant_nodes")
+    ]
+    node_groups.extend(
+        scenario.get("nodes", [])
+        for scenario in spec["resources"]["scenarios"]["scenarios"]
+    )
+    for declared_nodes in node_groups:
+        for row in declared_nodes:
+            if row["kernel"] == "takeup.gap@1":
+                row["artifact_outputs"] = [
+                    {
+                        "name": "gap",
+                        "type": {"name": "microcosm.takeup.gap", "schema_version": 1},
+                    }
+                ]
+    graph = fixture.reprepare(spec).graph()
+    compile_graph(graph)
+    assert all(
+        {output.name for output in node.artifact_outputs} == {"gap", "cell_diagnostics"}
+        for node in graph.nodes
+        if node.kernel == "takeup.gap@1"
+    )
+
+
+@pytest.mark.parametrize("absence", ["diagnostics", "scenario", "lineage"])
+def test_cell_support_graph_absence_prevents_export(tmp_path, absence):
+    fixture = _cell_support_fixture(tmp_path)
+    graph = fixture.graph()
+    if absence == "diagnostics":
+        gate = graph.node("nz.gates.terminal")
+        changed = replace(
+            gate,
+            artifact_inputs=tuple(
+                edge for edge in gate.artifact_inputs if edge.name != "cell_diagnostics"
+            ),
+        )
+        graph = replace(
+            graph,
+            nodes=tuple(
+                changed if node.id == gate.id else node for node in graph.nodes
+            ),
+        )
+    elif absence == "scenario":
+        collector = graph.node("nz.as.bands.cell_diagnostics")
+        changed = replace(collector, artifact_inputs=collector.artifact_inputs[:-1])
+        graph = replace(
+            graph,
+            nodes=tuple(
+                changed if node.id == collector.id else node for node in graph.nodes
+            ),
+        )
+    else:
+        changed_nodes = []
+        for node in graph.nodes:
+            if node.kernel == "takeup.gap@1":
+                node = replace(
+                    node,
+                    params={
+                        **node.params,
+                        "source_household_column": "missing_source_identity",
+                    },
+                )
+            changed_nodes.append(node)
+        graph = replace(graph, nodes=tuple(changed_nodes))
+    with pytest.raises((ValueError, RuntimeError), match="gate|scenario|lineage"):
+        run_entitlement_graph(tmp_path / "blocked", fixture, graph=graph)
+    assert not (tmp_path / "blocked" / EXPORT_FILENAME).exists()
 
 
 @EXECUTED
