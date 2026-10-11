@@ -19,6 +19,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 )
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
+from microcosm.build.us_runtime.wic_claim import WIC_CLAIM_FNS_SOURCE_URL
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -38,6 +39,10 @@ def test__given_no_source__then_base_frame_is_an_untouched_identity(
     monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", _must_not_run)
     monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", _must_not_run)
     monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", _must_not_run)
+    monkeypatch.setattr(acs_multispine, "with_acs_wic_claim_input", _must_not_run)
+    monkeypatch.setattr(
+        acs_multispine, "require_complete_us_wic_claim_input", _must_not_run
+    )
     monkeypatch.setattr(
         acs_multispine,
         "us_puma_ladder_assignment_summary",
@@ -91,13 +96,13 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     tmp_path,
 ) -> None:
     events: list[tuple[Any, ...]] = []
-    base = object()
+    base = SimpleNamespace(table=lambda entity: pd.DataFrame())
     raw_acs = object()
     mapped_acs = object()
     # The post-transfer adult-care gate probes the transferred frame's person
     # table; an empty table means "columns absent", so the gate scopes out.
     transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
-    pooled = object()
+    pooled = SimpleNamespace(table=lambda entity: pd.DataFrame())
     source = AcsPumsSource(
         tmp_path / "csv_hus.zip",
         tmp_path / "csv_pus.zip",
@@ -149,10 +154,18 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
         events.append(("pool", actual_base, actual_acs, acs_share))
         return pooled
 
+    def fake_wic(actual_acs, *, seed, time_period):
+        events.append(("wic", actual_acs, seed, time_period))
+        return actual_acs
+
     monkeypatch.setattr(acs_multispine, "build_acs_pums_unit_frame", fake_load)
     monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", fake_map)
     monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", fake_transfer)
     monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", fake_pool)
+    monkeypatch.setattr(acs_multispine, "with_acs_wic_claim_input", fake_wic)
+    monkeypatch.setattr(
+        acs_multispine, "require_complete_us_wic_claim_input", lambda person: None
+    )
 
     result = acs_multispine.build_optional_acs_multispine(
         cast(Frame, base),
@@ -182,6 +195,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "max_targets_per_fit": 8,
             },
         ),
+        ("wic", transferred_acs, 19, source.vintage),
         ("pool", base, transferred_acs, 0.4),
     ]
     assert result.frame is pooled
@@ -218,6 +232,13 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "structural_receipt": None,
             }
         ],
+        "wic_claim": {
+            "seed": 19,
+            "source_year": source.vintage,
+            "person_rows": 0,
+            "output_columns": ["takes_up_wic_if_eligible"],
+            "category_rates_source": WIC_CLAIM_FNS_SOURCE_URL,
+        },
         "deferred_inputs": ["congressional_district_geoid"],
         "adult_care_recipient_gate": None,
         "fit_records": [
@@ -278,6 +299,15 @@ def test__given_tiny_frames__then_mapping_transfer_and_pool_interoperate(
         [55_000.0, 0.0]
     )
     assert acs_people["qualified_dividend_income"].notna().all()
+    assert person.takes_up_wic_if_eligible.dtype == bool
+    assert person.takes_up_wic_if_eligible.notna().all()
+    pd.testing.assert_series_equal(
+        person.loc[
+            person[spine_column("person")].ne("acs_2024_1yr"),
+            "takes_up_wic_if_eligible",
+        ].reset_index(drop=True),
+        base.person.takes_up_wic_if_eligible,
+    )
     assert (
         result.frame.weights_for("household").total
         == base.weights_for("household").total
@@ -370,6 +400,29 @@ def _test_puma_ladder() -> UsPumaLadder:
     )
 
 
+def test_pre_acs_donor_wic_check_preserves_existing_decisions():
+    base = _base_donor_frame()
+    original_person = base.person.copy(deep=True)
+
+    acs_multispine._require_complete_pre_acs_donor_wic_input(base)
+
+    pd.testing.assert_frame_equal(base.person, original_person)
+
+
+def test_missing_pre_acs_donor_decisions_fail_before_acs_loading(monkeypatch, tmp_path):
+    from test_support.microcosm_build.us_wic_claim import _replace_person
+
+    base = _base_donor_frame()
+    missing = _replace_person(
+        base, base.person.drop(columns="takes_up_wic_if_eligible")
+    )
+    monkeypatch.setattr(acs_multispine, "build_acs_pums_unit_frame", _must_not_run)
+    with pytest.raises(ValueError, match="WIC participation"):
+        acs_multispine.build_optional_acs_multispine(
+            missing, AcsPumsSource(tmp_path / "hus.zip", tmp_path / "pus.zip")
+        )
+
+
 def _base_donor_frame() -> Frame:
     person = pd.DataFrame(
         {
@@ -381,6 +434,9 @@ def _base_donor_frame() -> Frame:
             "person_marital_unit_id": [1, 1, 2, 2],
             "age": [42.0, 38.0, 65.0, 12.0],
             "is_female": [False, True, True, False],
+            "is_pregnant": [False, False, False, False],
+            "own_children_in_household": [0, 0, 0, 0],
+            "takes_up_wic_if_eligible": [True, False, True, False],
             "qualified_dividend_income": [100.0, 20.0, 2_000.0, 0.0],
         }
     )
@@ -409,6 +465,11 @@ def _raw_acs_frame() -> Frame:
             "person_family_id": [10, 10],
             "person_marital_unit_id": [10, 10],
             "AGEP": [40, 15],
+            "is_pregnant": [False, False],
+            "own_children_in_household": [0, 0],
+            "source_year": [2024, 2024],
+            "source_household_id": ["ACS10", "ACS10"],
+            "source_person_id": [1, 2],
             "SEX": [1, 2],
             "RELSHIPP": [20, 25],
             "ADJINC": [1_100_000, 1_100_000],

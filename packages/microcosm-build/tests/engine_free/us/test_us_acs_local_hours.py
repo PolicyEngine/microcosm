@@ -43,8 +43,16 @@ def _frame(
     person["hours_worked_last_week"] = person["A_HRS1"]
     person["age"] = np.resize([40, 30, 35, 32], n)
     person["is_female"] = np.resize([False, True], n)
+    person["is_pregnant"] = False
+    person["own_children_in_household"] = 0
+    person["source_year"] = 2024
+    person["source_household_id"] = ids
+    person["source_person_id"] = ids
     tables["household"]["state_fips"] = 6
     if role is not None:
+        # Already-built donors have participation decisions. Raw ACS fixtures
+        # deliberately omit them so the real post-transfer generator is used.
+        person["takes_up_wic_if_eligible"] = np.resize([False, True], n)
         for entity, table in tables.items():
             table[support_channel_column(entity)] = role
             table[support_source_id_column(entity)] = ids
@@ -417,6 +425,15 @@ def test_local_pipeline_uses_native_hours_then_asec_fallback_and_puf_tax_donor(
     acs = result.frame.person.loc[
         result.frame.person["person_spine"].eq("acs_2024_1yr")
     ]
+    assert acs["takes_up_wic_if_eligible"].dtype == bool
+    assert not acs["takes_up_wic_if_eligible"].isna().any()
+    donors = result.frame.person.loc[
+        ~result.frame.person["person_spine"].eq("acs_2024_1yr")
+    ].set_index("person_id")
+    pd.testing.assert_series_equal(
+        donors["takes_up_wic_if_eligible"].sort_index(),
+        original.person.set_index("person_id")["takes_up_wic_if_eligible"].sort_index(),
+    )
     assert acs["weekly_hours_worked_before_lsr"].tolist() == (
         [40, 0, 19.5 if unresolved else 38, 0] * 2
     )

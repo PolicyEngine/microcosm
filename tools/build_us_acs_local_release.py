@@ -79,6 +79,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
+from microcosm.build.us_runtime import wic_claim
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -505,6 +506,10 @@ def fill_reviewed_nulls(
     defect, surfaced not filled.
     """
 
+    # Participation is a required generated input, not a reviewed engine
+    # default. A null register must never turn missing decisions into True.
+    wic_claim.require_complete_us_wic_claim_input(frame.table("person"))
+
     from policyengine_us import CountryTaxBenefitSystem
 
     from microcosm.build.us_runtime.base_pool import spine_column
@@ -749,6 +754,7 @@ def materialize_chunked(
 
     import build_us_fiscal_refresh_release as release_tool
 
+    wic_claim.require_complete_us_wic_claim_input(base_frame.table("person"))
     projected, dropped = project_input_only(base_frame, period=period)
     total_held = sum(len(columns) for columns in dropped.values())
     log(f"input-schema projection held back {total_held} formula-owned column(s)")
@@ -1344,6 +1350,7 @@ def do_materialize(args) -> None:
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
+    wic_claim.require_complete_us_wic_claim_input(frame.table("person"))
     _require_local_hours(frame, _load_json(summary_path))
     frame, sampling = cd_surface.sample_staging_frame(
         frame, fraction=args.sample_fraction, seed=args.sample_seed
@@ -2181,6 +2188,7 @@ def _write_calibrated_artifact(
     from microcosm.frame import Frame, WeightKind, Weights
 
     frame = _load_staging_frame(args.staging_h5)
+    wic_claim.require_complete_us_wic_claim_input(frame.table("person"))
     _require_local_hours(frame, _load_json(_staging_summary_path(args)))
     frame = _resample_like_materialize(frame, identity)
     staging_ids = frame.table("household")["household_id"].to_numpy()
@@ -3046,7 +3054,8 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     :mod:`microcosm.data.stored_inputs` owns the rule and the reviewed register
     of deliberately non-variable columns. The engine is the installed
     policyengine-us, the one :func:`do_package` records as
-    ``build.built_with_model_package``. Only HDF metadata is read.
+    ``build.built_with_model_package``. Stored-name validation reads metadata;
+    WIC completeness also validates actual participation in bounded row batches.
 
     Returns the gate entry the release's gate summary records.
     """
@@ -3068,7 +3077,17 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
         stored_inputs.StoredTableLayoutError,
     ) as error:
         raise SystemExit(f"Refusing to package: {error}") from error
-    return {"passed": True, "failures": [], "engine": engine.label, **summary}
+    try:
+        wic_rows = wic_claim.require_complete_us_wic_claim_h5(calibrated_h5)
+    except (ValueError, KeyError) as error:
+        raise SystemExit(f"Refusing to package: {error}") from error
+    return {
+        "passed": True,
+        "failures": [],
+        "engine": engine.label,
+        **summary,
+        "wic_participation_person_rows": wic_rows,
+    }
 
 
 def do_package(args) -> dict:

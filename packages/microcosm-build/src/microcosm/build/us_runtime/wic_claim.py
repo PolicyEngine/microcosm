@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from importlib.resources import files
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -63,6 +64,9 @@ __all__ = [
     "WIC_CLAIM_ARCHIVED_RANDOMNESS_URL",
     "WIC_CLAIM_FNS_SOURCE_URL",
     "derive_us_wic_claim_from_manifest",
+    "require_complete_us_wic_claim_input",
+    "require_complete_us_wic_claim_h5",
+    "with_acs_wic_claim_input",
     "us_wic_claim_signal_gate",
     "us_wic_claim_stage_spec",
     "us_wic_claim_summary",
@@ -88,9 +92,7 @@ WIC_CLAIM_FNS_SOURCE_URL = (
 )
 
 US_WIC_CLAIM_STAGE_NAME = "wic_claim_input"
-US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "takes_up_wic_if_eligible",
-)
+US_WIC_CLAIM_OUTPUT_COLUMNS: tuple[str, ...] = ("takes_up_wic_if_eligible",)
 US_WIC_CLAIM_NONCONSTANT_PERSON_COLUMNS = US_WIC_CLAIM_OUTPUT_COLUMNS
 
 # These are persisted PolicyEngine-facing columns already carried or derived
@@ -525,6 +527,63 @@ def with_us_wic_claim_input(
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def require_complete_us_wic_claim_input(person: pd.DataFrame) -> None:
+    """Reject absent, nullable, or non-boolean participation, without filling."""
+    if _OUTPUT not in person:
+        raise ValueError(f"WIC participation requires person column {_OUTPUT!r}.")
+    if person[_OUTPUT].isna().any():
+        raise ValueError(f"WIC participation {_OUTPUT!r} contains missing values.")
+    if not pd.api.types.is_bool_dtype(person[_OUTPUT].dtype):
+        raise ValueError(f"WIC participation {_OUTPUT!r} must have boolean dtype.")
+
+
+def with_acs_wic_claim_input(frame: Frame, *, seed: int, time_period: int) -> Frame:
+    """Generate ACS decisions after demographic completion, before assembly.
+
+    Require the actual source identity instead of accepting the generic
+    generator's person-id fallback. No donor records may be passed here.
+    Categories, rates, and hash draws remain owned by the existing generator.
+    """
+    person = frame.table("person")
+    missing = [column for column in _SOURCE_IDENTITY_COLUMNS if column not in person]
+    if missing:
+        raise ValueError(
+            f"ACS WIC generation requires source identity columns: {missing}."
+        )
+    identity = person.loc[:, list(_SOURCE_IDENTITY_COLUMNS)]
+    if identity.isna().any(axis=None):
+        raise ValueError("ACS WIC generation requires complete source identity.")
+    result = with_us_wic_claim_input(frame, seed=seed, time_period=time_period)
+    require_complete_us_wic_claim_input(result.table("person"))
+    return result
+
+
+def require_complete_us_wic_claim_h5(path: Path) -> int:
+    """Check persisted participation in bounded row batches; return row count.
+
+    Table-format H5 reads only the participation column. Fixed-format H5
+    requires all columns for each row batch; pandas cannot project columns
+    from that format. Numeric/boolean blocks are sliced, but pandas may
+    unpickle an entire fixed-format object block despite the row bounds.
+    """
+    with pd.HDFStore(path, mode="r") as store:
+        if "/person" not in store.keys():
+            raise ValueError("WIC participation requires a person H5 table.")
+        storer = store.get_storer("person")
+        rows = int(storer.nrows if storer.is_table else storer.shape[0])
+        if rows == 0:
+            raise ValueError("WIC participation cannot certify an empty person table.")
+        for start in range(0, rows, 65_536):
+            if storer.is_table:
+                person = store.select(
+                    "person", start=start, stop=start + 65_536, columns=[_OUTPUT]
+                )
+            else:
+                person = store.select("person", start=start, stop=start + 65_536)
+            require_complete_us_wic_claim_input(person)
+    return rows
 
 
 def _person_weights(frame: Frame) -> np.ndarray:

@@ -267,6 +267,14 @@ register entry with its reason, bound to its producer in
 name. A new US lane that writes a release H5 must run the check where it
 records `build.built_with_model_package`.
 
+The supported ACS local-area path additionally requires complete boolean
+`takes_up_wic_if_eligible`: ACS decisions are generated after demographic
+completion and before donor assembly; donor decisions are not regenerated.
+Calculation/export cannot default-fill missing WIC decisions, and packaging
+checks actual person values as well as stored names. The code repair does not
+replace the published dataset; see [the WIC replacement instructions](us-acs-local-wic-replacement.md)
+and #1154 for the separate rebuild, publication, certification, and `.py` removal.
+
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
 pool whose terminal battery is red remains fail-closed unless the operator

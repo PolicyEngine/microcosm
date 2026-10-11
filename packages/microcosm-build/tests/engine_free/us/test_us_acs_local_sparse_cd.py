@@ -168,8 +168,12 @@ def _materialize(module, fixtures, release, monkeypatch, tmp_path, specs, hh_chu
     fixtures._install_fake_engine(release, monkeypatch, reform_specs=fixtures._REFORMS)
     monkeypatch.setattr(module, "project_input_only", lambda frame, **kw: (frame, {}))
     monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *args, **kw: None)
+    from test_support.microcosm_build.us_wic_claim import _replace_person
+
+    frame = fixtures._nested_frame()
+    frame = _replace_person(frame, frame.person.assign(takes_up_wic_if_eligible=False))
     return module.materialize_chunked(
-        fixtures._nested_frame(),
+        frame,
         specs,
         hh_chunk=hh_chunk,
         batch=2,
