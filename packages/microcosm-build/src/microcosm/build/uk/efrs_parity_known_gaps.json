@@ -634,7 +634,9 @@
  "engine_derived_exclusions": {
   "property_wealth": {
    "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
-   "tracking_note": "microcosm#1106 (the uk-data#543 defect): the release and calibration boundaries drop the WAS total, and policyengine-uk sums main_residence_value, other_residential_property_value and non_residential_property_value, which stay required."
+   "tracking_note": "microcosm#1106 (the uk-data#543 defect): the release and calibration boundaries drop the WAS total, and policyengine-uk sums main_residence_value, other_residential_property_value and non_residential_property_value, which stay required.",
+   "approved_by": "juaristi22",
+   "approved_on": "2026-10-11"
   }
  },
  "exclusion_policy": {

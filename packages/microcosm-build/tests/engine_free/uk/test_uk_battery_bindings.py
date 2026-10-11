@@ -61,10 +61,11 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: or expiry boundary. Move it forward when a register gains a later approval.
 # The committed registers are evaluated as of this date; the microcosm#1063
 # c9 input-mass and QRF-tail entries take force on 2026-10-02, the
-# microcosm#1095 West Midlands target-fit deferral on 2026-10-06 and its two
-# UC payment-band measure exclusions on 2026-10-07. The earliest expiry is
-# 2026-10-15.
-CLOCK = date(2026, 10, 7)
+# microcosm#1095 UC payment-band measure exclusions on 2026-10-07 (its West
+# Midlands target-fit deferral is retired with microcosm#1106), and the
+# microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
+# expiry is 2026-10-15.
+CLOCK = date(2026, 10, 11)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."

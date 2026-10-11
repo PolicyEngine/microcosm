@@ -9,6 +9,13 @@
     "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
     "approved_on": "2026-10-02",
     "expires_on": "2027-04-02"
+   },
+   "property_wealth": {
+    "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
+    "approved_by": "juaristi22",
+    "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and the final-head arm c6x of 2026-10-08; ruling 2026-10-11 in session",
+    "approved_on": "2026-10-11",
+    "expires_on": "2027-04-11"
    }
   }
  }

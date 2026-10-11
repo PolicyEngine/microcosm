@@ -85,6 +85,8 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
             "sums main_residence_value, other_residential_property_value and "
             "non_residential_property_value, which stay required."
         ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-10-11",
     },
 }
 ENTITY_TABLES = ("person", "benunit", "household")

@@ -99,6 +99,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_on": "2026-10-02",
         "expires_on": "2027-04-02",
     },
+    "property_wealth": {
+        "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and the final-head arm c6x of 2026-10-08; ruling 2026-10-11 in session",
+        "approved_on": "2026-10-11",
+        "expires_on": "2027-04-11",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -139,7 +146,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
+    "e4a954414ed8bfb08330cd8d5ab34832075d2673a86553742e66dd8e55e4746f"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
