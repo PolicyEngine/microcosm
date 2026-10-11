@@ -2341,7 +2341,7 @@ def test_package_requires_the_esi_premium_verdict_bound_to_the_packaged_bytes(
             gates["esi_premiums_signal"]["artifact_sha256"] = "0" * 64
         else:
             gates["esi_premiums_anchor"].update(
-                passed=False, failures=["invented: off the NHE anchor"]
+                passed=False, failures=["invented: off the anchor"]
             )
 
     _rewrite_package_gates(args, edit)
@@ -2350,7 +2350,7 @@ def test_package_requires_the_esi_premium_verdict_bound_to_the_packaged_bytes(
         module.do_package(args)
 
     if state == "failed":
-        assert "invented: off the NHE anchor" in str(error.value)
+        assert "invented: off the anchor" in str(error.value)
     # Refused before any release directory exists.
     assert not (args.out / "releases").exists()
     assert not (args.out / "package_result.json").exists()

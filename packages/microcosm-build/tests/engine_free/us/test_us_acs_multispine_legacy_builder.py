@@ -609,7 +609,7 @@ def test_red_staging_esi_premium_gates_abort_before_export(
     monkeypatch.setattr(
         builder,
         "acs_local_esi_premium_gates",
-        _esi_premium_gates(anchor=("off the NHE anchor",)),
+        _esi_premium_gates(anchor=("off the anchor",)),
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -618,7 +618,7 @@ def test_red_staging_esi_premium_gates_abort_before_export(
         )
 
     assert "Local staging ESI employer premium gates failed" in str(exc.value)
-    assert "esi_premiums_anchor: off the NHE anchor" in str(exc.value)
+    assert "esi_premiums_anchor: off the anchor" in str(exc.value)
 
 
 def test_waived_staging_esi_premium_gates_are_recorded_red(
