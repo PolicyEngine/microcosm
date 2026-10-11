@@ -62,6 +62,26 @@ def _git_head() -> str | None:
         return None
 
 
+def _git_modified_paths() -> list[str] | None:
+    """Tracked files that differ from ``code_head``, so a receipt says so.
+
+    A receipt of a draft surface may be run over a local overlay (a hold
+    register signed for the run, since an unsigned hold refuses the compile):
+    the receipt names the files rather than passing as the commit's own.
+    """
+
+    try:
+        output = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return sorted(line[3:] for line in output.splitlines() if line.strip())
+
+
 def _national_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     registry = registry_from_payload(payload["national_registry"])
     rows = []
@@ -288,6 +308,7 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema_version": RECEIPT_SCHEMA_VERSION,
         "code_head": _git_head(),
+        "code_modified_paths": _git_modified_paths(),
         "calibration_year": payload["calibration_year"],
         "review_date": args.review_date,
         "mode": "full" if args.full else "calibration_year",
